@@ -17,7 +17,7 @@ Poslední úprava: 2026-11-13
 | Nový dokument | `load` s prázdným dokumentem | |
 | Uložit | `save()` | |
 | Otevřít | `load(json)` | |
-| Export sítě | `exportMesh('stl' \| '3mf')` | |
+| Export sítě | `exportMesh('stl')` | |
 | Undo, redo | `undo()`, `redo()` | `canUndo`, `canRedo` |
 | Překreslení po změně | `subscribe(listener)` | celý `EngineState` |
 
@@ -29,7 +29,7 @@ Poslední úprava: 2026-11-13
 | Vykreslit obrysy | | `bodies[id].edges[i].polyline` |
 | Vykreslit skici ve 3D | | `features[id].plane`, `sketch.points`, `sketch.radii`, `document` (křivky) |
 | Vykreslit roviny | | `features[id].plane` |
-| Zvýraznit a vybrat stěnu | | index trojúhelníku → `solid.faceIds` → `faces[i].name`, `faces[i].planar` |
+| Zvýraznit a vybrat stěnu | | index trojúhelníku → `solid.faceIds` → `evaluation.faceNames`, `faces[i].planar` |
 | Zvýraznit a vybrat hranu | | `edges[i].name`, `edges[i].kind`, `edges[i].polyline` |
 | Zvýraznit a vybrat oblast skici | | `sketch.regions[i].ref`, `.loops` |
 | Zvýraznit a vybrat entitu skici | | `sketch.points`, `document` (křivky); test zásahu dělá UI |
@@ -96,9 +96,10 @@ Poslední úprava: 2026-11-13
 | Přepnout řídicí a referenční kótu | `setConstraintValue` (`driving`) | |
 | Smazat vazbu nebo kótu | `removeConstraint` | |
 | Zobrazit vazby a kóty | | `document` (vazby), `sketch.points` |
-| Zobrazit hodnotu referenční kóty | | spočítá UI ze `sketch.points` |
+| Zobrazit hodnotu referenční kóty | | `sketch.measurements` (počítá engine) |
 | Zobrazit stav skici | | `sketch.degreesOfFreedom` |
 | Zvýraznit konfliktní a nadbytečné vazby | | `sketch.conflicting`, `sketch.redundant` |
+| Upozornit na křížící se křivky | | `sketch.valid` |
 
 Typ kóty podle výběru:
 
@@ -127,14 +128,19 @@ Typ kóty podle výběru:
 |---|---|---|
 | `brokenReference` na rovinu skici | vybrat novou rovinu nebo stěnu | `setSketchPlane` |
 | `brokenReference` na základ vlastní roviny | vybrat nový základ | `updatePlane` |
-| `brokenReference` na promítnutou hranu | vybrat novou hranu, nebo promítnutí zrušit | `removeExternal`, `addExternal` |
+| `brokenProjection` (varování, hrana zmrazená na poslední hodnotě) | vybrat novou hranu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
 | `brokenReference` na cílové těleso | vybrat jiné těleso | `updateExtrude` |
 | `noProfile` | vybrat oblasti znovu, nebo opravit skicu | `updateExtrude` |
 | `nonPlanarFace` | vybrat jinou stěnu | `setSketchPlane` |
-| `degenerateProjection`, `unsupportedProjection` | zrušit promítnutí nebo vybrat jinou hranu | `removeExternal`, `updateExternal` |
+| `degenerateProjection`, `unsupportedProjection` (varování) | vybrat jinou hranu stejného druhu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
+| `invalidProfile` | otevřít skicu a odstranit křížení křivek | příkazy skici |
+| `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateExtrude` |
+| `emptyResult` | upravit vzdálenost nebo oblasti | `updateExtrude` |
 | `sketchConflict` (varování, model zůstává) | otevřít skicu, smazat konfliktní vazbu | `removeConstraint` |
 
-Text chyby čte UI z `features[id].error.message`, dotčené reference z `error.refs`.
+Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
+
+Neplatný příkaz (`invalidCommand`) dokument nezmění; UI zobrazí zprávu z `CommandResult`.
 
 ## Mezery nalezené při sestavování
 
@@ -148,7 +154,8 @@ Tyto požadavky v původním návrhu API chyběly a jsou do architektury doplně
 6. Pravidla mazání: ve skice kaskáduje, na časové ose ne.
 7. `renameFeature`, `updatePlane`, `setSketchPlane`.
 
-Otevřená mezera: výměna promítnuté hrany přes `removeExternal` + `addExternal` změní ID, takže vazby na původní promítnutí zaniknou. Pro opravu rozbité reference se hodí příkaz `updateExternal`, který ID zachová. Doplněno do architektury.
+8. `updateExternal`: oprava promítnuté hrany zachová její ID, takže vazby na ni zůstanou.
+9. ID nových entit generuje UI a posílá je v příkazech, aby dávka mohla odkazovat na právě vytvořené entity.
 
 ## Vědomě vynecháno
 

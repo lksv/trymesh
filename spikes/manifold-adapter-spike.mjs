@@ -82,38 +82,16 @@ function facesOverlap(fa, fb, margin) {
   return false;
 }
 
-// Vrátí kopii nástroje `b` s posunutými stěnami, které leží v rovině stěn tělesa `a`.
-function prepareTool(op, a, b, log) {
-  if (op === 'intersection') return b;
-  const D = bboxDiagonal(a, b);
-  const tol = D * 1e-5;        // co se ještě bere jako "v jedné rovině"
-  const overlap = D * 4e-5;    // o kolik se stěna posune
-  const shifts = new Map();    // číslo stěny nástroje → posun podél její normály
-  const fa = planarFaces(a), fb = planarFaces(b);
-  for (const B of fb) {
-    for (const A of fa) {
-      const c = dot(A.n, B.n);
-      if (Math.abs(c) < 1 - 1e-6) continue;                       // nejsou rovnoběžné
-      if (Math.abs(B.d - c * A.d) > tol) continue;                // nejsou v jedné rovině
-      if (!facesOverlap(A, B, tol)) continue;                     // jsou, ale jinde
-      const same = c > 0;
-      let shift = 0;
-      if (op === 'difference') shift = same ? overlap : -overlap; // lícuje → ven z tělesa; dosedá zvenku → od tělesa
-      if (op === 'union' && !same) shift = overlap;               // dosedá → dovnitř tělesa
-      if (shift !== 0) { shifts.set(B.id, shift); log?.push(`stěna ${B.id} ~ ${A.id}: posun ${shift > 0 ? '+' : '−'}`); }
-      break;
-    }
-  }
-  if (shifts.size === 0) return b;
-
-  // Každý vrchol se posune tak, aby posunuté stěny dostaly svůj posun a ostatní zůstaly ve své rovině.
+// Posune vrcholy tak, aby stěna s číslem id dostala posun shiftOf(id) podél své normály
+// a ostatní stěny zůstaly ve své rovině (vrchol jede po průsečnici sousedních stěn).
+function moveVertices(b, shiftOf) {
   const constraints = new Map();   // vrchol → [{n, r}]
   for (let t = 0; t < b.triangles.length / 3; t++) {
     const idx = [0, 1, 2].map((k) => b.triangles[3 * t + k]);
     const v = idx.map((i) => P(b, i));
     const nRaw = cross(sub(v[1], v[0]), sub(v[2], v[0]));
     if (len(nRaw) === 0) continue;
-    const n = unit(nRaw), r = shifts.get(b.faceIds[t]) ?? 0;
+    const n = unit(nRaw), r = shiftOf(b.faceIds[t], n);
     for (const i of idx) {
       const list = constraints.get(i) ?? [];
       if (!list.some((c) => dot(c.n, n) > 1 - 1e-9 && c.r === r)) list.push({ n, r });
@@ -131,17 +109,88 @@ function prepareTool(op, a, b, log) {
     const d = [0, 1, 2].map((k) => { const C = col(k); return dot(C[0], cross(C[1], C[2])) / det; });
     for (let k = 0; k < 3; k++) positions[3 * i + k] = b.positions[3 * i + k] + d[k];
   }
-  return { ...b, positions };
+  return positions;
+}
+
+// Vrátí kopii nástroje `b` s posunutými stěnami, které leží v rovině stěn tělesa `a`.
+function prepareTool(op, a, b, log) {
+  if (op === 'intersection') return { tool: b, shifts: new Map() };
+  const D = bboxDiagonal(a, b);
+  const tol = D * 1e-5;        // co se ještě bere jako "v jedné rovině"
+  const overlap = D * 4e-5;    // o kolik se stěna posune
+  const shifts = new Map();    // číslo stěny nástroje → posun podél její normály
+  const fa = planarFaces(a), fb = planarFaces(b);
+  for (const B of fb) {
+    for (const A of fa) {
+      const c = dot(A.n, B.n);
+      if (Math.abs(c) < 1 - 1e-6) continue;                       // nejsou rovnoběžné
+      if (Math.abs(B.d - c * A.d) > tol) continue;                // nejsou v jedné rovině
+      if (!facesOverlap(A, B, tol)) continue;                     // jsou, ale jinde
+      const same = c > 0;
+      let shift = 0;
+      if (op === 'difference') shift = same ? overlap : -overlap; // lícuje → ven z tělesa; dosedá zvenku → od tělesa
+      if (op === 'union' && !same) shift = overlap;               // dosedá → dovnitř tělesa
+      if (shift !== 0) { shifts.set(B.id, { r: shift, n: B.n }); log?.push(`stěna ${B.id} ~ ${A.id}: posun ${shift > 0 ? '+' : '−'}`); }
+      break;
+    }
+  }
+  if (shifts.size === 0) return { tool: b, shifts };
+
+  return { tool: { ...b, positions: moveVertices(b, (id) => shifts.get(id)?.r ?? 0) }, shifts };
 }
 
 const toManifold = (s) => new Manifold(new Mesh({ numProp: 3, vertProperties: Float32Array.from(s.positions), triVerts: s.triangles, faceID: s.faceIds }));
 function fromManifold(m) { const g = m.getMesh(); return { positions: g.vertProperties, triangles: g.triVerts, faceIds: g.faceID }; }
 
-function boolean(op, a, b, { prepare = true, log } = {}) {
-  const tool = prepare ? prepareTool(op, a, b, log) : b;
-  const A = toManifold(a), B = toManifold(tool);
-  return fromManifold(op === 'union' ? A.add(B) : op === 'difference' ? A.subtract(B) : A.intersect(B));
+// Sloučí vrcholy, které po návratu stěn splynuly, a zahodí trojúhelníky, které tím zanikly.
+// (Vyčištění průchodem přes Manifold se neosvědčilo: nulové trojúhelníky sbalil špatným směrem.)
+function weld(s, eps) {
+  const n = s.positions.length / 3, parent = Int32Array.from({ length: n }, (_, i) => i);
+  const find = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  const cell = (i) => [0, 1, 2].map((k) => Math.floor(s.positions[3 * i + k] / (eps * 4)));
+  const grid = new Map();
+  for (let i = 0; i < n; i++) {
+    const c = cell(i);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      for (const j of grid.get(`${c[0] + dx},${c[1] + dy},${c[2] + dz}`) ?? []) {
+        if (len(sub(P(s, i), P(s, j))) <= eps) parent[find(i)] = find(j);
+      }
+    }
+    const key = c.join(','); grid.set(key, [...(grid.get(key) ?? []), i]);
+  }
+  const tris = [], ids = [];
+  for (let t = 0; t < s.triangles.length / 3; t++) {
+    const [p, q, r] = [0, 1, 2].map((k) => find(s.triangles[3 * t + k]));
+    if (p === q || q === r || r === p) continue;
+    tris.push(p, q, r); ids.push(s.faceIds[t]);
+  }
+  return { positions: s.positions, triangles: Uint32Array.from(tris), faceIds: Uint32Array.from(ids) };
 }
+
+// restore: po booleanu vrátí zbytky posunutých stěn do původní roviny a síť vyčistí.
+function boolean(op, a, b, { prepare = true, restore = true, log } = {}) {
+  const { tool, shifts } = prepare ? prepareTool(op, a, b, log) : { tool: b, shifts: new Map() };
+  const A = toManifold(a), B = toManifold(tool);
+  let out = fromManifold(op === 'union' ? A.add(B) : op === 'difference' ? A.subtract(B) : A.intersect(B));
+  if (restore && shifts.size > 0 && [...out.faceIds].some((id) => shifts.has(id))) {
+    if (process.env.DEBUG) console.log('   před návratem:', faceSummary(out));
+    out = { ...out, positions: moveVertices(out, (id, n) => { const sh = shifts.get(id); return sh ? -sh.r * Math.sign(dot(n, sh.n)) : 0; }) };
+    if (process.env.DEBUG) console.log('   po návratu:   ', faceSummary(out));
+    out = weld(out, bboxDiagonal(a, b) * 1e-6);
+    if (process.env.DEBUG) console.log('   po vyčištění: ', faceSummary(out));
+    log?.push('zbytek posunuté stěny vrácen do roviny');
+  }
+  return out;
+}
+function faceSummary(s) {
+  const m = new Map();
+  for (let t = 0; t < s.triangles.length / 3; t++) {
+    const v = [0, 1, 2].map((k) => P(s, s.triangles[3 * t + k]));
+    const e = m.get(s.faceIds[t]) ?? { t: 0, a: 0 }; e.t++; e.a += len(cross(sub(v[1], v[0]), sub(v[2], v[0]))) / 2; m.set(s.faceIds[t], e);
+  }
+  return [...m].sort((x, y) => x[0] - y[0]).map(([id, e]) => `${id}:${e.t}t/${e.a.toFixed(2)}`).join(' ');
+}
+const components = (s) => toManifold(s).decompose().length;
 
 // =====================================================================
 // TESTY
@@ -267,8 +316,37 @@ for (const [label, f] of [['osově', IDENTITY], ['šikmo', rotated()]]) {
   // a zčásti prochází materiálem schodu (x 10..20). Tam vznikne strop tunelu.
   run(`E ${label}: částečný překryv – strop pod schodem`, f, 'difference', stepped,
     prism(f, rect(10, 10, 30, 20), 5, 10, { start: 21, end: 22, sides: [23, 24, 25, 26] }),
-    { ids: [...S, 21, 22, 23, 24, 25, 26], volume: 18000 - 1000,
-      check: (d) => { const c = d.faces.get(22); return { ok: !!c && Math.abs(c.area - 100) < 1, text: c ? `strop: plocha ${c.area.toFixed(2)} (čekáno 100), výška ${c.wMin.toFixed(5)}–${c.wMax.toFixed(5)} (zadáno 10)` : 'strop chybí' }; } });
+    { ids: [...S, 21, 22, 23, 24, 25, 26], volume: 17000,
+      check: (d) => { const c = d.faces.get(22); return { ok: !!c && Math.abs(c.area - 100) < 1 && Math.abs(c.wMin - 10) < 1e-4 && Math.abs(c.wMax - 10) < 1e-4, text: c ? `strop: plocha ${c.area.toFixed(2)} (čekáno 100), výška ${c.wMin.toFixed(5)}–${c.wMax.toFixed(5)} (zadáno 10)` : 'strop chybí' }; } });
+
+  // ---- Řetězené případy: další operace na stěně, která je zbytkem posunuté stěny nástroje ----
+  for (const restore of [false, true]) {
+    const tag = restore ? 's návratem do roviny' : 'bez návratu';
+    const tunnel = boolean('difference', stepped, prism(f, rect(10, 10, 30, 20), 5, 10, { start: 21, end: 22, sides: [23, 24, 25, 26] }), { restore });
+    const ceil = describe(tunnel, f).faces.get(22);
+    const hung = boolean('union', tunnel, prism(f, rect(12, 12, 18, 18), 7, 10, { start: 201, end: 202, sides: [203, 204, 205, 206] }), { restore });
+    const dh = describe(hung, f), ch = components(hung);
+    const okH = ch === 1 && Math.abs(dh.vol - (17000 + 108)) < 0.5 && !dh.faces.has(202) && dh.closed;
+    const cutUp = boolean('difference', tunnel, prism(f, rect(12, 12, 18, 18), 10, 12, { start: 211, end: 212, sides: [213, 214, 215, 216] }), { restore });
+    const dc = describe(cutUp, f);
+    const okC = Math.abs(dc.vol - (17000 - 72)) < 0.5 && !dc.faces.has(211) && dc.closed;
+    console.log(`\n== X ${label}: řetězení na stropě tunelu, ${tag}`);
+    console.log(`   strop: výška ${ceil.wMin.toFixed(5)}–${ceil.wMax.toFixed(5)} (zadáno 10)`);
+    console.log(`   nálitek zavěšený na stropě: komponent ${ch}, objem ${dh.vol.toFixed(3)} (čekáno 17108), zbytek dosedací stěny ${dh.faces.has(202) ? 'ANO' : 'ne'} → ${okH ? 'OK' : 'SELHAL'}`);
+    console.log(`   kapsa do stropu: objem ${dc.vol.toFixed(3)} (čekáno 16928), zbytek víka ${dc.faces.has(211) ? 'ANO' : 'ne'} → ${okC ? 'OK' : 'SELHAL'}`);
+    results.push([`X ${label}: nálitek na stropě tunelu, ${tag}`, okH, !restore], [`X ${label}: kapsa do stropu tunelu, ${tag}`, okC, !restore]);
+
+    // Nálitek přesahující přes okraj horní stěny: zbytek jeho spodního víka visí ve vzduchu.
+    const over = boolean('union', box, prism(f, rect(35, 10, 45, 20), 10, 15, { start: 31, end: 32, sides: [33, 34, 35, 36] }), { restore });
+    const under = describe(over, f).faces.get(31);
+    const filled = boolean('union', over, prism(f, rect(40, 10, 45, 20), 5, 10, { start: 221, end: 222, sides: [223, 224, 225, 226] }), { restore });
+    const df = describe(filled, f), cf = components(filled);
+    const okF = cf === 1 && Math.abs(df.vol - (12000 + 500 + 250)) < 0.5 && !df.faces.has(31) && !df.faces.has(222) && df.closed;
+    console.log(`== Y ${label}: nálitek přes okraj a blok pod jeho převisem, ${tag}`);
+    console.log(`   spodek převisu: plocha ${under.area.toFixed(2)} (čekáno 50), výška ${under.wMin.toFixed(5)}–${under.wMax.toFixed(5)} (zadáno 10)`);
+    console.log(`   blok pod převisem: komponent ${cf}, objem ${df.vol.toFixed(3)} (čekáno 12750), zbytky dosedacích stěn ${df.faces.has(31) || df.faces.has(222) ? 'ANO' : 'ne'} → ${okF ? 'OK' : 'SELHAL'}`);
+    results.push([`Y ${label}: blok pod převisem, ${tag}`, okF, !restore]);
+  }
 
   // H: dutina zespodu pod schodem (5..15)×(10..20)×(0..10). Koncové víko je v rovině horní stěny,
   // ale ta leží jinde (x > 20). Posunout se nesmí.
@@ -281,5 +359,5 @@ for (const [label, f] of [['osově', IDENTITY], ['šikmo', rotated()]]) {
 console.log('\n==== SOUHRN (s úpravou v adaptéru) ====');
 for (const [name, ok, baseline] of results) if (!baseline) console.log(`${ok ? 'OK    ' : 'SELHAL'} ${name}`);
 const base = results.filter((r) => r[2]);
-console.log(`\nPro srovnání bez úpravy: ${base.filter((r) => r[1]).length}/${base.length} případů prošlo.`);
+console.log(`\nSrovnávací běhy (bez úpravy nebo bez návratu do roviny): ${base.filter((r) => r[1]).length}/${base.length} případů prošlo.`);
 console.log('Selhaly bez úpravy: ' + base.filter((r) => !r[1]).map((r) => r[0].replace(' (bez úpravy, jen pro srovnání)', '')).join('; '));

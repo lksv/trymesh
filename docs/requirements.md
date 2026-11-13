@@ -51,7 +51,7 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 ### Výstup
 
 - Geometrie pro renderer: trojúhelníky s mapováním trojúhelník → ID stěny (kvůli výběru myší), hrany k vykreslení.
-- Export STL nebo 3MF.
+- Export do STL.
 
 ## Budoucí funkce (mimo PoC, návrh je nemá znemožnit)
 
@@ -60,6 +60,8 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 - Promítnutí kruhové hrany do šikmé roviny (elipsa). Architektura s tím počítá od začátku, viz architecture.md.
 - Promítnutí vrcholů tělesa do skici.
 - Stav určenosti po jednotlivých entitách skici.
+- Export do 3MF.
+- Rozsah extrude „skrz vše" a „po stěnu" (díra, která po změně tloušťky tělesa dál prochází).
 - Revolve.
 - Zaoblení a zkosení hran (na meshi obtížné).
 - Pojmenované parametry a výrazy v kótách.
@@ -81,3 +83,9 @@ Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako 
    - c) Úsečka obdélníku se nahradí jinou mezi stejnými body: extrude ohlásí chybějící profil. Po novém výběru profilu projde, skici na víkách platí dál, ale skica na stěně vzniklé z původní úsečky ohlásí rozbitou referenci.
 3. **Solver.** Podurčená skica, tažení bodu, přidání konfliktní vazby. Engine vrátí srozumitelnou diagnostiku a zbytek modelu zůstane zobrazený.
 4. **Round-trip.** Uložit dokument, načíst, přepočítat, exportovat. Výsledek je identický s původním.
+5. **Časová osa a undo.** Vlastní rovina s posunem, skica na ní a extrude. Potlačení dřívějšího výřezu, vložení nové feature doprostřed logu, přesun feature. Po každém kroku undo a redo vrátí přesně předchozí a následující stav.
+6. **Navazování geometrie.**
+   - a) Válec mimo počátek, skica na jeho víku s promítnutou kružnicí a soustřednou dírou. Po posunu válce v původní skice díra zůstane soustředná.
+   - b) Nálitek, jehož bok lícuje s bokem tělesa: výsledkem je jedno těleso, obě stěny zůstanou pojmenované.
+   - c) Výřez, jehož stěna lícuje se stěnou tělesa jen zčásti, a další operace na nově vzniklé stěně: výsledkem je jedno těleso bez mezer.
+   - d) Výřez, který těleso mine, a výřez, který by ho odebral celé: model zůstane, feature ohlásí varování, respektive chybu.

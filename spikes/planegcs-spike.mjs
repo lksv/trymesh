@@ -94,6 +94,46 @@ console.log('--- P4: tažení bodu p3 (dočasné vazby), 30 kroků');
   check('P4 tažení drží vazby, sleduje cíl ve volném směru, dof se nemění', ok);
 }
 
+console.log('--- P4b: tažení bezstavově – každý krok začíná z uložených poloh (tak, jak to volá preview)');
+{
+  // Podurčený tvar s víc volnostmi: obdélník bez výšky + volná kružnice tečná k horní hraně.
+  const scene = [
+    ...rectBase,
+    { id: 'm', type: 'point', x: 20, y: 40, fixed: false },
+    { id: 'circ', type: 'circle', c_id: 'm', radius: 6 },
+    { id: 'c_tan', type: 'tangent_lc', l_id: 'l3', c_id: 'circ' },
+    { id: 'd_r', type: 'circle_radius', c_id: 'circ', radius: 6 },
+  ];
+  const stored = solve(scene).prims;
+  const dofStored = solve(stored).dof;
+  for (const [name, pid, path] of [
+    ['roh p3 šikmo pryč', 'p3', (i) => ({ x: 40 + i * 3, y: 26 + i * 4 })],
+    ['roh p3 dolů přes spodní hranu (překlopení)', 'p3', (i) => ({ x: 40, y: 26 - i * 3 })],
+    ['střed kružnice daleko do strany a dolů', 'm', (i) => ({ x: 20 + i * 5, y: 32 - i * 3 })],
+  ]) {
+    let ok = true, prev = null, maxStep = 0, worst = '';
+    for (let i = 1; i <= 30; i++) {
+      const target = path(i);
+      const r = solve([
+        ...stored,
+        { id: 'drag_x', type: 'coordinate_x', p_id: pid, x: target.x, temporary: true },
+        { id: 'drag_y', type: 'coordinate_y', p_id: pid, y: target.y, temporary: true },
+      ]);
+      const g = (id) => pt(r, id);
+      const m = g('m'), rad = r.prims.find((p) => p.id === 'circ').radius;
+      const holds = Math.abs(g('p1').x) < 1e-6 && Math.abs(g('p1').y) < 1e-6 && Math.abs(g('p2').x - 40) < 1e-6 && Math.abs(g('p2').y) < 1e-6
+        && Math.abs(g('p3').x - 40) < 1e-6 && Math.abs(g('p4').x) < 1e-6 && Math.abs(g('p3').y - g('p4').y) < 1e-6
+        && Math.abs(Math.abs(m.y - g('p3').y) - 6) < 1e-6 && Math.abs(rad - 6) < 1e-6;
+      const cur = [g('p3').y, m.x, m.y];
+      if (prev) { const step = Math.max(...cur.map((v, k) => Math.abs(v - prev[k]))); if (step > maxStep) { maxStep = step; worst = `krok ${i}`; } }
+      prev = cur;
+      if (!holds || r.dof !== dofStored || (r.status !== 'Success' && r.status !== 'Converged')) { ok = false; console.log(`   ${name}, krok ${i}: status ${r.status}, dof ${r.dof}, p3 ${fmt(g('p3'))}, m ${fmt(m)}`); break; }
+    }
+    console.log(`   ${name}: největší změna mezi sousedními kroky ${maxStep.toFixed(3)} (${worst}), konec p3.y ${prev[0].toFixed(3)}, m (${prev[1].toFixed(3)}, ${prev[2].toFixed(3)})`);
+    check(`P4b ${name}: vazby drží, bez skoků`, ok && maxStep < 8);
+  }
+}
+
 console.log('--- P5: idempotence a determinismus');
 {
   const a = solve([...rectBase, dHeight]);

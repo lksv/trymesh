@@ -82,10 +82,11 @@ Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako 
    - b) Z obdélníku se smaže úsečka: profil se rozpadne, první extrude skončí v chybě a s ním vše, co na něm závisí.
    - c) Úsečka obdélníku se nahradí jinou mezi stejnými body: extrude ohlásí chybějící profil. Po novém výběru profilu projde, skici na víkách platí dál, ale skica na stěně vzniklé z původní úsečky ohlásí rozbitou referenci.
 3. **Solver.** Podurčená skica, tažení bodu, přidání konfliktní vazby. Engine vrátí srozumitelnou diagnostiku a zbytek modelu zůstane zobrazený.
-4. **Round-trip.** Uložit dokument, načíst, přepočítat, exportovat. Výsledek je identický s původním.
+4. **Round-trip.** Uložit dokument, načíst, přepočítat, exportovat. Výsledek je identický s původním. Platí i pro dokument s chybou: po smazání zdrojové skici jde dokument uložit a načíst, extrude je v chybě a po výběru jiné skici projde se stejným ID.
 5. **Časová osa a undo.** Vlastní rovina s posunem, skica na ní a extrude. Potlačení dřívějšího výřezu, vložení nové feature doprostřed logu, přesun feature. Po každém kroku undo a redo vrátí přesně předchozí a následující stav.
 6. **Navazování geometrie.**
    - a) Válec mimo počátek, skica na jeho víku s promítnutou kružnicí a soustřednou dírou. Po posunu válce v původní skice díra zůstane soustředná.
-   - b) Nálitek, jehož bok lícuje s bokem tělesa: výsledkem je jedno těleso, obě stěny zůstanou pojmenované.
+   - b) Nálitek, jehož bok lícuje s bokem tělesa: výsledkem je jedno těleso, obě stěny zůstanou pojmenované a horní stěna tělesa zůstane použitelná pro další skicu. Platí i tehdy, když je bok nálitku přichycený na krajní bod promítnuté hrany.
    - c) Výřez, jehož stěna lícuje se stěnou tělesa jen zčásti, a další operace na nově vzniklé stěně: výsledkem je jedno těleso bez mezer.
    - d) Výřez, který těleso mine, a výřez, který by ho odebral celé: model zůstane, feature ohlásí varování, respektive chybu.
+   - e) Nálitek se stejným půdorysem se zase celý odřízne: po jeho stěnách nezůstane nic a skica na některé z nich ohlásí rozbitou referenci.

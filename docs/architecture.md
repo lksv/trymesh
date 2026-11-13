@@ -1,6 +1,6 @@
 # Architektura
 
-Stav: odsouhlaseno 2026-11-13 (D10–D27), předpoklady ověřeny spiky.
+Stav: odsouhlaseno 2026-11-13 (D10–D27), předpoklady ověřeny spiky. Úpravy ze čtvrté revize (D28) jsou zapracované a čekají na potvrzení.
 
 Vychází z [requirements.md](requirements.md) a [decisions.md](decisions.md). Návrh UI je v [ui.md](ui.md).
 
@@ -96,9 +96,13 @@ interface SketchFeature extends FeatureBase {
 }
 
 interface SolveStamp {
-  inputs: string;                         // otisk křivek, vazeb a hodnot promítnuté geometrie
-  external: Record<Id, number[]>;         // poslední platné hodnoty promítnuté geometrie
+  inputs: string;                         // otisk křivek, vazeb a hodnot promítnuté geometrie; počítá engine
+  external: Record<Id, Projected>;        // poslední platné hodnoty promítnuté geometrie
 }
+
+type Projected =
+  | { kind: 'line';   a: [number, number]; b: [number, number] }
+  | { kind: 'circle'; center: [number, number]; radius: number };
 
 type Curve = { construction?: boolean } & (
   | { type: 'line';   a: Id; b: Id }                       // ID bodů
@@ -106,7 +110,7 @@ type Curve = { construction?: boolean } & (
   | { type: 'arc';    center: Id; start: Id; end: Id }     // proti směru hodin
 );
 
-type ExternalRef = { type: 'edge'; body: Id; edge: EdgeName };
+type ExternalRef = { type: 'edge'; body: Id; edge: EdgeName; kind: 'line' | 'circle' };   // kind: jako co se hrana promítá
 
 // Každá varianta má pojmenované operandy s pevným významem.
 type Constraint = GeometricConstraint | Dimension;
@@ -121,7 +125,7 @@ type GeometricConstraint =
 type Dimension = { value: number; driving: boolean } & (
   | { type: 'distance';           a: Id; b: Id }      // bod–bod (délka úsečky = její koncové body)
   | { type: 'distancePointLine';  point: Id; line: Id }
-  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // bod, bod
+  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // bod, bod; orientovaná: b.x − a.x, resp. b.y − a.y
   | { type: 'angle';              a: Id; b: Id }      // úsečky; úhel od směru `a` ke směru `b`, proti směru hodin, radiány
   | { type: 'radius' | 'diameter'; curve: Id }
 );
@@ -147,11 +151,17 @@ Konvence:
 - **ID** generuje volající a posílá je v příkazech (viz API). Musí být v dokumentu jedinečná, nesmí obsahovat znak `/` (ten je vyhrazený pro odvozená ID promítnuté geometrie) a nesmí být `origin`.
 - **Směr úsečky** je od bodu `a` k bodu `b`. Úhel kóty `angle` je orientovaný a leží v intervalu (−π, π].
 - **Pořadí** tam, kde se mluví o seřazených nebo kanonicky uspořádaných ID a jménech, je lexikografické pořadí řetězců. Jméno stěny se pro porovnání zapíše jako `feature/role/curve`.
+- **Základní roviny** mají pevné pravotočivé souřadné systémy (osa X skici, osa Y skici, normála): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
+- **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
+- **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
+- **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`) a engine ho po prvním řešení přepíše.
 - **Rozsah extrude** je v PoC jen pevná `distance`. Varianty „skrz vše" a „po stěnu" jsou budoucí funkce a přibudou jako další pole vedle `distance`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane.
 
 ### Skica
 
 **Body** jsou samostatné entity a křivky na ně odkazují. Dvě úsečky sdílející bod jsou spojené bez vazby. Vazba `coincident` zůstává pro spojení dodatečně.
+
+Křivka smí odkazovat jen na vlastní body skici a na `origin`, ne na odvozené body promítnuté geometrie. K promítnutému bodu se vlastní bod připojí vazbou `coincident`. Smazání promítnutí tak odstraní jen vazby a nikdy nenechá křivku bez koncového bodu.
 
 **Počátek.** Každá skica má rezervovaný bod s ID `origin` v poloze (0, 0). Je pevný, solver s ním nehýbe a nejde smazat. Natočení kotví vazby `horizontal` a `vertical`, které se vztahují k osám skici.
 
@@ -165,7 +175,9 @@ Konvence:
 
 **Promítnutá geometrie (D23).** Položka `external` promítne hranu tělesa do roviny skici jako pevnou referenční křivku. Uživatel k ní váže a kótuje stejně jako k vlastní geometrii, takže například díra drží vzdálenost od okraje nebo soustřednost s válcem i po změně tělesa.
 
-Výsledek promítnutí je obecně „křivka skici", jejíž typ plyne z druhu hrany a z polohy roviny:
+`kind` říká, jako jaká křivka se má hrana promítnout. Volí ho ten, kdo promítnutí zakládá, podle druhu hrany (`edges[i].kind`). Ukládá se proto, že z něj plynou odvozená ID a přípustné vazby: příkaz i `load` tak jdou ověřit jen ze struktury dokumentu, bez přepočtu, a dávka může na promítnutou křivku navázat hned v dalším příkazu.
+
+Co se skutečně promítne, plyne z druhu hrany a z polohy roviny:
 
 | Hrana | Rovina skici | Výsledek | Odvozená ID |
 |---|---|---|---|
@@ -178,9 +190,9 @@ Výsledek promítnutí je obecně „křivka skici", jejíž typ plyne z druhu h
 - Hodnoty se počítají při každém přepočtu ze stavu těles **před** touto skicou.
 - Solver s promítnutými body nehýbe a poloměr promítnuté kružnice nemění. Detekce profilů je ignoruje.
 - Kruhová hrana se promítá vždy jako celá kružnice, i když je hrana jen její částí.
-- **Promítnutí, které nejde vyhodnotit, skicu neshodí.** Když hrana zanikla nebo ji nejde promítnout, skica dostane varování a promítnutá křivka zůstane zmrazená na posledních platných hodnotách ze `solved.external`. Vazby na ni platí dál. Pokud žádné platné hodnoty nejsou (promítnutí se nepovedlo nikdy), vazby na tuto křivku se při řešení vynechají a varování je vyjmenuje.
+- **Promítnutí, které nejde vyhodnotit, skicu neshodí.** Když hrana zanikla, nejde ji promítnout nebo by se promítla jako jiný druh křivky, než říká `kind` (`unsupportedProjection`), skica dostane varování a promítnutá křivka zůstane zmrazená na posledních platných hodnotách ze `solved.external`. Vazby na ni platí dál. Pokud žádné platné hodnoty nejsou (promítnutí se nepovedlo nikdy), vazby na tuto křivku se při řešení vynechají a varování je vyjmenuje.
 
-**Připravenost na elipsu.** Promítání do šikmé roviny přidá do `Curve` variantu `ellipse` a do portu solveru odpovídající vazby. Zbytek návrhu se nemění: `ExternalRef` druh výsledku neukládá (odvozuje se při přepočtu), `fixed` v `SolveInput` pracuje s obecnými ID a kód, který zpracovává křivky, musí neznámou variantu odmítnout chybou, ne ji tiše přeskočit.
+**Připravenost na elipsu.** Promítání do šikmé roviny přidá variantu `ellipse` do `Curve`, do `kind` a `Projected` a do portu solveru odpovídající vazby. Zbytek návrhu se nemění: `fixed` v `SolveInput` pracuje s obecnými ID a kód, který zpracovává křivky, musí neznámou variantu odmítnout chybou, ne ji tiše přeskočit. Kružnice promítnutá s `kind: 'circle'`, jejíž rovina se později naklonila, skončí varováním a zůstane zmrazená; uživatel promítnutí založí znovu jako elipsu.
 
 ### Řešení skici (D12)
 
@@ -197,7 +209,7 @@ Stejné pravidlo tak pokrývá změnu tělesa i úpravu skici samotné. Změna k
 
 **Zápis výsledku.** Po `execute` engine u skic vyřešených v kroku 3 zapíše do dokumentu atomicky všechny řešené proměnné (body i poloměry) a nové razítko, v rámci téhož kroku undo. Při konfliktu se nezapisuje nic, takže se skica při dalším přepočtu zkusí vyřešit znovu.
 
-**Tažení bodu** je jediný příkaz, který solveru dodává vstup mimo dokument (cíl tažení). Engine skicu vyřeší s dočasným cílem, výchozím odhadem jsou vždy uložené proměnné. `preview(dragPoint)` výsledek jen vrátí, `execute(dragPoint)` ho zapíše jako nové proměnné; razítko zůstává, vstupy se nezměnily. Náhledy jsou bezstavové, každý začíná z uložených poloh; spike potvrdil, že to drží bez skoků i při vzdáleném cíli.
+**Tažení bodu** je jediný příkaz, který solveru dodává vstup mimo dokument (cíl tažení). Engine skicu vyřeší s dočasným cílem, výchozím odhadem jsou vždy uložené proměnné. `preview(dragPoint)` výsledek jen vrátí, `execute(dragPoint)` ho zapíše jako nové proměnné spolu s aktuálním razítkem, stejně jako každé jiné úspěšné řešení. Cíl tažení se do `evaluate` předává parametrem `drag`: promítnutá geometrie skici se musí spočítat ze stavu těles před ní dřív, než se zavolá solver, a features za skicou se počítají z výsledku tažení. Náhledy jsou bezstavové, každý začíná z uložených poloh; spike potvrdil, že to drží bez skoků i při vzdáleném cíli.
 
 **Cache.** Zápis vytvoří nový objekt feature, takže by memoizace podle identity minula. Engine proto záznam v cache převěsí ze starého objektu na nový. Je to korektní z konstrukce: nový objekt projde při přepočtu větví 2 a dá přesně ty proměnné, které předtím dal solver.
 
@@ -243,7 +255,8 @@ interface EdgeName { a: FaceName; b: FaceName }   // a < b v lexikografickém po
 - Přímá hrana (obě stěny rovinné a různoběžné) leží na průsečnici jejich analytických rovin. Poloha a směr přímky se počítají analyticky, ze sítě se bere jen rozsah (krajní body).
 - Přímka je orientovaná směrem n_a × n_b, kde `a`, `b` jsou stěny v kanonickém pořadí jmen a n jejich normály ven z tělesa. Krajní bod `<id>/a` promítnuté úsečky je ten s menším parametrem v tomto směru. Pořadí konců se tak při přepočtu neprohodí.
 - Krajní body mají přesnost sítě (viz Přesnost u SolidKernel). Přímka samotná je přesná. Geometrie přichycená na krajní bod proto dá stěny nástroje jen téměř koplanární se stěnami tělesa; s tím počítá záruka jádra č. 3.
-- Hrana mezi dvěma stěnami v téže rovině (výstupek zarovnaný s horní stěnou) má druh `coplanar`. Průsečnice neexistuje a hranice nemusí být přímá. Nekreslí se a nejde promítnout.
+- Hrana mezi dvěma stěnami v téže rovině (výstupek zarovnaný s horní stěnou) má druh `coplanar`. Průsečnice neexistuje a hranice nemusí být přímá. Nekreslí se a nejde promítnout. „V téže rovině" znamená, že normály obou stěn svírají úhel pod úhlovou tolerancí enginu. Přesná rovnoběžnost nestačí: stěna z úsečky přichycené na krajní body promítnutých hran je od stěny tělesa odkloněná o zlomek úhlové vteřiny a průsečnice takových rovin by vyšla kilometry daleko.
+- Hrana se vrací jako seznam úseček (`segments`), ne jako jedna lomená čára: hrana rozdělená výřezem má víc nesouvislých úseků a jedna čára by je spojila přes prázdný prostor.
 - Kruhová hrana je rozhraní boční stěny vzniklé z kružnice nebo oblouku a rovinné stěny kolmé na osu extrude. Střed a poloměr se počítají analyticky z vyřešené zdrojové křivky skici, ze sítě se nebere nic kromě ověření existence.
 - Ostatní hrany (válec říznutý šikmou rovinou, průnik dvou válců) mají druh `other` a promítnout nejdou.
 
@@ -269,9 +282,9 @@ Důsledek: kladná `distance` u extrude ze skici na stěně vždy znamená ven z
 
 ### Profily a oblasti
 
-**Spojování bodů.** Dva body skici se pro účely profilu považují za jeden, když je to tentýž bod, nebo když je spojuje vazba `coincident`, která je v použitých polohách skutečně splněná (vzdálenost do tolerance). Samotná existence vazby nestačí: konfliktní `coincident` mezi dvěma rohy obdélníku, která se nesplnila, profil nezmění.
+**Spojování bodů.** Dva body skici se pro účely profilu považují za jeden, když je to tentýž bod, nebo když je spojuje vazba `coincident`, která je v použitých polohách skutečně splněná (vzdálenost do délkové tolerance enginu). Samotná existence vazby nestačí: konfliktní `coincident` mezi dvěma rohy obdélníku, která se nesplnila, profil nezmění. Spojování je tranzitivní a jde i přes počátek a promítnuté body: dva konce přichycené vazbou ke stejnému promítnutému bodu jsou jeden vrchol grafu.
 
-**Graf.** Křivky skici (bez konstrukčních a promítnutých) tvoří rovinný graf. Křivky se smějí dotýkat jen ve spojených bodech. Když se dvě křivky kříží nebo dotýkají jinde, třeba proto, že se profil po vyřešení sám protnul, je profil neplatný a extrude nad touto skicou skončí v chybě `invalidProfile`. Engine tak jádru nikdy nepředá síť, která není uzavřeným tělesem.
+**Graf.** Křivky skici (bez konstrukčních a promítnutých) tvoří rovinný graf. Křivky se smějí dotýkat jen ve spojených bodech. Když se dvě křivky kříží nebo se k sobě jinde přiblíží pod délkovou toleranci, třeba proto, že se profil po vyřešení sám protnul, je profil neplatný a extrude nad touto skicou skončí v chybě `invalidProfile`. Engine tak jádru nikdy nepředá síť, která není uzavřeným tělesem. Platí to i pro tečný dotyk: kružnice tečná k hraně obdélníku, pokud nejsou jedna z nich konstrukční, zneplatní profil celé skici. Je to záměrně přísné a jednoduché; těleso s nulovou tloušťkou stěny by stejně vzniknout nemohlo.
 
 **Oblast** je omezená stěna tohoto grafu, tedy nejmenší uzavřená plocha, kterou křivky ohraničují. Obdélník rozdělený příčkou má dvě oblasti, ne tři. Křivky, které žádnou plochu neuzavírají, se ignorují. Oblast může mít díry: jsou to hranice dalších, do ní vnořených souvislých částí grafu.
 
@@ -341,7 +354,7 @@ Záruky implementace:
 
 planegcs navíc vrací splněný vstup bitově beze změny (ověřeno spikem), ale návrh se o to neopírá.
 
-Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`.
+Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
 
 Referenční kóty (`driving: false`) se solveru neposílají. Engine je před voláním odfiltruje a jejich hodnotu spočítá z vyřešených poloh. planegcs s nimi podle spiku nepracuje spolehlivě.
 
@@ -368,26 +381,33 @@ Záruky implementace:
 3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout.
 4. Stejný vstup dá vždy stejný výstup.
 
-**Jak záruku č. 3 plní adaptér Manifoldu.** Manifold sám toleranci ke skoro-koplanárním plochám nemá a na šikmých stěnách kvůli float32 selhává. Adaptér proto boolean obalí dvěma kroky:
+**Jak záruku č. 3 plní adaptér Manifoldu.** Manifold sám toleranci ke skoro-koplanárním plochám nemá a na šikmých stěnách kvůli float32 selhává. Adaptér se proto řídí jedním pravidlem: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Každý takový styk změní před booleanem na skutečný průnik a po booleanu posunuté stěny vrátí.
 
 Před booleanem:
-1. Proloží roviny stěnami obou těles (podle čísel stěn) a najde dvojice v jedné rovině v rámci tolerance.
-2. Ověří, že se stěny v rovině skutečně překrývají.
-3. Stěnu nástroje posune o malý přesah: u rozdílu ven z tělesa, když lícuje s jeho povrchem, a od tělesa, když na něj dosedá zvenku; u sjednocení dovnitř tělesa, když na něj dosedá. Lícující stěny u sjednocení nechá.
+1. Proloží roviny stěnami obou těles (podle čísel stěn). Stěna je rovinná, když její vrcholy leží do tolerance od proložené roviny. Podle normál jednotlivých trojúhelníků se nerozhoduje: úzký trojúhelník z dřívějšího booleanu má normálu nespolehlivou a celou stěnu by označil za nerovinnou.
+2. Najde dvojice stěn nástroje a tělesa v jedné rovině, které se překrývají, dotýkají, nebo je dělí mezera do dvou přesahů. Dotyk se počítá, protože bok nálitku se boku tělesa dotýká jen hranou. Mezera se počítá, protože se stěny posunem sousedních stěn o přesah protáhnou.
+3. Stěnu nástroje posune o přesah tak, aby se nástroj zvětšil. Jediná výjimka: u rozdílu, když nástroj na těleso dosedá zvenku, se nástroj zmenší. Když stěna nástroje potká ve své rovině stěny obou orientací (horní stěnu a spodek převisu), má zvětšení přednost; zmenšení by na lícující části nechalo blánu.
 4. Vrcholy posouvá podél průsečnic sousedních stěn, aby se sousední stěny nenaklonily.
 
 Po booleanu:
-5. Pokud ve výsledku zůstal zbytek posunuté stěny (stěna lícovala jen zčásti a zbytkem procházela materiálem), vrátí jeho vrcholy stejným způsobem do původní roviny.
-6. Sloučí vrcholy, které tím splynuly, a zahodí zaniklé trojúhelníky.
+5. Vrátí do původní roviny vše, co po posunu ve výsledku zůstalo. Je to zbytek samotné posunuté stěny (lícovala jen zčásti) a také hranice sousedních stěn nástroje, která s ní odjela, i když posunutá stěna sama zanikla: bok nálitku lícující s bokem tělesa sahá o přesah pod dosedací rovinu. Druhý případ se pozná podle polohy, vrchol leží v posunuté rovině a dotýká se stěny nástroje.
+6. Vyčistí síť. Pás, o který byla stěna posunutá, má po návratu nulovou šířku. Adaptér sloučí splynulé vrcholy, zahodí blány nulové tloušťky a trojúhelník s vrcholy v přímce zruší tak, že jeho souseda rozdělí v prostředním vrcholu. Bez toho by nulové trojúhelníky dál nesly číslo zaniklé stěny a reference na ni by se nerozbila.
 
 Kroky 5 a 6 jsou nutné. Bez nich leží zbylá stěna o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selže: nálitek zavěšený na takové stěně skončil ve spiku jako samostatná komponenta s mezerou 0,002 mm. Výstup adaptéru tedy musí být konzistentní s analytickou geometrií v rámci přesnosti float32, ne v rámci přesahu.
 
-Toleranci i přesah odvozuje adaptér z rozměru modelu (ve spiku 1e-5 a 4e-5 úhlopříčky). V dokumentu ani v core se nenastavují.
+Dvě věci, na kterých to numericky stojí; obě se projevily až v obecně natočené poloze:
+- Roviny pro posun vrcholu se berou proložené přes celou stěnu, u posunuté stěny přímo z nástroje. Normály jednotlivých trojúhelníků výsledku použít nejde: úzké trojúhelníky je mají vychýlené o desítky stupňů a strop výřezu pak vyšel mimo rovinu o 2e-4 mm.
+- Posun vrcholu se počítá v ortonormální bázi normál. Výpočet přes regularizovanou soustavu 3×3 byl pro vrchol držený jedinou šikmou rovinou nestabilní a vrchol posunul i do strany.
+
+Důsledek pro jména: kde stěna nástroje lícuje se stěnou tělesa a překrývají se plochou, nese překrytou část ve výsledku jméno stěny nástroje. Obě stěny dál existují a dělí je hrana druhu `coplanar`.
+
+Všechny tolerance odvozuje adaptér z rozměru modelu (úhlopříčka D obou těles): stejná rovina 1e-5 D, přesah 4e-5 D, slučování vrcholů 1e-6 D. V dokumentu ani v core se nenastavují.
 
 Omezení:
 - Řeší se jen rovinné stěny. Válcová stěna nástroje shodná s válcovou stěnou tělesa (rozšíření díry na stejný poloměr) ne.
-- Vyčištění průchodem přes Manifold nejde použít: nulové trojúhelníky sbalil špatným směrem a poškodil těleso. Slučování vrcholů si adaptér dělá sám.
-- Zkoušené byly hranoly a válce. Vrchol, kde se stýká víc než tři různé roviny, zkoušený nebyl.
+- Vyčištění průchodem přes Manifold nejde použít: nulové trojúhelníky sbalil špatným směrem a poškodil těleso. Síť si adaptér čistí sám.
+- Zkoušené byly hranoly a válce, včetně vrcholu, kde se stýkají čtyři roviny. Jiné nástroje v PoC nevznikají, nástroj je vždy extrude.
+- Výřez, jehož víko zároveň lícuje se spodkem převisu a leží na opačně orientované stěně v téže rovině, přejmenuje dotčenou část té stěny na víko nástroje. Geometrie je správná.
 
 **Přesnost (D20).** Manifold přijímá i vrací souřadnice jen ve `Float32Array`, proto je má `Solid` také v tomto typu. Engine geometrii nikdy neodvozuje ze sítě, pokud ji umí spočítat analyticky; analytické výpočty běží ve float64. Naměřená odchylka vrcholů od roviny po 12 booleanech za sebou na šikmé stěně byla 2e-6.
 
@@ -396,7 +416,10 @@ Omezení:
 ## Přepočet
 
 ```ts
-function evaluate(doc: Document, deps: { solver; kernel }, upTo?: Id): Evaluation;
+function evaluate(doc: Document, deps: { solver; kernel }, opts?: {
+  upTo?: Id;                                                        // skončit u této feature
+  drag?: { sketch: Id; point: Id; target: { x: number; y: number } };   // tažení bodu, viz Řešení skici
+}): Evaluation;
 
 interface Evaluation {
   features: Record<Id, FeatureResult>;
@@ -407,7 +430,7 @@ interface Evaluation {
 interface BodyResult {
   solid: Solid;
   faces: { id: number; planar: boolean }[];             // stěny, které těleso má
-  edges: { name: EdgeName; kind: 'line' | 'circle' | 'coplanar' | 'other'; polyline: Float64Array }[];
+  edges: { name: EdgeName; kind: 'line' | 'circle' | 'coplanar' | 'other'; segments: Float64Array }[];   // segments: úsečky, 6 čísel na úsečku
 }
 
 interface Issue { code: IssueCode; message: string; refs?: unknown[] }
@@ -442,6 +465,7 @@ interface FeatureResult {
 - Přehrává se lineárně od první feature. Stav po každé feature se memoizuje podle identity objektu feature a identity předchozího stavu, takže nezměněný začátek logu se nepřepočítává.
 - Feature ve stavu `error` se chová jako prázdná operace a přehrávání pokračuje. Co na ní závisí, skončí také v chybě.
 - Feature ve stavu `warning` výsledek má a závislé features s ním pracují normálně.
+- Potlačená feature (`suppressed`) se chová jako prázdná operace, stejně jako feature v chybě. Co na ní závisí, skončí v `brokenReference`, promítnutí v `brokenProjection`.
 - `upTo` ukončí přehrávání u zadané feature. Náhled při úpravě feature uprostřed logu tak nepočítá nic za ní.
 
 **Tabulka čísel stěn.** Čísla stěn jsou součástí memoizovaného stavu, ne vlastností jednoho běhu. Stav po každé feature nese tabulku jmen; feature, která vytváří nové stěny, přidá jejich jména na konec tabulky předchozího stavu. Číslo stěny je tak funkcí začátku logu a sedí i tehdy, když se začátek bere z cache. Tabulka je jedna společná pro všechna tělesa, čísla se neukládají do dokumentu.
@@ -489,7 +513,7 @@ type Command =
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
   // rovina, extrude
   | { type: 'updatePlane'; id: Id; base?: PlaneRef; offset?: number }
-  | { type: 'updateExtrude'; id: Id; regions?: RegionRef[]; distance?: number;
+  | { type: 'updateExtrude'; id: Id; sketch?: Id; regions?: RegionRef[]; distance?: number;
       operation?: 'new' | 'add' | 'cut'; target?: Id }
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
@@ -508,30 +532,33 @@ type Command =
   | { type: 'batch'; commands: Command[] };
 ```
 
-**Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Ověřuje se:
+**Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Validace pracuje jen se strukturou dokumentu, přepočet k ní není potřeba. Ověřuje se:
 
-- ID nových entit jsou jedinečná a splňují konvence (bez `/`, ne `origin`).
-- Odkazované entity existují a mají správný typ (vazba `parallel` dostala dvě úsečky).
-- Feature odkazuje jen na features před sebou. `addFeature` a `moveFeature`, které by to porušily, jsou neplatné.
+- **ID** nových entit jsou jedinečná a splňují konvence (bez `/`, ne `origin`).
+- **Odkazy uvnitř skici** musí vést na existující entity správného typu (vazba `parallel` dostala dvě úsečky). Křivka odkazuje na vlastní body nebo `origin`. Vazba smí odkazovat i na promítnutou geometrii; její odvozené entity plynou z `kind` (`<id>`, `<id>/a`, `<id>/b` u úsečky, `<id>`, `<id>/center` u kružnice). Protože mazání ve skici kaskáduje, platí toto pravidlo v každém dokumentu.
+- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updatePlane`, `setSketchPlane`, `updateExtrude`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
+- **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
+- **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
+- **Hodnoty.** Čísla jsou konečná. `distance` u extrude není nula a `regions` není prázdné. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 
-Validace hlídá strukturu, ne geometrii. Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
+Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
 
 **Pravidla mazání:**
 
-- `removeEntity` kaskáduje: smazání bodu odstraní křivky, které na něm stojí, a smazání bodu nebo křivky odstraní vazby, které na ně odkazují.
-- `removeExternal` kaskáduje stejně: odstraní vazby na promítnutou křivku i její odvozené body.
-- `updateExternal` zachová ID, takže vazby zůstanou. Smí vybrat jen hranu, která se promítne jako stejný druh křivky. Změna druhu (úsečka místo kružnice) by změnila odvozená ID a příkaz je neplatný; uživatel promítnutí smaže a vytvoří nové.
-- `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě.
+- `removeEntity` kaskáduje: smazání bodu odstraní křivky, které na něm stojí, a smazání bodu nebo křivky odstraní vazby, které na ně odkazují. Křivky v `regions` pozdějších extrude zůstanou a extrude skončí v `noProfile`.
+- `removeExternal` odstraní vazby na promítnutou křivku a její odvozené body. Vlastní křivky na promítnuté body neodkazují, takže se jich mazání netýká.
+- `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
+- `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateExtrude` umí změnit i zdrojovou skicu (spolu s novým výběrem oblastí), `setSketchPlane` rovinu, `updatePlane` základ.
 
-**`load`** ověří verzi schématu a stejná pravidla jako příkazy pro celý dokument. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`.
+**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`.
 
 ### Co z API vzešlo z návrhu UI (D24)
 
 - **`batch`**: nakreslení úsečky s automaticky odvozenými vazbami musí být jeden krok undo.
 - **`addFeature` s pozicí**: vložení feature doprostřed logu.
 - **`getState(at)` a `preview(cmd, at)`**: úprava feature uprostřed logu zobrazuje model v tom okamžiku a nepřepočítává features za ní.
-- **Data pro výběr**: stěny s příznakem rovinnosti, hrany s lomenou čarou a druhem, oblasti skici se smyčkami.
+- **Data pro výběr**: stěny s příznakem rovinnosti, hrany s úsečkami a druhem, oblasti skici se smyčkami.
 
 Výběr myší: renderer zjistí index trojúhelníku, přes `faceIds` číslo stěny a přes `faceNames` jméno, které pošle zpět v příkazu. Hrany a oblasti analogicky.
 
@@ -546,9 +573,9 @@ Výběr myší: renderer zjistí index trojúhelníku, přes `faceIds` číslo s
 | 2b Smazání úsečky obdélníku | Profil se rozpadne, první extrude skončí v chybě `noProfile`. Těleso nevznikne, takže vše, co na něm závisí, skončí v chybě `brokenReference`. |
 | 2c Nahrazení úsečky jinou | Úsečka L3 se smaže a mezi stejné body se nakreslí L9. Oblast z původních křivek zanikla, extrude skončí v chybě `noProfile`. Uživatel vybere profil znovu a extrude projde. Víka si jméno nechají, skici na nich platí dál; pokud mají promítnutou hranu k zaniklé stěně z L3, dostanou varování `brokenProjection` a hrana zůstane zmrazená. Skica přímo na stěně „side E1/L3" skončí v chybě `brokenReference` a uživatel vybere novou stěnu. |
 | 3 Solver | `SolveResult` nese stupně volnosti a konfliktní vazby. Konfliktní skica má stav `warning` a model nezmizí. Tažení přes `preview` s `drag`. |
-| 4 Round-trip | Dokument je jediný zdroj pravdy, `evaluate` je čistá deterministická funkce. Po načtení se skici neřeší znovu, protože razítko odpovídá. |
+| 4 Round-trip | Dokument je jediný zdroj pravdy, `evaluate` je čistá deterministická funkce. Po načtení se skici neřeší znovu, protože razítko odpovídá. Dokument s feature v chybě se načte také: odkaz na smazanou feature validaci neporušuje. |
 | 5 Časová osa a undo | Vlastní rovina je feature jako každá jiná. Vložení, potlačení a přesun jsou příkazy nad seznamem features, validace hlídá pořadí závislostí. Undo vrací předchozí dokument. |
-| 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. |
+| 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`, i když je jeho bok vedle roviny o chybu float32. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. Po odříznutém nálitku nezůstanou zbytky jeho stěn, takže reference na ně se rozbijí. |
 
 ## Výsledky spiků
 
@@ -582,17 +609,27 @@ Jednotlivé případy, každý osově i šikmo: nálitek a kapsa přesně na st�
 
 Řetězené případy, každý osově i šikmo: nálitek zavěšený na stropě tunelu a kapsa do téhož stropu (strop je zbytek posunuté stěny), blok pod převisem nálitku, který přesahuje okraj stěny.
 
+Případy ze čtvrté revize, každý osově i šikmo:
+- schod přidaný sjednocením a zase celý odříznutý (jeho boky lícují s boky kvádru),
+- nálitek s bokem lícujícím s bokem kvádru a s odchylkou ±3e-6, potom kapsa do horní stěny,
+- válcový výřez pod schodem, kde dva vrcholy válce leží v rovině boku schodu (čtyři roviny v jednom vrcholu),
+- blok pod převisem, jehož horní stěna zároveň lícuje s horní stěnou kvádru,
+- drážka do nálitku od jeho spodku nástrojem, který zároveň leží na horní stěně kvádru.
+
+Každý případ kontroluje čísla stěn, objem, uzavřenost sítě a to, že žádná rovinná stěna nemá přeložený trojúhelník.
+
 | Varianta adaptéru | Prošlo |
 |---|---|
-| Posun před booleanem a návrat po něm | 34 z 34 |
+| Posun před booleanem, návrat a vyčištění sítě po něm | 46 z 46 |
+| Verze po třetí revizi (vracel se jen zbytek posunuté stěny, lícující stěny u sjednocení se neposouvaly) | případy ze čtvrté revize selhaly: po odříznutém schodu zůstaly proužky jeho boků, lícující nálitek šikmo zneplatnil rovinnost horní stěny a další kapsa nechala blánu, strop válcového výřezu ležel 9,999988 až 10,000244 |
 | Jen posun, bez návratu (první verze) | řetězené případy selhaly: nálitek na stropě tunelu byl samostatná komponenta |
 | Bez úprav | selhává většina šikmých případů |
 
-S návratem do roviny leží strop tunelu přesně na zadané výšce (bez něj o 0,002 až 0,003 výš). Úprava má asi 150 řádků.
+S návratem do roviny leží strop tunelu přesně na zadané výšce (bez něj o 0,002 až 0,003 výš). Úprava má asi 300 řádků; zhruba polovinu tvoří čištění sítě a prokládání rovin.
 
 ### planegcs (`@salusoft89/planegcs` 1.3.0)
 
-Skript: `planegcs-spike.mjs`. Prošlo 33 z 34 kontrol.
+Skript: `planegcs-spike.mjs`. Prošlo 36 z 37 kontrol; neprošlá je kontrola referenčních kót, viz tabulka.
 
 | Předpoklad | Výsledek |
 |---|---|
@@ -607,9 +644,12 @@ Skript: `planegcs-spike.mjs`. Prošlo 33 z 34 kontrol.
 | Determinismus | Platí bitově. |
 | Tažení přes dočasné vazby | Platí. 30 kroků, vazby drží, bod sleduje cíl ve volném směru, žádné skoky. Ověřeno navazujícími kroky i bezstavově, kdy každý krok začíná z uložených poloh a cíl se vzdaluje (tak to volá `preview`). |
 | Referenční kóty | **Neplatí.** Neřídicí kóta přidala stupeň volnosti a vrátila nesmyslnou hodnotu. Engine je proto solveru neposílá. |
+| Vazba jen mezi pevnými entitami | **Solver ji tiše ignoruje.** Šikmá pevná úsečka s vazbou `horizontal` skončí úspěchem bez konfliktu. Takovou vazbu proto odmítá validace příkazů. |
+| Diagnostika konfliktu | Mezi konfliktními vazbami se vracejí i pomocné vazby adaptéru a `dof()` dá −1. Adaptér je odfiltruje. |
 | Běh v Node | Platí. |
 
 Poznámky pro adaptér:
-- Solver při hledání nadbytečných vazeb vypisuje ladicí text na standardní výstup; je potřeba ho vypnout nebo odfiltrovat.
+- Solver při hledání nadbytečných vazeb vypisuje ladicí text na standardní výstup. Vypíná se nastavením `debug_mode` na `DebugMode.NoDebug` (ověřeno).
+- Úspěšné řešení hlásí knihovna stavem `Success` nebo `Converged`; obojí se mapuje na `solved`.
 - Paměť WASM se uvolňuje ručně (`destroy_gcs_module`).
 - Nezkoušeno: tečnost s obloukem (`tangent_la`, `tangent_ca`, `tangent_aa`) a bod na oblouku (`point_on_arc`). Vazby v knihovně existují.

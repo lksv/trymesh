@@ -26,11 +26,11 @@ Poslední úprava: 2026-11-13
 | Funkce | Příkaz / volání | Čte |
 |---|---|---|
 | Vykreslit tělesa | | `bodies[id].solid` |
-| Vykreslit obrysy | | `bodies[id].edges[i].polyline` |
+| Vykreslit obrysy | | `bodies[id].edges[i].segments` (úsečky; hrany druhu `coplanar` se nekreslí) |
 | Vykreslit skici ve 3D | | `features[id].plane`, `sketch.points`, `sketch.radii`, `document` (křivky) |
 | Vykreslit roviny | | `features[id].plane` |
 | Zvýraznit a vybrat stěnu | | index trojúhelníku → `solid.faceIds` → `evaluation.faceNames`, `faces[i].planar` |
-| Zvýraznit a vybrat hranu | | `edges[i].name`, `edges[i].kind`, `edges[i].polyline` |
+| Zvýraznit a vybrat hranu | | `edges[i].name`, `edges[i].kind`, `edges[i].segments` |
 | Zvýraznit a vybrat oblast skici | | `sketch.regions[i].ref`, `.loops` |
 | Zvýraznit a vybrat entitu skici | | `sketch.points`, `document` (křivky); test zásahu dělá UI |
 | Skrýt a zobrazit těleso, skicu, rovinu | stav UI | |
@@ -66,7 +66,7 @@ Poslední úprava: 2026-11-13
 | Vybrat rovinu nebo rovinnou stěnu | | `faces[i].planar`, `features[id].plane` |
 | Založit skicu | `addFeature` (sketch) | |
 | Natočit kameru na rovinu | stav UI | `features[id].plane` |
-| Promítnout obrys stěny při založení | `batch` z `addExternal` | hrany, jejichž jméno obsahuje danou stěnu a mají `kind` `line` nebo `circle` |
+| Promítnout obrys stěny při založení | `batch` z `addExternal` | hrany, jejichž jméno obsahuje danou stěnu a mají `kind` `line` nebo `circle`; `kind` hrany se zapíše do promítnutí |
 | Změnit rovinu skici | `setSketchPlane` | |
 
 ## Skica: kreslení
@@ -77,13 +77,14 @@ Poslední úprava: 2026-11-13
 | Úsečka, řetězená úsečka | `batch`: `addPoint`, `addCurve` | |
 | Obdélník | `batch`: body, čtyři úsečky, vazby | |
 | Kružnice, oblouk | `batch`: `addPoint`, `addCurve` | |
-| Přichycení na existující bod | znovu použije ID bodu, žádná vazba | `sketch.points` |
+| Přichycení na existující vlastní bod nebo počátek | znovu použije ID bodu, žádná vazba | `sketch.points`, `document` (které body jsou vlastní) |
+| Přichycení na promítnutý bod | nový vlastní bod a `addConstraint` (`coincident`) ve stejném `batch`; křivka na promítnutý bod odkazovat nesmí | `sketch.points` |
 | Přichycení na křivku | `addConstraint` (`pointOnCurve`) ve stejném `batch` | |
 | Odvozené vazby při kreslení (vodorovná, svislá, kolmá…) | `addConstraint` ve stejném `batch`; odvozuje UI | `sketch.points` |
 | Tažení bodu | `preview(dragPoint, at)` při pohybu (počítá jen po upravovanou skicu), `execute(dragPoint)` při puštění | |
 | Přepnout konstrukční geometrii | `setConstruction` | |
 | Smazat entitu (i se závislými vazbami) | `removeEntity` | |
-| Promítnout hranu tělesa | `addExternal` | `edges[i].name`, `.kind` |
+| Promítnout hranu tělesa | `addExternal` (s `kind` podle hrany) | `edges[i].name`, `.kind` |
 | Zrušit promítnutí | `removeExternal` | |
 
 ## Skica: vazby a kóty
@@ -130,9 +131,10 @@ Typ kóty podle výběru:
 | `brokenReference` na základ vlastní roviny | vybrat nový základ | `updatePlane` |
 | `brokenProjection` (varování, hrana zmrazená na poslední hodnotě) | vybrat novou hranu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
 | `brokenReference` na cílové těleso | vybrat jiné těleso | `updateExtrude` |
+| `brokenReference` na zdrojovou skicu extrude | vybrat jinou skicu a její oblasti; ID extrude zůstane | `updateExtrude` (`sketch`, `regions`) |
 | `noProfile` | vybrat oblasti znovu, nebo opravit skicu | `updateExtrude` |
 | `nonPlanarFace` | vybrat jinou stěnu | `setSketchPlane` |
-| `degenerateProjection`, `unsupportedProjection` (varování) | vybrat jinou hranu stejného druhu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
+| `degenerateProjection`, `unsupportedProjection` (varování) | vybrat jinou hranu stejného druhu, nebo promítnutí zrušit a založit nové | `updateExternal`, `removeExternal` |
 | `invalidProfile` | otevřít skicu a odstranit křížení křivek | příkazy skici |
 | `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateExtrude` |
 | `emptyResult` | upravit vzdálenost nebo oblasti | `updateExtrude` |
@@ -140,7 +142,7 @@ Typ kóty podle výběru:
 
 Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
 
-Neplatný příkaz (`invalidCommand`) dokument nezmění; UI zobrazí zprávu z `CommandResult`.
+Neplatný příkaz (`invalidCommand`) dokument nezmění; UI zobrazí zprávu z `CommandResult`. Patří sem i řídicí vazba jen mezi pevnými entitami (počátek, promítnutá geometrie): UI ji má nabídnout jen jako referenční kótu.
 
 ## Mezery nalezené při sestavování
 
@@ -150,12 +152,14 @@ Tyto požadavky v původním návrhu API chyběly a jsou do architektury doplně
 2. `addFeature` s pozicí pro vkládání doprostřed logu.
 3. `getState(at)` pro zobrazení modelu v okamžiku upravované feature.
 4. Konstrukční geometrie (`construction` u křivky, `setConstruction`).
-5. Data pro výběr: rovinnost stěn, hrany s lomenou čarou a druhem, oblasti skici se smyčkami.
+5. Data pro výběr: rovinnost stěn, hrany s úsečkami a druhem, oblasti skici se smyčkami.
 6. Pravidla mazání: ve skice kaskáduje, na časové ose ne.
 7. `renameFeature`, `updatePlane`, `setSketchPlane`.
 
 8. `updateExternal`: oprava promítnuté hrany zachová její ID, takže vazby na ni zůstanou.
 9. ID nových entit generuje UI a posílá je v příkazech, aby dávka mohla odkazovat na právě vytvořené entity.
+10. `updateExtrude` umí změnit zdrojovou skicu, aby šla extrude po smazání skici opravit bez ztráty ID.
+11. Promítnutí nese `kind`, takže příkazy i načtení dokumentu jdou ověřit bez přepočtu.
 
 ## Vědomě vynecháno
 

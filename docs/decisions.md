@@ -26,17 +26,18 @@ Poslední úprava: 2026-11-13
 | D16 | Kotva skici | rozhodnuto | Rezervovaný pevný bod `origin` v každé skice |
 | D17 | Tvar vazeb | rozhodnuto | Každá varianta má pojmenované operandy; podmínky oblouku zajišťuje solver; referenční kóty počítá engine |
 | D18 | Orientace roviny na stěně | rozhodnuto | Normála vždy ven z tělesa, znaménko ze sítě, X = Y × N |
-| D19 | Koplanární booleany | rozhodnuto (přepracováno), doplněk v D27 | Tolerance ke koplanárním stěnám je záruka portu jádra; adaptér Manifoldu ji plní posunem stěn nástroje před booleanem a jejich návratem po něm |
+| D19 | Koplanární booleany | rozhodnuto (přepracováno), doplňky v D27 a D28 | Tolerance ke koplanárním stěnám je záruka portu jádra; adaptér Manifoldu ji plní tak, že každý styk v jedné rovině změní před booleanem na průnik a po něm stěny vrátí a síť vyčistí |
 | D20 | Přesnost jádra | rozhodnuto | `Solid.positions` je `Float32Array`, analytické výpočty ve float64 |
 | D21 | Vlastní rovina | rozhodnuto | `PlaneFeature` s posunem od roviny nebo stěny; náklon kolem hrany je budoucí funkce |
 | D22 | Pojmenování hran | rozhodnuto | Hrana = dvojice jmen stěn; přímka analyticky, rozsah ze sítě |
-| D23 | Promítnutá geometrie | rozhodnuto | Přímé a kruhové hrany tělesa jako pevné referenční křivky ve skice |
+| D23 | Promítnutá geometrie | rozhodnuto, doplněk v D28 | Přímé a kruhové hrany tělesa jako pevné referenční křivky ve skice; druh křivky se ukládá |
 | D24 | Rozšíření API z návrhu UI | rozhodnuto | `batch`, pozice v `addFeature`, `getState(at)`, konstrukční geometrie, data pro výběr |
 | D25 | Úpravy z druhé revize | rozhodnuto | Víko bez označení oblasti, stav `warning`, razítko řešení skici, hrana `coplanar`, pořadí konců promítnuté úsečky a další |
 | D26 | Formát exportu | rozhodnuto | STL v PoC, 3MF později |
 | D27 | Úpravy z třetí revize | rozhodnuto | Návrat posunutých stěn v adaptéru, jednotné pravidlo řešení skici, kontrakt příkazů, přesná definice oblastí a další |
+| D28 | Úpravy ze čtvrté revize | zapracováno, čeká na potvrzení | Druh promítnutí v dokumentu, validace odděluje odkazy ve skice a mezi features, přepracovaný adaptér jádra, oprava zdrojové skici extrude a další |
 
-D1–D27 jsou odsouhlasené (D10–D27 dne 2026-11-13). Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
+D1–D27 jsou odsouhlasené (D10–D27 dne 2026-11-13). D28 je zapracované na pokyn „zvaliduj a případně oprav" a obsahuje několik voleb, které vlastník projektu ještě výslovně nepotvrdil; jsou vyjmenované na konci D28. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
 ## D1 Jazyk enginu: TypeScript
 
@@ -232,6 +233,17 @@ Cena: detekce je podle tolerance ze zaokrouhlené sítě, ne přesně ze jmen st
 
 4. Doplněk 2026-11-13 (D27): samotný posun nestačil. Když stěna nástroje lícovala jen zčásti, zůstal její zbytek ve výsledku o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selhala (nálitek na takové stěně skončil jako samostatná komponenta). Adaptér proto po booleanu vrací zbytky posunutých stěn do původní roviny a slučuje splynulé vrcholy. Spike s řetězenými případy: 34 z 34.
 
+5. Doplněk 2026-11-13 (D28): čtvrtá revize našla tři případy, které verze z bodu 4 nezvládla. Všechny se podařilo reprodukovat.
+   - Bok nálitku lícující s bokem tělesa sahal po sjednocení o přesah pod dosedací rovinu. Vracel se jen zbytek posunuté stěny, a ta v tomto případě zanikla celá. Po odříznutí nálitku zůstaly proužky jeho boků.
+   - Lícující stěny se u sjednocení neposouvaly a spoléhalo se, že je jádro spojí samo. S odchylkou float32 mezi nimi zůstal proužek horní stěny s úzkým trojúhelníkem; test rovinnosti podle normál trojúhelníků pak horní stěnu označil za nerovinnou a další operace na ní nechala blánu.
+   - Po válcovém výřezu ležel strop mimo rovinu o 2e-4 mm, protože posun vrcholů vycházel z normál úzkých trojúhelníků.
+
+   Adaptér je proto postavený na jednom pravidle místo výčtu případů: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Před booleanem se každý takový styk (překryv, dotyk hranou, mezera do dvou přesahů) změní na průnik, po něm se vrátí vše, co s posunutou stěnou odjelo, a síť se vyčistí. Rovinnost se určuje vzdáleností vrcholů od proložené roviny. Podrobnosti jsou v architecture.md. Spike: 46 z 46.
+
+   Zvažované a zamítnuté: zarovnat lícující stěnu nástroje do roviny stěny tělesa a nechat spojení na jádru. Fungovalo jen někdy; jestli boky v šikmé poloze opravdu sousedí, záviselo na zaokrouhlení.
+
+   Cena: adaptér má asi 300 řádků a obsahuje vlastní čištění sítě. Kde stěna nástroje lícuje se stěnou tělesa a překrývají se plochou, nese překrytou část jméno stěny nástroje.
+
 ## D20 Přesnost jádra
 
 `Solid.positions` je `Float32Array`, analytické výpočty enginu běží ve float64.
@@ -253,6 +265,10 @@ Omezení: krajní body promítnuté hrany mají přesnost sítě (D20).
 ## D23 Promítnutá geometrie
 
 PoC promítá přímé hrany jako úsečky a kruhové hrany do rovnoběžné roviny jako kružnice (rozšířeno 2026-11-13 kvůli soustřednosti napříč skicami). Promítnutí kruhové hrany do šikmé roviny (elipsa) a vrcholy jsou budoucí funkce; architektura je na elipsu připravená. Promítnutí všech hran stěny při založení skici je věc UI (dávka příkazů), engine umí jen jednotlivou hranu.
+
+Doplněk D28: promítnutí ukládá, jako jaký druh křivky se má hrana promítnout (`kind`). Původně se druh odvozoval až při přepočtu. To nešlo dohromady s validací příkazů a načítaného dokumentu, která má pracovat jen se strukturou: z druhu plynou odvozená ID (`<id>/a`, `<id>/center`) a přípustné vazby, a dávka potřebuje na promítnutou křivku navázat dřív, než přepočet proběhne. Když se hrana promítne jinak, než `kind` říká, je to varování a křivka zůstane zmrazená.
+
+Vlastní křivky na promítnuté body neodkazují, připojují se k nim vazbou `coincident`. Jinak by smazání promítnutí nechalo křivku bez koncového bodu.
 
 ## D24 Rozšíření API z návrhu UI
 
@@ -317,6 +333,51 @@ Mezery:
 | Výřez skrz | Zapsáno jako budoucí funkce. |
 
 Rozpory a zastaralý text: referenční kóty (počítá engine, pole `measurements`), oprava promítnuté hrany v ui.md, tvrzení o Web Workeru, slib snadného přechodu na B-rep v D7, zastaralé části D6 a D8, pořadí a rozsah čísel rozhodnutí, chybějící zdůvodnění D10–D21 a D24.
+
+## D28 Úpravy ze čtvrté revize
+
+Dvě nezávislé revize 2026-11-13. Každý nález je ověřený: chyby adaptéru a chování solveru spuštěním (případy jsou doplněné do spiků), ostatní proti textu dokumentů. Všechny nálezy byly oprávněné.
+
+Rozpory:
+
+| Nález | Úprava |
+|---|---|
+| Promítnutí neukládalo druh křivky, ale validace i `load` ho potřebují znát bez přepočtu | `ExternalRef.kind`, typované hodnoty v razítku (D23). |
+| `load` vyžadoval existenci všech odkazovaných entit, takže dokument po `removeFeature` nešel načíst | Validace odděluje odkazy uvnitř skici (musí existovat vždy) a mezi features (ověřují se jen při nastavení; chybějící cíl je chyba přepočtu, ne dokumentu). |
+
+Chyby adaptéru jádra (reprodukováno, opraveno, viz D19 bod 5):
+
+| Nález | Úprava |
+|---|---|
+| Po sjednocení zůstal bok nálitku protažený pod dosedací rovinu; po odříznutí nálitku zbyly proužky stěn | Návrat zahrnuje i hranice sousedních stěn, když posunutá stěna zanikla. |
+| Lícující nálitek s odchylkou float32 nevytvořil hranu `coplanar` a zneplatnil rovinnost horní stěny | Lícující stěny se u sjednocení také posouvají a vracejí; rovinnost se určuje vzdáleností vrcholů od roviny. |
+| Hledání dvojice stěn skončilo na první shodě, i když nevedla k posunu | Pravidlo je jednotné, posun vzniká vždy; zvětšení nástroje má přednost před zmenšením. |
+| Po válcovém výřezu ležel strop mimo rovinu o 2e-4 mm | Roviny pro posun vrcholu se berou proložené přes stěnu, úzké trojúhelníky se vynechají. |
+
+Při opravě vyšly najevo ještě dvě věci, které revize nenašly: výpočet posunu vrcholu byl pro jedinou šikmou rovinu numericky nestabilní a samotné slučování vrcholů nechávalo v síti nulové trojúhelníky s čísly zaniklých stěn. Obojí je opravené.
+
+Mezery:
+
+| Nález | Úprava |
+|---|---|
+| `updateExtrude` neuměl změnit zdrojovou skicu, oprava po smazání skici znamenala nové ID | Pole `sketch` v `updateExtrude`. |
+| Přichycení na promítnutý bod mohlo vést ke křivce odkazující na odvozený bod; `removeExternal` by ji nechal bez konce | Křivka smí odkazovat jen na vlastní body a počátek; k promítnutému bodu se váže přes `coincident`. |
+| `evaluate` neměl jak dostat cíl tažení; `execute(dragPoint)` nezapisoval razítko | Parametr `drag`; tažení zapisuje proměnné i razítko. |
+| Rozdělená hrana měla jedinou lomenou čáru | `segments`, seznam úseček. |
+| Spojování bodů profilu neřeklo, co s počátkem a promítnutými body | Je tranzitivní a jde i přes ně. |
+| Druh hrany `coplanar` neměl toleranci | Úhlová tolerance enginu 1e-4 rad; délková 1e-6 mm pro skicu. |
+| Chyběly souřadné systémy základních rovin a znaménko vodorovné a svislé kóty | Doplněno do konvencí; kóty jsou orientované. |
+| planegcs: pomocné vazby v diagnostice, výpisy, vazby mezi pevnými entitami | Adaptér filtruje a vypíná výpisy; vazbu jen mezi pevnými entitami odmítá validace. Ověřeno spikem. |
+| Okrajové vstupy a potlačená feature | Nulová vzdálenost, prázdné oblasti a nekladný poloměr jsou neplatný příkaz; potlačená feature je prázdná operace. |
+| Formát razítka v `addFeature` a tolerance dotyku křivek (z kontroly oprav třetí revize) | Razítko počítá engine, volající posílá prázdné; dotyk křivek používá délkovou toleranci. |
+
+Volby, které čekají na potvrzení vlastníka projektu:
+
+1. Druh promítnutí se ukládá do dokumentu (místo odvozování při přepočtu).
+2. Vlastní křivka nesmí odkazovat na promítnutý bod; UI vytváří vlastní bod a vazbu.
+3. Vodorovná a svislá kóta jsou orientované a smějí být záporné.
+4. V překryvu lícujících stěn u sjednocení nese plochu jméno stěny nástroje.
+5. Tečný dotyk dvou nekonstrukčních křivek mimo spojený bod zneplatní profil celé skici.
 
 ## Spiky 2026-11-13
 

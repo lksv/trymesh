@@ -1,14 +1,15 @@
 // Spike: ověření předpokladů o planegcs (viz docs/architecture.md, Předpoklady k ověření).
 // Spuštění: node planegcs-spike.mjs
-import { init_planegcs_module, GcsWrapper, SolveStatus } from '@salusoft89/planegcs';
+import { init_planegcs_module, GcsWrapper, SolveStatus, DebugMode } from '@salusoft89/planegcs';
 
 const mod = await init_planegcs_module();
 const results = [];
 const STATUS = Object.fromEntries(Object.entries(SolveStatus).map(([k, v]) => [v, k]));
 
-function solve(primitives) {
+function solve(primitives, { quiet = false } = {}) {
   const gcs = new GcsWrapper(new mod.GcsSystem());
   try {
+    if (quiet) gcs.debug_mode = DebugMode.NoDebug;
     gcs.push_primitives_and_params(structuredClone(primitives));
     const status = gcs.solve();
     gcs.apply_solution();
@@ -252,6 +253,43 @@ console.log('--- P8: mapování všech variant vazeb');
   const k = ref.prims.find((p) => p.id === 'k');
   console.log(`   referenční kóta: dof ${ref.dof} (volných ${free}), hodnota po řešení ${k.distance}`);
   check('P8 referenční kóta neubírá dof', ref.dof === free);
+}
+
+console.log('--- P9: chování, které musí adaptér a validace ošetřit');
+{
+  // Vazba jen mezi pevnými entitami se tiše ignoruje: šikmá pevná úsečka + horizontal projde bez konfliktu.
+  const fixedOnly = solve([
+    { id: 'a', type: 'point', x: 0, y: 0, fixed: true },
+    { id: 'b', type: 'point', x: 10, y: 5, fixed: true },
+    { id: 'l', type: 'line', p1_id: 'a', p2_id: 'b' },
+    { id: 'h', type: 'horizontal_l', l_id: 'l' },
+  ], { quiet: true });
+  console.log(`   pevná šikmá úsečka + horizontal: status ${fixedOnly.status}, conflicting ${JSON.stringify(fixedOnly.conflicting)}`);
+  check('P9 vazbu mezi pevnými entitami solver neohlásí (musí ji odmítnout validace)', fixedOnly.conflicting.length === 0 && fixedOnly.status !== 'Failed');
+
+  // Pomocná vazba adaptéru (pevný poloměr promítnuté kružnice) se v konfliktu vrací mezi vazbami uživatele.
+  const synthetic = solve([
+    { id: 'c', type: 'point', x: 0, y: 0, fixed: true },
+    { id: 'k', type: 'circle', c_id: 'c', radius: 5 },
+    { id: '__fix_k', type: 'circle_radius', c_id: 'k', radius: 5 },
+    { id: 'user_r', type: 'circle_radius', c_id: 'k', radius: 7 },
+  ], { quiet: true });
+  console.log(`   pevný poloměr + kóta jiného poloměru: status ${synthetic.status}, dof ${synthetic.dof}, conflicting ${JSON.stringify(synthetic.conflicting)}`);
+  check('P9 konflikt vrací i pomocné vazby adaptéru a dof −1 (adaptér je musí odfiltrovat)', synthetic.conflicting.includes('__fix_k') && synthetic.conflicting.includes('user_r') && synthetic.dof === -1);
+
+  // Ladicí výpisy jdou vypnout přes debug_mode.
+  const lines = [], orig = console.log;
+  const noisy = [
+    { id: 'o', type: 'point', x: 0, y: 0, fixed: true },
+    { id: 'p', type: 'point', x: 10, y: 0.2, fixed: false },
+    { id: 'l', type: 'line', p1_id: 'o', p2_id: 'p' },
+    { id: 'h', type: 'horizontal_l', l_id: 'l' },
+    { id: 'h2', type: 'horizontal_l', l_id: 'l' },
+  ];
+  console.log = (...a) => lines.push(a.join(' '));
+  let r;
+  try { r = solve(noisy, { quiet: true }); } finally { console.log = orig; }
+  check('P9 debug_mode = NoDebug vypne výpisy solveru', lines.length === 0 && r.redundant.includes('h2'), `status ${r.status}`);
 }
 
 console.log('\n==== SOUHRN ====');

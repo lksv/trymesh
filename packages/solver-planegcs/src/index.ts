@@ -14,6 +14,9 @@ export interface PlanegcsOptions {
 const SYNTHETIC = '//';
 const isSynthetic = (id: string) => id.startsWith(SYNTHETIC);
 
+const MERGED = 1e-7; // dva body leží ve stejném místě (vzhledem k velikosti souřadnic)
+const SPREAD = 1e-3; // o kolik se splynulé body rozestoupí (vzhledem k rozměru skici)
+
 type Primitive = SketchPrimitive;
 type Loose = Record<string, unknown> & { id: string; type: string };
 
@@ -31,11 +34,11 @@ interface Pass {
 export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promise<SketchSolver> {
   const mod = await init_planegcs_module(options.locateFile ? { locateFile: options.locateFile } : undefined);
 
-  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id>; algorithm?: Algorithm } = {}): Pass => {
+  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id>; algorithm?: Algorithm; collapsed?: Set<Id> } = {}): Pass => {
     const gcs = new GcsWrapper(new mod.GcsSystem());
     try {
       gcs.debug_mode = DebugMode.NoDebug; // jinak solver vypisuje na standardní výstup
-      gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without) as unknown as Primitive[]);
+      gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed) as unknown as Primitive[]);
       const status = gcs.solve(extra.algorithm);
       const conflicting = gcs.get_gcs_conflicting_constraints().filter((id) => !isSynthetic(id)).sort();
       const redundant = gcs.get_gcs_redundant_constraints().filter((id) => !isSynthetic(id)).sort();
@@ -66,24 +69,49 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         redundant,
       });
 
+      // Splynulá souměrnost. Knihovna počítá souměrnost dvou bodů (a střed úsečky) z jejich
+      // spojnice; když body leží ve stejném místě, hlásí vazbu jako konflikt, i když je splněná
+      // (oba body na ose). Když je taková vazba mezi konfliktními, zkusí se dvě náhradní cesty:
+      // 1. rozestoupit splynulé body o kousek od sebe a řešit původní soustavu (řešení, ve kterém
+      //    body nesplývají, se tak najde: kóta šířky, tažení jednoho z bodů),
+      // 2. nahradit vazbu jejím splynulým tvarem (totožnost bodů a bod na ose); každé takové
+      //    řešení původní vazbu splňuje. Tvar pak platí i pro další průchody tohoto řešení.
+      let collapsed = new Set<Id>();
+      const attempt = (from: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id> }, first: boolean): Pass => {
+        let pass = run(from, { ...extra, collapsed });
+        // Výchozí algoritmus (DogLeg) občas nedoběhne tam, kde jiný ano; stejně postupuje FreeCAD.
+        if (first && !pass.ok && pass.conflicting.length === 0) pass = run(from, { ...extra, collapsed, algorithm: Algorithm.LevenbergMarquardt });
+        if (pass.ok) return pass;
+        const merged = mergedPairs(from).filter((id) => !collapsed.has(id));
+        if (!merged.some((id) => pass.conflicting.includes(id))) return pass;
+        if (first) {
+          const apart = run(spread(from, merged), { ...extra, collapsed });
+          if (apart.ok) return apart;
+        }
+        const all = new Set([...collapsed, ...merged]);
+        const forced = run(from, { ...extra, collapsed: all });
+        if (!forced.ok) return pass;
+        collapsed = all;
+        return forced;
+      };
+
       // Tažení: nadbytečná vazba by se s dočasným cílem tažení ohlásila jako konflikt. Nejdřív se
       // proto zjistí bez tažení, které vazby nadbytečné jsou, a při tažení se vynechají.
       let without: Set<Id> | undefined;
       if (input.drag) {
-        const plain = run(input);
+        const plain = attempt(input, {}, true);
         if (!plain.ok) return failure(plain.conflicting, plain.redundant);
         without = new Set(plain.redundant);
+        collapsed = new Set(); // tažení smí splynulé body zase rozestoupit
       }
-      let pass = run(input, { drag: input.drag, without });
-      // Výchozí algoritmus (DogLeg) občas nedoběhne tam, kde jiný ano; stejně postupuje FreeCAD.
-      if (!pass.ok && pass.conflicting.length === 0) pass = run(input, { drag: input.drag, without, algorithm: Algorithm.LevenbergMarquardt });
+      let pass = attempt(input, { drag: input.drag, without }, true);
       if (!pass.ok) return failure(pass.conflicting, pass.redundant);
 
       // Ověření a diagnostika z nalezeného stavu. Knihovna hlásí stupně volnosti a nadbytečné vazby
       // podle výchozího odhadu, ne podle výsledku, a ve stavu Converged může nechat nadbytečnou
       // vazbu nesplněnou. Řeší se proto znovu z výsledku, dokud stav není ustálený.
       for (let round = 0; round < 4; round++) {
-        const next = run({ ...input, points: pass.points, radii: { ...input.radii, ...pass.radii } });
+        const next = attempt({ ...input, points: pass.points, radii: { ...input.radii, ...pass.radii } }, {}, false);
         if (!next.ok) return failure(next.conflicting, next.redundant);
         const moved = Object.keys(next.points).some((id) => next.points[id].x !== pass.points[id].x || next.points[id].y !== pass.points[id].y);
         pass = next;
@@ -117,7 +145,48 @@ const clonePoints = (points: Record<Id, Point2>): Record<Id, Point2> =>
 
 // Pořadí primitiv je seřazené podle ID, aby stejný vstup dal vždy stejný výstup
 // bez ohledu na pořadí klíčů v objektech.
-function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<Id>): Loose[] {
+// Dvojice bodů, ze které knihovna počítá souměrnost: souměrné body, u středu úsečky její konce.
+function pairOf(c: Constraint, curves: Record<Id, Curve>): [Id, Id] | undefined {
+  if (c.type === 'symmetric') return [c.a, c.b];
+  const line = c.type === 'midpoint' ? curves[c.line] : undefined;
+  return line?.type === 'line' ? [line.a, line.b] : undefined;
+}
+
+// Vazby souměrnosti a středu úsečky, jejichž dvojice bodů ve vstupu splývá.
+function mergedPairs(input: SolveInput): Id[] {
+  return Object.keys(input.constraints).filter((id) => {
+    const pair = pairOf(input.constraints[id], input.curves);
+    if (!pair) return false;
+    const [p, q] = [input.points[pair[0]], input.points[pair[1]]];
+    return Math.hypot(p.x - q.x, p.y - q.y) <= MERGED * Math.max(1, Math.abs(p.x), Math.abs(p.y));
+  });
+}
+
+// Vstup, ve kterém jsou splynulé dvojice daných vazeb rozestoupené: souměrné body kolmo na osu,
+// konce úsečky ve směru x. Pevnými body se nehýbe.
+function spread(input: SolveInput, constraints: Id[]): SolveInput {
+  const fixed = new Set(input.fixed);
+  const points = clonePoints(input.points);
+  let extent = 0;
+  for (const p of Object.values(input.points)) extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y));
+  const step = SPREAD * (extent > 0 ? extent : 1);
+  for (const id of constraints) {
+    const c = input.constraints[id];
+    const [a, b] = pairOf(c, input.curves) as [Id, Id];
+    let normal = { x: 1, y: 0 };
+    if (c.type === 'symmetric') {
+      const axis = input.curves[c.line] as Extract<Curve, { type: 'line' }>;
+      const [p, q] = [input.points[axis.a], input.points[axis.b]];
+      const length = Math.hypot(q.x - p.x, q.y - p.y);
+      if (length > 0) normal = { x: -(q.y - p.y) / length, y: (q.x - p.x) / length };
+    }
+    if (!fixed.has(a)) points[a] = { x: points[a].x - step * normal.x, y: points[a].y - step * normal.y };
+    if (!fixed.has(b)) points[b] = { x: points[b].x + step * normal.x, y: points[b].y + step * normal.y };
+  }
+  return { ...input, points };
+}
+
+function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<Id>, collapsed?: Set<Id>): Loose[] {
   const fixed = new Set(input.fixed);
   for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
     if (isSynthetic(id)) throw new Error(`solver: ID "${id}" koliduje s pomocnými ID adaptéru`);
@@ -174,6 +243,14 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
   for (const [id, constraint] of sorted(input.constraints)) {
     if ('driving' in constraint && !constraint.driving) continue; // referenční kóty počítá engine
     if (without?.has(id)) continue;
+    if (collapsed?.has(id)) {
+      // splynulý tvar: oba body dvojice v jednom místě, které leží na ose (ve středu úsečky)
+      const [a, b] = pairOf(constraint, input.curves) as [Id, Id];
+      out.push({ id, type: 'p2p_coincident', p1_id: a, p2_id: b });
+      if (constraint.type === 'symmetric') out.push({ id: `${SYNTHETIC}onAxis/${id}`, type: 'point_on_line_pl', p_id: a, l_id: constraint.line });
+      else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
+      continue;
+    }
     out.push({ id, ...translate(id, constraint, input.curves) });
   }
 

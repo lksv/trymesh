@@ -373,6 +373,72 @@ describe('souměrnost a střed úsečky', () => {
     }
   });
 
+  // Knihovna ve stavu, kdy souměrné body splývají, hlásí souměrnost jako konflikt, i když je
+  // splněná. Adaptér to obchází (viz Splynulá souměrnost v index.ts).
+  describe('souměrné body, které splynou na ose', () => {
+    const s: Constraint = { type: 'symmetric', a: 'a', b: 'b', line: 'axis' };
+    const forced: Record<string, Constraint> = {
+      'bod na ose': { type: 'pointOnCurve', point: 'a', curve: 'axis' },
+      'totožnost bodů': { type: 'coincident', a: 'a', b: 'b' },
+      'totožnost s počátkem': { type: 'coincident', a: 'a', b: 'origin' },
+      'nulová vzdálenost': { type: 'distance', a: 'a', b: 'b', value: 0, driving: true },
+      'nulová vodorovná vzdálenost': { type: 'horizontalDistance', a: 'a', b: 'b', value: 0, driving: true },
+      'nulová vzdálenost od osy': { type: 'distancePointLine', point: 'a', line: 'axis', value: 0, driving: true },
+    };
+    for (const [name, extra] of Object.entries(forced)) {
+      it(`${name}: skica se vyřeší s oběma body na ose`, () => {
+        const first = solver.solve(axis({ s }));
+        expect(first.status).toBe('solved');
+        const result = solver.solve(axis({ s, extra }, first.points));
+        expect(result.status).toBe('solved');
+        const { a, b } = result.points;
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(1e-7);
+        expect(a.x).toBeCloseTo(0, 7);
+        // a další řešení ze splynulého stavu také
+        expect(solver.solve(axis({ s, extra }, result.points)).status).toBe('solved');
+      });
+    }
+
+    it('body splynulé už na vstupu: mimo osu se rozestoupí nebo přesunou na osu, na ose zůstanou', () => {
+      const off = solver.solve(axis({ s }, { a: { x: 7, y: 10 }, b: { x: 7, y: 10 } }));
+      expect(off.status).toBe('solved');
+      expect(off.points.a.x).toBeCloseTo(-off.points.b.x, 7);
+      expect(off.points.a.y).toBeCloseTo(off.points.b.y, 7);
+      const on = solver.solve(axis({ s }, { top: { x: 0, y: 29 }, a: { x: 0, y: 10 }, b: { x: 0, y: 10 } }));
+      expect(on.status).toBe('solved');
+      const apart = solver.solve(axis({ s }, { top: { x: 0, y: 29 }, a: { x: 0, y: 10 }, b: { x: 0, y: 20 } }));
+      expect(apart.status).toBe('solved');
+      expect(apart.points.a.x).toBeCloseTo(-apart.points.b.x, 7);
+    });
+
+    it('splynulé body jde zase rozestoupit kótou i tažením', () => {
+      const collapsed = solver.solve(axis({ s, on: forced['bod na ose'] }));
+      expect(collapsed.status).toBe('solved');
+      const width = solver.solve(axis({ s, w: { type: 'distance', a: 'a', b: 'b', value: 10, driving: true } }, collapsed.points));
+      expect(width.status).toBe('solved');
+      expect(Math.abs(width.points.a.x)).toBeCloseTo(5, 6);
+      expect(width.points.a.x).toBeCloseTo(-width.points.b.x, 7);
+      const dragged = solver.solve({ ...axis({ s }, collapsed.points), drag: { point: 'a', target: { x: 6, y: collapsed.points.a.y } } });
+      expect(dragged.status).toBe('solved');
+      expect(dragged.points.a.x).toBeCloseTo(6, 6);
+      expect(dragged.points.b.x).toBeCloseTo(-6, 6);
+    });
+
+    it('skutečný konflikt zůstává konfliktem', () => {
+      // osa má danou délku; volnou osu by solver stáhl do bodu a vazby by tím „splnil"
+      const result = solver.solve(axis({ s, len: { type: 'distance', a: 'origin', b: 'top', value: 29, driving: true }, on: forced['bod na ose'], w: { type: 'distance', a: 'a', b: 'b', value: 10, driving: true } }));
+      expect(result.status).not.toBe('solved');
+    });
+  });
+
+  it('střed úsečky, jejíž konce leží na vstupu ve stejném místě', () => {
+    const result = solver.solve(input({ points: { p: { x: 5, y: 5 }, q: { x: 5, y: 5 }, m: { x: 8, y: 9 } }, curves: { l: { type: 'line', a: 'p', b: 'q' } }, constraints: { mid: { type: 'midpoint', point: 'm', line: 'l' } }, fixed: [] }));
+    expect(result.status).toBe('solved');
+    const { p, q, m } = result.points;
+    expect(m.x).toBeCloseTo((p.x + q.x) / 2, 7);
+    expect(m.y).toBeCloseTo((p.y + q.y) / 2, 7);
+  });
+
   it('souměrnost podle promítnuté (pevné) úsečky a střed pevné úsečky', () => {
     const fixedLine = input({
       points: { 'x/a': { x: 10, y: 0 }, 'x/b': { x: 10, y: 20 }, a: { x: 4, y: 6 }, b: { x: 15, y: 5 }, c: { x: 9, y: 9 } },

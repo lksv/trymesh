@@ -658,7 +658,23 @@ Rozhodnuto 2026-11-14. Konstrukční křivky byly bez těchto dvou vazeb málo u
 - **Aplikace a MCP se neměnily kvůli těmto dvěma vazbám, ale kvůli všem dalším.** Aplikace bere seznam geometrických vazeb, jejich jména a nápovědu z katalogu a výběr rozděluje mezi operandy podle druhů, které katalog uvádí (zvláštní pravidla zůstala jen tam, kde jedna akce zakládá víc vazeb). MCP server nové vazby převzal bez jediné změny; jeho test, který každou vazbu z katalogu posílá enginu, je pokryl sám.
 - **Validační scénář 8** (souměrný díl s konstrukční osou).
 
-Omezení: solver souměrnost nevyřeší, když oba body leží na téže straně osy a osu nic nedrží (stáhne osu do bodu a ohlásí neúspěch). S osou drženou vazbami nebo s body nakreslenými zhruba souměrně problém není; v aplikaci se osa obvykle kreslí jako konstrukční úsečka z počátku.
+- **Splynulá dvojice v adaptéru solveru.** Knihovna počítá souměrnost ze spojnice obou bodů (a střed úsečky ze spojnice jejích konců). Leží-li body ve stejném místě, hlásí vazbu jako konflikt, přestože je splněná: souměrná dvojice na ose je platný stav. Adaptér proto při takovém konfliktu zkusí dvě náhradní cesty: nejdřív body o kousek rozestoupí a řeší původní soustavu (najde se tak řešení, ve kterém nesplývají), a když to nepomůže, nahradí vazbu jejím splynulým tvarem (totožnost bodů a bod na ose, u středu úsečky totožnost bodu s oběma konci). Každé řešení náhradního tvaru původní vazbu splňuje, takže skutečný konflikt zůstává konfliktem.
+
+Nálezy revize a jejich řešení:
+
+| Nález | Řešení |
+|---|---|
+| Souměrná dvojice, kterou jiná vazba stáhne na osu (bod na ose, totožnost bodů, totožnost s počátkem, nulová vzdálenost), se hlásila jako konflikt; stejně dvojice splynulá už na vstupu | Náhradní cesty v adaptéru solveru (viz výše) |
+| Střed úsečky, jejíž konce leží přesně ve stejném místě, se hlásil jako konflikt | Totéž |
+| Aplikace nabízela souměrnost a střed úsečky i pro výběr, který engine vždy odmítne (souměrný bod je koncem osy) | Nabídka podle katalogu se řídí i vlastním pravidlem vazby |
+| Přiřazení výběru operandům bylo hladové a u budoucí vazby s překrývajícími se druhy operandů by platné přiřazení nenašlo | Přiřazení zkouší všechny možnosti |
+| Rada „totožností s počátkem" (aplikace i MCP) vedla u souměrné dvojice a u úsečky z počátku ke stažení geometrie do bodu | Radí se dvě kóty od počátku |
+
+Omezení:
+
+- Solver souměrnost nevyřeší, když oba body leží na téže straně osy a osu nic nedrží (stáhne osu do bodu a ohlásí neúspěch, nebo tím „splní" i vazby, které si odporují). S osou drženou vazbami nebo s body nakreslenými zhruba souměrně problém není; v aplikaci se osa obvykle kreslí jako konstrukční úsečka z počátku.
+- Přidání středu úsečky nebo souměrnosti dá platné řešení, ale tvar okolní geometrie nemusí zachovat (úsečka se může natáhnout nebo pootočit). Je to vlastnost solveru: hledá nejbližší řešení ve svých proměnných, ne nejmenší změnu tvaru.
+- Souměrnou dvojici splynulou na ose rozestoupí kóta nebo tažení jednoho z bodů; samotné odebrání vazby, která ji stáhla, ji nechá na místě.
 
 ## Spiky 2026-11-13
 

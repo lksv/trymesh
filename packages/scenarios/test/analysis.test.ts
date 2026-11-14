@@ -339,3 +339,46 @@ describe('nálezy z druhé revize rozboru', () => {
     }
   });
 });
+
+describe('nálezy z revize souměrnosti', () => {
+  // svislá konstrukční osa dané délky z počátku a souměrná dvojice bodů
+  const symmetricPair = (): Engine => {
+    const engine = sketchWith(point('top', 0.5, 30), { type: 'addCurve', sketch: 'S1', id: 'axis', curve: { type: 'line', a: 'origin', b: 'top', construction: true } }, point('a', -14, 5), point('b', 12, 8));
+    run(engine, constrain('S1', 'v', { type: 'vertical', line: 'axis' }), dimension('S1', 'len', { type: 'distance', a: 'origin', b: 'top' }, 40), constrain('S1', 's', { type: 'symmetric', a: 'a', b: 'b', line: 'axis' }));
+    return engine;
+  };
+
+  it('souměrná dvojice, kterou další vazba stáhne na osu, není konflikt', () => {
+    const extras: Constraint[] = [
+      { type: 'pointOnCurve', point: 'a', curve: 'axis' },
+      { type: 'coincident', a: 'a', b: 'b' },
+      { type: 'coincident', a: 'a', b: 'origin' },
+      { type: 'horizontalDistance', a: 'a', b: 'b', value: 0, driving: true },
+    ];
+    for (const extra of extras) {
+      const engine = symmetricPair();
+      expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 2 });
+      run(engine, constrain('S1', 'x', extra));
+      const d = engine.diagnoseSketch('S1');
+      expect(d, extra.type).toMatchObject({ status: 'solved', conflicting: [], degreesOfFreedom: extra.type === 'coincident' && extra.b === 'origin' ? 0 : 1 });
+      const p = engine.getState().evaluation.features.S1.sketch!.points;
+      expect(Math.hypot(p.a.x - p.b.x, p.a.y - p.b.y)).toBeLessThan(1e-6);
+      expect(p.a.x).toBeCloseTo(0, 6);
+      // dvojici jde zase rozestoupit: po odebrání vazby kótou šířky
+      run(engine, { type: 'removeConstraint', sketch: 'S1', id: 'x' }, dimension('S1', 'w', { type: 'distance', a: 'a', b: 'b' }, 20));
+      const q = engine.getState().evaluation.features.S1.sketch!.points;
+      expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 1 });
+      expect(Math.abs(q.a.x)).toBeCloseTo(10, 5);
+      expect(q.a.x).toBeCloseTo(-q.b.x, 6);
+    }
+  });
+
+  it('dokument se souměrnou dvojicí na ose se uloží a načte ve stejném stavu', () => {
+    const engine = symmetricPair();
+    run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'a', curve: 'axis' }));
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.diagnoseSketch('S1')).toEqual(engine.diagnoseSketch('S1'));
+    expect(other.getState().evaluation.features.S1.sketch!.points).toEqual(engine.getState().evaluation.features.S1.sketch!.points);
+  });
+});

@@ -212,9 +212,8 @@ describe('vazby a kóty z výběru', () => {
 
   it('vazby bez zvláštního pravidla se nabízejí podle katalogu enginu: souměrnost a střed úsečky', () => {
     // seznam geometrických vazeb je katalog bez kót, takže nová vazba enginu v něm je sama
-    expect(GEOMETRIC_KINDS).toEqual(Object.keys(CONSTRAINTS).filter((type) => !CONSTRAINTS[type as Constraint['type']].value));
-    expect(GEOMETRIC_KINDS).toEqual(expect.arrayContaining(['coincident', 'tangent', 'symmetric', 'midpoint']));
-    expect(GEOMETRIC_KINDS).not.toContain('distance');
+    expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint']);
+    expect(Object.keys(CONSTRAINTS).filter((type) => !GEOMETRIC_KINDS.includes(type as (typeof GEOMETRIC_KINDS)[number]))).toEqual(['distance', 'distancePointLine', 'horizontalDistance', 'verticalDistance', 'angle', 'radius', 'diameter']);
 
     const t = setup();
     t.run([
@@ -236,6 +235,11 @@ describe('vazby a kóty z výběru', () => {
     expect(offer('midpoint', ['axis', 'm'])).toEqual([{ type: 'midpoint', point: 'm', line: 'axis' }]);
     expect(offer('midpoint', ['m', 'k'])).toBeUndefined();
     expect(offer('midpoint', ['m'])).toBeUndefined();
+    // výběr, který by engine odmítl vlastním pravidlem vazby, se nenabízí
+    expect(offer('symmetric', ['origin', 'r', 'axis'])).toBeUndefined(); // souměrný bod je koncem osy
+    expect(offer('symmetric', ['top', 'r', 'axis'])).toBeUndefined();
+    expect(offer('midpoint', ['top', 'axis'])).toBeUndefined(); // středem by byl konec úsečky
+    expect(offer('symmetric', ['l', 'l', 'axis'])).toBeUndefined();
     // engine nabídnuté vazby přijme a geometrie jim odpovídá
     t.run([...offer('symmetric', ['l', 'r', 'axis'])!, ...offer('midpoint', ['axis', 'm'])!].map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: t.newId('k'), constraint })));
     const p = t.result().points;
@@ -243,8 +247,12 @@ describe('vazby a kóty z výběru', () => {
     expect(p.l.x).toBeCloseTo(-p.r.x, 6);
     expect(p.l.y).toBeCloseTo(p.r.y, 6);
     expect([p.m.x, p.m.y]).toEqual([expect.closeTo(0, 6), expect.closeTo(p.top.y / 2, 6)]);
-    // popisek vazby v pohledu leží mezi operandy
-    expect(anchorOf(t.sketch().constraints[Object.keys(t.sketch().constraints)[1]], t.view())).toBeDefined();
+    // popisek vazby v pohledu leží u jejích operandů: souměrnost na ose mezi body, střed v bodě
+    const anchor = (type: Constraint['type']) => anchorOf(Object.values(t.sketch().constraints).find((c) => c.type === type)!, t.view())!;
+    expect(anchor('symmetric')[0]).toBeCloseTo(0, 6);
+    expect(anchor('symmetric')[1]).toBeGreaterThan(p.l.y);
+    expect(anchor('symmetric')[1]).toBeLessThan(p.top.y);
+    expect(anchor('midpoint')).toEqual([expect.closeTo(p.m.x, 6), expect.closeTo(p.m.y, 6)]);
     expect(operandsOf({ type: 'symmetric', a: 'l', b: 'r', line: 'axis' })).toEqual(['l', 'r', 'axis']);
   });
 

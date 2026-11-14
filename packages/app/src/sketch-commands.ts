@@ -151,23 +151,29 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
   }
 }
 
-// Vazba bez zvláštního pravidla: výběr se rozdělí mezi operandy podle katalogu enginu. Každý
-// operand dostane první dosud nepoužitou entitu přípustného druhu (v pořadí výběru); vazba
-// vznikne, jen když se takto rozdělí celý výběr.
+// Vazba bez zvláštního pravidla: výběr se rozdělí mezi operandy podle katalogu enginu. Operandy
+// se obsazují v pořadí výběru entitami přípustného druhu; vazba vznikne, jen když se takto
+// rozdělí celý výběr a projde vlastní pravidlo vazby z katalogu (souměrný bod není koncem osy).
 function fromCatalog(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
   const spec = CONSTRAINTS[kind];
-  if (selection.length !== spec.operands.length) return undefined;
-  const left = [...selection];
-  const constraint: Record<string, string> = { type: kind };
-  for (const operand of spec.operands) {
-    const at = left.findIndex((id) => {
-      const entity = kindOf(view, id);
-      return entity !== undefined && operand.kinds.includes(entity);
-    });
-    if (at < 0) return undefined;
-    constraint[operand.field] = left.splice(at, 1)[0];
-  }
-  return [constraint as unknown as Constraint];
+  if (selection.length !== spec.operands.length || new Set(selection).size !== selection.length) return undefined;
+  const fits = (id: Id, index: number): boolean => {
+    const entity = kindOf(view, id);
+    return entity !== undefined && spec.operands[index].kinds.includes(entity);
+  };
+  const assign = (index: number, left: Id[]): Id[] | undefined => {
+    if (index === spec.operands.length) return [];
+    for (const id of left) {
+      const rest = fits(id, index) ? assign(index + 1, left.filter((other) => other !== id)) : undefined;
+      if (rest) return [id, ...rest];
+    }
+    return undefined;
+  };
+  const ids = assign(0, selection);
+  if (!ids) return undefined;
+  const pointsOf = (curve: Id): Id[] => view.curves.get(curve)?.points ?? [];
+  if (spec.check?.(ids.map((id) => kindOf(view, id) as EntityKind), ids, pointsOf) !== undefined) return undefined;
+  return [Object.fromEntries([['type', kind], ...spec.operands.map((operand, index) => [operand.field, ids[index]])]) as unknown as Constraint];
 }
 
 export type DimensionVariant = 'auto' | 'horizontal' | 'vertical';

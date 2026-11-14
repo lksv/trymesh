@@ -105,6 +105,8 @@ U každého bodu platí levná varianta, navržená tak, aby šla později rozš
 
 Pracovní rozbor kandidátů na další milníky (co každý potřebuje a proč ho současný návrh neznemožňuje) je v [backlog.md](backlog.md).
 
+Intended use and order after D35 (owner, 2026-11-14): the tool is meant for designing parts for a 3D printer and tinkering, with brackets and boxes as the base and most parts for a robotic arm and similar mechanisms; models are mostly built together with an AI through MCP. The order in which the features above and the candidates of backlog.md are taken up after D35 is decided in [decisions.md](decisions.md), D36. Three items of the list above change with it: an assembly with mates is replaced by a mechanism description, 3D sketches by a path through points, and import is planned as a mesh used as a reference body.
+
 ## Validační scénáře
 
 Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako akceptační testy.

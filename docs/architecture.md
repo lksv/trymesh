@@ -968,6 +968,8 @@ Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrac�
 | Scénář | Jak ho návrh pokrývá |
 |---|---|
 | 1 Základní průchod | Změna kóty → nový dokument → přepočet od první skici. Výřez odkazuje na `endCap` extrude E1, jméno přežije. Díra okótovaná k promítnuté hraně se posune s okrajem. |
+**Coverage of the engine (D36).** `packages/mcp/test/coverage.test.ts` holds a table typed over the methods of `Engine` that names the tools reaching each one. A new method without an entry does not compile; the test calls each named tool through the server and checks that the engine method ran. Commands need no such table: `execute` takes any `Command` and the description is generated from the engine.
+
 | 2a Přidání díry | Oblast ji získá automaticky, žádné ID se neposune, pozdější reference platí. |
 | 2b Smazání úsečky obdélníku | Profil se rozpadne, první extrude skončí v chybě `noProfile`. Těleso nevznikne, takže vše, co na něm závisí, skončí v chybě `brokenReference`. |
 | 2c Nahrazení úsečky jinou | Úsečka L3 se smaže a mezi stejné body se nakreslí L9. Oblast z původních křivek zanikla, extrude skončí v chybě `noProfile`. Uživatel vybere profil znovu a extrude projde. Víka si jméno nechají, skici na nich platí dál; pokud mají promítnutou hranu k zaniklé stěně z L3, dostanou varování `brokenProjection` a hrana zůstane zmrazená. Skica přímo na stěně „side E1/L3" skončí v chybě `brokenReference` a uživatel vybere novou stěnu. |

@@ -1,0 +1,251 @@
+// Adaptér portu SketchSolver nad planegcs (2D solver z FreeCADu ve WASM).
+// Kontrakt portu je v docs/architecture.md, sekce SketchSolver.
+import { Algorithm, DebugMode, GcsWrapper, SolveStatus, init_planegcs_module } from '@salusoft89/planegcs';
+import type { SketchPrimitive } from '@salusoft89/planegcs';
+import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult } from '@trymesh/engine';
+
+export interface PlanegcsOptions {
+  // Kde najít planegcs.wasm (v browseru); v Node se najde sám.
+  locateFile?: (file: string) => string;
+}
+
+// Pomocné vazby a primitiva adaptéru. ID uživatele smí obsahovat nejvýš jedno lomítko
+// (odvozená ID promítnuté geometrie), takže dvě lomítka na začátku nemohou kolidovat.
+const SYNTHETIC = '//';
+const isSynthetic = (id: string) => id.startsWith(SYNTHETIC);
+
+type Primitive = SketchPrimitive;
+type Loose = Record<string, unknown> & { id: string; type: string };
+
+// Jeden průchod knihovnou.
+interface Pass {
+  ok: boolean; // knihovna našla řešení a nehlásí konflikt
+  settled: boolean; // stav Success: všechny vazby včetně nadbytečných jsou splněné
+  points: Record<Id, Point2>;
+  radii: Record<Id, number>;
+  degreesOfFreedom: number;
+  conflicting: Id[];
+  redundant: Id[];
+}
+
+export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promise<SketchSolver> {
+  const mod = await init_planegcs_module(options.locateFile ? { locateFile: options.locateFile } : undefined);
+
+  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id>; algorithm?: Algorithm } = {}): Pass => {
+    const gcs = new GcsWrapper(new mod.GcsSystem());
+    try {
+      gcs.debug_mode = DebugMode.NoDebug; // jinak solver vypisuje na standardní výstup
+      gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without) as unknown as Primitive[]);
+      const status = gcs.solve(extra.algorithm);
+      const conflicting = gcs.get_gcs_conflicting_constraints().filter((id) => !isSynthetic(id)).sort();
+      const redundant = gcs.get_gcs_redundant_constraints().filter((id) => !isSynthetic(id)).sort();
+      const ok = (status === SolveStatus.Success || status === SolveStatus.Converged) && conflicting.length === 0;
+      const pass: Pass = { ok, settled: status === SolveStatus.Success, points: {}, radii: {}, degreesOfFreedom: 0, conflicting, redundant };
+      if (!ok) return pass;
+      gcs.apply_solution();
+      for (const p of gcs.sketch_index.get_primitives() as unknown as Loose[]) {
+        if (p.type === 'point') pass.points[p.id] = { x: p.x as number, y: p.y as number };
+        else if (p.type === 'circle') pass.radii[p.id] = p.radius as number;
+      }
+      pass.degreesOfFreedom = gcs.gcs.dof();
+      return pass;
+    } finally {
+      gcs.destroy_gcs_module(); // paměť WASM se uvolňuje ručně
+    }
+  };
+
+  return {
+    solve(input: SolveInput): SolveResult {
+      // Při neúspěchu se vrací vstup; počet stupňů volnosti pak nemá význam.
+      const failure = (conflicting: Id[], redundant: Id[]): SolveResult => ({
+        status: conflicting.length > 0 ? 'conflict' : 'failed',
+        points: clonePoints(input.points),
+        radii: { ...input.radii },
+        degreesOfFreedom: 0,
+        conflicting,
+        redundant,
+      });
+
+      // Tažení: nadbytečná vazba by se s dočasným cílem tažení ohlásila jako konflikt. Nejdřív se
+      // proto zjistí bez tažení, které vazby nadbytečné jsou, a při tažení se vynechají.
+      let without: Set<Id> | undefined;
+      if (input.drag) {
+        const plain = run(input);
+        if (!plain.ok) return failure(plain.conflicting, plain.redundant);
+        without = new Set(plain.redundant);
+      }
+      let pass = run(input, { drag: input.drag, without });
+      // Výchozí algoritmus (DogLeg) občas nedoběhne tam, kde jiný ano; stejně postupuje FreeCAD.
+      if (!pass.ok && pass.conflicting.length === 0) pass = run(input, { drag: input.drag, without, algorithm: Algorithm.LevenbergMarquardt });
+      if (!pass.ok) return failure(pass.conflicting, pass.redundant);
+
+      // Ověření a diagnostika z nalezeného stavu. Knihovna hlásí stupně volnosti a nadbytečné vazby
+      // podle výchozího odhadu, ne podle výsledku, a ve stavu Converged může nechat nadbytečnou
+      // vazbu nesplněnou. Řeší se proto znovu z výsledku, dokud stav není ustálený.
+      for (let round = 0; round < 4; round++) {
+        const next = run({ ...input, points: pass.points, radii: { ...input.radii, ...pass.radii } });
+        if (!next.ok) return failure(next.conflicting, next.redundant);
+        const moved = Object.keys(next.points).some((id) => next.points[id].x !== pass.points[id].x || next.points[id].y !== pass.points[id].y);
+        pass = next;
+        if (next.settled && !moved) break;
+      }
+      if (!pass.settled) return failure([], pass.redundant);
+
+      // Řešení, které není použitelná geometrie, se nevrací: nekonečné hodnoty, nekladný poloměr
+      // (knihovna si u tečnosti drží vnější nebo vnitřní dotyk podle výchozího odhadu), oblouk
+      // s konci na různých poloměrech.
+      const fixed = new Set(input.fixed);
+      const usable =
+        Object.values(pass.points).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) &&
+        Object.values(pass.radii).every((r) => Number.isFinite(r) && r > 0) &&
+        Object.values(input.curves).every((curve) => {
+          if (curve.type !== 'arc') return true;
+          const [c, s, e] = [pass.points[curve.center], pass.points[curve.start], pass.points[curve.end]];
+          const [rs, re] = [Math.hypot(s.x - c.x, s.y - c.y), Math.hypot(e.x - c.x, e.y - c.y)];
+          return Math.abs(rs - re) <= 1e-6 * Math.max(1, rs);
+        });
+      if (!usable) return failure([], pass.redundant);
+      // pevná kružnice si drží poloměr bitově, i když se její střed hýbe
+      for (const id of Object.keys(pass.radii)) if (fixed.has(id)) pass.radii[id] = input.radii[id];
+      return { status: 'solved', points: pass.points, radii: pass.radii, degreesOfFreedom: pass.degreesOfFreedom, conflicting: [], redundant: pass.redundant };
+    },
+  };
+}
+
+const clonePoints = (points: Record<Id, Point2>): Record<Id, Point2> =>
+  Object.fromEntries(Object.entries(points).map(([id, p]) => [id, { x: p.x, y: p.y }]));
+
+// Pořadí primitiv je seřazené podle ID, aby stejný vstup dal vždy stejný výstup
+// bez ohledu na pořadí klíčů v objektech.
+function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<Id>): Loose[] {
+  const fixed = new Set(input.fixed);
+  for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
+    if (isSynthetic(id)) throw new Error(`solver: ID "${id}" koliduje s pomocnými ID adaptéru`);
+  }
+  // Pevné smějí být body a kružnice (pevný poloměr); nic jiného adaptér zafixovat neumí.
+  for (const id of fixed) {
+    if (!input.points[id] && input.curves[id]?.type !== 'circle') throw new Error(`solver: "${id}" ve fixed není bod ani kružnice`);
+  }
+  const out: Loose[] = [];
+  const sorted = <T>(record: Record<Id, T>) => Object.keys(record).sort().map((id) => [id, record[id] as T] as const);
+  const point = (id: Id): Point2 => {
+    const p = input.points[id];
+    if (!p) throw new Error(`solver: neznámý bod ${id}`);
+    return p;
+  };
+
+  for (const [id, p] of sorted(input.points)) out.push({ id, type: 'point', x: p.x, y: p.y, fixed: fixed.has(id) });
+
+  for (const [id, curve] of sorted(input.curves)) {
+    if (curve.type === 'line') {
+      point(curve.a);
+      point(curve.b);
+      out.push({ id, type: 'line', p1_id: curve.a, p2_id: curve.b });
+    } else if (curve.type === 'circle') {
+      point(curve.center);
+      const radius = input.radii[id];
+      if (radius === undefined) throw new Error(`solver: kružnice ${id} nemá poloměr`);
+      out.push({ id, type: 'circle', c_id: curve.center, radius });
+      if (fixed.has(id)) out.push({ id: `${SYNTHETIC}fixRadius/${id}`, type: 'circle_radius', c_id: id, radius });
+    } else if (curve.type === 'arc') {
+      // Oblouk: knihovna chce poloměr a úhly na vstupu a pravidla oblouku jako vazbu.
+      const c = point(curve.center);
+      const s = point(curve.start);
+      const e = point(curve.end);
+      const startAngle = Math.atan2(s.y - c.y, s.x - c.x);
+      let endAngle = Math.atan2(e.y - c.y, e.x - c.x);
+      if (endAngle <= startAngle) endAngle += 2 * Math.PI; // proti směru hodin
+      out.push({
+        id,
+        type: 'arc',
+        c_id: curve.center,
+        start_id: curve.start,
+        end_id: curve.end,
+        radius: Math.hypot(s.x - c.x, s.y - c.y),
+        start_angle: startAngle,
+        end_angle: endAngle,
+      });
+      out.push({ id: `${SYNTHETIC}arcRules/${id}`, type: 'arc_rules', a_id: id });
+    } else {
+      throw new Error(`solver: neznámý druh křivky u ${id}`);
+    }
+  }
+
+  for (const [id, constraint] of sorted(input.constraints)) {
+    if ('driving' in constraint && !constraint.driving) continue; // referenční kóty počítá engine
+    if (without?.has(id)) continue;
+    out.push({ id, ...translate(id, constraint, input.curves) });
+  }
+
+  if (drag) {
+    const { point: p, target } = drag;
+    point(p);
+    out.push({ id: `${SYNTHETIC}drag/x`, type: 'coordinate_x', p_id: p, x: target.x, temporary: true });
+    out.push({ id: `${SYNTHETIC}drag/y`, type: 'coordinate_y', p_id: p, y: target.y, temporary: true });
+  }
+  return out;
+}
+
+// Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
+function translate(id: Id, c: Constraint, curves: Record<Id, Curve>): Record<string, unknown> & { type: string } {
+  const kind = (curveId: Id): Curve['type'] => {
+    const curve = curves[curveId];
+    if (!curve) throw new Error(`solver: vazba ${id} odkazuje na neznámou křivku ${curveId}`);
+    return curve.type;
+  };
+  const line = (curveId: Id): Id => {
+    if (kind(curveId) !== 'line') throw new Error(`solver: vazba ${id} čeká úsečku, ${curveId} je ${kind(curveId)}`);
+    return curveId;
+  };
+  switch (c.type) {
+    case 'coincident':
+      return { type: 'p2p_coincident', p1_id: c.a, p2_id: c.b };
+    case 'pointOnCurve': {
+      const k = kind(c.curve);
+      if (k === 'line') return { type: 'point_on_line_pl', p_id: c.point, l_id: c.curve };
+      if (k === 'circle') return { type: 'point_on_circle', p_id: c.point, c_id: c.curve };
+      if (k === 'arc') return { type: 'point_on_arc', p_id: c.point, a_id: c.curve };
+      throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve}`);
+    }
+    case 'horizontal':
+      return { type: 'horizontal_l', l_id: line(c.line) };
+    case 'vertical':
+      return { type: 'vertical_l', l_id: line(c.line) };
+    case 'parallel':
+      return { type: 'parallel', l1_id: line(c.a), l2_id: line(c.b) };
+    case 'perpendicular':
+      return { type: 'perpendicular_ll', l1_id: line(c.a), l2_id: line(c.b) };
+    case 'equalLength':
+      return { type: 'equal_length', l1_id: line(c.a), l2_id: line(c.b) };
+    case 'tangent': {
+      // pořadí operandů knihovny: úsečka, kružnice, oblouk
+      const rank = { line: 0, circle: 1, arc: 2 } as const;
+      const [first, second] = rank[kind(c.a)] <= rank[kind(c.b)] ? [c.a, c.b] : [c.b, c.a];
+      const pair = `${kind(first)}-${kind(second)}`;
+      if (pair === 'line-circle') return { type: 'tangent_lc', l_id: first, c_id: second };
+      if (pair === 'line-arc') return { type: 'tangent_la', l_id: first, a_id: second };
+      if (pair === 'circle-circle') return { type: 'tangent_cc', c1_id: first, c2_id: second };
+      if (pair === 'circle-arc') return { type: 'tangent_ca', c_id: first, a_id: second };
+      if (pair === 'arc-arc') return { type: 'tangent_aa', a1_id: first, a2_id: second };
+      throw new Error(`solver: vazba ${id}: tečnost dvou úseček nedává smysl`);
+    }
+    case 'distance':
+      return { type: 'p2p_distance', p1_id: c.a, p2_id: c.b, distance: c.value };
+    case 'distancePointLine':
+      return { type: 'p2l_distance', p_id: c.point, l_id: line(c.line), distance: c.value };
+    case 'horizontalDistance': // orientovaná: b.x − a.x = value
+      return { type: 'difference', param1: { o_id: c.a, prop: 'x' }, param2: { o_id: c.b, prop: 'x' }, difference: c.value };
+    case 'verticalDistance': // orientovaná: b.y − a.y = value
+      return { type: 'difference', param1: { o_id: c.a, prop: 'y' }, param2: { o_id: c.b, prop: 'y' }, difference: c.value };
+    case 'angle': // od směru úsečky a ke směru úsečky b, proti směru hodin
+      return { type: 'l2l_angle_ll', l1_id: line(c.a), l2_id: line(c.b), angle: c.value };
+    case 'radius':
+      return kind(c.curve) === 'arc'
+        ? { type: 'arc_radius', a_id: c.curve, radius: c.value }
+        : { type: 'circle_radius', c_id: c.curve, radius: c.value };
+    case 'diameter':
+      return kind(c.curve) === 'arc'
+        ? { type: 'arc_diameter', a_id: c.curve, diameter: c.value }
+        : { type: 'circle_diameter', c_id: c.curve, diameter: c.value };
+  }
+}

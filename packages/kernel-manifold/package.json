@@ -1,0 +1,11 @@
+{
+  "name": "@trymesh/kernel-manifold",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@trymesh/engine": "workspace:*",
+    "manifold-3d": "3.5.5"
+  }
+}

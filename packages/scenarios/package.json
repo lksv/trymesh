@@ -1,0 +1,11 @@
+{
+  "name": "@trymesh/scenarios",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@trymesh/engine": "workspace:*",
+    "@trymesh/kernel-manifold": "workspace:*",
+    "@trymesh/solver-planegcs": "workspace:*"
+  }
+}

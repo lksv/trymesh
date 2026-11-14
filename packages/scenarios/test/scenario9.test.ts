@@ -2,16 +2,13 @@
 // It grows with the points of D35; so far part a) parameters, checks and the sketch of pitch circles,
 // b) c) the gears with the planets copied by a pattern, the bodies of d), e), f) and g) with their
 // through holes repeated by patterns (no nut pockets and no holes of the controller yet: they need
-// the polygon tool and the constraints of points 6 and 7), and the parts of i) and k) that need
-// nothing else.
+// the polygon tool and the constraints of points 6 and 7), h) the motor, i) the change of the ratio,
+// j) the collision query and k) the export per body with saving and loading.
 // Parameter names are English: `module` for `modul` of the requirements, `backlash` for `vule`,
 // `centers` (centre distance) for `osa`.
 import { describe, expect, it } from 'vitest';
-import type { Command, Constraint, Engine, EngineState, Extent, Facts, Id, Input, PatternFeature, ProfileSource, SketchFeature, Solid } from '@trymesh/engine';
-import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { type Command, type Constraint, type Engine, type EngineState, type Extent, type Facts, type Id, type Input, type PatternFeature, type ProfileSource, type SketchFeature, type Solid, bodyFileName } from '@trymesh/engine';
 import { XY, addSketch, batch, expectAllOk, faceNames, newEngine, run, status, volume } from './kit';
-
-const kernel = await createManifoldKernel();
 
 const point = (sk: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: sk, id, x, y });
 const circle = (sk: Id, id: Id, center: Id, radius: number, construction = false): Command => ({ type: 'addCurve', sketch: sk, id, curve: { type: 'circle', center, ...(construction ? { construction: true } : {}) }, radius });
@@ -97,6 +94,8 @@ function parametersAndGearSketch(engine: Engine): EngineState {
 // housing, g) the carrier with three pins. Axial layout: zero is the seating face of the stator,
 // positive towards the rotor.
 function bodiesAndHoles(engine: Engine): EngineState {
+  // h) the motor as a simplified body: a cylinder between the back plate and the flange of the sun
+  run(engine, addSketch('skMotor', XY), batch(circle('skMotor', 'mo', 'origin', 40), dim('skMotor', 'dmo', { type: 'diameter', curve: 'mo' }, 90)), extrude('motor', 'new', regions('skMotor', ['mo']), span(0, 26.5)));
   run(
     engine,
     addSketch('skPlate', XY),
@@ -175,11 +174,16 @@ const bodyVolume = (state: EngineState, body: Id): number => volume(state.evalua
 const holeFaces = (state: EngineState, body: Id, feature: Id): string[] => faceNames(state, body).filter((name) => name.startsWith(`${feature}/`));
 const factsOf = (state: EngineState, feature: Id): Facts => state.evaluation.features[feature].facts as Facts;
 const solidOf = (state: EngineState, body: Id): Solid => state.evaluation.bodies[body].solid;
-// volume the two bodies share; the interference query of point 5 will replace this
-const overlap = (state: EngineState, a: Id, b: Id): number => volume(kernel.boolean('intersection', solidOf(state, a), solidOf(state, b)));
 const PLANETS = ['planet', 'planets/1', 'planets/2'];
-// every planet against the sun, the ring and the carrier with its pins, and the sun against the ring
-const gearsClear = (state: EngineState): number[] => [...PLANETS.flatMap((planet) => [overlap(state, 'sun', planet), overlap(state, planet, 'housing'), overlap(state, planet, 'carrier')]), overlap(state, 'sun', 'housing'), overlap(state, 'sun', 'carrier')];
+const PARTS = ['motor', 'plate', 'sun', ...PLANETS, 'housing', 'carrier'];
+// No two parts of the joint share a volume: every planet against the sun, the ring and the carrier
+// with its pins, the motor against the housing around it, and everything else.
+function expectClear(engine: Engine): void {
+  const report = engine.interference();
+  expect(report.failed).toEqual([]);
+  expect(report.pairs).toEqual([]);
+  expect(report.checked).toBe((PARTS.length * (PARTS.length - 1)) / 2);
+}
 const copies = (name: string, pattern: Id, count: number): string[] => [name, ...Array.from({ length: count - 1 }, (_, i) => `${name}@${pattern}:${i + 1}`)];
 const middleOf = (state: EngineState, body: Id): number[] => {
   const p = solidOf(state, body).positions;
@@ -223,12 +227,15 @@ describe('scenario 9: robot joint', () => {
     expect(sketch.constraints.dr).toMatchObject({ value: 64.8 });
   });
 
-  it('d) e) f) g) bodies with holes through all repeated by patterns: the plate, the sun flange, the housing with screw holes through two bodies, the carrier with its pins', () => {
+  it('d) e) f) g) h) bodies with holes through all repeated by patterns: the plate, the sun flange, the housing with screw holes through two bodies, the carrier with its pins, the motor', () => {
     const engine = newEngine();
     parametersAndGearSketch(engine);
     const state = bodiesAndHoles(engine);
     expectAllOk(state);
-    expect(Object.keys(state.evaluation.bodies)).toEqual(['plate', 'sun', 'planet', 'planets/1', 'planets/2', 'housing', 'carrier']);
+    expect(Object.keys(state.evaluation.bodies)).toEqual(['motor', 'plate', 'sun', 'planet', 'planets/1', 'planets/2', 'housing', 'carrier']);
+    // the motor fills the space between the plate and the flange of the sun
+    expect(state.evaluation.bodies.motor.volume).toBeCloseTo(disc(90) * 26.5, 1);
+    expect([state.evaluation.bodies.motor.bounds.min[2], state.evaluation.bodies.motor.bounds.max[2]]).toEqual([0, 26.5]);
     expect(state.evaluation.features.planets.bodies).toEqual(['planets/1', 'planets/2']);
     // through holes have no caps in the body: only their sides, the copies with the pattern and the number
     expect(holeFaces(state, 'plate', 'plateHoles')).toEqual(['plateHoles/side/c20']);
@@ -304,7 +311,7 @@ describe('scenario 9: robot joint', () => {
     expect(holeFaces(state, 'housing', 'ring')).toEqual(['ring/side/teeth']);
     // the tooth count comes from the parameters and the backlash as well
     expect(state.document.features.find((f) => f.id === 'planet')?.expressions).toEqual({ 'profile/params/backlash': 'backlash', 'profile/params/pressureAngle': 'deg(20)', 'profile/params/teeth': 'Zp' });
-    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    expectClear(engine);
     // the planet's bore passes the carrier pin with clearance; the planet sits above the screw heads
     expect(bodyVolume(state, 'planet')).toBeGreaterThan((Math.PI * 11.025 ** 2 - disc(5.3)) * 12);
     expect(bodyVolume(state, 'planet')).toBeLessThan((Math.PI * 13.05 ** 2 - disc(5.3)) * 12);
@@ -325,13 +332,13 @@ describe('scenario 9: robot joint', () => {
     expectAllOk(state);
     expect(Object.values(allChecks(state))).toEqual(['ok', 'ok', 'ok', 'ok']);
     expect(factsOf(state, 'ring')).toMatchObject({ teeth: 72, meshed: true });
-    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    expectClear(engine);
     // ratio 5 → 6 with a larger ring: it still fits the housing
     [state, elapsed] = timed(batch(param('Zs', '18'), param('Zp', '36')));
     times.push(elapsed);
     expectAllOk(state);
     expect(factsOf(state, 'ring')).toMatchObject({ teeth: 90, pitchDiameter: expect.closeTo(81, 9), meshed: true });
-    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    expectClear(engine);
     expect(holeFaces(state, 'housing', 'boltHole')).toEqual(copies('boltHole/side/bh', 'bolts', 6));
     // the planets and the pins of the carrier moved out with the centre distance
     expect(middleOf(state, 'planets/1')[1]).toBeCloseTo(24.3 * Math.sin((2 * Math.PI) / 3), 1);
@@ -339,7 +346,12 @@ describe('scenario 9: robot joint', () => {
     [state, elapsed] = timed({ type: 'setField', feature: 'skGears', path: 'constraints/dp/value', value: 'module * Zp + 1' });
     times.push(elapsed);
     expect(status(state)).toMatchObject({ planet: 'warning:gearMesh', ring: 'warning:gearMesh' });
-    expect(overlap(state, 'planet', 'housing')).toBeGreaterThan(0.1);
+    // the planets run into the ring: the query names every planet with the housing
+    const clash = engine.interference();
+    expect(clash.failed).toEqual([]);
+    expect(clash.pairs.map((pair) => `${pair.a} ${pair.b}`)).toEqual(expect.arrayContaining(PLANETS.map((planet) => `housing ${planet}`)));
+    expect(clash.pairs.find((pair) => pair.b === 'planet')?.volume).toBeGreaterThan(0.1);
+    expect(engine.interference({ bodies: ['sun', 'carrier', 'plate', 'motor'] }).pairs).toEqual([]);
     engine.undo();
     // a removed parameter: the gears that use it are in error and can be fixed; the sketch stays
     state = run(engine, { type: 'removeParameter', name: 'backlash' });
@@ -389,6 +401,47 @@ describe('scenario 9: robot joint', () => {
     // a tooth count not divisible by three: the check reports it
     state = run(engine, param('Zs', '19'));
     expect(allChecks(state)).toMatchObject({ [CHECKS.sun]: 'failed', [CHECKS.ring]: 'failed' });
+  });
+
+  it('j) k) no collisions, and every part exported on its own: copies by their derived IDs', () => {
+    const engine = newEngine();
+    parametersAndGearSketch(engine);
+    const state = bodiesAndHoles(engine);
+    // the bodies of the joint; the copies of the planet are read from the result of their pattern
+    const bodies = ['motor', 'sun', 'planet', ...state.evaluation.features.planets.bodies, 'housing', 'plate', 'carrier'];
+    expect([...bodies].sort()).toEqual([...PARTS].sort());
+    // j) the collision query over the whole joint, timed
+    const started = performance.now();
+    expectClear(engine);
+    const first = performance.now() - started;
+    const again = performance.now();
+    expectClear(engine);
+    console.log(`scenario 9: interference of ${bodies.length} bodies ${Math.round(first)} ms, repeated ${Math.round(performance.now() - again)} ms`);
+    // what a caller that cannot see the model reads about a body
+    expect(state.evaluation.bodies.plate.bounds.min[2]).toBeCloseTo(-5, 6);
+    expect(state.evaluation.bodies.plate.bounds.max[2]).toBeCloseTo(0, 6);
+    expect(state.evaluation.bodies.housing.bounds.max.map((value) => Math.round(value))).toEqual([55, 55, 46]);
+    expect(state.evaluation.bodies.carrier.bounds.min[2]).toBeCloseTo(34, 6);
+    expect(state.evaluation.bodies.carrier.bounds.max[2]).toBeCloseTo(51.5, 5);
+    expect(state.evaluation.bodies['planets/1'].volume).toBeCloseTo(state.evaluation.bodies.planet.volume, 2);
+    expect(state.evaluation.bodies.plate.volume).toBeCloseTo(bodyVolume(state, 'plate'), 6);
+    // k) one STL per body; together they are the whole model
+    const triangles = (stl: Uint8Array): number => new DataView(stl.buffer, stl.byteOffset).getUint32(80, true);
+    let total = 0;
+    for (const body of bodies) {
+      const stl = engine.exportMesh('stl', [body]);
+      expect(triangles(stl), body).toBe(solidOf(state, body).triangles.length / 3);
+      expect(stl.length).toBe(84 + 50 * triangles(stl));
+      total += triangles(stl);
+    }
+    expect(triangles(engine.exportMesh('stl'))).toBe(total);
+    expect(bodies.map(bodyFileName)).toEqual(['motor', 'sun', 'planet', 'planets%2F1', 'planets%2F2', 'housing', 'plate', 'carrier']);
+    // the document with patterns saves and loads unchanged, with the same model and the same answer
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.save()).toBe(engine.save());
+    expect(other.getState().evaluation).toEqual(state.evaluation);
+    expectClear(other);
   });
 
   it('k) a document with parameters, checks and expressions saves and loads unchanged', () => {

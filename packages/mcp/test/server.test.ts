@@ -1,5 +1,5 @@
 // MCP server přes protokol: klient MCP v paměti, soubory na disku a most do „aplikace" (druhý engine).
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,7 +27,7 @@ describe('MCP server', () => {
   it('seznam nástrojů: obecné nástroje enginu a nástroje pro soubory, se schématem vstupu', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'execute', 'preview', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl']);
+    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl']);
     for (const tool of tools) {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
@@ -122,9 +122,11 @@ describe('MCP server', () => {
     expect(await session.call('save_document', { path: file })).toMatchObject({ file });
     expect(await session.call('save_document')).toMatchObject({ file }); // podruhé už bez cesty
     expect(await session.call('session_status')).toMatchObject({ file });
-    const stl = await session.call('export_stl', { path: join(dir, 'out', 'deska.stl') });
+    const exported = await session.call('export_stl', { path: join(dir, 'out', 'deska.stl') });
+    expect(exported.files).toEqual([{ path: join(dir, 'out', 'deska.stl'), bodies: ['e1'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    const stl = { file: exported.files[0].path as string, bytes: exported.files[0].bytes as number };
     expect((await readFile(stl.file)).length).toBe(stl.bytes);
-    expect(stl.bytes).toBeGreaterThan(84);
+    expect(stl.bytes).toBe(84 + 50 * exported.files[0].triangles);
 
     const other = await connect();
     expect(await other.call('export_stl', { path: join(dir, 'nic.stl') })).toEqual({ error: 'model nemá žádné těleso' });
@@ -134,6 +136,91 @@ describe('MCP server', () => {
     expect(await other.call('open_document', { path: stl.file })).toEqual({ error: expect.any(String) }); // není to dokument
     expect((await other.call('get_model')).bodies).toHaveLength(1); // neúspěšné otevření dokument nezměnilo
     await Promise.all([session.close(), other.close()]);
+  });
+});
+
+describe('MCP server: bodies', () => {
+  const disc = (id: string, sketch: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start, distance: 5 }, operation: 'new' } });
+  // two discs that overlap by 2 mm of height and three copies of the second one
+  const build = async (session: Awaited<ReturnType<typeof connect>>, ids = ['base', 'Wheel']) => {
+    const result = await session.call('execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          emptySketch('s1', { kind: 'base', plane: 'XY' }),
+          { type: 'addPoint', sketch: 's1', id: 'm', x: 20, y: 0 },
+          { type: 'addCurve', sketch: 's1', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 5 },
+          disc(ids[0], 's1', 0),
+          disc(ids[1], 's1', 3),
+          { type: 'addFeature', feature: { id: 'planets', name: 'planets', suppressed: false, type: 'pattern', source: { type: 'body', body: ids[1] }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'full' } } } as never },
+        ],
+      },
+    });
+    expect(result).toMatchObject({ ok: true, bodies: [ids[0], ids[1], 'planets/1', 'planets/2'] });
+  };
+
+  it('check_interference names the colliding pairs; get_model has volume and bounds of every body', async () => {
+    const session = await connect();
+    await build(session);
+    const report = await session.call('check_interference');
+    expect(report).toEqual({ pairs: [{ a: 'Wheel', b: 'base', volume: expect.any(Number) }], failed: [], checked: 6 });
+    expect(report.pairs[0].volume).toBeGreaterThan(0.99 * Math.PI * 25 * 2);
+    expect(report.pairs[0].volume).toBeLessThan(Math.PI * 25 * 2);
+    expect(await session.call('check_interference', { bodies: ['base', 'planets/1'] })).toEqual({ pairs: [], failed: [], checked: 1 });
+    expect((await session.call('check_interference', { threshold: 1000 })).pairs).toEqual([]);
+    expect(await session.call('check_interference', { at: 'base' })).toEqual({ pairs: [], failed: [], checked: 0 });
+    expect(await session.call('check_interference', { bodies: ['base', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
+    expect(await session.call('check_interference', { bodies: ['Wheel'], at: 'base' })).toEqual({ error: expect.stringContaining('after the feature "base"') });
+    expect(await session.call('check_interference', { threshold: -1 })).toEqual({ error: expect.stringContaining('threshold') });
+    expect(await session.call('check_interference', { at: 'nic' })).toEqual({ error: expect.stringContaining('feature "nic"') });
+    const model = await session.call('get_model');
+    expect(model.bodies.map((body: { id: string }) => body.id)).toEqual(['base', 'Wheel', 'planets/1', 'planets/2']);
+    expect(model.bodies[1]).toMatchObject({ id: 'Wheel', min: [15, expect.closeTo(-5, 1), 3], max: [25, expect.closeTo(5, 1), 8] }); // the circle is a polygon
+    expect(model.bodies[2].volume).toBeCloseTo(model.bodies[1].volume, 2);
+    expect((await session.call('get_body', { body: 'planets/2' })).volume).toBeCloseTo(model.bodies[1].volume, 2);
+    await session.close();
+  });
+
+  it('export_stl: chosen bodies in one file, or one file per body with an unambiguous name', async () => {
+    const session = await connect();
+    await build(session);
+    const triangles = (await session.call('export_stl', { path: join(dir, 'all.stl') })).files[0].triangles;
+    // chosen bodies in one file; the file is overwritten as before
+    const some = await session.call('export_stl', { path: join(dir, 'all.stl'), bodies: ['Wheel', 'planets/1'] });
+    expect(some.files).toEqual([{ path: join(dir, 'all.stl'), bodies: ['Wheel', 'planets/1'], triangles: triangles / 2, bytes: 84 + 25 * triangles }]);
+    expect((await readFile(join(dir, 'all.stl'))).length).toBe(84 + 25 * triangles);
+    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: ['nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
+    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: [] })).toEqual({ error: 'model nemá žádné těleso' });
+
+    // one file per body: the directory is created, the names are the escaped IDs
+    const parts = join(dir, 'parts');
+    const perBody = await session.call('export_stl', { path: parts, perBody: true });
+    expect(perBody.files.map((file: { path: string; bodies: string[] }) => [file.path, file.bodies])).toEqual([
+      [join(parts, 'base.stl'), ['base']],
+      [join(parts, 'Wheel.stl'), ['Wheel']],
+      [join(parts, 'planets%2F1.stl'), ['planets/1']],
+      [join(parts, 'planets%2F2.stl'), ['planets/2']],
+    ]);
+    expect((await readdir(parts)).sort()).toEqual(['Wheel.stl', 'base.stl', 'planets%2F1.stl', 'planets%2F2.stl']);
+    for (const file of perBody.files) expect((await readFile(file.path)).length).toBe(84 + 50 * file.triangles);
+    // a second export into the same directory writes nothing, unless it may overwrite
+    const again = await session.call('export_stl', { path: parts, perBody: true, bodies: ['planets/1', 'base'] });
+    expect(again).toEqual({ error: expect.stringMatching(/nothing was written, these files already exist: .*planets%2F1\.stl, .*base\.stl/) });
+    expect((await session.call('export_stl', { path: parts, perBody: true, bodies: ['planets/1'], overwrite: true })).files).toHaveLength(1);
+    // chosen bodies into a new directory
+    const two = await session.call('export_stl', { path: join(dir, 'two'), perBody: true, bodies: ['planets/2', 'Wheel'] });
+    expect(two.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['planets/2'], ['Wheel']]);
+    expect((await readdir(join(dir, 'two'))).sort()).toEqual(['Wheel.stl', 'planets%2F2.stl']);
+    await session.close();
+
+    // names that differ only in the case of letters: nothing is written
+    const other = await connect();
+    await build(other, ['wheel', 'Wheel']);
+    const clash = await other.call('export_stl', { path: join(dir, 'clash'), perBody: true });
+    expect(clash).toEqual({ error: expect.stringContaining('differ only in the case of letters') });
+    await expect(readdir(join(dir, 'clash'))).rejects.toThrow();
+    expect((await other.call('export_stl', { path: join(dir, 'clash'), perBody: true, bodies: ['wheel', 'planets/1'] })).files).toHaveLength(2);
+    await other.close();
   });
 });
 

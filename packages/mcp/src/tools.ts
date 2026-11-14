@@ -5,6 +5,7 @@
 // dostává ze zdrojů enginu: z katalogu vazeb a z typů. Nová vazba nebo příkaz v enginu se tak
 // v nástrojích objeví bez zásahu sem.
 import {
+  type BodyResult,
   CONSTRAINTS,
   type Command,
   type CommandResult,
@@ -16,8 +17,9 @@ import {
   type FeatureResult,
   type Id,
   type Issue,
+  INTERFERENCE_THRESHOLD,
   type SketchFeature,
-  type Solid,
+  bodyFileName,
   constraintOperands,
   constraintPath,
   isDimension,
@@ -63,20 +65,17 @@ function sketchOf(engine: Engine, id: string): SketchFeature {
 // A short text for a face name; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
 const faceLabel = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join('');
 
-function solidInfo(solid: Solid): { volume: number; min: number[]; max: number[] } {
-  const p = solid.positions;
-  let volume = 0;
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < p.length; i++) {
-    min[i % 3] = Math.min(min[i % 3], p[i]);
-    max[i % 3] = Math.max(max[i % 3], p[i]);
-  }
-  for (let t = 0; t < solid.triangles.length; t += 3) {
-    const [a, b, c] = [3 * solid.triangles[t], 3 * solid.triangles[t + 1], 3 * solid.triangles[t + 2]];
-    volume += p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) + p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
-  }
-  return { volume: round(volume / 6), min: min.map(round), max: max.map(round) };
+// Volume and bounding box of a body, as the engine computed them.
+const solidInfo = (body: BodyResult): { volume: number; min: number[]; max: number[] } => ({ volume: round(body.volume), min: body.bounds.min.map(round), max: body.bounds.max.map(round) });
+
+// A list of body IDs in an argument; undefined = the argument is not given.
+function bodyList(engine: Engine, args: Record<string, unknown>, at?: string): string[] | undefined {
+  const given = args.bodies;
+  if (given === undefined || given === null) return undefined;
+  if (!Array.isArray(given) || given.some((id) => typeof id !== 'string')) throw new ToolError('argument "bodies": a list of body IDs is expected');
+  const known = stateAt(engine, at).evaluation.bodies;
+  for (const id of given as string[]) if (!Object.prototype.hasOwnProperty.call(known, id)) throw new ToolError(`the body "${id}" does not exist${at === undefined ? '' : ` after the feature "${at}"`} (get_model lists the bodies)`);
+  return given as string[];
 }
 
 const issueInfo = (issue: Issue): Record<string, unknown> => ({ code: issue.code, message: issue.message, ...(issue.refs?.length ? { refs: issue.refs } : {}) });
@@ -169,7 +168,7 @@ function modelSummary(state: EngineState): unknown {
   const { document, evaluation } = state;
   return {
     features: document.features.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
-    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body.solid), faces: body.faces.length, edges: body.edges.length })),
+    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
     ...documentProblems(state),
@@ -193,7 +192,7 @@ function bodyDetail(state: EngineState, id: string): unknown {
   }
   return {
     id,
-    ...solidInfo(body.solid),
+    ...solidInfo(body),
     faces: body.faces.map((face) => {
       const name = state.evaluation.faceNames[face.id];
       const sum = sums.get(face.id) ?? [0, 0, 0, 0];
@@ -460,6 +459,28 @@ export function tools(): Tool[] {
       run: (engine, args) => bodyDetail(stateAt(engine, optionalText(args, 'at')), text(args, 'body')),
     },
     {
+      name: 'check_interference',
+      description:
+        'Which bodies collide: pairs of bodies that share a volume above the threshold, with the volume in mm³. Bodies that only touch (flush faces, a pin in a hole of the same diameter) are not reported. `failed` lists pairs the geometric kernel could not compute; they are neither colliding nor clear. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          bodies: { type: 'array', items: { type: 'string' }, description: 'Body IDs; only pairs among them are checked. All bodies by default.' },
+          threshold: { type: 'number', description: `Volume in mm³ above which a pair is reported; ${INTERFERENCE_THRESHOLD} by default.` },
+          at: { type: 'string', description: 'Feature ID; the state after it' },
+        },
+        additionalProperties: false,
+      },
+      run: (engine, args) => {
+        const at = optionalText(args, 'at');
+        const bodies = bodyList(engine, args, at);
+        const threshold = args.threshold ?? undefined;
+        if (threshold !== undefined && (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0)) throw new ToolError('argument "threshold": a volume in mm³, zero or more, is expected');
+        const report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
+        return { ...report, pairs: report.pairs.map((pair) => ({ ...pair, volume: round(pair.volume) })) };
+      },
+    },
+    {
       name: 'execute',
       description: `Provede příkaz enginu a zapíše ho do dokumentu (jeden krok undo). Víc příkazů naráz jde složit příkazem batch. Neplatný příkaz dokument nezmění a vrátí důvod. Typy vazeb: ${constraintTypes}. Přesné tvary příkazů vrací describe_api.`,
       inputSchema: COMMAND,
@@ -511,11 +532,19 @@ export function tools(): Tool[] {
       description: '',
       inputSchema: NONE,
       hidden: true,
-      run: (engine) => {
-        const bytes = engine.exportMesh('stl');
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        return { base64: btoa(binary), bodies: Object.keys(engine.getState().evaluation.bodies).length };
+      // One file with the chosen bodies (all by default), or with `perBody` one file per body named
+      // by `bodyFileName`. The server writes the files; the engine may run in the app.
+      run: (engine, args) => {
+        const all = engine.getState().evaluation.bodies;
+        const chosen = bodyList(engine, args) ?? Object.keys(all);
+        const file = (bodies: string[]) => {
+          const bytes = engine.exportMesh('stl', bodies);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          return { bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: btoa(binary) };
+        };
+        const unique = [...new Set(chosen)];
+        return { files: args.perBody === true ? unique.map((id) => ({ name: bodyFileName(id), ...file([id]) })) : [file(unique)] };
       },
     },
   ];

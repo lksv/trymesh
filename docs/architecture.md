@@ -636,7 +636,7 @@ Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné
 Záruky implementace:
 1. Výstup `boolean` je uzavřené těleso.
 2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.
-3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl; průnik engine v PoC nepoužívá a adaptér Manifoldu u něj záruku neplní.
+3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. Průnik engine používá jen v dotazu na kolize těles (`interference`), kde ho zajímá objem, ne stěny: adaptér Manifoldu u průniku záruku neplní, nástroj před ním neupravuje a výsledek jen vyčistí a ověří; když ho ověřit nedokáže, skončí výjimkou a dotaz dvojici ohlásí jako nespočítanou.
 4. Stejný vstup dá vždy stejný výstup.
 
 Když adaptér výsledek zaručit nedokáže, skončí výjimkou a engine ji ohlásí jako `kernelFailure`. Potichu vadné těleso vrátit nesmí. Výjimkou končí i vadný vstup: neuzavřená nebo dovnitř orientovaná síť, nesedící počet čísel stěn.
@@ -723,6 +723,8 @@ interface BodyResult {
   solid: Solid;
   faces: { id: number; planar: boolean }[];             // stěny, které těleso má
   edges: { name: EdgeName; kind: 'line' | 'circle' | 'coplanar' | 'other'; segments: Float64Array }[];   // segments: úsečky, 6 čísel na úsečku
+  volume: number;                                       // mm³
+  bounds: { min: Vec3; max: Vec3 };                     // the box of the body along the axes of the model
 }
 
 interface Issue { code: IssueCode; message: string; refs?: unknown[] }
@@ -783,7 +785,8 @@ interface Engine {
   explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation;
   load(json: string): CommandResult;
   save(): string;
-  exportMesh(format: 'stl'): Uint8Array;         // '3mf' později
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // all bodies without a list; '3mf' později
+  interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below
   subscribe(listener: (state: EngineState) => void): () => void;
 }
 
@@ -799,6 +802,30 @@ type CommandResult =
   | { ok: false; error: { code: 'invalidCommand' | 'invalidDocument'; message: string; commandIndex?: number;
       expression?: { path?: FieldPath; parameter?: string; check?: string; error: ExpressionError } } };   // a rejected expression: where and why
 ```
+
+### Bodies: volume, export and interference (D35, point 5)
+
+**Volume and bounds.** `BodyResult` carries `volume` (mm³) and `bounds` (`min` and `max` of the box along the axes of the model). They are computed with the faces and edges of the body and remembered by the identity of its mesh. A caller that cannot see the model (AI through MCP) checks with them what it built.
+
+**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list all bodies. A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters are left to the caller that writes files.
+
+**Interference.** `interference({ bodies?, threshold?, at? })` answers which bodies share a volume.
+
+```ts
+interface InterferenceReport {
+  pairs: { a: Id; b: Id; volume: number }[];          // above the threshold; `a` is the smaller ID in string order
+  failed: { a: Id; b: Id; message: string }[];        // the kernel could not compute the pair
+  checked: number;                                    // pairs examined
+}
+```
+
+- Every pair of the chosen bodies (all by default) is examined, in the order of the bodies in the model; `at` asks about the state after a feature.
+- The volume is that of the kernel's `intersection` of the two meshes. A pair is reported above the threshold, 0.001 mm³ by default: in the spike flush faces, a pin in its hole and identical cylinders gave exactly zero, and gears with a negative backlash of 0.05 mm gave 0.5 to 1.7 mm³.
+- The kernel gives no guarantee for an intersection with flush faces and may throw after cleaning and verifying its result. Such a pair goes to `failed`: it is neither colliding nor clear, and the query itself never fails because of one pair.
+- Bodies whose boxes do not overlap, or only touch, are not sent to the kernel.
+- Computed pairs are remembered by the identity of the two meshes (`Interferences` in `interference.ts`), so a repeated query is free and after a change only pairs with a rebuilt body are computed. Bodies replayed after the changed feature are rebuilt even when their shape is the same.
+- An unknown body, a threshold that is not a non-negative number and an unknown `at` throw.
+- The query reads the model and changes nothing; it is not a command and has no place in undo.
 
 ### Příkazy
 
@@ -909,10 +936,11 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 | `get_parameters` | Parameters with expressions, values and errors; checks with their result. |
 | `explain_constraint` | Jestli vazba plyne z ostatních a ze kterých. |
 | `get_body` | Stěny (rovinnost, plocha, normála) a hrany (druh, délka; u přímé krajní body, u kruhové střed a poloměr) se jmény použitelnými v odkazech. |
+| `check_interference` | Colliding pairs of bodies with the shared volume, and pairs the kernel could not compute; `bodies`, `threshold`, `at`. |
 | `execute`, `preview` | Příkaz enginu (i `batch`); `preview` nezapisuje. Výsledek shrne, co není v pořádku, a u každé skici řekne, jestli je vyřešená a kolik má volnosti. It also reports what is not a feature state: `failedChecks`, `parameterErrors`, and `fieldErrors` of features. |
 | `undo`, `redo` | Historie příkazů. |
 | `session_status` | Jestli nástroje pracují nad aplikací, nebo nad vlastním dokumentem serveru. |
-| `open_document`, `save_document`, `export_stl` | Soubory na disku; dokument může být v aplikaci. |
+| `open_document`, `save_document`, `export_stl` | Soubory na disku; dokument může být v aplikaci. `export_stl` takes a list of bodies and with `perBody` writes one file per body into a directory, named by `bodyFileName`. Per body it writes nothing when a file already exists (unless `overwrite`) or when two names differ only in the case of letters: the names come from IDs, so the caller did not choose them one by one. |
 
 Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrací jako text s příznakem chyby, ne jako výjimka protokolu. Malý výsledek se vypisuje s odsazením, velký úsporně.
 

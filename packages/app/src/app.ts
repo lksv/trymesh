@@ -16,6 +16,7 @@ import {
   type FeatureResult,
   type Frame,
   type Id,
+  type InterferenceReport,
   type Issue,
   type PatternFeature,
   type PlaneFeature,
@@ -32,6 +33,7 @@ import {
   FEATURE_TYPE_INFO,
   GENERATORS,
   type GeneratorName,
+  bodyFileName,
   bodyOwner,
   constraintKey,
   constraintPath,
@@ -191,7 +193,7 @@ const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', 
 const PICK_REACH = 7; // px
 const SLOW_PREVIEW = 150; // ms; a preview slower than this is not recomputed on every keystroke
 const PREVIEW_PAUSE = 500; // ms without typing before such a preview is computed
-const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
+const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb, clash: 0xdc2626 };
 
 const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
   frame.origin[0] + u * frame.x[0] + v * frame.y[0],
@@ -213,6 +215,9 @@ export class App {
   private readonly hidden = new Set<Id>();
   private showBasePlanes = true;
   private pending?: 'sketch' | 'plane'; // čeká se na výběr roviny
+  // The last answer to "which bodies collide", for the state after `at` (null = the whole model);
+  // `picked` is the pair highlighted in the view. A change of the document throws it away.
+  private collisions?: { at: Id | null; report: InterferenceReport; picked?: number };
   private note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
@@ -224,7 +229,10 @@ export class App {
 
   constructor(private readonly engine: Engine) {
     this.viewport = new Viewport(byId('viewport'));
-    engine.subscribe(() => this.refresh());
+    engine.subscribe(() => {
+      this.collisions = undefined; // the answer belonged to the document as it was
+      this.refresh();
+    });
     const canvas = this.viewport.element;
     canvas.addEventListener('pointerdown', (event) => this.onDown(event));
     canvas.addEventListener('pointermove', (event) => this.onMove(event));
@@ -471,6 +479,7 @@ export class App {
           button('Rovina', () => this.startOnPlane('plane'), { title: 'Rovina posunutá od roviny nebo rovinné stěny', active: this.pending === 'plane' }),
           button('Pattern', () => this.startPattern(), { title: 'Repeat extrusions that add or cut, or a body, around an axis' }),
         ),
+        group(button('Collisions', () => this.checkCollisions(), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: this.shownCollisions() !== undefined })),
       );
     } else if (m.kind === 'sketch') {
       groups.push(
@@ -700,14 +709,76 @@ export class App {
         const around = axis.kind === 'base' ? `axis ${axis.axis}` : `the point ${axis.point} of ${this.nameOf(axis.sketch)}`;
         const extent = span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', span.angle, 'rad')}`;
         out.push(h('p', { className: 'hint' }, `Count ${field('transform/count', count, 'count')} with the original, around ${around}, ${extent}; ${source}.`));
-        if (result?.bodies.length) out.push(h('p', { className: 'hint' }, `Bodies: ${result.bodies.map((id) => this.bodyName(id)).join(', ')}.`));
       }
+      // the bodies the feature created, each with its volume, size and its own export
+      out.push(...this.bodyRows(result?.bodies ?? []));
     } else {
       out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
     }
-    if (this.selected) out.push(h('h2', {}, 'Výběr'), h('p', {}, this.describe(this.selected)));
+    if (this.selected) {
+      out.push(h('h2', {}, 'Výběr'), h('p', {}, this.describe(this.selected)));
+      if (this.selected.kind !== 'plane') out.push(...this.bodyRows([this.selected.body]));
+    }
+    out.push(...this.collisionsPanel());
     out.push(...this.parametersPanel());
     return out;
+  }
+
+  // A line per body: name, volume, size of its box, and the export of that body alone. The file
+  // is named by the body ID (a copy of a pattern: `planets%2F1.stl`).
+  private bodyRows(ids: Id[]): HTMLElement[] {
+    const bodies = this.view().evaluation.bodies;
+    return ids
+      .filter((id) => Object.prototype.hasOwnProperty.call(bodies, id))
+      .map((id) => {
+        const { volume, bounds } = bodies[id];
+        const size = bounds.max.map((high, axis) => fmt(high - bounds.min[axis])).join(' × ');
+        const exportable = Object.prototype.hasOwnProperty.call(this.engine.getState().evaluation.bodies, id);
+        return h(
+          'p',
+          { className: 'hint body' },
+          `${this.bodyName(id)}: ${fmt(volume)} mm³, ${size} mm `,
+          h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, as it is at the end of the timeline', onclick: () => download(`${bodyFileName(id)}.stl`, new Uint8Array(this.engine.exportMesh('stl', [id])), 'model/stl') }),
+        );
+      });
+  }
+
+  // ---------------------------------------------------------------- collisions
+
+  // The answer is shown only for the state it was computed for.
+  private shownCollisions() {
+    return this.collisions && this.collisions.at === this.marker ? this.collisions : undefined;
+  }
+
+  private checkCollisions(): void {
+    const report = this.engine.interference(this.marker ? { at: this.marker } : {});
+    this.collisions = { at: this.marker, report };
+    const failed = report.failed.length ? ` ${report.failed.length} pair(s) could not be computed.` : '';
+    if (report.pairs.length) this.say(`Collisions: ${report.pairs.length} pair(s) of bodies share a volume.${failed}`, true);
+    else this.say(`No collisions: ${report.checked} pair(s) checked.${failed}`, report.failed.length > 0);
+    this.refresh();
+  }
+
+  // The colliding pairs; a click on one highlights its two bodies in the view.
+  private collisionsPanel(): HTMLElement[] {
+    const shown = this.shownCollisions();
+    if (!shown) return [];
+    const { report } = shown;
+    const pick = (index: number) => {
+      shown.picked = shown.picked === index ? undefined : index;
+      this.renderPanel();
+      this.renderScene();
+    };
+    const rows: (HTMLElement | null)[] = [
+      h('h2', {}, `Collisions (${report.pairs.length})`),
+      report.pairs.length === 0 && report.failed.length === 0 ? h('p', { className: 'hint' }, `No two bodies share a volume; ${report.checked} pair(s) checked. Bodies that only touch do not count.`) : null,
+      ...report.pairs.map((pair, index) =>
+        h('div', { className: `row ${shown.picked === index ? 'selected' : ''}`, title: 'Highlight the two bodies', onclick: () => pick(index) }, h('span', { className: 'name', textContent: `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}` }), h('small', {}, `${fmt(pair.volume)} mm³`)),
+      ),
+      ...report.failed.map((pair) => h('p', { className: 'issue warning' }, `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}: could not be computed (${pair.message})`)),
+      h('div', { className: 'buttons' }, h('button', { textContent: 'Check again', onclick: () => this.checkCollisions() }), h('button', { textContent: 'Close', onclick: () => ((this.collisions = undefined), this.refresh()) })),
+    ];
+    return rows.filter((element): element is HTMLElement => element !== null);
   }
 
   // The parameter table and checks. An expression is only checked while typing; the command is sent once the field is committed.
@@ -1962,6 +2033,13 @@ export class App {
       }
     }
     model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
+    // the two bodies of the picked collision
+    const collisions = m.kind === 'model' ? this.shownCollisions() : undefined;
+    const clash = collisions?.picked === undefined ? undefined : collisions.report.pairs[collisions.picked];
+    for (const [id, color] of clash ? ([[clash.a, COLOR.select], [clash.b, COLOR.clash]] as [Id, number][]) : []) {
+      const body = evaluation.bodies[id];
+      if (body && !this.bodyHidden(id)) for (const face of body.faces) model.faces.push({ solid: body.solid, faceId: face.id, color, opacity: 0.45 });
+    }
 
     // roviny
     const half = this.planeSize(state) / 2;

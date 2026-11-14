@@ -3,11 +3,13 @@ import { CommandError, applyCommand, emptyDocument, validateDocument } from './d
 import { type DragTarget, type Deps, Evaluator, type SketchState, type WriteBack } from './evaluate';
 import { has } from './util';
 import { UNAVAILABLE, diagnose, explain } from './diagnose';
+import { Interferences } from './interference';
 import { toStl } from './solid';
 import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, SketchDiagnosis } from './types';
 
 export function createEngine(deps: Deps): Engine {
   const evaluator = new Evaluator(deps);
+  const interferences = new Interferences(deps.kernel);
   let document = emptyDocument();
   let evaluation: Evaluation = evaluator.evaluate(document).evaluation;
   let undoStack: Document[] = [];
@@ -95,6 +97,11 @@ export function createEngine(deps: Deps): Engine {
     return diagnosis;
   };
 
+  const stateAt = (at?: Id): EngineState => {
+    if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
+    return state(document, at === undefined ? evaluation : evaluator.evaluate(document, { upTo: at }).evaluation);
+  };
+
   return {
     execute(cmd) {
       let applied: Document;
@@ -149,10 +156,7 @@ export function createEngine(deps: Deps): Engine {
       notify();
     },
 
-    getState(at) {
-      if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
-      return state(document, at === undefined ? evaluation : evaluator.evaluate(document, { upTo: at }).evaluation);
-    },
+    getState: stateAt,
 
     diagnoseSketch(id) {
       const sketch = sketchStateOf(id, 'diagnoseSketch');
@@ -185,9 +189,19 @@ export function createEngine(deps: Deps): Engine {
       return JSON.stringify(document);
     },
 
-    exportMesh(format) {
+    // Without a list all bodies, otherwise the listed ones in the order of the list, each once.
+    exportMesh(format, bodies) {
       if (format !== 'stl') throw new Error(`export: formát ${String(format)} není podporovaný`);
-      return toStl(Object.values(evaluation.bodies).map((body) => body.solid));
+      const all = evaluation.bodies;
+      if (bodies !== undefined && (!Array.isArray(bodies) || bodies.some((id) => typeof id !== 'string'))) throw new Error('exportMesh: bodies is a list of body IDs');
+      const chosen = bodies === undefined ? Object.keys(all) : [...new Set(bodies)];
+      for (const id of chosen) if (!has(all, id)) throw new Error(`exportMesh: the body "${id}" does not exist`);
+      return toStl(chosen.map((id) => all[id].solid));
+    },
+
+    interference(options = {}) {
+      const { bodies } = stateAt(options.at).evaluation;
+      return interferences.report(bodies, options.bodies, options.threshold);
     },
 
     subscribe(listener) {

@@ -18,6 +18,7 @@ Poslední úprava: 2026-11-14
 | Uložit | `save()` | |
 | Otevřít | `load(json)` | |
 | Export sítě | `exportMesh('stl')` | |
+| Export of one body | `exportMesh('stl', [body])` | `bodyFileName(body)` for the file name |
 | Undo, redo | `undo()`, `redo()` | `canUndo`, `canRedo` |
 | Překreslení po změně | `subscribe(listener)` | celý `EngineState` |
 
@@ -170,6 +171,21 @@ The button *Pattern* on the toolbar opens the form; a pattern on the timeline is
 - **A slow preview waits for a pause in typing.** When the last preview took more than 150 ms (a pattern of features with many copies takes seconds), a change typed into a field is previewed 500 ms after the last keystroke, and the form says so meanwhile. Selects, checkboxes and OK act at once. This holds for every draft form, not only the pattern.
 
 A body is named after the feature that created it; a copy is "<pattern name> / <number>" wherever a body is listed (targets of an extrusion, issues, the model panel). The eye of a pattern of a body hides all its copies at once; a pattern of features has no body of its own, like an addition or a cut. Selecting a pattern on the timeline highlights the faces its copies made, and the model panel says its count, axis, span, source and bodies. A face of a copy is described with its copy ("copy 2 of Pattern 1"); the plane form names the face its base stands on the same way and adds the body.
+
+## Bodies: collisions, volume and export (D35, point 5)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| Check collisions | `engine.interference({ at })` | `pairs`, `failed`, `checked` |
+| Highlight a colliding pair | UI state | the two bodies of the pair |
+| Volume and size of a body | | `bodies[id].volume`, `bodies[id].bounds` |
+| Export one body | `exportMesh('stl', [body])` | `features[id].bodies`, `bodyFileName` |
+
+- **Collisions** is a button on the toolbar of the model, enabled with two or more bodies. It asks about the state the view shows (the whole model, or the model at the insertion marker) and writes the outcome to the status bar: the number of colliding pairs in the error style, or that nothing collides and how many pairs were checked.
+- The model panel then has a section *Collisions* with one row per pair: the two bodies and the shared volume. A click on a row highlights the two bodies in the view (one orange, one red); another click removes the highlight. Pairs the kernel could not compute are listed as warnings with its message. *Check again* repeats the query, *Close* removes the section.
+- The answer belongs to the document and the state it was computed for: any change of the document, or moving the insertion marker, hides it.
+- **Body lines.** A selected feature that created bodies (an extrusion with a new body, a pattern of a body) lists them in the model panel, one line each: name, volume, the size of its box and the link *Export STL*, which saves that body alone under the name `bodyFileName(id).stl` (`planets%2F1.stl`). A selected face or edge shows the same line for its body. The export takes the body as it is at the end of the timeline; a body that exists only in a preview cannot be exported.
+- *Export STL* on the toolbar still saves the whole model into one file.
 
 ## Parameters, checks and expressions (D35, point 1)
 

@@ -243,9 +243,16 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
     edge.segments.push(...at(i), ...at(j));
   }
   const sorted = [...edges.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1));
+  const bounds: BodyResult['bounds'] = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (let i = 0; i < p.length; i++) {
+    bounds.min[i % 3] = Math.min(bounds.min[i % 3], p[i]);
+    bounds.max[i % 3] = Math.max(bounds.max[i % 3], p[i]);
+  }
   const data: BodyData = {
     result: {
       solid,
+      volume: volumeOf(solid),
+      bounds,
       faces: [...normalSum.keys()].sort((x, y) => x - y).map((id) => ({ id, planar: faceInfos[id].planar })),
       edges: sorted.map(([, e]) => ({ name: e.name, kind: e.kind, segments: Float64Array.from(e.segments) })),
     },

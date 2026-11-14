@@ -43,7 +43,7 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 4 are implemented, points 5 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 5 are implemented, points 6 and 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
 D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
@@ -687,7 +687,7 @@ Omezení:
 
 ## D35 Rozšíření pro robotický kloub
 
-Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 4 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 5 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
 
 **Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
 
@@ -992,6 +992,19 @@ type AxisRef =
 - Objem a obálka tělesa jsou součástí popisu tělesa; AI jimi ověřuje, co postavila.
 - V aplikaci tlačítko, které vypíše kolidující dvojice; v MCP nástroj.
 - Otevřené pro později: sestava by stála nad tělesy dokumentu a odkazovala se na jejich ID. Proto mají kopie těles stabilní odvozená ID.
+
+  **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md, section API enginu, Bodies. What the implementation settled or changed:
+
+  - **`interference` is a query of the engine, not a command.** It reads the state (also the state after a feature, `at`) and returns pairs above the threshold, pairs that failed and the number of pairs examined. Wrong input (an unknown body, a negative threshold) throws, as `getState` does for an unknown feature.
+  - **Pairs are remembered by the identity of the meshes.** The joint of the scenario (eight bodies, 28 pairs) takes about 0.1 s the first time and nothing when repeated; after a change only pairs with a rebuilt body are computed. Boxes that do not overlap never reach the kernel.
+  - **Flush faces through the real kernel.** Bodies lying on each other, a pin in a hole of its own diameter, a body nested in another and identical bodies behave as the spike measured: zero for the first two, the whole volume for the others. No pair of the joint fails. The absolute value of the volume is taken, so a sliver left inside out cannot hide a collision.
+  - **Volume and bounds** are fields of `BodyResult`, computed with the faces and edges of the body. MCP reads them from there instead of computing its own.
+  - **Export.** `exportMesh('stl', bodies)` keeps the order of the list and writes a body listed twice once. The file name of a body is `bodyFileName(id)` in the engine, because the server and the app both need it.
+  - **MCP.** `check_interference` is new. `export_stl` takes `bodies` and `perBody`; its result is now `{ files: [{ path, bodies, triangles, bytes }] }` in both modes. Per body it writes nothing if a file exists or two names differ only in the case of letters. The option `overwrite` was added: without it a second export after a change of the model would need a new directory every time. One file with an explicit path is overwritten as before, because the caller named it.
+  - **App.** A button *Collisions* with the pairs in the model panel and a highlight of the picked pair; volume, size and an export link for every body of a selected feature and for the body of a selected face (ui.md, Bodies).
+  - **Tests.** `packages/scenarios/test/bodies.test.ts` (volume and bounds, export of chosen bodies, the query with flush faces, nesting, thresholds, `at`, copies, a failing kernel and the memory of pairs), scenario 9 parts h, j and k (the motor body, no collisions in the joint, the deliberately oversized planet reported with every copy, one STL per body), MCP tests of `check_interference` and of the export per body on disk.
+
+  What later points have to pick up: nothing; the scenario test no longer calls the kernel directly.
 
 **6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
 

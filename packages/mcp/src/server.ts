@@ -1,8 +1,8 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Engine } from '@trymesh/engine';
@@ -122,17 +122,50 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     },
     {
       name: 'export_stl',
-      description: 'Uloží všechna tělesa modelu do binárního souboru STL; existující soubor přepíše.',
-      inputSchema: PATH('cesta k souboru .stl'),
+      description:
+        'Saves bodies of the model as binary STL. By default all bodies go into the one file `path`, which is overwritten. `bodies` chooses the bodies. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists or two names differ only in the case of letters, unless `overwrite` allows replacing existing files.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path of the .stl file, or of the directory with `perBody`' },
+          bodies: { type: 'array', items: { type: 'string' }, description: 'body IDs; all bodies by default' },
+          perBody: { type: 'boolean', description: 'one file per body in the directory `path`' },
+          overwrite: { type: 'boolean', description: 'with `perBody`: replace files that already exist' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
       run: async (args) => {
         const session = bridge?.session();
         const target = path(args, true) as string;
-        const exported = (await must(session, '_export_stl')) as { base64: string; bodies: number };
-        if (exported.bodies === 0) throw new Failure('model nemá žádné těleso');
-        const bytes = Buffer.from(exported.base64, 'base64');
-        await mkdir(dirname(target), { recursive: true });
-        await writeFile(target, bytes);
-        return { file: target, bytes: bytes.length, bodies: exported.bodies };
+        const perBody = args.perBody === true;
+        const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[] };
+        const files = exported.files.filter((file) => file.bodies.length > 0).map((file) => ({ ...file, path: perBody ? join(target, `${file.name}.stl`) : target }));
+        if (files.length === 0) throw new Failure('model nemá žádné těleso');
+        if (perBody) {
+          // File names come from body IDs, so the caller did not name them one by one: nothing is
+          // written unless every file can be written without replacing or shadowing another.
+          const seen = new Map<string, string>();
+          for (const file of files) {
+            const folded = file.path.toLowerCase();
+            const other = seen.get(folded);
+            if (other !== undefined) throw new Failure(`the bodies "${other}" and "${file.bodies[0]}" would get file names that differ only in the case of letters; export them separately`);
+            seen.set(folded, file.bodies[0]);
+          }
+          if (args.overwrite !== true) {
+            const existing: string[] = [];
+            for (const file of files) if (await access(file.path).then(() => true, () => false)) existing.push(file.path);
+            if (existing.length) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
+          }
+        }
+        await mkdir(perBody ? target : dirname(target), { recursive: true });
+        const written: { path: string; bodies: string[]; triangles: number; bytes: number }[] = [];
+        for (const file of files) {
+          const bytes = Buffer.from(file.base64, 'base64');
+          await writeFile(file.path, bytes);
+          written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+        }
+        return { files: written };
       },
     },
   ];

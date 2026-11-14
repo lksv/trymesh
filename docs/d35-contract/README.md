@@ -338,6 +338,16 @@ Point 4 is in the code (`docs/decisions.md`, D35, point 4, "Status: done"; `docs
 - Implementation notes that are now done: validation of derived body IDs and of face names with `copy`, which faces get the copy tag, references to faces of copies, the recipe stored with a warning, the recompute time of the joint with the patterns (0.9 to 1.4 s).
 - The scenario test repeats only `boltHole` in the pattern `bolts` and cuts only the centre opening in `plateHoles`: the nut pocket needs the polygon tool (point 7) and the six controller holes the constraints of point 6.
 
+### After point 5 (2026-11-14)
+
+Point 5 is in the code (`docs/decisions.md`, D35, point 5, "Status: done"; `docs/architecture.md`, API enginu, Bodies). `exportMesh` with a list, `interference`, `BodyResult.volume` and `bounds` live in the engine. Differences from this draft:
+
+- `export_stl` of MCP got the option `overwrite` for the mode with one file per body, and every written file reports `bytes` next to `triangles`.
+- `get_model` and `get_body` keep the shape they had for the box of a body (`min`, `max` next to `volume`), not an object `bounds`.
+- `bodyFileName` is a function of the engine; the check for names that differ only in the case of letters and for existing files stays in the server, which is the one that writes files.
+- The engine remembers computed pairs between queries; the draft did not ask for it.
+- Implementation notes that are now done: the port guarantee mentions the use of the intersection, and the scenario test measures collisions with the query.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

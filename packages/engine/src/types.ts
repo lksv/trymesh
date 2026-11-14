@@ -299,6 +299,29 @@ export interface BodyResult {
   solid: Solid;
   faces: { id: number; planar: boolean }[]; // stěny, které těleso má
   edges: { name: EdgeName; kind: EdgeKind; segments: Float64Array }[]; // segments: úsečky, 6 čísel na úsečku
+  volume: number; // mm³
+  bounds: { min: Vec3; max: Vec3 }; // the box of the body along the axes of the model
+}
+
+// A pair of bodies that share a volume above the threshold; `a` is the smaller ID in string order.
+export interface Interference {
+  a: Id;
+  b: Id;
+  volume: number; // mm³
+}
+// The kernel computes an intersection without a guarantee for flush faces and may fail; such a pair
+// is in `failed`, neither among the colliding ones nor among the clear ones.
+export interface InterferenceReport {
+  pairs: Interference[];
+  failed: { a: Id; b: Id; message: string }[];
+  checked: number; // number of pairs examined
+}
+// `bodies`: only pairs of these bodies (all without a list). `threshold`: the volume in mm³ above
+// which a pair is reported (0.001 by default). `at`: the state after the given feature.
+export interface InterferenceOptions {
+  bodies?: Id[];
+  threshold?: number;
+  at?: Id;
 }
 
 export interface Issue {
@@ -501,6 +524,7 @@ export interface Engine {
   explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation; // ze kterých vazeb daná vazba plyne
   load(json: string): CommandResult;
   save(): string;
-  exportMesh(format: 'stl'): Uint8Array; // '3mf' později
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // all bodies without a list; '3mf' později
+  interference(options?: InterferenceOptions): InterferenceReport; // which bodies share a volume
   subscribe(listener: (state: EngineState) => void): () => void;
 }

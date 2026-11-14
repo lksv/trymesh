@@ -360,6 +360,17 @@ Point 6 is in the code (`docs/decisions.md`, D35, point 6, "Status: done"). The 
 - The app fixes a point with its unrounded position, unlike a new dimension, which rounds its measured value.
 - The scenario test now has the six controller holes of the plate exactly as `scenario9.ts`; only the nut pocket and its pattern still wait for the polygon tool of point 7.
 
+### After point 7 (2026-11-14)
+
+Point 7 is in the code (`docs/decisions.md`, D35, point 7, "Status: done"), which completes D35. `sketchTool`, `SKETCH_TOOLS`, `Anchor` and the MCP tool `sketch_tool` live as this draft has them, in the engine package (`sketch-tools.ts`). Differences and notes:
+
+- The context of a tool is the named type `SketchToolContext`; the supplier of IDs is `NewId`. The engine also exports `placeAnchor`, `anchorPosition` (the snapping the app's other drawing tools use), `freshIds(document, prefix?)` and `MAX_POLYGON_SIDES` (64).
+- A number input of the catalog may carry `expression: true` (the `size` of a polygon takes an expression); `options` is a readonly list.
+- `sketchTool` checks the input against the catalog and refuses what it cannot draw with a message: an input that is missing or not of the tool, `sides` outside 3 to 64, across flats with an odd number of sides, a centre and a vertex at one place.
+- A polygon returns `center` in `ids` as well; `size` is there only when a dimension was asked for. `size` without `sizeKind` means `circumscribed`; `sizeKind` without `size` dimensions the size as drawn, rounded to 0.01.
+- `sketch_tool` returns `ids` together with everything `execute` returns (not only `problems`); `prefix` must not contain `/`.
+- The scenario test has the nut pockets as `scenario9.ts` does; it takes its IDs from `freshIds(document, 'hex_')` where the script has a counter of its own, so the IDs differ (`hex_c2` to `hex_c7` are the sides).
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

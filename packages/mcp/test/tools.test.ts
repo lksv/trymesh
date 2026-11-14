@@ -1,9 +1,9 @@
 // Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, type Command, type Constraint, type Engine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
-import { apiDescription, apiText, constraintCatalog, engineTypes } from '../src/api';
-import { callTool, tools } from '../src/tools';
+import { apiDescription, apiText, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
+import { callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
 const ok = (engine: Engine, name: string, args: Record<string, unknown> = {}): any => {
@@ -95,10 +95,170 @@ describe('popis API', () => {
     expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
     expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
-    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'undo', 'redo']);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
+  });
+});
+
+describe('sketch tools', () => {
+  const hexagon = { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.1, 0.4] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 };
+
+  it('the description lists every tool of the engine with its inputs and IDs, and every example is accepted', () => {
+    const catalog = sketchToolCatalog();
+    expect(catalog.map((entry) => entry.tool)).toEqual(Object.keys(SKETCH_TOOLS));
+    const text = apiText();
+    expect(text).toContain('# Sketch tools');
+    for (const entry of catalog) {
+      const spec = SKETCH_TOOLS[entry.tool as keyof typeof SKETCH_TOOLS];
+      expect(entry.inputs.map((input) => input.name)).toEqual(Object.keys(spec.inputs));
+      expect(entry.ids.map((id) => id.name)).toEqual(Object.keys(spec.ids));
+      expect(text).toContain(`- ${entry.tool} (${spec.title}): ${spec.summary}`);
+      expect(text).toContain(`  example of input: ${JSON.stringify(entry.example)}`);
+      const engine = newEngine();
+      execute(engine, sketch('s'));
+      const made = ok(engine, 'sketch_tool', { sketch: 's', tool: entry.tool, input: entry.example });
+      expect(made, entry.tool).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true }] });
+      // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
+      expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter((name) => name !== 'size' || 'size' in entry.example).sort());
+    }
+    const polygon = catalog.find((entry) => entry.tool === 'polygon')!;
+    expect(polygon.inputs).toEqual([
+      { name: 'center', description: 'anchor `{ at: [x, y], snap? }`', required: true },
+      { name: 'vertex', description: 'anchor `{ at: [x, y], snap? }`', required: true },
+      { name: 'sides', description: 'a number, an integer, in the interval [3, 64]', required: true },
+      { name: 'sizeKind', description: 'one of "circumscribed", "acrossFlats"', required: false },
+      { name: 'size', description: 'a number, positive, mm, or an expression', required: false },
+    ]);
+    expect(text).toContain('  - size (optional): a number, positive, mm, or an expression');
+    const tool = tools().find((candidate) => candidate.name === 'sketch_tool')!;
+    expect((tool.inputSchema as any).properties.tool.enum).toEqual(Object.keys(SKETCH_TOOLS));
+  });
+
+  it('a hexagon: the returned IDs are usable in the next commands and one undo takes the shape back', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    const empty = engine.save();
+    const made = ok(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon });
+    expect(made.ids).toEqual({
+      center: ['origin'],
+      circle: ['c1'],
+      points: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'],
+      lines: ['c2', 'c3', 'c4', 'c5', 'c6', 'c7'],
+      constraints: ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k9', 'k10', 'k11'],
+      size: ['k12'],
+    });
+    // centred on the origin and with a size: only the rotation is left
+    expect(made).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true, degreesOfFreedom: 1, profileValid: true, regions: 1 }] });
+    const turned = execute(engine, constrain('flat', { type: 'horizontal', line: made.ids.lines[1] }));
+    expect(turned.sketches[0]).toMatchObject({ degreesOfFreedom: 0 });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    // a regular hexagon 5.5 across flats: area = (√3 / 2) · s²
+    expect(detail.regions).toEqual([{ ref: { outerLoop: expect.arrayContaining(made.ids.lines) }, area: expect.closeTo((Math.sqrt(3) / 2) * 5.5 ** 2, 4), holes: 0 }]);
+    expect(detail.constraints.find((c: { id: string }) => c.id === made.ids.size[0])).toMatchObject({ type: 'distancePointLine', point: 'p1', line: 'c5', value: 5.5, driving: true });
+    // the size is an ordinary dimension
+    execute(engine, { type: 'setConstraintValue', sketch: 's', id: made.ids.size[0], value: 8 });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).regions[0].area).toBeCloseTo((Math.sqrt(3) / 2) * 64, 4);
+    ok(engine, 'undo');
+    ok(engine, 'undo');
+    ok(engine, 'undo');
+    expect(engine.save()).toBe(empty);
+  });
+
+  it('the generated IDs avoid every ID of the document; a prefix names them', () => {
+    const engine = newEngine();
+    // `p1` is a point of another sketch, `c1` a feature, `k2` a constraint
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        sketch('c1'),
+        { type: 'addPoint', sketch: 'c1', id: 'p1', x: 1, y: 1 },
+        { type: 'addPoint', sketch: 'c1', id: 'q', x: 5, y: 1 },
+        { type: 'addConstraint', sketch: 'c1', id: 'k2', constraint: { type: 'horizontalDistance', a: 'p1', b: 'q', value: 4, driving: true } },
+        sketch('s'),
+      ],
+    });
+    const first = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [0, 0] }, opposite: { at: [40, 30] } } });
+    expect(first.ids).toEqual({ points: ['p2', 'p4', 'p3', 'p5'], lines: ['c2', 'c3', 'c4', 'c5'], constraints: ['k1', 'k3', 'k4', 'k5'] });
+    const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [5, 5] }, opposite: { at: [9, 8] } } });
+    expect(second.ids).toEqual({ points: ['slot_p1', 'slot_p3', 'slot_p2', 'slot_p4'], lines: ['slot_c1', 'slot_c2', 'slot_c3', 'slot_c4'], constraints: ['slot_k1', 'slot_k2', 'slot_k3', 'slot_k4'] });
+    // the same prefix again goes on counting
+    const third = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [15, 5] }, opposite: { at: [19, 8] } } });
+    expect(third.ids.points).toEqual(['slot_p5', 'slot_p7', 'slot_p6', 'slot_p8']);
+    expect(third).toMatchObject({ ok: true, problems: [], sketches: [{ id: 'c1' }, { id: 's', solved: true, regions: 3 }] });
+  });
+
+  it('snapping uses the solved sketch: a corner on the end of a projected edge', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
+    execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    execute(engine, { type: 'addFeature', feature: { ...(sketch('top') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: { feature: 'e', role: 'endCap' } } } as never });
+    execute(engine, { type: 'addExternal', sketch: 'top', id: 'x', ref: { type: 'edge', body: 'e', edge: { a: { feature: 'e', role: 'endCap' }, b: { feature: 'e', role: 'side', curve: 'bc' } }, kind: 'line' } });
+    const corner = ok(engine, 'get_sketch', { sketch: 'top' }).external[0].at[0];
+    const made = ok(engine, 'sketch_tool', { sketch: 'top', tool: 'rectangle', input: { first: { at: [99, 99], snap: { kind: 'point', id: 'x/a' } }, opposite: { at: [20, 15] } } });
+    expect(made).toMatchObject({ ok: true, problems: [] });
+    const detail = ok(engine, 'get_sketch', { sketch: 'top' });
+    const first = detail.points.find((point: { id: string }) => point.id === made.ids.points[0]);
+    expect(first.at).toEqual([expect.closeTo(corner[0], 6), expect.closeTo(corner[1], 6)]);
+    expect(detail.constraints.find((c: { id: string }) => c.id === made.ids.constraints[0])).toMatchObject({ type: 'coincident', a: made.ids.points[0], b: 'x/a' });
+  });
+
+  it('a call that cannot be drawn says why and leaves the document as it was', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    const before = engine.save();
+    const error = (args: Record<string, unknown>) => {
+      const outcome = callTool(engine, 'sketch_tool', args);
+      expect(outcome.ok, JSON.stringify(args)).toBe(false);
+      return outcome.ok ? '' : outcome.error;
+    };
+    expect(error({ tool: 'polygon', input: hexagon })).toMatch(/argument "sketch"/);
+    expect(error({ sketch: 'nic', tool: 'polygon', input: hexagon })).toMatch(/skica "nic"/);
+    expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
+    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon');
+    expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
+    expect(error({ sketch: 's', tool: 'polygon' })).toMatch(/argument "input": an object/);
+    expect(error({ sketch: 's', tool: 'polygon', input: [hexagon] })).toMatch(/argument "input"/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, sides: 2 } })).toMatch(/^polygon: sides: the value 2 is not/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, sides: 5 } })).toMatch(/even number of sides/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, radius: 3 } })).toMatch(/Regular polygon has no input "radius"/);
+    expect(error({ sketch: 's', tool: 'rectangle', input: { first: { at: [1, 1] }, opposite: { at: [1, 5] } } })).toMatch(/^rectangle: .*must differ/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, vertex: { at: [3, 0], snap: { kind: 'point', id: 'nowhere' } } } })).toMatch(/nowhere/);
+    expect(error({ sketch: 's', tool: 'polygon', input: hexagon, prefix: 'a/b' })).toMatch(/argument "prefix"/);
+    expect(error({ sketch: 's', tool: 'polygon', input: hexagon, prefix: 5 })).toMatch(/argument "prefix": a string is expected/);
+    expect(error({ sketch: 's', tool: 'polygon', input: hexagon, preview: 'yes' })).toMatch(/argument "preview": true or false is expected/);
+    expect(error({ sketch: 's', tool: 'polygon', input: hexagon, dryRun: true })).toMatch(/unknown argument "dryRun"/);
+    // a preview computes the shape and writes nothing; the same IDs come back when it is then written
+    const previewed = ok(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, preview: true });
+    expect(previewed).toMatchObject({ ok: true, ids: { points: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] }, sketches: [{ id: 's', solved: true, degreesOfFreedom: 1, regions: 1 }] });
+    // an expression the document cannot evaluate is refused by the engine with the whole batch
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, size: 'nut * 2' } })).toMatch(/^invalidCommand: .*nut/);
+    expect(engine.save()).toBe(before);
+    expect(engine.getState().canUndo).toBe(true); // only the sketch itself
+    ok(engine, 'undo');
+    expect(engine.getState().canUndo).toBe(false);
+  });
+
+  it('changesDocument: only a call that would be written counts', () => {
+    const engine = newEngine();
+    expect(changesDocument(engine, 'undo', {})).toBe(false);
+    expect(changesDocument(engine, 'execute', { command: sketch('s') })).toBe(true);
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon })).toBe(false); // no such sketch yet
+    execute(engine, sketch('s'));
+    expect(changesDocument(engine, 'undo', {})).toBe(true);
+    expect(changesDocument(engine, 'redo', {})).toBe(false);
+    expect(changesDocument(engine, 'execute', { command: sketch('s') })).toBe(false);
+    expect(changesDocument(engine, 'execute', {})).toBe(false);
+    const before = engine.save();
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon })).toBe(true);
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, preview: true })).toBe(false);
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: { ...hexagon, sides: 1 } })).toBe(false);
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: { ...hexagon, size: 'nut' } })).toBe(false);
+    expect(changesDocument(engine, '_load', {})).toBe(true);
+    expect(changesDocument(engine, 'get_model', {})).toBe(false);
+    expect(engine.save()).toBe(before);
   });
 });
 

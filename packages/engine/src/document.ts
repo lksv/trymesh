@@ -90,7 +90,7 @@ function newId(v: unknown, what: string): Id {
 }
 
 // Všechna ID v dokumentu: features a entity všech skic.
-function allIds(doc: Document): Set<Id> {
+export function documentIds(doc: Document): Set<Id> {
   const ids = new Set<Id>();
   for (const f of doc.features) {
     ids.add(f.id);
@@ -1056,7 +1056,7 @@ const replaceAt = (doc: Document, index: number, f: Feature): Document =>
 
 function unique(doc: Document, v: unknown, what: string): Id {
   const id = newId(v, what);
-  if (allIds(doc).has(id)) fail(`${what}: ID "${id}" už v dokumentu je`);
+  if (documentIds(doc).has(id)) fail(`${what}: ID "${id}" už v dokumentu je`);
   return id;
 }
 
@@ -1099,7 +1099,7 @@ export function applyCommand(doc: Document, command: Command): Document {
       const index = cmd.index === undefined ? doc.features.length : finite(cmd.index, 'addFeature.index');
       if (!Number.isInteger(index) || index < 0 || index > doc.features.length) fail('addFeature.index: mimo rozsah časové osy');
       const f = feature(doc, index, cmd.feature, 'addFeature.feature', 'add');
-      const ids = allIds(doc);
+      const ids = documentIds(doc);
       const added = [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])];
       for (const id of added) if (ids.has(id) || added.indexOf(id) !== added.lastIndexOf(id)) fail(`addFeature: ID "${id}" už v dokumentu je`);
       return { ...doc, features: [...doc.features.slice(0, index), f, ...doc.features.slice(index)] };

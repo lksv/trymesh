@@ -1,13 +1,13 @@
 // Validation scenario 9: a robot joint with a planetary gearbox (docs/requirements.md).
-// It grows with the points of D35; so far part a) parameters, checks and the sketch of pitch circles,
+// It follows docs/d35-contract/scenario9.ts: a) parameters, checks and the sketch of pitch circles,
 // b) c) the gears with the planets copied by a pattern, the bodies of d), e), f) and g) with their
-// through holes repeated by patterns (no nut pockets and no holes of the controller yet: they need
-// the polygon tool and the constraints of points 6 and 7), h) the motor, i) the change of the ratio,
-// j) the collision query and k) the export per body with saving and loading.
+// holes repeated by patterns (the holes of the controller by a fixed point, symmetry and equal
+// radii, the nut pockets by the polygon tool), h) the motor, i) the change of the ratio, j) the
+// collision query and k) the export per body with saving and loading.
 // Parameter names are English: `module` for `modul` of the requirements, `backlash` for `vule`,
 // `centers` (centre distance) for `osa`.
 import { describe, expect, it } from 'vitest';
-import { type Command, type Constraint, type Engine, type EngineState, type Extent, type Facts, type Id, type Input, type PatternFeature, type ProfileSource, type SketchFeature, type Solid, bodyFileName } from '@trymesh/engine';
+import { type Command, type Constraint, type Engine, type EngineState, type Extent, type Facts, type Id, type Input, type PatternFeature, type ProfileSource, type SketchFeature, type Solid, bodyFileName, freshIds, sketchTool } from '@trymesh/engine';
 import { XY, addSketch, batch, expectAllOk, faceNames, newEngine, run, status, volume } from './kit';
 
 const point = (sk: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: sk, id, x, y });
@@ -176,9 +176,24 @@ function bodiesAndHoles(engine: Engine): EngineState {
     extrude('ring', 'cut', gear('r', 'Zr', true, 'planet'), through('forward'), ['housing']),
     addSketch('skBolts', XY),
     batch(point('skBolts', 'cb', 50, 1), circle('skBolts', 'bh', 'cb', 1.5), ...at('skBolts', 'cb', 50.5, 0), dim('skBolts', 'dbh', { type: 'diameter', curve: 'bh' }, 3.4)),
+  );
+  // the pocket of an M3 nut: a hexagon 5.5 across flats around the screw, drawn by the polygon tool
+  const hex = sketchTool(
+    'polygon',
+    { sketch: sketchOf(engine.getState(), 'skBolts'), result: engine.getState().evaluation.features.skBolts.sketch },
+    { center: { at: [50.5, 0], snap: { kind: 'point', id: 'cb' } }, vertex: { at: [53.7, 0.2] }, sides: 6, sizeKind: 'acrossFlats', size: NUT },
+    freshIds(engine.getState().document, 'hex_'),
+  );
+  if (!hex.ok) throw new Error(hex.message);
+  run(
+    engine,
+    // points[0] is the vertex right of the centre, lines[1] goes from points[1] to points[2]: the upper side
+    batch(...hex.commands, constrain('skBolts', 'hexDirection', { type: 'horizontal', line: hex.ids.lines[1] })),
     // the sketch plane lies between the plate and the housing, hence both sides and two targets
     extrude('boltHole', 'cut', regions('skBolts', ['bh']), through('both'), ['plate', 'housing']),
-    around('bolts', { type: 'features', features: ['boltHole'] }, 6),
+    // the hexagon is the region around the hole and the hole itself; the pocket is in the top 3 mm of the housing
+    extrude('nutPocket', 'cut', regions('skBolts', hex.ids.lines, ['bh']), span(43, 3), ['housing']),
+    around('bolts', { type: 'features', features: ['boltHole', 'nutPocket'] }, 6),
   );
   return run(
     engine,
@@ -191,6 +206,9 @@ function bodiesAndHoles(engine: Engine): EngineState {
   );
 }
 
+// Size of an M3 nut across flats and the area of its hexagon.
+const NUT = 5.5;
+const HEXAGON = (Math.sqrt(3) / 2) * NUT ** 2;
 // Area of a circle as the engine builds it: a polygon inscribed with the chord tolerance 0.01.
 const disc = (diameter: number): number => {
   const sides = Math.ceil(Math.PI / Math.acos(1 - 0.02 / diameter));
@@ -282,8 +300,25 @@ describe('scenario 9: robot joint', () => {
     // the carrier: a disc with three pins that reach down into the planets
     expect(bodyVolume(state, 'carrier')).toBeCloseTo(disc(60) * 5 + 3 * disc(5) * 12.5, 1);
     expect(holeFaces(state, 'carrier', 'carrierPin')).toEqual([...copies('carrierPin/side/pin', 'carrierPins', 3), ...copies('carrierPin/startCap', 'carrierPins', 3)].sort());
+    // the nut pockets: the hexagon is fully determined (centre on the screw, 5.5 across flats, a side
+    // horizontal) and every pocket has six sides and its floor in the housing, the copies by the pattern
+    expect(engine.diagnoseSketch('skBolts')).toEqual({ status: 'solved', degreesOfFreedom: 0, conflicting: [], duplicates: [], redundant: [], removable: [], free: [] });
+    const bolts = sketchOf(state, 'skBolts');
+    const hexLines = Object.keys(bolts.curves).filter((id) => bolts.curves[id].type === 'line');
+    expect(hexLines).toEqual(['hex_c2', 'hex_c3', 'hex_c4', 'hex_c5', 'hex_c6', 'hex_c7']);
+    const corners = state.evaluation.features.skBolts.sketch!.points;
+    for (let i = 1; i <= 6; i++) expect(Math.hypot(corners[`hex_p${i}`].x - 50.5, corners[`hex_p${i}`].y), `hex_p${i}`).toBeCloseTo(NUT / Math.sqrt(3), 6);
+    expect(corners.hex_p2.y).toBeCloseTo(NUT / 2, 6);
+    expect(corners.hex_p3.y).toBeCloseTo(NUT / 2, 6);
+    expect(holeFaces(state, 'housing', 'nutPocket')).toEqual([...hexLines.flatMap((line) => copies(`nutPocket/side/${line}`, 'bolts', 6)), ...copies('nutPocket/startCap', 'bolts', 6)].sort());
+    expect(holeFaces(state, 'plate', 'nutPocket')).toEqual([]);
+    // a deeper pocket takes exactly the hexagon without the screw hole, six times
+    const deeper = run(engine, { type: 'updateFeature', id: 'nutPocket', patch: { extent: { start: 41, distance: 5 } } });
+    expectAllOk(deeper);
+    expect(bodyVolume(state, 'housing') - bodyVolume(deeper, 'housing')).toBeCloseTo(6 * (HEXAGON - disc(3.4)) * 2, 2);
+    engine.undo();
     // the ring gear takes between its tip and its root cylinder out of the 18 mm above the motor recess
-    const solidHousing = disc(110) * 46 - disc(92) * 28 - 6 * disc(3.4) * 46;
+    const solidHousing = disc(110) * 46 - disc(92) * 28 - 6 * disc(3.4) * 46 - 6 * (HEXAGON - disc(3.4)) * 3;
     expect(bodyVolume(state, 'housing')).toBeLessThan(solidHousing - Math.PI * 31.5 ** 2 * 18);
     expect(bodyVolume(state, 'housing')).toBeGreaterThan(solidHousing - Math.PI * 33.525 ** 2 * 18);
 

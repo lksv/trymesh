@@ -6,6 +6,7 @@ import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import {
   type Anchor,
+  DEFAULT_POLYGON,
   GEOMETRIC_KINDS,
   type PatternChoices,
   type PatternDraft,
@@ -25,6 +26,8 @@ import {
   patternIncomplete,
   patternSource,
   pointCommands,
+  polygonCommands,
+  polygonSizeKind,
   profileKind,
   rectangleCommands,
   rememberedProfile,
@@ -94,6 +97,35 @@ describe('kreslicí nástroje', () => {
     const t = setup();
     expect(rectangleCommands('s', t.view(), free(1, 1), free(1, 5), t.newId)).toBeUndefined();
     expect(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), t.newId)).toBeUndefined();
+  });
+
+  it('a polygon: a hexagon by default, the dimension of the size as the panel says', () => {
+    const t = setup();
+    expect(DEFAULT_POLYGON).toEqual({ sides: 6, sizeKind: 'none' });
+    t.run(polygonCommands('s', t.view(), onPoint(t.view(), 'origin'), free(10, 0), DEFAULT_POLYGON, t.newId));
+    expect(Object.keys(t.sketch().points)).toHaveLength(6);
+    const curves = Object.values(t.sketch().curves);
+    expect(curves.map((curve) => [curve.type, curve.construction === true])).toEqual([['circle', true], ...Array.from({ length: 6 }, () => ['line', false])]);
+    expect(types(t.sketch())).toEqual([...Array.from({ length: 5 }, () => 'equalLength'), ...Array.from({ length: 6 }, () => 'pointOnCurve')]);
+    expect(t.result().regions).toHaveLength(1);
+    expect(t.result().degreesOfFreedom).toBe(2); // the size and the rotation
+    // across flats: the size as drawn, rounded; vertex at 10 from the centre gives 10 · √3
+    const flats = setup();
+    flats.run(polygonCommands('s', flats.view(), onPoint(flats.view(), 'origin'), free(10, 0), { sides: 6, sizeKind: 'acrossFlats' }, flats.newId));
+    const size = Object.values(flats.sketch().constraints).find((constraint) => constraint.type === 'distancePointLine');
+    expect(size).toMatchObject({ value: 17.32, driving: true });
+    expect(flats.result().degreesOfFreedom).toBe(1);
+    // an odd number of sides has no size across flats: the circle is dimensioned instead
+    expect(polygonSizeKind({ sides: 5, sizeKind: 'acrossFlats' })).toBe('circumscribed');
+    expect(polygonSizeKind({ sides: 8, sizeKind: 'acrossFlats' })).toBe('acrossFlats');
+    expect(polygonSizeKind({ sides: 5, sizeKind: 'none' })).toBe('none');
+    const odd = setup();
+    odd.run(polygonCommands('s', odd.view(), free(5, 5), free(5, 15), { sides: 5, sizeKind: 'acrossFlats' }, odd.newId));
+    expect(Object.values(odd.sketch().constraints).find((constraint) => constraint.type === 'diameter')).toMatchObject({ value: 20, driving: true });
+    expect(odd.result().degreesOfFreedom).toBe(3); // the place and the rotation
+    // a polygon of no size is not drawn
+    expect(polygonCommands('s', t.view(), free(1, 1), free(1, 1), DEFAULT_POLYGON, t.newId)).toBeUndefined();
+    expect(polygonCommands('s', t.view(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), DEFAULT_POLYGON, t.newId)).toBeUndefined();
   });
 
   it('řetěz úseček sdílí body a uzavře se na první bod', () => {

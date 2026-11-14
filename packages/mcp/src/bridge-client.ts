@@ -3,7 +3,7 @@
 import type { Engine } from '@trymesh/engine';
 import { type ToolOutcome, callProblem, callTool } from './tools';
 
-export { MUTATING } from './tools';
+export { MUTATING, changesDocument } from './tools';
 
 // Stejná hlavička jako na straně serveru (bridge.ts); tady zvlášť, aby se do prohlížeče netáhl kód pro Node.
 const BRIDGE_HEADER = 'x-trymesh-bridge';

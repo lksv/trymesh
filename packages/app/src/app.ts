@@ -31,6 +31,7 @@ import {
   type Vec2,
   type Vec3,
   CONSTRAINTS,
+  MAX_POLYGON_SIDES,
   FEATURE_TYPE_INFO,
   GENERATORS,
   type GeneratorName,
@@ -45,7 +46,7 @@ import {
   isDimension,
   isFlag,
 } from '@trymesh/engine';
-import { type BridgeConnection, type BridgeStatus, MUTATING, connectBridge } from '@trymesh/mcp/bridge-client';
+import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h } from './dom';
 import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from './fields';
 import {
@@ -84,13 +85,17 @@ import {
   pointCommands,
   positionOf,
   rectangleCommands,
+  DEFAULT_POLYGON,
+  type PolygonOptions,
+  polygonCommands,
+  polygonSizeKind,
 } from './sketch-commands';
 import { duplicateTwins, explanationText, freeEntities, freeSummary, markOf } from './sketch-diagnosis';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
 import { type SceneModel, Viewport } from './viewport';
 import { angleProblem, bodyName, faceLabel, featureName, issueText } from './issue-text';
 
-type Tool = 'select' | 'point' | 'line' | 'rect' | 'circle' | 'arc' | 'project';
+type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
 
 type Pick =
   | { kind: 'face'; body: Id; faceId: number; name: FaceName; planar: boolean }
@@ -171,6 +176,7 @@ const TOOLS: [Tool, string, string][] = [
   ['point', 'Bod', 'Klikněte na místo bodu.'],
   ['line', 'Úsečka', 'Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.'],
   ['rect', 'Obdélník', 'Klikněte na dva protilehlé rohy.'],
+  ['polygon', 'Polygon', 'Click the centre and then a vertex; the number of sides is set in the panel.'],
   ['circle', 'Kružnice', 'Klikněte na střed a pak na bod obvodu.'],
   ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
   ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
@@ -224,6 +230,7 @@ export class App {
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   private previewCost = 0; // ms the last preview of a draft took
+  private polygon: PolygonOptions = DEFAULT_POLYGON; // what the polygon tool draws; remembered between sketches
   private previewTimer?: number;
   private confirming = false; // a draft is being confirmed: no preview in between
   private contextCache?: SketchContext | null;
@@ -339,9 +346,7 @@ export class App {
           return;
         }
         if (!isDraft(this.mode)) return;
-        const state = this.engine.getState();
-        const changes = name === 'undo' ? state.canUndo : name === 'redo' ? state.canRedo : typeof args.command === 'object' && args.command !== null && this.engine.preview(args.command as Command).ok;
-        if (changes) this.setMode({ kind: 'model' });
+        if (changesDocument(this.engine, name, args)) this.setMode({ kind: 'model' });
       },
       onCall: (name, outcome) => {
         if (!MUTATING.includes(name)) return;
@@ -1294,6 +1299,7 @@ export class App {
       // řetěz pokračuje z konce, dokud se nenapojí na existující bod
       if (line && batch(line.commands) && anchor.snap?.kind !== 'point' && this.mode === m) m.clicks = [{ at: anchor.at, snap: { kind: 'point', id: line.end } }];
     } else if (m.tool === 'rect') batch(rectangleCommands(m.id, view, clicks[0], anchor, this.newId));
+    else if (m.tool === 'polygon') batch(polygonCommands(m.id, view, clicks[0], anchor, this.polygon, this.newId));
     else if (m.tool === 'circle') batch(circleCommands(m.id, view, clicks[0], anchor, this.newId));
     else batch(arcCommands(m.id, view, clicks[0], clicks[1], anchor, this.newId));
     m.infer = undefined;
@@ -1329,6 +1335,43 @@ export class App {
     if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return this.say('Tuhle kótu už skica má.', true);
     if (constraints.some(isDimension) && this.engine.execute(commands(reference)).ok) return this.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
     this.say(result.error.message, true);
+  }
+
+  // The options of the polygon tool, shown while the tool is active: the number of sides and
+  // whether the drawn size gets a dimension (rounded to 0.01 mm, like a dimension added by hand).
+  private polygonOptions(): HTMLElement[] {
+    const set = (change: Partial<PolygonOptions>) => {
+      this.polygon = { ...this.polygon, ...change };
+      this.renderPanel();
+      this.renderScene();
+    };
+    const sides = h('input', {
+      type: 'number',
+      min: '3',
+      max: String(MAX_POLYGON_SIDES),
+      step: '1',
+      value: String(this.polygon.sides),
+      onchange: () => {
+        const count = Number(sides.value);
+        // a number outside the range of the tool leaves the count as it was
+        set(Number.isInteger(count) && count >= 3 && count <= MAX_POLYGON_SIDES ? { sides: count } : {});
+      },
+    });
+    const kind = polygonSizeKind(this.polygon);
+    const option = (value: PolygonOptions['sizeKind'], label: string, disabled = false) => h('option', { value, textContent: label, selected: kind === value, disabled });
+    const size = h(
+      'select',
+      { onchange: () => set({ sizeKind: size.value as PolygonOptions['sizeKind'] }) },
+      option('none', 'No dimension'),
+      option('circumscribed', 'Diameter of the circumscribed circle'),
+      option('acrossFlats', 'Size across flats (even number of sides)', this.polygon.sides % 2 === 1),
+    );
+    return [
+      h('h2', {}, 'Polygon'),
+      h('label', {}, `Sides (3 to ${MAX_POLYGON_SIDES})`, sides),
+      h('label', {}, 'Dimension of the size', size),
+      h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints.'),
+    ];
   }
 
   // Smaže vybrané entity; s křivkou zmizí i její body, které už nic dalšího nepoužívá.
@@ -1422,6 +1465,7 @@ export class App {
     const parameterNames = this.doc.parameters.map((p) => p.name);
     out.push(...this.issues(this.view().evaluation.features[m.id]).filter((element) => element.textContent?.startsWith('Field ')));
     out.push(...this.diagnosisSummary(m, diagnosis));
+    if (m.tool === 'polygon') out.push(...this.polygonOptions());
 
     const dimension = (label: string, variant: DimensionVariant, title: string) => {
       const d = dimensionFor(variant, view, m.selection);
@@ -2238,6 +2282,12 @@ export class App {
       if (first && m.tool === 'line') shape({ type: 'line', a: first, b: at });
       if (first && m.tool === 'rect') pushPolyline(rubber, frame, [first, [at[0], first[1]], at, [first[0], at[1]], first]);
       if (first && m.tool === 'circle') shape({ type: 'circle', center: first, radius: Math.hypot(at[0] - first[0], at[1] - first[1]) });
+      if (first && m.tool === 'polygon') {
+        // the circumscribed circle and the polygon with its first vertex at the cursor
+        const [radius, direction, sides] = [Math.hypot(at[0] - first[0], at[1] - first[1]), Math.atan2(at[1] - first[1], at[0] - first[0]), this.polygon.sides];
+        shape({ type: 'circle', center: first, radius });
+        pushPolyline(rubber, frame, Array.from({ length: sides + 1 }, (_, i): Vec2 => [first[0] + radius * Math.cos(direction + (2 * Math.PI * i) / sides), first[1] + radius * Math.sin(direction + (2 * Math.PI * i) / sides)]));
+      }
       if (first && m.tool === 'arc') {
         const start = m.clicks[1] ? positionOf(view, m.clicks[1]) : at;
         shape({ type: 'line', a: first, b: start });

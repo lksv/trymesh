@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchFeature, type SketchResult, type Vec2, constraintOperands } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -25,6 +25,7 @@ export interface CurveView {
 export interface SketchView {
   points: Map<Id, PointView>;
   curves: Map<Id, CurveView>;
+  source: SketchToolContext; // the sketch and the solved state the view was made of, for the sketch tools of the engine
 }
 export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
 
@@ -70,7 +71,7 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
       curves.set(id, { id, own: false, construction: false, points: [`${id}/center`], shape: { type: 'circle', center, radius } });
     }
   }
-  return { points, curves };
+  return { points, curves, source: { sketch: feature, result } };
 }
 
 export const kindOf = (view: SketchView, id: Id): EntityKind | undefined => (view.points.has(id) ? 'point' : view.curves.get(id)?.shape.type);

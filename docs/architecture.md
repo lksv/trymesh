@@ -48,7 +48,7 @@ packages/
 
 Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
 
-Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (registr typů features, validace a provedení příkazů, načtení a převod starších verzí dokumentu), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
+Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (registr typů features, validace a provedení příkazů, načtení a převod starších verzí dokumentu), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda), `sketch-tools.ts` (sketch tools: whole shapes as batches of commands, shared by the app and MCP; D35, point 7).
 
 Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
@@ -370,6 +370,36 @@ Ostatní takové případy rozbor nepozná:
 **Cena.** Rozbor (derivace a jedna ortogonalizace řádků) se počítá při každém vyhodnocení vyřešené skici, tedy i při každém kroku tažení. Roste se třetí mocninou počtu vazeb: do stovky vazeb jednotky milisekund, 240 vazeb kolem 15 ms, 480 kolem 0,1 s, 960 kolem 0,8 s. Skici v PoC mají desítky vazeb; pro stovky by se rozbor musel počítat až na vyžádání nebo po souvislých částech skici. Diagnostika a vysvětlení k němu přidají další lineární algebru stejného řádu. Výsledek diagnostiky se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní nezmění, nepočítá se znovu.
 
 **Omezení solveru, které diagnostika odhalí, ale neodstraní.** Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver jako plnohodnotnou; skica se pak chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere.
+
+### Sketch tools (D35, point 7)
+
+A sketch tool draws a whole shape with its constraints from a few inputs. It is a pure function that returns a batch of commands; it does not execute them and the engine itself does not change. The app calls the tools from its drawing tools and MCP offers them as the tool `sketch_tool`, so a shape is drawn the same way from both and a new tool is on both sides at once.
+
+```ts
+interface Anchor { at: Vec2; snap?: { kind: 'point'; id: Id } | { kind: 'curve'; id: Id } }   // a place in the sketch and what it snaps to
+interface SketchToolContext { sketch: SketchFeature; result?: SketchResult }                     // the sketch and its solved state
+type NewId = (prefix: string) => Id;                                                            // `p` point, `c` curve, `k` constraint
+
+sketchTool(tool, context, input, newId): { ok: true; commands: Command[]; ids: Record<string, Id[]> } | { ok: false; message: string }
+SKETCH_TOOLS: Record<SketchToolName, { title; summary; inputs; ids }>                           // the catalog
+freshIds(document, prefix?): NewId                                                              // IDs the document does not have
+placeAnchor(context, anchor, newId): { id; commands; constraints }                              // the point for an end of a curve
+```
+
+- **Where it lives.** `packages/engine/src/sketch-tools.ts`. The tools work only with types of the engine (sketch, solved state, commands), the engine package has no dependency, and both the app and MCP depend on it already. A package of its own would add a boundary and nothing else.
+- **The catalog** `SKETCH_TOOLS` is the single source of truth: the inputs of a tool (an anchor, a number with its `NumberSpec`, one of a list of options; optional or not; a number that may be an expression) and the names of the lists of IDs it returns, with their order. `sketchTool` checks the input against it (a missing input, an input the tool does not have, a number out of range, an unknown option) before it draws; the MCP description is generated from it.
+- **Anchors** are what the drawing tools of the app always did, now shared: an own point or the origin is used as it is; a point of projected geometry gets a new own point with a `coincident` constraint (a curve must not refer to a projected point); a curve gets a point on it nearest to `at` with a `pointOnCurve` constraint. Positions come from the solved state, because projected geometry has them only there.
+- **IDs** are supplied by the caller, as in every command. `freshIds` hands out `<prefix><kind><number>` that the whole document does not have (features and the entities of all sketches) and does not repeat itself. The app uses its own counter; MCP uses `freshIds`.
+- **What a tool returns.** `ids` name what was made, in a documented order, so the caller can go on: the lines as a region of an extrusion, one line for a horizontal constraint, the size dimension for `setField`.
+
+**Rectangle** `{ first, opposite }`: four lines, two horizontal and two vertical constraints; the width and the height stay free. `ids.points` are `first`, the corner beside it along x, `opposite`, the corner beside `first` along y; `ids.lines[i]` goes from `points[i]` to `points[i + 1]`. Corners that do not differ in both coordinates are refused.
+
+**Regular polygon** `{ center, vertex, sides, sizeKind?, size? }`, 3 to 64 sides:
+
+- A construction circumscribed circle around `center`, the vertices on it (`pointOnCurve`) and sides of the same length as the first one (`equalLength`). Vertices on a circle with equal chords are a regular polygon; four degrees of freedom stay: the centre, the size and the rotation. (An inscribed circle with tangent sides was rejected in D35: a tangent polygon with equal sides need not be regular.)
+- `vertex` gives the size and the rotation as drawn. `ids.points[0]` is the vertex, the others follow counter-clockwise; `ids.lines[i]` goes from `points[i]` to `points[i + 1]`.
+- `sizeKind` adds a driving dimension of the size, returned as `ids.size`: `circumscribed` is the diameter of the circle, `acrossFlats` the distance from `points[0]` to the line of the opposite side (`distancePointLine`), which exists for an even number of sides only and is the wrench size of a nut. `size` is its value, a number or an expression; without `size` the dimension takes the size as drawn, rounded to 0.01; `size` without `sizeKind` means `circumscribed`. With a numeric `size` and a free vertex the polygon is drawn at that size right away, so the solver starts from a shape that already holds.
+- The rotation is left to the caller: a horizontal constraint on a side, an angle, or nothing.
 
 ## Pojmenování
 
@@ -952,6 +982,7 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 | `get_body` | Stěny (rovinnost, plocha, normála) a hrany (druh, délka; u přímé krajní body, u kruhové střed a poloměr) se jmény použitelnými v odkazech. |
 | `check_interference` | Colliding pairs of bodies with the shared volume, and pairs the kernel could not compute; `bodies`, `threshold`, `at`. |
 | `execute`, `preview` | Příkaz enginu (i `batch`); `preview` nezapisuje. Výsledek shrne, co není v pořádku, a u každé skici řekne, jestli je vyřešená a kolik má volnosti. It also reports what is not a feature state: `failedChecks`, `parameterErrors`, and `fieldErrors` of features. |
+| `sketch_tool` | Runs a sketch tool of the engine (`sketchTool`) in a sketch: `{ sketch, tool, input, prefix?, preview? }`. It generates the IDs with `freshIds` (optionally with a prefix), writes the batch as one command (or only computes it with `preview: true`) and returns `ids` with what `execute` returns. |
 | `undo`, `redo` | Historie příkazů. |
 | `session_status` | Jestli nástroje pracují nad aplikací, nebo nad vlastním dokumentem serveru. |
 | `open_document`, `save_document`, `export_stl` | Soubory na disku; dokument může být v aplikaci. `export_stl` takes a list of bodies and with `perBody` writes one file per body into a directory, named by `bodyFileName`. Per body it writes nothing when a file already exists (unless `overwrite`) or when two names differ only in the case of letters: the names come from IDs, so the caller did not choose them one by one. The files are written into a directory of the call inside the target (`mkdtemp`) under their final names and moved once all are on disk, so a failure while writing leaves the target as it was; if a move fails after others succeeded, the new files that replaced nothing are removed again and the files that replaced old ones are named in the error. Exports run one after another, and a call the tools refuse (an unknown argument) does not reach the app over the bridge. |
@@ -959,6 +990,8 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrací jako text s příznakem chyby, ne jako výjimka protokolu. Malý výsledek se vypisuje s odsazením, velký úsporně.
 
 `describe_api` lists the profile generators from `GENERATORS` (operands, parameters with ranges and defaults, references, side names, facts and an example profile). It also lists the expression syntax (operators, functions, constants) and the numeric fields that accept an expression; both come from the engine (`EXPRESSION_FUNCTIONS`, `FEATURE_TYPE_INFO[type].fields`, `CONSTRAINTS[type].values`), so a new field or function shows up without touching the server.
+
+`describe_api` has a section *Sketch tools* generated from `SKETCH_TOOLS`: every tool with its inputs (kind, range, optional), the lists of IDs it returns and an example of input, which a test runs through `sketch_tool`.
 
 **Proč se nové vazby a příkazy objeví samy.** `execute` bere jakoukoli hodnotu typu `Command` a validuje ji engine. `describe_api` skládá text ze tří zdrojů: z ručně psaných konvencí, z katalogu vazeb (`CONSTRAINTS`: jméno, shrnutí, operandy a jejich druhy, pravidlo hodnoty) a ze zdrojového textu `engine/src/types.ts` bez sekce portů. Vazba přidaná do enginu je tedy v popisu i v nástrojích bez změny v `packages/mcp`.
 

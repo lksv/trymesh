@@ -1,7 +1,21 @@
 // Popis API enginu pro AI. Sestavuje se ze zdrojů enginu, ne z ručně psaného seznamu: typy
 // dokumentu a příkazů se berou přímo ze zdrojového textu types.ts a vazby z katalogu, kterým se
 // řídí validace; typy features z registru enginu. Co engine přijme, to popis obsahuje, a naopak.
-import { CONSTRAINTS, EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, FEATURE_TYPE_INFO, type FeatureTypeInfo, GENERATORS, type NumberSpec, isFlag, rangeText } from '@trymesh/engine';
+import {
+  CONSTRAINTS,
+  EXPRESSION_CONSTANTS,
+  EXPRESSION_FUNCTIONS,
+  EXPRESSION_SYNTAX,
+  FEATURE_TYPE_INFO,
+  type FeatureTypeInfo,
+  GENERATORS,
+  type NumberSpec,
+  SKETCH_TOOLS,
+  type SketchToolInput,
+  type SketchToolName,
+  isFlag,
+  rangeText,
+} from '@trymesh/engine';
 import typesSource from '../../engine/src/types.ts?raw';
 
 const CONVENTIONS = [
@@ -139,14 +153,63 @@ export function apiDescription(): {
   constraints: ConstraintDescription[];
   expressions: ReturnType<typeof expressionSyntax>;
   numericFields: ReturnType<typeof numericFields>;
+  sketchTools: SketchToolDescription[];
   types: string;
 } {
-  return { conventions: CONVENTIONS, features: featureCatalog(), generators: generatorCatalog(), constraints: constraintCatalog(), expressions: expressionSyntax(), numericFields: numericFields(), types: engineTypes() };
+  return {
+    conventions: CONVENTIONS,
+    features: featureCatalog(),
+    generators: generatorCatalog(),
+    constraints: constraintCatalog(),
+    expressions: expressionSyntax(),
+    numericFields: numericFields(),
+    sketchTools: sketchToolCatalog(),
+    types: engineTypes(),
+  };
+}
+
+// The sketch tools of the engine (the tool sketch_tool runs them): inputs and the IDs they return.
+export interface SketchToolDescription {
+  tool: string;
+  title: string;
+  summary: string;
+  inputs: { name: string; description: string; required: boolean }[];
+  ids: { name: string; description: string }[];
+  example: Record<string, unknown>;
+}
+const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
+  rectangle: { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } },
+  polygon: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.2, 0] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 },
+};
+export function sketchToolCatalog(): SketchToolDescription[] {
+  const describe = (input: SketchToolInput): string =>
+    input.kind === 'anchor'
+      ? 'anchor `{ at: [x, y], snap? }`'
+      : input.kind === 'option'
+        ? `one of ${input.options.map((option) => `"${option}"`).join(', ')}`
+        : `a number, ${rangeText(input.spec)}${input.spec.unit === 'count' || input.spec.unit === 'none' ? '' : `, ${input.spec.unit}`}${input.expression ? ', or an expression' : ''}`;
+  return (Object.keys(SKETCH_TOOLS) as SketchToolName[]).map((tool) => ({
+    tool,
+    title: SKETCH_TOOLS[tool].title,
+    summary: SKETCH_TOOLS[tool].summary,
+    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'anchor' || input.optional !== true })),
+    ids: Object.entries(SKETCH_TOOLS[tool].ids).map(([name, description]) => ({ name, description })),
+    example: TOOL_EXAMPLES[tool],
+  }));
 }
 
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, types } = apiDescription();
+  const sketchToolText = (entry: SketchToolDescription): string =>
+    [
+      `- ${entry.tool} (${entry.title}): ${entry.summary}`,
+      '  input:',
+      ...entry.inputs.map((input) => `  - ${input.name}${input.required ? '' : ' (optional)'}: ${input.description}`),
+      '  ids in the result:',
+      ...entry.ids.map((id) => `  - ${id.name}: ${id.description}`),
+      `  example of input: ${JSON.stringify(entry.example)}`,
+    ].join('\n');
   const generator = (entry: GeneratorDescription): string =>
     [
       `- ${entry.generator} (${entry.title}): ${entry.summary}`,
@@ -195,6 +258,10 @@ export function apiText(): string {
     '# Numeric fields',
     'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField.',
     ...fields.map((field) => `- ${field.owner}: ${field.path} (${field.description})`),
+    '',
+    '# Sketch tools',
+    'A sketch tool draws a whole shape with its constraints from a few inputs; run it with the tool sketch_tool `{ sketch, tool, input }`. An anchor is a place in the sketch, `{ at: [x, y] }`, optionally snapped: `snap: { kind: "point", id }` uses that point (an own point or `origin` is used as it is, a point of projected geometry gets a new point with a coincident constraint; `at` is then ignored) and `snap: { kind: "curve", id }` puts the point on that curve nearest to `at`. The result lists the IDs of what was made (`ids`), to be used in the next commands: the lines as regions of an extrusion, a line for a horizontal constraint, the size dimension for setField.',
+    ...sketchTools.map(sketchToolText),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

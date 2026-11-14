@@ -19,11 +19,15 @@ import {
   type Interference,
   type Issue,
   INTERFERENCE_THRESHOLD,
+  SKETCH_TOOLS,
   type SketchFeature,
+  type SketchToolName,
   bodyFileName,
   constraintOperands,
   constraintPath,
+  freshIds,
   isDimension,
+  sketchTool,
 } from '@trymesh/engine';
 import { apiText } from './api';
 
@@ -375,6 +379,41 @@ const command = (args: Record<string, unknown>): Command => {
   return value as Command;
 };
 
+// The batch of a sketch tool with the IDs of what it makes. The IDs are generated here, so that
+// none of them is in the document: `<prefix><kind><number>` with the kinds `p` (point), `c`
+// (curve) and `k` (constraint).
+function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { command: Command; ids: Record<string, Id[]> } {
+  const sketch = sketchOf(engine, text(args, 'sketch'));
+  const tool = text(args, 'tool');
+  const prefix = optionalText(args, 'prefix') ?? '';
+  if (prefix.includes('/')) throw new ToolError('argument "prefix": an ID must not contain "/"');
+  const input = args.input;
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new ToolError('argument "input": an object with the inputs of the tool is expected, see describe_api');
+  const state = engine.getState();
+  const made = sketchTool(tool as SketchToolName, { sketch, result: state.evaluation.features[sketch.id]?.sketch }, input as never, freshIds(state.document, prefix));
+  if (!made.ok) throw new ToolError(`${tool}: ${made.message}`);
+  return { command: { type: 'batch', commands: made.commands }, ids: made.ids };
+}
+
+// Whether the call of a tool from MUTATING would change the document now. The app asks before the
+// call, to cancel an operation in progress only when the document really changes.
+export function changesDocument(engine: Engine, name: string, args: Record<string, unknown>): boolean {
+  const state = engine.getState();
+  if (name === 'undo') return state.canUndo;
+  if (name === 'redo') return state.canRedo;
+  if (name === 'execute') return typeof args.command === 'object' && args.command !== null && engine.preview(args.command as Command).ok;
+  if (name === 'sketch_tool') {
+    if (args.preview === true) return false;
+    try {
+      return engine.preview(sketchToolBatch(engine, args).command).ok;
+    } catch (error) {
+      if (error instanceof ToolError) return false;
+      throw error;
+    }
+  }
+  return MUTATING.includes(name);
+}
+
 const NONE: JsonSchema = { type: 'object', properties: {}, additionalProperties: false };
 const COMMAND: JsonSchema = {
   type: 'object',
@@ -384,7 +423,7 @@ const COMMAND: JsonSchema = {
 };
 
 // Nástroje, které mění dokument (včetně vnitřního načtení).
-export const MUTATING: readonly string[] = ['execute', 'undo', 'redo', '_load'];
+export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load'];
 
 // Seznam nástrojů. Sestavuje se při každém dotazu, protože popisy vycházejí z katalogu enginu.
 export function tools(): Tool[] {
@@ -502,6 +541,26 @@ export function tools(): Tool[] {
       description: 'Spočítá výsledek příkazu, ale do dokumentu ho nezapíše. Hodí se na vyzkoušení změny.',
       inputSchema: COMMAND,
       run: (engine, args) => outcome(engine.preview(command(args))),
+    },
+    {
+      name: 'sketch_tool',
+      description: `Draws a whole shape into a sketch with its constraints from a few inputs and returns the IDs of what it made (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, section Sketch tools. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sketch: { type: 'string', description: 'ID of the sketch to draw into.' },
+          tool: { type: 'string', enum: Object.keys(SKETCH_TOOLS), description: 'The tool.' },
+          input: { type: 'object', description: 'The inputs of the tool, see describe_api. Example of a hexagon 5.5 across flats: { "center": { "at": [0, 0], "snap": { "kind": "point", "id": "origin" } }, "vertex": { "at": [3.2, 0] }, "sides": 6, "sizeKind": "acrossFlats", "size": 5.5 }.' },
+          prefix: { type: 'string', description: 'A prefix of the generated IDs, for example "nut_". Without it the IDs are p1, c1, k1 and so on.' },
+          preview: { type: 'boolean', description: 'true: compute the result without writing it to the document' },
+        },
+        required: ['sketch', 'tool', 'input'],
+        additionalProperties: false,
+      },
+      run: (engine, args) => {
+        const { command, ids } = sketchToolBatch(engine, args);
+        return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command)) as object) };
+      },
     },
     {
       name: 'undo',

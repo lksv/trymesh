@@ -18,39 +18,29 @@ import {
   type ProfileSource,
   type RegionRef,
   type SketchFeature,
+  type Anchor,
+  type NewId,
+  type Placed,
+  type SketchToolInputs,
   type Vec2,
   isFlag,
+  placeAnchor,
+  sketchTool,
 } from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type PointView, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
-// Místo kliknutí ve skice a to, k čemu se přichytilo.
-export interface Anchor {
-  at: Vec2;
-  snap?: { kind: 'point'; id: Id } | { kind: 'curve'; id: Id };
-}
-export type NewId = (prefix: string) => Id;
+// The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
+// are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
+export type { Anchor, NewId };
 
 // Body blíž než tohle jsou pro kreslení tentýž bod: křivka mezi nimi by měla nulovou délku
 // a zneplatnila by profil skici.
 const SAME_PLACE = 1e-6;
 
-interface Placed {
-  id: Id; // bod, na který může odkazovat křivka
-  commands: Command[];
-}
-
-// Bod pro konec křivky. Vlastní bod a počátek se použijí znovu; na promítnutý bod křivka odkazovat
-// nesmí, proto vznikne nový bod s vazbou totožnosti. Přichycení na křivku přidá vazbu bodu na křivce.
-export function place(sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Placed {
-  const snap = anchor.snap;
-  if (snap?.kind === 'point' && (snap.id === ORIGIN || view.points.get(snap.id)?.own)) return { id: snap.id, commands: [] };
-  const id = newId('p');
-  const at = snap?.kind === 'point' ? (view.points.get(snap.id)?.at ?? anchor.at) : snap?.kind === 'curve' ? closestOnCurve(view, snap.id, anchor.at) : anchor.at;
-  const commands: Command[] = [{ type: 'addPoint', sketch, id, x: at[0], y: at[1] }];
-  if (snap?.kind === 'point') commands.push({ type: 'addConstraint', sketch, id: newId('k'), constraint: { type: 'coincident', a: id, b: snap.id } });
-  if (snap?.kind === 'curve') commands.push({ type: 'addConstraint', sketch, id: newId('k'), constraint: { type: 'pointOnCurve', point: id, curve: snap.id } });
-  return { id, commands };
-}
+// The point for an end of a curve: the rule of the engine's sketch tools (an own point and the
+// origin are used again, a projected point gets a new point with a coincident constraint, a curve
+// a point-on-curve constraint). The view carries the sketch it was made of.
+export const place = (_sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Placed => placeAnchor(view.source, anchor, newId);
 
 const closestOnCurve = (view: SketchView, curve: Id, p: Vec2): Vec2 => {
   const shape = view.curves.get(curve)?.shape;
@@ -74,21 +64,28 @@ export function lineCommands(sketch: Id, view: SketchView, from: Anchor, to: Anc
   return { commands, end: b.id };
 }
 
-// Obdélník ze dvou protilehlých rohů: čtyři body, čtyři úsečky, dvě vodorovné a dvě svislé.
-export function rectangleCommands(sketch: Id, view: SketchView, first: Anchor, opposite: Anchor, newId: NewId): Command[] | undefined {
-  const a = place(sketch, view, first, newId);
-  const c = place(sketch, view, opposite, newId);
-  const [pa, pc] = [positionOf(view, first), positionOf(view, opposite)];
-  if (a.id === c.id || Math.abs(pa[0] - pc[0]) <= SAME_PLACE || Math.abs(pa[1] - pc[1]) <= SAME_PLACE) return undefined;
-  const [b, d] = [newId('p'), newId('p')];
-  const corners = [a.id, b, c.id, d];
-  const commands: Command[] = [...a.commands, ...c.commands, { type: 'addPoint', sketch, id: b, x: pc[0], y: pa[1] }, { type: 'addPoint', sketch, id: d, x: pa[0], y: pc[1] }];
-  corners.forEach((corner, i) => {
-    const line = newId('c');
-    commands.push({ type: 'addCurve', sketch, id: line, curve: { type: 'line', a: corner, b: corners[(i + 1) % 4] } });
-    commands.push({ type: 'addConstraint', sketch, id: newId('k'), constraint: { type: i % 2 === 0 ? 'horizontal' : 'vertical', line } });
-  });
-  return commands;
+// The rectangle and the regular polygon are sketch tools of the engine, shared with MCP; here they
+// only get the clicks. undefined = the clicks cannot be drawn (both at one place).
+export function rectangleCommands(_sketch: Id, view: SketchView, first: Anchor, opposite: Anchor, newId: NewId): Command[] | undefined {
+  const made = sketchTool('rectangle', view.source, { first, opposite }, newId);
+  return made.ok ? made.commands : undefined;
+}
+
+// What the polygon tool of the app remembers between clicks: the number of sides and whether the
+// drawn size gets a dimension.
+export interface PolygonOptions {
+  sides: number;
+  sizeKind: 'none' | NonNullable<SketchToolInputs['polygon']['sizeKind']>;
+}
+export const DEFAULT_POLYGON: PolygonOptions = { sides: 6, sizeKind: 'none' };
+
+// The size across flats exists for an even number of sides only; an odd polygon falls back to the circle.
+export const polygonSizeKind = (options: PolygonOptions): PolygonOptions['sizeKind'] => (options.sizeKind === 'acrossFlats' && options.sides % 2 === 1 ? 'circumscribed' : options.sizeKind);
+
+export function polygonCommands(_sketch: Id, view: SketchView, center: Anchor, vertex: Anchor, options: PolygonOptions, newId: NewId): Command[] | undefined {
+  const sizeKind = polygonSizeKind(options);
+  const made = sketchTool('polygon', view.source, { center, vertex, sides: options.sides, ...(sizeKind === 'none' ? {} : { sizeKind }) }, newId);
+  return made.ok ? made.commands : undefined;
 }
 
 // Kružnice: střed a bod na obvodu. Přichycení obvodu na bod přidá vazbu bodu na křivce.

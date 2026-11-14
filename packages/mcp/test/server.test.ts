@@ -45,7 +45,7 @@ describe('MCP server', () => {
   it('seznam nástrojů: obecné nástroje enginu a nástroje pro soubory, se schématem vstupu', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl']);
+    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl']);
     for (const tool of tools) {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
@@ -541,6 +541,13 @@ describe('most do běžící aplikace', () => {
     expect(await session.call('execute', { command: emptySketch('x', { kind: 'base', plane: 'XY' }), extra: 1 })).toEqual({ error: 'unknown argument "extra"; the tool takes command' });
     expect(await session.call('undo', { steps: 2 })).toEqual({ error: 'unknown argument "steps"; the tool takes no arguments' });
     expect(before).toHaveLength(2);
+    // a sketch tool runs in the engine of the app and returns the IDs it generated there
+    const input = { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } };
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p2', 'p1', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
+    expect(before[2]).toEqual(['sketch_tool', { sketch: 's', tool: 'rectangle', input }]);
+    expect(Object.keys((app.getState().document.features[0] as { curves: object }).curves)).toEqual(['c1', 'c2', 'c3', 'c4']);
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: the input "opposite" is missing' });
+    await session.call('undo');
     // výjimka po provedení: odpověď dorazí a spojení zůstane
     failAfter = true;
     expect(await session.call('execute', { command: emptySketch('s2', { kind: 'base', plane: 'XY' }) })).toMatchObject({ ok: true, features: 2 });

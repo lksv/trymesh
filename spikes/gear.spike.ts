@@ -197,7 +197,7 @@ function prism(loop: P[], z0: number, z1: number, holes: P[][] = []): Solid {
   const toLoop = (points: P[], name: string) => ({ xy: points.flat(), keys: points.map((_, i) => `${tag}/${name}/${i}`), curves: points.map(() => name) });
   const region: Region = { ref: { outerLoop: ['side'] }, outer: toLoop(loop, 'side'), holes: holes.map((h, i) => toLoop([...h].reverse(), `hole${i}`)) };
   const frame = { ...FRAME, origin: [0, 0, z0] as [number, number, number] };
-  const built = buildPrism(tag, [region], frame, z1 - z0, () => ({ type: 'round', center: [0, 0], radius: 1 }), nextFace, kernel);
+  const built = buildPrism(tag, [region], frame, [0, z1 - z0], () => ({ type: 'round', center: [0, 0], radius: 1 }), nextFace, kernel);
   nextFace += built.faces.length;
   return built.solid;
 }

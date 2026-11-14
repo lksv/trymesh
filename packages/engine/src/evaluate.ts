@@ -1,8 +1,8 @@
 // Přepočet: přehrání časové osy s memoizací. Pravidla jsou v docs/architecture.md, sekce Přepočet.
 import { SketchAnalysis } from './analysis';
 import { constraintOperands } from './document';
-import { type Profile, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
-import { type FaceInfo, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
+import { type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
+import { type FaceInfo, type Prism, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
 import type {
   Document,
   Evaluation,
@@ -50,6 +50,24 @@ interface State {
   faceIds: Map<string, number>; // jméno stěny → číslo
   planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
   sketches: Record<Id, SketchState>;
+  tools: Record<Id, ToolRecipe>; // recepty nástrojů vysunutí s operací add a cut
+}
+
+// Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.
+// Ukládá se do stavu, aby pozdější feature (pole) mohla tentýž nástroj postavit znovu; hotová síť
+// nestačí, protože čísla stěn i poloha nástroje se při opakování liší. Recept zůstává i tehdy, když
+// vysunutí samo skončilo varováním „bez účinku".
+export interface ToolRecipe {
+  operation: 'add' | 'cut';
+  targets: Id[];
+  build(firstFaceId: number): Prism;
+}
+
+// Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
+interface ResolvedProfile {
+  regions: Region[];
+  frame: Frame;
+  curveOf: (id: Id) => SideCurve;
 }
 // `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
 // určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
@@ -118,7 +136,7 @@ export class Evaluator {
   }
 
   private run(doc: Document, options: EvaluateOptions): { state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
-    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {} };
+    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {} };
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
     const trace: Trace = new Map();
@@ -159,9 +177,19 @@ export class Evaluator {
     const failed = (code: IssueCode, refs?: unknown[], detail?: string): Step => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
     // Potlačená feature je prázdná operace; co na ní závisí, skončí v chybě.
     if (feature.suppressed) return { state: done({ status: 'suppressed', warnings: [] }) };
-    if (feature.type === 'plane') return this.plane(feature, state, done, failed);
-    if (feature.type === 'sketch') return this.sketch(feature, state, chordTolerance, drag, done, failed);
-    return this.extrude(feature, state, done, failed);
+    // Krok podle typu feature; úplnost hlídá překladač (viz registr typů v document.ts).
+    switch (feature.type) {
+      case 'plane':
+        return this.plane(feature, state, done, failed);
+      case 'sketch':
+        return this.sketch(feature, state, chordTolerance, drag, done, failed);
+      case 'extrude':
+        return this.extrude(feature, state, done, failed);
+      default: {
+        const unknown: never = feature;
+        throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
+      }
+    }
   }
 
   private frame(ref: PlaneRef, state: State): Frame | IssueCode {
@@ -250,28 +278,22 @@ export class Evaluator {
     return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, profile, input, solve, analysis } } }), writeBack };
   }
 
+  // Vysunutí má tři části: profil (odkud se bere tvar), nástroj (síť a nové stěny) a použití
+  // (nové těleso, nebo booleovská operace s cílem).
   private extrude(feature: ExtrudeFeature, state: State, done: Done, failed: Failed): Step {
-    const sketch = lookup(state.sketches, feature.sketch);
-    if (!sketch) return failed('brokenReference', [feature.sketch]);
-    if (!sketch.profile.valid) return failed('invalidProfile', [feature.sketch]);
-    const regions = feature.regions.map((ref) => sketch.profile.regions.find((region) => sameRegion(region.ref, ref)));
-    const missing = feature.regions.filter((_, i) => !regions[i]);
-    if (missing.length) return failed('noProfile', missing);
-    const target = feature.operation === 'new' ? undefined : lookup(state.bodies, feature.target as Id);
-    if (feature.operation !== 'new' && !target) return failed('brokenReference', [feature.target]);
+    const profile = this.profile(feature, state);
+    if ('code' in profile) return failed(profile.code, profile.refs);
+    const targetIds = feature.operation === 'new' ? [] : (feature.targets ?? []);
+    const missing = targetIds.filter((id) => !lookup(state.bodies, id));
+    if (missing.length || (feature.operation !== 'new' && targetIds.length === 0)) return failed('brokenReference', missing.length ? missing : [feature.targets]);
 
-    const { points, radii } = sketch.geometry;
-    const curveOf = (id: Id): SideCurve => {
-      const curve = sketch.feature.curves[id];
-      const at = (point: Id): [number, number] => [points[point].x, points[point].y];
-      if (curve.type === 'line') return { type: 'line', a: at(curve.a), b: at(curve.b) };
-      const center = at(curve.center);
-      return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
-    };
+    // nástroj
+    const { start, distance } = feature.extent;
+    const build = (firstFaceId: number): Prism => buildPrism(feature.id, profile.regions, profile.frame, [start, start + distance], profile.curveOf, firstFaceId, this.deps.kernel);
     const first = state.faceNames.length;
-    let tool: ReturnType<typeof buildPrism>;
+    let tool: Prism;
     try {
-      tool = buildPrism(feature.id, regions as NonNullable<(typeof regions)[number]>[], sketch.frame, feature.distance, curveOf, first, this.deps.kernel);
+      tool = build(first);
     } catch (error) {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
@@ -281,8 +303,12 @@ export class Evaluator {
       faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],
       faceIds: new Map([...state.faceIds, ...tool.faces.map((f, i): [string, number] => [faceKey(f.name), first + i])]),
     };
-    if (!target) return { state: done({ status: 'ok', warnings: [] }, { ...tables, bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
 
+    // použití
+    if (feature.operation === 'new') return { state: done({ status: 'ok', warnings: [] }, { ...tables, bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
+    const tools = { ...state.tools, [feature.id]: { operation: feature.operation, targets: targetIds, build } };
+    const targetId = targetIds[0];
+    const target = state.bodies[targetId];
     let result: Solid;
     try {
       result = this.deps.kernel.boolean(feature.operation === 'add' ? 'union' : 'difference', target, tool.solid);
@@ -297,8 +323,28 @@ export class Evaluator {
     const scale = Math.min(Math.abs(before), Math.abs(volumeOf(tool.solid)));
     const sameVolume = Math.abs(volumeOf(result) - before) <= 1e-6 * Math.max(1, scale);
     const unchanged = sameVolume && (feature.operation === 'add' || !result.faceIds.some((id) => id >= first));
-    if (unchanged) return { state: done({ status: 'warning', warnings: [issue('noEffect')] }) };
-    return { state: done({ status: 'ok', warnings: [] }, { ...tables, bodies: { ...state.bodies, [feature.target as Id]: result } }) };
+    if (unchanged) return { state: done({ status: 'warning', warnings: [issue('noEffect')] }, { tools }) };
+    return { state: done({ status: 'ok', warnings: [] }, { ...tables, tools, bodies: { ...state.bodies, [targetId]: result } }) };
+  }
+
+  // Profil vysunutí podle jeho zdroje. Další zdroje (generátor profilu) přibudou jako další větve.
+  private profile(feature: ExtrudeFeature, state: State): ResolvedProfile | { code: IssueCode; refs: unknown[] } {
+    const source = feature.profile;
+    const sketch = lookup(state.sketches, source.sketch);
+    if (!sketch) return { code: 'brokenReference', refs: [source.sketch] };
+    if (!sketch.profile.valid) return { code: 'invalidProfile', refs: [source.sketch] };
+    const regions = source.regions.map((ref) => sketch.profile.regions.find((region) => sameRegion(region.ref, ref)));
+    const missing = source.regions.filter((_, i) => !regions[i]);
+    if (missing.length) return { code: 'noProfile', refs: missing };
+    const { points, radii } = sketch.geometry;
+    const curveOf = (id: Id): SideCurve => {
+      const curve = sketch.feature.curves[id];
+      const at = (point: Id): [number, number] => [points[point].x, points[point].y];
+      if (curve.type === 'line') return { type: 'line', a: at(curve.a), b: at(curve.b) };
+      const center = at(curve.center);
+      return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
+    };
+    return { regions: regions as Region[], frame: sketch.frame, curveOf };
   }
 }
 

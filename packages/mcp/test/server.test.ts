@@ -81,7 +81,7 @@ describe('MCP server', () => {
     expect(sketch.advice).toEqual(['Skica je plně určená.']);
 
     // 4. vysunutí oblasti, kterou get_sketch nabídl
-    expect(await session.call('execute', { command: { type: 'addFeature', feature: { id: 'e1', name: 'Deska', suppressed: false, type: 'extrude', sketch: 's1', regions: [sketch.regions[0].ref], distance: 8, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['e1'], problems: [] });
+    expect(await session.call('execute', { command: { type: 'addFeature', feature: { id: 'e1', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [sketch.regions[0].ref] }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['e1'], problems: [] });
 
     // 5. díra na horní stěně okótovaná k promítnuté hraně: jména stěny a hrany z get_body
     const body = await session.call('get_body', { body: 'e1' });
@@ -99,7 +99,7 @@ describe('MCP server', () => {
           { type: 'addConstraint', sketch: 's2', id: 'fromRight', constraint: { type: 'distancePointLine', point: 'm', line: 'right', value: 10, driving: true } },
           { type: 'addConstraint', sketch: 's2', id: 'y', constraint: { type: 'verticalDistance', a: 'origin', b: 'm', value: 15, driving: true } },
           { type: 'addConstraint', sketch: 's2', id: 'r', constraint: { type: 'radius', curve: 'k', value: 5, driving: true } },
-          { type: 'addFeature', feature: { id: 'e2', name: 'Díra', suppressed: false, type: 'extrude', sketch: 's2', regions: [{ outerLoop: ['k'] }], distance: -8, operation: 'cut', target: 'e1' } },
+          { type: 'addFeature', feature: { id: 'e2', name: 'Díra', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: -8 }, operation: 'cut', targets: ['e1'] } },
         ],
       },
     });

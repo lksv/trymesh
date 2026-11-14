@@ -1,6 +1,6 @@
 // Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
-import { CONSTRAINTS, type Command, type Constraint, type Engine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, type Command, type Constraint, type Engine } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { apiText, constraintCatalog, engineTypes } from '../src/api';
 import { callTool, tools } from '../src/tools';
@@ -90,6 +90,10 @@ describe('popis API', () => {
     expect(description).toContain('export type Command =');
     for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
     expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: nezáporná, mm }');
+    // typy features jsou z registru enginu
+    for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
+    expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
+    expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'explain_constraint', 'get_body', 'execute', 'preview', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
@@ -205,7 +209,7 @@ describe('hrany tělesa', () => {
         constrain('mx', { type: 'horizontalDistance', a: 'origin', b: 'm', value: 12, driving: true }),
         constrain('my', { type: 'verticalDistance', a: 'origin', b: 'm', value: 14, driving: true }),
         constrain('kr', { type: 'radius', curve: 'k', value: 5, driving: true }),
-        { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }], distance: 10, operation: 'new' } },
+        { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } },
       ],
     });
     let body = ok(engine, 'get_body', { body: 'e' });
@@ -224,7 +228,7 @@ describe('hrany tělesa', () => {
         { type: 'addFeature', feature: { ...(sketch('s2') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: top } } as never },
         ...notch.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 's2', id, x, y })),
         ...notch.map(([id], i): Command => ({ type: 'addCurve', sketch: 's2', id: `nl${i}`, curve: { type: 'line', a: id, b: notch[(i + 1) % 4][0] } })),
-        { type: 'addFeature', feature: { id: 'cut', name: 'Zářez', suppressed: false, type: 'extrude', sketch: 's2', regions: [{ outerLoop: ['nl0', 'nl1', 'nl2', 'nl3'] }], distance: -10, operation: 'cut', target: 'e' } },
+        { type: 'addFeature', feature: { id: 'cut', name: 'Zářez', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['nl0', 'nl1', 'nl2', 'nl3'] }] }, extent: { type: 'distance', start: 0, distance: -10 }, operation: 'cut', targets: ['e'] } },
       ],
     });
     body = ok(engine, 'get_body', { body: 'e' });
@@ -239,7 +243,7 @@ describe('model, tělesa a příkazy', () => {
     const engine = newEngine();
     rectangle(engine, true);
     const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
-    const result = execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', sketch: 's', regions: [region], distance: 10, operation: 'new' } });
+    const result = execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
     expect(result).toMatchObject({ ok: true, bodies: ['e'], problems: [] });
     const model = ok(engine, 'get_model');
     expect(model.features.map((f: { id: string; status: string }) => [f.id, f.status])).toEqual([['s', 'ok'], ['e', 'ok']]);

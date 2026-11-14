@@ -20,9 +20,9 @@ import type {
 import { CONSTRAINTS, type EntityKind, VALUE_RULES } from './catalog';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
-export const emptyDocument = (): Document => ({ schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, features: [] });
+export const emptyDocument = (): Document => ({ schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] });
 
 export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
   id,
@@ -99,18 +99,36 @@ function edgeName(v: unknown, what: string): EdgeName {
   return canonicalEdge(edge);
 }
 
-// Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
-// správný typ a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
-// odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
-function requireBefore(doc: Document, before: number | undefined, id: Id, what: string, accept: (f: Feature) => boolean, kind: string): void {
-  if (before === undefined) return;
-  const index = doc.features.findIndex((f) => f.id === id);
-  if (index < 0) fail(`${what}: feature "${id}" neexistuje`);
-  if (!accept(doc.features[index])) fail(`${what}: feature "${id}" není ${kind}`);
-  if (index >= before) fail(`${what}: feature "${id}" musí ležet před odkazující feature`);
+// Odkaz jedné feature na jinou. `path` je místo odkazu uvnitř feature (cesta oddělená lomítky).
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource';
+export interface FeatureRef {
+  path: string;
+  id: Id; // u `body` ID tělesa, jinak ID feature
+  kind: RefKind;
 }
-const isBody = (f: Feature) => f.type === 'extrude' && f.operation === 'new';
-const isExtrude = (f: Feature) => f.type === 'extrude'; // stěnu pojmenovává extrude, který ji vytvořil
+const REF_LABEL: Record<RefKind, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude' };
+
+// ID tělesa je ID feature, která ho vytvořila, nebo `<feature>/<místní jméno>`, když jich feature
+// vytváří víc. Lomítko v ID zadaném volajícím být nesmí, takže rozklad je jednoznačný.
+export function bodyOwner(body: Id): { feature: Id; local?: string } {
+  const slash = body.indexOf('/');
+  return slash < 0 ? { feature: body } : { feature: body.slice(0, slash), local: body.slice(slash + 1) };
+}
+
+// Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
+// správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
+// odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
+function requireRef(doc: Document, before: number | undefined, ref: Pick<FeatureRef, 'id' | 'kind'>, what: string): void {
+  if (before === undefined) return;
+  const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };
+  const index = doc.features.findIndex((f) => f.id === feature);
+  if (index < 0) fail(`${what}: feature "${ref.id}" neexistuje`);
+  const target = doc.features[index];
+  const spec = FEATURE_TYPES[target.type] as FeatureTypeSpec<Feature>;
+  const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
+  if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
+  if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
+}
 
 function planeRef(doc: Document, before: number | undefined, v: unknown, what: string): PlaneRef {
   const o = object(v, what);
@@ -118,13 +136,13 @@ function planeRef(doc: Document, before: number | undefined, v: unknown, what: s
   if (kind === 'base') return { kind, plane: oneOf(o.plane, ['XY', 'XZ', 'YZ'] as const, `${what}.plane`) };
   if (kind === 'plane') {
     const feature = string(o.feature, `${what}.feature`);
-    requireBefore(doc, before, feature, what, (f) => f.type === 'plane', 'rovina');
+    requireRef(doc, before, { id: feature, kind: 'plane' }, what);
     return { kind, feature };
   }
   const body = string(o.body, `${what}.body`);
-  requireBefore(doc, before, body, what, isBody, 'těleso');
+  requireRef(doc, before, { id: body, kind: 'body' }, what);
   const face = faceName(o.face, `${what}.face`);
-  requireBefore(doc, before, face.feature, `${what}.face`, isExtrude, 'extrude');
+  requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, `${what}.face`);
   return { kind, body, face };
 }
 
@@ -132,9 +150,9 @@ function externalRef(doc: Document, before: number | undefined, v: unknown, what
   const o = object(v, what);
   if (o.type !== 'edge') fail(`${what}: promítnout jde jen hranu`);
   const body = string(o.body, `${what}.body`);
-  requireBefore(doc, before, body, what, isBody, 'těleso');
+  requireRef(doc, before, { id: body, kind: 'body' }, what);
   const edge = edgeName(o.edge, `${what}.edge`);
-  for (const face of [edge.a, edge.b]) requireBefore(doc, before, face.feature, `${what}.edge`, isExtrude, 'extrude');
+  for (const face of [edge.a, edge.b]) requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, `${what}.edge`);
   return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
 }
 
@@ -297,19 +315,31 @@ function planeFeature(doc: Document, before: number | undefined, o: Dict, what: 
 }
 
 function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what: string): ExtrudeFeature {
-  const sketch = string(o.sketch, `${what}.sketch`);
-  requireBefore(doc, before, sketch, `${what}.sketch`, (f) => f.type === 'sketch', 'skica');
-  const distance = finite(o.distance, `${what}.distance`);
-  if (distance === 0) fail(`${what}.distance: vzdálenost nesmí být nula`);
+  const profile = object(o.profile, `${what}.profile`);
+  if (profile.type !== 'regions') fail(`${what}.profile.type: čeká se regions`);
+  const sketch = string(profile.sketch, `${what}.profile.sketch`);
+  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.profile.sketch`);
+  const extent = object(o.extent, `${what}.extent`);
+  if (extent.type !== 'distance') fail(`${what}.extent.type: čeká se distance`);
+  const start = finite(extent.start, `${what}.extent.start`);
+  const distance = finite(extent.distance, `${what}.extent.distance`);
+  if (distance === 0) fail(`${what}.extent.distance: vzdálenost nesmí být nula`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
-  const feature: ExtrudeFeature = { ...base(o, what), type: 'extrude', sketch, regions: regions(o.regions, `${what}.regions`), distance, operation };
+  const feature: ExtrudeFeature = {
+    ...base(o, what),
+    type: 'extrude',
+    profile: { type: 'regions', sketch, regions: regions(profile.regions, `${what}.profile.regions`) },
+    extent: { type: 'distance', start, distance },
+    operation,
+  };
   if (operation === 'new') {
-    if (o.target !== undefined) fail(`${what}.target: nové těleso nemá cíl`);
+    if (o.targets !== undefined) fail(`${what}.targets: nové těleso nemá cíl`);
     return feature;
   }
-  const target = string(o.target, `${what}.target`);
-  requireBefore(doc, before, target, `${what}.target`, isBody, 'těleso');
-  return { ...feature, target };
+  if (!Array.isArray(o.targets) || o.targets.length !== 1) return fail(`${what}.targets: operace ${operation} potřebuje právě jedno cílové těleso`);
+  const target = string(o.targets[0], `${what}.targets[0]`);
+  requireRef(doc, before, { id: target, kind: 'body' }, `${what}.targets`);
+  return { ...feature, targets: [target] };
 }
 
 function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string): SketchFeature {
@@ -346,22 +376,117 @@ function sketchFeature(doc: Document, before: number | undefined, o: Dict, what:
   return sketch;
 }
 
-// Ověří feature a vrátí její kanonickou kopii. `before`: viz requireBefore.
-function feature(doc: Document, before: number | undefined, v: unknown, what: string): Feature {
-  const o = object(v, what);
-  const type = oneOf(o.type, ['plane', 'sketch', 'extrude'] as const, `${what}.type`);
-  if (type === 'plane') return planeFeature(doc, before, o, what);
-  if (type === 'sketch') return sketchFeature(doc, before, o, what);
-  return extrudeFeature(doc, before, o, what);
+// ---------------------------------------------------------------- registr typů features
+
+// Veřejný popis typu feature (pro UI a popis API).
+export interface FeatureTypeInfo {
+  title: string;
+  summary: string;
+  bodies: 'none' | 'self'; // self: feature může vytvořit těleso se svým ID
+  updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
 }
 
-// Features, na které feature odkazuje: rovina, těleso, skica a extrude, které pojmenovaly stěnu
-// (stěna i hrana existují až po feature, která je vytvořila).
+// Typ feature jako položka registru: vše, co o něm dokument potřebuje vědět. Krok přepočtu typu
+// je v evaluate.ts; úplnost obou míst hlídá překladač (záznam podle `Feature['type']`).
+interface FeatureTypeSpec<F extends Feature> {
+  info: Omit<FeatureTypeInfo, 'updatable'>;
+  // Ověří feature a vrátí její kanonickou kopii. `before`: viz requireRef.
+  validate(doc: Document, before: number | undefined, o: Dict, what: string): F;
+  // Odkazy na jiné features s místem, kde ve feature leží.
+  refs(f: F): FeatureRef[];
+  // Vytváří feature těleso s tímto ID? `local` je část ID za lomítkem (bez lomítka chybí).
+  createsBody(f: F, local: string | undefined): boolean;
+  namesFaces: boolean; // pojmenovává feature stěny těles?
+  // Pole, která smí měnit updateFeature; bez nich feature tímto příkazem měnit nejde.
+  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void };
+}
+
+const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
+  ref.kind === 'plane'
+    ? [{ path, id: ref.feature, kind: 'plane' }]
+    : ref.kind === 'face'
+      ? [
+          { path, id: ref.body, kind: 'body' },
+          { path, id: ref.face.feature, kind: 'faceSource' },
+        ]
+      : [];
+
+const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
+  plane: {
+    info: { title: 'Rovina', summary: 'Vlastní rovina posunutá od základní roviny, jiné vlastní roviny nebo rovinné stěny tělesa.', bodies: 'none' },
+    validate: planeFeature,
+    refs: (f) => planeRefs(f.base, 'base'),
+    createsBody: () => false,
+    namesFaces: false,
+    patch: { fields: ['base', 'offset'] },
+  },
+  sketch: {
+    info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', bodies: 'none' },
+    validate: sketchFeature,
+    refs: (f) => [
+      ...planeRefs(f.plane, 'plane'),
+      ...Object.entries(f.external).flatMap(([id, ref]): FeatureRef[] => [
+        { path: `external/${id}`, id: ref.body, kind: 'body' },
+        { path: `external/${id}`, id: ref.edge.a.feature, kind: 'faceSource' },
+        { path: `external/${id}`, id: ref.edge.b.feature, kind: 'faceSource' },
+      ]),
+    ],
+    createsBody: () => false,
+    namesFaces: false,
+  },
+  extrude: {
+    info: { title: 'Vysunutí', summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa.', bodies: 'self' },
+    validate: extrudeFeature,
+    refs: (f) => [{ path: 'profile/sketch', id: f.profile.sketch, kind: 'sketch' }, ...(f.targets ?? []).map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' }))],
+    createsBody: (f, local) => local === undefined && f.operation === 'new',
+    namesFaces: true,
+    patch: {
+      fields: ['profile', 'extent', 'operation', 'targets'],
+      // změna na nové těleso ruší cíle, pokud je změna sama neuvádí
+      normalize: (merged, patch) => {
+        if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
+      },
+    },
+  },
+};
+
+// Veřejná část registru.
+export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(
+  Object.entries(FEATURE_TYPES).map(([type, spec]) => [type, { ...spec.info, updatable: (spec as FeatureTypeSpec<Feature>).patch?.fields ?? [] }]),
+) as Record<Feature['type'], FeatureTypeInfo>;
+
+const specOf = (f: Feature): FeatureTypeSpec<Feature> => FEATURE_TYPES[f.type] as FeatureTypeSpec<Feature>;
+
+// Ověří feature a vrátí její kanonickou kopii. `before`: viz requireRef.
+function feature(doc: Document, before: number | undefined, v: unknown, what: string): Feature {
+  const o = object(v, what);
+  const type = oneOf(o.type, Object.keys(FEATURE_TYPES) as Feature['type'][], `${what}.type`);
+  return (FEATURE_TYPES[type] as FeatureTypeSpec<Feature>).validate(doc, before, o, what);
+}
+
+// Features, na které feature odkazuje: rovina, skica, feature, která vytvořila těleso, a extrude,
+// které pojmenovaly stěnu (stěna i hrana existují až po feature, která je vytvořila).
 export function featureRefs(f: Feature): Id[] {
-  const ofPlane = (ref: PlaneRef): Id[] => (ref.kind === 'plane' ? [ref.feature] : ref.kind === 'face' ? [ref.body, ref.face.feature] : []);
-  if (f.type === 'plane') return [...new Set(ofPlane(f.base))];
-  if (f.type === 'sketch') return [...new Set([...ofPlane(f.plane), ...Object.values(f.external).flatMap((ref) => [ref.body, ref.edge.a.feature, ref.edge.b.feature])])];
-  return f.target === undefined ? [f.sketch] : [f.sketch, f.target];
+  return [...new Set(specOf(f).refs(f).map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)))];
+}
+
+// Slučovací změna (příkaz updateFeature): varianta se stejným `type` se slučuje po polích, jiná
+// varianta, odkaz (objekt s `kind`) a seznam dosavadní hodnotu nahradí, `null` pole odebere.
+function mergePatch(old: unknown, patch: unknown, what: string): unknown {
+  if (!isObject(patch) || has(patch, 'kind') || !isObject(old)) return patch;
+  if (patch.type !== undefined && patch.type !== old.type) return patch;
+  const out: Dict = { ...old };
+  for (const [key, value] of Object.entries(patch)) {
+    if (key in Object.prototype) fail(`${what}.${key}: takové pole feature nemá`);
+    if (value === null) delete out[key];
+    else out[key] = mergePatch(old[key], value, `${what}.${key}`);
+  }
+  return out;
+}
+
+// Cesty, které změna uvádí: listy, seznamy, odkazy a odebraná pole.
+function patchPaths(patch: Dict, prefix = ''): string[] {
+  return Object.entries(patch).flatMap(([key, value]) => (isObject(value) && !has(value, 'kind') ? patchPaths(value, `${prefix}${key}/`) : [`${prefix}${key}`]));
 }
 
 // ---------------------------------------------------------------- načtení dokumentu
@@ -369,12 +494,17 @@ export function featureRefs(f: Feature): Id[] {
 // Ověří celý dokument stejnými pravidly jako příkazy. Odkazy na features, které v dokumentu nejsou
 // nebo leží jinde, jsou přípustné: projeví se až při přepočtu.
 export function validateDocument(value: unknown): Document {
-  const o = object(value, 'dokument');
+  const o = upgrade(object(value, 'dokument'));
   if (o.schemaVersion !== SCHEMA_VERSION) fail(`dokument: verze schématu ${String(o.schemaVersion)} není podporovaná (čeká se ${SCHEMA_VERSION})`);
   const chordTolerance = finite(object(o.settings, 'dokument.settings').chordTolerance, 'dokument.settings.chordTolerance');
   if (chordTolerance <= 0) fail('dokument.settings.chordTolerance: musí být kladná');
+  // Parametry a kontroly do schématu verze 2 patří, engine je ale zatím neumí (D35 bod 1).
+  for (const name of ['parameters', 'checks'] as const) {
+    if (!Array.isArray(o[name])) fail(`dokument.${name}: čeká se seznam`);
+    if ((o[name] as unknown[]).length > 0) fail(`dokument.${name}: parametry a kontroly engine zatím neumí`);
+  }
   if (!Array.isArray(o.features)) fail('dokument.features: čeká se seznam');
-  const doc: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance }, features: [] };
+  const doc: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance }, parameters: [], checks: [], features: [] };
   const ids = new Set<Id>();
   (o.features as unknown[]).forEach((item, i) => {
     const f = feature(doc, undefined, item, `features[${i}]`);
@@ -385,6 +515,23 @@ export function validateDocument(value: unknown): Document {
     doc.features.push(f);
   });
   return doc;
+}
+
+// Převod staršího dokumentu na současné schéma. Mění jen tvar; obsah ověří validace po něm.
+// Verze 1 → 2: vysunutí má zdroj profilu, rozsah a seznam cílů; dokument má parametry a kontroly.
+function upgrade(o: Dict): Dict {
+  if (o.schemaVersion !== 1) return o;
+  const extrude = (f: Dict): Dict => {
+    const { sketch, regions: list, distance, target, ...rest } = f;
+    return {
+      ...rest,
+      profile: { type: 'regions', sketch, regions: list },
+      extent: { type: 'distance', start: 0, distance },
+      ...(target === undefined ? {} : { targets: [target] }),
+    };
+  };
+  const features = Array.isArray(o.features) ? o.features.map((f: unknown) => (isObject(f) && f.type === 'extrude' ? extrude(f) : f)) : o.features;
+  return { ...o, schemaVersion: 2, parameters: [], checks: [], features };
 }
 
 // ---------------------------------------------------------------- příkazy
@@ -481,31 +628,23 @@ export function applyCommand(doc: Document, command: Command): Document {
       return replaceAt(doc, index, { ...doc.features[index], suppressed: boolean(cmd.suppressed, 'setSuppressed.suppressed') });
     }
 
-    case 'updatePlane': {
-      const index = indexOf(doc, cmd.id, 'updatePlane');
+    case 'updateFeature': {
+      const index = indexOf(doc, cmd.id, 'updateFeature');
       const f = doc.features[index];
-      if (f.type !== 'plane') return fail(`updatePlane: feature "${f.id}" není rovina`);
-      return replaceAt(doc, index, {
-        ...f,
-        base: cmd.base === undefined ? f.base : planeRef(doc, index, cmd.base, 'updatePlane.base'),
-        offset: cmd.offset === undefined ? f.offset : finite(cmd.offset, 'updatePlane.offset'),
-      });
-    }
-
-    case 'updateExtrude': {
-      const index = indexOf(doc, cmd.id, 'updateExtrude');
-      const f = doc.features[index];
-      if (f.type !== 'extrude') return fail(`updateExtrude: feature "${f.id}" není extrude`);
-      const merged: Dict = { ...f };
-      for (const field of ['sketch', 'regions', 'distance', 'operation', 'target']) if (cmd[field] !== undefined) merged[field] = cmd[field];
-      // změna na nové těleso ruší cíl; odkazy, které příkaz nemění, se znovu neověřují
-      if (merged.operation === 'new' && cmd.target === undefined) delete merged.target;
-      const checked = extrudeFeature(doc, undefined, { ...merged, id: 'x' }, 'updateExtrude');
-      if (cmd.sketch !== undefined) requireBefore(doc, index, checked.sketch, 'updateExtrude.sketch', (g) => g.type === 'sketch', 'skica');
-      if (checked.target !== undefined && (cmd.target !== undefined || cmd.operation !== undefined)) {
-        requireBefore(doc, index, checked.target, 'updateExtrude.target', isBody, 'těleso');
+      const spec = specOf(f);
+      if (!spec.patch) return fail(`updateFeature: feature "${f.id}" je ${spec.info.title.toLowerCase()}; její obsah mění vlastní příkazy`);
+      const patch = object(cmd.patch, 'updateFeature.patch');
+      for (const key of Object.keys(patch)) if (!spec.patch.fields.includes(key)) fail(`updateFeature.patch.${key}: ${spec.info.title.toLowerCase()} takové pole nemá`);
+      const merged = mergePatch(f, patch, 'updateFeature.patch') as Dict;
+      spec.patch.normalize?.(merged, patch);
+      // Tvar se ověří celý, odkazy jen ty, které změna uvádí: oprava jedné rozbité reference nesmí
+      // narazit na jinou, kterou změna nechává být.
+      const checked = spec.validate(doc, undefined, merged, 'updateFeature.patch');
+      const touched = patchPaths(patch);
+      for (const ref of spec.refs(checked)) {
+        if (touched.some((path) => path === ref.path || path.startsWith(`${ref.path}/`) || ref.path.startsWith(`${path}/`))) requireRef(doc, index, ref, `updateFeature.patch.${ref.path}`);
       }
-      return replaceAt(doc, index, { ...checked, id: f.id });
+      return replaceAt(doc, index, checked);
     }
 
     case 'setSketchPlane':

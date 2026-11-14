@@ -97,7 +97,7 @@ describe('scénář 2: změna topologie', () => {
     const replaced = run(engine, batch({ type: 'removeEntity', sketch: 'S1', id: 'rb' }, { type: 'addCurve', sketch: 'S1', id: 'r9', curve: { type: 'line', a: 'r2', b: 'r3' } }, constrain('S1', 'r9v', { type: 'vertical', line: 'r9' })));
     expect(status(replaced)).toMatchObject({ S1: 'ok', E1: 'error:noProfile' });
     // po novém výběru profilu extrude projde se stejným ID
-    const state = run(engine, { type: 'updateExtrude', id: 'E1', regions: [{ outerLoop: ['r9', 'ra', 'rc', 'rd'] }] });
+    const state = run(engine, { type: 'updateFeature', id: 'E1', patch: { profile: { regions: [{ outerLoop: ['r9', 'ra', 'rc', 'rd'] }] } } });
     expect(status(state)).toEqual({ S1: 'ok', E1: 'ok', S2: 'warning:brokenProjection', E2: 'ok', S3: 'error:brokenReference' });
     // skica na víku platí dál; promítnutá hrana k zaniklé stěně zůstala zmrazená, díra se nehnula
     expect(state.evaluation.features.S2.sketch!.points.hc.x).toBeCloseTo(32, 5);

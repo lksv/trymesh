@@ -1,6 +1,6 @@
 // Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
 // sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
-import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type ExtrudeFeature, type GeometricConstraint, type Id, type PlaneFeature, type SketchFeature, type Vec2 } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type ExtrudeFeature, type GeometricConstraint, type Id, type PlaneFeature, type RegionRef, type SketchFeature, type Vec2 } from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
 // Místo kliknutí ve skice a to, k čemu se přichytilo.
@@ -224,19 +224,32 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
 
 // Změna rozpracovaného vysunutí. Nové těleso cíl nemá; přidání a výřez bez cíle dostanou poslední
 // existující těleso. Cíl, který už neexistuje, se sám nepřepisuje: má ho vidět a změnit uživatel.
-export function changeExtrude(draft: ExtrudeFeature, change: Partial<ExtrudeFeature>, bodies: Id[]): ExtrudeFeature {
-  const next = { ...draft, ...change };
-  if (next.operation === 'new') delete next.target;
-  else if (next.target === undefined && bodies.length > 0) next.target = bodies[bodies.length - 1];
+export interface ExtrudeChange {
+  sketch?: Id;
+  regions?: RegionRef[];
+  distance?: number;
+  operation?: ExtrudeFeature['operation'];
+  target?: Id;
+}
+export function changeExtrude(draft: ExtrudeFeature, change: ExtrudeChange, bodies: Id[]): ExtrudeFeature {
+  const next: ExtrudeFeature = {
+    ...draft,
+    profile: { ...draft.profile, ...(change.sketch === undefined ? {} : { sketch: change.sketch }), ...(change.regions === undefined ? {} : { regions: change.regions }) },
+    extent: { ...draft.extent, ...(change.distance === undefined ? {} : { distance: change.distance }) },
+    operation: change.operation ?? draft.operation,
+    ...(change.target === undefined ? {} : { targets: [change.target] }),
+  };
+  if (next.operation === 'new') delete next.targets;
+  else if (next.targets === undefined && bodies.length > 0) next.targets = [bodies[bodies.length - 1]];
   return next;
 }
 
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
 export function draftCommand(draft: ExtrudeFeature | PlaneFeature, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
-  if (draft.type === 'plane') return { type: 'updatePlane', id: draft.id, base: draft.base, offset: draft.offset };
-  const { id, sketch, regions, distance, operation, target } = draft;
-  return { type: 'updateExtrude', id, sketch, regions, distance, operation, ...(operation === 'new' || target === undefined ? {} : { target }) };
+  if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
+  const { id, profile, extent, operation, targets } = draft;
+  return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 
 // ID koncových bodů úsečky (u promítnuté jsou odvozené).

@@ -1,7 +1,7 @@
 // Validace a provedení příkazů nad dokumentem (bez přepočtu).
 import { describe, expect, it } from 'vitest';
-import type { Command, Constraint, Document, ExtrudeFeature, Feature, PlaneRef, SketchFeature } from '../src/types';
-import { CommandError, applyCommand, emptyDocument, emptySketch, validateDocument } from '../src/document';
+import type { Command, Constraint, Document, ExtrudeFeature, Feature, FeaturePatch, PlaneRef, SketchFeature } from '../src/types';
+import { CommandError, FEATURE_TYPE_INFO, applyCommand, bodyOwner, emptyDocument, emptySketch, featureRefs, validateDocument } from '../src/document';
 
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
 const run = (doc: Document, ...commands: Command[]): Document => commands.reduce(applyCommand, doc);
@@ -11,12 +11,12 @@ const extrude = (id: string, sketch: string, extra: Partial<ExtrudeFeature> = {}
   name: id,
   suppressed: false,
   type: 'extrude',
-  sketch,
-  regions: [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }],
-  distance: 10,
+  profile: { type: 'regions', sketch, regions: [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }] },
+  extent: { type: 'distance', start: 0, distance: 10 },
   operation: 'new',
   ...extra,
 });
+const update = (id: string, patch: FeaturePatch): Command => ({ type: 'updateFeature', id, patch });
 
 // Skica s obdélníkem p1..p4, l1..l4 a těleso E1 z ní.
 function base(): Document {
@@ -58,9 +58,9 @@ describe('příkazy časové osy', () => {
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S9') }, /neexistuje/);
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'E1') }, /není skica/);
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1'), index: 0 }, /musí ležet před/);
-    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', target: 'S1' }) }, /není těleso/);
-    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut' }) }, /target/);
-    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { target: 'E1' }) }, /nové těleso nemá cíl/);
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['S1'] }) }, /není těleso/);
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut' }) }, /targets/);
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { targets: ['E1'] }) }, /nové těleso nemá cíl/);
     invalid(doc, { type: 'addFeature', feature: emptySketch('S2', 'x', { kind: 'plane', feature: 'S1' }) }, /není rovina/);
     const face: PlaneRef = { kind: 'face', body: 'E1', face: { feature: 'E1', role: 'endCap' } };
     expect(run(doc, { type: 'addFeature', feature: emptySketch('S2', 'x', face) }).features).toHaveLength(3);
@@ -68,29 +68,89 @@ describe('příkazy časové osy', () => {
 
   it('extrude: nulová vzdálenost a prázdné oblasti jsou neplatné, oblasti se uloží seřazené', () => {
     const doc = base();
-    invalid(doc, { type: 'updateExtrude', id: 'E1', distance: 0 }, /nesmí být nula/);
-    invalid(doc, { type: 'updateExtrude', id: 'E1', regions: [] }, /neprázdný seznam/);
-    invalid(doc, { type: 'updateExtrude', id: 'E1', distance: Number.NaN }, /konečné číslo/);
-    const next = run(doc, { type: 'updateExtrude', id: 'E1', regions: [{ outerLoop: ['l3', 'l1', 'l2', 'l1'] }], distance: -5 });
-    expect(next.features[1]).toMatchObject({ regions: [{ outerLoop: ['l1', 'l2', 'l3'] }], distance: -5, id: 'E1' });
+    invalid(doc, update('E1', { extent: { distance: 0 } }), /nesmí být nula/);
+    invalid(doc, update('E1', { profile: { regions: [] } }), /neprázdný seznam/);
+    invalid(doc, update('E1', { extent: { distance: Number.NaN } }), /konečné číslo/);
+    invalid(doc, update('E1', { extent: { start: Number.POSITIVE_INFINITY } }), /konečné číslo/);
+    const next = run(doc, update('E1', { profile: { regions: [{ outerLoop: ['l3', 'l1', 'l2', 'l1'] }] }, extent: { distance: -5 } }));
+    expect(next.features[1]).toEqual({ ...extrude('E1', 'S1'), profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1', 'l2', 'l3'] }] }, extent: { type: 'distance', start: 0, distance: -5 } });
   });
 
-  it('updateExtrude umí změnit zdrojovou skicu i operaci', () => {
-    const doc = run(base(), { type: 'addFeature', feature: emptySketch('S2', 'x', XY), index: 1 }, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', target: 'E1' }) });
-    expect(run(doc, { type: 'updateExtrude', id: 'E2', sketch: 'S2' }).features[3]).toMatchObject({ sketch: 'S2', target: 'E1' });
-    expect(run(doc, { type: 'updateExtrude', id: 'E2', operation: 'new' }).features[3]).not.toHaveProperty('target');
-    invalid(doc, { type: 'updateExtrude', id: 'E1', operation: 'add' }, /target/);
-    invalid(doc, { type: 'updateExtrude', id: 'E1', operation: 'add', target: 'E2' }, /není těleso/);
-    invalid(doc, { type: 'updateExtrude', id: 'E2', target: 'E2' }, /není těleso/);
+  it('updateFeature umí vysunutí změnit zdrojovou skicu i operaci', () => {
+    const doc = run(base(), { type: 'addFeature', feature: emptySketch('S2', 'x', XY), index: 1 }, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['E1'] }) });
+    expect(run(doc, update('E2', { profile: { sketch: 'S2' } })).features[3]).toMatchObject({ profile: { sketch: 'S2', regions: [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }] }, targets: ['E1'] });
+    expect(run(doc, update('E2', { operation: 'new' })).features[3]).not.toHaveProperty('targets');
+    expect(run(doc, update('E2', { operation: 'new', targets: null })).features[3]).not.toHaveProperty('targets');
+    invalid(doc, update('E1', { operation: 'add' }), /targets/);
+    invalid(doc, update('E1', { operation: 'add', targets: ['E2'] }), /není těleso/);
+    invalid(doc, update('E2', { targets: ['E2'] }), /není těleso/);
+    invalid(doc, update('E2', { targets: null }), /targets/);
+  });
+
+  it('updateFeature slučuje: neuvedená pole zůstávají, seznam a odkaz se nahrazují, null pole odebírá', () => {
+    const plane: Feature = { id: 'P1', name: 'Rovina', suppressed: false, type: 'plane', base: { kind: 'face', body: 'E1', face: { feature: 'E1', role: 'side', curve: 'l1' } }, offset: 5 };
+    const doc = run(base(), { type: 'addFeature', feature: plane }, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['E1'] }) });
+    // vnořený objekt se stejným typem varianty se sloučí
+    expect(run(doc, update('E1', { extent: { start: 3 } })).features[1]).toEqual({ ...extrude('E1', 'S1'), extent: { type: 'distance', start: 3, distance: 10 } });
+    expect(run(doc, update('E1', { extent: { type: 'distance', distance: 4 } })).features[1]).toMatchObject({ extent: { type: 'distance', start: 0, distance: 4 } });
+    // odkaz (objekt s `kind`) se nahrazuje celý: ze stěny nezbude `body` ani `face`
+    expect(run(doc, update('P1', { base: XY })).features[2]).toEqual({ ...plane, base: XY });
+    // seznam se nahrazuje celý
+    expect(run(doc, update('E2', { profile: { regions: [{ outerLoop: ['l1'] }] } })).features[3]).toMatchObject({ profile: { regions: [{ outerLoop: ['l1'] }] } });
+    // prázdná změna feature nemění
+    expect(run(doc, update('E2', {})).features[3]).toEqual(doc.features[3]);
+    // změna nemění totožnost ani stav feature a neprojde nic mimo pole daného typu
+    for (const patch of [{ id: 'X' }, { name: 'X' }, { suppressed: true }, { type: 'plane' }, { offset: 1 }, { distance: 5 }, { toString: 1 }]) invalid(doc, update('E2', patch as FeaturePatch), /takové pole nemá/);
+    invalid(doc, update('P1', { extent: { distance: 1 } } as FeaturePatch), /takové pole nemá/);
+    invalid(doc, update('E2', { extent: { toString: 1 } } as unknown as FeaturePatch), /takové pole (feature )?nemá/);
+    // povinné pole odebrat nejde, neznámé pole varianty validace zahodí nebo odmítne
+    invalid(doc, update('E2', { extent: null } as unknown as FeaturePatch), /extent/);
+    invalid(doc, update('E2', { operation: 'drill' } as unknown as FeaturePatch), /čeká se jedna z hodnot/);
+    invalid(doc, { type: 'updateFeature', id: 'E2', patch: 5 } as unknown as Command, /čeká se objekt/);
+  });
+
+  it('updateFeature ověřuje jen odkazy, které změna uvádí', () => {
+    const cut = extrude('E2', 'S1', { operation: 'cut', targets: ['E1'] });
+    // E2 má po smazání rozbitou skicu i cíl
+    const doc = run(base(), { type: 'addFeature', feature: cut }, { type: 'removeFeature', id: 'S1' }, { type: 'removeFeature', id: 'E1' }, { type: 'addFeature', feature: emptySketch('S2', 'x', XY), index: 0 });
+    expect(doc.features.map((f) => f.id)).toEqual(['S2', 'E2']);
+    expect(run(doc, update('E2', { extent: { distance: 3 } })).features[1]).toMatchObject({ extent: { distance: 3 }, targets: ['E1'] });
+    // oprava jednoho odkazu nenarazí na druhý
+    expect(run(doc, update('E2', { profile: { sketch: 'S2' } })).features[1]).toMatchObject({ profile: { sketch: 'S2' }, targets: ['E1'] });
+    invalid(doc, update('E2', { targets: ['E1'] }), /neexistuje/);
+    // celá nová varianta profilu odkaz na skicu uvádí
+    invalid(doc, update('E2', { profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } }), /neexistuje/);
+    // změna operace beze změny cílů cíle neověřuje, přechod na nové těleso je zahodí
+    expect(run(doc, update('E2', { operation: 'add' })).features[1]).toMatchObject({ operation: 'add', targets: ['E1'] });
+    expect(run(doc, update('E2', { operation: 'new' })).features[1]).not.toHaveProperty('targets');
+  });
+
+  it('ID tělesa: vlastní feature a místní část za lomítkem', () => {
+    expect(bodyOwner('E1')).toEqual({ feature: 'E1' });
+    expect(bodyOwner('pattern/3')).toEqual({ feature: 'pattern', local: '3' });
+    expect(bodyOwner('a/b/c')).toEqual({ feature: 'a', local: 'b/c' });
+    const doc = base();
+    // vysunutí vytváří jen těleso se svým ID; odkaz s místní částí zatím nevede nikam
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['E1/1'] }) }, /není těleso/);
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['E1', 'E1'] }) }, /targets/);
+    invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: [] }) }, /targets/);
+    // načtený dokument s takovým odkazem závisí na vlastníkovi tělesa
+    expect(featureRefs(extrude('E2', 'S1', { operation: 'cut', targets: ['P/2'] }))).toEqual(['S1', 'P']);
+    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['extrude', 'plane', 'sketch']);
+    expect(FEATURE_TYPE_INFO.extrude).toMatchObject({ bodies: 'self', updatable: ['profile', 'extent', 'operation', 'targets'] });
+    expect(FEATURE_TYPE_INFO.sketch).toMatchObject({ bodies: 'none', updatable: [] });
   });
 
   it('removeFeature nekaskáduje a závislý extrude jde opravit beze změny ID', () => {
     const doc = run(base(), { type: 'removeFeature', id: 'S1' });
     expect(doc.features.map((f) => f.id)).toEqual(['E1']);
     // změna, která odkaz na skicu nenastavuje, projde i s odkazem do prázdna
-    expect(run(doc, { type: 'updateExtrude', id: 'E1', distance: 20 }).features[0]).toMatchObject({ distance: 20, sketch: 'S1' });
-    const repaired = run(doc, { type: 'addFeature', feature: emptySketch('S2', 'nová', XY), index: 0 }, { type: 'updateExtrude', id: 'E1', sketch: 'S2', regions: [{ outerLoop: ['c1'] }] });
-    expect(repaired.features[1]).toMatchObject({ id: 'E1', sketch: 'S2' });
+    expect(run(doc, update('E1', { extent: { distance: 20 } })).features[0]).toMatchObject({ extent: { distance: 20 }, profile: { sketch: 'S1' } });
+    // výběr oblastí je jiná cesta než odkaz na skicu, takže se odkaz do prázdna znovu nekontroluje
+    expect(run(doc, update('E1', { profile: { regions: [{ outerLoop: ['l1'] }] } })).features[0]).toMatchObject({ profile: { sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } });
+    invalid(doc, update('E1', { profile: { sketch: 'S1' } }), /neexistuje/);
+    const repaired = run(doc, { type: 'addFeature', feature: emptySketch('S2', 'nová', XY), index: 0 }, update('E1', { profile: { sketch: 'S2', regions: [{ outerLoop: ['c1'] }] } }));
+    expect(repaired.features[1]).toMatchObject({ id: 'E1', profile: { sketch: 'S2' } });
   });
 
   it('moveFeature hlídá pořadí závislostí', () => {
@@ -105,11 +165,12 @@ describe('příkazy časové osy', () => {
 
   it('přejmenování, potlačení a úprava roviny', () => {
     const plane: Feature = { id: 'P1', name: 'Rovina', suppressed: false, type: 'plane', base: XY, offset: 5 };
-    const doc = run(base(), { type: 'addFeature', feature: plane, index: 0 }, { type: 'renameFeature', id: 'P1', name: 'Horní' }, { type: 'setSuppressed', id: 'E1', suppressed: true }, { type: 'updatePlane', id: 'P1', offset: 12 });
+    const doc = run(base(), { type: 'addFeature', feature: plane, index: 0 }, { type: 'renameFeature', id: 'P1', name: 'Horní' }, { type: 'setSuppressed', id: 'E1', suppressed: true }, update('P1', { offset: 12 }));
     expect(doc.features[0]).toMatchObject({ name: 'Horní', offset: 12, base: XY });
     expect(doc.features[2].suppressed).toBe(true);
-    invalid(doc, { type: 'updatePlane', id: 'P1', base: { kind: 'plane', feature: 'P1' } }, /musí ležet před/);
-    invalid(doc, { type: 'updatePlane', id: 'S1', offset: 1 }, /není rovina/);
+    invalid(doc, update('P1', { base: { kind: 'plane', feature: 'P1' } }), /musí ležet před/);
+    invalid(doc, update('S1', { offset: 1 }), /je skica/);
+    invalid(doc, update('P9', { offset: 1 }), /neexistuje/);
     invalid(doc, { type: 'setSketchPlane', sketch: 'S1', plane: { kind: 'face', body: 'E1', face: { feature: 'E1', role: 'endCap' } } }, /musí ležet před/);
     expect(sketchOf(run(doc, { type: 'setSketchPlane', sketch: 'S1', plane: { kind: 'plane', feature: 'P1' } })).plane).toEqual({ kind: 'plane', feature: 'P1' });
   });
@@ -224,7 +285,7 @@ describe('příkazy skici', () => {
     expect(noPoint.radii).toEqual({});
     expect(Object.keys(noPoint.constraints)).toEqual(['k1', 'k2']);
     // křivky v regions pozdějšího extrude zůstávají (extrude skončí v chybě až při přepočtu)
-    expect((run(doc, { type: 'removeEntity', sketch: 'S1', id: 'l1' }).features[1] as ExtrudeFeature).regions[0].outerLoop).toContain('l1');
+    expect((run(doc, { type: 'removeEntity', sketch: 'S1', id: 'l1' }).features[1] as ExtrudeFeature).profile.regions[0].outerLoop).toContain('l1');
     invalid(doc, { type: 'removeEntity', sketch: 'S1', id: 'origin' }, /smazat nejde/);
     invalid(doc, { type: 'removeEntity', sketch: 'S1', id: 'k1' }, /smazat nejde/);
     expect(Object.keys(sketchOf(run(doc, { type: 'removeConstraint', sketch: 'S1', id: 'k1' })).constraints)).toEqual(['k2', 'k3', 'k4']);
@@ -327,7 +388,8 @@ describe('načtení dokumentu', () => {
       change(copy);
       expect(() => validateDocument(copy)).toThrow(pattern);
     };
-    bad((d) => (d.schemaVersion = 2), /verze schématu/);
+    bad((d) => (d.schemaVersion = 3), /verze schématu/);
+    bad((d) => (d.schemaVersion = 0), /verze schématu/);
     bad((d) => (d.settings.chordTolerance = 0), /musí být kladná/);
     bad((d) => (d.features[0].curves.l1.b = 'p9'), /není vlastní bod/);
     bad((d) => (d.features[0].points.p1.x = null), /konečné číslo/);
@@ -335,8 +397,34 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.features[0].constraints.k = { type: 'horizontal', line: 'p1' }), /čeká se line/);
     bad((d) => (d.features[0].solved.external.x9 = { kind: 'line', a: [0, 0], b: [1, 1] }), /neodpovídá promítnuté geometrii/);
     bad((d) => d.features.push({ ...d.features[1] }), /dvakrát/);
-    bad((d) => (d.features[1].distance = 0), /nesmí být nula/);
+    bad((d) => (d.features[1].extent.distance = 0), /nesmí být nula/);
+    bad((d) => (d.features[1].extent.type = 'throughAll'), /čeká se distance/);
+    bad((d) => (d.features[1].profile.type = 'generator'), /čeká se regions/);
+    bad((d) => d.parameters.push({ id: 'a', value: 1 }), /parametry/i);
+    bad((d) => d.checks.push({ id: 'c', a: 1, relation: '<', b: 2 }), /kontroly/i);
     bad((d) => (d.features[1].type = 'revolve'), /čeká se jedna z hodnot/);
     expect(() => validateDocument(null)).toThrow(/čeká se objekt/);
+  });
+
+  it('dokument verze 1 se převede: vysunutí dostane profil, rozsah a seznam cílů', () => {
+    const doc = run(base(), { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: ['E1'], extent: { type: 'distance', start: 0, distance: -4 } }) });
+    const old = JSON.parse(JSON.stringify(doc));
+    old.schemaVersion = 1;
+    delete old.parameters;
+    delete old.checks;
+    old.features = old.features.map((f: any) => {
+      if (f.type !== 'extrude') return f;
+      const { profile, extent, targets, ...rest } = f;
+      return { ...rest, sketch: profile.sketch, regions: profile.regions, distance: extent.distance, ...(targets ? { target: targets[0] } : {}) };
+    });
+    expect(validateDocument(old)).toEqual(doc);
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    // tvar verze 2 ve verzi 1 a naopak neprojde
+    expect(() => validateDocument({ ...old, schemaVersion: 2, parameters: [], checks: [] })).toThrow(/profile/);
+    expect(() => validateDocument({ ...JSON.parse(JSON.stringify(doc)), schemaVersion: 1 })).toThrow(/profile|sketch/);
+    // chybná feature ve verzi 1 skončí chybou validace, ne výjimkou převodu
+    expect(() => validateDocument({ ...old, features: [null] })).toThrow(CommandError);
+    expect(() => validateDocument({ ...old, features: 5 })).toThrow(/čeká se seznam/);
+    expect(() => validateDocument({ ...old, features: [{ ...old.features[1], distance: 0 }] })).toThrow(/nesmí být nula/);
   });
 });

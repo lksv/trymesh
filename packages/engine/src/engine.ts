@@ -48,6 +48,7 @@ export function createEngine(deps: Deps): Engine {
   const differs = (a: Document, b: Document): boolean =>
     a !== b &&
     (a.settings.chordTolerance !== b.settings.chordTolerance ||
+      JSON.stringify([a.parameters, a.checks]) !== JSON.stringify([b.parameters, b.checks]) ||
       a.features.length !== b.features.length ||
       a.features.some((feature, i) => feature !== b.features[i] && JSON.stringify(feature) !== JSON.stringify(b.features[i])));
   const invalid = (error: unknown, code: 'invalidCommand' | 'invalidDocument'): CommandResult => {

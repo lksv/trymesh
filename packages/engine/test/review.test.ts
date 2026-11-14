@@ -94,8 +94,8 @@ describe('dokument', () => {
   });
 
   it('tatáž oblast dvakrát je jedna oblast', () => {
-    const extrude: ExtrudeFeature = { id: 'E', name: 'E', suppressed: false, type: 'extrude', sketch: 'S', regions: [{ outerLoop: ['l', 'm'] }, { outerLoop: ['m', 'l', 'l'] }], distance: 5, operation: 'new' };
-    expect((apply([{ type: 'addFeature', feature: extrude }], doc).features[1] as ExtrudeFeature).regions).toEqual([{ outerLoop: ['l', 'm'] }]);
+    const extrude: ExtrudeFeature = { id: 'E', name: 'E', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['l', 'm'] }, { outerLoop: ['m', 'l', 'l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    expect((apply([{ type: 'addFeature', feature: extrude }], doc).features[1] as ExtrudeFeature).profile.regions).toEqual([{ outerLoop: ['l', 'm'] }]);
   });
 
   it('zmrazená promítnutá kružnice musí mít kladný poloměr', () => {
@@ -104,13 +104,13 @@ describe('dokument', () => {
   });
 
   it('skica na stěně nesmí ležet před extrude, který stěnu vytvořil', () => {
-    const extrude = (id: string, sketchId: string, rest: Partial<ExtrudeFeature> = {}): ExtrudeFeature => ({ id, name: id, suppressed: false, type: 'extrude', sketch: sketchId, regions: [{ outerLoop: ['l'] }], distance: 5, operation: 'new', ...rest });
+    const extrude = (id: string, sketchId: string, rest: Partial<ExtrudeFeature> = {}): ExtrudeFeature => ({ id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: ['l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new', ...rest });
     const pocket = { kind: 'face' as const, body: 'E1', face: { feature: 'E2', role: 'endCap' as const } };
     const model = apply(
       [
         { type: 'addFeature', feature: extrude('E1', 'S') },
         { type: 'addFeature', feature: emptySketch('S2', 'S2', { kind: 'base', plane: 'XY' }) },
-        { type: 'addFeature', feature: extrude('E2', 'S2', { operation: 'cut', target: 'E1' }) },
+        { type: 'addFeature', feature: extrude('E2', 'S2', { operation: 'cut', targets: ['E1'] }) },
         { type: 'addFeature', feature: emptySketch('S3', 'S3', pocket) },
       ],
       doc,
@@ -179,7 +179,7 @@ describe('fasáda enginu', () => {
     const noop: Command[] = [
       { type: 'renameFeature', id: 'P', name: 'P' },
       { type: 'setSuppressed', id: 'P', suppressed: false },
-      { type: 'updatePlane', id: 'P' },
+      { type: 'updateFeature', id: 'P', patch: {} },
       { type: 'setConstraintValue', sketch: 'S', id: 'd', value: 4 },
       { type: 'setConstruction', sketch: 'S', id: 'l', construction: false },
       { type: 'moveFeature', id: 'P', index: 1 },
@@ -231,7 +231,7 @@ describe('fasáda enginu', () => {
     const { engine } = mockEngine();
     const doc = JSON.parse(engine.save()) as Document;
     doc.features.push(
-      { id: 'E', name: 'E', suppressed: false, type: 'extrude', sketch: 'toString', regions: [{ outerLoop: ['l'] }], distance: 5, operation: 'cut', target: 'valueOf' },
+      { id: 'E', name: 'E', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'toString', regions: [{ outerLoop: ['l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'cut', targets: ['valueOf'] },
       { id: 'Q', name: 'Q', suppressed: false, type: 'plane', base: { kind: 'plane', feature: 'hasOwnProperty' }, offset: 1 },
       { ...emptySketch('T', 'T', { kind: 'face', body: 'constructor', face: { feature: 'E', role: 'endCap' } }) },
     );

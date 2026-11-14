@@ -44,7 +44,7 @@ describe('scénář 4: uložení a načtení', () => {
     expect(status(other.getState())).toEqual({ S1: 'ok', E1: 'ok', E2: 'error:brokenReference' });
     expect(volume(other.getState().evaluation.bodies.E1.solid)).toBeCloseTo(12000, 3);
     run(other, addSketch('S9', onFace('E1', cap('E1')), 2), rectangle('S9', 'n', 5, 5, 20, 10, null));
-    const state = run(other, { type: 'updateExtrude', id: 'E2', sketch: 'S9', regions: [{ outerLoop: rectLoop('n') }] });
+    const state = run(other, { type: 'updateFeature', id: 'E2', patch: { profile: { sketch: 'S9', regions: [{ outerLoop: rectLoop('n') }] } } });
     expectAllOk(state);
     expect(state.document.features.map((f) => f.id)).toEqual(['S1', 'E1', 'S9', 'E2']);
     expect(volume(state.evaluation.bodies.E1.solid)).toBeCloseTo(12000 - 20 * 10 * 5, 3);
@@ -74,7 +74,7 @@ describe('scénář 5: časová osa a undo', () => {
     const top = faceBox(state, 'E3', cap('E3'))!;
     expect([top.min[2], top.max[2]]).toEqual([18, 18]);
     // posun roviny posune těleso; rovina od roviny
-    const moved = run(engine, { type: 'updatePlane', id: 'P1', offset: 20 }, { type: 'addFeature', feature: { ...plane, id: 'P2', base: { kind: 'plane', feature: 'P1' }, offset: -2 } });
+    const moved = run(engine, { type: 'updateFeature', id: 'P1', patch: { offset: 20 } }, { type: 'addFeature', feature: { ...plane, id: 'P2', base: { kind: 'plane', feature: 'P1' }, offset: -2 } });
     expect(faceBox(moved, 'E3', cap('E3'))!.max[2]).toBe(33);
     expect(moved.evaluation.features.P2.plane?.origin).toEqual([0, 0, 28]);
   });
@@ -93,7 +93,7 @@ describe('scénář 5: časová osa a undo', () => {
     expect(volume(suppressed.evaluation.bodies.E1.solid)).toBeCloseTo(12000, 3);
     // vložení nové feature doprostřed časové osy (skica před S2) a její extrude
     step(batch(addSketch('S0', XY, 1), circle('S0', 'k', 30, 20, 3)));
-    const inserted = step({ type: 'addFeature', feature: { id: 'E0', name: 'Díra', suppressed: false, type: 'extrude', sketch: 'S0', regions: [{ outerLoop: ['k'] }], distance: 10, operation: 'cut', target: 'E1' }, index: 3 });
+    const inserted = step({ type: 'addFeature', feature: { id: 'E0', name: 'Díra', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S0', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'cut', targets: ['E1'] }, index: 3 });
     expect(inserted.document.features.map((f) => f.id)).toEqual(['S1', 'S0', 'E1', 'E0', 'S2', 'E2']);
     expect(status(inserted)).toEqual({ S1: 'ok', S0: 'ok', E1: 'ok', E0: 'ok', S2: 'ok', E2: 'suppressed' });
     expect(faceNames(inserted, 'E1')).toContain('E0/side/k');
@@ -242,7 +242,7 @@ describe('scénář 6: navazování geometrie', () => {
     run(engine, addSketch('S3', onFace('E1', cap('E1'))), rectangle('S3', 'n', 0, 0, 20, 30), addExtrude('E3', 'S3', [rectLoop('n')], 10, 'add', 'E1'));
     run(engine, addSketch('S4', onFace('E1', side('E3', 'nb')))); // skica na boku nálitku
     expectAllOk(engine.getState());
-    const state = run(engine, { type: 'addFeature', feature: { id: 'E5', name: 'Odříznutí', suppressed: false, type: 'extrude', sketch: 'S3', regions: [{ outerLoop: rectLoop('n') }], distance: 10, operation: 'cut', target: 'E1' }, index: 4 });
+    const state = run(engine, { type: 'addFeature', feature: { id: 'E5', name: 'Odříznutí', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S3', regions: [{ outerLoop: rectLoop('n') }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'cut', targets: ['E1'] }, index: 4 });
     expect(state.document.features.map((f) => f.id)).toEqual(['S1', 'E1', 'S3', 'E3', 'E5', 'S4']);
     expect(volume(state.evaluation.bodies.E1.solid)).toBeCloseTo(12000, 2);
     expect(faceNames(state, 'E1').filter((name) => name.startsWith('E3/'))).toEqual([]);

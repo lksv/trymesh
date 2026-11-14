@@ -48,7 +48,7 @@ packages/
 
 Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
 
-Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (validace a provedení příkazů, načtení), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
+Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (registr typů features, validace a provedení příkazů, načtení a převod starších verzí dokumentu), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
 
 Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
@@ -80,6 +80,8 @@ interface Document {
   settings: {
     chordTolerance: number;               // dělení oblouků na segmenty
   };
+  parameters: Parameter[];                // D35 bod 1; engine je zatím neumí, seznam musí být prázdný
+  checks: Check[];                        // totéž
   features: Feature[];                    // časová osa
 }
 
@@ -148,15 +150,24 @@ type PlaneRef =
 
 interface ExtrudeFeature extends FeatureBase {
   type: 'extrude';
-  sketch: Id;
-  regions: RegionRef[];
-  distance: number;                 // kladná = ve směru normály roviny skici
+  profile: ProfileSource;           // odkud se bere průřez
+  extent: Extent;                   // odkud kam se vysouvá
   operation: 'new' | 'add' | 'cut';
-  target?: Id;                      // těleso pro add/cut
+  targets?: Id[];                   // tělesa pro add/cut; zatím právě jedno
 }
+
+type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
+
+// `start` je posun začátku od roviny skici, `distance` se měří od začátku; obojí podél normály
+// roviny skici, kladné ve směru normály. Těleso vyplní interval [start, start + distance].
+type Extent = { type: 'distance'; start: number; distance: number };
 ```
 
-ID tělesa je ID feature, která ho založila (`operation: 'new'`). Délky jsou v milimetrech, úhly v radiánech.
+Zdroj profilu i rozsah jsou varianty rozlišené polem `type`; další varianty (generátor profilu, „skrz vše") přidá D35 body 2 a 3.
+
+ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). Vysunutí vytváří jen těleso bez místního jména; druhý tvar je připravený pro features, které vytvoří těles víc (pole, D35 bod 4). Délky jsou v milimetrech, úhly v radiánech.
+
+**Registr typů features** (`FEATURE_TYPES` v `document.ts`) drží pro každý typ vše, co o něm potřebuje vědět dokument: validaci a kanonický tvar, odkazy na jiné features s cestou, kde ve feature leží, zda feature vytváří těleso a pojmenovává stěny, a která pole smí měnit `updateFeature`. Validace odkazů, pořadí na časové ose, `moveFeature` i popis API pro AI se řídí registrem, takže nový typ feature je jedna položka registru a jedna větev kroku přepočtu v `evaluate.ts`; úplnost obou míst hlídá překladač. Veřejná část registru je `FEATURE_TYPE_INFO`.
 
 Konvence:
 - **ID** generuje volající a posílá je v příkazech (viz API). Musí být v dokumentu jedinečná, nesmí obsahovat znak `/` (ten je vyhrazený pro odvozená ID promítnuté geometrie) a nesmí být `origin`.
@@ -166,7 +177,7 @@ Konvence:
 - **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
 - **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
 - **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`) a engine ho po prvním řešení přepíše.
-- **Rozsah extrude** je v kódu zatím jen pevná `distance`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane. D35 to mění (zatím neimplementováno): rozsah bude varianta (`distance`, „skrz vše", později „po stěnu") a vysunutí dostane zdroj profilu. Dokud se D35 neimplementuje, popisuje tento dokument stav kódu a plánované změny jsou v decisions.md, D35.
+- **Rozsah extrude** je zatím jen varianta `distance` s posunem začátku `start`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane. Varianty „skrz vše" a výřez do více těles přidá D35 bod 2 (decisions.md, D35), později „po stěnu".
 
 ### Skica
 
@@ -287,7 +298,7 @@ Stěna má strukturované jméno odvozené z původu:
 ```ts
 type FaceName =
   | { feature: Id; role: 'side'; curve: Id }     // z křivky skici
-  | { feature: Id; role: 'startCap' }            // víko v rovině skici
+  | { feature: Id; role: 'startCap' }            // víko na začátku rozsahu (při nulovém `start` v rovině skici)
   | { feature: Id; role: 'endCap' };             // protější víko
 ```
 
@@ -337,7 +348,7 @@ Osa X se dopočítá jako Y × N. Nezávisí tedy na pořadí bodů úsečky ani
 
 Směr „ven" se bere ze sítě: je to součet normál všech trojúhelníků s daným jménem vážený plochou. Jediný trojúhelník by mohl být úzký a dát špatné znaménko. Síť zároveň ověří, že stěna stále existuje. Ze sítě se bere jen znaménko, poloha a osy jsou analytické.
 
-Důsledek: kladná `distance` u extrude ze skici na stěně vždy znamená ven z tělesa, záporná dovnitř.
+Důsledek: kladná `distance` (i kladný `start`) u extrude ze skici na stěně vždy znamená ven z tělesa, záporná dovnitř.
 
 **Vlastní rovina** (`PlaneFeature`) přebírá souřadný systém základu posunutý o `offset` ve směru jeho normály.
 
@@ -363,10 +374,13 @@ Omezení PoC: oblasti vzniklé křížením křivek se nedetekují, křížení 
 
 ## Extrude
 
-1. Vyhodnotí se rovina skici a oblasti (`regions`). Neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`.
-2. Oblouky a kružnice se rozdělí na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
-3. Engine postaví uzavřenou síť: dvě víka (triangulace přes jádro) a boční stěny. Každý trojúhelník dostane číslo stěny podle jména.
-4. Pro `add` a `cut` se zavolá boolean s cílovým tělesem.
+Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá později vyměnit nebo zopakovat samostatně:
+
+1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
+2. **Nástroj.** Engine postaví uzavřenou síť hranolu mezi `start` a `start + distance`: dvě víka (triangulace přes jádro) a boční stěny. Každý trojúhelník dostane číslo stěny podle jména; `startCap` je víko na začátku rozsahu, `endCap` na jeho konci, ať `distance` míří kamkoli.
+3. **Použití.** `new` nástroj uloží jako těleso, `add` a `cut` zavolají boolean s cílovým tělesem.
+
+Stav přepočtu si u feature kromě výsledku pamatuje **recept nástroje** (`ToolRecipe`: operace, cíle a funkce `build(firstFaceId)`, která nástroj postaví znovu s čísly stěn od zadaného čísla). Uloží se, i když operace skončí bez účinku nebo chybou jádra. Zatím ho nikdo nečte; je to rozhraní pro pole (D35 bod 4), které nástroj feature zopakuje v jiné poloze, a pro jiné stavby nástroje (rotace, zkosení). Ukládá se recept, ne síť: rozsah „skrz vše" se musí pro každou kopii spočítat znovu.
 
 Výsledky, které nejsou běžné:
 
@@ -613,10 +627,8 @@ type Command =
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
-  // rovina, extrude
-  | { type: 'updatePlane'; id: Id; base?: PlaneRef; offset?: number }
-  | { type: 'updateExtrude'; id: Id; sketch?: Id; regions?: RegionRef[]; distance?: number;
-      operation?: 'new' | 'add' | 'cut'; target?: Id }
+  // rovina, extrude (skica má vlastní příkazy níže)
+  | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
   | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
@@ -634,15 +646,24 @@ type Command =
   | { type: 'batch'; commands: Command[] };
 ```
 
+**`updateFeature` je slučovací změna.** `patch` obsahuje jen pole, která se mění, ve stejném tvaru jako feature; `{ extent: { distance: 12 } }` změní vzdálenost a začátek nechá být. Pravidla:
+
+- Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná.
+- Odkaz (objekt s polem `kind`, tedy `PlaneRef`) a seznam se nahrazují celé.
+- `null` volitelné pole odebere (`targets: null`).
+- Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
+- Přechod na `operation: 'new'` cíle zahodí, pokud je změna sama neuvádí.
+- Výsledná feature se ověří celá. Odkazy na jiné features se ale ověřují jen ty, jejichž místo změna uvádí: oprava rozbitého odkazu na skicu nesmí narazit na rozbitý cíl, který změna nechává být, a změna vzdálenosti projde i u feature, jejíž skica byla smazána.
+
 **Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Validace pracuje jen se strukturou dokumentu, přepočet k ní není potřeba. Ověřuje se:
 
 - **ID** nových entit jsou jedinečná a splňují konvence: bez `/`, ne `origin`, ne prázdné a ne jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…), protože ID jsou klíče záznamů.
 - **Odkazy uvnitř skici** musí vést na existující entity správného typu (vazba `parallel` dostala dvě úsečky). Křivka odkazuje na vlastní body nebo `origin`. Vazba smí odkazovat i na promítnutou geometrii; její odvozené entity plynou z `kind` (`<id>`, `<id>/a`, `<id>/b` u úsečky, `<id>`, `<id>/center` u kružnice). Protože mazání ve skici kaskáduje, platí toto pravidlo v každém dokumentu.
-- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updatePlane`, `setSketchPlane`, `updateExtrude`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. U stěny a hrany se takto ověřuje těleso i extrude, které stěnu pojmenovalo (stěna existuje až po něm). `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
+- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updateFeature`, `setSketchPlane`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. U stěny a hrany se takto ověřuje těleso i extrude, které stěnu pojmenovalo (stěna existuje až po něm). Odkaz na těleso vede na feature, která ho vytvořila (část ID před lomítkem), a ta musí těleso toho místního jména vytvářet. `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
 - **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
 - **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
 - **Stejná řídicí vazba nesmí být ve skice dvakrát.** `addConstraint` odmítne vazbu se stejným typem a stejnými operandy, jaké už má jiná geometrická vazba nebo řídicí kóta; u vazeb s operandy `a`, `b` na jejich pořadí nezáleží. Platí to i pro kótu s jinou hodnotou (upravit se má ta stávající) a pro přepnutí referenční kóty na řídicí. Referenční kóta smí měřit totéž co řídicí. `load` duplicity přijímá, aby šly otevřít starší dokumenty; ukáže je diagnostika a hodnotu takové kóty jde dál měnit. Druhy operandů, jejich zaměnitelnost a pravidla hodnot jsou v katalogu vazeb (`engine/src/catalog.ts`), kterým se validace řídí.
-- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `distance` u extrude není nula a `regions` není prázdné (tatáž oblast dvakrát je jedna oblast). Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
+- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `extent.distance` u extrude není nula a `profile.regions` není prázdné (tatáž oblast dvakrát je jedna oblast). `add` a `cut` mají v `targets` právě jedno těleso, `new` žádné. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 
 Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
@@ -660,9 +681,9 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `removeEntity` kaskáduje: smazání bodu odstraní křivky, které na něm stojí, a smazání bodu nebo křivky odstraní vazby, které na ně odkazují. Křivky v `regions` pozdějších extrude zůstanou a extrude skončí v `noProfile`.
 - `removeExternal` odstraní vazby na promítnutou křivku a její odvozené body. Vlastní křivky na promítnuté body neodkazují, takže se jich mazání netýká.
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
-- `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateExtrude` umí změnit i zdrojovou skicu (spolu s novým výběrem oblastí), `setSketchPlane` rovinu, `updatePlane` základ.
+- `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
+**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Současná verze schématu je 2. Dokument verze 1 se před validací převede (`upgrade` v `document.ts`): vysunutí dostane `profile`, `extent` s nulovým začátkem a seznam `targets`, dokument prázdné `parameters` a `checks`. Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Dokument s neprázdnými `parameters` nebo `checks` engine zatím odmítne, aby je tiše nezahodil. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
 
 ### Co z API vzešlo z návrhu UI (D24)
 

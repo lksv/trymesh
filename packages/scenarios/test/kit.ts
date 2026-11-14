@@ -28,11 +28,10 @@ export const extrude = (id: Id, sketch: Id, curves: Id[][], distance: number, op
   name: id,
   suppressed: false,
   type: 'extrude',
-  sketch,
-  regions: curves.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })),
-  distance,
+  profile: { type: 'regions', sketch, regions: curves.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })) },
+  extent: { type: 'distance', start: 0, distance },
   operation,
-  ...(target === undefined ? {} : { target }),
+  ...(target === undefined ? {} : { targets: [target] }),
 });
 export const addExtrude = (...args: Parameters<typeof extrude>): Command => ({ type: 'addFeature', feature: extrude(...args) });
 export const constrain = (sketch: Id, id: Id, constraint: Constraint): Command => ({ type: 'addConstraint', sketch, id, constraint });

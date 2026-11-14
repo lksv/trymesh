@@ -44,7 +44,7 @@ Poslední úprava: 2026-11-14
 | Vložit feature na pozici | `addFeature` s pozicí | |
 | Značka pozice (kam se vkládá) | stav UI | |
 | Zobrazit model v okamžiku feature | `getState(at)` | |
-| Upravit feature | `updatePlane`, `updateExtrude`, příkazy skici | `getState(at)` |
+| Upravit feature | `updateFeature`, příkazy skici | `getState(at)` |
 | Přejmenovat | `renameFeature` | |
 | Potlačit a obnovit | `setSuppressed` | |
 | Přesunout | `moveFeature` | |
@@ -57,7 +57,7 @@ Poslední úprava: 2026-11-14
 | Vybrat základ (rovina nebo rovinná stěna) | | `faces[i].planar`, `features[id].plane` |
 | Náhled při zadávání posunu | `preview(addFeature)` | |
 | Potvrdit | `addFeature` (plane) | |
-| Změnit posun nebo základ | `updatePlane` | |
+| Změnit posun nebo základ | `updateFeature` | |
 
 ## Skica: založení
 
@@ -125,23 +125,23 @@ Typ kóty podle výběru:
 | Navrhnout výchozí operaci a cílové těleso | logika UI | `document` (rovina skici), `bodies` |
 | Náhled při změně hodnot | `preview(addFeature)` | |
 | Potvrdit | `addFeature` (extrude) | |
-| Změnit vzdálenost, operaci, oblasti, cíl | `updateExtrude` | |
+| Změnit vzdálenost, operaci, oblasti, cíl | `updateFeature` | |
 
 ## Chyby a oprava referencí
 
 | Chyba | Co UI nabídne | Příkaz |
 |---|---|---|
 | `brokenReference` na rovinu skici | vybrat novou rovinu nebo stěnu | `setSketchPlane` |
-| `brokenReference` na základ vlastní roviny | vybrat nový základ | `updatePlane` |
+| `brokenReference` na základ vlastní roviny | vybrat nový základ | `updateFeature` |
 | `brokenProjection` (varování, hrana zmrazená na poslední hodnotě) | vybrat novou hranu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
-| `brokenReference` na cílové těleso | vybrat jiné těleso | `updateExtrude` |
-| `brokenReference` na zdrojovou skicu extrude | vybrat jinou skicu a její oblasti; ID extrude zůstane | `updateExtrude` (`sketch`, `regions`) |
-| `noProfile` | vybrat oblasti znovu, nebo opravit skicu | `updateExtrude` |
+| `brokenReference` na cílové těleso | vybrat jiné těleso | `updateFeature` |
+| `brokenReference` na zdrojovou skicu extrude | vybrat jinou skicu a její oblasti; ID extrude zůstane | `updateFeature` (`profile.sketch`, `profile.regions`) |
+| `noProfile` | vybrat oblasti znovu, nebo opravit skicu | `updateFeature` |
 | `nonPlanarFace` | vybrat jinou stěnu | `setSketchPlane` |
 | `degenerateProjection`, `unsupportedProjection` (varování) | vybrat jinou hranu stejného druhu, nebo promítnutí zrušit a založit nové | `updateExternal`, `removeExternal` |
 | `invalidProfile` | otevřít skicu a odstranit křížení křivek | příkazy skici |
-| `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateExtrude` |
-| `emptyResult` | upravit vzdálenost nebo oblasti | `updateExtrude` |
+| `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateFeature` |
+| `emptyResult` | upravit vzdálenost nebo oblasti | `updateFeature` |
 | `sketchConflict` (varování, model zůstává) | otevřít skicu, smazat konfliktní vazbu | `removeConstraint` |
 
 Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
@@ -158,11 +158,11 @@ Tyto požadavky v původním návrhu API chyběly a jsou do architektury doplně
 4. Konstrukční geometrie (`construction` u křivky, `setConstruction`).
 5. Data pro výběr: rovinnost stěn, hrany s úsečkami a druhem, oblasti skici se smyčkami.
 6. Pravidla mazání: ve skice kaskáduje, na časové ose ne.
-7. `renameFeature`, `updatePlane`, `setSketchPlane`.
+7. `renameFeature`, `updateFeature`, `setSketchPlane`.
 
 8. `updateExternal`: oprava promítnuté hrany zachová její ID, takže vazby na ni zůstanou.
 9. ID nových entit generuje UI a posílá je v příkazech, aby dávka mohla odkazovat na právě vytvořené entity.
-10. `updateExtrude` umí změnit zdrojovou skicu, aby šla extrude po smazání skici opravit bez ztráty ID.
+10. `updateFeature` umí změnit zdrojovou skicu, aby šla extrude po smazání skici opravit bez ztráty ID.
 11. Promítnutí nese `kind`, takže příkazy i načtení dokumentu jdou ověřit bez přepočtu.
 
 ## Vědomě vynecháno

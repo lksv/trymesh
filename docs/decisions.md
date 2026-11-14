@@ -748,6 +748,16 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
 - **Tělesa a jejich ID.** Feature může vytvořit víc těles. Těleso má buď ID feature (vysunutí s operací `new`), nebo `<feature>/<místní jméno>` (kopie v poli). O tom, která tělesa feature vytváří, rozhoduje jedna funkce registru; validace odkazů na ni spoléhá a nezná výjimky pro jednotlivé typy. Rozdělení, zrcadlení nebo spojení těles pak přibudou jako nové typy bez zásahu do validace.
 - Verze schématu se zvedne na 2. Dokument verze 1 se při načtení převede (vzdálenost na rozsah s nulovým začátkem, skica a oblasti na zdroj profilu, cíl na seznam cílů, prázdná tabulka parametrů a kontrol); ukládá se vždy verze 2. Zvednutí je potřeba, protože se mění tvar vysunutí a starší kód má nový dokument odmítnout srozumitelně.
 
+  **Stav: provedeno 2026-11-14.** Chování stávajících dokumentů se nezměnilo (dokument verze 1 dává po převodu bitově stejný model). Jak provedení návrh upřesnilo a co z něj zůstává na další body:
+
+  - Registr (`FEATURE_TYPES` v `document.ts`) drží validaci, odkazy s cestou ve feature, tělesa, pojmenování stěn a pole pro `updateFeature`. Krok přepočtu je větev úplného `switch` v `evaluate.ts`; chybějící větev nebo položku registru odmítne překladač. Číselná pole přidá bod 1.
+  - Recept nástroje je `ToolRecipe { operation, targets, build(firstFaceId) }`. Transformaci dostane `build` s bodem 4, cíle jako argument s bodem 2. Recept zatím nikdo nečte.
+  - Posun začátku rozsahu (`extent.start`) engine už počítá, protože interval stavba hranolu dostala tak jako tak; pole v UI přidá bod 2.
+  - `targets` smí mít zatím právě jedno těleso i u výřezu (víc bod 2).
+  - `parameters` a `checks` jsou ve schématu verze 2, ale musí být prázdné; dokument, který je má, engine odmítne, aby je tiše nezahodil (bod 1).
+  - Odkazy, které `updateFeature` ověřuje, se poznají podle cesty: ověří se odkaz, jehož místo ve feature změna uvádí.
+  - Popis API pro AI (`describe_api`) vypisuje typy features z registru včetně polí, která mění `updateFeature`.
+
 **1. Parametry a výrazy.**
 
 - **Tabulka.** Dokument dostane seřazenou tabulku parametrů (jméno, výraz). Pořadí je jen pro zobrazení; parametr se může odkazovat na kterýkoli jiný, cyklus je chyba. U příkazů pro parametry a kontroly je neplatným příkazem jen syntaktická chyba a nepřípustné jméno; neznámé jméno a cyklus se přijmou a stav je ve výsledku přepočtu, jinak by nešlo založit `Zr` dřív než `Zs`. Funkce se ve výrazu pozná podle závorky za jménem, takže parametr se smí jmenovat jako funkce a pozdější funkce nezneplatní starší dokument; vyhrazená jsou jen jména konstant.

@@ -38,6 +38,7 @@ import {
   GEOMETRIC_KINDS,
   arcCommands,
   asConstruction,
+  type ExtrudeChange,
   changeExtrude,
   circleCommands,
   deleteCommands,
@@ -585,7 +586,7 @@ export class App {
           h('button', { textContent: 'Přenést skicu na vybranou rovinu', disabled: !ref, title: 'Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu', onclick: () => ref && this.run({ type: 'setSketchPlane', sketch: f.id, plane: ref }, 'Rovina skici změněna.') }),
         );
       }
-      if (f.type === 'extrude') out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, vzdálenost ${fmt(f.distance)} mm, oblastí: ${f.regions.length}.`));
+      if (f.type === 'extrude') out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, vzdálenost ${fmt(f.extent.distance)} mm, oblastí: ${f.profile.regions.length}.`));
       if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${fmt(f.offset)} mm.`));
     } else {
       out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
@@ -770,8 +771,9 @@ export class App {
     if (m.kind === 'extrude') {
       const region = this.regionAt(event, m);
       if (!region) return;
-      const at = m.draft.regions.findIndex((r) => sameRegion(r, region));
-      m.draft = { ...m.draft, regions: at < 0 ? [...m.draft.regions, region] : m.draft.regions.filter((_, i) => i !== at) };
+      const chosen = m.draft.profile.regions;
+      const at = chosen.findIndex((r) => sameRegion(r, region));
+      m.draft = { ...m.draft, profile: { ...m.draft.profile, regions: at < 0 ? [...chosen, region] : chosen.filter((_, i) => i !== at) } };
       return this.draftChanged();
     }
     const pick = this.pick(event, { edges: m.kind === 'model' && !this.pending, faces: true, planes: true });
@@ -1266,7 +1268,7 @@ export class App {
   }
 
   private regionAt(event: PointerEvent, m: ExtrudeMode): RegionRef | undefined {
-    const info = this.sketchRegions(m.draft.sketch);
+    const info = this.sketchRegions(m.draft.profile.sketch);
     const p = info && this.planePoint(event, info.frame)?.at;
     if (!info || !p) return undefined;
     return info.result.regions.find((region) => insideLoop(region.loops[0], p) && !region.loops.slice(1).some((hole) => insideLoop(hole, p)))?.ref;
@@ -1282,16 +1284,16 @@ export class App {
     const chosen = sketches.find((f) => f.id === this.selectedFeature) ?? sketches[sketches.length - 1];
     if (!chosen) return this.say('Vysunutí potřebuje skicu. Nejdřív nějakou nakreslete.', true);
     const id = this.newId('e');
-    this.setMode({ kind: 'extrude', editing: false, index, draft: { id, name: `Vysunutí ${id.slice(1)}`, suppressed: false, type: 'extrude', distance: 10, ...this.extrudeDefaults(chosen, index) } });
+    this.setMode({ kind: 'extrude', editing: false, index, draft: { id, name: `Vysunutí ${id.slice(1)}`, suppressed: false, type: 'extrude', extent: { type: 'distance', start: 0, distance: 10 }, ...this.extrudeDefaults(chosen, index) } });
     this.say('Klikáním v pohledu vyberte oblasti skici.');
   }
 
   // Výchozí volby: jediná oblast se vybere sama; skica na stěně tělesa navrhne přidání k němu.
-  private extrudeDefaults(sketch: SketchFeature, index: number): Pick2<ExtrudeFeature, 'sketch' | 'regions' | 'operation' | 'target'> {
+  private extrudeDefaults(sketch: SketchFeature, index: number): Pick2<ExtrudeFeature, 'profile' | 'operation' | 'targets'> {
     const regions = this.sketchRegions(sketch.id)?.result.regions ?? [];
     const bodies = Object.keys(this.stateBefore(index).evaluation.bodies);
     const target = sketch.plane.kind === 'face' && bodies.includes(sketch.plane.body) ? sketch.plane.body : undefined;
-    return { sketch: sketch.id, regions: regions.length === 1 ? [regions[0].ref] : [], operation: target ? 'add' : 'new', ...(target ? { target } : {}) };
+    return { profile: { type: 'regions', sketch: sketch.id, regions: regions.length === 1 ? [regions[0].ref] : [] }, operation: target ? 'add' : 'new', ...(target ? { targets: [target] } : {}) };
   }
 
   private startPlane(base: PlaneRef, existing?: PlaneFeature): void {
@@ -1307,7 +1309,7 @@ export class App {
     if (m.kind !== 'extrude' && m.kind !== 'plane') return;
     this.invalidate();
     // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám
-    if (m.kind === 'extrude' && m.draft.regions.length === 0) {
+    if (m.kind === 'extrude' && m.draft.profile.regions.length === 0) {
       m.preview = undefined;
       m.problem = undefined;
       return;
@@ -1342,7 +1344,7 @@ export class App {
       h(
         'div',
         { className: 'buttons' },
-        h('button', { textContent: 'OK', className: 'primary', disabled: m.kind === 'extrude' && m.draft.regions.length === 0, onclick: () => this.confirmDraft(m) }),
+        h('button', { textContent: 'OK', className: 'primary', disabled: m.kind === 'extrude' && m.draft.profile.regions.length === 0, onclick: () => this.confirmDraft(m) }),
         h('button', { textContent: 'Zrušit', onclick: () => this.setMode({ kind: 'model' }) }),
       ),
     ];
@@ -1356,12 +1358,13 @@ export class App {
     const sketches = this.doc.features.slice(0, m.index).filter((f) => f.type === 'sketch');
     const bodies = Object.keys(this.stateBefore(m.index).evaluation.bodies);
     const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
-    const set = (change: Partial<ExtrudeFeature>, rebuild = true) => {
+    const set = (change: ExtrudeChange, rebuild = true) => {
       m.draft = changeExtrude(m.draft, change, bodies);
       this.draftChanged(rebuild);
     };
-    const available = this.sketchRegions(m.draft.sketch)?.result.regions ?? [];
-    const stale = m.draft.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
+    const target = m.draft.targets?.[0];
+    const available = this.sketchRegions(m.draft.profile.sketch)?.result.regions ?? [];
+    const stale = m.draft.profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
     return [
       h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nové vysunutí'),
       h(
@@ -1371,14 +1374,14 @@ export class App {
         h(
           'select',
           { onchange: (event: Event) => set({ sketch: (event.target as HTMLSelectElement).value, regions: [] }) },
-          ...sketches.map((f) => option(f.id, f.name, f.id === m.draft.sketch)),
-          sketches.some((f) => f.id === m.draft.sketch) ? null : option(m.draft.sketch, '(chybí)', true),
+          ...sketches.map((f) => option(f.id, f.name, f.id === m.draft.profile.sketch)),
+          sketches.some((f) => f.id === m.draft.profile.sketch) ? null : option(m.draft.profile.sketch, '(chybí)', true),
         ),
       ),
-      h('p', { className: 'hint' }, `Vybraných oblastí: ${m.draft.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
+      h('p', { className: 'hint' }, `Vybraných oblastí: ${m.draft.profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
       stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
-      h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: m.draft.regions.length === 0, onclick: () => set({ regions: [] }) })),
-      this.numberField('Vzdálenost (mm; záporná = proti normále)', m.draft.distance, (distance) => set({ distance }, false)),
+      h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: m.draft.profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
+      this.numberField('Vzdálenost (mm; záporná = proti normále)', m.draft.extent.distance, (distance) => set({ distance }, false)),
       h(
         'label',
         {},
@@ -1398,8 +1401,8 @@ export class App {
             h(
               'select',
               { onchange: (event: Event) => set({ target: (event.target as HTMLSelectElement).value }) },
-              ...bodies.map((body) => option(body, this.nameOf(body), body === m.draft.target)),
-              m.draft.target === undefined || bodies.includes(m.draft.target) ? null : option(m.draft.target, '(chybí)', true),
+              ...bodies.map((body) => option(body, this.nameOf(body), body === target)),
+              target === undefined || bodies.includes(target) ? null : option(target, '(chybí)', true),
             ),
           ),
       ...this.draftButtons(m),
@@ -1473,9 +1476,9 @@ export class App {
 
     if (m.kind === 'sketch') this.sketchScene(model, m);
     if (m.kind === 'extrude') {
-      const info = this.sketchRegions(m.draft.sketch);
+      const info = this.sketchRegions(m.draft.profile.sketch);
       for (const region of info?.result.regions ?? []) {
-        const chosen = m.draft.regions.some((r) => sameRegion(r, region.ref));
+        const chosen = m.draft.profile.regions.some((r) => sameRegion(r, region.ref));
         const hovered = m.hover !== undefined && sameRegion(m.hover, region.ref);
         model.fills.push({ frame: info!.frame, loops: region.loops, color: chosen ? COLOR.region : hovered ? COLOR.hover : COLOR.rubber, opacity: chosen ? (hovered ? 0.6 : 0.45) : hovered ? 0.35 : 0.15, onTop: true });
       }

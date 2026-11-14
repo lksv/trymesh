@@ -97,7 +97,7 @@ function featureSummary(feature: Feature, result: FeatureResult | undefined): un
   const base = { id: feature.id, name: feature.name, type: feature.type, ...(featureStatus(result) as object) };
   if (feature.type === 'plane') return { ...base, base: feature.base as unknown as Json, offset: feature.offset };
   if (feature.type === 'extrude') {
-    return { ...base, sketch: feature.sketch, operation: feature.operation, distance: feature.distance, ...(feature.target === undefined ? {} : { target: feature.target }), regions: feature.regions as unknown as Json };
+    return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }) };
   }
   const sketch = result?.sketch;
   return {

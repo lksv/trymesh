@@ -28,7 +28,10 @@ export interface Prism {
 
 // Postaví uzavřenou síť nad vybranými oblastmi: dvě víka a boční stěny. Boční stěna vznikne jen
 // z křivky na hranici právě jedné vybrané oblasti; křivka sdílená dvěma oblastmi se vyruší.
-export function buildPrism(feature: Id, regions: Region[], frame: Frame, distance: number, curveOf: (id: Id) => SideCurve, firstFaceId: number, kernel: SolidKernel): Prism {
+// `span` je rozsah podél normály roviny skici: [začátek, konec], měřeno od roviny skici. Víko
+// startCap leží na začátku, endCap na konci.
+export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], curveOf: (id: Id) => SideCurve, firstFaceId: number, kernel: SolidKernel): Prism {
+  const [start, end] = span;
   // 2D síť sjednocení oblastí. Vrcholy se sdílejí podle klíče, takže sousední oblasti na sebe navazují.
   const index = new Map<string, number>();
   const xy: number[] = [];
@@ -93,8 +96,8 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, distanc
     }
   }
   const faces: Prism['faces'] = [
-    { name: { feature, role: 'startCap' }, info: { planar: true, origin: frame.origin, y: frame.y, normal: frame.normal } },
-    { name: { feature, role: 'endCap' }, info: { planar: true, origin: toWorld(frame, 0, 0, distance), y: frame.y, normal: frame.normal } },
+    { name: { feature, role: 'startCap' }, info: { planar: true, origin: toWorld(frame, 0, 0, start), y: frame.y, normal: frame.normal } },
+    { name: { feature, role: 'endCap' }, info: { planar: true, origin: toWorld(frame, 0, 0, end), y: frame.y, normal: frame.normal } },
   ];
   const sideId = new Map<Id, number>();
   for (const curve of [...new Set(boundary.map((edge) => edge[2]))].sort()) {
@@ -108,15 +111,15 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, distanc
     }
   }
 
-  // 3D síť: spodní a horní hladina podle normály roviny skici; startCap je víko v rovině skici.
+  // 3D síť: spodní a horní hladina podle normály roviny skici; startCap je víko na začátku rozsahu.
   const n = xy.length / 2;
-  const [low, high] = [Math.min(0, distance), Math.max(0, distance)];
+  const [low, high] = [Math.min(start, end), Math.max(start, end)];
   const positions = new Float32Array(6 * n);
   for (let i = 0; i < n; i++) {
     positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], low), 3 * i);
     positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], high), 3 * (n + i));
   }
-  const [lowId, highId] = distance > 0 ? [firstFaceId, firstFaceId + 1] : [firstFaceId + 1, firstFaceId];
+  const [lowId, highId] = end > start ? [firstFaceId, firstFaceId + 1] : [firstFaceId + 1, firstFaceId];
   const out: number[] = [];
   const ids: number[] = [];
   for (let t = 0; t < count; t++) {

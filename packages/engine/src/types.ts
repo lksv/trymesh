@@ -12,11 +12,23 @@ export interface Point2 {
 // ---------------------------------------------------------------- dokument
 
 export interface Document {
-  schemaVersion: number;
+  schemaVersion: number; // 2; dokument verze 1 se při načtení převede
   settings: {
     chordTolerance: number; // dělení oblouků na segmenty
   };
+  parameters: Parameter[]; // pojmenované parametry (D35 bod 1); engine je zatím neumí, seznam je prázdný
+  checks: Check[]; // kontroly parametrů (D35 bod 1); zatím prázdný
   features: Feature[]; // časová osa
+}
+
+export interface Parameter {
+  name: string;
+  expr: string;
+}
+
+export interface Check {
+  name: string;
+  expr: string;
 }
 
 export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature;
@@ -98,18 +110,24 @@ export type PlaneRef =
 
 export interface ExtrudeFeature extends FeatureBase {
   type: 'extrude';
-  sketch: Id;
-  regions: RegionRef[];
-  distance: number; // kladná = ve směru normály roviny skici
+  profile: ProfileSource;
+  extent: Extent;
   operation: 'new' | 'add' | 'cut';
-  target?: Id; // těleso pro add/cut
+  targets?: Id[]; // tělesa pro add/cut; zatím právě jedno
 }
+
+// Odkud vysunutí bere profil. Další zdroje (generátor profilu) přibudou jako varianty.
+export type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
+
+// Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
+// měří od začátku, kladná míří ve směru normály a nesmí být nula. Další rozsahy přibudou jako varianty.
+export type Extent = { type: 'distance'; start: number; distance: number };
 
 // ---------------------------------------------------------------- jména
 
 export type FaceName =
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
-  | { feature: Id; role: 'startCap' } // víko v rovině skici
+  | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
   | { feature: Id; role: 'endCap' }; // protější víko
 
 // a < b v lexikografickém pořadí zápisu feature/role/curve
@@ -271,17 +289,13 @@ export type Command =
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
-  // rovina, extrude
-  | { type: 'updatePlane'; id: Id; base?: PlaneRef; offset?: number }
-  | {
-      type: 'updateExtrude';
-      id: Id;
-      sketch?: Id;
-      regions?: RegionRef[];
-      distance?: number;
-      operation?: 'new' | 'add' | 'cut';
-      target?: Id;
-    }
+  // Změna roviny nebo vysunutí; obsah skici mění příkazy skici. Změna se s feature slučuje:
+  // - varianta (objekt s `type`: zdroj profilu, rozsah) se stejným `type` se slučuje po polích,
+  //   s jiným `type` dosavadní nahradí a musí být úplná;
+  // - odkaz (objekt s `kind`: rovina) a seznam se nahrazují celé; `null` odebere nepovinné pole;
+  // - změna na `operation: 'new'` odebere `targets` sama;
+  // - znovu se ověřují jen odkazy, které změna uvádí.
+  | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
   | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
@@ -297,6 +311,10 @@ export type Command =
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
+
+// Slučovací změna (viz příkaz updateFeature).
+export type Patch<T> = T extends readonly unknown[] | { kind: string } ? T : T extends object ? { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) } : T;
+export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>;
 
 export interface Engine {
   execute(cmd: Command): CommandResult; // změní dokument, jeden krok undo

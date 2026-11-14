@@ -131,7 +131,7 @@ describe('kreslicí nástroje', () => {
     t.run(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
     const loop = Object.keys(t.sketch().curves).sort();
     const execute = (command: Command) => expect(t.engine.execute(command)).toMatchObject({ ok: true });
-    execute({ type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', sketch: 's', regions: [{ outerLoop: loop }], distance: 10, operation: 'new' } });
+    execute({ type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: loop }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
     const top = { feature: 'e', role: 'endCap' as const };
     const edge = t.engine.getState().evaluation.bodies.e.edges.find((e) => e.kind === 'line' && JSON.stringify(e.name).includes('endCap'))!;
     execute({ type: 'addFeature', feature: emptySketch('s2', 'Skica 2', { kind: 'face', body: 'e', face: top }) });
@@ -378,18 +378,19 @@ describe('nálezy z revize aplikace', () => {
   });
 
   it('rozpracované vysunutí: chybějící cíl se sám nepřepíše', () => {
-    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', sketch: 's', regions: [{ outerLoop: ['c1'] }], distance: 5, operation: 'add', target: 'smazané' };
-    expect(changeExtrude(draft, { distance: 8 }, ['e1'])).toMatchObject({ distance: 8, target: 'smazané' });
-    expect(changeExtrude(draft, { target: 'e1' }, ['e1']).target).toBe('e1');
-    expect(changeExtrude(draft, { operation: 'new' }, ['e1'])).not.toHaveProperty('target');
-    const fresh = changeExtrude({ ...draft, operation: 'new', target: undefined }, { operation: 'cut' }, ['e0', 'e1']);
-    expect(fresh).toMatchObject({ operation: 'cut', target: 'e1' });
-    expect(changeExtrude({ ...draft, target: undefined }, {}, [])).toMatchObject({ operation: 'add', target: undefined });
+    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'add', targets: ['smazané'] };
+    expect(changeExtrude(draft, { distance: 8 }, ['e1'])).toMatchObject({ extent: { type: 'distance', start: 0, distance: 8 }, targets: ['smazané'] });
+    expect(changeExtrude(draft, { target: 'e1' }, ['e1']).targets).toEqual(['e1']);
+    expect(changeExtrude(draft, { sketch: 's9', regions: [] }, ['e1']).profile).toEqual({ type: 'regions', sketch: 's9', regions: [] });
+    expect(changeExtrude(draft, { operation: 'new' }, ['e1'])).not.toHaveProperty('targets');
+    const fresh = changeExtrude({ ...draft, operation: 'new', targets: undefined }, { operation: 'cut' }, ['e0', 'e1']);
+    expect(fresh).toMatchObject({ operation: 'cut', targets: ['e1'] });
+    expect(changeExtrude({ ...draft, targets: undefined }, {}, [])).toMatchObject({ operation: 'add', targets: undefined });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
-    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateExtrude', id: 'e2', sketch: 's', regions: draft.regions, distance: 5, operation: 'add', target: 'smazané' });
-    expect(draftCommand({ ...draft, operation: 'new' }, true, 3)).not.toHaveProperty('target');
-    expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updatePlane', id: 'r', base: { kind: 'base', plane: 'XY' }, offset: 4 });
+    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: draft.profile, extent: draft.extent, operation: 'add', targets: ['smazané'] } });
+    expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
+    expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4 } });
   });
 
   it('bod uvnitř smyčky', () => {

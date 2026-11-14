@@ -4,7 +4,7 @@ import { type Command, type Constraint, type DimensionShape, type Engine, type E
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, arcCommands, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, geometricFor, lineCommands, normalizeAngle, pointCommands, rectangleCommands } from '../src/sketch-commands';
+import { type Anchor, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, geometricFor, lineCommands, normalizeAngle, pointCommands, rectangleCommands } from '../src/sketch-commands';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -46,6 +46,24 @@ describe('kreslicí nástroje', () => {
     expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
     expect(t.result().regions).toHaveLength(1);
     expect(t.result().degreesOfFreedom).toBe(2);
+  });
+
+  it('konstrukční režim: křivky nástroje jsou pomocné, vazby vznikají stejně a profil netvoří', () => {
+    const t = setup();
+    t.run(asConstruction(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), free(30, 20), t.newId)!));
+    expect(Object.values(t.sketch().curves).map((curve) => curve.construction)).toEqual([true, true, true, true]);
+    expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
+    expect(t.result().regions).toHaveLength(0);
+    expect(t.result().degreesOfFreedom).toBe(2);
+    expect([...t.view().curves.values()].every((curve) => curve.construction)).toBe(true);
+    // kružnice a oblouk; běžná křivka nakreslená potom konstrukční není
+    t.run(asConstruction(circleCommands('s', t.view(), free(50, 0), free(55, 0), t.newId)!));
+    t.run(asConstruction(arcCommands('s', t.view(), free(80, 0), free(90, 0), free(80, 10), t.newId)!));
+    t.run(lineCommands('s', t.view(), free(0, 40), free(10, 40), t.newId)!.commands);
+    expect(Object.values(t.sketch().curves).map((curve) => curve.construction === true)).toEqual([true, true, true, true, true, true, false]);
+    // příkazy bez křivek zůstávají beze změny
+    const point = pointCommands('s', t.view(), free(5, 5), t.newId) as Command[];
+    expect(asConstruction(point)).toEqual(point);
   });
 
   it('obdélník s nulovou šířkou nebo ze dvou stejných bodů nevznikne', () => {

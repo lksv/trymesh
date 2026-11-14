@@ -34,6 +34,7 @@ import {
   type DimensionVariant,
   type GeometricKind,
   arcCommands,
+  asConstruction,
   changeExtrude,
   circleCommands,
   deleteCommands,
@@ -68,6 +69,7 @@ interface SketchMode {
   hover?: Id;
   hoverConstraint?: Id;
   focus?: Id; // vazba označená v seznamu: pohled ukáže ji a vazby, ze kterých plyne
+  construction?: boolean; // kreslicí nástroje zakládají konstrukční křivky
   hoverEdge?: Pick;
   drag?: { point: Id; moved: boolean };
   preview?: EngineState; // stav při tažení bodu
@@ -347,6 +349,12 @@ export class App {
     } else if (m.kind === 'sketch') {
       groups.push(
         group(...TOOLS.map(([tool, label, hint]) => button(label, () => this.setTool(tool), { title: hint, active: m.tool === tool }))),
+        group(
+          button('Konstrukčně', () => ((m.construction = !m.construction), this.say(m.construction ? 'Nové křivky budou konstrukční: pomáhají s vazbami, ale netvoří profil.' : 'Nové křivky budou běžné.'), this.refresh()), {
+            title: 'Kreslicí nástroje zakládají konstrukční (pomocné) křivky',
+            active: m.construction === true,
+          }),
+        ),
         group(h('button', { textContent: 'Dokončit skicu', className: 'primary', onclick: () => this.finishSketch() })),
       );
     }
@@ -915,7 +923,7 @@ export class App {
     const anchor = m.cursor && m.tool !== 'select' ? m.cursor : this.anchorAt(event, context);
     if (!anchor) return;
     const { view } = context;
-    const batch = (commands: Command[] | undefined): boolean => commands !== undefined && commands.length > 0 && this.run({ type: 'batch', commands });
+    const batch = (commands: Command[] | undefined): boolean => commands !== undefined && commands.length > 0 && this.run({ type: 'batch', commands: m.construction ? asConstruction(commands) : commands });
 
     if (m.tool === 'select') {
       const id = anchor.snap?.id;
@@ -1526,7 +1534,7 @@ export class App {
           shape({ type: 'arc', center: first, radius: Math.hypot(start[0] - first[0], start[1] - first[1]), from, sweep: sweep || 2 * Math.PI });
         }
       }
-      model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
+      model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
       if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
       if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : 'svisle', tone: 'reference' });
     }

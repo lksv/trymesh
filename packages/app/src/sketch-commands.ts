@@ -213,3 +213,7 @@ function lineEnds(view: SketchView, line: Id): [Id, Id] | undefined {
   const curve = view.curves.get(line);
   return curve?.shape.type === 'line' ? [curve.points[0], curve.points[1]] : undefined;
 }
+
+// Příkazy kreslicího nástroje v konstrukčním režimu: nové křivky jsou pomocné a netvoří profil.
+export const asConstruction = (commands: Command[]): Command[] =>
+  commands.map((command) => (command.type === 'addCurve' ? { ...command, curve: { ...command.curve, construction: true } } : command));

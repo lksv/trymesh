@@ -15,6 +15,7 @@ import {
   type Feature,
   type FeatureResult,
   type Id,
+  type Issue,
   type SketchFeature,
   type Solid,
   constraintOperands,
@@ -77,12 +78,16 @@ function solidInfo(solid: Solid): { volume: number; min: number[]; max: number[]
   return { volume: round(volume / 6), min: min.map(round), max: max.map(round) };
 }
 
+const issueInfo = (issue: Issue): Record<string, unknown> => ({ code: issue.code, message: issue.message, ...(issue.refs?.length ? { refs: issue.refs } : {}) });
+
 function featureStatus(result: FeatureResult | undefined): Record<string, unknown> {
   if (!result) return { status: 'notEvaluated' };
   return {
     status: result.status,
-    ...(result.error ? { error: { code: result.error.code, message: result.error.message } } : {}),
-    ...(result.warnings.length > 0 ? { warnings: result.warnings.map((w) => ({ code: w.code, message: w.message })) } : {}),
+    // `refs` says what the issue is about: the missing reference, the target bodies a cut did not
+    // change (noEffect) or would remove (emptyResult), the fields with a bad expression.
+    ...(result.error ? { error: issueInfo(result.error) } : {}),
+    ...(result.warnings.length > 0 ? { warnings: result.warnings.map(issueInfo) } : {}),
     // expression errors by field: field address → reason
     ...(result.fieldErrors ? { fieldErrors: Object.fromEntries(Object.entries(result.fieldErrors).map(([path, error]) => [path, error.message])) } : {}),
   };

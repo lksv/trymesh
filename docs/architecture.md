@@ -153,17 +153,20 @@ interface ExtrudeFeature extends FeatureBase {
   profile: ProfileSource;           // odkud se bere průřez
   extent: Extent;                   // odkud kam se vysouvá
   operation: 'new' | 'add' | 'cut';
-  targets?: Id[];                   // tělesa pro add/cut; zatím právě jedno
+  targets?: Id[];                   // target bodies: none for new, exactly one for add, one or more for cut
 }
 
 type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
 
 // `start` je posun začátku od roviny skici, `distance` se měří od začátku; obojí podél normály
 // roviny skici, kladné ve směru normály. Těleso vyplní interval [start, start + distance].
-type Extent = { type: 'distance'; start: number; distance: number };
+// `throughAll` (a cut only): the tool passes through all targets; see Extrude, Extent and targets.
+type Extent =
+  | { type: 'distance'; start: number; distance: number }
+  | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
 ```
 
-Zdroj profilu i rozsah jsou varianty rozlišené polem `type`; další varianty (generátor profilu, „skrz vše") přidá D35 body 2 a 3.
+The profile source and the extent are variants distinguished by the field `type`. The extent has two (D35, point 2); a further profile source (a profile generator) comes with D35 point 3 and the extent "up to a face" later.
 
 ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). Vysunutí vytváří jen těleso bez místního jména; druhý tvar je připravený pro features, které vytvoří těles víc (pole, D35 bod 4). Délky jsou v milimetrech, úhly v radiánech.
 
@@ -177,7 +180,7 @@ Konvence:
 - **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
 - **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
 - **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`) a engine ho po prvním řešení přepíše.
-- **Rozsah extrude** je zatím jen varianta `distance` s posunem začátku `start`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane. Varianty „skrz vše" a výřez do více těles přidá D35 bod 2 (decisions.md, D35), později „po stěnu".
+- **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.
 
 ### Parameters and expressions (D35, point 1)
 
@@ -444,18 +447,32 @@ Omezení PoC: oblasti vzniklé křížením křivek se nedetekují, křížení 
 Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá později vyměnit nebo zopakovat samostatně:
 
 1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
-2. **Nástroj.** Engine postaví uzavřenou síť hranolu mezi `start` a `start + distance`: dvě víka (triangulace přes jádro) a boční stěny. Každý trojúhelník dostane číslo stěny podle jména; `startCap` je víko na začátku rozsahu, `endCap` na jeho konci, ať `distance` míří kamkoli.
-3. **Použití.** `new` nástroj uloží jako těleso, `add` a `cut` zavolají boolean s cílovým tělesem.
+2. **Tool.** The engine builds the closed mesh of a prism over an interval along the normal of the sketch plane: two caps (triangulated by the kernel) and the side faces. For the extent `distance` the interval is `start` to `start + distance`; for `throughAll` it is measured against the targets (below). Every triangle gets a face number by name; `startCap` is the cap at the start of the interval and `endCap` at its end, whichever way the interval points.
+3. **Application.** `new` stores the tool as a body. `add` and `cut` hand a tool recipe to `applyTool`, which runs one boolean per target body.
 
-Stav přepočtu si u feature kromě výsledku pamatuje **recept nástroje** (`ToolRecipe`: operace, cíle a funkce `build(firstFaceId)`, která nástroj postaví znovu s čísly stěn od zadaného čísla). Uloží se po úspěšné operaci i po operaci bez účinku (`noEffect`); feature v chybě (`kernelFailure`, `emptyResult`, chyba profilu) recept nemá. Zatím ho nikdo nečte; je to rozhraní pro pole (D35 bod 4), které nástroj feature zopakuje v jiné poloze, a pro jiné stavby nástroje (rotace, zkosení). Ukládá se recept, ne síť: rozsah „skrz vše" se musí pro každou kopii spočítat znovu.
+**Tool recipe.** `ToolRecipe` is the operation, the targets and the function `build(targets, firstFaceId)`, which builds the tool again for the given target solids with face numbers from the given number. `applyTool` works from the recipe alone and knows nothing about extrusions, so any later feature that produces a tool (a revolve) is applied the same way. The recompute state keeps the recipe of every `add` and `cut`, also when the operation had no effect (`noEffect`); a feature in error (`brokenReference`, `kernelFailure`, `emptyResult`, a profile error) has none. Nobody reads the stored recipe yet: it is the interface for the pattern (D35 point 4), which repeats the tool in another position. A recipe is stored instead of a mesh because the length of "through all" has to be measured again for every copy.
+
+### Extent and targets (D35, point 2)
+
+**Targets.** `new` has no target, `add` exactly one (adding to several bodies would merge them) and `cut` one or more: a screw hole through two bolted parts is one cut with both bodies as targets. A target may not be listed twice. The tool is built once and subtracted from every target in the order of the list; every changed body carries the tool's faces under the same names, which is unambiguous because a face is always referred to together with its body.
+
+**Through all.** `{ type: 'throughAll', side }` is accepted only with the operation `cut`, because its length comes from the targets. The side is always explicit: `forward` is along the normal of the sketch plane, `backward` against it, `both` on both sides. For a sketch on a face the normal points out of the body, so an ordinary hole is `backward`.
+
+- The interval is computed by `toolSpan` from the vertices of all targets together, projected onto the normal of the sketch plane: `forward` is `[0, high + overshoot]`, `backward` is `[0, low − overshoot]` and `both` is `[low − overshoot, high + overshoot]`, where `low ≤ 0 ≤ high` is the extent of the targets measured from the sketch plane.
+- The extent of the whole body counts, not only the part under the profile.
+- The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`. It keeps the cap of the tool out of the plane of a body face and stays two orders of magnitude above the resolution of the kernel adapter (about 1e-4 of the model size), which would otherwise treat the cap as flush.
+- The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern will measure it for every copy.
+- A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
+- The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
 
 Výsledky, které nejsou běžné:
 
 | Situace | Chování |
 |---|---|
-| `cut` těleso mine, `add` nic nepřidá | Těleso zůstane beze změny, feature má varování `noEffect`. Změna objemu se měří proti menšímu z obou těles (těleso, nástroj), takže drobný výstupek na velké desce účinek má. |
+| `cut` misses a target, `add` adds nothing | The target stays unchanged and the feature has the warning `noEffect`, whose `refs` list the unchanged targets. The other targets of a cut are cut. When nothing changed at all, no face of the tool enters the face table. The change of volume is measured against the smaller of the two solids (body, tool), so a small boss on a large plate does have an effect. |
 | `add` kusu, který se tělesa nedotýká | Těleso má dvě nesouvislé části; stav je `ok`. |
-| `cut` odebere celé těleso | Chyba `emptyResult`, feature se chová jako prázdná operace a těleso zůstane. |
+| `cut` would remove a whole target | Error `emptyResult` with the target in `refs`; the feature behaves as an empty operation and none of its targets changes, not even those cut before the failing one. |
+| A target is missing (removed, suppressed, in error) | Error `brokenReference` with the missing targets in `refs`; nothing is cut. |
 | Jádro selže | Chyba `kernelFailure`. |
 
 **Koplanární stěny (D19).** Engine staví nástroj přesně podle skici a nic neposouvá. Skica na stěně znamená, že víko nástroje leží v rovině této stěny; že s tím jádro neumí pracovat spolehlivě, je vlastnost konkrétního jádra a řeší ji jeho adaptér (viz záruka č. 3 u SolidKernel).
@@ -745,7 +762,7 @@ type Command =
 - **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
 - **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
 - **Stejná řídicí vazba nesmí být ve skice dvakrát.** `addConstraint` odmítne vazbu se stejným typem a stejnými operandy, jaké už má jiná geometrická vazba nebo řídicí kóta; u vazeb s operandy `a`, `b` na jejich pořadí nezáleží. Platí to i pro kótu s jinou hodnotou (upravit se má ta stávající) a pro přepnutí referenční kóty na řídicí. Referenční kóta smí měřit totéž co řídicí. `load` duplicity přijímá, aby šly otevřít starší dokumenty; ukáže je diagnostika a hodnotu takové kóty jde dál měnit. Druhy operandů, jejich zaměnitelnost a pravidla hodnot jsou v katalogu vazeb (`engine/src/catalog.ts`), kterým se validace řídí.
-- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `extent.distance` u extrude není nula a `profile.regions` není prázdné (tatáž oblast dvakrát je jedna oblast). `add` a `cut` mají v `targets` právě jedno těleso, `new` žádné. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
+- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `extent.distance` u extrude není nula a `profile.regions` není prázdné (tatáž oblast dvakrát je jedna oblast). `add` has exactly one body in `targets`, `cut` one or more without repeats, `new` none. The extent `throughAll` is accepted only with `cut` and needs `side`. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 
 Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
@@ -824,7 +841,7 @@ Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrac�
 | 3 Solver | `SolveResult` nese stupně volnosti a konfliktní vazby. Konfliktní skica má stav `warning` a model nezmizí. Tažení přes `preview` s `drag`. |
 | 4 Round-trip | Dokument je jediný zdroj pravdy, `evaluate` je čistá deterministická funkce. Po načtení se skici neřeší znovu, protože razítko odpovídá. Dokument s feature v chybě se načte také: odkaz na smazanou feature validaci neporušuje. |
 | 5 Časová osa a undo | Vlastní rovina je feature jako každá jiná. Vložení, potlačení a přesun jsou příkazy nad seznamem features, validace hlídá pořadí závislostí. Undo vrací předchozí dokument. |
-| 9 Robot joint (in progress) | Parts a, i and k as far as point 1 of D35 reaches (`packages/scenarios/test/scenario9.test.ts`): parameters, checks, pitch circles dimensioned by expressions, change of the ratio, save and load. The rest follows with points 2 to 7. |
+| 9 Robot joint (in progress) | As far as point 2 of D35 reaches (`packages/scenarios/test/scenario9.test.ts`): parameters, checks, pitch circles dimensioned by expressions, change of the ratio, save and load (parts a, i, k); the plate, the sun flange and the housing with holes through all, one of them through two bodies (parts d, e, f without teeth, patterns and pockets). The rest follows with points 3 to 7. |
 | 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`, i když je jeho bok vedle roviny o chybu float32. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. Po odříznutém nálitku nezůstanou zbytky jeho stěn, takže reference na ně se rozbijí. |
 
 ## Výsledky spiků

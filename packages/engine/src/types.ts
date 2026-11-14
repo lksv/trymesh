@@ -135,15 +135,21 @@ export interface ExtrudeFeature extends FeatureBase {
   profile: ProfileSource;
   extent: Extent;
   operation: 'new' | 'add' | 'cut';
-  targets?: Id[]; // tělesa pro add/cut; zatím právě jedno
+  targets?: Id[]; // target bodies: none for new, exactly one for add, one or more for cut
 }
 
 // Odkud vysunutí bere profil. Další zdroje (generátor profilu) přibudou jako varianty.
 export type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
 
 // Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
-// měří od začátku, kladná míří ve směru normály a nesmí být nula. Další rozsahy přibudou jako varianty.
-export type Extent = { type: 'distance'; start: number; distance: number };
+// měří od začátku, kladná míří ve směru normály a nesmí být nula.
+// `throughAll` is for a cut only: the tool passes through all targets. `forward` is along the normal
+// of the sketch plane, `backward` against it, `both` on both sides; for a sketch on a face the
+// normal points out of the body, so an ordinary hole is `backward`. The length is taken from the
+// extent of all targets together along the normal, in the state the tool is applied to, plus an
+// overshoot. A target that lies entirely on the other side is not changed and the `noEffect`
+// warning names it. Further extents ("up to face") will come as variants.
+export type Extent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
 
 // ---------------------------------------------------------------- jména
 

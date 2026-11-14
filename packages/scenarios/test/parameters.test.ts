@@ -35,7 +35,7 @@ describe('parameters in the recompute', () => {
     state = run(engine, param('h', '16'));
     expect(status(state)).toEqual({ S1: 'ok', E1: 'ok', P1: 'ok', S2: 'ok', E2: 'ok' });
     near(volume(state.evaluation.bodies.E1.solid), cylinder(20, 16));
-    expect(feature<ExtrudeFeature>(engine, 'E1').extent.distance).toBe(16);
+    expect(feature<ExtrudeFeature>(engine, 'E1').extent).toMatchObject({ distance: 16 });
     expect(feature<PlaneFeature>(engine, 'P1').offset).toBe(8);
     expect(state.evaluation.features.P1.plane?.origin).toEqual([0, 0, 8]);
     // the second cylinder stands on the cap of the first one and moved with it
@@ -78,7 +78,7 @@ describe('parameters in the recompute', () => {
     expect(changed).not.toBe(saved);
     engine.undo();
     expect(engine.save()).toBe(saved);
-    expect(feature<ExtrudeFeature>(engine, 'E1').extent.distance).toBe(10);
+    expect(feature<ExtrudeFeature>(engine, 'E1').extent).toMatchObject({ distance: 10 });
     near(volume(engine.getState().evaluation.bodies.E1.solid), cylinder(20, 10));
     engine.redo();
     expect(engine.save()).toBe(changed);
@@ -96,7 +96,7 @@ describe('parameters in the recompute', () => {
     expect(state.evaluation.features.E1.fieldErrors).toMatchObject({ 'extent/distance': { code: 'unknownName' } });
     expect(state.evaluation.features.E1.error?.refs).toEqual(['extent/distance']);
     // the number in the document stays the last valid value; the document can be saved and loaded
-    expect(feature<ExtrudeFeature>(engine, 'E1').extent.distance).toBe(10);
+    expect(feature<ExtrudeFeature>(engine, 'E1').extent).toMatchObject({ distance: 10 });
     const other = newEngine();
     expect(other.load(engine.save()).ok).toBe(true);
     expect(status(other.getState())).toEqual(status(state));
@@ -145,7 +145,7 @@ describe('parameters in the recompute', () => {
     expect(preview.ok && preview.state.evaluation.features.E1.values).toEqual({ 'extent/distance': 25 });
     near(preview.ok && volume(preview.state.evaluation.bodies.E1.solid), cylinder(20, 25));
     // the document in the preview still has the old field value
-    expect(preview.ok && (preview.state.document.features.find((f) => f.id === 'E1') as ExtrudeFeature).extent.distance).toBe(10);
+    expect(preview.ok && (preview.state.document.features.find((f) => f.id === 'E1') as ExtrudeFeature).extent).toMatchObject({ distance: 10 });
     const field = engine.preview({ type: 'setField', feature: 'E1', path: 'extent/distance', value: 'h * 3' }, 'E1');
     expect(field.ok && field.state.evaluation.features.E1.values).toEqual({ 'extent/distance': 30 });
     const bad = engine.preview({ type: 'setField', feature: 'E1', path: 'extent/distance', value: 'h *' });

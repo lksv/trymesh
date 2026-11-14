@@ -123,9 +123,19 @@ Typ kóty podle výběru:
 |---|---|---|
 | Vybrat oblasti skici | | `sketch.regions` |
 | Navrhnout výchozí operaci a cílové těleso | logika UI | `document` (rovina skici), `bodies` |
+| Choose the extent: a distance with a start, or through all with a side | UI logic (`changeExtrude`) | |
+| Choose the targets: one body for an addition, several for a cut | UI logic (`changeExtrude`) | `bodies` before the feature |
 | Náhled při změně hodnot | `preview(addFeature)` | |
 | Potvrdit | `addFeature` (extrude) | |
-| Změnit vzdálenost, operaci, oblasti, cíl | `updateFeature` | |
+| Change the extent, the operation, the regions, the targets | `updateFeature` | |
+
+The form (D35, point 2), top to bottom: sketch, regions, operation, extent, targets.
+
+- **Extent** is a select with *Distance* and *Through all*. *Through all* is enabled only for the operation *cut*; switching the operation away from a cut turns the extent back into a distance of 10 mm from the sketch plane.
+- **Distance** shows two fields, *Start* (offset of the start from the sketch plane along its normal, default 0) and *Distance*. Both take a number or an expression.
+- **Through all** shows the select *Side*: *Both sides* (the default for a new one, D35 decision 13), *Along the normal*, *Against the normal*, and a hint that on a face the normal points out of the body.
+- **Targets.** An addition has a select with one body. A cut has one checkbox per body that exists before the feature; a target that no longer exists stays in the list marked as missing, so that it can be unticked. Unticking every target leaves the list empty and the preview says that a cut needs a target; the form does not pick a body on its own.
+- The model panel describes a selected extrusion by its operation, extent (distance and a non-zero start, or through all with the side), number of regions and target bodies.
 
 ## Parameters, checks and expressions (D35, point 1)
 

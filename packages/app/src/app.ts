@@ -42,6 +42,8 @@ import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, value
 import {
   type Anchor,
   type DimensionVariant,
+  type ExtentKind,
+  type ExtentSide,
   type ExtrudeDraft,
   GEOMETRIC_KINDS,
   type PlaneDraft,
@@ -135,6 +137,8 @@ const TOOLS: [Tool, string, string][] = [
 const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
 const CHECK_STATUS = { ok: '✓ holds', failed: '✗ fails', error: '! cannot be evaluated' };
 const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
+const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
+const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
 const PICK_REACH = 7; // px
 const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
@@ -608,7 +612,12 @@ export class App {
         );
       }
       const shown = (path: string, value: number): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${fmt(value)}` : fmt(value));
-      if (f.type === 'extrude') out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, vzdálenost ${shown('extent/distance', f.extent.distance)} mm, oblastí: ${f.profile.regions.length}.`));
+      if (f.type === 'extrude') {
+        const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shown('extent/start', f.extent.start)} mm` : '';
+        const extent = f.extent.type === 'distance' ? `distance ${shown('extent/distance', f.extent.distance)} mm${start}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
+        const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => this.nameOf(id)).join(', ')}` : '';
+        out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, regions: ${f.profile.regions.length}${targets}.`));
+      }
       if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${shown('offset', f.offset)} mm.`));
     } else {
       out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
@@ -1495,7 +1504,10 @@ export class App {
       m.draft = changeExtrude(m.draft, change, bodies);
       this.draftChanged(rebuild);
     };
-    const target = m.draft.targets?.[0];
+    const targets = m.draft.targets ?? [];
+    const missing = targets.filter((id) => !bodies.includes(id));
+    const extent = m.draft.extent;
+    const cut = m.draft.operation === 'cut';
     const available = this.sketchRegions(m.draft.profile.sketch)?.result.regions ?? [];
     const stale = m.draft.profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
     return [
@@ -1514,7 +1526,6 @@ export class App {
       h('p', { className: 'hint' }, `Vybraných oblastí: ${m.draft.profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
       stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
       h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: m.draft.profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
-      this.draftField(m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
       h(
         'label',
         {},
@@ -1525,19 +1536,62 @@ export class App {
           ...(Object.keys(OPERATIONS) as ExtrudeFeature['operation'][]).map((operation) => option(operation, OPERATIONS[operation], operation === m.draft.operation)),
         ),
       ),
-      m.draft.operation === 'new'
-        ? null
-        : h(
+      // The extent: a distance with a start, or through all targets (a cut only).
+      h(
+        'label',
+        {},
+        'Extent',
+        h(
+          'select',
+          { onchange: (event: Event) => set({ extent: (event.target as HTMLSelectElement).value as ExtentKind }) },
+          option('distance', EXTENTS.distance, extent.type === 'distance'),
+          h('option', { value: 'throughAll', textContent: cut ? EXTENTS.throughAll : `${EXTENTS.throughAll} (a cut only)`, selected: extent.type === 'throughAll', disabled: !cut }),
+        ),
+      ),
+      ...(extent.type === 'distance'
+        ? [
+            this.draftField(m, 'Start (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ start }, false)),
+            this.draftField(m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
+          ]
+        : [
+            h(
+              'label',
+              {},
+              'Side',
+              h(
+                'select',
+                { onchange: (event: Event) => set({ side: (event.target as HTMLSelectElement).value as ExtentSide }) },
+                ...(Object.keys(SIDES) as ExtentSide[]).map((side) => option(side, SIDES[side], side === extent.side)),
+              ),
+            ),
+            h('p', { className: 'hint' }, 'The length follows the target bodies at every recompute. On a face the normal points out of the body, so an ordinary hole goes against it.'),
+          ]),
+      m.draft.operation === 'add'
+        ? h(
             'label',
             {},
             'Těleso',
             h(
               'select',
               { onchange: (event: Event) => set({ target: (event.target as HTMLSelectElement).value }) },
-              ...bodies.map((body) => option(body, this.nameOf(body), body === target)),
-              target === undefined || bodies.includes(target) ? null : option(target, '(chybí)', true),
+              ...bodies.map((body) => option(body, this.nameOf(body), body === targets[0])),
+              ...missing.map((body) => option(body, '(chybí)', true)),
             ),
-          ),
+          )
+        : null,
+      // A cut may go through several bodies: one checkbox per body. A target that no longer exists
+      // stays listed so that it can be unticked.
+      cut
+        ? h(
+            'fieldset',
+            { className: 'targets' },
+            h('legend', {}, 'Target bodies'),
+            ...[...bodies, ...missing].map((body) =>
+              h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: targets.includes(body), onchange: () => set({ toggleTarget: body }) }), bodies.includes(body) ? this.nameOf(body) : `${body} (missing)`),
+            ),
+            bodies.length === 0 && missing.length === 0 ? h('p', { className: 'hint' }, 'There is no body to cut yet.') : null,
+          )
+        : null,
       ...this.draftButtons(m),
     ].filter((element): element is HTMLElement => element !== null);
   }

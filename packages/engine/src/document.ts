@@ -422,26 +422,37 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   if (profile.type !== 'regions') fail(`${what}.profile.type: čeká se regions`);
   const sketch = string(profile.sketch, `${what}.profile.sketch`);
   requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.profile.sketch`);
-  const extent = object(o.extent, `${what}.extent`);
-  if (extent.type !== 'distance') fail(`${what}.extent.type: čeká se distance`);
-  const start = fields.number(extent.start, 'extent/start', EXTENT_START, `${what}.extent.start`);
-  const distance = fields.number(extent.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.extent.distance`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
+  const given = object(o.extent, `${what}.extent`);
+  let extent: ExtrudeFeature['extent'];
+  if (oneOf(given.type, ['distance', 'throughAll'] as const, `${what}.extent.type`) === 'distance') {
+    const start = fields.number(given.start, 'extent/start', EXTENT_START, `${what}.extent.start`);
+    extent = { type: 'distance', start, distance: fields.number(given.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.extent.distance`) };
+  } else {
+    // The length comes from the targets, so there must be some: only a cut goes through all.
+    if (operation !== 'cut') fail(`${what}.extent.type: throughAll is only for the operation cut`);
+    extent = { type: 'throughAll', side: oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.extent.side`) };
+  }
   const feature: ExtrudeFeature = {
     ...base(o, what),
     type: 'extrude',
     profile: { type: 'regions', sketch, regions: regions(profile.regions, `${what}.profile.regions`) },
-    extent: { type: 'distance', start, distance },
+    extent,
     operation,
   };
   if (operation === 'new') {
     if (o.targets !== undefined) fail(`${what}.targets: nové těleso nemá cíl`);
     return feature;
   }
-  if (!Array.isArray(o.targets) || o.targets.length !== 1) return fail(`${what}.targets: operace ${operation} potřebuje právě jedno cílové těleso`);
-  const target = string(o.targets[0], `${what}.targets[0]`);
-  requireRef(doc, before, { id: target, kind: 'body' }, `${what}.targets`);
-  return { ...feature, targets: [target] };
+  // Adding to several bodies would merge them; a cut may go through several (a screw hole through
+  // two bolted parts).
+  if (!Array.isArray(o.targets) || o.targets.length === 0 || (operation === 'add' && o.targets.length !== 1)) {
+    return fail(`${what}.targets: operation ${operation} needs ${operation === 'add' ? 'exactly one target body' : 'at least one target body'}`);
+  }
+  const targets = (o.targets as unknown[]).map((target, i) => string(target, `${what}.targets[${i}]`));
+  if (new Set(targets).size < targets.length) fail(`${what}.targets: a target body is listed twice`);
+  for (const target of targets) requireRef(doc, before, { id: target, kind: 'body' }, `${what}.targets`);
+  return { ...feature, targets };
 }
 
 function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): SketchFeature {
@@ -544,7 +555,7 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
   extrude: {
     info: {
       title: 'Vysunutí',
-      summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa.',
+      summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll).',
       fields: [
         { path: 'extent/start', spec: EXTENT_START, when: { path: 'extent/type', equals: 'distance' } },
         { path: 'extent/distance', spec: EXTENT_DISTANCE, when: { path: 'extent/type', equals: 'distance' } },

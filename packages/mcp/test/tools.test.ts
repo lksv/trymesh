@@ -239,6 +239,30 @@ describe('hrany tělesa', () => {
 });
 
 describe('model, tělesa a příkazy', () => {
+  it('a cut through all with two targets: the result names the target the tool missed', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = { outerLoop: ['ab', 'bc', 'cd', 'da'] };
+    const plate = (id: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start, distance: 5 }, operation: 'new' } });
+    execute(engine, { type: 'batch', commands: [plate('low', -5), plate('high', 10), sketch('s2'), { type: 'addPoint', sketch: 's2', id: 'm', x: 12, y: 14 }, { type: 'addCurve', sketch: 's2', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 5 }] });
+    const hole = (side: string): Command => ({ type: 'addFeature', feature: { id: 'hole', name: 'hole', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'throughAll', side }, operation: 'cut', targets: ['low', 'high'] } as never });
+    // both sides: both plates are cut
+    expect(execute(engine, hole('both'))).toMatchObject({ ok: true, bodies: ['low', 'high'], problems: [] });
+    const volumes = () => Object.fromEntries(ok(engine, 'get_model').bodies.map((body: { id: string; volume: number }) => [body.id, Math.round(body.volume)]));
+    expect(volumes()).toEqual({ low: 5608, high: 5608 });
+    // forward only: the lower plate is on the other side and the warning names it
+    const result = execute(engine, { type: 'updateFeature', id: 'hole', patch: { extent: { side: 'forward' } } });
+    expect(result.problems).toEqual([{ id: 'hole', name: 'hole', status: 'warning', warnings: [{ code: 'noEffect', message: expect.any(String), refs: ['low'] }] }]);
+    expect(volumes()).toEqual({ low: 6000, high: 5608 });
+    expect(ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'hole')).toMatchObject({ extent: { type: 'throughAll', side: 'forward' }, targets: ['low', 'high'] });
+    // through all outside a cut is an invalid command
+    const add = callTool(engine, 'execute', { command: { type: 'updateFeature', id: 'hole', patch: { operation: 'add', targets: ['low'] } } });
+    expect(add).toMatchObject({ ok: false, error: expect.stringContaining('throughAll is only for the operation cut') });
+    // the description of the API mentions both
+    expect(apiText()).toContain('{ type: "throughAll", side }');
+    expect(apiText()).toContain('one or more for `cut`');
+  });
+
   it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {
     const engine = newEngine();
     rectangle(engine, true);

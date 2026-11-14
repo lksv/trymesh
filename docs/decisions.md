@@ -43,7 +43,7 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and point 1 are implemented, points 2 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 and 2 are implemented, points 3 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
 D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
@@ -687,7 +687,7 @@ Omezení:
 
 ## D35 Rozšíření pro robotický kloub
 
-Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and point 1 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 and 2 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
 
 **Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
 
@@ -751,9 +751,9 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   **Stav: provedeno 2026-11-14.** Chování stávajících dokumentů se nezměnilo (dokument verze 1 dává po převodu bitově stejný model). Jak provedení návrh upřesnilo a co z něj zůstává na další body:
 
   - Registr (`FEATURE_TYPES` v `document.ts`) drží validaci, odkazy s cestou ve feature, tělesa, pojmenování stěn a pole pro `updateFeature`. Krok přepočtu je větev úplného `switch` v `evaluate.ts`; chybějící větev nebo položku registru odmítne překladač. Číselná pole přidá bod 1.
-  - Recept nástroje je `ToolRecipe { operation, targets, build(firstFaceId) }`. Transformaci dostane `build` s bodem 4, cíle jako argument s bodem 2. Recept zatím nikdo nečte.
+  - Recept nástroje je `ToolRecipe { operation, targets, build(firstFaceId) }`. Transformaci dostane `build` s bodem 4, cíle jako argument s bodem 2 (done: `build(targets, firstFaceId)`). Recept zatím nikdo nečte.
   - Posun začátku rozsahu (`extent.start`) engine už počítá, protože interval stavba hranolu dostala tak jako tak; pole v UI přidá bod 2.
-  - `targets` smí mít zatím právě jedno těleso i u výřezu (víc bod 2).
+  - `targets` smí mít zatím právě jedno těleso i u výřezu (víc bod 2). (No longer true since point 2: a cut takes one or more.)
   - `parameters` a `checks` jsou ve schématu verze 2, ale musí být prázdné; dokument, který je má, engine odmítne, aby je tiše nezahodil (bod 1). (No longer true since point 1: both are validated and evaluated.)
   - `updateFeature` ověřuje odkazy, které feature dosud neměla (porovnává místo, druh a ID). Proti `updateExtrude` je to mírnější ve dvou případech: změna, která rozbitý odkaz jen zopakuje, projde (formulář aplikace posílá vysunutí celé, takže dřív nešla v UI změnit vzdálenost u vysunutí se smazanou skicou), a změna operace bez cílů cíl znovu neověřuje. Nový rozbitý stav tím vzniknout nemůže. Pravidlo platí i pro víc cílů v bodě 2: oprava jednoho cíle nenarazí na druhý.
   - Změna s polem, které výsledná feature nemá, a půlka odkazu (objekt bez `kind`) jsou neplatné příkazy; pole s hodnotou `undefined` se přeskočí. Vzešlo z revize: překlep jinak končil úspěchem bez účinku a půlka odkazu vybrala jinou stěnu.
@@ -836,6 +836,23 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
 - Délka se počítá při každém použití nástroje znovu, proti cíli ve stavu, ve kterém se nástroj používá, a ve směru, kterým nástroj právě míří. V poli tedy pro každou kopii zvlášť: po otočení kolem osy, která není rovnoběžná se směrem vysunutí, je těleso v novém směru jinak dlouhé, a mezi zdrojovým výřezem a polem mohl k tělesu přibýt materiál.
 - Cíl, který leží celý na druhé straně roviny, se nezmění a varování „bez účinku" ho vyjmenuje. Přesah nástroje se odvozuje z rozměru cílů a musí být zřetelně nad rozlišením adaptéru jádra, jinak by ho adaptér vzal jako lícování.
 - „Po stěnu" bude další varianta téhož pole; zatím se nedělá.
+
+  **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md, section Extrude, Extent and targets. What the implementation settled:
+
+  - **Applying a tool is a function over the recipe** (`applyTool` in `evaluate.ts`), not over the extrusion, as the generality check against the backlog asked. The recipe is `ToolRecipe { operation, targets, build(targets, firstFaceId) }`; the transform argument comes with point 4.
+  - **Overshoot** of the through-all tool is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`. The kernel adapter resolves about 1e-4 of the model size, so the overshoot is at least a hundred times that. Verified against the real adapter for a plate 500 and 800 mm from the sketch plane, a plate 0.1 mm thin and one 300 mm thick.
+  - **The interval starts at the sketch plane** for `forward` and `backward`. A side on which no target reaches gets just the overshoot, so the tool misses and the feature reports `noEffect`.
+  - **Through all without a cut is an invalid command**, also when it arises from `updateFeature` changing only the operation. The app therefore turns the extent back into a distance when the operation changes away from a cut.
+  - **Several targets:** one tool, one boolean per target in the order of the list. A duplicate target is an invalid command. `emptyResult` names the target that would vanish and `brokenReference` the missing targets; in both cases no target changes. The `noEffect` warning lists the unchanged targets in `refs` and the feature is `warning` even if other targets were cut.
+  - **`updateFeature`** needed no change: another `extent.type` replaces the extent and drops the expressions under `extent/`, the same type merges (only `side` changes), and a field of the other variant is an invalid command. Fixing one target does not trip over another broken one, because only references the feature did not have before are verified.
+  - **MCP.** The conventions describe both extents and several targets. An error or a warning in the result of `execute`, `preview` and `get_model` now carries `refs` (the missed targets of a cut, the target that would vanish, the missing reference).
+  - **App.** The extrusion form has the extent select, the start field, the side select and a checkbox list of targets for a cut (ui.md, Extrude).
+  - **Tests.** `packages/engine/test/extent.test.ts` (validation and `updateFeature`), `packages/scenarios/test/extent.test.ts` (recompute against the real adapters) and scenario 9 grown by the plate, the sun flange and the housing with holes through all, one of them through two bodies.
+
+  What later points have to pick up:
+
+  - Point 4: `build` gets the transform; the through-all span must then be measured along the transformed normal and from the transformed plane origin (`toolSpan` takes the frame). `applyTool` builds the tool once for all targets of a feature; a pattern calls it per copy.
+  - Point 3: a generated profile only replaces the profile part of the step; extent, targets and `applyTool` stay as they are.
 
 **3. Ozubené kolo.** Generátor profilu pro vysunutí. Operaci, cíl a rozsah má od vysunutí, takže ozubení dostává „skrz vše", pole i budoucí rozsahy bez další práce.
 

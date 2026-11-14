@@ -64,7 +64,9 @@ interface State {
 export interface ToolRecipe {
   operation: 'add' | 'cut';
   targets: Id[];
-  build(firstFaceId: number): Prism;
+  // `targets`: the bodies the tool is about to be applied to, in the state it is applied in. An
+  // extent that depends on them ("through all") is measured here, every time the tool is built.
+  build(targets: Solid[], firstFaceId: number): Prism;
 }
 
 // Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
@@ -355,48 +357,56 @@ export class Evaluator {
   private extrude(feature: ExtrudeFeature, state: State, done: Done, failed: Failed): Step {
     const profile = this.profile(feature, state);
     if ('code' in profile) return failed(profile.code, profile.refs);
-    const targetIds = feature.operation === 'new' ? [] : (feature.targets ?? []);
-    const missing = targetIds.filter((id) => !lookup(state.bodies, id));
-    if (missing.length || (feature.operation !== 'new' && targetIds.length === 0)) return failed('brokenReference', missing.length ? missing : [feature.targets]);
-
-    // nástroj
-    const { start, distance } = feature.extent;
-    const build = (firstFaceId: number): Prism => buildPrism(feature.id, profile.regions, profile.frame, [start, start + distance], profile.curveOf, firstFaceId, this.deps.kernel);
+    // The tool: the length of "through all" is measured against the targets it is built for.
+    const build: ToolRecipe['build'] = (targets, firstFaceId) =>
+      buildPrism(feature.id, profile.regions, profile.frame, toolSpan(feature.extent, profile.frame, targets), profile.curveOf, firstFaceId, this.deps.kernel);
+    if (feature.operation !== 'new') return this.applyTool(feature.id, { operation: feature.operation, targets: feature.targets ?? [], build }, state, done, failed);
     const first = state.faceNames.length;
     let tool: Prism;
     try {
-      tool = build(first);
+      tool = build([], first);
     } catch (error) {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
-    // Nové stěny přidá feature na konec tabulky předchozího stavu.
-    const tables = {
-      faceNames: [...state.faceNames, ...tool.faces.map((f) => f.name)],
-      faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],
-      faceIds: new Map([...state.faceIds, ...tool.faces.map((f, i): [string, number] => [faceKey(f.name), first + i])]),
-    };
+    return { state: done({ status: 'ok', warnings: [] }, { ...withFaces(state, tool, first), bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
+  }
 
-    // použití
-    if (feature.operation === 'new') return { state: done({ status: 'ok', warnings: [] }, { ...tables, bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
-    const tools = { ...state.tools, [feature.id]: { operation: feature.operation, targets: targetIds, build } };
-    const targetId = targetIds[0];
-    const target = state.bodies[targetId];
-    let result: Solid;
+  // Applies a tool to its targets: a boolean operation with each of them. It works from the recipe
+  // alone, so any feature that produces a tool (an extrusion today) is applied the same way.
+  // - A missing target is a broken reference.
+  // - A cut that would remove a whole target is an error and changes none of them.
+  // - Targets the tool did not change are named in the `noEffect` warning; the recipe is stored even
+  //   then, because a copy in a pattern can hit what the original missed.
+  private applyTool(id: Id, recipe: ToolRecipe, state: State, done: Done, failed: Failed): Step {
+    const missing = recipe.targets.filter((target) => !lookup(state.bodies, target));
+    if (missing.length || recipe.targets.length === 0) return failed('brokenReference', missing.length ? missing : [recipe.targets]);
+    const first = state.faceNames.length;
+    const bodies = { ...state.bodies };
+    const unchanged: Id[] = [];
+    let tool: Prism;
     try {
-      result = this.deps.kernel.boolean(feature.operation === 'add' ? 'union' : 'difference', target, tool.solid);
+      tool = recipe.build(recipe.targets.map((target) => state.bodies[target]), first);
+      for (const target of recipe.targets) {
+        const before = state.bodies[target];
+        const result = this.deps.kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);
+        if (result.triangles.length === 0) return failed('emptyResult', [target]);
+        // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
+        // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
+        // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
+        const volume = volumeOf(before);
+        const scale = Math.min(Math.abs(volume), Math.abs(volumeOf(tool.solid)));
+        const sameVolume = Math.abs(volumeOf(result) - volume) <= 1e-6 * Math.max(1, scale);
+        if (sameVolume && (recipe.operation === 'add' || !result.faceIds.some((face) => face >= first))) unchanged.push(target);
+        else bodies[target] = result;
+      }
     } catch (error) {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
-    if (result.triangles.length === 0) return failed('emptyResult');
-    // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
-    // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
-    // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
-    const before = volumeOf(target);
-    const scale = Math.min(Math.abs(before), Math.abs(volumeOf(tool.solid)));
-    const sameVolume = Math.abs(volumeOf(result) - before) <= 1e-6 * Math.max(1, scale);
-    const unchanged = sameVolume && (feature.operation === 'add' || !result.faceIds.some((id) => id >= first));
-    if (unchanged) return { state: done({ status: 'warning', warnings: [issue('noEffect')] }, { tools }) };
-    return { state: done({ status: 'ok', warnings: [] }, { ...tables, tools, bodies: { ...state.bodies, [targetId]: result } }) };
+    const tools = { ...state.tools, [id]: recipe };
+    const warnings = unchanged.length ? [issue('noEffect', unchanged)] : [];
+    // Nothing changed: the tool's faces are in no body, so they do not enter the table either.
+    if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings }, { tools }) };
+    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...withFaces(state, tool, first), tools, bodies }) };
   }
 
   // Profil vysunutí podle jeho zdroje. Další zdroje (generátor profilu) přibudou jako další větve.
@@ -418,6 +428,40 @@ export class Evaluator {
     };
     return { regions: regions as Region[], frame: sketch.frame, curveOf };
   }
+}
+
+// The face tables of a state with the faces of a new tool appended.
+function withFaces(state: State, tool: Prism, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
+  return {
+    faceNames: [...state.faceNames, ...tool.faces.map((f) => f.name)],
+    faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],
+    faceIds: new Map([...state.faceIds, ...tool.faces.map((f, i): [string, number] => [faceKey(f.name), first + i])]),
+  };
+}
+
+// The interval of the tool along the normal of the sketch plane, measured from the plane: [start,
+// end]. "Through all" takes the extent of all targets together along the normal (their vertices
+// projected onto it) and adds an overshoot, so that the cap of the tool does not lie in a face of
+// a body. The overshoot follows the size of the targets and stays far above the resolution of the
+// kernel adapter (about 1e-4 of the largest coordinate), which would otherwise treat it as flush.
+// A side on which the targets do not reach gets just the overshoot: the tool then misses them and
+// the feature reports `noEffect`.
+function toolSpan(extent: ExtrudeFeature['extent'], frame: Frame, targets: Solid[]): [number, number] {
+  if (extent.type === 'distance') return [extent.start, extent.start + extent.distance];
+  let [low, high, reach] = [0, 0, 0];
+  for (const solid of targets) {
+    const p = solid.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      const along = (p[i] - frame.origin[0]) * frame.normal[0] + (p[i + 1] - frame.origin[1]) * frame.normal[1] + (p[i + 2] - frame.origin[2]) * frame.normal[2];
+      low = Math.min(low, along);
+      high = Math.max(high, along);
+      reach = Math.max(reach, Math.abs(p[i]), Math.abs(p[i + 1]), Math.abs(p[i + 2]));
+    }
+  }
+  const overshoot = Math.max(1, 0.01 * reach);
+  if (extent.side === 'forward') return [0, high + overshoot];
+  if (extent.side === 'backward') return [0, low - overshoot];
+  return [low - overshoot, high + overshoot];
 }
 
 type Done = (result: FeatureResult, change?: Partial<State>) => State;

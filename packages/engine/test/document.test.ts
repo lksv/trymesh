@@ -412,7 +412,8 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.features[0].solved.external.x9 = { kind: 'line', a: [0, 0], b: [1, 1] }), /neodpovídá promítnuté geometrii/);
     bad((d) => d.features.push({ ...d.features[1] }), /dvakrát/);
     bad((d) => (d.features[1].extent.distance = 0), /must not be zero/);
-    bad((d) => (d.features[1].extent.type = 'throughAll'), /čeká se distance/);
+    bad((d) => (d.features[1].extent.type = 'throughAll'), /throughAll is only for the operation cut/);
+    bad((d) => (d.features[1].extent.type = 'upToFace'), /čeká se jedna z hodnot distance, throughAll/);
     bad((d) => (d.features[1].profile.type = 'generator'), /čeká se regions/);
     bad((d) => d.parameters.push({ id: 'a', value: 1 }), /parameters\[0\].name/);
     bad((d) => d.parameters.push({ name: 'a', expr: '1 +' }), /the expression is incomplete/);

@@ -298,6 +298,18 @@ Point 1 is in the code (`docs/decisions.md`, D35, point 1, "Status: done"; `docs
 - The scenario test uses English names; `scenario9.ts` keeps the names of the draft.
 - After the review of point 1 and a further review of the plan (both in `docs/decisions.md`, D35, point 1): `updateFeature` keeps a repeated expression without evaluating it; both sides of `&&` and `||` are always evaluated; comparing a non-finite number is an error; the remainder is tolerant; expressions are limited to 1000 characters and 100 levels of nesting; `get_sketch` lists the expressions of a constraint by value name instead of a single `expr`.
 
+### After point 2 (2026-11-14)
+
+Point 2 is in the code (`docs/decisions.md`, D35, point 2, "Status: done"; `docs/architecture.md`, Extrude, Extent and targets). `Extent` and `targets` in `packages/engine/src/types.ts` have the shape of this draft. Differences and additions:
+
+- `ToolRecipe.build` is `build(targets, firstFaceId)` so far; the transform and the copy tag come with point 4.
+- The overshoot of "through all" is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`.
+- A duplicate target is an invalid command. `emptyResult` and `brokenReference` name the targets concerned in `refs`, and `noEffect` the targets the tool did not change.
+- "Through all" with an operation other than `cut` is an invalid command also when only the operation changes; a caller that changes the operation of a through-all cut has to send a new extent in the same patch.
+- MCP: errors and warnings in command results and in `get_model` carry `refs`.
+- Implementation notes that are now done: the tool recipe is stored on `noEffect` as well; the overshoot against the kernel adapter and a cut into several targets are verified by tests.
+- The scenario test builds the plate, the sun flange, the housing and one bolt hole through the plate and the housing (`through('both')`, two targets); the M4 hole and the centre opening of the plate share one cut for now and split again when the pattern arrives.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

@@ -4,6 +4,7 @@ import type { Command, Constraint, Document, ExtrudeFeature, Feature, Input, Pla
 import { CommandError, FEATURE_TYPE_INFO, applyCommand, emptyDocument, emptySketch, featureInput, fieldsOf, validateDocument } from '../src/document';
 import { CONSTRAINTS } from '../src/catalog';
 
+type DistanceExtent = Extract<ExtrudeFeature['extent'], { type: 'distance' }>;
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
 const run = (doc: Document, ...commands: Command[]): Document => commands.reduce(applyCommand, doc);
 const feature = <F extends Feature>(doc: Document, id: string): F => doc.features.find((f) => f.id === id) as F;
@@ -164,7 +165,7 @@ describe('expression in a numeric field', () => {
     const input = featureInput(feature<ExtrudeFeature>(doc, 'E1'));
     expect(input.extent).toEqual({ type: 'distance', start: 'd', distance: 'h' });
     // a form sends the whole feature: the broken `h` is repeated, the start is fixed to a number
-    doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { profile: input.profile, extent: { ...input.extent, start: 2 }, operation: 'new' } });
+    doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { profile: input.profile, extent: { ...(input.extent as Input<DistanceExtent>), start: 2 }, operation: 'new' } });
     expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { start: 2, distance: 12 }, expressions: { 'extent/distance': 'h' } });
     // repeated with different spacing is still the same expression
     doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: ' h ' } } });
@@ -198,7 +199,7 @@ describe('expression in a numeric field', () => {
     doc = run(doc, { type: 'setField', feature: 'E1', path: 'extent/distance', value: 'h / 2' });
     expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { distance: 6 }, expressions: { 'extent/distance': 'h / 2' } });
     doc = run(doc, { type: 'setField', feature: 'E1', path: 'extent/distance', value: 7 });
-    expect(feature<ExtrudeFeature>(doc, 'E1').extent.distance).toBe(7);
+    expect(feature<ExtrudeFeature>(doc, 'E1').extent).toMatchObject({ distance: 7 });
     expect(feature<ExtrudeFeature>(doc, 'E1').expressions).toBeUndefined();
     expect(() => applyCommand(doc, { type: 'setField', feature: 'E1', path: 'extent/depth', value: 1 })).toThrow(/is not a numeric field/);
     expect(() => applyCommand(doc, { type: 'setField', feature: 'E1', path: 'operation', value: 1 })).toThrow(/is not a numeric field/);

@@ -1,11 +1,12 @@
 // Validation scenario 9: a robot joint with a planetary gearbox (docs/requirements.md).
 // It grows with the points of D35; so far part a) parameters, checks and the sketch of pitch circles,
-// and the parts of i) and k) that need nothing else.
+// the bodies of d), e) and f) with their through holes (no teeth, patterns or pockets yet), and the
+// parts of i) and k) that need nothing else.
 // Parameter names are English: `module` for `modul` of the requirements, `backlash` for `vule`,
 // `centers` (centre distance) for `osa`.
 import { describe, expect, it } from 'vitest';
-import type { Command, Constraint, Engine, EngineState, Id, Input, SketchFeature } from '@trymesh/engine';
-import { XY, addSketch, batch, newEngine, run, status } from './kit';
+import type { Command, Constraint, Engine, EngineState, Extent, Id, Input, ProfileSource, SketchFeature } from '@trymesh/engine';
+import { XY, addSketch, batch, expectAllOk, faceNames, newEngine, run, status, volume } from './kit';
 
 const point = (sk: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: sk, id, x, y });
 const circle = (sk: Id, id: Id, center: Id, radius: number, construction = false): Command => ({ type: 'addCurve', sketch: sk, id, curve: { type: 'circle', center, ...(construction ? { construction: true } : {}) }, radius });
@@ -13,6 +14,17 @@ const constrain = (sk: Id, id: Id, constraint: Input<Constraint>): Command => ({
 const dim = (sk: Id, id: Id, shape: object, value: number | string): Command => constrain(sk, id, { ...shape, value, driving: true } as Input<Constraint>);
 const param = (name: string, expr: string): Command => ({ type: 'setParameter', name, expr });
 const sketchOf = (state: EngineState, id: Id): SketchFeature => state.document.features.find((f) => f.id === id) as SketchFeature;
+// a point at coordinates relative to the sketch origin
+const at = (sk: Id, p: Id, x: number | string, y: number | string): Command[] => [
+  dim(sk, `${p}x`, { type: 'horizontalDistance', a: 'origin', b: p }, x),
+  dim(sk, `${p}y`, { type: 'verticalDistance', a: 'origin', b: p }, y),
+];
+const regions = (sk: Id, ...loops: Id[][]): ProfileSource => ({ type: 'regions', sketch: sk, regions: loops.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })) });
+const span = (start: number | string, distance: number | string): Input<Extent> => ({ type: 'distance', start, distance });
+const through = (side: 'forward' | 'backward' | 'both'): Extent => ({ type: 'throughAll', side });
+function extrude(id: Id, operation: 'new' | 'add' | 'cut', profile: ProfileSource, extent: Input<Extent>, targets?: Id[]): Command {
+  return { type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile, extent, operation, ...(targets ? { targets } : {}) } };
+}
 
 const CHECKS = {
   screws: 'rotor screws can be inserted',
@@ -62,6 +74,63 @@ function parametersAndGearSketch(engine: Engine): EngineState {
   );
 }
 
+// f) The back plate below the sketch plane with one M4 hole and the centre opening, d) the flange of
+// the sun gear with the bore for the centring pin, e) the housing with the motor recess, and one M3
+// screw hole through the plate and the housing. Axial layout: zero is the seating face of the
+// stator, positive towards the rotor.
+function bodiesAndHoles(engine: Engine): EngineState {
+  run(
+    engine,
+    addSketch('skPlate', XY),
+    batch(circle('skPlate', 'pl', 'origin', 50), dim('skPlate', 'dpl', { type: 'diameter', curve: 'pl' }, 110)),
+    extrude('plate', 'new', regions('skPlate', ['pl']), span(-5, 5)),
+    addSketch('skPlateHoles', XY),
+    batch(
+      point('skPlateHoles', 'c4', 19, 1),
+      circle('skPlateHoles', 'm4', 'c4', 2),
+      ...at('skPlateHoles', 'c4', 20, 0),
+      dim('skPlateHoles', 'dm4', { type: 'diameter', curve: 'm4' }, 4.5),
+      circle('skPlateHoles', 'c20', 'origin', 9),
+      dim('skPlateHoles', 'dc20', { type: 'diameter', curve: 'c20' }, 20),
+    ),
+    // the plate lies below the sketch plane, hence backward
+    extrude('plateHoles', 'cut', regions('skPlateHoles', ['m4'], ['c20']), through('backward'), ['plate']),
+  );
+  run(
+    engine,
+    addSketch('skFlange', XY),
+    batch(circle('skFlange', 'fl', 'origin', 19), dim('skFlange', 'dfl', { type: 'diameter', curve: 'fl' }, 40)),
+    extrude('sun', 'new', regions('skFlange', ['fl']), span(26.5, 4)),
+    // the flange lies above the sketch plane of the gears, hence forward
+    extrude('sunBore', 'cut', regions('skGears', ['sb']), through('forward'), ['sun']),
+  );
+  return run(
+    engine,
+    addSketch('skHousing', XY),
+    batch(
+      circle('skHousing', 'ho', 'origin', 54),
+      circle('skHousing', 'hb', 'origin', 45),
+      dim('skHousing', 'dho', { type: 'diameter', curve: 'ho' }, 110),
+      dim('skHousing', 'dhb', { type: 'diameter', curve: 'hb' }, 92),
+    ),
+    // a solid cylinder = the annulus [ho] and the disc [hb]; then the recess for the motor
+    extrude('housing', 'new', regions('skHousing', ['ho'], ['hb']), span(0, 46)),
+    extrude('motorBore', 'cut', regions('skHousing', ['hb']), span(0, 28), ['housing']),
+    addSketch('skBolts', XY),
+    batch(point('skBolts', 'cb', 50, 1), circle('skBolts', 'bh', 'cb', 1.5), ...at('skBolts', 'cb', 50.5, 0), dim('skBolts', 'dbh', { type: 'diameter', curve: 'bh' }, 3.4)),
+    // the sketch plane lies between the plate and the housing, hence both sides and two targets
+    extrude('boltHole', 'cut', regions('skBolts', ['bh']), through('both'), ['plate', 'housing']),
+  );
+}
+
+// Area of a circle as the engine builds it: a polygon inscribed with the chord tolerance 0.01.
+const disc = (diameter: number): number => {
+  const sides = Math.ceil(Math.PI / Math.acos(1 - 0.02 / diameter));
+  return (sides / 8) * diameter * diameter * Math.sin((2 * Math.PI) / sides);
+};
+const bodyVolume = (state: EngineState, body: Id): number => volume(state.evaluation.bodies[body].solid);
+const holeFaces = (state: EngineState, body: Id, feature: Id): string[] => faceNames(state, body).filter((name) => name.startsWith(`${feature}/`));
+
 const allChecks = (state: EngineState): Record<string, string> => Object.fromEntries(Object.entries(state.evaluation.checks).map(([name, result]) => [name, result.status]));
 const gears = (state: EngineState) => {
   const sketch = state.evaluation.features.skGears.sketch;
@@ -95,6 +164,44 @@ describe('scenario 9: robot joint', () => {
     expect(sketch.expressions).toEqual({ 'constraints/dp/value': 'module * Zp', 'constraints/dr/value': 'module * Zr', 'constraints/ds/value': 'module * Zs' });
     expect(sketch.constraints.ds).toMatchObject({ value: 16.2, driving: true });
     expect(sketch.constraints.dr).toMatchObject({ value: 64.8 });
+  });
+
+  it('d) e) f) bodies with holes through all: the plate, the sun flange, the housing and a screw hole through two bodies', () => {
+    const engine = newEngine();
+    parametersAndGearSketch(engine);
+    const state = bodiesAndHoles(engine);
+    expectAllOk(state);
+    expect(Object.keys(state.evaluation.bodies)).toEqual(['plate', 'sun', 'housing']);
+    // through holes have no caps in the body: only their sides
+    expect(holeFaces(state, 'plate', 'plateHoles')).toEqual(['plateHoles/side/c20', 'plateHoles/side/m4']);
+    expect(holeFaces(state, 'sun', 'sunBore')).toEqual(['sunBore/side/sb']);
+    expect(holeFaces(state, 'plate', 'boltHole')).toEqual(['boltHole/side/bh']);
+    expect(holeFaces(state, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
+    expect(bodyVolume(state, 'plate')).toBeCloseTo((disc(110) - disc(4.5) - disc(20) - disc(3.4)) * 5, 1);
+    expect(bodyVolume(state, 'sun')).toBeCloseTo((disc(40) - disc(3.2)) * 4, 1);
+    expect(bodyVolume(state, 'housing')).toBeCloseTo(disc(110) * 46 - disc(92) * 28 - disc(3.4) * 46, 1);
+
+    // a thicker plate and a taller housing: the holes still go through
+    const thicker = run(engine, { type: 'updateFeature', id: 'plate', patch: { extent: { start: -8, distance: 8 } } }, { type: 'updateFeature', id: 'housing', patch: { extent: { distance: 52 } } });
+    expectAllOk(thicker);
+    expect(bodyVolume(thicker, 'plate')).toBeCloseTo((disc(110) - disc(4.5) - disc(20) - disc(3.4)) * 8, 1);
+    expect(bodyVolume(thicker, 'housing')).toBeCloseTo(disc(110) * 52 - disc(92) * 28 - disc(3.4) * 52, 1);
+    expect(holeFaces(thicker, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
+    engine.undo();
+    engine.undo();
+
+    // the plate alone on the wrong side: the hole misses it and the warning names it
+    const missed = run(engine, { type: 'updateFeature', id: 'boltHole', patch: { extent: { side: 'forward' } } });
+    expect(status(missed).boltHole).toBe('warning:noEffect');
+    expect(missed.evaluation.features.boltHole.warnings[0].refs).toEqual(['plate']);
+    expect(holeFaces(missed, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
+    engine.undo();
+
+    // the document saves and loads unchanged
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.save()).toBe(engine.save());
+    expect(other.getState().evaluation).toEqual(engine.getState().evaluation);
   });
 
   it('i) changing the ratio: the circles are recomputed, stay tangent and the checks hold', () => {

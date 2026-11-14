@@ -228,26 +228,51 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
 export type ExtrudeDraft = Input<ExtrudeFeature>;
 export type PlaneDraft = Input<PlaneFeature>;
 
-// Změna rozpracovaného vysunutí. Nové těleso cíl nemá; přidání a výřez bez cíle dostanou poslední
-// existující těleso. Cíl, který už neexistuje, se sám nepřepisuje: má ho vidět a změnit uživatel.
+// A change of an extrusion draft.
+// - A new body has no target; an addition and a cut without one get the last existing body. A target
+//   that no longer exists is not rewritten on its own: the user should see it and change it.
+// - An addition has exactly one target, so switching to it keeps the first one. A cut may have
+//   several: `toggleTarget` adds or removes one of them.
+// - "Through all" exists only for a cut: another operation turns it back into a distance. A new
+//   "through all" goes to both sides (D35, decision 13).
+// - `start` and `distance` belong to the distance extent and `side` to "through all"; a change for
+//   the other variant is ignored.
+export type ExtentKind = ExtrudeFeature['extent']['type'];
+export type ExtentSide = Extract<ExtrudeFeature['extent'], { type: 'throughAll' }>['side'];
 export interface ExtrudeChange {
   sketch?: Id;
   regions?: RegionRef[];
+  extent?: ExtentKind;
+  start?: number | Expr;
   distance?: number | Expr;
+  side?: ExtentSide;
   operation?: ExtrudeFeature['operation'];
   target?: Id;
+  toggleTarget?: Id;
 }
+const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
 export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[]): ExtrudeDraft {
-  const next: ExtrudeDraft = {
-    ...draft,
+  const operation = change.operation ?? draft.operation;
+  let extent = draft.extent;
+  if (extent.type === 'throughAll' && operation !== 'cut') extent = DEFAULT_DISTANCE;
+  // a request for "through all" outside a cut is ignored: the draft keeps the distance it has
+  if (change.extent === 'distance' && extent.type !== 'distance') extent = DEFAULT_DISTANCE;
+  if (change.extent === 'throughAll' && extent.type !== 'throughAll' && operation === 'cut') extent = { type: 'throughAll', side: 'both' };
+  if (extent.type === 'distance') extent = { ...extent, ...(change.start === undefined ? {} : { start: change.start }), ...(change.distance === undefined ? {} : { distance: change.distance }) };
+  else if (change.side !== undefined) extent = { ...extent, side: change.side };
+  let targets = change.target === undefined ? draft.targets : [change.target];
+  if (change.toggleTarget !== undefined) targets = targets?.includes(change.toggleTarget) ? targets.filter((id) => id !== change.toggleTarget) : [...(targets ?? []), change.toggleTarget];
+  if (operation === 'add' && targets && targets.length > 1) targets = targets.slice(0, 1);
+  // An empty list (the user unticked every target of a cut) stays empty; the engine says what is missing.
+  if (operation !== 'new' && targets === undefined && bodies.length > 0) targets = [bodies[bodies.length - 1]];
+  const { targets: _old, ...rest } = draft;
+  return {
+    ...rest,
     profile: { ...draft.profile, ...(change.sketch === undefined ? {} : { sketch: change.sketch }), ...(change.regions === undefined ? {} : { regions: change.regions }) },
-    extent: { ...draft.extent, ...(change.distance === undefined ? {} : { distance: change.distance }) },
-    operation: change.operation ?? draft.operation,
-    ...(change.target === undefined ? {} : { targets: [change.target] }),
+    extent,
+    operation,
+    ...(operation === 'new' || targets === undefined ? {} : { targets }),
   };
-  if (next.operation === 'new') delete next.targets;
-  else if (next.targets === undefined && bodies.length > 0) next.targets = [bodies[bodies.length - 1]];
-  return next;
 }
 
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.

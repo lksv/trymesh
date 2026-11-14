@@ -385,7 +385,32 @@ describe('nálezy z revize aplikace', () => {
     expect(changeExtrude(draft, { operation: 'new' }, ['e1'])).not.toHaveProperty('targets');
     const fresh = changeExtrude({ ...draft, operation: 'new', targets: undefined }, { operation: 'cut' }, ['e0', 'e1']);
     expect(fresh).toMatchObject({ operation: 'cut', targets: ['e1'] });
-    expect(changeExtrude({ ...draft, targets: undefined }, {}, [])).toMatchObject({ operation: 'add', targets: undefined });
+    // no body to pick: the draft stays without a target and the engine says what is missing
+    expect(changeExtrude({ ...draft, targets: undefined }, {}, [])).toMatchObject({ operation: 'add' });
+    expect(changeExtrude({ ...draft, targets: undefined }, {}, [])).not.toHaveProperty('targets');
+
+    // a cut may have several targets; an addition keeps the first one
+    const cut = changeExtrude(draft, { operation: 'cut', target: 'e1' }, ['e0', 'e1']);
+    expect(changeExtrude(cut, { toggleTarget: 'e0' }, ['e0', 'e1']).targets).toEqual(['e1', 'e0']);
+    expect(changeExtrude(changeExtrude(cut, { toggleTarget: 'e0' }, ['e0', 'e1']), { toggleTarget: 'e1' }, ['e0', 'e1']).targets).toEqual(['e0']);
+    expect(changeExtrude(changeExtrude(cut, { toggleTarget: 'e0' }, ['e0', 'e1']), { operation: 'add' }, ['e0', 'e1']).targets).toEqual(['e1']);
+    // unticking the last target leaves the list empty; no body is picked behind the user's back
+    const none = changeExtrude(cut, { toggleTarget: 'e1' }, ['e0', 'e1']);
+    expect(none.targets).toEqual([]);
+    expect(changeExtrude(none, { distance: 3 }, ['e0', 'e1']).targets).toEqual([]);
+
+    // the extent: through all exists only for a cut and starts on both sides
+    const all = changeExtrude(cut, { extent: 'throughAll' }, ['e1']);
+    expect(all.extent).toEqual({ type: 'throughAll', side: 'both' });
+    expect(changeExtrude(all, { side: 'backward' }, ['e1']).extent).toEqual({ type: 'throughAll', side: 'backward' });
+    expect(changeExtrude(all, { distance: 3, start: 1 }, ['e1']).extent).toEqual({ type: 'throughAll', side: 'both' }); // fields of the other variant
+    expect(changeExtrude(all, { extent: 'throughAll' }, ['e1']).extent).toBe(all.extent);
+    expect(changeExtrude(all, { extent: 'distance' }, ['e1']).extent).toEqual({ type: 'distance', start: 0, distance: 10 });
+    expect(changeExtrude(all, { operation: 'add' }, ['e1'])).toMatchObject({ operation: 'add', extent: { type: 'distance', start: 0, distance: 10 }, targets: ['e1'] });
+    expect(changeExtrude(draft, { extent: 'throughAll' }, ['e1']).extent).toEqual({ type: 'distance', start: 0, distance: 5 }); // not a cut
+    expect(changeExtrude(draft, { operation: 'cut', extent: 'throughAll' }, ['e1'])).toMatchObject({ operation: 'cut', extent: { type: 'throughAll', side: 'both' } });
+    expect(changeExtrude(draft, { start: 'h / 2', side: 'both' }, ['e1']).extent).toEqual({ type: 'distance', start: 'h / 2', distance: 5 });
+    expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: all.profile, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
     expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: draft.profile, extent: draft.extent, operation: 'add', targets: ['smazané'] } });

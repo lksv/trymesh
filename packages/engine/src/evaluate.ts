@@ -1,4 +1,5 @@
 // Přepočet: přehrání časové osy s memoizací. Pravidla jsou v docs/architecture.md, sekce Přepočet.
+import { SketchAnalysis } from './analysis';
 import { constraintOperands } from './document';
 import { type Profile, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
 import { type FaceInfo, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
@@ -21,6 +22,7 @@ import type {
   SketchSolver,
   Solid,
   SolidKernel,
+  SolveInput,
   SolveResult,
 } from './types';
 import { faceKey, has } from './util';
@@ -47,7 +49,18 @@ interface State {
   faceInfos: FaceInfo[];
   faceIds: Map<string, number>; // jméno stěny → číslo
   planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
-  sketches: Record<Id, { feature: SketchFeature; frame: Frame; geometry: SketchGeometry; profile: Profile }>;
+  sketches: Record<Id, SketchState>;
+}
+// `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
+// určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
+export interface SketchState {
+  feature: SketchFeature;
+  frame: Frame;
+  geometry: SketchGeometry;
+  profile: Profile;
+  input: SolveInput;
+  solve: { status: SolveResult['status']; conflicting: Id[] };
+  analysis?: SketchAnalysis;
 }
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
 // jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
@@ -93,6 +106,18 @@ export class Evaluator {
   constructor(private readonly deps: Deps) {}
 
   evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; writeBacks: Map<Id, WriteBack>; trace: Trace } {
+    const { state: final, writeBacks, trace } = this.run(doc, options);
+    const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
+    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames }, writeBacks, trace };
+  }
+
+  // Vyhodnocená skica ve svém místě časové osy; undefined, když se nevyhodnotila (potlačená,
+  // chybná rovina). Objekt je pro nezměněný dokument tentýž, hodí se jako klíč cache.
+  sketchState(doc: Document, sketch: Id): SketchState | undefined {
+    return lookup(this.run(doc, { upTo: sketch }).state.sketches, sketch);
+  }
+
+  private run(doc: Document, options: EvaluateOptions): { state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
     let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {} };
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
@@ -111,9 +136,7 @@ export class Evaluator {
       state = step.state;
       if (feature.id === options.upTo) break;
     }
-    const final = state;
-    const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
-    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames }, writeBacks, trace };
+    return { state, writeBacks, trace };
   }
 
   // Zápis výsledku vytvoří nový objekt feature. Záznam v cache se na něj převěsí: nový objekt by
@@ -202,6 +225,11 @@ export class Evaluator {
       }
     } else if (warnings.every((w) => w.code !== 'sketchConflict')) warnings.push(issue('sketchConflict', result.conflicting));
 
+    // Stupně volnosti počítá engine z vlastního rozboru; počet ze solveru není spolehlivý.
+    // Polohy v pořadí dokumentu (solver je vrací seřazené podle ID), aby i rozbor šel v tomto pořadí.
+    const inOrder = <T>(order: Record<Id, T>, values: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.keys(order).map((id) => [id, values[id]]));
+    const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
+    const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;
     const profile = detectProfile(feature, geometry, chordTolerance);
     const sketchResult: FeatureResult = {
       status: warnings.length ? 'warning' : 'ok',
@@ -210,7 +238,7 @@ export class Evaluator {
       sketch: {
         points: geometry.points,
         radii: geometry.radii,
-        degreesOfFreedom: result.status === 'solved' ? result.degreesOfFreedom : 0,
+        degreesOfFreedom: analysis?.degreesOfFreedom ?? 0,
         conflicting: result.conflicting,
         redundant: result.redundant,
         measurements: measure(feature, setup.input.curves, geometry),
@@ -218,7 +246,8 @@ export class Evaluator {
         regions: profile.regions.map((region) => ({ ref: region.ref, loops: [region.outer, ...region.holes].map((loop) => Float64Array.from(loop.xy)) })),
       },
     };
-    return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, profile } } }), writeBack };
+    const solve = { status: result.status, conflicting: result.conflicting };
+    return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, profile, input, solve, analysis } } }), writeBack };
   }
 
   private extrude(feature: ExtrudeFeature, state: State, done: Done, failed: Failed): Step {

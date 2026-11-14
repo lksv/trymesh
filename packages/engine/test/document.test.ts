@@ -148,6 +148,31 @@ describe('příkazy skici', () => {
     expect(sketchOf(run(doc, add({ type: 'tangent', a: 'c', b: 'l3' }))).constraints.k).toEqual({ type: 'tangent', a: 'c', b: 'l3' });
   });
 
+  it('stejnou řídicí vazbu nejde přidat dvakrát; referenční kóta smí být vedle řídicí', () => {
+    const add = (id: string, constraint: Constraint): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
+    const doc = run(base(), add('h', { type: 'horizontal', line: 'l1' }), add('par', { type: 'parallel', a: 'l1', b: 'l3' }), add('w', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 40, driving: true }));
+    invalid(doc, add('h2', { type: 'horizontal', line: 'l1' }), /stejná vazba už ve skice je \("h"\)/);
+    invalid(doc, add('par2', { type: 'parallel', a: 'l3', b: 'l1' }), /"par"/); // pořadí operandů nerozhoduje
+    invalid(doc, add('w2', { type: 'horizontalDistance', a: 'p2', b: 'p1', value: -40, driving: true }), /"w"/);
+    invalid(doc, add('w2', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 55, driving: true }), /"w"/); // jiná hodnota: upravit se má ta stávající
+    // jiný typ nebo jiné operandy duplicita nejsou
+    run(doc, add('v', { type: 'vertical', line: 'l1' }), add('d', { type: 'distance', a: 'p1', b: 'p2', value: 40, driving: true }), add('par2', { type: 'parallel', a: 'l2', b: 'l4' }));
+    // referenční kóta smí měřit totéž; řídicí se z ní vedle stávající řídicí stát nesmí
+    const measured = run(doc, add('ref', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 40, driving: false }), add('ref2', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 40, driving: false }));
+    invalid(measured, { type: 'setConstraintValue', sketch: 'S1', id: 'ref', driving: true }, /stejnou řídicí kótu už skica má \("w"\)/);
+    run(measured, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: 45 }); // úprava sebe sama duplicita není
+    // dokument s duplicitou (ze starší verze) se načte
+    const legacy = structuredClone(doc);
+    sketchOf(legacy).constraints.h2 = { type: 'horizontal', line: 'l1' };
+    expect(sketchOf(validateDocument(JSON.parse(JSON.stringify(legacy)))).constraints.h2).toEqual({ type: 'horizontal', line: 'l1' });
+    // hodnotu duplicitní kóty z načteného dokumentu jde změnit; hlídá se jen přepnutí na řídicí
+    sketchOf(legacy).constraints.w2 = { type: 'horizontalDistance', a: 'p2', b: 'p1', value: -40, driving: true };
+    const loaded = validateDocument(JSON.parse(JSON.stringify(legacy)));
+    expect((sketchOf(run(loaded, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: 42 })).constraints.w as { value: number }).value).toBe(42);
+    expect((sketchOf(run(loaded, { type: 'setConstraintValue', sketch: 'S1', id: 'w2', value: -42 })).constraints.w2 as { value: number }).value).toBe(-42);
+    run(loaded, { type: 'setConstraintValue', sketch: 'S1', id: 'w2', driving: false });
+  });
+
   it('kóta: změna hodnoty a přepnutí na referenční', () => {
     const doc = run(base(), { type: 'addConstraint', sketch: 'S1', id: 'w', constraint: { type: 'distance', a: 'p1', b: 'p2', value: 40, driving: true } }, { type: 'addConstraint', sketch: 'S1', id: 'h', constraint: { type: 'horizontal', line: 'l1' } });
     const next = run(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: 50 }, { type: 'setConstraintValue', sketch: 'S1', id: 'w', driving: false });

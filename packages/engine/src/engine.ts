@@ -1,8 +1,10 @@
 // Fasáda enginu: příkazy, undo/redo, náhled, načtení a uložení, export.
 import { CommandError, applyCommand, emptyDocument, validateDocument } from './document';
-import { type DragTarget, type Deps, Evaluator, type WriteBack } from './evaluate';
+import { type DragTarget, type Deps, Evaluator, type SketchState, type WriteBack } from './evaluate';
+import { has } from './util';
+import { UNAVAILABLE, diagnose, explain } from './diagnose';
 import { toStl } from './solid';
-import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id } from './types';
+import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, SketchDiagnosis } from './types';
 
 export function createEngine(deps: Deps): Engine {
   const evaluator = new Evaluator(deps);
@@ -76,6 +78,19 @@ export function createEngine(deps: Deps): Engine {
     evaluation = next.evaluation;
   };
 
+  // Diagnostika skici se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní
+  // nezmění, je objekt tentýž a diagnostika se nepočítá znovu.
+  const diagnoses = new WeakMap<SketchState, SketchDiagnosis>();
+  const sketchStateOf = (id: Id, what: string): SketchState | undefined => {
+    if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: skica "${id}" neexistuje`);
+    return evaluator.sketchState(document, id);
+  };
+  const diagnosisOf = (sketch: SketchState): SketchDiagnosis => {
+    let diagnosis = diagnoses.get(sketch);
+    if (!diagnosis) diagnoses.set(sketch, (diagnosis = diagnose(sketch)));
+    return diagnosis;
+  };
+
   return {
     execute(cmd) {
       let applied: Document;
@@ -133,6 +148,18 @@ export function createEngine(deps: Deps): Engine {
     getState(at) {
       if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
       return state(document, at === undefined ? evaluation : evaluator.evaluate(document, { upTo: at }).evaluation);
+    },
+
+    diagnoseSketch(id) {
+      const sketch = sketchStateOf(id, 'diagnoseSketch');
+      return sketch ? diagnosisOf(sketch) : UNAVAILABLE;
+    },
+
+    explainConstraint(id, constraint) {
+      const sketch = sketchStateOf(id, 'explainConstraint');
+      const feature = document.features.find((f) => f.id === id);
+      if (feature?.type !== 'sketch' || !has(feature.constraints, constraint)) throw new Error(`explainConstraint: vazba "${constraint}" ve skice "${id}" není`);
+      return sketch ? explain(sketch, constraint) : { redundant: false, impliedBy: [] };
     },
 
     load(json) {

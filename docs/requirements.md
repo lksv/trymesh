@@ -2,7 +2,7 @@
 
 Živý dokument. Popisuje, co má PoC umět a co ne. Důvody jednotlivých voleb jsou v [decisions.md](decisions.md).
 
-Poslední úprava: 2026-11-13
+Poslední úprava: 2026-11-14
 
 ## Cíl
 
@@ -35,6 +35,7 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 - Geometrické vazby: totožnost, vodorovnost, svislost, rovnoběžnost, kolmost, tečnost, shodná délka, bod na křivce.
 - Kóty: vzdálenost bod–bod, bod–úsečka, vodorovná a svislá vzdálenost, úhel, poloměr/průměr.
 - Stav skici: plně určená, podurčená, přeurčená (včetně označení konfliktních vazeb).
+- Diagnostika skici na vyžádání: které vazby jsou navíc (duplicitní i plynoucí z ostatních) a ze kterých vazeb plynou, kterou sadu jde odebrat, a které body a poloměry se ještě mohou hýbat. Stejnou řídicí vazbu nejde přidat dvakrát.
 - Tažení podurčené geometrie, při kterém solver drží vazby.
 - Konstrukční geometrie (pomocné křivky, které netvoří profil).
 - Promítnutí hrany tělesa do skici jako referenční geometrie, ke které jde vázat a kótovat: přímá hrana jako úsečka, kruhová hrana do rovnoběžné roviny jako kružnice. Při změně tělesa se skica přepočítá, takže například díra drží vzdálenost od okraje nebo soustřednost s válcem.
@@ -59,7 +60,6 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 - Vlastní rovina nakloněná kolem úsečky skici a rovina třemi body.
 - Promítnutí kruhové hrany do šikmé roviny (elipsa). Architektura s tím počítá od začátku, viz architecture.md.
 - Promítnutí vrcholů tělesa do skici.
-- Stav určenosti po jednotlivých entitách skici.
 - Export do 3MF.
 - Rozsah extrude „skrz vše" a „po stěnu" (díra, která po změně tloušťky tělesa dál prochází).
 - Revolve.
@@ -90,3 +90,4 @@ Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako 
    - c) Výřez, jehož stěna lícuje se stěnou tělesa jen zčásti, a další operace na nově vzniklé stěně: výsledkem je jedno těleso bez mezer.
    - d) Výřez, který těleso mine, a výřez, který by ho odebral celé: model zůstane, feature ohlásí varování, respektive chybu.
    - e) Nálitek se stejným půdorysem se zase celý odřízne: po jeho stěnách nezůstane nic a skica na některé z nich ohlásí rozbitou referenci.
+7. **Skica krok za krokem s diagnostikou.** Obrys úhelníku od ruky, pak směry stran, rozměry a ukotvení. Po každém kroku diagnostika řekne, kolik volnosti zbývá a které body se hýbou; u určeného tvaru bez ukotvení ukáže, že volná je jen poloha. Vazby navíc označí, vysvětlí, z čeho plynou, a navrhne sadu k odebrání; po jejím odebrání se geometrie nezmění. Přesnou duplicitu engine odmítne.

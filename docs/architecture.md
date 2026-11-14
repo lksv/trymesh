@@ -1,6 +1,6 @@
 # Architektura
 
-Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení.
+Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení; D32 je odsouhlaseno 2026-11-14.
 
 Vychází z [requirements.md](requirements.md) a [decisions.md](decisions.md). Návrh UI je v [ui.md](ui.md).
 
@@ -177,7 +177,7 @@ Křivka smí odkazovat jen na vlastní body skici a na `origin`, ne na odvozené
 
 **Referenční kóty.** Kóta s `driving: false` geometrii neřídí, jen měří. Solveru se neposílá; její hodnotu počítá engine z vyřešených proměnných a vrací ji ve výsledku skici (`measurements`).
 
-**Nadbytečné vazby** nejsou chyba ani varování. Engine je vrací v `redundant` a UI je může nabídnout ke smazání. Automaticky odvozené vazby je budou vyrábět běžně.
+**Nadbytečné vazby** nejsou chyba ani varování. Automaticky odvozené vazby je budou vyrábět běžně. Výsledek skici nese v `redundant` jen to, co ohlásí solver, a ten ohlásí z každé závislé skupiny jen některé; úplný přehled dává diagnostika skici (viz níže). Přesnou duplicitu (stejný typ a stejné operandy u dvou řídicích vazeb) engine nepřijme vůbec.
 
 **Promítnutá geometrie (D23).** Položka `external` promítne hranu tělesa do roviny skici jako pevnou referenční křivku. Uživatel k ní váže a kótuje stejně jako k vlastní geometrii, takže například díra drží vzdálenost od okraje nebo soustřednost s válcem i po změně tělesa.
 
@@ -207,7 +207,7 @@ Skica má **řešené proměnné** (polohy bodů v `points`, poloměry kružnic 
 Řešení probíhá na jediném místě, při přepočtu. Příkazy solver samy nevolají (s výjimkou tažení, viz níže), jen mění dokument:
 
 1. Spočítá se promítnutá geometrie ze stavu těles před skicou.
-2. **Otisk vstupů se shoduje s razítkem:** uložené proměnné se použijí beze změny. Solver se volá jen pro diagnostiku (stupně volnosti, konflikty, nadbytečné vazby).
+2. **Otisk vstupů se shoduje s razítkem:** uložené proměnné se použijí beze změny. Solver se volá jen kvůli konfliktům a nadbytečným vazbám, které sám hlásí; stupně volnosti počítá engine vlastním rozborem (viz Diagnostika skici).
 3. **Neshoduje se:** skica se vyřeší, počátečním odhadem jsou uložené proměnné. Dál v logu se použije výsledek solveru.
 4. **Solver řešení nenajde:** použijí se uložené proměnné a skica dostane varování `sketchConflict`. Přehrávání pokračuje, model nezmizí.
 
@@ -222,6 +222,51 @@ Stejné pravidlo tak pokrývá změnu tělesa i úpravu skici samotné. Změna k
 **Determinismus.** `evaluate` je čistá deterministická funkce dokumentu. Po uložení a načtení se razítko shoduje, solver se pro proměnné nevolá a výsledek je bitově stejný (scénář 4). Opírá se to jen o determinismus solveru a jádra, které spiky potvrdily.
 
 **Vědomý důsledek.** Kvůli zápisu výsledku počítá `execute` vždy celý model, i když uživatel kreslí ve skice uprostřed logu; šetří jen `preview(cmd, at)` a `getState(at)`. Pro PoC je to přijatelné. Pozdější optimalizace: zápis odložit a dopočítat zbytek modelu až při opuštění skici.
+
+### Diagnostika skici (D32)
+
+Dva dotazy, které dokument ani vyhodnocení nemění:
+
+```ts
+interface SketchDiagnosis {
+  status: 'solved' | 'conflict' | 'failed' | 'unavailable';
+  degreesOfFreedom: number;
+  conflicting: Id[];
+  duplicates: Id[][];   // skupiny řídicích vazeb se stejným typem a operandy
+  redundant: Id[];      // vazby, které plynou z ostatních
+  removable: Id[];      // sada, kterou jde odebrat naráz beze změny volnosti
+  free: { id: Id; kind: 'point' | 'radius'; freedom: number }[];
+}
+interface ConstraintExplanation {
+  redundant: boolean;
+  impliedBy: Id[];      // nejmenší sada ostatních vazeb, ze kterých vazba plyne
+}
+```
+
+Diagnostika se počítá **rozborem v prvním řádu**, bez solveru. Každá vazba je jedna nebo dvě rovnice nad polohami bodů a poloměry kružnic (`engine/src/analysis.ts`); k nim se přidá podmínka každého oblouku. Z derivací rovnic ve vyřešeném stavu (Jacobiho matice, numericky) plyne všechno ostatní lineární algebrou:
+
+- **Stupně volnosti** jsou počet proměnných minus hodnost matice. Tuto hodnotu nese i výsledek skici (`degreesOfFreedom`); počet, který hlásí solver, engine nepoužívá.
+- **Nadbytečná** je řídicí vazba, jejíž řádky leží v prostoru řádků ostatních vazeb: po jejím odebrání zůstane volnost stejná. V závislé skupině jsou tak označené všechny členy, ne jen ten poslední přidaný: kterýkoli z nich jde odebrat.
+- **Sada k odebrání** vzniká postupným odebíráním od nejnovější vazby, dokud to hodnost nesnižuje. Počet vazeb v sadě na pořadí nezávisí (je to počet vazeb navíc), složení ano: starší vazby zůstávají. Po odebrání celé sady nezbude nadbytečná žádná vazba a geometrie se nezmění. Pořadí vazeb je pořadí klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně před ostatní, takže u nich pořadí vzniku neplatí.
+- **Vysvětlení vazby** je nejmenší sada ostatních vazeb, ze kterých plyne. Sad může být víc; přednost má duplicita a pak vazby na stejných entitách. Prázdná sada u nadbytečné vazby znamená, že vazba plyne z definice křivky samotné (konec oblouku leží na oblouku).
+- **Volnost entity** je počet nezávislých směrů, kterými se bod může pohnout, aniž poruší vazby (u poloměru kružnice 0 nebo 1). Bod na křivce má volnost 1, volný bod 2. Součet volností může být větší než volnost skici, protože body se hýbou spolu. Rovná-li se volnost bodu volnosti celé skici, stačí ho ukotvit a skica je určená: tak se pozná tvar, kterému chybí jen poloha.
+- **Stav.** Při konfliktu nebo neúspěchu solveru se vrací jen stav, konfliktní vazby a duplicity. `unavailable` znamená, že se skica nevyhodnotila (je potlačená nebo má rozbitou rovinu). Neznámá skica nebo vazba je chyba volání (výjimka), stejně jako u `getState(at)`.
+- **Referenční kóty a vazby vynechané kvůli ztracené promítnuté geometrii** se diagnostiky netýkají, solver je nedostává.
+
+**Rovnice vazeb** mají rozměr délky, takže jejich derivace jsou bezrozměrné a prahy rozboru nezávisí na měřítku skici. Jejich význam musí odpovídat adaptéru solveru; testy ověřují pro každý typ vazby, že vyřešená skica rovnice splňuje a že vazba ubere tolik volnosti, kolik má rovnic. Tabulka rovnic je úplná z typů: nová vazba bez rovnice se nepřeloží.
+
+**Dvojnásobné kořeny.** Rozbor v prvním řádu nevidí podmínku, jejíž rovnice má v řešení nulovou derivaci. Dva takové případy jsou běžné a rovnice se pro ně volí jinak:
+
+- **Tečnost ve společném bodě.** Úsečka končící na kružnici, které se má dotýkat, nebo dva oblouky navazující ve společném konci (zaoblení, drážka). Tečnost se pak počítá jako kolmost poloměru na úsečku v tom bodě, respektive jako tři body na přímce (oba středy a společný bod).
+- **Nulová vzdálenost dvou bodů** se počítá jako totožnost (dvě rovnice).
+
+Ostatní takové případy rozbor nepozná a vazbu, která z ostatních plyne jen díky konkrétním hodnotám, jako nadbytečnou neoznačí (vzdálenost dvou bodů rovná jejich vodorovné vzdálenosti dělá úsečku vodorovnou). Totéž platí pro společný bod tečnosti, který drží jiné vazby než konec úsečky nebo oblouku.
+
+**Proč ne solver.** První verze se ptala solveru: řešila skicu znovu bez každé vazby a porovnávala stupně volnosti. Revize ukázala, že počet ze solveru není spolehlivý (cyklus shodných délek v trojúhelníku ohlásí jako plně určený, u úsečky stažené do bodu volnost s přidanou vazbou vzroste, šum ve vyřešených polohách mění výsledek) a že desítky řešení jsou u větších skic pomalé (sekundy až desítky sekund při stovkách vazeb).
+
+**Cena.** Rozbor se počítá při každém vyhodnocení vyřešené skici (jedna ortogonalizace řádků). Diagnostika a vysvětlení k němu přidají další lineární algebru: u skici s 240 vazbami kolem 0,1 s, u 480 vazeb kolem sekundy (roste se třetí mocninou). Výsledek diagnostiky se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní nezmění, nepočítá se znovu.
+
+**Omezení solveru, které diagnostika odhalí, ale neodstraní.** Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver jako plnohodnotnou; skica se pak chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere.
 
 ## Pojmenování
 
@@ -526,6 +571,8 @@ interface Engine {
   undo(): void;
   redo(): void;
   getState(at?: Id): EngineState;                // at = stav modelu po dané feature, dál se nepočítá
+  diagnoseSketch(sketch: Id): SketchDiagnosis;   // viz Diagnostika skici
+  explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation;
   load(json: string): CommandResult;
   save(): string;
   exportMesh(format: 'stl'): Uint8Array;         // '3mf' později
@@ -584,6 +631,7 @@ type Command =
 - **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updatePlane`, `setSketchPlane`, `updateExtrude`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. U stěny a hrany se takto ověřuje těleso i extrude, které stěnu pojmenovalo (stěna existuje až po něm). `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
 - **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
 - **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
+- **Stejná řídicí vazba nesmí být ve skice dvakrát.** `addConstraint` odmítne vazbu se stejným typem a stejnými operandy, jaké už má jiná geometrická vazba nebo řídicí kóta; u vazeb s operandy `a`, `b` na jejich pořadí nezáleží. Platí to i pro kótu s jinou hodnotou (upravit se má ta stávající) a pro přepnutí referenční kóty na řídicí. Referenční kóta smí měřit totéž co řídicí. `load` duplicity přijímá, aby šly otevřít starší dokumenty; ukáže je diagnostika a hodnotu takové kóty jde dál měnit. Druhy operandů, jejich zaměnitelnost a pravidla hodnot jsou v katalogu vazeb (`engine/src/catalog.ts`), kterým se validace řídí.
 - **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `distance` u extrude není nula a `regions` není prázdné (tatáž oblast dvakrát je jedna oblast). Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 

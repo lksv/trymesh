@@ -40,8 +40,9 @@ Poslední úprava: 2026-11-14
 | D30 | Rozhodnutí z implementace enginu | provedeno při implementaci, vlastník projektu zatím nepotvrdil | Upřesnění, která návrh nechával otevřená: tažení mimo dávku, kritérium „bez účinku", profil dotýkající se v bodě, načtení dokumentu s odkazem na feature v jiném pořadí a další |
 
 | D31 | Ukázková aplikace | provedeno při implementaci, vlastník projektu zatím nepotvrdil | `packages/app`: three.js a Vite bez UI frameworku; pokrývá funkce z ui.md potřebné k projití validačních scénářů; co UI odvozuje samo a co je vynecháno |
+| D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
 
-D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
+D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 je odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
 ## D1 Jazyk enginu: TypeScript
 
@@ -549,6 +550,40 @@ Drobnosti opravené zároveň: stará chyba ve stavovém řádku po úspěšném
 Co zůstává: export STL vždy exportuje celý model, i když je zobrazen stav u značky pozice; logika třídy `App` (režimy, události) nemá automatické testy, jen ruční průchody v prohlížeči.
 
 Ověření: testy čistých modulů ve Vitestu a ruční průchod v prohlížeči (skica, kóty, vysunutí, výřez na stěně, rovina, úprava, značka pozice, potlačení, smazání s chybou závislé feature, undo a redo, uložení a načtení, export STL).
+
+## D32 Diagnostika skici
+
+Rozhodnuto 2026-11-14 na podnět vlastníka projektu. Skica nakreslená v aplikaci měla dva stupně volnosti a šest vazeb navíc (tři z nich přesné duplicity) a z aplikace nešlo poznat ani jedno: solver jako nadbytečné označil dvě vazby ze šesti a o tom, co je volné, neříkal nic.
+
+- **Dva dotazy enginu,** `diagnoseSketch` a `explainConstraint`. Jsou na vyžádání a nic nemění; popis je v architecture.md, sekce Diagnostika skici. Stejná data použije aplikace i rozhraní pro AI.
+- **Rozbor v prvním řádu z vlastních rovnic vazeb,** ne dotazy na solver. Engine má pro každý typ vazby její rovnici, z derivací ve vyřešeném stavu sestaví Jacobiho matici a stupně volnosti, závislosti i volnost entit z ní počítá lineární algebrou. Stejný rozbor dává i počet stupňů volnosti ve výsledku skici.
+  - **První verze používala solver jako orákulum** (skica se řešila znovu bez každé vazby a s každým zafixovaným bodem). Nezávislá revize ji vyvrátila: solver ohlásí cyklus shodných délek jako plně určený, u úsečky stažené do bodu mu volnost s přidanou vazbou vzroste, šum ve vyřešené poloze označil pevný bod za volný a třicet obdélníků ve skice trvalo přes dvacet sekund.
+  - **Cena rozhodnutí:** engine teď zná rovnici každé vazby, což solver dřív zapouzdřoval. Je to jedna krátká funkce na typ vazby; shodu se solverem hlídají testy a úplnost tabulky typy. Solver zůstává vyměnitelný, protože rovnice popisují význam vazby, ne způsob řešení.
+  - **Zvažováno:** rozšířit port solveru o dotaz na závislosti (planegcs takový dotaz nemá a jeho vlastní hodnost je právě to, co selhalo).
+- **Nadbytečné jsou všechny členy závislé skupiny,** ne jen poslední přidaná vazba. Uživatel si má vybrat, kterou odebere; engine k tomu nabízí jednu konkrétní sadu, ve které zůstávají starší vazby.
+- **Volnost se udává po entitách,** ne po směrech. Bod přichycený na šikmou úsečku se může hýbat v obou osách, ale má jeden stupeň volnosti; počet stupňů to vystihuje, dvojice příznaků pro osy ne. Položka „stav určenosti po jednotlivých entitách" tím přešla z budoucích funkcí do PoC.
+- **Přesnou duplicitu engine odmítne** už v příkazu (`addConstraint`, přepnutí kóty na řídicí). Druhá kóta téhož s jinou hodnotou je také duplicita: správná cesta je upravit tu stávající. Načtení duplicity přijímá, jinak by nešly otevřít dokumenty ze starší verze; hodnotu takové kóty jde dál měnit.
+- **Katalog vazeb** (`engine/src/catalog.ts`) je jediný zdroj pravdy o tom, jaké vazby engine zná, jaké mají operandy a hodnoty. Řídí se jím validace příkazů, hledání duplicit i rozbor.
+- **Validační scénář 7** (skica krok za krokem s diagnostikou) a testy nad skicou, ze které podnět vzešel.
+
+Nálezy revize a jejich řešení:
+
+| Nález | Řešení |
+|---|---|
+| Úsečka stažená solverem do bodu: volnost 9 místo 5, všechny vazby „navíc" | Rozbor z vlastních rovnic; tento stav pro něj není zvláštní |
+| Cyklus shodných délek: skica ohlášená jako plně určená, potřebná kóta označená za nadbytečnou, vysvětlení nebylo nejmenší | Totéž; stav skici i diagnostika teď vycházejí z jednoho rozboru |
+| Pevný bod dotyku v drážce označený za volný | Totéž; tečnost ve společném bodě má vlastní rovnici (kolmost poloměru) |
+| V načteném dokumentu s duplicitními kótami nešla změnit hodnota žádné z nich | Duplicita se hlídá jen při přepnutí referenční kóty na řídicí |
+| Nulová vzdálenost vedle totožnosti neměla vysvětlení | Nulová vzdálenost se počítá jako totožnost |
+| Diagnostika trvala sekundy až desítky sekund | Rozbor nevolá solver; 240 vazeb kolem 0,1 s |
+
+Omezení:
+
+- Závislost se posuzuje v prvním řádu. Vazba plynoucí z ostatních jen díky konkrétním hodnotám se jako nadbytečná neoznačí; tečnost ve společném bodě je ošetřená jen tehdy, když je tím bodem konec úsečky nebo oblouku.
+- Při konfliktu diagnostika nadbytečnost ani volnost nepočítá a konfliktní vazby přebírá ze solveru, který jich označí víc, než je nutné.
+- „Starší vazby zůstávají" se řídí pořadím klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně, takže u nich pořadí vzniku neplatí.
+- Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver dál jako plnohodnotnou: skica se chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere. Diagnostika ji ukáže.
+- Cena roste se třetí mocninou počtu vazeb: 480 vazeb v jedné skice kolem sekundy.
 
 ## Spiky 2026-11-13
 

@@ -217,6 +217,30 @@ export interface SketchResult {
   regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
 }
 
+// Diagnostika skici na vyžádání (Engine.diagnoseSketch). Počítá se z vyřešeného stavu.
+export interface SketchDiagnosis {
+  // unavailable: skica se nevyhodnotila (potlačená, chybná rovina); zbylá pole jsou pak prázdná
+  status: 'solved' | 'conflict' | 'failed' | 'unavailable';
+  degreesOfFreedom: number; // při jiném stavu než solved bez významu
+  conflicting: Id[];
+  duplicates: Id[][]; // skupiny řídicích vazeb se stejným typem a stejnými operandy
+  redundant: Id[]; // vazby, které plynou z ostatních: po odebrání kterékoli z nich se volnost nezmění
+  removable: Id[]; // jedna sada, kterou jde odebrat celou naráz beze změny volnosti; starší vazby v ní nejsou
+  free: FreeEntity[]; // jen entity, které se ještě mohou hýbat
+}
+
+// Bod má volnost 1 (pohyb po křivce) nebo 2, poloměr kružnice 1. `id` je bod nebo kružnice.
+export interface FreeEntity {
+  id: Id;
+  kind: 'point' | 'radius';
+  freedom: number; // o kolik klesne volnost skici, když se entita zafixuje
+}
+
+export interface ConstraintExplanation {
+  redundant: boolean;
+  impliedBy: Id[]; // nejmenší sada ostatních vazeb, ze kterých vazba plyne; u nenadbytečné prázdná
+}
+
 export interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
   error?: Issue; // jen při status 'error'
@@ -278,6 +302,8 @@ export interface Engine {
   undo(): void;
   redo(): void;
   getState(at?: Id): EngineState; // at = stav modelu po dané feature, dál se nepočítá
+  diagnoseSketch(sketch: Id): SketchDiagnosis; // nadbytečné vazby a volnost entit
+  explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation; // ze kterých vazeb daná vazba plyne
   load(json: string): CommandResult;
   save(): string;
   exportMesh(format: 'stl'): Uint8Array; // '3mf' později

@@ -17,6 +17,7 @@ import type {
   RegionRef,
   SketchFeature,
 } from './types';
+import { CONSTRAINTS, type EntityKind, VALUE_RULES } from './catalog';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
 export const SCHEMA_VERSION = 1;
@@ -154,7 +155,7 @@ function regions(v: unknown, what: string): RegionRef[] {
 
 // ---------------------------------------------------------------- entity skici
 
-export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
+export type { EntityKind };
 export interface Entity {
   kind: EntityKind;
   own: boolean; // false = počátek nebo promítnutá geometrie: solver s ní nehýbe
@@ -185,24 +186,32 @@ export function curvePoints(curve: Curve): Id[] {
   return [curve.center, curve.start, curve.end];
 }
 
+// Operandy vazby v pořadí katalogu.
 export function constraintOperands(c: Constraint): Id[] {
-  switch (c.type) {
-    case 'pointOnCurve':
-      return [c.point, c.curve];
-    case 'horizontal':
-    case 'vertical':
-      return [c.line];
-    case 'distancePointLine':
-      return [c.point, c.line];
-    case 'radius':
-    case 'diameter':
-      return [c.curve];
-    default:
-      return [c.a, c.b];
-  }
+  return CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
 }
 
 export const isDimension = (c: Constraint): c is Extract<Constraint, { value: number }> => 'value' in c;
+
+// Vazby, které dostává solver: geometrické a řídicí kóty.
+export const isDriving = (c: Constraint): boolean => !isDimension(c) || c.driving;
+
+// Klíč vazby pro hledání duplicit: typ a operandy. Operandy, které katalog označuje za
+// zaměnitelné (u orientovaných kót a úhlu záměna jen obrací znaménko hodnoty), se seřadí.
+export function constraintKey(c: Constraint): string {
+  const spec = CONSTRAINTS[c.type];
+  const value = (field: string): Id => (c as unknown as Record<string, Id>)[field];
+  const unordered = (spec.unordered ?? []).map(value).sort();
+  const ordered = spec.operands.filter((operand) => !spec.unordered?.includes(operand.field)).map((operand) => value(operand.field));
+  return JSON.stringify([c.type, ...unordered, ...ordered]);
+}
+
+// Řídicí vazba se stejným typem a operandy, která už ve skice je (kromě vazby `except`).
+export function duplicateOf(sketch: SketchFeature, c: Constraint, except?: Id): Id | undefined {
+  if (!isDriving(c)) return undefined;
+  const key = constraintKey(c);
+  return Object.keys(sketch.constraints).find((id) => id !== except && isDriving(sketch.constraints[id]) && constraintKey(sketch.constraints[id]) === key);
+}
 
 // Křivka smí odkazovat jen na vlastní body skici a na počátek.
 function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
@@ -225,77 +234,36 @@ function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   return { ...construction, type, center, start, end };
 }
 
-// Vazba: operandy existují a mají správný druh, hodnota splňuje konvenci znamének a aspoň jedním
-// operandem může solver hýbat (řídicí vazbu jen mezi pevnými entitami solver tiše ignoruje).
+// Vazba podle katalogu: operandy existují, mají správný druh a jsou navzájem různé, hodnota
+// splňuje konvenci znamének a aspoň jedním operandem může solver hýbat (řídicí vazbu jen mezi
+// pevnými entitami solver tiše ignoruje).
 function constraint(sketch: SketchFeature, v: unknown, what: string): Constraint {
   const o = object(v, what);
-  const operand = (field: string, kinds: EntityKind[]): Id => {
+  const type = string(o.type, `${what}.type`);
+  if (!has(CONSTRAINTS, type)) return fail(`${what}.type: neznámá vazba "${type}"`);
+  const spec = CONSTRAINTS[type as Constraint['type']];
+  const operands: Record<string, Id> = {};
+  const kinds: EntityKind[] = [];
+  for (const { field, kinds: accepted } of spec.operands) {
     const id = string(o[field], `${what}.${field}`);
     const entity = entityOf(sketch, id);
-    if (!entity) fail(`${what}.${field}: entita "${id}" ve skice není`);
-    else if (!kinds.includes(entity.kind)) fail(`${what}.${field}: "${id}" je ${entity.kind}, čeká se ${kinds.join(' nebo ')}`);
-    return id;
-  };
-  const pair = (kinds: EntityKind[]): { a: Id; b: Id } => {
-    const [a, b] = [operand('a', kinds), operand('b', kinds)];
-    if (a === b) fail(`${what}: vazba potřebuje dvě různé entity`);
-    return { a, b };
-  };
-  const dimension = (check: (value: number) => boolean, rule: string) => {
-    const value = finite(o.value, `${what}.value`);
-    if (!check(value)) fail(`${what}.value: ${rule}`);
-    return { value, driving: boolean(o.driving, `${what}.driving`) };
-  };
-  const nonNegative = () => dimension((x) => x >= 0, 'vzdálenost nesmí být záporná');
-  const positive = () => dimension((x) => x > 0, 'poloměr a průměr musí být kladné');
-  const round: EntityKind[] = ['circle', 'arc'];
-
-  const type = string(o.type, `${what}.type`);
-  let result: Constraint;
-  switch (type) {
-    case 'coincident':
-      result = { type, ...pair(['point']) };
-      break;
-    case 'pointOnCurve':
-      result = { type, point: operand('point', ['point']), curve: operand('curve', ['line', 'circle', 'arc']) };
-      break;
-    case 'horizontal':
-    case 'vertical':
-      result = { type, line: operand('line', ['line']) };
-      break;
-    case 'parallel':
-    case 'perpendicular':
-    case 'equalLength':
-      result = { type, ...pair(['line']) };
-      break;
-    case 'tangent': {
-      const operands = pair(['line', 'circle', 'arc']);
-      if (entityOf(sketch, operands.a)?.kind === 'line' && entityOf(sketch, operands.b)?.kind === 'line') fail(`${what}: tečnost dvou úseček nedává smysl`);
-      result = { type, ...operands };
-      break;
-    }
-    case 'distance':
-      result = { type, ...pair(['point']), ...nonNegative() };
-      break;
-    case 'distancePointLine':
-      result = { type, point: operand('point', ['point']), line: operand('line', ['line']), ...nonNegative() };
-      break;
-    case 'horizontalDistance':
-    case 'verticalDistance':
-      result = { type, ...pair(['point']), ...dimension(() => true, '') };
-      break;
-    case 'angle':
-      result = { type, ...pair(['line']), ...dimension((x) => x > -Math.PI && x <= Math.PI, 'úhel musí ležet v intervalu (−π, π]') };
-      break;
-    case 'radius':
-    case 'diameter':
-      result = { type, curve: operand('curve', round), ...positive() };
-      break;
-    default:
-      return fail(`${what}.type: neznámá vazba "${type}"`);
+    if (!entity) return fail(`${what}.${field}: entita "${id}" ve skice není`);
+    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" je ${entity.kind}, čeká se ${accepted.join(' nebo ')}`);
+    operands[field] = id;
+    kinds.push(entity.kind);
   }
-  const driving = !isDimension(result) || result.driving;
-  if (driving && !constraintOperands(result).some((id) => entityOf(sketch, id)?.own)) {
+  if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: vazba potřebuje ${spec.operands.length === 2 ? 'dvě' : spec.operands.length} různé entity`);
+  const problem = spec.check?.(kinds);
+  if (problem) fail(`${what}: ${problem}`);
+  let dimension = {};
+  if (spec.value) {
+    const value = finite(o.value, `${what}.value`);
+    const rule = VALUE_RULES[spec.value.rule];
+    if (!rule.check(value)) fail(`${what}.value: ${rule.message}`);
+    dimension = { value, driving: boolean(o.driving, `${what}.driving`) };
+  }
+  const result = { type, ...operands, ...dimension } as Constraint;
+  if (isDriving(result) && !constraintOperands(result).some((id) => entityOf(sketch, id)?.own)) {
     fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
   }
   return result;
@@ -590,10 +558,13 @@ export function applyCommand(doc: Document, command: Command): Document {
       });
 
     case 'addConstraint':
-      return editSketch(doc, cmd.sketch, (s) => ({
-        ...s,
-        constraints: { ...s.constraints, [unique(doc, cmd.id, 'addConstraint.id')]: constraint(s, cmd.constraint, 'addConstraint.constraint') },
-      }));
+      return editSketch(doc, cmd.sketch, (s) => {
+        const id = unique(doc, cmd.id, 'addConstraint.id');
+        const added = constraint(s, cmd.constraint, 'addConstraint.constraint');
+        const twin = duplicateOf(s, added);
+        if (twin !== undefined) fail(`addConstraint: stejná vazba už ve skice je ("${twin}")`);
+        return { ...s, constraints: { ...s.constraints, [id]: added } };
+      });
 
     case 'removeConstraint':
       return editSketch(doc, cmd.sketch, (s) => {
@@ -609,7 +580,12 @@ export function applyCommand(doc: Document, command: Command): Document {
         const old = s.constraints[id];
         if (!isDimension(old)) return fail(`setConstraintValue: vazba "${id}" není kóta`);
         const changed = { ...old, value: cmd.value === undefined ? old.value : cmd.value, driving: cmd.driving === undefined ? old.driving : cmd.driving };
-        return { ...s, constraints: { ...s.constraints, [id]: constraint(s, changed, 'setConstraintValue') } };
+        const next = constraint(s, changed, 'setConstraintValue');
+        // Duplicitu smí vyrobit jen přepnutí referenční kóty na řídicí. Změna hodnoty projde
+        // i u kót, které jsou duplicitní už z načteného dokumentu.
+        const twin = old.driving ? undefined : duplicateOf(s, next, id);
+        if (twin !== undefined) fail(`setConstraintValue: stejnou řídicí kótu už skica má ("${twin}")`);
+        return { ...s, constraints: { ...s.constraints, [id]: next } };
       });
 
     case 'dragPoint':

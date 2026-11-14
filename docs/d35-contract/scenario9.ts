@@ -2,6 +2,7 @@
 // Nespouští se, jen se typově kontroluje: npx tsc -p docs/d35-contract/tsconfig.json
 // Účel: prověřit kontrakt. Krok, který nejde zapsat, je díra v návrhu. Po implementaci se z něj
 // stane skutečný test v packages/scenarios. Očekávání jsou v komentářích „čekáme".
+// Úhly jsou v radiánech v čísle i ve výrazu; stupně se píšou funkcí deg().
 import { sketchTool } from './contract';
 import type { BodyId, Command, Constraint, Engine, EngineState, Extent, FixedInput, Id, Input, PatternFeature, PlaneRef, ProfileSource, SketchFeature } from './contract';
 
@@ -57,15 +58,15 @@ function gear(circleId: Id, teeth: string, internal: boolean, meshWith?: Id): In
     generator: 'involuteGear',
     sketch: 'skGears',
     operands: { circle: circleId },
-    params: { teeth, pressureAngle: '20', backlash: 'vule', rotation: 0, internal },
+    params: { teeth, pressureAngle: 'deg(20)', backlash: 'vule', rotation: 0, internal },
     ...(meshWith ? { refs: { meshWith } } : {}),
   };
 }
-// kruhové pole kolem osy Z modelu; úhel jako výraz ve stupních
+// kruhové pole po celém kruhu kolem osy Z modelu
 function around(id: Id, source: PatternFeature['source'], count: number | string): Command {
   return {
     type: 'addFeature',
-    feature: { id, name: id, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count, angle: '360' } },
+    feature: { id, name: id, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count, span: { type: 'full' } } },
   };
 }
 const sketchOf = (id: Id): SketchFeature => engine.getState().document.features.find((f): f is SketchFeature => f.id === id && f.type === 'sketch') as SketchFeature;
@@ -86,6 +87,8 @@ export function parametersAndGearSketch(): void {
     { type: 'setCheck', name: 'šrouby do rotoru jdou zasunout', expr: 'modul * (Zs / 2 + 1) < 12.75' },
     { type: 'setCheck', name: 'kopie satelitu v záběru se sluncem', expr: 'Zs % 3 == 0' },
     { type: 'setCheck', name: 'kopie satelitu v záběru s korunou', expr: 'Zr % 3 == 0' },
+    // středy sousedních satelitů jsou od sebe osa · √3, hlavový průměr satelitu je modul · (Zp + 2)
+    { type: 'setCheck', name: 'sousední satelity se nepotkají', expr: 'osa * sqrt(3) > modul * (Zp + 2)' },
   );
   // Roztečné kružnice jsou konstrukční (dotýkají se). Běžné křivky: díra satelitu `ph`, čep `pin`
   // (soustředný, o 0,15 mm menší) a díra pro středicí čep `sb`.
@@ -111,7 +114,7 @@ export function parametersAndGearSketch(): void {
   );
   // čekáme: skica plně určená, profil platný, oblasti [ph], [pin], [sb]; střed satelitu x = 20,25
   void state.evaluation.features.skGears.sketch?.degreesOfFreedom;
-  // čekáme: všechny tři kontroly 'ok'; parametr Zr má hodnotu 72, osa 20,25
+  // čekáme: všechny čtyři kontroly 'ok'; parametr Zr má hodnotu 72, osa 20,25
   void state.evaluation.checks['šrouby do rotoru jdou zasunout'].status;
   void state.evaluation.parameters.Zr;
   // čekáme: výraz kóty je v dokumentu pod adresou pole a číslo je vyhodnocená hodnota
@@ -221,11 +224,13 @@ export function housingAndBolts(): void {
   const hex = sketchTool(
     'polygon',
     { sketch: sketchOf('skBolts'), result: engine.getState().evaluation.features.skBolts.sketch },
-    { center: { at: [50.5, 0], snap: { kind: 'point', id: 'cb' } }, vertex: { at: [53.7, 0.2] }, sides: 6, size: { kind: 'acrossFlats', value: 5.6 } },
+    { center: { at: [50.5, 0], snap: { kind: 'point', id: 'cb' } }, vertex: { at: [53.7, 0.2] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 },
     newId,
   );
+  if (!hex.ok) throw new Error(hex.message);
   run(
-    batch(...hex.commands, constrain('skBolts', 'hexDirection', { type: 'vertical', line: hex.ids.lines[1] })),
+    // points[0] je bod `vertex` (vpravo od středu), lines[1] vede z points[1] do points[2]: horní strana
+    batch(...hex.commands, constrain('skBolts', 'hexDirection', { type: 'horizontal', line: hex.ids.lines[1] })),
     // rovina skici leží mezi deskou a pouzdrem, proto 'both' a dva cíle
     extrude('boltHole', 'cut', regions('skBolts', ['bh']), through('both'), ['plate', 'housing']),
     extrude('nutPocket', 'cut', regions('skBolts', hex.ids.lines, ['bh']), span(43, 3), ['housing']),
@@ -248,21 +253,32 @@ export function carrier(): void {
 
 // ---------------------------------------------------------------- i) změna převodu, j) kolize, k) export
 
+// Všechny features jsou 'ok': žádná chyba, žádné varování (noEffect by znamenalo díru, která
+// neprochází, gearMesh kola mimo záběr). Skici smějí mít jen stav 'ok'.
+const allOk = (state: EngineState): boolean => Object.values(state.evaluation.features).every((f) => f.status === 'ok');
+const noCollision = (): boolean => {
+  const report = engine.interference();
+  return report.pairs.length === 0 && report.failed.length === 0;
+};
+
 export function changesAndChecks(): void {
-  // čekáme: žádná kolize ve výchozím stavu
-  void engine.interference();
+  // čekáme: žádná kolize ve výchozím stavu a žádná dvojice, kterou se nepodařilo spočítat
+  void noCollision();
 
   // převod 5 → 4 se stejnou korunou
   let state = run(batch({ type: 'setParameter', name: 'Zs', expr: '24' }, { type: 'setParameter', name: 'Zp', expr: '24' }));
-  // čekáme: žádná feature v chybě, kontroly 'ok', žádná kolize, střed satelitu x = 21,6
-  void Object.values(state.evaluation.features).every((f) => f.status !== 'error');
-  void engine.interference();
+  // čekáme: vše 'ok', kontroly 'ok', žádná kolize, střed satelitu x = 21,6
+  void allOk(state);
+  void noCollision();
 
   // převod 5 → 6 s větší korunou
   state = run(batch({ type: 'setParameter', name: 'Zs', expr: '18' }, { type: 'setParameter', name: 'Zp', expr: '36' }));
-  // čekáme: Zr = 90, koruna se vejde do pouzdra, žádná kolize
+  // čekáme: Zr = 90, koruna se vejde do pouzdra, vše 'ok', žádná kolize
   void state.evaluation.parameters.Zr;
-  void engine.interference();
+  void allOk(state);
+  void noCollision();
+  // čekáme: údaje ozubení jsou ve výsledku feature (modul 0,9; roztečný průměr koruny 81)
+  void state.evaluation.features.ring.facts;
 
   // kontrola parametrů: modul 1 při Zs = 24 dá hlavový poloměr 13 mm
   state = run(batch({ type: 'setParameter', name: 'Zs', expr: '24' }, { type: 'setParameter', name: 'Zp', expr: '24' }, { type: 'setParameter', name: 'modul', expr: '1' }));
@@ -272,20 +288,113 @@ export function changesAndChecks(): void {
 
   // záměrně příliš velký satelit: roztečná kružnice o 1 mm větší, než odpovídá počtu zubů
   run({ type: 'setField', feature: 'skGears', path: 'constraints/dp/value', value: 'modul * Zp + 1' });
-  // čekáme: kolize satelitu s korunou; u koruny varování gearMesh (kružnice nejsou tečné, moduly se liší)
-  void engine.interference({ bodies: ['planet', 'housing'] });
+  // čekáme: kolize satelitu s korunou; varování gearMesh u satelitu (jeho modul se liší od modulu
+  // centrálního kola) i u koruny (kružnice nejsou tečné, moduly se liší)
+  void engine.interference({ bodies: ['planet', 'housing'] }).pairs;
   engine.undo();
 
-  // chybný výraz: smazaný parametr dá chybu feature, která jde opravit
+  // chybný výraz u vysunutí: smazaný parametr dá chybu feature, která jde opravit
   state = run({ type: 'removeParameter', name: 'vule' });
   // čekáme: vysunutí s ozubením ve stavu error (invalidExpression), fieldErrors u pole profile/params/backlash
   void state.evaluation.features.sunTeeth.fieldErrors?.['profile/params/backlash'];
   engine.undo();
 
-  // export po tělesech a uložení
-  const bodies: BodyId[] = ['sun', 'planet', 'planets/1', 'planets/2', 'housing', 'plate', 'carrier'];
+  // chybný výraz u skici: varování, skica se spočítá s poslední platnou hodnotou a jde otevřít
+  state = run({ type: 'removeParameter', name: 'modul' });
+  // čekáme: skGears ve stavu warning (invalidExpression), má rovinu i vyřešenou skicu; kontroly a
+  // parametr osa ve stavu error (dependsOnError); tělesa beze změny
+  void state.evaluation.features.skGears.sketch;
+  void state.evaluation.parameters.osa;
+  engine.undo();
+
+  // export po tělesech: odvozená ID kopií se čtou z výsledku pole
+  state = engine.getState();
+  const bodies: BodyId[] = ['sun', 'planet', ...state.evaluation.features.planets.bodies, 'housing', 'plate', 'carrier'];
   for (const body of bodies) void engine.exportMesh('stl', [body]);
   const saved = engine.save();
   void engine.load(saved);
   // čekáme: po načtení stejný dokument i stejný výsledek přepočtu
+}
+
+// ---------------------------------------------------------------- co scénář 9 nepotřebuje, ale kontrakt slibuje
+
+// Není součástí slovního scénáře. Zkouší zápis příkazů, které by jinak zůstaly neověřené.
+declare const documentVersion1: string;
+
+export function contractCoverage(): void {
+  // slučovací změna: jen tloušťka příruby, začátek 26,5 zůstává
+  run({ type: 'updateFeature', id: 'sun', patch: { extent: { distance: 5 } } });
+  // jen natočení ozubení; výrazy počtu zubů a vůle zůstávají
+  run({ type: 'updateFeature', id: 'sunTeeth', patch: { profile: { params: { rotation: 'deg(5)' } } } });
+  // jiná varianta rozsahu nahrazuje dosavadní a musí být úplná; výraz pole extent/distance zaniká
+  void engine.preview({ type: 'updateFeature', id: 'motorBore', patch: { extent: { type: 'throughAll', side: 'forward' } } });
+  // změna na nové těleso odebere cíle sama; null odebírá nepovinné pole výslovně
+  void engine.preview({ type: 'updateFeature', id: 'carrierPin', patch: { operation: 'new' } });
+  void engine.preview({ type: 'updateFeature', id: 'carrierPin', patch: { operation: 'new', targets: null } });
+  // null ve slovníku odebere jeden odkaz; koruna pak použije číslo natočení
+  void engine.preview({ type: 'updateFeature', id: 'ring', patch: { profile: { refs: { meshWith: null } } } });
+  // odkaz (osa, rovina) se nahrazuje vždy celý
+  void engine.preview({ type: 'updateFeature', id: 'planets', patch: { transform: { axis: { kind: 'sketchPoint', sketch: 'skGears', point: 'origin' } } } });
+  // jméno kontroly je volný text; přejmenování zachová pořadí
+  void engine.preview({ type: 'renameCheck', name: 'sousední satelity se nepotkají', to: 'odstup satelitů' });
+
+  // přejmenování parametru přepíše výrazy, které ho používají
+  let state = run({ type: 'renameParameter', name: 'vule', to: 'vuleZubu' });
+  void state.document.features.find((f) => f.id === 'sunTeeth')?.expressions?.['profile/params/backlash']; // čekáme: 'vuleZubu'
+
+  // počet kopií výrazem; necelý počet je chyba pole, ne zaokrouhlení
+  state = run({ type: 'setParameter', name: 'N', expr: '3' }, { type: 'setField', feature: 'planets', path: 'transform/count', value: 'N' });
+  state = run({ type: 'setParameter', name: 'N', expr: '2.5' });
+  void state.evaluation.features.planets.fieldErrors?.['transform/count']; // čekáme: notInteger; kopie těles zmizely
+  engine.undo();
+
+  // cyklus mezi parametry se přijme a ohlásí ve výsledku
+  state = run({ type: 'setParameter', name: 'a', expr: 'b + 1' }, { type: 'setParameter', name: 'b', expr: 'a + 1' });
+  void state.evaluation.parameters.a; // čekáme: chyba s kódem cycle
+  run({ type: 'removeParameter', name: 'a' }, { type: 'removeParameter', name: 'b' });
+
+  // syntaktická chyba je neplatný příkaz se strukturovanou chybou
+  const bad = engine.execute({ type: 'setParameter', name: 'c', expr: '2 *' });
+  if (!bad.ok) void bad.error.expression?.error.position;
+
+  // pevný bod bez souřadnic: zamkne bod tam, kde je
+  void engine.preview(batch(point('skCarrier', 'lock', 12, 7), constrain('skCarrier', 'flock', { type: 'fixed', point: 'lock' })));
+
+  // náhled jednoho pole: hodnota je ve výsledku, dokument se nemění
+  const preview = engine.preview({ type: 'setField', feature: 'carrier', path: 'extent/distance', value: 'modul * 6' });
+  if (preview.ok) void preview.state.evaluation.features.carrier.values?.['extent/distance'];
+
+  // pole kolem osy mimo osu modelu a s úhlem mezi první a poslední kopií
+  void engine.preview({
+    type: 'addFeature',
+    feature: {
+      id: 'holesAroundPlanet',
+      name: 'holesAroundPlanet',
+      suppressed: false,
+      type: 'pattern',
+      source: { type: 'features', features: ['flangeHole'] },
+      transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'skGears', point: 'cp' }, count: 3, span: { type: 'angle', angle: 'deg(90)' } },
+    },
+  });
+
+  // kopie tělesa je těleso jako každé jiné: skica na víku kopie
+  void engine.preview({
+    type: 'addFeature',
+    feature: {
+      id: 'skOnCopy',
+      name: 'skOnCopy',
+      suppressed: false,
+      type: 'sketch',
+      plane: { kind: 'face', body: 'planets/1', face: { feature: 'planet', role: 'endCap', copy: [{ pattern: 'planets', index: 1 }] } },
+      points: {},
+      radii: {},
+      curves: {},
+      constraints: {},
+      external: {},
+      solved: { inputs: '', external: {} },
+    },
+  });
+
+  // dokument verze 1 se při načtení převede
+  void engine.load(documentVersion1);
 }

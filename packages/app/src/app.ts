@@ -34,7 +34,7 @@ import { byId, download, fmt, h } from './dom';
 import {
   type Anchor,
   type DimensionVariant,
-  type GeometricKind,
+  GEOMETRIC_KINDS,
   arcCommands,
   asConstruction,
   changeExtrude,
@@ -112,7 +112,6 @@ const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
 
 // Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
 const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
-const GEOMETRIC: GeometricKind[] = ['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent'];
 const TOOLS: [Tool, string, string][] = [
   ['select', 'Výběr', 'Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.'],
   ['point', 'Bod', 'Klikněte na místo bodu.'],
@@ -1130,9 +1129,10 @@ export class App {
       h(
         'div',
         { className: 'buttons' },
-        ...GEOMETRIC.map((kind) => {
+        // tlačítko pro každou geometrickou vazbu z katalogu enginu; nápověda je její popis
+        ...GEOMETRIC_KINDS.map((kind) => {
           const constraints = geometricFor(kind, view, m.selection);
-          return action(constraintName(kind), constraints !== undefined, () => this.addConstraints(m, constraints));
+          return action(constraintName(kind), constraints !== undefined, () => this.addConstraints(m, constraints), CONSTRAINTS[kind].summary);
         }),
       ),
       h(

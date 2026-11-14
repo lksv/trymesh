@@ -78,7 +78,9 @@ export type GeometricConstraint =
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id } // úsečky
-  | { type: 'tangent'; a: Id; b: Id }; // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
+  | { type: 'tangent'; a: Id; b: Id } // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
+  | { type: 'symmetric'; a: Id; b: Id; line: Id } // body a, b souměrně podle přímky úsečky (osy)
+  | { type: 'midpoint'; point: Id; line: Id }; // bod ve středu úsečky
 
 export type DimensionShape =
   | { type: 'distance'; a: Id; b: Id } // bod–bod

@@ -1,6 +1,6 @@
 # Architektura
 
-Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení; D32 a D33 jsou odsouhlaseny 2026-11-14.
+Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení; D32 až D34 jsou odsouhlaseny 2026-11-14.
 
 Vychází z [requirements.md](requirements.md) a [decisions.md](decisions.md). Návrh UI je v [ui.md](ui.md).
 
@@ -129,7 +129,9 @@ type GeometricConstraint =
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // úsečky
-  | { type: 'tangent';      a: Id; b: Id };           // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
+  | { type: 'tangent';      a: Id; b: Id }            // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
+  | { type: 'symmetric';    a: Id; b: Id; line: Id }  // body a, b souměrně podle přímky úsečky (osy)
+  | { type: 'midpoint';     point: Id; line: Id };    // bod ve středu úsečky
 
 type Dimension = { value: number; driving: boolean } & (
   | { type: 'distance';           a: Id; b: Id }      // bod–bod (délka úsečky = její koncové body)

@@ -32,7 +32,7 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 
 - Entity: bod, úsečka, kružnice, oblouk.
 - Pevný počátek skici, ke kterému jde geometrii vázat a kótovat.
-- Geometrické vazby: totožnost, vodorovnost, svislost, rovnoběžnost, kolmost, tečnost, shodná délka, bod na křivce.
+- Geometrické vazby: totožnost, vodorovnost, svislost, rovnoběžnost, kolmost, tečnost, shodná délka, bod na křivce, souměrnost dvou bodů podle úsečky (osy) a bod ve středu úsečky.
 - Kóty: vzdálenost bod–bod, bod–úsečka, vodorovná a svislá vzdálenost, úhel, poloměr/průměr.
 - Stav skici: plně určená, podurčená, přeurčená (včetně označení konfliktních vazeb).
 - Diagnostika skici na vyžádání: které vazby jsou navíc (duplicitní i plynoucí z ostatních) a ze kterých vazeb plynou, kterou sadu jde odebrat, a které body a poloměry se ještě mohou hýbat. Stejnou řídicí vazbu nejde přidat dvakrát.
@@ -97,3 +97,4 @@ Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako 
    - d) Výřez, který těleso mine, a výřez, který by ho odebral celé: model zůstane, feature ohlásí varování, respektive chybu.
    - e) Nálitek se stejným půdorysem se zase celý odřízne: po jeho stěnách nezůstane nic a skica na některé z nich ohlásí rozbitou referenci.
 7. **Skica krok za krokem s diagnostikou.** Obrys úhelníku od ruky, pak směry stran, rozměry a ukotvení. Po každém kroku diagnostika řekne, kolik volnosti zbývá a které body se hýbou; u určeného tvaru bez ukotvení ukáže, že volná je jen poloha. Vazby navíc označí, vysvětlí, z čeho plynou, a navrhne sadu k odebrání; po jejím odebrání se geometrie nezmění. Přesnou duplicitu engine odmítne.
+8. **Souměrný díl s konstrukční osou.** Konstrukční svislá osa z počátku, lichoběžník souměrný podle ní a díra ve středu osy. Souměrnost ubere každé dvojici bodů dva stupně volnosti a diagnostika to ukáže. Po změně šířky a výšky zůstane díl souměrný a díra uprostřed; bez kóty šířky jde rohem táhnout a protější roh ho zrcadlí. Vodorovnost základny přidaná navíc se označí jako plynoucí ze souměrnosti a svislosti osy. Dokument s novými vazbami se uloží a načte beze změny.

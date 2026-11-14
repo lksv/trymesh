@@ -40,10 +40,11 @@ Poslední úprava: 2026-11-14
 | D30 | Rozhodnutí z implementace enginu | provedeno při implementaci, vlastník projektu zatím nepotvrdil | Upřesnění, která návrh nechával otevřená: tažení mimo dávku, kritérium „bez účinku", profil dotýkající se v bodě, načtení dokumentu s odkazem na feature v jiném pořadí a další |
 
 | D31 | Ukázková aplikace | provedeno při implementaci, vlastník projektu zatím nepotvrdil | `packages/app`: three.js a Vite bez UI frameworku; pokrývá funkce z ui.md potřebné k projití validačních scénářů; co UI odvozuje samo a co je vynecháno |
+| D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
 
-D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 a D33 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
+D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D34 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
 ## D1 Jazyk enginu: TypeScript
 
@@ -618,6 +619,19 @@ Nálezy nezávislé revize a jejich řešení:
 | Volby příkazové řádky: neplatný port, chybějící hodnota a neznámá volba se tiše ignorovaly | Jsou to chyby spuštění s nápovědou |
 
 Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
+
+## D34 Souměrnost a střed úsečky
+
+Rozhodnuto 2026-11-14. Konstrukční křivky byly bez těchto dvou vazeb málo užitečné: osa souměrnosti nešla použít jako osa.
+
+- **`symmetric`** (`a`, `b`, `line`): body `a`, `b` jsou souměrné podle přímky, na které úsečka leží. Na pořadí bodů nezáleží. Bod, který je koncem osy, souměrný být nesmí (byla by to totožnost).
+- **`midpoint`** (`point`, `line`): bod leží v polovině úsečky. Koncem téže úsečky být nesmí.
+- **Obě vazby mají dvě rovnice,** ubírají tedy dva stupně volnosti. V solveru je souměrnost vazba `p2p_symmetric_ppl`; střed úsečky je souměrnost jejích konců podle bodu (`p2p_symmetric_ppp`).
+- **Co přidání vazby stojí.** Čtyři místa v enginu a adaptéru: typ v `types.ts`, položka katalogu (operandy, zaměnitelnost, kontrola), rovnice v `analysis.ts` a překlad v adaptéru solveru. Úplnost rovnic i překladu hlídají typy (bez nich se projekt nepřeloží) a test, který pro každý typ vazby ověřuje shodu rovnic se solverem.
+- **Aplikace a MCP se neměnily kvůli těmto dvěma vazbám, ale kvůli všem dalším.** Aplikace bere seznam geometrických vazeb, jejich jména a nápovědu z katalogu a výběr rozděluje mezi operandy podle druhů, které katalog uvádí (zvláštní pravidla zůstala jen tam, kde jedna akce zakládá víc vazeb). MCP server nové vazby převzal bez jediné změny; jeho test, který každou vazbu z katalogu posílá enginu, je pokryl sám.
+- **Validační scénář 8** (souměrný díl s konstrukční osou).
+
+Omezení: solver souměrnost nevyřeší, když oba body leží na téže straně osy a osu nic nedrží (stáhne osu do bodu a ohlásí neúspěch). S osou drženou vazbami nebo s body nakreslenými zhruba souměrně problém není; v aplikaci se osa obvykle kreslí jako konstrukční úsečka z počátku.
 
 ## Spiky 2026-11-13
 

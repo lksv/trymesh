@@ -179,6 +179,7 @@ Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce
 - **Přichycení a odvozené vazby**: přichycení na bod a na křivku je hotové; z odvozených vazeb jen vodorovná a svislá u volného konce úsečky.
 - **Kóta mezi dvěma body** je vždy `distance`; vodorovná a svislá mají vlastní tlačítko, podle umístění myší se nerozlišují.
 - **Vazby se zobrazují v seznamu** v panelu skici (s hodnotou, přepínačem řídicí/referenční a zvýrazněním konfliktních); v pohledu jsou jen popisky kót.
+- **Vazby z katalogu (D34)**: tlačítka geometrických vazeb v panelu skici se berou z katalogu enginu včetně jména a nápovědy. Souměrnost: vyberte dva body a osu; střed úsečky: bod a úsečku.
 - **Propojení s AI (D33)**: tlačítko AI na liště připojí aplikaci k MCP serveru. Dokud je připojená, AI čte a mění otevřený dokument; její změny jsou běžné příkazy a jdou vrátit přes Zpět. Rozpracované vysunutí nebo rovina se při změně od AI zruší.
 - **Konstrukční kreslení**: přepínač Konstrukčně na liště skici. Dokud je zapnutý, kreslicí nástroje zakládají konstrukční křivky (čárkovaně, netvoří profil); odvozené vazby vznikají stejně. Existující křivky se přepínají tlačítkem v panelu jako dřív.
 - **Diagnostika skici (D32)** je v panelu pod stavem skici:

@@ -253,7 +253,8 @@ function constraint(sketch: SketchFeature, v: unknown, what: string): Constraint
     kinds.push(entity.kind);
   }
   if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: vazba potřebuje ${spec.operands.length === 2 ? 'dvě' : spec.operands.length} různé entity`);
-  const problem = spec.check?.(kinds);
+  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
+  const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
   if (problem) fail(`${what}: ${problem}`);
   let dimension = {};
   if (spec.value) {

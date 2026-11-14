@@ -148,6 +148,30 @@ describe('příkazy skici', () => {
     expect(sketchOf(run(doc, add({ type: 'tangent', a: 'c', b: 'l3' }))).constraints.k).toEqual({ type: 'tangent', a: 'c', b: 'l3' });
   });
 
+  it('souměrnost a střed úsečky: operandy, zakázané konce a duplicity', () => {
+    const doc = run(base(), { type: 'addPoint', sketch: 'S1', id: 'q', x: 20, y: 15 }, { type: 'addPoint', sketch: 'S1', id: 'r', x: 5, y: 15 });
+    const add = (constraint: Constraint, id = 'k'): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
+    // l1 vede z p1 do p2; souměrné jsou p3 a p4, střed je q
+    expect(sketchOf(run(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' }))).constraints.k).toEqual({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' });
+    expect(sketchOf(run(doc, add({ type: 'midpoint', point: 'q', line: 'l1' }))).constraints.k).toEqual({ type: 'midpoint', point: 'q', line: 'l1' });
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p3', line: 'l1' }), /potřebuje 3 různé entity/);
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'l2', line: 'l1' }), /čeká se point/);
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'q' }), /čeká se line/);
+    invalid(doc, add({ type: 'symmetric', a: 'p1', b: 'p4', line: 'l1' }), /souměrný bod nesmí být koncem osy/);
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p2', line: 'l1' }), /souměrný bod nesmí být koncem osy/);
+    invalid(doc, add({ type: 'midpoint', point: 'p2', line: 'l1' }), /středem úsečky nemůže být její konec/);
+    invalid(doc, add({ type: 'midpoint', point: 'l2', line: 'l1' }), /čeká se point/);
+    invalid(doc, add({ type: 'midpoint', point: 'q' } as never), /čeká se řetězec/);
+    // u souměrnosti nezáleží na pořadí bodů, na ose ano; střed dvou různých úseček duplicita není
+    const twice = run(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' }, 's'), add({ type: 'midpoint', point: 'q', line: 'l1' }, 'm'));
+    invalid(twice, add({ type: 'symmetric', a: 'p4', b: 'p3', line: 'l1' }), /stejná vazba už ve skice je \("s"\)/);
+    invalid(twice, add({ type: 'midpoint', point: 'q', line: 'l1' }), /"m"/);
+    run(twice, add({ type: 'symmetric', a: 'q', b: 'r', line: 'l3' }, 's2'), add({ type: 'midpoint', point: 'q', line: 'l3' }, 'm2'), add({ type: 'midpoint', point: 'r', line: 'l1' }, 'm3'));
+    // smazání osy vezme vazby s sebou
+    expect(Object.keys(sketchOf(run(twice, { type: 'removeEntity', sketch: 'S1', id: 'l1' })).constraints)).toEqual([]);
+    expect(Object.keys(sketchOf(run(twice, { type: 'removeEntity', sketch: 'S1', id: 'p4' })).constraints)).toEqual(['m']);
+  });
+
   it('stejnou řídicí vazbu nejde přidat dvakrát; referenční kóta smí být vedle řídicí', () => {
     const add = (id: string, constraint: Constraint): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
     const doc = run(base(), add('h', { type: 'horizontal', line: 'l1' }), add('par', { type: 'parallel', a: 'l1', b: 'l3' }), add('w', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 40, driving: true }));

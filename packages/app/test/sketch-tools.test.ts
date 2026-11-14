@@ -1,10 +1,10 @@
 // Kreslicí nástroje a vazby z výběru proti skutečnému enginu: příkazy, které UI sestaví, musí
 // engine přijmout a výsledek musí odpovídat tomu, co uživatel nakreslil.
-import { type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, createEngine, emptySketch } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, createEngine, emptySketch } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, geometricFor, lineCommands, normalizeAngle, pointCommands, rectangleCommands } from '../src/sketch-commands';
+import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, geometricFor, lineCommands, normalizeAngle, pointCommands, rectangleCommands } from '../src/sketch-commands';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -208,6 +208,44 @@ describe('vazby a kóty z výběru', () => {
     const view = s.t.view();
     dimensions.forEach((shape, i) => expect(measure(shape, view), shape.type).toBeCloseTo(s.t.result().measurements[`ref${i}`], 9));
     expect(measure({ type: 'distance', a: s.start, b: 'chybí' }, view)).toBeUndefined();
+  });
+
+  it('vazby bez zvláštního pravidla se nabízejí podle katalogu enginu: souměrnost a střed úsečky', () => {
+    // seznam geometrických vazeb je katalog bez kót, takže nová vazba enginu v něm je sama
+    expect(GEOMETRIC_KINDS).toEqual(Object.keys(CONSTRAINTS).filter((type) => !CONSTRAINTS[type as Constraint['type']].value));
+    expect(GEOMETRIC_KINDS).toEqual(expect.arrayContaining(['coincident', 'tangent', 'symmetric', 'midpoint']));
+    expect(GEOMETRIC_KINDS).not.toContain('distance');
+
+    const t = setup();
+    t.run([
+      { type: 'addPoint', sketch: 's', id: 'top', x: 0.4, y: 30 },
+      { type: 'addCurve', sketch: 's', id: 'axis', curve: { type: 'line', a: 'origin', b: 'top', construction: true } },
+      { type: 'addPoint', sketch: 's', id: 'l', x: -12, y: 8 },
+      { type: 'addPoint', sketch: 's', id: 'r', x: 15, y: 11 },
+      { type: 'addPoint', sketch: 's', id: 'm', x: 2, y: 13 },
+      { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 3 },
+      { type: 'addConstraint', sketch: 's', id: 'v', constraint: { type: 'vertical', line: 'axis' } },
+    ]);
+    const offer = (kind: Parameters<typeof geometricFor>[0], ids: Id[]) => geometricFor(kind, t.view(), ids);
+    // operandy se přiřadí podle druhu, na pořadí výběru osy a bodů nezáleží
+    expect(offer('symmetric', ['l', 'r', 'axis'])).toEqual([{ type: 'symmetric', a: 'l', b: 'r', line: 'axis' }]);
+    expect(offer('symmetric', ['axis', 'r', 'l'])).toEqual([{ type: 'symmetric', a: 'r', b: 'l', line: 'axis' }]);
+    expect(offer('symmetric', ['l', 'r'])).toBeUndefined();
+    expect(offer('symmetric', ['l', 'axis', 'k'])).toBeUndefined(); // kružnice místo druhého bodu
+    expect(offer('symmetric', ['l', 'r', 'm', 'axis'])).toBeUndefined();
+    expect(offer('midpoint', ['axis', 'm'])).toEqual([{ type: 'midpoint', point: 'm', line: 'axis' }]);
+    expect(offer('midpoint', ['m', 'k'])).toBeUndefined();
+    expect(offer('midpoint', ['m'])).toBeUndefined();
+    // engine nabídnuté vazby přijme a geometrie jim odpovídá
+    t.run([...offer('symmetric', ['l', 'r', 'axis'])!, ...offer('midpoint', ['axis', 'm'])!].map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: t.newId('k'), constraint })));
+    const p = t.result().points;
+    expect(t.result().conflicting).toEqual([]);
+    expect(p.l.x).toBeCloseTo(-p.r.x, 6);
+    expect(p.l.y).toBeCloseTo(p.r.y, 6);
+    expect([p.m.x, p.m.y]).toEqual([expect.closeTo(0, 6), expect.closeTo(p.top.y / 2, 6)]);
+    // popisek vazby v pohledu leží mezi operandy
+    expect(anchorOf(t.sketch().constraints[Object.keys(t.sketch().constraints)[1]], t.view())).toBeDefined();
+    expect(operandsOf({ type: 'symmetric', a: 'l', b: 'r', line: 'axis' })).toEqual(['l', 'r', 'axis']);
   });
 
   it('geometrické vazby se nabízejí jen pro vhodný výběr', () => {

@@ -123,6 +123,19 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry) => Equati
     const s = sign(r1 - r2);
     return (g) => [between(g) - (outer ? g.radius(first) + g.radius(second) : s * (g.radius(first) - g.radius(second)))];
   },
+  // Střed bodů a, b leží na ose a jejich spojnice je na osu kolmá.
+  symmetric: (c) => (g) => {
+    const [p, q] = lineOf(g, c.line);
+    const u = sub(q, p);
+    const [a, b] = [g.point(c.a), g.point(c.b)];
+    const length = nonZero(len(u));
+    return [cross(u, sub([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], p)) / length, dot(sub(b, a), u) / length];
+  },
+  midpoint: (c) => (g) => {
+    const [p, q] = lineOf(g, c.line);
+    const m = g.point(c.point);
+    return [m[0] - (p[0] + q[0]) / 2, m[1] - (p[1] + q[1]) / 2];
+  },
   // Nulová vzdálenost je totožnost: jedna rovnice by v řešení měla nulovou derivaci.
   distance: (c) => (g) => {
     const d = sub(g.point(c.a), g.point(c.b));

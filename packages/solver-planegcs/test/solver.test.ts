@@ -332,6 +332,68 @@ describe('mapování vazeb', () => {
   });
 });
 
+describe('souměrnost a střed úsečky', () => {
+  // svislá osa z pevného počátku a dva body od ruky
+  const axis = (constraints: Record<Id, Constraint>, points: Record<Id, Point2> = {}): SolveInput =>
+    input({
+      points: { origin: { x: 0, y: 0 }, top: { x: 0.6, y: 29 }, a: { x: -14, y: 3 }, b: { x: 22, y: 9 }, ...points },
+      curves: { axis: { type: 'line', a: 'origin', b: 'top' }, ab: { type: 'line', a: 'a', b: 'b' } },
+      constraints: { v: { type: 'vertical', line: 'axis' }, ...constraints },
+      fixed: ['origin'],
+    });
+
+  it('souměrné body mají stejnou vzdálenost od osy a spojnici na ni kolmou', () => {
+    const result = solver.solve(axis({ s: { type: 'symmetric', a: 'a', b: 'b', line: 'axis' } }));
+    expect(result.status).toBe('solved');
+    const { a, b, top } = result.points;
+    expect(top.x).toBeCloseTo(0, 8);
+    expect(a.x).toBeCloseTo(-b.x, 8);
+    expect(a.y).toBeCloseTo(b.y, 8);
+    expect(Math.abs(a.x)).toBeGreaterThan(5); // body se nestáhly na osu
+  });
+
+  it('na pořadí souměrných bodů nezáleží a šikmá osa funguje stejně', () => {
+    const swapped = solver.solve(axis({ s: { type: 'symmetric', a: 'b', b: 'a', line: 'axis' } }));
+    expect(swapped.status).toBe('solved');
+    expect(swapped.points.a.x).toBeCloseTo(-swapped.points.b.x, 8);
+    // osa pod 45°: zrcadlení zamění souřadnice
+    const slanted = solver.solve(input({ points: { origin: { x: 0, y: 0 }, e: { x: 10, y: 10 }, a: { x: 8, y: 1 }, b: { x: 2, y: 9 } }, curves: { axis: { type: 'line', a: 'origin', b: 'e' } }, constraints: { s: { type: 'symmetric', a: 'a', b: 'b', line: 'axis' } }, fixed: ['origin', 'e'] }));
+    expect(slanted.status).toBe('solved');
+    expect(slanted.points.a.x).toBeCloseTo(slanted.points.b.y, 8);
+    expect(slanted.points.a.y).toBeCloseTo(slanted.points.b.x, 8);
+  });
+
+  it('bod ve středu úsečky drží střed i po změně její délky', () => {
+    const constraints: Record<Id, Constraint> = { m: { type: 'midpoint', point: 'c', line: 'ab' }, h: { type: 'horizontal', line: 'ab' }, fix: { type: 'coincident', a: 'a', b: 'origin' } };
+    for (const length of [30, 80]) {
+      const result = solver.solve(axis({ ...constraints, len: { type: 'distance', a: 'a', b: 'b', value: length, driving: true } }, { c: { x: 3, y: 4 } }));
+      expect(result.status).toBe('solved');
+      expect(result.points.c.x).toBeCloseTo(length / 2, 8);
+      expect(result.points.c.y).toBeCloseTo(0, 8);
+    }
+  });
+
+  it('souměrnost podle promítnuté (pevné) úsečky a střed pevné úsečky', () => {
+    const fixedLine = input({
+      points: { 'x/a': { x: 10, y: 0 }, 'x/b': { x: 10, y: 20 }, a: { x: 4, y: 6 }, b: { x: 15, y: 5 }, c: { x: 9, y: 9 } },
+      curves: { x: { type: 'line', a: 'x/a', b: 'x/b' } },
+      constraints: { s: { type: 'symmetric', a: 'a', b: 'b', line: 'x' }, m: { type: 'midpoint', point: 'c', line: 'x' } },
+      fixed: ['x/a', 'x/b'],
+    });
+    const result = solver.solve(fixedLine);
+    expect(result.status).toBe('solved');
+    expect(result.points['x/a']).toEqual({ x: 10, y: 0 });
+    expect(result.points.a.x + result.points.b.x).toBeCloseTo(20, 8);
+    expect(result.points.a.y).toBeCloseTo(result.points.b.y, 8);
+    expect([result.points.c.x, result.points.c.y]).toEqual([expect.closeTo(10, 8), expect.closeTo(10, 8)]);
+  });
+
+  it('střed úsečky chce úsečku: kružnice je chyba vstupu', () => {
+    const bad = input({ points: { o: { x: 0, y: 0 }, p: { x: 1, y: 1 } }, radii: { k: 3 }, curves: { k: { type: 'circle', center: 'o' } }, constraints: { m: { type: 'midpoint', point: 'p', line: 'k' } } });
+    expect(() => solver.solve(bad)).toThrow(/čeká úsečku/);
+  });
+});
+
 describe('chyby vstupu a okrajové chování', () => {
   it('neznámý bod, křivka a nesprávný druh křivky vyhodí výjimku', () => {
     const curves: Record<Id, Curve> = { l: { type: 'line', a: 'a', b: 'missing' } };

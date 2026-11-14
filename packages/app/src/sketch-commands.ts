@@ -1,6 +1,6 @@
 // Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
 // sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
-import type { Command, Constraint, Dimension, DimensionShape, ExtrudeFeature, Id, PlaneFeature, SketchFeature, Vec2 } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type ExtrudeFeature, type GeometricConstraint, type Id, type PlaneFeature, type SketchFeature, type Vec2 } from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
 // Místo kliknutí ve skice a to, k čemu se přichytilo.
@@ -106,7 +106,11 @@ export function positionOf(view: SketchView, anchor: Anchor): Vec2 {
 
 // ---------------------------------------------------------------- vazby z výběru
 
-export type GeometricKind = 'coincident' | 'pointOnCurve' | 'horizontal' | 'vertical' | 'parallel' | 'perpendicular' | 'equalLength' | 'tangent';
+export type GeometricKind = GeometricConstraint['type'];
+
+// Geometrické vazby, které engine zná (vazby bez hodnoty), v pořadí katalogu. Nová vazba enginu
+// se tu objeví sama.
+export const GEOMETRIC_KINDS: GeometricKind[] = (Object.keys(CONSTRAINTS) as Constraint['type'][]).filter((type) => !CONSTRAINTS[type].value) as GeometricKind[];
 
 interface Sorted {
   points: Id[];
@@ -142,7 +146,28 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
       return only(0, 2, 0) ? [{ type: kind, a: lines[0], b: lines[1] }] : undefined;
     case 'tangent':
       return points.length === 0 && lines.length + round.length === 2 && round.length >= 1 ? [{ type: kind, a: [...lines, ...round][0], b: [...lines, ...round][1] }] : undefined;
+    default:
+      return fromCatalog(kind, view, selection);
   }
+}
+
+// Vazba bez zvláštního pravidla: výběr se rozdělí mezi operandy podle katalogu enginu. Každý
+// operand dostane první dosud nepoužitou entitu přípustného druhu (v pořadí výběru); vazba
+// vznikne, jen když se takto rozdělí celý výběr.
+function fromCatalog(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
+  const spec = CONSTRAINTS[kind];
+  if (selection.length !== spec.operands.length) return undefined;
+  const left = [...selection];
+  const constraint: Record<string, string> = { type: kind };
+  for (const operand of spec.operands) {
+    const at = left.findIndex((id) => {
+      const entity = kindOf(view, id);
+      return entity !== undefined && operand.kinds.includes(entity);
+    });
+    if (at < 0) return undefined;
+    constraint[operand.field] = left.splice(at, 1)[0];
+  }
+  return [constraint as unknown as Constraint];
 }
 
 export type DimensionVariant = 'auto' | 'horizontal' | 'vertical';

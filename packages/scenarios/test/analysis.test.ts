@@ -30,7 +30,7 @@ function inputOf(engine: Engine, id: Id = 'S1'): SolveInput {
 describe('rovnice vazeb odpovídají solveru', () => {
   // Pro každý typ vazby skica od ruky, ve které vazba něco změní. Tabulka je úplná z typů:
   // nová vazba bez případu se nepřeloží.
-  const base = [point('a', 1, 2), point('b', 21, 5), point('c', 18, 19), point('d', -3, 14), point('m', 40, 10), point('n', 62, 12), line('ab', 'a', 'b'), line('cd', 'c', 'd'), circle('k', 'm', 6), circle('q', 'n', 9)];
+  const base = [point('a', 1, 2), point('b', 21, 5), point('c', 18, 19), point('d', -3, 14), point('w', -4, 25), point('m', 40, 10), point('n', 62, 12), line('ab', 'a', 'b'), line('cd', 'c', 'd'), circle('k', 'm', 6), circle('q', 'n', 9)];
   const withArc = [point('s', 50, 30), point('e', 38, 41), point('z', 40, 30), arc('r', 'z', 's', 'e')];
   const cases: Record<Constraint['type'], Constraint[]> = {
     coincident: [{ type: 'coincident', a: 'b', b: 'c' }],
@@ -50,6 +50,12 @@ describe('rovnice vazeb odpovídají solveru', () => {
       { type: 'tangent', a: 'r', b: 'cd' },
       { type: 'tangent', a: 'q', b: 'r' },
     ],
+    // body na opačných stranách osy; se dvěma body na téže straně volné osy solver osu stáhne do bodu
+    symmetric: [
+      { type: 'symmetric', a: 'a', b: 'w', line: 'cd' },
+      { type: 'symmetric', a: 'w', b: 'a', line: 'cd' },
+    ],
+    midpoint: [{ type: 'midpoint', point: 'm', line: 'ab' }],
     distance: [{ type: 'distance', a: 'a', b: 'c', value: 25, driving: true }],
     distancePointLine: [{ type: 'distancePointLine', point: 'c', line: 'ab', value: 9, driving: true }],
     horizontalDistance: [{ type: 'horizontalDistance', a: 'b', b: 'a', value: -17, driving: true }],
@@ -73,13 +79,13 @@ describe('rovnice vazeb odpovídají solveru', () => {
       variants.forEach((constraint, i) => {
         const engine = sketchWith(...base, ...withArc);
         const before = new SketchAnalysis(inputOf(engine));
-        expect(before.degreesOfFreedom).toBe(2 * 9 + 2 - 1); // devět bodů, dva poloměry, podmínka oblouku
+        expect(before.degreesOfFreedom).toBe(2 * 10 + 2 - 1); // deset bodů, dva poloměry, podmínka oblouku
         expect(before.residual).toBeLessThan(1e-7);
         run(engine, constrain('S1', `x${i}`, constraint));
         expect(engine.getState().evaluation.features.S1.status, `${type} ${i}`).toBe('ok');
         const after = new SketchAnalysis(inputOf(engine));
         expect(after.residual, `${type} ${i}`).toBeLessThan(1e-6);
-        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (type === 'coincident' ? 2 : 1));
+        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (['coincident', 'symmetric', 'midpoint'].includes(type) ? 2 : 1));
         expect(after.surplus()).toEqual({ redundant: [], removable: [] });
         expect(dofOf(engine)).toBe(after.degreesOfFreedom);
       });

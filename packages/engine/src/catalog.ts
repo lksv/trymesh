@@ -1,7 +1,7 @@
 // Katalog vazeb: jediný zdroj pravdy o tom, jaké vazby engine zná, jaké mají operandy a hodnoty.
 // Řídí se jím validace příkazů, hledání duplicit a popis API pro UI a pro AI (MCP). Nová vazba
 // je položka zde, její typ v types.ts a překlad v adaptéru solveru; nic dalšího o ní vědět nemusí.
-import type { Constraint } from './types';
+import type { Constraint, Id } from './types';
 
 export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
 
@@ -22,8 +22,9 @@ export interface ConstraintSpec {
   operands: OperandSpec[];
   unordered?: string[]; // operandy, na jejichž pořadí nezáleží (u orientovaných kót záměna jen obrací znaménko)
   value?: ValueSpec; // jen u kót
-  // Dodatečné pravidlo nad druhy operandů (v pořadí `operands`); vrací text chyby.
-  check?: (kinds: EntityKind[]) => string | undefined;
+  // Dodatečné pravidlo nad operandy (v pořadí `operands`): jejich druhy, ID a body, kterými je
+  // křivka určená. Vrací text chyby.
+  check?: (kinds: EntityKind[], ids: Id[], pointsOf: (curve: Id) => Id[]) => string | undefined;
 }
 
 const POINT: EntityKind[] = ['point'];
@@ -59,6 +60,26 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
     summary: 'Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.',
     ...pair(CURVE),
     check: (kinds) => (kinds.every((kind) => kind === 'line') ? 'tečnost dvou úseček nedává smysl' : undefined),
+  },
+  symmetric: {
+    title: 'Souměrně',
+    summary: 'Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).',
+    operands: [
+      { field: 'a', kinds: POINT },
+      { field: 'b', kinds: POINT },
+      { field: 'line', kinds: LINE },
+    ],
+    unordered: ['a', 'b'],
+    check: (_kinds, [a, b, line], pointsOf) => (pointsOf(line).includes(a) || pointsOf(line).includes(b) ? 'souměrný bod nesmí být koncem osy' : undefined),
+  },
+  midpoint: {
+    title: 'Střed úsečky',
+    summary: 'Bod leží přesně v polovině úsečky.',
+    operands: [
+      { field: 'point', kinds: POINT },
+      { field: 'line', kinds: LINE },
+    ],
+    check: (_kinds, [point, line], pointsOf) => (pointsOf(line).includes(point) ? 'středem úsečky nemůže být její konec' : undefined),
   },
   distance: { title: 'Vzdálenost', summary: 'Vzdálenost dvou bodů.', ...pair(POINT), value: LENGTH },
   distancePointLine: {

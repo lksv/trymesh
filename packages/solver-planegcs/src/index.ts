@@ -229,6 +229,13 @@ function translate(id: Id, c: Constraint, curves: Record<Id, Curve>): Record<str
       if (pair === 'arc-arc') return { type: 'tangent_aa', a1_id: first, a2_id: second };
       throw new Error(`solver: vazba ${id}: tečnost dvou úseček nedává smysl`);
     }
+    case 'symmetric':
+      return { type: 'p2p_symmetric_ppl', p1_id: c.a, p2_id: c.b, l_id: line(c.line) };
+    case 'midpoint': {
+      // bod je středem úsečky, když jsou její konce souměrné podle něj
+      const ends = curves[line(c.line)] as Extract<Curve, { type: 'line' }>;
+      return { type: 'p2p_symmetric_ppp', p1_id: ends.a, p2_id: ends.b, p_id: c.point };
+    }
     case 'distance':
       return { type: 'p2p_distance', p1_id: c.a, p2_id: c.b, distance: c.value };
     case 'distancePointLine':

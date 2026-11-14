@@ -911,6 +911,18 @@ Ostatní rozhodnutí, nálezy revize a poznámky pro implementaci jsou v README 
 
 Po zapracování dodal vlastník další dvě revize od jiných modelů. Všech deset nálezů platilo a jsou zapracované: aplikace převádí mezi stupni a radiány jen čísla, jména exportovaných souborů jsou jednoznačná, jméno kontroly je volný text, porovnání má toleranci i u nuly, podmínka nárazu hlavy do paty se ověřuje pro obě kola a u koruny má obrácenou nerovnost, slučovací změna rozlišuje varianty a odkazy, a přibyly poznámky pro implementaci (zápis hodnot výrazů u všech typů features, odkaz na stěnu kopie, recept nástroje při varování, pevný bod v katalogu a solveru).
 
+Po kroku 0 dodal vlastník třetí revizi (slabší model) a zadal projít [backlog.md](backlog.md) proti návrhu. Revize měla osm skupin nálezů a dvě doporučení; platí všechny kromě části druhého doporučení a několik jich návrh už řešil. Tvar dokumentu se nemění. Co se podle ní změnilo:
+
+- Engine vyváží vstupní tvar feature (`featureInput`: výrazy dosazené zpět do polí). Formulář aplikace, který při úpravě posílá feature celou, z něj vychází; jinak by čísla v příkazu zrušila výrazy polí, která uživatel neměnil.
+- `setConstraintValue` bez hodnoty výraz nemění; výraz zadaný referenční kótě je neplatný příkaz.
+- Operandem generátoru smí být i promítnutá kružnice. Příkaz ověřuje operandy, které feature dosud neměla; operand smazaný později je při přepočtu rozbitá reference.
+- Generátor může selhat (špičatý zub); vysunutí pak končí chybou `invalidProfile`. Parametr generátoru bez výchozí hodnoty je povinný.
+- Generátor vrací oblasti (vnější smyčka a díry) jako profil skici, ne plochý seznam smyček; profil z více ostrovů (text) tak nepotřebuje jiný tvar.
+- Tuhá transformace je matice a posun; při záporném determinantu se obrací pořadí vrcholů trojúhelníků. Zrcadlení tak později nepotřebuje jinou funkci.
+- `get_sketch` nemá parametr `at`.
+
+Rozbor backlogu nenašel funkci, kterou by návrh zamykal. Dal pět pravidel pro provedení bodů 1, 2 a 4 (cache dosazené feature podle hodnot, vyhrazená tečka ve výrazu, typ výsledku výrazu, použití nástroje nad receptem, seznam transformací pole) a dvě místa, kde bude pozdější práce větší, než backlog naznačuje (knihovna dílů, jména referenčních kót). Tabulky jsou v README návrhu, části Třetí kolo revize a Obecnost proti backlogu.
+
 ### Upřesnění scénáře 9
 
 Vlastník projektu zadal vyřešit nejasnosti scénáře; řešení navrhl Claude a vlastník je potvrdil 2026-11-14.

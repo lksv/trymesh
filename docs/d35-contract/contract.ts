@@ -83,7 +83,10 @@ export interface FeatureBase {
   //   s jinou cestou nebo se syntakticky vadným výrazem je neplatný dokument.
   // - Smazání vazby (i kaskádou z removeEntity a removeExternal) a změna varianty (`distance` na
   //   `throughAll`) odeberou výrazy polí, která tím zanikla.
-  // - Referenční kóta (`driving: false`) výraz nemá; přepnutí na referenční ho odebere.
+  // - Referenční kóta (`driving: false`) výraz nemá; přepnutí na referenční ho odebere a výraz zadaný
+  //   referenční kótě je neplatný příkaz.
+  // Vstupní tvar feature (výrazy dosazené zpět do polí jako řetězce) vrací `featureInput`; formulář,
+  // který posílá feature celou, musí vycházet z něj, jinak by čísla v příkazu výrazy zrušila.
   expressions?: Record<FieldPath, Expr>;
 }
 
@@ -141,9 +144,13 @@ export type ProfileSource =
       type: 'generated';
       generator: GeneratorName; // položka katalogu generátorů
       sketch: Id;
-      operands: Record<string, Id>; // entity skici podle katalogu (ozubení: `circle`, i konstrukční)
+      // Entity skici podle katalogu (ozubení: `circle`, i konstrukční nebo promítnutá kružnice).
+      // Příkaz ověří operandy, které feature dosud neměla (entita existuje a má přípustný druh);
+      // načtení dokumentu jen tvar. Entita smazaná později je při přepočtu rozbitá reference.
+      operands: Record<string, Id>;
       // Podle katalogu: čísla jsou číselná pole, příznaky, volby z výčtu a texty. Co příkaz vynechá,
-      // doplní se výchozí hodnotou z katalogu a uloží.
+      // doplní se výchozí hodnotou z katalogu a uloží. Parametr bez výchozí hodnoty (počet zubů) je
+      // povinný: vynechat ho nebo nastavit na `null` je neplatný příkaz.
       params: Record<string, number | boolean | string>;
       refs?: Record<string, Id>; // odkazy na dřívější features podle katalogu (ozubení: `meshWith`)
       // Odkaz smí vést jen na dřívější vysunutí s generátorem, který katalog u odkazu uvádí.
@@ -194,7 +201,7 @@ export type FaceName = ({ feature: Id; role: 'side'; curve: Id } | { feature: Id
 
 export interface CopyTag {
   pattern: Id;
-  index: number; // číslo kopie od 1
+  index: number; // číslo kopie: 1 až count − 1 (originál číslo nemá)
 }
 
 export interface EdgeName {
@@ -253,9 +260,13 @@ export interface FeatureTypeInfo {
   title: string;
   summary: string;
   fields: FieldSpec[];
-  bodies: 'none' | 'self' | 'derived'; // self: těleso s ID feature (vysunutí jen při operaci new); derived: `<feature>/<místní jméno>`
+  // Která tělesa typ může vytvořit; jestli je konkrétní feature opravdu vytváří, rozhoduje registr
+  // (vysunutí jen při operaci new, pole jen se zdrojem těleso).
+  // self: těleso s ID feature; derived: `<feature>/<místní jméno>`
+  bodies: 'none' | 'self' | 'derived';
+  updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = typ má vlastní příkazy
 }
-export declare const FEATURE_TYPES: Record<Feature['type'], FeatureTypeInfo>;
+export declare const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo>;
 
 // Katalog vazeb: dnešní `value` (jedna hodnota) se mění na pojmenované hodnoty. Kóty mají `value`,
 // pevný bod `x` a `y`. Dnes kód pozná kótu podle toho, že má v katalogu hodnotu; to přestává platit
@@ -274,6 +285,10 @@ export interface FieldInfo {
   expr?: Expr;
 }
 export declare function fieldsOf(feature: Feature): FieldInfo[];
+// Vstupní tvar feature: číselná pole, která mají výraz, nesou výraz jako řetězec a mapa
+// `expressions` chybí. `addFeature(featureInput(f))` dá zpět tutéž feature; formulář, který při
+// úpravě posílá feature celou, vychází z tohoto tvaru.
+export declare function featureInput<F extends Feature>(feature: F): Input<F>;
 
 export type GeneratorName = 'involuteGear'; // další položky později
 export interface GeneratorSpec {
@@ -437,10 +452,12 @@ export type Input<T> = T extends number ? number | Expr : T extends readonly (in
 // - Varianta s jiným `type` (nebo jiným `generator`) dosavadní hodnotu nahradí a musí být úplná.
 // - Odkaz (objekt s `kind`: rovina, osa) se nahrazuje vždy celý a musí být úplný.
 // - Seznamy se nahrazují celé. `null` odebere nepovinné pole; v `params` vrátí výchozí hodnotu
-//   z katalogu a v `refs` odebere jeden odkaz.
+//   z katalogu a zruší výraz parametru (u parametru bez výchozí hodnoty je neplatný příkaz)
+//   a v `refs` odebere jeden odkaz.
 // - Změna na `operation: 'new'` odebere `targets` sama.
-// - Znovu se ověřují jen odkazy na cestách, které změna mění (oprava jedné rozbité reference
-//   nesmí narazit na jinou).
+// - Ověřují se jen odkazy, které feature dosud neměla (oprava jedné rozbité reference nesmí
+//   narazit na jinou, ani když ji změna zopakuje).
+// - Číslo v poli s výrazem výraz zruší. Kdo posílá feature celou, vychází z `featureInput`.
 // - Pole, které typu feature nepatří, je neplatný příkaz. Typ a ID měnit nejde; obsah skici mění
 //   příkazy skici.
 export type Merge<T> = T extends number
@@ -481,7 +498,9 @@ export type Command =
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
   | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | FixedInput } // D35: u `fixed` bez x, y se doplní poloha bodu
   | { type: 'removeConstraint'; sketch: Id; id: Id }
-  // hodnotu kóty umí stejně i setField; tento příkaz navíc přepíná `driving`
+  // Hodnotu kóty umí stejně i setField; tento příkaz navíc přepíná `driving`. Bez `value` se hodnota
+  // ani výraz nemění; číslo výraz zruší. Přepnutí na referenční kótu výraz odebere, výraz zadaný
+  // referenční kótě je neplatný příkaz.
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
   | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
@@ -575,7 +594,7 @@ export interface McpAdditions {
   // změna: přehled modelu navíc vrací parametry, nesplněné kontroly, u těles objem a obálku, u features vytvořená tělesa a údaje generátoru
   get_model: { input: { at?: Id }; output: { addedFields: ['parameters', 'failedChecks', 'bodies[].volume', 'bodies[].bounds', 'features[].bodies', 'features[].facts'] } };
   // změna: u vazeb navíc výraz (v dokumentu je v mapě u feature, ne u vazby)
-  get_sketch: { input: { sketch: Id; at?: Id }; output: { addedFields: ['constraints[].expr'] } };
+  get_sketch: { input: { sketch: Id }; output: { addedFields: ['constraints[].expr'] } };
   // změna: popis API navíc obsahuje syntaxi výrazů, katalog číselných polí, generátorů, typů features a nástrojů skici
   describe_api: { input: Record<string, never>; output: { addedSections: ['expressions', 'numericFields', 'generators', 'featureTypes', 'sketchTools'] } };
 }
@@ -594,24 +613,35 @@ export interface Tool {
   solid: Solid;
   faces: { name: FaceName; info: unknown }[]; // info: analytický popis stěny (rovina, válec, obecná plocha)
 }
+// Shodné zobrazení p' = M · p + t. Při záporném determinantu (zrcadlení, později) se obrací pořadí
+// vrcholů trojúhelníků; popis stěny nese normálu bez znaménka, ta se jen zobrazí.
 export interface RigidTransform {
-  origin: Vec3; // bod na ose
-  rotation: [Vec3, Vec3, Vec3]; // řádky matice otočení
+  matrix: [Vec3, Vec3, Vec3]; // řádky ortogonální matice
   translation: Vec3;
 }
 
 // Generátor profilu: čistá funkce. `facts` jsou údaje pro jiný generátor při odkazu a pro
 // FeatureResult.facts; polohy a směry jsou v osách modelu, aby odkaz fungoval i mezi skicami
 // v různých rovinách (kola v nerovnoběžných rovinách dají varování gearMesh).
+// Smyčka je uzavřená lomená čára v souřadnicích skici; `side` je jméno boční stěny z katalogu.
+export interface GeneratedLoop {
+  xy: number[];
+  side: string;
+}
 export interface GeneratedProfile {
-  loops: { xy: number[]; side: string }[]; // vnější smyčka proti směru hodin, díry po směru
+  // Oblasti jako u profilu skici (vnější smyčka proti směru hodin, díry po směru), aby profil
+  // z více ostrovů (text) nepotřeboval jiný tvar a stavba hranolu ho brala přímo.
+  regions: { outer: GeneratedLoop; holes: GeneratedLoop[] }[];
   facts: Record<string, number | boolean | Vec3>;
   warnings: Issue[];
 }
+// Generátor může pro jinak přípustná čísla selhat (špičatý zub při velké vůli); vysunutí pak
+// skončí chybou `invalidProfile` s jeho zprávou.
+export type GeneratorResult = ({ ok: true } & GeneratedProfile) | { ok: false; message: string };
 export type GeneratorBuild = (input: {
-  operands: Record<string, { kind: 'circle'; center: Vec2; radius: number } | { kind: 'point'; at: Vec2 } | { kind: 'line'; a: Vec2; b: Vec2 }>;
+  operands: Record<string, { kind: 'circle'; center: Vec2; radius: number } | { kind: 'point'; at: Vec2 } | { kind: 'line'; a: Vec2; b: Vec2 }>; // oblouk přibude s generátorem, který ho potřebuje
   params: Record<string, number | boolean | string>;
   refs: Record<string, GeneratedProfile['facts'] | undefined>; // undefined: odkazovaná feature chybí nebo je v chybě
   frame: Frame;
   chordTolerance: number;
-}) => GeneratedProfile;
+}) => GeneratorResult;

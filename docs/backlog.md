@@ -27,11 +27,11 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 | Další nástroje skici | Drážka, obdélník středem, odsazení obrysu (lem víka), rozteč děr | Funkce sdíleného modulu nástrojů; engine se nemění. Odsazení obrysu může chtít novou vazbu |
 | Nejmenší vzdálenost těles | Ověření vůle (motor v pouzdře má mít 1 mm), ne jen toho, že se díly neprolínají | Další dotaz nad tělesy |
 | Vlastnosti těles | Jméno, barva, příznak referenčního dílu (motor se netiskne a nemá se exportovat) | Nepovinný údaj v dokumentu klíčovaný ID tělesa |
-| Jména referenčních kót ve výrazech | Parametr odvozený z naměřené hodnoty | Výrazy se vyhodnocují uvnitř přepočtu, ne při příkazu; jména jdou rozšířit o hodnoty vzniklé přepočtem |
+| Jména referenčních kót ve výrazech | Parametr odvozený z naměřené hodnoty | Výrazy se vyhodnocují uvnitř přepočtu; jména jdou rozšířit o hodnoty vzniklé přepočtem a tečka je pro ně ve výrazu vyhrazená. Ověření výrazu při příkazu se pro taková jména musí přesunout do fasády enginu, která stav přepočtu má |
 | Potlačení feature výrazem, konfigurace | Varianty jednoho dílu (s přírubou a bez) | `suppressed` jako další pole s výrazem; kontroly už zavádějí porovnání |
 | Komentáře a skupiny parametrů | Čitelnost větší tabulky parametrů | Nepovinné údaje u parametru |
 | Export do 3MF | Víc těles se jmény v jednom souboru | Další formát vedle STL; export po tělesech už je |
-| Knihovna dílů, vložení jiného dokumentu | Motor, ložisko nebo šroub jako hotový díl místo ručního modelování | Nový typ feature, který vytvoří tělesa z jiného dokumentu; ID features vloženého dokumentu je potřeba odlišit předponou. Import cizí sítě zůstává mimo (nemá pojmenované stěny) |
+| Knihovna dílů, vložení jiného dokumentu | Motor, ložisko nebo šroub jako hotový díl místo ručního modelování | Nový typ feature, který vytvoří tělesa z jiného dokumentu; ID features vloženého dokumentu je potřeba odlišit předponou; validace odkazu na stěnu pak potřebuje stejný rozklad ID jako u těles. Import cizí sítě zůstává mimo (nemá pojmenované stěny) |
 | Graf závislostí při přepočtu | Rychlost u větších modelů: dnes se přepočítá vše od první změněné feature | Vnitřní věc přepočtu, dokument se nemění |
 | Sloučení nástrojů pole před booleanem, prostorové vyhledávání v adaptéru jádra | Rychlost u stovek kopií | Vnitřní věc pole a adaptéru jádra |
 | Pootočení kopií v poli kolem vlastní osy | Satelity v záběru i tehdy, když počty zubů nejsou dělitelné počtem satelitů | Další údaj transformace kopie |

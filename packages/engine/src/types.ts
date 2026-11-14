@@ -294,7 +294,7 @@ export type Command =
   //   s jiným `type` dosavadní nahradí a musí být úplná;
   // - odkaz (objekt s `kind`: rovina) a seznam se nahrazují celé; `null` odebere nepovinné pole;
   // - změna na `operation: 'new'` odebere `targets` sama;
-  // - znovu se ověřují jen odkazy, které změna uvádí.
+  // - ověřují se jen odkazy, které feature dosud neměla (zopakovaný rozbitý odkaz projde).
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }

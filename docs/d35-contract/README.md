@@ -33,7 +33,8 @@ Co balíček `@trymesh/engine` vyváží navíc proti dnešku. Tvary jsou v `con
 | `CommandResult.error.expression` | Kde a proč příkaz odmítl výraz |
 | `BodyResult.volume`, `bounds` | Objem a obálka tělesa |
 | `fieldsOf(feature)` | Číselná pole konkrétní feature s jednotkou, pravidlem, hodnotou a výrazem |
-| `FEATURE_TYPES` | Registr typů features (veřejná část: název, popis, číselná pole, jestli vytváří tělesa) |
+| `FEATURE_TYPE_INFO` | Registr typů features (veřejná část: název, popis, číselná pole, pole pro `updateFeature`, jestli vytváří tělesa) |
+| `featureInput(feature)` | Vstupní tvar feature: výrazy dosazené zpět do polí jako řetězce. Z něj vychází formulář, který při úpravě posílá feature celou |
 | `GENERATORS` | Katalog generátorů profilu |
 | `SKETCH_TOOLS`, `sketchTool(...)` | Nástroje skici jako dávky příkazů |
 | `EXPRESSION_FUNCTIONS`, `EXPRESSION_CONSTANTS`, `analyzeExpression(expr, context)` | Syntaxe výrazů pro kontrolu při psaní a pro popis API |
@@ -60,7 +61,7 @@ Rozhraní portů (`SketchSolver`, `SolidKernel`) se nemění. Solver dostane dv�
 
 | Funkce | Příkaz / volání | Čte |
 |---|---|---|
-| Zjistit, která pole feature mají jednotku, rozsah a výraz | `fieldsOf(feature)`; u rozpracované feature `FEATURE_TYPES[type].fields` a katalogy | `document` |
+| Zjistit, která pole feature mají jednotku, rozsah a výraz | `fieldsOf(feature)`; u rozpracované feature `FEATURE_TYPE_INFO[type].fields` a katalogy | `document` |
 | Zobrazit pole: výraz, vedle něj hodnota | | `feature.expressions[path]`, číslo v poli |
 | Zadat číslo nebo výraz | `setField`, u kóty `setConstraintValue` | |
 | Zobrazit a zadat úhel | číslo UI převádí mezi stupni a radiány; výraz zobrazuje a ukládá beze změny, v jednotkách enginu, a vedle něj ukáže výslednou hodnotu ve stupních | jednotka z `fieldsOf`, `values` z náhledu |
@@ -148,7 +149,7 @@ D35 je nechával otevřená. Prvních třináct vzniklo při psaní kontraktu, d
 14. **Chybný výraz kóty skicu neshodí.** U skici je `invalidExpression` varování a skica se spočítá s poslední platnou hodnotou. Feature v chybě nemá rovinu ani vyřešenou skicu, takže by nešla otevřít a vše za ní by spadlo. U ostatních typů features zůstává chyba.
 15. **Kruhové pole má výslovný rozsah:** plný kruh (krok 2π děleno počtem), nebo úhel mezi první a poslední kopií. Původní pravidlo „při plném kruhu“ bylo nespojité: počet 4 s úhlem 360° dával krok 90°, s úhlem 359,999° krok 120°.
 16. **Číselné pole má rozsah, ne pojmenované pravidlo:** minimum a maximum s příznakem otevřenosti, zákaz nuly, celé číslo s tolerancí 1e-9 (`0.3 / 0.1` není přesně 3). Počet kopií má horní mez.
-17. **Katalog číselných polí je statický** (`FEATURE_TYPES[type].fields`, katalog vazeb, katalog generátorů) a `fieldsOf` se z něj odvozuje. Popis pro MCP a formulář rozpracované feature potřebují popis bez hotové feature. Katalog vazeb má pojmenované hodnoty místo jedné (`value` u kót, `x` a `y` u pevného bodu).
+17. **Katalog číselných polí je statický** (`FEATURE_TYPE_INFO[type].fields`, katalog vazeb, katalog generátorů) a `fieldsOf` se z něj odvozuje. Popis pro MCP a formulář rozpracované feature potřebují popis bez hotové feature. Katalog vazeb má pojmenované hodnoty místo jedné (`value` u kót, `x` a `y` u pevného bodu).
 18. **Parametry a kontroly: neplatný příkaz je jen syntaktická chyba a nepřípustné jméno.** Jméno parametru je identifikátor, protože se používá ve výrazech. Jméno kontroly je volný text pro člověka (neprázdný, jedinečný mezi kontrolami). Neznámé jméno a cyklus se přijmou a stav je ve výsledku; jinak by nešlo založit `Zr` dřív než `Zs`. Výraz v poli feature je přísnější: co nejde vyhodnotit hned, je neplatný příkaz.
 19. **Funkce se pozná podle závorky za jménem.** Parametr se smí jmenovat jako funkce, takže pozdější funkce nezneplatní starší dokument. Vyhrazená jsou jen jména konstant a vlastností každého objektu.
 20. **Porovnání v kontrolách má toleranci:** `a == b`, když se liší nejvýš o 1e-9 · max(1, |a|, |b|), tedy absolutně u nuly a relativně u velkých čísel. `!=` je negace, `<` znamená menší a zároveň ne rovno. Jen relativní tolerance by u nuly selhala: `(0.1 + 0.2) - 0.3 == 0`.
@@ -213,14 +214,15 @@ Nálezy revize, které nemění kontrakt, ale implementace na ně narazí.
 
 - **Tolerance u ozubení.** Shoda modulů a tečnost se porovnávají s tolerancí: 16,2 / 18 je 0,8999999999999999 a střed satelitu vychází 20,250000000000128. Přesné porovnání by dalo falešné varování `gearMesh` už ve výchozím stavu.
 - **Cache u chyby výrazu.** Krok feature s chybou výrazu se musí pamatovat podle výsledku výrazů. Jinak vzniká při každém vyhodnocení nový stav, vše za ním se počítá znovu a cache diagnostiky skici se míjí.
-- **Krok undo.** Funkce, která porovnává dokumenty (`differs` v `engine.ts`), parametry a kontroly nevidí. Změna parametru bez závislé feature by se zapsala bez kroku undo.
 - **Validace.** `validateDocument` a `featureRefs` je potřeba rozšířit o nové typy, odkazy generátoru a odvozená ID těles. `faceName()` v `document.ts` dnes neznámá pole zahodí, tedy i `copy`.
+- **Které stěny dostanou značku kopie.** Kopírované těleso se skládá ze stěn více features (i dřívějších polí). Pole těles projde stěny, které těleso v té chvíli má, každé založí nové číslo se jménem doplněným o značku kopie a otočeným popisem a v síti kopie čísla přemapuje.
 - **Odkaz na stěnu kopie.** Stěna s `copy` existuje až po poli, i když těleso i zdrojová feature leží před ním. Validace roviny skici, promítnuté hrany i `featureRefs` proto musí zahrnout každé pole z `copy` (u hrany z obou stěn): musí to být feature typu pole před odkazující feature a číslo kopie celé číslo od 1. Prázdné `copy` se odmítne nebo sjednotí na chybějící.
 - **Zápis hodnot výrazů.** Dnes se po přepočtu zapisuje do dokumentu jen vyřešená skica, a jen když solver uspěl. Hodnoty výrazů se musí zapisovat u všech typů features (rovina, vysunutí, pole) a u skici i tehdy, když solver skončí konfliktem; jinak v dokumentu zůstanou staré hodnoty a při pozdější chybě výrazu by se použily jako „poslední platné".
 - **Recept nástroje při varování.** Vysunutí dnes při „bez účinku" končí dřív, než by recept uložilo. Recept se musí uložit i tehdy; pole nad takovým zdrojem není chyba.
 - **Kóta, nebo vazba s hodnotami.** Kód na čtyřech místech předpokládá, že vazba s hodnotou v katalogu je kóta s `driving` (validace v `document.ts`, výběr geometrických vazeb v `sketch-commands.ts`, příklad v `mcp/src/api.ts`). Nově rozhoduje příznak `dimension`. U pevného bodu bez souřadnic se nejdřív ověří, že bod existuje, a teprve pak se doplní jeho poloha.
 - **Pevný bod v solveru.** Adaptér překládá jednu vazbu na jedno primitivum a pomocná ID z hlášení filtruje; konflikt druhé souřadnice by se ztratil. Buď mapa z ID vazby na víc primitiv (`coordinate_x` a `coordinate_y`), nebo pomocný pevný bod a vazba totožnosti pod ID vazby.
-- **Stejný poloměr v solveru.** Primitiva planegcs mají pole `c1_id`, `c2_id` (dvě kružnice), `c1_id`, `a2_id` (kružnice a oblouk) a `a1_id`, `a2_id` (dva oblouky); liší se od tečnosti, která má `c_id` a `a_id`. V rozboru volnosti má být rovnice rozdílem proti bodu `origin`, protože rozbor počítá v posunutých souřadnicích.
+- **Pevný bod v rozboru volnosti.** Rozbor počítá v souřadnicích posunutých k prvnímu bodu vazby, takže bod vazby tam má souřadnice nula. Rovnice pevného bodu proto musí být rozdílem proti bodu `origin`: `bod − origin − (x, y)`. Bez toho by pevný bod mimo počátek vyšel jako nesplněná vazba.
+- **Stejný poloměr v solveru.** Primitiva planegcs mají pole `c1_id`, `c2_id` (dvě kružnice), `c1_id`, `a2_id` (kružnice a oblouk) a `a1_id`, `a2_id` (dva oblouky); liší se od tečnosti, která má `c_id` a `a_id`.
 - **Třetí druh stěny.** `edgeKind` a `projectEdge` v `solid.ts` berou každou nerovinnou stěnu jako válec; hrana víka s ozubením by vyšla jako kružnice.
 - **Výkon.** Skica kol je první feature, takže každá změna parametru přepočítá celý model. Náhled při psaní potřebuje `at` nebo prodlevu.
 - **Neověřeno.** Nové vazby ve skutečném solveru (`equal_radius` na obloucích, pevný bod), otočení sítě u kopií těles, přesah „skrz vše" proti adaptéru jádra, výřez do více cílů, kontrola kolizí na celých tělesech scénáře a čas přepočtu celého kloubu.
@@ -232,6 +234,54 @@ Krok 0 je v kódu (`docs/decisions.md`, D35, odstavec „Stav: provedeno"). Od t
 - Veřejná část registru se jmenuje `FEATURE_TYPE_INFO` a pole pro `updateFeature` nese jako `updatable`; `FEATURE_TYPES` s `fields` (číselná pole) přijde s bodem 1. Aplikace má zatím vlastní mapu názvů typů (`FEATURE_TYPES` v `app.ts`), kterou má registr nahradit.
 - `updateFeature` navíc odmítá pole, které výsledná feature nemá, a půlku odkazu; odkazy ověřuje podle toho, zda je feature dosud měla, ne podle toho, zda je změna uvádí.
 - `ToolRecipe.build` má zatím jen `firstFaceId`.
+
+## Třetí kolo revize (2026-11-14)
+
+Revize od slabšího modelu dodaná vlastníkem po kroku 0. Každý bod je ověřený proti kódu. Nic z ní nemění tvar dokumentu; přijaté změny jsou v `contract.ts` a v poznámkách výše.
+
+| Nález | Platí? | Řešení |
+|---|---|---|
+| A. Formulář aplikace posílá při úpravě vysunutí celé (`draftCommand`); čísla v příkazu by zrušila výrazy polí, která uživatel neměnil | Ano | Engine vyváží `featureInput(feature)`: feature s výrazy dosazenými do polí. Rozpracovaná feature ve formuláři je tento vstupní tvar (pole stejně musí ukazovat výraz). Pravidlo „číslo výraz ruší" zůstává výslovné; výjimka „stejné číslo výraz nechá" by nešla odlišit od záměru výraz zmrazit |
+| B. Zápis hodnot výrazů po přepočtu a převěšení cache musí fungovat pro všechny typy features | Ano; bylo v poznámkách | Bod 1: dosazená feature se pamatuje podle původní feature a hodnot výrazů, zapisuje se u všech typů a cache se převěsí i s dosazením |
+| B. Poznámka o `differs` je po kroku 0 neaktuální | Ano | Odstraněna |
+| C. `setConstraintValue` bez `value` nesmí zrušit výraz; výraz u referenční kóty | Ano; přepnutí na referenční kótu už kontrakt řešil (výraz se odebere) | Doplněno: bez `value` se výraz nemění, výraz zadaný referenční kótě je neplatný příkaz |
+| D. Popis `updateFeature` v `types.ts` (odtud jde do `describe_api`) říká starou formulaci o ověřování odkazů | Ano | Opraveno v `types.ts` i v `contract.ts` |
+| D. Kontrakt má `FEATURE_TYPES` s `fields`, kód `FEATURE_TYPE_INFO` s `updatable` | Ano; bylo v části Po kroku 0 | Jméno z kódu, typ má `fields` i `updatable` |
+| D. Pole se zdrojem features žádná tělesa nevytváří | Ano | `bodies` v popisu typu říká, co typ vytvořit může; rozhoduje funkce registru (bod 4) |
+| E1. Není řečeno, kdy se ověřují operandy generátoru a jaká chyba je smazaný operand | Ano | Příkaz ověří operandy, které feature dosud neměla; načtení jen tvar; při přepočtu `brokenReference` |
+| E2. Operandem může být i promítnutá kružnice | Ano, stojí málo | Přijato. S pozdějším promítnutím z jiné skici tak ozubení může stát na kružnici společné kostry |
+| E3. Generátor může selhat (špičatý zub) a kontrakt pro to nemá kanál | Ano | Generátor vrací výsledek, nebo zprávu; vysunutí pak končí chybou `invalidProfile` |
+| E4. Parametr bez výchozí hodnoty a `null` | Ano | Parametr bez výchozí hodnoty je povinný; `null` u něj je neplatný příkaz, jinak vrátí výchozí hodnotu a zruší výraz |
+| F1, F2, F4. Otočení popisu stěn u kopií, které stěny dostanou `copy`, třetí druh stěny | Ano; F1 a F4 už v návrhu byly | F2 doplněno do poznámek k bodu 4: značku dostane každá stěna, kterou kopírované těleso v té chvíli má |
+| F3. Počet 1 s rozsahem úhlu dělí nulou; popis čísla kopie | Kontrakt případ řešil (žádná kopie); popis zpřesněn | Číslo kopie je 1 až počet − 1 |
+| G1. Rovnice pevného bodu v rozboru volnosti musí odečíst bod `origin` | Ano; poznámka byla omylem u stejného poloměru | Poznámka přesunuta a zpřesněna |
+| G2, G3. Pevný bod: dvě primitiva solveru, panel vazeb v aplikaci čte jen `value` | Ano; G2 už v poznámkách | G3 se řeší v bodě 6 podle katalogu (`values`) |
+| H. `get_sketch` nepotřebuje `at`, skica je sama bodem časové osy | Ano | Vypuštěno |
+| Doporučení 1. Výstup generátoru jako oblasti místo plochého seznamu smyček | Ano, stojí málo | Přijato: `regions` s vnější smyčkou a dírami, stejně jako profil skici |
+| Doporučení 2. Příznak zrcadlení v tuhé transformaci | Zčásti | Příznak ne. Transformace je matice a posun; funkce, která transformuje síť, při záporném determinantu obrátí pořadí vrcholů. Popis stěny nese normálu bez znaménka, takže ji obracet netřeba (revize tvrdila opak) |
+
+## Obecnost proti backlogu (2026-11-14)
+
+Před bodem 1 prošel každý řádek [backlog.md](../backlog.md) proti kódu po kroku 0 a proti tomuto návrhu s otázkou, jestli by ho návrh zkomplikoval. Tvar dokumentu ani příkazů se nemění. Vzešlo z toho pět pravidel pro provedení, která stojí málo a pozdější rozšíření zlevní:
+
+| Pravidlo | Kde | Čemu slouží |
+|---|---|---|
+| Dosazená feature se pamatuje podle hodnot výrazů, ne podle identity tabulky parametrů; prostředí jmen dostává krok přepočtu jako argument | bod 1 | Jména referenčních kót ve výrazech: prostředí se později rozšíří o hodnoty vzniklé přepočtem a cache se nemění |
+| Tečka je ve výrazu vyhrazená (dnes chyba syntaxe) | bod 1 | Zápis `skica.kóta` pro hodnoty z přepočtu |
+| Výraz má typ výsledku (číslo, nebo pravda); pole říká, který čeká | bod 1 | Potlačení feature výrazem je pak další pole s výrazem, jen typu pravda |
+| „Použití nástroje" (nové těleso, nebo boolean s cíli, varování „bez účinku") je funkce nad receptem, ne nad vysunutím; zdrojem pole je feature s receptem, ne výslovně vysunutí | body 2 a 4 | Revolve je nový typ feature se stejným použitím; pole ho opakuje bez zásahu |
+| Pole dostane seznam transformací od funkce podle druhu; zbytek kroku o druhu neví | bod 4 | Posuvné pole, zrcadlení, pootočení kopií |
+
+Co se zvažovalo a nedělá:
+
+- **Popis tvaru feature schématem** (jeden strom, ze kterého by plynula validace, slučování, katalog polí i formulář). Bylo by to čistší, ale je to přepis validace všech typů. Stačí, že číselná pole čte validace přes katalog a `fieldsOf` vzniká z téhož průchodu.
+- **Neutrální jméno značky kopie** (`pattern` ve `FaceName.copy`). Zrcadlení i posun jsou druhy pole, takže kopii vždy vytváří pole.
+- **Stěny generátoru po hranách** (rovné boky hřebene jako rovinné stěny, na které jde kreslit). Jména stěn dává katalog generátoru, popis stěny je vnitřní; půjde přidat bez změny dokumentu.
+
+Dvě místa, kde backlog slibuje víc, než kolik dnes platí, a pozdější práce s nimi musí počítat:
+
+- **Knihovna dílů.** Stěny vloženého dílu nesou ID features vloženého dokumentu s předponou (`<vložení>/<feature>`). Validace odkazu na stěnu dnes hledá feature přímo; bude potřebovat stejný rozklad jako ID těles (`bodyOwner`).
+- **Jména referenčních kót.** Výraz v poli feature se ověřuje už při příkazu, a to jen proti tabulce parametrů. Jméno, jehož hodnota vzniká až přepočtem, příkaz vyhodnotit neumí; ověření při příkazu se pro taková jména bude muset přesunout do fasády enginu, která stav přepočtu má.
 
 ## Co kontrakt neřeší
 

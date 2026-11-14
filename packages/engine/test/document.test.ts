@@ -95,6 +95,15 @@ describe('příkazy časové osy', () => {
     expect(run(doc, update('E1', { extent: { type: 'distance', distance: 4 } })).features[1]).toMatchObject({ extent: { type: 'distance', start: 0, distance: 4 } });
     // odkaz (objekt s `kind`) se nahrazuje celý: ze stěny nezbude `body` ani `face`
     expect(run(doc, update('P1', { base: XY })).features[2]).toEqual({ ...plane, base: XY });
+    // půlka odkazu by vybrala jinou stěnu téhož tělesa, proto se odmítne
+    for (const half of [{ face: { feature: 'E1', role: 'endCap' } }, { body: 'E1' }, { feature: 'P0' }, {}]) invalid(doc, update('P1', { base: half } as unknown as FeaturePatch), /odkaz se nahrazuje celý/);
+    // pole s hodnotou undefined znamená „neměnit"
+    expect(run(doc, update('P1', { base: XY, offset: undefined })).features[2]).toEqual({ ...plane, base: XY });
+    expect(run(doc, update('E2', { operation: 'add', targets: undefined, extent: { start: undefined, distance: 3 } })).features[3]).toMatchObject({ operation: 'add', targets: ['E1'], extent: { start: 0, distance: 3 } });
+    expect(run(doc, update('E2', { operation: 'new', targets: undefined })).features[3]).not.toHaveProperty('targets');
+    // neznámé vnořené pole (překlep, pole jiné varianty) neskončí úspěchem bez účinku
+    for (const patch of [{ extent: { dist: 12 } }, { extent: { end: 5, distance: 3 } }, { profile: { outerLoop: ['x'] } }, { profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1'] }], generator: 'g' } }, { extent: { type: 'distance', start: 0, distance: 5, side: 'both' } }])
+      invalid(doc, update('E2', patch as unknown as FeaturePatch), /updateFeature\.patch\.(extent|profile)\.\w+: vysunutí takové pole nemá/);
     // seznam se nahrazuje celý
     expect(run(doc, update('E2', { profile: { regions: [{ outerLoop: ['l1'] }] } })).features[3]).toMatchObject({ profile: { regions: [{ outerLoop: ['l1'] }] } });
     // prázdná změna feature nemění
@@ -109,7 +118,7 @@ describe('příkazy časové osy', () => {
     invalid(doc, { type: 'updateFeature', id: 'E2', patch: 5 } as unknown as Command, /čeká se objekt/);
   });
 
-  it('updateFeature ověřuje jen odkazy, které změna uvádí', () => {
+  it('updateFeature ověřuje jen odkazy, které feature dosud neměla', () => {
     const cut = extrude('E2', 'S1', { operation: 'cut', targets: ['E1'] });
     // E2 má po smazání rozbitou skicu i cíl
     const doc = run(base(), { type: 'addFeature', feature: cut }, { type: 'removeFeature', id: 'S1' }, { type: 'removeFeature', id: 'E1' }, { type: 'addFeature', feature: emptySketch('S2', 'x', XY), index: 0 });
@@ -117,9 +126,12 @@ describe('příkazy časové osy', () => {
     expect(run(doc, update('E2', { extent: { distance: 3 } })).features[1]).toMatchObject({ extent: { distance: 3 }, targets: ['E1'] });
     // oprava jednoho odkazu nenarazí na druhý
     expect(run(doc, update('E2', { profile: { sketch: 'S2' } })).features[1]).toMatchObject({ profile: { sketch: 'S2' }, targets: ['E1'] });
-    invalid(doc, update('E2', { targets: ['E1'] }), /neexistuje/);
-    // celá nová varianta profilu odkaz na skicu uvádí
-    invalid(doc, update('E2', { profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } }), /neexistuje/);
+    // změna, která rozbitý odkaz jen zopakuje, projde; nový odkaz se ověří
+    expect(run(doc, update('E2', { targets: ['E1'], profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } })).features[1]).toMatchObject({ targets: ['E1'], profile: { sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } });
+    invalid(doc, update('E2', { targets: ['E9'] }), /updateFeature\.patch\.targets: feature "E9" neexistuje/);
+    invalid(doc, update('E2', { profile: { type: 'regions', sketch: 'S9', regions: [{ outerLoop: ['l1'] }] } }), /updateFeature\.patch\.profile\.sketch: feature "S9" neexistuje/);
+    invalid(doc, update('E2', { profile: { sketch: 'E2' } }), /není skica/);
+    invalid(run(doc, { type: 'addFeature', feature: emptySketch('S3', 'pozdější', XY) }), update('E2', { profile: { sketch: 'S3' } }), /musí ležet před/);
     // změna operace beze změny cílů cíle neověřuje, přechod na nové těleso je zahodí
     expect(run(doc, update('E2', { operation: 'add' })).features[1]).toMatchObject({ operation: 'add', targets: ['E1'] });
     expect(run(doc, update('E2', { operation: 'new' })).features[1]).not.toHaveProperty('targets');
@@ -148,7 +160,9 @@ describe('příkazy časové osy', () => {
     expect(run(doc, update('E1', { extent: { distance: 20 } })).features[0]).toMatchObject({ extent: { distance: 20 }, profile: { sketch: 'S1' } });
     // výběr oblastí je jiná cesta než odkaz na skicu, takže se odkaz do prázdna znovu nekontroluje
     expect(run(doc, update('E1', { profile: { regions: [{ outerLoop: ['l1'] }] } })).features[0]).toMatchObject({ profile: { sketch: 'S1', regions: [{ outerLoop: ['l1'] }] } });
-    invalid(doc, update('E1', { profile: { sketch: 'S1' } }), /neexistuje/);
+    // ani zopakování dosavadního odkazu (formulář posílá vysunutí celé) ho znovu neověřuje
+    expect(run(doc, update('E1', { profile: { sketch: 'S1' }, extent: { distance: 7 } })).features[0]).toMatchObject({ extent: { distance: 7 }, profile: { sketch: 'S1' } });
+    invalid(doc, update('E1', { profile: { sketch: 'S9' } }), /neexistuje/);
     const repaired = run(doc, { type: 'addFeature', feature: emptySketch('S2', 'nová', XY), index: 0 }, update('E1', { profile: { sketch: 'S2', regions: [{ outerLoop: ['c1'] }] } }));
     expect(repaired.features[1]).toMatchObject({ id: 'E1', profile: { sketch: 'S2' } });
   });
@@ -419,6 +433,10 @@ describe('načtení dokumentu', () => {
     });
     expect(validateDocument(old)).toEqual(doc);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    // parametry a kontroly ve verzi 1 nebyly; co tam přesto je, převod tiše nezahodí
+    expect(() => validateDocument({ ...old, parameters: [{ id: 'a', name: 'a', value: 1 }] })).toThrow(/parametry/);
+    expect(() => validateDocument({ ...old, checks: [{ id: 'c' }] })).toThrow(/kontroly/);
+    expect(() => validateDocument({ ...old, parameters: 5 })).toThrow(/čeká se seznam/);
     // tvar verze 2 ve verzi 1 a naopak neprojde
     expect(() => validateDocument({ ...old, schemaVersion: 2, parameters: [], checks: [] })).toThrow(/profile/);
     expect(() => validateDocument({ ...JSON.parse(JSON.stringify(doc)), schemaVersion: 1 })).toThrow(/profile|sketch/);

@@ -755,8 +755,15 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   - Posun začátku rozsahu (`extent.start`) engine už počítá, protože interval stavba hranolu dostala tak jako tak; pole v UI přidá bod 2.
   - `targets` smí mít zatím právě jedno těleso i u výřezu (víc bod 2).
   - `parameters` a `checks` jsou ve schématu verze 2, ale musí být prázdné; dokument, který je má, engine odmítne, aby je tiše nezahodil (bod 1).
-  - Odkazy, které `updateFeature` ověřuje, se poznají podle cesty: ověří se odkaz, jehož místo ve feature změna uvádí.
+  - `updateFeature` ověřuje odkazy, které feature dosud neměla (porovnává místo, druh a ID). Proti `updateExtrude` je to mírnější ve dvou případech: změna, která rozbitý odkaz jen zopakuje, projde (formulář aplikace posílá vysunutí celé, takže dřív nešla v UI změnit vzdálenost u vysunutí se smazanou skicou), a změna operace bez cílů cíl znovu neověřuje. Nový rozbitý stav tím vzniknout nemůže. Pravidlo platí i pro víc cílů v bodě 2: oprava jednoho cíle nenarazí na druhý.
+  - Změna s polem, které výsledná feature nemá, a půlka odkazu (objekt bez `kind`) jsou neplatné příkazy; pole s hodnotou `undefined` se přeskočí. Vzešlo z revize: překlep jinak končil úspěchem bez účinku a půlka odkazu vybrala jinou stěnu.
   - Popis API pro AI (`describe_api`) vypisuje typy features z registru včetně polí, která mění `updateFeature`.
+
+  Na co musí navázat další body (z nezávislé revize kroku 0):
+
+  - Bod 3: slučování pozná variantu a odkaz podle obsahu změny (`type`, `kind`), ne podle schématu. Slovníky generátoru (`params`, `operands`, `refs`) a pravidla „jiný generátor nahrazuje" a „`null` v parametrech vrací výchozí hodnotu" potřebují v registru popis cest (varianta, odkaz, slovník).
+  - Bod 1: zápis po přepočtu umí jen vyřešenou skicu (`WriteBack` v `engine.ts`); hodnoty výrazů potřebují totéž pro ostatní features.
+  - Bod 4: `FeatureTypeInfo.bodies` nemá hodnotu pro odvozená tělesa, aplikace na pěti místech bere ID tělesa jako ID feature (`app.ts`: skrývání a názvy těles) a recept při každé stavbě znovu trianguluje profil, tedy u pole pro každou kopii.
 
 **1. Parametry a výrazy.**
 

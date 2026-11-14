@@ -380,7 +380,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 2. **Nástroj.** Engine postaví uzavřenou síť hranolu mezi `start` a `start + distance`: dvě víka (triangulace přes jádro) a boční stěny. Každý trojúhelník dostane číslo stěny podle jména; `startCap` je víko na začátku rozsahu, `endCap` na jeho konci, ať `distance` míří kamkoli.
 3. **Použití.** `new` nástroj uloží jako těleso, `add` a `cut` zavolají boolean s cílovým tělesem.
 
-Stav přepočtu si u feature kromě výsledku pamatuje **recept nástroje** (`ToolRecipe`: operace, cíle a funkce `build(firstFaceId)`, která nástroj postaví znovu s čísly stěn od zadaného čísla). Uloží se, i když operace skončí bez účinku nebo chybou jádra. Zatím ho nikdo nečte; je to rozhraní pro pole (D35 bod 4), které nástroj feature zopakuje v jiné poloze, a pro jiné stavby nástroje (rotace, zkosení). Ukládá se recept, ne síť: rozsah „skrz vše" se musí pro každou kopii spočítat znovu.
+Stav přepočtu si u feature kromě výsledku pamatuje **recept nástroje** (`ToolRecipe`: operace, cíle a funkce `build(firstFaceId)`, která nástroj postaví znovu s čísly stěn od zadaného čísla). Uloží se po úspěšné operaci i po operaci bez účinku (`noEffect`); feature v chybě (`kernelFailure`, `emptyResult`, chyba profilu) recept nemá. Zatím ho nikdo nečte; je to rozhraní pro pole (D35 bod 4), které nástroj feature zopakuje v jiné poloze, a pro jiné stavby nástroje (rotace, zkosení). Ukládá se recept, ne síť: rozsah „skrz vše" se musí pro každou kopii spočítat znovu.
 
 Výsledky, které nejsou běžné:
 
@@ -649,11 +649,12 @@ type Command =
 **`updateFeature` je slučovací změna.** `patch` obsahuje jen pole, která se mění, ve stejném tvaru jako feature; `{ extent: { distance: 12 } }` změní vzdálenost a začátek nechá být. Pravidla:
 
 - Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná.
-- Odkaz (objekt s polem `kind`, tedy `PlaneRef`) a seznam se nahrazují celé.
-- `null` volitelné pole odebere (`targets: null`).
+- Odkaz (objekt s polem `kind`, tedy `PlaneRef`) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
+- `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
+- Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.
 - Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
 - Přechod na `operation: 'new'` cíle zahodí, pokud je změna sama neuvádí.
-- Výsledná feature se ověří celá. Odkazy na jiné features se ale ověřují jen ty, jejichž místo změna uvádí: oprava rozbitého odkazu na skicu nesmí narazit na rozbitý cíl, který změna nechává být, a změna vzdálenosti projde i u feature, jejíž skica byla smazána.
+- Výsledná feature se ověří celá. Odkazy na jiné features se ale ověřují jen ty, které feature dosud neměla (jiné místo, druh nebo ID): oprava rozbitého odkazu na skicu nesmí narazit na rozbitý cíl, který změna nechává být, a změna vzdálenosti projde i u feature, jejíž skica byla smazána. Platí to i tehdy, když změna dosavadní odkaz zopakuje (formulář aplikace posílá vysunutí celé) nebo mění jen operaci.
 
 **Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Validace pracuje jen se strukturou dokumentu, přepočet k ní není potřeba. Ověřuje se:
 
@@ -683,7 +684,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Současná verze schématu je 2. Dokument verze 1 se před validací převede (`upgrade` v `document.ts`): vysunutí dostane `profile`, `extent` s nulovým začátkem a seznam `targets`, dokument prázdné `parameters` a `checks`. Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Dokument s neprázdnými `parameters` nebo `checks` engine zatím odmítne, aby je tiše nezahodil. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
+**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Současná verze schématu je 2. Dokument verze 1 se před validací převede (`upgrade` v `document.ts`): vysunutí dostane `profile`, `extent` s nulovým začátkem a seznam `targets`, dokument prázdné `parameters` a `checks`. Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Dokument s neprázdnými `parameters` nebo `checks` engine zatím odmítne, aby je tiše nezahodil; platí to i pro dokument verze 1, který je kdovíproč má. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
 
 ### Co z API vzešlo z návrhu UI (D24)
 

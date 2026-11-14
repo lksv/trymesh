@@ -225,6 +225,14 @@ Nálezy revize, které nemění kontrakt, ale implementace na ně narazí.
 - **Výkon.** Skica kol je první feature, takže každá změna parametru přepočítá celý model. Náhled při psaní potřebuje `at` nebo prodlevu.
 - **Neověřeno.** Nové vazby ve skutečném solveru (`equal_radius` na obloucích, pevný bod), otočení sítě u kopií těles, přesah „skrz vše" proti adaptéru jádra, výřez do více cílů, kontrola kolizí na celých tělesech scénáře a čas přepočtu celého kloubu.
 
+### Po kroku 0 (2026-11-14)
+
+Krok 0 je v kódu (`docs/decisions.md`, D35, odstavec „Stav: provedeno"). Od tohoto návrhu se liší takto:
+
+- Veřejná část registru se jmenuje `FEATURE_TYPE_INFO` a pole pro `updateFeature` nese jako `updatable`; `FEATURE_TYPES` s `fields` (číselná pole) přijde s bodem 1. Aplikace má zatím vlastní mapu názvů typů (`FEATURE_TYPES` v `app.ts`), kterou má registr nahradit.
+- `updateFeature` navíc odmítá pole, které výsledná feature nemá, a půlku odkazu; odkazy ověřuje podle toho, zda je feature dosud měla, ne podle toho, zda je změna uvádí.
+- `ToolRecipe.build` má zatím jen `firstFaceId`.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

@@ -473,7 +473,10 @@ export function featureRefs(f: Feature): Id[] {
 // Slučovací změna (příkaz updateFeature): varianta se stejným `type` se slučuje po polích, jiná
 // varianta, odkaz (objekt s `kind`) a seznam dosavadní hodnotu nahradí, `null` pole odebere.
 function mergePatch(old: unknown, patch: unknown, what: string): unknown {
-  if (!isObject(patch) || has(patch, 'kind') || !isObject(old)) return patch;
+  if (!isObject(patch) || has(patch, 'kind')) return patch;
+  // odkaz se po polích neslučuje: půlka odkazu by vybrala jinou stěnu téhož tělesa
+  if (isObject(old) && has(old, 'kind')) fail(`${what}: odkaz se nahrazuje celý, čeká se objekt s polem kind`);
+  if (!isObject(old)) return patch;
   if (patch.type !== undefined && patch.type !== old.type) return patch;
   const out: Dict = { ...old };
   for (const [key, value] of Object.entries(patch)) {
@@ -484,10 +487,23 @@ function mergePatch(old: unknown, patch: unknown, what: string): unknown {
   return out;
 }
 
-// Cesty, které změna uvádí: listy, seznamy, odkazy a odebraná pole.
-function patchPaths(patch: Dict, prefix = ''): string[] {
-  return Object.entries(patch).flatMap(([key, value]) => (isObject(value) && !has(value, 'kind') ? patchPaths(value, `${prefix}${key}/`) : [`${prefix}${key}`]));
+// Cesty k hodnotám, které změna nastavuje: listy, seznamy a odkazy (odebraná pole ne).
+function patchPaths(patch: Dict, prefix: string[] = []): string[][] {
+  return Object.entries(patch).flatMap(([key, value]) => (value === null ? [] : isObject(value) && !has(value, 'kind') ? patchPaths(value, [...prefix, key]) : [[...prefix, key]]));
 }
+
+// Změna bez polí s hodnotou `undefined`: v JSON nejsou a volající z kódu jimi myslí „neměnit".
+const withoutUndefined = (value: unknown): unknown =>
+  isObject(value)
+    ? Object.fromEntries(
+        Object.entries(value)
+          .filter(([, item]) => item !== undefined)
+          .map(([key, item]) => [key, withoutUndefined(item)]),
+      )
+    : value;
+
+const hasPath = (value: unknown, path: string[]): boolean => path.length === 0 || (isObject(value) && has(value, path[0]) && hasPath(value[path[0]], path.slice(1)));
+const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id]);
 
 // ---------------------------------------------------------------- načtení dokumentu
 
@@ -531,7 +547,8 @@ function upgrade(o: Dict): Dict {
     };
   };
   const features = Array.isArray(o.features) ? o.features.map((f: unknown) => (isObject(f) && f.type === 'extrude' ? extrude(f) : f)) : o.features;
-  return { ...o, schemaVersion: 2, parameters: [], checks: [], features };
+  // parametry a kontroly verze 1 neměla; co tam přesto je, se nezahodí a posoudí to validace
+  return { ...o, schemaVersion: 2, parameters: o.parameters ?? [], checks: o.checks ?? [], features };
 }
 
 // ---------------------------------------------------------------- příkazy
@@ -633,17 +650,19 @@ export function applyCommand(doc: Document, command: Command): Document {
       const f = doc.features[index];
       const spec = specOf(f);
       if (!spec.patch) return fail(`updateFeature: feature "${f.id}" je ${spec.info.title.toLowerCase()}; její obsah mění vlastní příkazy`);
-      const patch = object(cmd.patch, 'updateFeature.patch');
-      for (const key of Object.keys(patch)) if (!spec.patch.fields.includes(key)) fail(`updateFeature.patch.${key}: ${spec.info.title.toLowerCase()} takové pole nemá`);
+      const title = spec.info.title.toLowerCase();
+      const patch = withoutUndefined(object(cmd.patch, 'updateFeature.patch')) as Dict;
+      for (const key of Object.keys(patch)) if (!spec.patch.fields.includes(key)) fail(`updateFeature.patch.${key}: ${title} takové pole nemá`);
       const merged = mergePatch(f, patch, 'updateFeature.patch') as Dict;
       spec.patch.normalize?.(merged, patch);
-      // Tvar se ověří celý, odkazy jen ty, které změna uvádí: oprava jedné rozbité reference nesmí
-      // narazit na jinou, kterou změna nechává být.
       const checked = spec.validate(doc, undefined, merged, 'updateFeature.patch');
-      const touched = patchPaths(patch);
-      for (const ref of spec.refs(checked)) {
-        if (touched.some((path) => path === ref.path || path.startsWith(`${ref.path}/`) || ref.path.startsWith(`${path}/`))) requireRef(doc, index, ref, `updateFeature.patch.${ref.path}`);
-      }
+      // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
+      // jinak skončilo úspěchem bez účinku.
+      for (const path of patchPaths(patch)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
+      // Tvar se ověří celý, odkazy jen ty, které feature dosud neměla: oprava jedné rozbité
+      // reference nesmí narazit na jinou, kterou změna nechává být (i když ji zopakuje).
+      const kept = new Set(spec.refs(f).map(refKey));
+      for (const ref of spec.refs(checked)) if (!kept.has(refKey(ref))) requireRef(doc, index, ref, `updateFeature.patch.${ref.path.split('/').join('.')}`);
       return replaceAt(doc, index, checked);
     }
 

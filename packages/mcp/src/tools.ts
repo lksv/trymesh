@@ -217,11 +217,12 @@ function sketchDetail(engine: Engine, id: string): unknown {
     else {
       const anchors = diagnosis.free.filter((entity) => entity.kind === 'point' && entity.freedom === diagnosis.degreesOfFreedom).map((entity) => entity.id);
       advice.push(`Skica má ${plural(diagnosis.degreesOfFreedom)}; volné entity jsou v \`diagnosis.free\`.`);
-      // Bod, jehož volnost se rovná volnosti skici: jeho určením je určená celá skica. Totožnost
-      // s jiným bodem ubírá dva stupně, hodí se tedy jen při volnosti 2; při volnosti 1 stačí
-      // jedna kóta nebo vazba ve směru, kterým se bod může hýbat (totožnost by byla v konfliktu).
+      // Bod, jehož volnost se rovná volnosti skici: jeho určením je určená celá skica. Při volnosti
+      // 2 dvěma kótami, při volnosti 1 jednou kótou nebo vazbou ve směru, kterým se může hýbat.
+      // Totožnost s pevným bodem se neradí: geometrii, která z toho bodu vychází, stáhne do bodu,
+      // a při volnosti 1 by byla v konfliktu.
       if (anchors.length > 0) {
-        const how = diagnosis.degreesOfFreedom === 2 ? 'například vazbou coincident s pevným bodem nebo dvěma kótami od něj' : 'jednou kótou nebo vazbou, která určí jeho polohu ve směru, kterým se může hýbat; totožnost s pevným bodem by tu byla v konfliktu';
+        const how = diagnosis.degreesOfFreedom === 2 ? 'například vodorovnou a svislou kótou od počátku' : 'jednou kótou nebo vazbou, která určí jeho polohu ve směru, kterým se může hýbat; totožnost s pevným bodem by tu byla v konfliktu';
         advice.push(`Skicu dourčí určení polohy jednoho z bodů ${anchors.join(', ')} (${how}).`);
       }
     }

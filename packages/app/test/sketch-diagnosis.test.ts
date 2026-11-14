@@ -3,7 +3,7 @@ import { type Command, type Constraint, type Engine, type Id, type SketchFeature
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { anchorPoints, duplicateTwins, explanationText, freeEntities, markOf } from '../src/sketch-diagnosis';
+import { anchorPoints, duplicateTwins, explanationText, freeEntities, freeSummary, listed, markOf } from '../src/sketch-diagnosis';
 import { sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -84,6 +84,47 @@ describe('volné a určené entity', () => {
   });
 });
 
+describe('věta o volných entitách', () => {
+  it('jednotné a množné číslo, rada k ukotvení bez totožnosti s počátkem', () => {
+    const engine = rectangle();
+    add(engine, 'w', { type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
+    add(engine, 'hgt', { type: 'verticalDistance', a: 'b', b: 'c', value: 30, driving: true });
+    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): body a, b, c, d. Skicu dourčí určení polohy kteréhokoli z nich: například dvěma kótami od počátku.');
+    add(engine, 'x', { type: 'horizontalDistance', a: 'origin', b: 'a', value: 0, driving: true });
+    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): body a, b, c, d. Skicu dourčí určení polohy kteréhokoli z nich: stačí jedna kóta nebo vazba ve směru, kterým se může hýbat.');
+    add(engine, 'y', { type: 'verticalDistance', a: 'origin', b: 'a', value: 0, driving: true });
+    expect(freeSummary(engine.diagnoseSketch('s'))).toBeUndefined();
+  });
+
+  it('jediný volný bod a jediný volný poloměr; poloměr se jako kotevní bod nenabízí', () => {
+    const line = createEngine(deps);
+    for (const command of [
+      { type: 'addFeature', feature: emptySketch('s', 'Skica', { kind: 'base', plane: 'XY' }) },
+      { type: 'addPoint', sketch: 's', id: 'p', x: 20, y: 5 },
+      { type: 'addCurve', sketch: 's', id: 'l', curve: { type: 'line', a: 'origin', b: 'p' } },
+    ] as Command[]) expect(line.execute(command).ok).toBe(true);
+    expect(freeSummary(line.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): bod p. Skicu dourčí určení polohy bodu p: například dvěma kótami od počátku.');
+
+    const circle = createEngine(deps);
+    for (const command of [
+      { type: 'addFeature', feature: emptySketch('s', 'Skica', { kind: 'base', plane: 'XY' }) },
+      { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+    ] as Command[]) expect(circle.execute(command).ok).toBe(true);
+    const d = circle.diagnoseSketch('s');
+    expect(d).toMatchObject({ degreesOfFreedom: 1, free: [{ id: 'k', kind: 'radius', freedom: 1 }] });
+    expect(anchorPoints(d)).toEqual([]);
+    expect(freeSummary(d)).toBe('Volné (v pohledu modře): poloměr k.');
+  });
+
+  it('dlouhý výčet se zkrátí se správným tvarem slova „další"', () => {
+    const ids = Array.from({ length: 14 }, (_, i) => `p${i}`);
+    expect(listed(ids.slice(0, 8))).toBe('p0, p1, p2, p3, p4, p5, p6, p7');
+    expect(listed(ids.slice(0, 9))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a 1 další');
+    expect(listed(ids.slice(0, 11))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a další 3');
+    expect(listed(ids)).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a dalších 6');
+  });
+});
+
 describe('označení a vysvětlení vazeb', () => {
   it('odvozená vazba je navíc a vysvětlení jmenuje vazby, ze kterých plyne', () => {
     const engine = rectangle();
@@ -106,8 +147,38 @@ describe('označení a vysvětlení vazeb', () => {
     expect(duplicateTwins(d)).toEqual(['h1again']);
     expect(markOf(d, 'h1again')).toBe('duplicate');
     expect(markOf(d, 'h1')).toBeUndefined();
-    expect(explainText(engine, 'h1again')).toBe('Vazba je duplicita vazby <h1>.');
-    expect(explainText(engine, 'h1')).toBe('Vazba je duplicita vazby <h1again>.');
+    // dvojčata mají stejný popisek, takže ho věta neopakuje; které to je, ukáže podbarvení v seznamu
+    expect(explainText(engine, 'h1again')).toBe('Vazba je duplicita: stejnou vazbu už skica má (v seznamu podbarvená).');
+    expect(explainText(engine, 'h1')).toBe(explainText(engine, 'h1again'));
+    // tři stejné vazby: starší zůstává, obě novější jsou dvojčata; vysvětlení jmenuje jednu z nich
+    document.features[0].constraints.h1third = { type: 'horizontal', line: 'ab' };
+    expect(engine.load(JSON.stringify(document)).ok).toBe(true);
+    expect(duplicateTwins(engine.diagnoseSketch('s'))).toEqual(['h1again', 'h1third']);
+    expect(markOf(engine.diagnoseSketch('s'), 'h1')).toBeUndefined();
+  });
+
+  it('vazba plynoucí z jediné vazby: zaměnit je jde, jen když je ta druhá sama celá navíc', () => {
+    // bod na úsečce plyne ze středu úsečky, ale střed má dvě rovnice a odebrat nejde
+    const engine = rectangle();
+    expect(engine.execute({ type: 'addPoint', sketch: 's', id: 'm', x: 18, y: 1 }).ok).toBe(true);
+    add(engine, 'mid', { type: 'midpoint', point: 'm', line: 'ab' });
+    add(engine, 'on', { type: 'pointOnCurve', point: 'm', curve: 'ab' });
+    const before = engine.diagnoseSketch('s').degreesOfFreedom;
+    expect(explainText(engine, 'on')).toBe('Vazba plyne z vazby: <mid>. Odebrat jde tahle vazba, geometrie se tím nezmění.');
+    expect(engine.preview({ type: 'removeConstraint', sketch: 's', id: 'on' })).toMatchObject({ ok: true });
+    expect(engine.execute({ type: 'removeConstraint', sketch: 's', id: 'mid' }).ok).toBe(true);
+    expect(engine.diagnoseSketch('s').degreesOfFreedom).toBe(before + 1); // rada „kterákoli z nich" by tu lhala
+    // dvě vazby s jednou rovnicí, které říkají totéž jinak: zaměnitelné jsou
+    add(engine, 'h1b', { type: 'verticalDistance', a: 'a', b: 'b', value: 0, driving: true });
+    expect(explainText(engine, 'h1b')).toBe('Vazba plyne z vazby: <h1>. Odebrat jde ona nebo ta druhá, geometrie se tím nezmění.');
+  });
+
+  it('vazba vynechaná při řešení a skica, která se nevyhodnotila', () => {
+    const engine = rectangle();
+    const d = engine.diagnoseSketch('s');
+    const h1 = featureOf(engine).constraints.h1;
+    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, d, label, true)).toMatch(/při řešení vynechala/);
+    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, { ...d, status: 'unavailable' }, label)).toBe('Skica se nevyhodnotila, vazby nejde posoudit.');
   });
 
   it('referenční kóta a vazba plynoucí z definice oblouku', () => {

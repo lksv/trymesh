@@ -110,7 +110,7 @@ describe('dotazy na skicu', () => {
     expect(detail.constraints.find((c: { id: string }) => c.id === 'w')).toEqual({ id: 'w', label: 'Vodorovná vzdálenost (a, b)', type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
     expect(detail.regions).toEqual([{ ref: { outerLoop: ['ab', 'bc', 'cd', 'da'] }, area: expect.closeTo(1200, 4), holes: 0 }]);
     expect(detail.advice.join(' ')).toMatch(/2 stupně volnosti/);
-    expect(detail.advice.join(' ')).toMatch(/určení polohy jednoho z bodů a, b, c, d \(například vazbou coincident/);
+    expect(detail.advice.join(' ')).toMatch(/určení polohy jednoho z bodů a, b, c, d \(například vodorovnou a svislou kótou od počátku\)/);
   });
 
   it('rada při jednom stupni volnosti nenavrhuje totožnost, která by skončila konfliktem', () => {

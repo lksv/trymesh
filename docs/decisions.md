@@ -593,6 +593,19 @@ Druhá revize (už nad rozborem z vlastních rovnic) našla chyby v jeho čísel
 | Počet vazeb v sadě k odebrání závisí na pořadí, když je mezi nimi vazba se dvěma rovnicemi | Chování zůstává, dokumentace opravena: na pořadí nezávisí počet odebraných rovnic, ne vazeb |
 | Rozbor běží při každém vyhodnocení a roste se třetí mocninou | Druhý průchod ortogonalizace jen tam, kde je potřeba; cena změřena a zapsána, u stovek vazeb zůstává omezením |
 
+Revize zobrazení v aplikaci:
+
+| Nález | Řešení |
+|---|---|
+| Vysvětlení tvrdilo, že odebrat jde i kterákoli z vazeb, ze kterých označená plyne; u vazby se dvěma rovnicemi (střed úsečky, totožnost) to neplatí | „Kterákoli z nich" se nabízí, jen když jsou ty vazby samy celé navíc |
+| Rada k ukotvení doporučovala totožnost s počátkem i tam, kde stáhne geometrii do bodu | Radí se dvě kóty od počátku |
+| Vysvětlení nad seznamem vazeb posouvalo řádky, takže druhé kliknutí trefilo jinou vazbu | Vysvětlení je hned pod označeným řádkem |
+| Stejná referenční kóta šla přidat opakovaně (kóta mezi pevnými entitami) | Aplikace ji podruhé nepřidá |
+| U skici v konfliktu byly duplicity označené, ale chyběl jejich počet a tlačítko pro smazání | Souhrn duplicit a tlačítko jsou i u nevyřešené skici |
+| Nevyřešená skica byla celá v barvě „volné" | Neutrální barva, dokud se o volnosti nedá nic říct |
+| Vazba vynechaná při řešení (ztracená promítnutá geometrie) se vysvětlovala jako potřebná | Vlastní věta |
+| Tvary slov („body p1", „a dalších 3") | Opraveno a pokryto testy |
+
 Omezení:
 
 - Závislost se posuzuje v prvním řádu. Vazba plynoucí z ostatních jen díky konkrétním hodnotám se jako nadbytečná neoznačí a výsledek u ní může záviset na šumu ve vyřešených polohách; tečnost ve společném bodě je ošetřená jen tehdy, když je tím bodem konec úsečky nebo oblouku a na kružnici ho drží jiné vazby než tečnosti. Skica na hraně singulárního stavu může dát výsledek závislý na pořadí vazeb.

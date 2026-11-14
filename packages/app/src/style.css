@@ -284,7 +284,7 @@ select {
 .constraint.repair {
   outline: 2px solid var(--accent);
 }
-.constraint {
+.constraint.clickable {
   cursor: pointer;
 }
 .constraint.implies {

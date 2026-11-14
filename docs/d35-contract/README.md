@@ -333,7 +333,7 @@ Point 4 is in the code (`docs/decisions.md`, D35, point 4, "Status: done"; `docs
 - `count` has the upper bound 200 and the angle the range [−2π, 2π] without zero.
 - `noEffect` of a pattern has `refs` of the shape `{ copy, feature, targets }`; an error of a copy starts its `refs` with `{ copy, feature }` and its message does not repeat the copy.
 - Reference kinds `tool` and `pattern` were added to the registry; the axis through a sketch point uses `sketch` and `entity`.
-- A copy has no effect whenever the volume of its target stays the same, so a copy that falls onto the original is `noEffect` and the original keeps its faces (changed by the review of point 4; the first version let the copy take the faces over, as a repeated cut of an extrusion does).
+- A copy has no effect when the volume of its target stays the same and the faces of its tool in the result, if any, lie on the surface the target had; a copy that falls onto the original is therefore `noEffect` and the original keeps its faces (changed by the reviews of point 4; the first version let the copy take the faces over, as a repeated cut of an extrusion does).
 - A field of another variant in `source`, `span`, `axis` or `transform` is an invalid command, on creation and on loading.
 - Implementation notes that are now done: validation of derived body IDs and of face names with `copy`, which faces get the copy tag, references to faces of copies, the recipe stored with a warning, the recompute time of the joint with the patterns (0.9 to 1.4 s).
 - The scenario test repeats only `boltHole` in the pattern `bolts` and cuts only the centre opening in `plateHoles`: the nut pocket needs the polygon tool (point 7) and the six controller holes the constraints of point 6.

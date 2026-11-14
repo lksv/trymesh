@@ -225,6 +225,7 @@ export class App {
   private cache?: EngineState;
   private previewCost = 0; // ms the last preview of a draft took
   private previewTimer?: number;
+  private confirming = false; // a draft is being confirmed: no preview in between
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
   private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
@@ -394,7 +395,7 @@ export class App {
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
-    if (isDraft(this.mode)) this.updatePreview();
+    if (isDraft(this.mode) && !this.confirming) this.updatePreview();
     if (this.mode.kind === 'sketch') {
       const context = this.sketchContext();
       const view = context?.view;
@@ -1656,6 +1657,7 @@ export class App {
       m.preview = undefined;
       m.problem = angle;
       m.warning = false;
+      this.previewCost = 0; // nothing was computed
       return;
     }
     // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám (a pattern without a source likewise)
@@ -1663,6 +1665,7 @@ export class App {
       m.preview = undefined;
       m.problem = undefined;
       m.warning = false;
+      this.previewCost = 0; // nothing was computed
       return;
     }
     const started = performance.now();
@@ -1713,7 +1716,12 @@ export class App {
   }
 
   private confirmDraft(m: DraftMode): void {
-    if (!this.run(draftCommand(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[m.draft.type]} přidáno.`)) return;
+    // The form is left as soon as the command is in: the refresh the engine triggers must not
+    // preview the same change once more on top of the changed document (seconds for a slow pattern).
+    this.confirming = true;
+    const done = this.run(draftCommand(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[m.draft.type]} přidáno.`);
+    this.confirming = false;
+    if (!done) return;
     if (!m.editing && this.marker) this.marker = m.draft.id;
     this.selectedFeature = undefined;
     this.setMode({ kind: 'model' });

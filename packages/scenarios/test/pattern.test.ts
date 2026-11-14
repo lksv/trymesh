@@ -349,6 +349,30 @@ describe('a pattern as a whole', () => {
     expect(engine.getState().evaluation.bodies.A.solid).toBe(state.evaluation.bodies.A.solid);
   });
 
+  it('a copy that cuts a small corner off a large body has an effect; one that lands on a cut does not', () => {
+    // A plate 100 × 100 × 10 and a cut that misses it; turned by 45° its copy clips the corner
+    // (100, 100) by a triangle with the legs s. The volume it removes is far below a millionth of
+    // the plate, which is where "the volume stayed" would call it a copy without effect.
+    for (const s of [0.05, 0.13, 0.5]) {
+      const engine = newEngine();
+      run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 100, 100), span('A', 'S1', [rectLoop('r')], 0, 10));
+      run(engine, addSketch('S2', XY), rectangle('S2', 'q', (200 - s) / Math.SQRT2, -50, 100, 100, null), span('H', 'S2', [rectLoop('q')], 0, 10, 'cut', ['A']));
+      const state = run(engine, pattern('P', features('H'), 2, { span: { type: 'angle', angle: Math.PI / 4 } }));
+      expect(status(state), `legs ${s}`).toMatchObject({ H: 'warning:noEffect', P: 'ok' });
+      expect(100000 - volumeOf(state, 'A')).toBeCloseTo(5 * s * s, 3);
+      expect(names(state, 'A', 'H')).toEqual(['H/side/qd@P:1']);
+    }
+    // the same plate with a notch, and a pattern whose second copy lands on the first one
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -50, -50, 100, 100, null), span('A', 'S1', [rectLoop('r')], 0, 10));
+    run(engine, addSketch('S2', XY), rectangle('S2', 'q', 40, -5, 20, 10, null), span('H', 'S2', [rectLoop('q')], 0, 10, 'cut', ['A']));
+    const state = run(engine, pattern('P', features('H'), 3, { span: { type: 'angle', angle: 2 * Math.PI } }));
+    expect(status(state).P).toBe('warning:noEffect');
+    expect(state.evaluation.features.P.warnings[0].refs).toEqual([{ copy: 2, feature: 'H', targets: ['A'] }]);
+    near(volumeOf(state, 'A'), 100000 - 2 * 1000, 0.01);
+    expect(names(state, 'A', 'H')).toEqual(['H/side/qa', 'H/side/qa@P:1', 'H/side/qc', 'H/side/qc@P:1', 'H/side/qd', 'H/side/qd@P:1']);
+  });
+
   // The mesh cleanup after a boolean used to alternate between two states for some counts and ran
   // all of its passes (a second or more per copy): 25 holes took a minute where 24 or 26 took one.
   it('a count is not slower than its neighbours by orders of magnitude', () => {

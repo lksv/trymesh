@@ -197,6 +197,62 @@ export function volumeOf(s: Solid): number {
   return volume / 6;
 }
 
+// Do the faces numbered from `first` on (the faces a tool brought into `result`) lie on the surface
+// of `before`? Each of their triangles is tested by its centroid, which must lie within `eps` of
+// a triangle of `before`. It tells a cut that changed nothing but the names of faces (its tool
+// lies on what is cut already) from a cut that changed the shape: a new face of a real cut runs
+// through what was the inside of the body. Vertices are no use for this, the kernel may add some
+// on an edge without changing the shape.
+export function onSurface(result: Solid, first: number, before: Solid, eps: number): boolean {
+  const p = before.positions;
+  const count = before.triangles.length / 3;
+  // boxes of the triangles of `before`, to skip most of them
+  const boxes = new Float32Array(6 * count);
+  for (let t = 0; t < count; t++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const [a, b, c] = [p[3 * before.triangles[3 * t] + axis], p[3 * before.triangles[3 * t + 1] + axis], p[3 * before.triangles[3 * t + 2] + axis]];
+      boxes[6 * t + axis] = Math.min(a, b, c) - eps;
+      boxes[6 * t + 3 + axis] = Math.max(a, b, c) + eps;
+    }
+  }
+  const corner = (t: number, k: number): Vec3 => [p[3 * before.triangles[3 * t + k]], p[3 * before.triangles[3 * t + k] + 1], p[3 * before.triangles[3 * t + k] + 2]];
+  const q = result.positions;
+  for (let t = 0; t < result.faceIds.length; t++) {
+    if (result.faceIds[t] < first) continue;
+    const [a, b, c] = [3 * result.triangles[3 * t], 3 * result.triangles[3 * t + 1], 3 * result.triangles[3 * t + 2]];
+    const centroid: Vec3 = [(q[a] + q[b] + q[c]) / 3, (q[a + 1] + q[b + 1] + q[c + 1]) / 3, (q[a + 2] + q[b + 2] + q[c + 2]) / 3];
+    let found = false;
+    for (let other = 0; other < count && !found; other++) {
+      const box = 6 * other;
+      if (centroid[0] < boxes[box] || centroid[1] < boxes[box + 1] || centroid[2] < boxes[box + 2] || centroid[0] > boxes[box + 3] || centroid[1] > boxes[box + 4] || centroid[2] > boxes[box + 5]) continue;
+      found = len3(sub3(centroid, closestOnTriangle(centroid, corner(other, 0), corner(other, 1), corner(other, 2)))) <= eps;
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+// The point of the triangle abc closest to p (Ericson, Real-Time Collision Detection, 5.1.5).
+function closestOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
+  const [ab, ac, ap] = [sub3(b, a), sub3(c, a), sub3(p, a)];
+  const [d1, d2] = [dot3(ab, ap), dot3(ac, ap)];
+  if (d1 <= 0 && d2 <= 0) return a;
+  const bp = sub3(p, b);
+  const [d3, d4] = [dot3(ab, bp), dot3(ac, bp)];
+  if (d3 >= 0 && d4 <= d3) return b;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return add3(a, mul3(ab, d1 / (d1 - d3)));
+  const cp = sub3(p, c);
+  const [d5, d6] = [dot3(ab, cp), dot3(ac, cp)];
+  if (d6 >= 0 && d5 <= d6) return c;
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return add3(a, mul3(ac, d2 / (d2 - d6)));
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add3(b, mul3(sub3(c, b), (d4 - d3) / (d4 - d3 + (d5 - d6))));
+  const sum = va + vb + vc;
+  return add3(a, add3(mul3(ab, vb / sum), mul3(ac, vc / sum)));
+}
+
 // The area of the surface of a solid.
 export function areaOf(s: Solid): number {
   let area = 0;

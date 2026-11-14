@@ -593,7 +593,8 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
 // A field of another variant is a mistake, not something to drop silently: a pattern of a body
 // given a list of features too would otherwise be stored as something else than what was sent.
 function onlyFields(o: Dict, fields: readonly string[], what: string, owner: string): void {
-  for (const key of Object.keys(o)) if (!fields.includes(key)) fail(`${what}.${key}: ${owner} has no such field`);
+  // a key without a value is not a field (in-process callers build objects that way; JSON has none)
+  for (const key of Object.keys(o)) if (o[key] !== undefined && !fields.includes(key)) fail(`${what}.${key}: ${owner} has no such field`);
 }
 
 function axisRef(doc: Document, before: number | undefined, v: unknown, what: string): AxisRef {

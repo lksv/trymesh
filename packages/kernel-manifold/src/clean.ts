@@ -15,9 +15,12 @@ const edgeKey = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_$
 //     rozdělí ve vrcholu m, který na ní leží a ve kterém protější strana navazuje (T-spoj).
 //     Kroky 2 a 3 se opakují, dokud nějaká hrana bez protějšku zbývá.
 //     The two steps can undo each other: a split leaves a piece that step 2 takes for a null
-//     triangle and drops, which opens the same edge again. The loop therefore remembers the
-//     states it has split already and stops after splitting a repeated one (the split state is
-//     the closed one of the two; without this the loop ran all its passes, seconds per boolean).
+//     triangle and drops, which opens the same edge again, and the states go round in a cycle
+//     (of two to four states in the cases seen). The loop therefore remembers the states it has
+//     split already and stops after splitting a repeated one; without this it ran all its
+//     passes, seconds per boolean. In the cases that used to end closed the state it stops in is
+//     closed as well, with a few triangles cut differently; a cycle with no closed state ends
+//     open, as before, and the adapter reports the failure.
 //  4. Kde sloučením srostly části povrchu, které se jen dotýkají, se vrcholy zase rozdělí.
 // Dělí se jen hrany bez protějšku. Hrana, která protějšek má, je v pořádku, i když těsně u ní leží
 // cizí vrchol; dělit ji podle vzdálenosti vrcholu od přímky vedlo ke střídání dvou neuzavřených stavů.
@@ -138,7 +141,7 @@ export function clean(s: Solid, eps: number): Solid {
     }
     tris = next;
     if (!split) break; // zbylé hrany dorovnat nejde; výsledek nebude uzavřený a adaptér skončí chybou
-    if (repeated) break; // steps 2 and 3 alternate between two states; this is the split one
+    if (repeated) break; // steps 2 and 3 go round in a cycle; this is one of its split states
   }
 
   return splitNonManifold(pos, tris);

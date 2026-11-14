@@ -139,6 +139,8 @@ describe('the pattern feature', () => {
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'base', axis: 'Z', sketch: 'S1' } as never })), /transform\.axis\.sketch: an axis of the kind base has no such field/);
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'S1', point: 'p', axis: 'Z' } as never })), /transform\.axis\.axis: an axis of the kind sketchPoint has no such field/);
     invalid(doc, add(pattern('P', holes, { radius: 3 } as never)), /transform\.radius: a transform of the type circular has no such field/);
+    // a key without a value is not a field: a caller in the process may build its objects that way
+    expect(feature(run(doc, add(pattern('P', holes, { span: { type: 'full', angle: undefined } as never }))), 'P').transform.span).toEqual({ type: 'full' });
     // a stored document is checked the same way
     const stored = JSON.parse(JSON.stringify(run(doc, add(pattern('P')))));
     stored.features.at(-1).source.body = 'A';

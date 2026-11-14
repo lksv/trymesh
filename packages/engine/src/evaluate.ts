@@ -5,7 +5,7 @@ import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { GENERATORS, type ResolvedOperand, generateProfile } from './generators';
 import { type Loop, type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
-import { type FaceInfo, type Prism, type RigidTransform, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, rotation, toWorld, transformFace, transformFrame, transformSolid, volumeOf } from './solid';
+import { type FaceInfo, type Prism, type RigidTransform, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, rotation, onSurface, toWorld, transformFace, transformFrame, transformSolid, volumeOf } from './solid';
 import type {
   CopyTag,
   Document,
@@ -160,6 +160,9 @@ const MESSAGE: Record<IssueCode, string> = {
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
 };
 const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
+
+// The largest coordinate of a solid: the scale its float32 positions are precise to.
+const reach = (s: Solid): number => s.positions.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
 
 // Přepočet s cache. Stav po každé feature se pamatuje podle identity objektu feature a identity
 // předchozího stavu, takže nezměněný začátek časové osy se nepočítá znovu.
@@ -442,13 +445,17 @@ export class Evaluator {
         // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
         // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
         // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
-        // A copy of a pattern has no effect whenever the volume stays, for a cut as well: a copy that
-        // lands on what is cut already (five copies over 360°) would otherwise only take the faces
-        // of the original over, silently.
+        // A cut copy of a pattern has no effect also when faces of its tool are in the result but
+        // the shape is what it was: a copy that lands on what is cut already (five copies over
+        // 360°) would otherwise only take the faces of the original over, silently. The shape is
+        // what it was when every face of the tool in the result lies on the surface the target had;
+        // the volume alone does not say it, because its tolerance grows with the bodies and a copy
+        // that cuts a small corner off a large plate does have an effect.
         const volume = volumeOf(before);
         const scale = Math.min(Math.abs(volume), Math.abs(volumeOf(tool.solid)));
         const sameVolume = Math.abs(volumeOf(result) - volume) <= 1e-6 * Math.max(1, scale);
-        if (sameVolume && (recipe.operation === 'add' || placement !== undefined || !result.faceIds.some((face) => face >= first))) unchanged.push(target);
+        const renamedOnly = () => placement !== undefined && onSurface(result, first, before, 1e-5 * Math.max(1, reach(before)));
+        if (sameVolume && (recipe.operation === 'add' || !result.faceIds.some((face) => face >= first) || renamedOnly())) unchanged.push(target);
         else bodies[target] = result;
       }
     } catch (error) {

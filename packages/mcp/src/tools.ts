@@ -227,17 +227,23 @@ function edgeShape(kind: string, s: Float64Array): Record<string, unknown> {
   }
   if (kind === 'circle' && count >= 3) {
     // The centre of the circle through three vertices spread along the edge. The segments come in
-    // no particular order, so the three are chosen by geometry: the first vertex, the one farthest
-    // from it and the one farthest from the line through those two (three picked by position in
-    // the list can lie next to each other, which gives no centre or an imprecise one).
-    const a = at(0);
+    // no particular order, so the three are chosen by geometry: a vertex, the one farthest from it
+    // and the one farthest from the line through those two (three picked by position in the list
+    // can lie next to each other, which gives no centre or an imprecise one). The two ends of an
+    // arc are left out when the arc has enough vertices without them: where another face cuts
+    // the circle short, the end lies on a chord of the polygon, not on the circle.
+    const uses = new Map<string, number>();
+    for (let i = 0; i < 2 * count; i++) uses.set(at(i).join(','), (uses.get(at(i).join(',')) ?? 0) + 1);
+    const inner = Array.from({ length: 2 * count }, (_, i) => at(i)).filter((p) => (uses.get(p.join(',')) as number) > 1);
+    const vertices = new Set(inner.map((p) => p.join(','))).size >= 3 ? inner : Array.from({ length: 2 * count }, (_, i) => at(i));
+    const a = vertices[0];
     let [b, c] = [a, a];
-    for (let i = 1; i < 2 * count; i++) if (Math.hypot(...sub(at(i), a)) > Math.hypot(...sub(b, a))) b = at(i);
+    for (const p of vertices) if (Math.hypot(...sub(p, a)) > Math.hypot(...sub(b, a))) b = p;
     const off = (p: number[]): number => {
       const [e, f] = [sub(b, a), sub(p, a)];
       return Math.hypot(e[1] * f[2] - e[2] * f[1], e[2] * f[0] - e[0] * f[2], e[0] * f[1] - e[1] * f[0]);
     };
-    for (let i = 1; i < 2 * count; i++) if (off(at(i)) > off(c)) c = at(i);
+    for (const p of vertices) if (off(p) > off(c)) c = p;
     const [u, v] = [sub(b, a), sub(c, a)];
     const [uu, vv, uv] = [dot(u, u), dot(v, v), dot(u, v)];
     const det = 2 * (uu * vv - uv * uv);

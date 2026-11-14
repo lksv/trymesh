@@ -388,6 +388,29 @@ describe('model, tělesa a příkazy', () => {
       expect([0, 5]).toContain(rim.center[2]);
     }
     execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { count: 4 } } });
+    // A hole another face cuts short is an arc: its two ends lie on a chord of the polygon, not on
+    // the circle, and must not pull the centre. A hole of radius 50 that nicks the corner (40, 30)
+    // of the plate, and a half hole of radius 3 on its lower edge.
+    const cut = (id: string, x: number, y: number, radius: number): Command => ({
+      type: 'batch',
+      commands: [
+        sketch(`s${id}`),
+        { type: 'addPoint', sketch: `s${id}`, id: `m${id}`, x, y },
+        { type: 'addCurve', sketch: `s${id}`, id: `k${id}`, curve: { type: 'circle', center: `m${id}` }, radius },
+        { type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: `s${id}`, regions: [{ outerLoop: [`k${id}`] }] }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['plate'] } },
+      ],
+    });
+    execute(engine, cut('nick', 75, 60, 50.2));
+    execute(engine, cut('half', 12, 0, 3));
+    const arcs = ok(engine, 'get_body', { body: 'plate' }).edges.filter((edge: { kind: string; name: { a: { feature: string }; b: { feature: string } } }) => edge.kind === 'circle' && [edge.name.a.feature, edge.name.b.feature].some((feature) => feature === 'nick' || feature === 'half'));
+    expect(arcs).toHaveLength(4);
+    for (const arc of arcs) {
+      const nick = [arc.name.a.feature, arc.name.b.feature].includes('nick');
+      expect(arc.radius).toBeCloseTo(nick ? 50.2 : 3, 2);
+      expect([arc.center[0], arc.center[1]]).toEqual(nick ? [expect.closeTo(75, 2), expect.closeTo(60, 2)] : [expect.closeTo(12, 2), expect.closeTo(0, 2)]);
+    }
+    execute(engine, { type: 'removeFeature', id: 'half' });
+    execute(engine, { type: 'removeFeature', id: 'nick' });
     // a copy that misses is named in the warning; a count that is not an integer is rejected
     expect(execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { axis: { kind: 'base', axis: 'Z' }, count: 2 } } }).problems).toEqual([
       { id: 'holes', name: 'holes', status: 'warning', warnings: [{ code: 'noEffect', message: expect.any(String), refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }] }] },

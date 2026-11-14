@@ -102,6 +102,24 @@ describe('rovnice vazeb odpovídají solveru', () => {
     });
   }
 
+  it('equal radius of two arcs: one equation, satisfied by the solved sketch', () => {
+    const engine = sketchWith(...base, ...withArc, point('s2', 80, 30), point('e2', 70, 43), point('z2', 70, 30), arc('r2', 'z2', 's2', 'e2'));
+    const before = new SketchAnalysis(inputOf(engine));
+    expect(before.degreesOfFreedom).toBe(2 * 13 + 2 - 2); // thirteen points, two radii, the rule of each arc
+    for (const [a, b] of [['r', 'r2'], ['r2', 'r']]) {
+      run(engine, constrain('S1', 'eq', { type: 'equalRadius', a, b }));
+      expect(engine.getState().evaluation.features.S1.status).toBe('ok');
+      const after = new SketchAnalysis(inputOf(engine));
+      expect(after.residual).toBeLessThan(1e-6);
+      expect(after.degreesOfFreedom).toBe(before.degreesOfFreedom - 1);
+      expect(after.surplus()).toEqual({ redundant: [], removable: [] });
+      expect(dofOf(engine)).toBe(after.degreesOfFreedom);
+      const p = engine.getState().evaluation.features.S1.sketch!.points;
+      expect(Math.hypot(p.s.x - p.z.x, p.s.y - p.z.y)).toBeCloseTo(Math.hypot(p.s2.x - p.z2.x, p.s2.y - p.z2.y), 6);
+      engine.undo();
+    }
+  });
+
   it('měřítko: stejná skica o pět řádů větší i menší dá stejný rozbor', () => {
     for (const scale of [1e-4, 1, 1e5]) {
       const engine = newEngine();

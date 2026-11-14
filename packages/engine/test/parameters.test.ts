@@ -380,6 +380,7 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
     expect(() => applyCommand(doc, add('f2', { type: 'fixed', point: 'p2', x: 5, y: 5 }))).toThrow(/stejná vazba už ve skice je \("f"\)/);
     // the origin is fixed already; a curve is not a point
     expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toThrow(/by se nikdy neprojevila/);
+    expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin' }))).toThrow(/by se nikdy neprojevila/); // not a complaint about a missing coordinate
     expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/čeká se point/);
     expect(() => applyCommand(doc, add('m', { type: 'fixed', point: 'missing' }))).toThrow(/entita "missing" ve skice není/);
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: null, y: 2 }))).toThrow(CommandError); // only a missing coordinate is filled in

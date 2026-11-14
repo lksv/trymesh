@@ -34,21 +34,25 @@ interface Pass {
   degreesOfFreedom: number;
   conflicting: Id[];
   redundant: Id[];
+  // The redundant primitives as the library names them: of a fixed point one coordinate alone
+  // may be redundant, and only that one is left out while dragging.
+  redundantPrimitives: string[];
 }
 
 export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promise<SketchSolver> {
   const mod = await init_planegcs_module(options.locateFile ? { locateFile: options.locateFile } : undefined);
 
-  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id>; algorithm?: Algorithm; collapsed?: Set<Id> } = {}): Pass => {
+  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string>; algorithm?: Algorithm; collapsed?: Set<Id> } = {}): Pass => {
     const gcs = new GcsWrapper(new mod.GcsSystem());
     try {
       gcs.debug_mode = DebugMode.NoDebug; // jinak solver vypisuje na standardní výstup
       gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed) as unknown as Primitive[]);
       const status = gcs.solve(extra.algorithm);
       const conflicting = owners(gcs.get_gcs_conflicting_constraints());
-      const redundant = owners(gcs.get_gcs_redundant_constraints());
+      const redundantPrimitives = gcs.get_gcs_redundant_constraints();
+      const redundant = owners(redundantPrimitives);
       const ok = (status === SolveStatus.Success || status === SolveStatus.Converged) && conflicting.length === 0;
-      const pass: Pass = { ok, settled: status === SolveStatus.Success, points: {}, radii: {}, degreesOfFreedom: 0, conflicting, redundant };
+      const pass: Pass = { ok, settled: status === SolveStatus.Success, points: {}, radii: {}, degreesOfFreedom: 0, conflicting, redundant, redundantPrimitives };
       if (!ok) return pass;
       gcs.apply_solution();
       for (const p of gcs.sketch_index.get_primitives() as unknown as Loose[]) {
@@ -82,7 +86,7 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
       // 2. nahradit vazbu jejím splynulým tvarem (totožnost bodů a bod na ose); každé takové
       //    řešení původní vazbu splňuje. Tvar pak platí i pro další průchody tohoto řešení.
       let collapsed = new Set<Id>();
-      const attempt = (from: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<Id> }, first: boolean): Pass => {
+      const attempt = (from: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string> }, first: boolean): Pass => {
         let pass = run(from, { ...extra, collapsed });
         // Výchozí algoritmus (DogLeg) občas nedoběhne tam, kde jiný ano; stejně postupuje FreeCAD.
         if (first && !pass.ok && pass.conflicting.length === 0) pass = run(from, { ...extra, collapsed, algorithm: Algorithm.LevenbergMarquardt });
@@ -102,11 +106,13 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
 
       // Tažení: nadbytečná vazba by se s dočasným cílem tažení ohlásila jako konflikt. Nejdřív se
       // proto zjistí bez tažení, které vazby nadbytečné jsou, a při tažení se vynechají.
-      let without: Set<Id> | undefined;
+      // (Primitives, not constraints: a fixed point whose one coordinate repeats another constraint
+      // must keep the other coordinate, or the drag would move it.)
+      let without: Set<string> | undefined;
       if (input.drag) {
         const plain = attempt(input, {}, true);
         if (!plain.ok) return failure(plain.conflicting, plain.redundant);
-        without = new Set(plain.redundant);
+        without = new Set(plain.redundantPrimitives);
         collapsed = new Set(); // tažení smí splynulé body zase rozestoupit
       }
       let pass = attempt(input, { drag: input.drag, without }, true);
@@ -191,7 +197,7 @@ function spread(input: SolveInput, constraints: Id[]): SolveInput {
   return { ...input, points };
 }
 
-function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<Id>, collapsed?: Set<Id>): Loose[] {
+function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<string>, collapsed?: Set<Id>): Loose[] {
   const fixed = new Set(input.fixed);
   for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
     if (isSynthetic(id)) throw new Error(`solver: ID "${id}" koliduje s pomocnými ID adaptéru`);
@@ -208,7 +214,14 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
     return p;
   };
 
-  for (const [id, p] of sorted(input.points)) out.push({ id, type: 'point', x: p.x, y: p.y, fixed: fixed.has(id) });
+  // A point with a fixed-point constraint starts at its coordinates. The library finds them
+  // anyway, but from a rough estimate it may stop in a place where a dimension that agrees with
+  // them looks like a conflict (a point on the axis through the other end of a distance).
+  const start = new Map<Id, Point2>();
+  for (const [, constraint] of sorted(input.constraints)) {
+    if (constraint.type === 'fixed' && !fixed.has(constraint.point)) start.set(constraint.point, { x: constraint.x, y: constraint.y });
+  }
+  for (const [id, p] of sorted(input.points)) out.push({ id, type: 'point', x: start.get(id)?.x ?? p.x, y: start.get(id)?.y ?? p.y, fixed: fixed.has(id) });
 
   for (const [id, curve] of sorted(input.curves)) {
     if (curve.type === 'line') {
@@ -247,6 +260,13 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
 
   for (const [id, constraint] of sorted(input.constraints)) {
     if ('driving' in constraint && !constraint.driving) continue; // referenční kóty počítá engine
+    if (constraint.type === 'fixed') {
+      // two primitives, each left out on its own
+      point(constraint.point);
+      if (!without?.has(id)) out.push({ id, type: 'coordinate_x', p_id: constraint.point, x: constraint.x });
+      if (!without?.has(`${SECOND}${id}`)) out.push({ id: `${SECOND}${id}`, type: 'coordinate_y', p_id: constraint.point, y: constraint.y });
+      continue;
+    }
     if (without?.has(id)) continue;
     if (collapsed?.has(id)) {
       // splynulý tvar: oba body dvojice v jednom místě, které leží na ose (ve středu úsečky)
@@ -254,11 +274,6 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       out.push({ id, type: 'p2p_coincident', p1_id: a, p2_id: b });
       if (constraint.type === 'symmetric') out.push({ id: `${SYNTHETIC}onAxis/${id}`, type: 'point_on_line_pl', p_id: a, l_id: constraint.line });
       else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
-      continue;
-    }
-    if (constraint.type === 'fixed') {
-      point(constraint.point);
-      out.push({ id, type: 'coordinate_x', p_id: constraint.point, x: constraint.x }, { id: `${SECOND}${id}`, type: 'coordinate_y', p_id: constraint.point, y: constraint.y });
       continue;
     }
     out.push({ id, ...translate(id, constraint, input.curves) });

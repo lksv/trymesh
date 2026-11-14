@@ -774,6 +774,38 @@ describe('equal radius and a fixed point (D35, point 6)', () => {
     expect(other.points.p).toEqual({ x: expect.closeTo(10, 6), y: expect.closeTo(-2, 6) });
   });
 
+  it('dragging next to a fixed point whose one coordinate repeats another constraint keeps the point fixed', () => {
+    // p is fixed at (5, 0) and also on a horizontal line from the origin: the y of the fixed point
+    // or the horizontal constraint is redundant, whichever sorts later; q is 10 from p
+    const sketch = (horizontal: Id): SolveInput =>
+      input({
+        points: { origin: { x: 0, y: 0 }, p: { x: 5, y: 0 }, q: { x: 11, y: 8 } },
+        curves: { op: { type: 'line', a: 'origin', b: 'p' }, pq: { type: 'line', a: 'p', b: 'q' } },
+        constraints: { [horizontal]: { type: 'horizontal', line: 'op' }, f: { type: 'fixed', point: 'p', x: 5, y: 0 }, len: { type: 'distance', a: 'p', b: 'q', value: 10, driving: true } },
+        fixed: ['origin'],
+      });
+    for (const horizontal of ['a', 'z']) {
+      const still = solver.solve({ ...sketch(horizontal), drag: { point: 'p', target: { x: 25, y: 3 } } });
+      expect(still.status, horizontal).toBe('solved');
+      expect(still.points.p, horizontal).toEqual({ x: expect.closeTo(5, 6), y: expect.closeTo(0, 6) });
+      expect(still.points.q, horizontal).toEqual({ x: expect.closeTo(11, 6), y: expect.closeTo(8, 6) });
+      // q goes to the point of its circle around p nearest to the target
+      const pulled = solver.solve({ ...sketch(horizontal), drag: { point: 'q', target: { x: 40, y: 40 } } });
+      const reach = Math.hypot(35, 40);
+      expect(pulled.points.p, horizontal).toEqual({ x: expect.closeTo(5, 6), y: expect.closeTo(0, 6) });
+      expect(pulled.points.q, horizontal).toEqual({ x: expect.closeTo(5 + (10 * 35) / reach, 3), y: expect.closeTo((10 * 40) / reach, 3) });
+    }
+  });
+
+  it('a fixed point and a dimension that agrees with it are solved from a rough estimate too', () => {
+    // the point starts off the axis it ends on; without starting at the fixed coordinates the
+    // library reported a conflict here
+    const r = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 6, y: 0 }, d: { type: 'distance', a: 'origin', b: 'p', value: 6, driving: true } }));
+    expect(r.status).toBe('solved');
+    expect(r.points.p).toEqual({ x: expect.closeTo(6, 8), y: expect.closeTo(0, 8) });
+    expect(r.redundant).toHaveLength(1);
+  });
+
   it('a fixed point is one constraint: both of its coordinates report under its ID', () => {
     // 10 mm from the origin is impossible for a point fixed at (10, 3)
     const conflict = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 10, y: 3 }, d: { type: 'distance', a: 'origin', b: 'p', value: 10, driving: true } }));

@@ -312,7 +312,7 @@ export class Evaluator {
   private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed, badFields: FieldPath[]): Step {
     const frame = this.frame(feature.plane, state);
     if (typeof frame === 'string') return failed(frame, [feature.plane]);
-    const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the dimension keeps its last valid value')] : [];
+    const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the field keeps its last valid value')] : [];
 
     // 1. promítnutá geometrie ze stavu těles před skicou
     const external: Record<Id, Projected> = {};

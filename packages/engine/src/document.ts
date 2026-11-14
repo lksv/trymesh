@@ -388,7 +388,9 @@ export function duplicateOf(sketch: SketchFeature, c: Constraint, except?: Id): 
 }
 
 // A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
-// the position the sketch has stored for the point (its last solved one).
+// the position the sketch has stored for the point. That is its last solved position; for a point
+// added earlier in the same batch it is the estimate the batch gave it, since the sketch is solved
+// once after the whole batch.
 function withPosition(sketch: SketchFeature, given: unknown): unknown {
   if (!isObject(given) || given.type !== 'fixed' || typeof given.point !== 'string' || !has(sketch.points, given.point)) return given;
   const at = sketch.points[given.point];
@@ -438,6 +440,10 @@ function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fie
   const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
   const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
   if (problem) fail(`${what}: ${problem}`);
+  const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
+  const onlyFixed = (): never => fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
+  // said before the values are read: a fixed point on the origin has no coordinates to complain about
+  if (!spec.dimension && !movable) onlyFixed();
   let values: Record<string, number | boolean> = {};
   if (spec.dimension && spec.values) {
     // A driving dimension is a numeric field and may have an expression; a reference one only measures.
@@ -450,9 +456,7 @@ function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fie
     for (const [name, number] of Object.entries(spec.values)) values[name] = fields.number(o[name], constraintPath(id, name), number, `${what}.${name}`);
   }
   const result = { type, ...operands, ...values } as Constraint;
-  if (isDriving(result) && !constraintOperands(result).some((id) => entityOf(sketch, id)?.own)) {
-    fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
-  }
+  if (isDriving(result) && !movable) onlyFixed();
   return result;
 }
 

@@ -1,8 +1,8 @@
 // The constraints of D35 point 6 (equal radius, fixed point) against the real solver: a plate with
 // holes whose centres are given by coordinates and whose size comes from one dimension.
 import { describe, expect, it } from 'vitest';
-import { type Command, type Constraint, type Engine, type FixedInput, type Id, type Input, type SketchResult, fieldsOf } from '@trymesh/engine';
-import { XY, addExtrude, addSketch, batch, constrain, dimension, newEngine, rectLoop, rectangle, run, status, volume } from './kit';
+import { type Command, type Constraint, type Engine, type FixedInput, type Id, type Input, type SketchFeature, type SketchResult, featureInput, fieldsOf } from '@trymesh/engine';
+import { XY, addExtrude, addSketch, batch, cap, constrain, dimension, newEngine, rectLoop, rectangle, run, side, status, volume } from './kit';
 
 const HOLES = ['q1', 'q2', 'q3', 'q4'];
 const add = (sketch: Id, id: Id, constraint: Input<Constraint> | FixedInput): Command => ({ type: 'addConstraint', sketch, id, constraint });
@@ -173,5 +173,108 @@ describe('a plate with holes at coordinates (D35, point 6)', () => {
     expect(Math.hypot(s[0] - c[0], s[1] - c[1])).toBeCloseTo(3.5, 6);
     expect(Math.hypot(e[0] - c[0], e[1] - c[1])).toBeCloseTo(3.5, 6);
     expect(sketchOf(engine, 'S2').measurements.d3).toBeCloseTo(3.5, 8);
+  });
+});
+
+describe('findings of the review of point 6', () => {
+  const refused = (engine: Engine, command: Command): string => {
+    const result = engine.execute(command);
+    if (result.ok) throw new Error('the command should have been refused');
+    return result.error.message;
+  };
+  const feature = (engine: Engine, id: Id): SketchFeature => engine.getState().document.features.find((f) => f.id === id) as SketchFeature;
+
+  it('a fixed point and a dimension that agrees with it, in one batch from a rough estimate', () => {
+    const engine = newEngine();
+    let state = run(
+      engine,
+      { type: 'setParameter', name: 'w', expr: '6' },
+      addSketch('S1', XY),
+      batch({ type: 'addPoint', sketch: 'S1', id: 'p', x: 6.2, y: 0.3 }, add('S1', 'f', { type: 'fixed', point: 'p', x: 'w', y: 0 }), add('S1', 'dd', { type: 'distance', a: 'origin', b: 'p', value: 'w', driving: true })),
+    );
+    expect(status(state).S1).toBe('ok');
+    expect(at(engine, 'S1', 'p')).toEqual(near([6, 0]));
+    expect(engine.explainConstraint('S1', 'dd')).toEqual({ redundant: true, impliedBy: ['f'] });
+    // both follow the parameter
+    state = run(engine, { type: 'setParameter', name: 'w', expr: '9.5' });
+    expect(status(state).S1).toBe('ok');
+    expect(at(engine, 'S1', 'p')).toEqual(near([9.5, 0]));
+  });
+
+  it('fixed without coordinates: inside a batch it is the estimate; the origin and projected points say why they are refused', () => {
+    const engine = plate();
+    // the point is new in the batch, so the sketch has only the estimate of addPoint for it
+    run(engine, batch({ type: 'addPoint', sketch: 'S2', id: 'n', x: 33.25, y: 21.5 }, add('S2', 'fn', { type: 'fixed', point: 'n' })));
+    expect(feature(engine, 'S2').constraints.fn).toEqual({ type: 'fixed', point: 'n', x: 33.25, y: 21.5 });
+    expect(at(engine, 'S2', 'n')).toEqual(near([33.25, 21.5]));
+    // the origin and projected geometry cannot be fixed, with or without coordinates
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin' }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toMatch(/by se nikdy neprojevila/);
+    run(engine, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: side('plate', 'ra') }, kind: 'line' } });
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a' }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a', x: 1, y: 1 }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S2', 'o', { type: 'equalRadius', a: 'q1', b: 'q1' }))).toMatch(/různé entity/);
+  });
+
+  it('equal radius with a projected circle: the own circle follows the body', () => {
+    const engine = plate();
+    run(
+      engine,
+      addSketch('S3', XY),
+      { type: 'addExternal', sketch: 'S3', id: 'rim', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: { feature: 'holes', role: 'side', curve: 'q1' } }, kind: 'circle' } },
+      batch({ type: 'addPoint', sketch: 'S3', id: 'c', x: 30, y: 20 }, { type: 'addCurve', sketch: 'S3', id: 'k', curve: { type: 'circle', center: 'c' }, radius: 5 }),
+    );
+    // the projected circle on either side
+    for (const [a, b] of [['k', 'rim'], ['rim', 'k']]) {
+      const state = run(engine, add('S3', 'eq', { type: 'equalRadius', a, b }));
+      expect(status(state).S3).toBe('ok');
+      expect(sketchOf(engine, 'S3').radii.k).toBeCloseTo(2, 6);
+      expect(sketchOf(engine, 'S3').degreesOfFreedom).toBe(2);
+      expect(engine.diagnoseSketch('S3')).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [] });
+      if (a === 'k') engine.undo();
+    }
+    run(engine, { type: 'setParameter', name: 'bore', expr: '7' });
+    expect(sketchOf(engine, 'S3').radii.k).toBeCloseTo(3.5, 6);
+    // two projected circles have nothing to move
+    run(engine, { type: 'addExternal', sketch: 'S3', id: 'rim2', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: { feature: 'holes', role: 'side', curve: 'q2' } }, kind: 'circle' } });
+    expect(refused(engine, add('S3', 'both', { type: 'equalRadius', a: 'rim', b: 'rim2' }))).toMatch(/by se nikdy neprojevila/);
+  });
+
+  it('a parameter of a fixed coordinate that disappears: the sketch warns with the paths and keeps the values', () => {
+    const engine = plate();
+    const state = run(engine, { type: 'removeParameter', name: 'margin' });
+    expect(status(state).S2).toBe('warning:invalidExpression');
+    const warning = state.evaluation.features.S2.warnings[0];
+    expect(warning.refs).toEqual(['constraints/f1/x', 'constraints/f1/y', 'constraints/f2/x', 'constraints/f2/y', 'constraints/f3/x', 'constraints/f3/y', 'constraints/f4/x', 'constraints/f4/y']);
+    expect(warning.message).toMatch(/the field keeps its last valid value/);
+    expect(feature(engine, 'S2').constraints.f3).toEqual({ type: 'fixed', point: 'q3c', x: 54, y: 34 });
+    expect(at(engine, 'S2', 'q3c')).toEqual(near([54, 34]));
+    // one coordinate can be repaired while the other is still broken
+    const repaired = run(engine, { type: 'setField', feature: 'S2', path: 'constraints/f3/x', value: 50 });
+    expect(repaired.evaluation.features.S2.warnings[0].refs).not.toContain('constraints/f3/x');
+    expect(at(engine, 'S2', 'q3c')).toEqual(near([50, 34]));
+  });
+
+  it('a loaded document with two fixed constraints on one point reports the duplicate; removing it repairs the sketch', () => {
+    const stored = JSON.parse(plate().save());
+    const sketch = stored.features.find((f: { id: Id }) => f.id === 'S2');
+    sketch.constraints.again = { type: 'fixed', point: 'q1c', x: 6, y: 6 };
+    const engine = newEngine();
+    expect(engine.load(JSON.stringify(stored)).ok).toBe(true);
+    expect(engine.diagnoseSketch('S2')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, duplicates: [['f1', 'again']] });
+    expect(at(engine, 'S2', 'q1c')).toEqual(near([6, 6]));
+    run(engine, { type: 'removeConstraint', sketch: 'S2', id: 'again' });
+    expect(engine.diagnoseSketch('S2')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, duplicates: [], redundant: [] });
+  });
+
+  it('the input form of a sketch with fixed points and equal radii adds the same sketch again', () => {
+    const engine = plate();
+    const original = feature(engine, 'S2');
+    const copy = newEngine();
+    run(copy, { type: 'setParameter', name: 'margin', expr: '6' }, { type: 'setParameter', name: 'bore', expr: '4' }, { type: 'addFeature', feature: featureInput(original) });
+    const added = feature(copy, 'S2');
+    expect(added.constraints).toEqual(original.constraints);
+    expect(added.expressions).toEqual(original.expressions);
+    expect(HOLES.map((id) => at(copy, 'S2', `${id}c`))).toEqual(HOLES.map((id) => near(at(engine, 'S2', `${id}c`))));
   });
 });

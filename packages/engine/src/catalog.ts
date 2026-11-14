@@ -161,7 +161,7 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
   equalRadius: { title: 'Equal radius', summary: 'Two circles or arcs have the same radius.', ...pair(ROUND) },
   fixed: {
     title: 'Fixed point',
-    summary: 'The point lies at the coordinates x, y of the sketch. A command may leave the coordinates out; the point is then fixed where it is.',
+    summary: 'An own point of the sketch lies at the coordinates x, y of the sketch.',
     operands: [{ field: 'point', kinds: POINT }],
     values: { x: { title: 'X', unit: 'mm' }, y: { title: 'Y', unit: 'mm' } },
   },

@@ -15,16 +15,19 @@ import type {
   FaceName,
   Feature,
   FieldPath,
+  GeneratorName,
   Id,
   Input,
   Parameter,
   PlaneFeature,
   PlaneRef,
+  ProfileSource,
   Projected,
   RegionRef,
   SketchFeature,
 } from './types';
 import { CONSTRAINTS, type EntityKind, type FieldSpec, MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
+import { GENERATORS, isFlag } from './generators';
 import { type Environment, analyzeExpression, evaluateNumber, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
@@ -198,13 +201,19 @@ function edgeName(v: unknown, what: string): EdgeName {
 }
 
 // Odkaz jedné feature na jinou. `path` je místo odkazu uvnitř feature (cesta oddělená lomítky).
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource';
+// - `entity` is a reference to an entity of a sketch (an operand of a profile generator): `id` is the
+//   entity, `sketch` its sketch and `accepts` the entity kinds allowed.
+// - `generated` is a reference to an extrusion whose profile comes from one of the generators in
+//   `accepts` (a gear in mesh with another gear).
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated';
 export interface FeatureRef {
   path: string;
-  id: Id; // u `body` ID tělesa, jinak ID feature
+  id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
   kind: RefKind;
+  sketch?: Id;
+  accepts?: readonly string[];
 }
-const REF_LABEL: Record<RefKind, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude' };
+const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude' };
 
 // ID tělesa je ID feature, která ho vytvořila, nebo `<feature>/<místní jméno>`, když jich feature
 // vytváří víc. Lomítko v ID zadaném volajícím být nesmí, takže rozklad je jednoznačný.
@@ -216,15 +225,29 @@ export function bodyOwner(body: Id): { feature: Id; local?: string } {
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
 // odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
-function requireRef(doc: Document, before: number | undefined, ref: Pick<FeatureRef, 'id' | 'kind'>, what: string): void {
+function requireRef(doc: Document, before: number | undefined, ref: Omit<FeatureRef, 'path'>, what: string): void {
   if (before === undefined) return;
+  if (ref.kind === 'entity') {
+    // The sketch itself is verified by its own reference; here only the entity inside it.
+    const sketch = doc.features.find((f) => f.id === ref.sketch);
+    if (!sketch || sketch.type !== 'sketch') return fail(`${what}: the sketch "${String(ref.sketch)}" of the entity "${ref.id}" does not exist`);
+    const entity = entityOf(sketch, ref.id);
+    if (!entity) return fail(`${what}: the sketch "${sketch.id}" has no entity "${ref.id}"`);
+    if (!ref.accepts?.includes(entity.kind)) fail(`${what}: "${ref.id}" is a ${entity.kind}, expected ${(ref.accepts ?? []).join(' or ')}`);
+    return;
+  }
   const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };
   const index = doc.features.findIndex((f) => f.id === feature);
   if (index < 0) fail(`${what}: feature "${ref.id}" neexistuje`);
   const target = doc.features[index];
   const spec = FEATURE_TYPES[target.type] as FeatureTypeSpec<Feature>;
-  const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
-  if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
+  if (ref.kind === 'generated') {
+    const generator = target.type === 'extrude' && target.profile.type === 'generated' ? target.profile.generator : undefined;
+    if (generator === undefined || !ref.accepts?.includes(generator)) fail(`${what}: feature "${ref.id}" is not an extrusion with a profile from the generator ${(ref.accepts ?? []).join(' or ')}`);
+  } else {
+    const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
+    if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
+  }
   if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
 }
 
@@ -417,11 +440,62 @@ function planeFeature(doc: Document, before: number | undefined, o: Dict, what: 
   return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
 }
 
+// The profile source of an extrusion. A generated profile follows the generator catalog: operands
+// and references by its names, parameters with its ranges and defaults, in the order of the catalog.
+function profileSource(doc: Document, before: number | undefined, v: unknown, what: string, fields: Fields): ProfileSource {
+  const profile = object(v, what);
+  const type = oneOf(profile.type, ['regions', 'generated'] as const, `${what}.type`);
+  const sketch = string(profile.sketch, `${what}.sketch`);
+  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  if (type === 'regions') return { type, sketch, regions: regions(profile.regions, `${what}.regions`) };
+  const generator = oneOf(profile.generator, Object.keys(GENERATORS) as GeneratorName[], `${what}.generator`);
+  const spec = GENERATORS[generator];
+  // a dictionary of the profile: only the names the catalog knows
+  const dictionary = (name: string, known: object, optional = false): Dict => {
+    if (optional && profile[name] === undefined) return {};
+    const given = object(profile[name], `${what}.${name}`);
+    for (const key of Object.keys(given)) if (!has(known, key)) fail(`${what}.${name}.${key}: the generator ${generator} has no such entry`);
+    return given;
+  };
+  const givenOperands = dictionary('operands', Object.fromEntries(spec.operands.map((operand) => [operand.field, true])));
+  const operands: Record<string, Id> = {};
+  for (const { field, kinds } of spec.operands) {
+    operands[field] = string(givenOperands[field], `${what}.operands.${field}`);
+    requireRef(doc, before, { id: operands[field], kind: 'entity', sketch, accepts: kinds }, `${what}.operands.${field}`);
+  }
+  const givenParams = dictionary('params', spec.params);
+  const params: Record<string, number | boolean | string> = {};
+  for (const [name, param] of Object.entries(spec.params)) {
+    const value = givenParams[name];
+    const at = `${what}.params.${name}`;
+    if (isFlag(param)) params[name] = value === undefined ? param.default : boolean(value, at);
+    else if (value === undefined && param.default === undefined) fail(`${at}: the parameter is required`);
+    else params[name] = fields.number(value === undefined ? param.default : value, `profile/params/${name}`, param, at);
+  }
+  const givenRefs = dictionary('refs', spec.refs, true);
+  const refs: Record<string, Id> = {};
+  for (const [name, ref] of Object.entries(spec.refs)) {
+    if (givenRefs[name] === undefined) continue;
+    refs[name] = string(givenRefs[name], `${what}.refs.${name}`);
+    requireRef(doc, before, { id: refs[name], kind: 'generated', accepts: ref.generators }, `${what}.refs.${name}`);
+  }
+  return { type, generator, sketch, operands, params, ...(Object.keys(refs).length ? { refs } : {}) };
+}
+
+// References of a profile source to other features and to entities of its sketch.
+function profileRefs(profile: ProfileSource): FeatureRef[] {
+  const sketch: FeatureRef = { path: 'profile/sketch', id: profile.sketch, kind: 'sketch' };
+  if (profile.type === 'regions') return [sketch];
+  const spec = GENERATORS[profile.generator];
+  return [
+    sketch,
+    ...spec.operands.map((operand): FeatureRef => ({ path: `profile/operands/${operand.field}`, id: profile.operands[operand.field], kind: 'entity', sketch: profile.sketch, accepts: operand.kinds })),
+    ...Object.entries(profile.refs ?? {}).map(([name, id]): FeatureRef => ({ path: `profile/refs/${name}`, id, kind: 'generated', accepts: spec.refs[name].generators })),
+  ];
+}
+
 function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): ExtrudeFeature {
-  const profile = object(o.profile, `${what}.profile`);
-  if (profile.type !== 'regions') fail(`${what}.profile.type: čeká se regions`);
-  const sketch = string(profile.sketch, `${what}.profile.sketch`);
-  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.profile.sketch`);
+  const profile = profileSource(doc, before, o.profile, `${what}.profile`, fields);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
   const given = object(o.extent, `${what}.extent`);
   let extent: ExtrudeFeature['extent'];
@@ -436,7 +510,7 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   const feature: ExtrudeFeature = {
     ...base(o, what),
     type: 'extrude',
-    profile: { type: 'regions', sketch, regions: regions(profile.regions, `${what}.profile.regions`) },
+    profile,
     extent,
     operation,
   };
@@ -555,15 +629,20 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
   extrude: {
     info: {
       title: 'Vysunutí',
-      summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll).',
+      summary:
+        'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
+        'The profile is a set of regions of a sketch, or comes from a profile generator (see Profile generators).',
       fields: [
+        ...Object.entries(GENERATORS).flatMap(([generator, spec]) =>
+          Object.entries(spec.params).flatMap(([name, param]): FieldSpec[] => (isFlag(param) ? [] : [{ path: `profile/params/${name}`, spec: param, when: { path: 'profile/generator', equals: generator } }])),
+        ),
         { path: 'extent/start', spec: EXTENT_START, when: { path: 'extent/type', equals: 'distance' } },
         { path: 'extent/distance', spec: EXTENT_DISTANCE, when: { path: 'extent/type', equals: 'distance' } },
       ],
       bodies: 'self',
     },
     validate: extrudeFeature,
-    refs: (f) => [{ path: 'profile/sketch', id: f.profile.sketch, kind: 'sketch' }, ...(f.targets ?? []).map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' }))],
+    refs: (f) => [...profileRefs(f.profile), ...(f.targets ?? []).map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' }))],
     createsBody: (f, local) => local === undefined && f.operation === 'new',
     namesFaces: true,
     patch: {
@@ -639,17 +718,31 @@ export function featureInput<F extends Feature>(f: F): Input<F> {
 // Features, na které feature odkazuje: rovina, skica, feature, která vytvořila těleso, a extrude,
 // které pojmenovaly stěnu (stěna i hrana existují až po feature, která je vytvořila).
 export function featureRefs(f: Feature): Id[] {
-  return [...new Set(specOf(f).refs(f).map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)))];
+  return [
+    ...new Set(
+      specOf(f)
+        .refs(f)
+        .filter((ref) => ref.kind !== 'entity') // an entity belongs to a sketch that is referred to anyway
+        .map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)),
+    ),
+  ];
 }
+
+// What makes an object a variant: its `type` and, for a generated profile, its `generator`. A patch
+// that names another one replaces the object; a patch that names none or the same one merges.
+const VARIANT_KEYS = ['type', 'generator'];
+const sameVariant = (old: Dict, patch: Dict): boolean => VARIANT_KEYS.every((key) => patch[key] === undefined || patch[key] === old[key]);
 
 // Slučovací změna (příkaz updateFeature): varianta se stejným `type` se slučuje po polích, jiná
 // varianta, odkaz (objekt s `kind`) a seznam dosavadní hodnotu nahradí, `null` pole odebere.
+// A dictionary (operands, parameters and references of a generated profile) merges by entry.
 function mergePatch(old: unknown, patch: unknown, what: string): unknown {
   if (!isObject(patch) || has(patch, 'kind')) return patch;
   // odkaz se po polích neslučuje: půlka odkazu by vybrala jinou stěnu téhož tělesa
   if (isObject(old) && has(old, 'kind')) fail(`${what}: odkaz se nahrazuje celý, čeká se objekt s polem kind`);
-  if (!isObject(old)) return patch;
-  if (patch.type !== undefined && patch.type !== old.type) return patch;
+  // Nothing to merge with: the patch is the new value. A `null` in it removes an entry that is not
+  // there (a form sends `refs: { meshWith: null }` whether the feature had the reference or not).
+  if (!isObject(old) || !sameVariant(old, patch)) return withoutNulls(patch);
   const out: Dict = { ...old };
   for (const [key, value] of Object.entries(patch)) {
     if (key in Object.prototype) fail(`${what}.${key}: takové pole feature nemá`);
@@ -659,12 +752,21 @@ function mergePatch(old: unknown, patch: unknown, what: string): unknown {
   return out;
 }
 
+const withoutNulls = (value: unknown): unknown =>
+  isObject(value) && !has(value, 'kind')
+    ? Object.fromEntries(
+        Object.entries(value)
+          .filter(([, item]) => item !== null)
+          .map(([key, item]) => [key, withoutNulls(item)]),
+      )
+    : value;
+
 // Addresses the patch overwrites as a whole (a leaf, a list, a reference, another variant, a removed
 // field). Expressions at and below them cease to exist; fields the patch does not mention keep theirs.
 function replacedPaths(old: unknown, patch: Dict, prefix: string[] = []): string[] {
   return Object.entries(patch).flatMap(([key, value]) => {
     const before = isObject(old) ? old[key] : undefined;
-    const merges = isObject(value) && !has(value, 'kind') && isObject(before) && (value.type === undefined || value.type === before.type);
+    const merges = isObject(value) && !has(value, 'kind') && isObject(before) && sameVariant(before, value);
     return merges ? replacedPaths(before, value as Dict, [...prefix, key]) : [[...prefix, key].join('/')];
   });
 }
@@ -685,7 +787,7 @@ const withoutUndefined = (value: unknown): unknown =>
     : value;
 
 const hasPath = (value: unknown, path: string[]): boolean => path.length === 0 || (isObject(value) && has(value, path[0]) && hasPath(value[path[0]], path.slice(1)));
-const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id]);
+const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id, ref.sketch]);
 
 // ---------------------------------------------------------------- načtení dokumentu
 

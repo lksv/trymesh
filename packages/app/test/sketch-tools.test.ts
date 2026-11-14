@@ -4,7 +4,7 @@ import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type E
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, geometricFor, lineCommands, normalizeAngle, pointCommands, rectangleCommands } from '../src/sketch-commands';
+import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, generatedProfile, geometricFor, lineCommands, normalizeAngle, pointCommands, profileKind, rectangleCommands } from '../src/sketch-commands';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -423,6 +423,39 @@ describe('nálezy z revize aplikace', () => {
     expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: draft.profile, extent: draft.extent, operation: 'add', targets: ['smazané'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
     expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4 } });
+  });
+
+  it('an extrusion draft with a profile generator: source, operands, parameters and references', () => {
+    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    // to a generator: the defaults of the catalog and the operands the form found in the sketch
+    const gear = changeExtrude(draft, { source: 'involuteGear', operands: { circle: 'c1' } }, []);
+    expect(gear.profile).toEqual({ type: 'generated', generator: 'involuteGear', sketch: 's', operands: { circle: 'c1' }, params: { teeth: 18, pressureAngle: (20 * Math.PI) / 180, backlash: 0, rotation: 0, internal: false } });
+    expect(profileKind(gear.profile)).toBe('involuteGear');
+    expect(changeExtrude(gear, { source: 'involuteGear' }, []).profile).toEqual(gear.profile); // the same source changes nothing
+    // entries change one by one; an expression goes into the field as typed
+    const changed = changeExtrude(gear, { params: { teeth: 'Zs', internal: true }, refs: { meshWith: 'e1' } }, []);
+    expect(changed.profile).toMatchObject({ params: { teeth: 'Zs', internal: true, backlash: 0 }, operands: { circle: 'c1' }, refs: { meshWith: 'e1' } });
+    expect(changeExtrude(changed, { refs: { meshWith: null } }, []).profile).not.toHaveProperty('refs');
+    expect(changeExtrude(changed, { sketch: 's9', operands: { circle: 'k' } }, []).profile).toMatchObject({ sketch: 's9', operands: { circle: 'k' }, params: { teeth: 'Zs' } });
+    expect(changeExtrude(changed, { regions: [{ outerLoop: ['x'] }] }, []).profile).toEqual(changed.profile); // regions belong to the other source
+    // back to regions: nothing is picked
+    expect(changeExtrude(changed, { source: 'regions' }, []).profile).toEqual({ type: 'regions', sketch: 's', regions: [] });
+    // the engine accepts the draft as a new feature and as a change of an existing one
+    const { engine, run } = setup();
+    run([{ type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin', construction: true }, radius: 8.1 }, { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'circle', center: 'origin', construction: true }, radius: 9 }]);
+    run([draftCommand({ ...gear, id: 'e1' }, false, 1), draftCommand(changeExtrude(changed, { params: { teeth: 20, internal: false }, operands: { circle: 'c2' } }, []), false, 2)]);
+    expect(engine.getState().document.features[2]).toMatchObject({ profile: { operands: { circle: 'c2' }, params: { teeth: 20 }, refs: { meshWith: 'e1' } } });
+    // editing: a reference the draft no longer has is removed, the other entries are sent whole
+    const edited = changeExtrude(engine.getState().document.features[2] as ExtrudeFeature, { refs: { meshWith: null }, params: { backlash: 0.1 } }, []);
+    expect(draftCommand(edited, true, 2)).toMatchObject({ type: 'updateFeature', id: 'e2', patch: { profile: { type: 'generated', params: { backlash: 0.1, teeth: 20 }, refs: { meshWith: null } } } });
+    run([draftCommand(edited, true, 2)]);
+    expect(engine.getState().document.features[2]).toMatchObject({ profile: { params: { backlash: 0.1, teeth: 20 } } });
+    expect((engine.getState().document.features[2] as ExtrudeFeature).profile).not.toHaveProperty('refs');
+    // and a feature that never had the reference accepts the same shape of the patch
+    run([draftCommand(changeExtrude(engine.getState().document.features[1] as ExtrudeFeature, { params: { teeth: 24 } }, []), true, 1)]);
+    expect(engine.getState().document.features[1]).toMatchObject({ profile: { params: { teeth: 24 } } });
+    // the generated profile of a new draft comes from the catalog
+    expect(generatedProfile('involuteGear', 's', {}).operands).toEqual({});
   });
 
   it('bod uvnitř smyčky', () => {

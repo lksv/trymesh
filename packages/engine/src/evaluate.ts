@@ -3,7 +3,8 @@ import { SketchAnalysis } from './analysis';
 import { checkNumber } from './catalog';
 import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
-import { type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
+import { GENERATORS, type ResolvedOperand, generateProfile } from './generators';
+import { type Loop, type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
 import { type FaceInfo, type Prism, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
 import type {
   Document,
@@ -11,6 +12,7 @@ import type {
   ExpressionError,
   ExtrudeFeature,
   FaceName,
+  Facts,
   Feature,
   FeatureResult,
   FieldPath,
@@ -70,10 +72,13 @@ export interface ToolRecipe {
 }
 
 // Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
+// A generated profile adds what its generator published and warned about.
 interface ResolvedProfile {
   regions: Region[];
   frame: Frame;
   curveOf: (id: Id) => SideCurve;
+  facts?: Facts;
+  warnings?: Issue[];
 }
 // `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
 // určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
@@ -135,6 +140,8 @@ const MESSAGE: Record<IssueCode, string> = {
   degenerateProjection: 'Hrana je kolmá na rovinu skici a nejde promítnout.',
   unsupportedProjection: 'Hranu nejde promítnout jako zvolený druh křivky.',
   noEffect: 'Operace těleso nezměnila.',
+  gearMesh: 'The gear cannot be put in mesh with the gear it refers to.',
+  gearInterference: 'The tip of one gear of the pair runs into the root of the other.',
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
 };
 const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
@@ -258,7 +265,7 @@ export class Evaluator {
       case 'sketch':
         return this.sketch(feature, state, chordTolerance, drag, done, failed, errors ? Object.keys(errors) : []);
       case 'extrude':
-        return this.extrude(feature, state, done, failed);
+        return this.extrude(feature, state, chordTolerance, done, failed);
       default: {
         const unknown: never = feature;
         throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
@@ -354,9 +361,16 @@ export class Evaluator {
 
   // Vysunutí má tři části: profil (odkud se bere tvar), nástroj (síť a nové stěny) a použití
   // (nové těleso, nebo booleovská operace s cílem).
-  private extrude(feature: ExtrudeFeature, state: State, done: Done, failed: Failed): Step {
-    const profile = this.profile(feature, state);
-    if ('code' in profile) return failed(profile.code, profile.refs);
+  private extrude(feature: ExtrudeFeature, state: State, chordTolerance: number, finish: Done, failed: Failed): Step {
+    const profile = this.profile(feature, state, chordTolerance);
+    // a generator explains its failure itself; the general text of the code is about sketch curves
+    if ('code' in profile) return profile.message === undefined ? failed(profile.code, profile.refs) : { state: finish({ status: 'error', error: { code: profile.code, message: profile.message, refs: profile.refs }, warnings: [] }) };
+    // What the profile generator published and warned about belongs to the result whatever the
+    // application of the tool ends with, short of an error.
+    const done: Done = (result, change) => {
+      const warnings = [...(profile.warnings ?? []), ...result.warnings];
+      return finish({ ...result, status: result.status === 'ok' && warnings.length ? 'warning' : result.status, warnings, ...(profile.facts ? { facts: profile.facts } : {}) }, change);
+    };
     // The tool: the length of "through all" is measured against the targets it is built for.
     const build: ToolRecipe['build'] = (targets, firstFaceId) =>
       buildPrism(feature.id, profile.regions, profile.frame, toolSpan(feature.extent, profile.frame, targets), profile.curveOf, firstFaceId, this.deps.kernel);
@@ -410,11 +424,12 @@ export class Evaluator {
     return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...withFaces(state, tool, first), tools, bodies }) };
   }
 
-  // Profil vysunutí podle jeho zdroje. Další zdroje (generátor profilu) přibudou jako další větve.
-  private profile(feature: ExtrudeFeature, state: State): ResolvedProfile | { code: IssueCode; refs: unknown[] } {
+  // Profil vysunutí podle jeho zdroje.
+  private profile(feature: ExtrudeFeature, state: State, chordTolerance: number): ResolvedProfile | { code: IssueCode; refs: unknown[]; message?: string } {
     const source = feature.profile;
     const sketch = lookup(state.sketches, source.sketch);
     if (!sketch) return { code: 'brokenReference', refs: [source.sketch] };
+    if (source.type === 'generated') return this.generated(feature.id, source, sketch, state, chordTolerance);
     if (!sketch.profile.valid) return { code: 'invalidProfile', refs: [source.sketch] };
     const regions = source.regions.map((ref) => sketch.profile.regions.find((region) => sameRegion(region.ref, ref)));
     const missing = source.regions.filter((_, i) => !regions[i]);
@@ -428,6 +443,42 @@ export class Evaluator {
       return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
     };
     return { regions: regions as Region[], frame: sketch.frame, curveOf };
+  }
+
+  // A profile from a generator. The generator reads only the solved operands, so it does not depend
+  // on the sketch profile being valid: the pitch circles of gears in mesh touch, which would
+  // invalidate it if they were not construction geometry.
+  private generated(id: Id, source: Extract<ExtrudeFeature['profile'], { type: 'generated' }>, sketch: SketchState, state: State, chordTolerance: number): ResolvedProfile | { code: IssueCode; refs: unknown[]; message?: string } {
+    const spec = GENERATORS[source.generator];
+    const { points, radii } = sketch.geometry;
+    const operands: Record<string, ResolvedOperand> = {};
+    for (const { field } of spec.operands) {
+      // own curves and projected ones; validation let only the kinds of the catalog in (circles today)
+      const entity = source.operands[field];
+      const curve = lookup(sketch.input.curves, entity);
+      const center = curve?.type === 'circle' ? lookup(points, curve.center) : undefined;
+      const radius = lookup(radii, entity);
+      if (!center || radius === undefined) return { code: 'brokenReference', refs: [entity] };
+      operands[field] = { kind: 'circle', center: [center.x, center.y], radius };
+    }
+    // facts of the features referred to; a feature that is missing, suppressed or in error has none
+    const refs = Object.fromEntries(Object.entries(source.refs ?? {}).map(([name, feature]) => [name, lookup(state.features, feature)?.facts]));
+    let result: ReturnType<typeof generateProfile>;
+    try {
+      result = generateProfile(source.generator, { operands, params: source.params, refs, frame: sketch.frame, chordTolerance });
+    } catch (error) {
+      return { code: 'invalidProfile', refs: [id], message: `The profile generator failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    if (!result.ok) return { code: 'invalidProfile', refs: [id], message: `The profile generator cannot build the profile: ${result.message}.` };
+    // Regions in the shape the prism builder takes: every vertex has its own key and every edge the
+    // name of its side in place of a curve ID.
+    const loop = (generated: { xy: number[]; side: string }, tag: string): Loop => {
+      const count = generated.xy.length / 2;
+      return { xy: generated.xy, keys: Array.from({ length: count }, (_, i) => `g:${tag}:${i}`), curves: Array.from({ length: count }, () => generated.side) };
+    };
+    const regions = result.regions.map((region, r): Region => ({ ref: { outerLoop: [region.outer.side] }, outer: loop(region.outer, `${r}`), holes: region.holes.map((hole, h) => loop(hole, `${r}:${h}`)) }));
+    const warnings = result.warnings.map((warning) => issue(warning.code, warning.refs, warning.detail));
+    return { regions, frame: sketch.frame, curveOf: () => ({ type: 'general' }), facts: result.facts, warnings };
   }
 }
 

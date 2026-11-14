@@ -1,6 +1,6 @@
 // Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, type Command, type Constraint, type Engine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, type Command, type Constraint, type Engine } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { apiDescription, apiText, constraintCatalog, engineTypes } from '../src/api';
 import { callTool, tools } from '../src/tools';
@@ -239,6 +239,51 @@ describe('hrany tělesa', () => {
 });
 
 describe('model, tělesa a příkazy', () => {
+  it('gears: the generator catalog is in the description, its example is accepted, get_model returns the facts', () => {
+    const description = apiDescription();
+    expect(description.generators.map((entry) => entry.generator)).toEqual(Object.keys(GENERATORS));
+    const text = apiText();
+    expect(text).toContain('# Profile generators');
+    expect(text).toContain('- involuteGear (Involute gear): ');
+    expect(text).toContain('  - teeth (required): Number of teeth, count, an integer, in the interval [4, 500]');
+    expect(text).toContain('  - pressureAngle: Pressure angle, rad, in the interval (0, π/2), default 0.3490658503988659');
+    expect(text).toContain('  - internal: Internal (the cut that makes a ring gear): true or false, default false');
+    expect(text).toContain('  - meshWith (In mesh with): ');
+    expect(text).toContain('- extrude: profile/params/teeth (Number of teeth, count, an integer, in the interval [4, 500] (only when profile/generator is involuteGear))');
+    for (const fact of Object.keys(GENERATORS.involuteGear.facts)) expect(text, fact).toContain(`  - ${fact}: `);
+
+    const engine = newEngine();
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setParameter', name: 'Zs', expr: '18' },
+        sketch('s'),
+        { type: 'addPoint', sketch: 's', id: 'cp', x: 20.25, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'sun', curve: { type: 'circle', center: 'origin', construction: true }, radius: 8.1 },
+        { type: 'addCurve', sketch: 's', id: 'planet', curve: { type: 'circle', center: 'cp', construction: true }, radius: 12.15 },
+      ],
+    });
+    // the example of the catalog with real IDs in place of the placeholders
+    const example = description.generators[0].example as { operands: Record<string, string>; params: Record<string, number> };
+    const gear = (id: string, circle: string, params: object, refs?: object): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { ...example, sketch: 's', operands: { circle }, params: { ...example.params, ...params }, ...(refs ? { refs } : {}) }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' } as never });
+    expect(execute(engine, gear('g1', 'sun', {}))).toMatchObject({ ok: true, bodies: ['g1'], problems: [] });
+    expect(execute(engine, gear('g2', 'planet', { teeth: 27 }, { meshWith: 'g1' }))).toMatchObject({ ok: true, bodies: ['g1', 'g2'], problems: [] });
+    const model = ok(engine, 'get_model');
+    const [g1, g2] = ['g1', 'g2'].map((id) => model.features.find((f: { id: string }) => f.id === id));
+    expect(g1).toMatchObject({ profile: { generator: 'involuteGear', params: { teeth: 18, backlash: 0 } }, facts: { module: 0.9, teeth: 18, pitchDiameter: 16.2, tipDiameter: 18, rootDiameter: 13.95, meshed: false, center: [0, 0, 0], axis: [0, 0, 1] } });
+    expect(g2.facts).toMatchObject({ module: 0.9, teeth: 27, meshed: true, center: [20.25, 0, 0] });
+    // an expression in a parameter and one changed entry
+    expect(execute(engine, { type: 'updateFeature', id: 'g1', patch: { profile: { params: { teeth: 'Zs', backlash: 0.05 } } } })).toMatchObject({ ok: true, problems: [] });
+    expect(ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'g1')).toMatchObject({ expressions: { 'profile/params/teeth': 'Zs' }, facts: { backlash: 0.05 } });
+    // a mesh that does not hold is a warning in `problems`, with the reason
+    const off = execute(engine, { type: 'setParameter', name: 'Zs', expr: '20' });
+    expect(off.problems).toEqual([{ id: 'g2', name: 'g2', status: 'warning', warnings: [{ code: 'gearMesh', message: expect.stringContaining('the modules differ') }] }]);
+    // a tooth count out of range is an invalid command with the range in the message
+    expect(callTool(engine, 'execute', { command: gear('g3', 'sun', { teeth: 2 }) })).toMatchObject({ ok: false, error: expect.stringContaining('params.teeth: the value 2 is not in the interval [4, 500]') });
+    // the side of the teeth is one face that is not planar
+    expect(ok(engine, 'get_body', { body: 'g1' }).faces.map((face: { label: string; planar: boolean }) => [face.label, face.planar])).toEqual([['g1/startCap', true], ['g1/endCap', true], ['g1/side/teeth', false]]);
+  });
+
   it('a cut through all with two targets: the result names the target the tool missed', () => {
     const engine = newEngine();
     rectangle(engine, true);

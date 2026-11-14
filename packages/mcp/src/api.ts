@@ -1,7 +1,7 @@
 // Popis API enginu pro AI. Sestavuje se ze zdrojů enginu, ne z ručně psaného seznamu: typy
 // dokumentu a příkazů se berou přímo ze zdrojového textu types.ts a vazby z katalogu, kterým se
 // řídí validace; typy features z registru enginu. Co engine přijme, to popis obsahuje, a naopak.
-import { CONSTRAINTS, EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, FEATURE_TYPE_INFO, type FeatureTypeInfo, type NumberSpec, rangeText } from '@trymesh/engine';
+import { CONSTRAINTS, EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, FEATURE_TYPE_INFO, type FeatureTypeInfo, GENERATORS, type NumberSpec, isFlag, rangeText } from '@trymesh/engine';
 import typesSource from '../../engine/src/types.ts?raw';
 
 const CONVENTIONS = [
@@ -13,7 +13,9 @@ const CONVENTIONS = [
   'Stejnou řídicí vazbu (stejný typ a operandy) nejde přidat dvakrát. Kóta s `driving: false` jen měří.',
   'Closed regions of a sketch (`regions` in the result of get_sketch) are extruded by the command addFeature with a feature of type extrude: `profile` is `{ type: "regions", sketch, regions }`, where `regions` is a list of `{ outerLoop }` taken from get_sketch. The extent is one of two variants. `{ type: "distance", start, distance }`: `start` is the offset of the start from the sketch plane along its normal (usually 0, may be negative), `distance` is measured from the start; a positive one points along the normal of the sketch plane, for a sketch on a face out of the body. `{ type: "throughAll", side }` is for the operation `cut` only: the tool passes through all target bodies and its length follows them at every recompute. `side` is `forward` (along the normal of the sketch plane), `backward` (against it) or `both`; on a face of a body an ordinary hole is `backward`, and `both` is the safe default unless the body reaches to both sides of the plane and only one part should be cut.',
   'The ID of a body is the ID of the extrusion with the operation `new`. The operations `add` and `cut` need `targets`: exactly one body for `add`, one or more for `cut` (a screw hole through two bolted parts is one cut with both bodies as targets). A cut that would remove a whole target is an error and changes none of them; a target the tool does not reach is left unchanged and the warning `noEffect` lists it in `refs`.',
-  'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici, `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
+  'Instead of regions, the profile of an extrusion may come from a profile generator: `profile` is `{ type: "generated", generator, sketch, operands, params, refs }` (section Profile generators). `operands` name entities of the sketch, `params` take numbers, expressions and flags (what is left out gets its default), `refs` name earlier features. The generator reads only the solved operands, so the sketch needs no closed regions; pitch circles of gears in mesh touch and should be construction circles. Operation, extent and targets work as for any extrusion. The result of the feature carries `facts` (for a gear its module, diameters and the rotation used): read them with get_model to verify what was built. updateFeature merges the dictionaries by entry: `{ profile: { params: { teeth: 24 } } }` changes one parameter, `null` returns a parameter to its default or removes a reference.',
+  'Gears: a gear is an extrusion with the generator involuteGear over its pitch circle; the module follows from the circle diameter and the tooth count, so dimension the circle with an expression such as `"module * Zs"`. Give every gear after the first one `refs: { meshWith: <the gear it meshes with> }`: the rotation is then computed and stays right when tooth counts change. A ring gear is a cut with `internal: true` into solid material. The warnings gearMesh (the reference could not be used, the parameter rotation was used) and gearInterference show up in `problems`.',
+  'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
   'Promítnutá hrana (addExternal) je ve skice pevná křivka: úsečka má odvozené body `<id>/a` a `<id>/b`, kružnice `<id>/center`. Jde k nim vázat a kótovat.',
   'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
   'An expression in a feature field must evaluate right away (the parameters it uses must exist), otherwise the command is invalid. A parameter itself may refer to a parameter that does not exist yet; get_parameters returns its state. A number sent to a field with an expression removes the expression; fields updateFeature does not mention keep theirs. The command setField (`{ feature, path, value }`) changes a single field.',
@@ -82,6 +84,45 @@ export function numericFields(): { owner: string; path: string; description: str
   ];
 }
 
+export interface GeneratorDescription {
+  generator: string;
+  title: string;
+  summary: string;
+  operands: { name: string; kinds: string[] }[];
+  params: { name: string; description: string; required: boolean }[];
+  refs: { name: string; title: string; summary: string; generators: string[] }[];
+  sides: string[];
+  facts: { name: string; description: string }[];
+  example: Record<string, unknown>;
+}
+
+// Profile generators from the catalog of the engine, each with an example profile the engine accepts
+// once the operands are replaced by entities of the sketch.
+export function generatorCatalog(): GeneratorDescription[] {
+  return Object.entries(GENERATORS).map(([generator, spec]) => ({
+    generator,
+    title: spec.title,
+    summary: spec.summary,
+    operands: spec.operands.map((operand) => ({ name: operand.field, kinds: [...operand.kinds] })),
+    params: Object.entries(spec.params).map(([name, param]) => ({
+      name,
+      description: isFlag(param) ? `${param.title}: true or false, default ${param.default}` : fieldText(param),
+      required: !isFlag(param) && param.default === undefined,
+    })),
+    refs: Object.entries(spec.refs).map(([name, ref]) => ({ name, title: ref.title, summary: ref.summary, generators: [...ref.generators] })),
+    sides: [...spec.sides],
+    facts: Object.entries(spec.facts).map(([name, description]) => ({ name, description })),
+    example: {
+      type: 'generated',
+      generator,
+      sketch: '<sketch>',
+      operands: Object.fromEntries(spec.operands.map((operand) => [operand.field, `<${operand.kinds.join('|')}>`])),
+      // required parameters only; the others have defaults
+      params: Object.fromEntries(Object.entries(spec.params).flatMap(([name, param]) => (isFlag(param) || param.default !== undefined ? [] : [[name, param.min?.value === undefined ? 1 : Math.max(param.min.value, 18)]]))),
+    },
+  }));
+}
+
 export function featureCatalog(): FeatureDescription[] {
   return Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => ({ type, ...info }));
 }
@@ -89,17 +130,30 @@ export function featureCatalog(): FeatureDescription[] {
 export function apiDescription(): {
   conventions: string[];
   features: FeatureDescription[];
+  generators: GeneratorDescription[];
   constraints: ConstraintDescription[];
   expressions: ReturnType<typeof expressionSyntax>;
   numericFields: ReturnType<typeof numericFields>;
   types: string;
 } {
-  return { conventions: CONVENTIONS, features: featureCatalog(), constraints: constraintCatalog(), expressions: expressionSyntax(), numericFields: numericFields(), types: engineTypes() };
+  return { conventions: CONVENTIONS, features: featureCatalog(), generators: generatorCatalog(), constraints: constraintCatalog(), expressions: expressionSyntax(), numericFields: numericFields(), types: engineTypes() };
 }
 
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, constraints, expressions, numericFields: fields, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, types } = apiDescription();
+  const generator = (entry: GeneratorDescription): string =>
+    [
+      `- ${entry.generator} (${entry.title}): ${entry.summary}`,
+      `  operands: ${entry.operands.map((operand) => `${operand.name}: ${operand.kinds.join(' | ')}`).join(', ')}`,
+      '  params:',
+      ...entry.params.map((param) => `  - ${param.name}${param.required ? ' (required)' : ''}: ${param.description}`),
+      ...(entry.refs.length ? ['  refs:', ...entry.refs.map((ref) => `  - ${ref.name} (${ref.title}): ${ref.summary}`)] : []),
+      `  side faces: ${entry.sides.join(', ')}`,
+      '  facts in the feature result:',
+      ...entry.facts.map((fact) => `  - ${fact.name}: ${fact.description}`),
+      `  example: ${JSON.stringify(entry.example)}`,
+    ].join('\n');
   const feature = (entry: FeatureDescription): string => {
     const body = entry.bodies === 'self' ? ' Může vytvořit těleso se svým ID.' : '';
     const update = entry.updatable.length > 0 ? ` updateFeature mění pole: ${entry.updatable.join(', ')}.` : ' Obsah mění vlastní příkazy, ne updateFeature.';
@@ -117,6 +171,10 @@ export function apiText(): string {
     '# Features',
     'Feature je objekt `feature` příkazu addFeature; přesný tvar je v typech níže.',
     ...features.map(feature),
+    '',
+    '# Profile generators',
+    'A generator builds the profile of an extrusion from entities of a sketch and parameters: `profile` of the extrusion is `{ type: "generated", generator, sketch, operands, params, refs }`. Numeric parameters are numeric fields at `profile/params/<name>`.',
+    ...generators.map(generator),
     '',
     '# Vazby a kóty',
     'Vazba je objekt `constraint` příkazu addConstraint. Operandy jsou ID entit skici daného druhu; kóty mají navíc `value` a `driving`.',

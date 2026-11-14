@@ -299,7 +299,7 @@ describe('příkazy skici', () => {
     expect(noPoint.radii).toEqual({});
     expect(Object.keys(noPoint.constraints)).toEqual(['k1', 'k2']);
     // křivky v regions pozdějšího extrude zůstávají (extrude skončí v chybě až při přepočtu)
-    expect((run(doc, { type: 'removeEntity', sketch: 'S1', id: 'l1' }).features[1] as ExtrudeFeature).profile.regions[0].outerLoop).toContain('l1');
+    expect(run(doc, { type: 'removeEntity', sketch: 'S1', id: 'l1' }).features[1]).toMatchObject({ profile: { regions: [{ outerLoop: expect.arrayContaining(['l1']) }] } });
     invalid(doc, { type: 'removeEntity', sketch: 'S1', id: 'origin' }, /smazat nejde/);
     invalid(doc, { type: 'removeEntity', sketch: 'S1', id: 'k1' }, /smazat nejde/);
     expect(Object.keys(sketchOf(run(doc, { type: 'removeConstraint', sketch: 'S1', id: 'k1' })).constraints)).toEqual(['k2', 'k3', 'k4']);
@@ -414,7 +414,7 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.features[1].extent.distance = 0), /must not be zero/);
     bad((d) => (d.features[1].extent.type = 'throughAll'), /throughAll is only for the operation cut/);
     bad((d) => (d.features[1].extent.type = 'upToFace'), /čeká se jedna z hodnot distance, throughAll/);
-    bad((d) => (d.features[1].profile.type = 'generator'), /čeká se regions/);
+    bad((d) => (d.features[1].profile.type = 'generator'), /profile\.type: čeká se jedna z hodnot regions, generated/);
     bad((d) => d.parameters.push({ id: 'a', value: 1 }), /parameters\[0\].name/);
     bad((d) => d.parameters.push({ name: 'a', expr: '1 +' }), /the expression is incomplete/);
     bad((d) => d.parameters.push({ name: 'a', expr: '1' }, { name: 'a', expr: '2' }), /is in the list twice/);

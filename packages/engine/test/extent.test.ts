@@ -54,7 +54,7 @@ describe('extent of an extrusion', () => {
     invalid(doc, { type: 'setField', feature: 'H', path: 'extent/distance', value: 5 }, /is not a numeric field/);
     invalid(doc, add(extrude('H2', { extent: through('both'), operation: 'cut', targets: ['A'], expressions: { 'extent/distance': 'h' } })), /"extent\/distance" is not a numeric field of this feature/);
     // the static catalog says which variant has the fields
-    expect(FEATURE_TYPE_INFO.extrude.fields.map((f) => [f.path, f.when])).toEqual([
+    expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.path.startsWith('extent/')).map((f) => [f.path, f.when])).toEqual([
       ['extent/start', { path: 'extent/type', equals: 'distance' }],
       ['extent/distance', { path: 'extent/type', equals: 'distance' }],
     ]);

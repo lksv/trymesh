@@ -1,6 +1,25 @@
 // Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
 // sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
-import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type Expr, type ExtrudeFeature, type GeometricConstraint, type Id, type Input, type PlaneFeature, type RegionRef, type SketchFeature, type Vec2 } from '@trymesh/engine';
+import {
+  CONSTRAINTS,
+  type Command,
+  type Constraint,
+  type Dimension,
+  type DimensionShape,
+  type Expr,
+  type ExtrudeFeature,
+  GENERATORS,
+  type GeneratorName,
+  type GeometricConstraint,
+  type Id,
+  type Input,
+  type PlaneFeature,
+  type ProfileSource,
+  type RegionRef,
+  type SketchFeature,
+  type Vec2,
+  isFlag,
+} from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
 // Místo kliknutí ve skice a to, k čemu se přichytilo.
@@ -226,6 +245,7 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
 // expression. When an existing feature is edited the form therefore sends its expressions back
 // instead of removing them with numbers.
 export type ExtrudeDraft = Input<ExtrudeFeature>;
+type ProfileSourcePatch = Input<Extract<ProfileSource, { type: 'regions' }>> | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs'> & { refs: Record<string, Id | null> });
 export type PlaneDraft = Input<PlaneFeature>;
 
 // A change of an extrusion draft.
@@ -239,11 +259,21 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   does not lose the start, the distance and their expressions.
 // - `start` and `distance` belong to the distance extent and `side` to "through all"; a change for
 //   the other variant is ignored.
+// - `source` switches the profile between regions of the sketch and a profile generator. A new
+//   generated profile gets the operands the form found in the sketch and the defaults of the catalog.
+//   `operands`, `params` and `refs` change entries of a generated profile (`null` removes a
+//   reference); `regions` belongs to a profile of regions.
+export type ProfileKind = 'regions' | GeneratorName;
+export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'regions' ? 'regions' : profile.generator);
 export type ExtentKind = ExtrudeFeature['extent']['type'];
 export type ExtentSide = Extract<ExtrudeFeature['extent'], { type: 'throughAll' }>['side'];
 export interface ExtrudeChange {
+  source?: ProfileKind;
   sketch?: Id;
   regions?: RegionRef[];
+  operands?: Record<string, Id>;
+  params?: Record<string, number | Expr | boolean>;
+  refs?: Record<string, Id | null>;
   extent?: ExtentKind;
   start?: number | Expr;
   distance?: number | Expr;
@@ -253,6 +283,24 @@ export interface ExtrudeChange {
   toggleTarget?: Id;
 }
 const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
+// What a new draft starts with where the catalog has no default (the parameter is required).
+const FORM_DEFAULTS: Record<GeneratorName, Record<string, number>> = { involuteGear: { teeth: 18 } };
+
+// A new generated profile: the defaults of the catalog; the operands are filled in by the caller.
+export function generatedProfile(generator: GeneratorName, sketch: Id, operands: Record<string, Id>): Extract<ExtrudeDraft['profile'], { type: 'generated' }> {
+  const params = Object.fromEntries(Object.entries(GENERATORS[generator].params).map(([name, spec]) => [name, isFlag(spec) ? spec.default : (spec.default ?? FORM_DEFAULTS[generator][name] ?? 0)]));
+  return { type: 'generated', generator, sketch, operands, params };
+}
+
+function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange): ExtrudeDraft['profile'] {
+  const sketch = change.sketch ?? profile.sketch;
+  let next = profile;
+  if (change.source !== undefined && change.source !== profileKind(profile)) next = change.source === 'regions' ? { type: 'regions', sketch, regions: [] } : generatedProfile(change.source, sketch, {});
+  if (next.type === 'regions') return { ...next, sketch, ...(change.regions === undefined ? {} : { regions: change.regions }) };
+  const refs = Object.fromEntries(Object.entries({ ...next.refs, ...change.refs }).filter((entry): entry is [string, Id] => entry[1] !== null));
+  const { refs: _old, ...rest } = next;
+  return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params: { ...next.params, ...change.params }, ...(Object.keys(refs).length ? { refs } : {}) };
+}
 export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], distance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE): ExtrudeDraft {
   const operation = change.operation ?? draft.operation;
   let extent = draft.extent;
@@ -272,7 +320,7 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
   const { targets: _old, ...rest } = draft;
   return {
     ...rest,
-    profile: { ...draft.profile, ...(change.sketch === undefined ? {} : { sketch: change.sketch }), ...(change.regions === undefined ? {} : { regions: change.regions }) },
+    profile: changeProfile(draft.profile, change),
     extent,
     operation,
     ...(operation === 'new' || targets === undefined ? {} : { targets }),
@@ -283,7 +331,11 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
 export function draftCommand(draft: ExtrudeDraft | PlaneDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
-  const { id, profile, extent, operation, targets } = draft;
+  const { id, extent, operation, targets } = draft;
+  // The patch merges with the feature, so a reference the draft no longer has must be removed
+  // explicitly; every other entry of the profile is in the draft.
+  const profile: ProfileSourcePatch =
+    draft.profile.type === 'regions' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 

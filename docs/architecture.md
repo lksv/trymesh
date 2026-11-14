@@ -156,7 +156,13 @@ interface ExtrudeFeature extends FeatureBase {
   targets?: Id[];                   // target bodies: none for new, exactly one for add, one or more for cut
 }
 
-type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
+type ProfileSource =
+  | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+  // a profile generator from the catalog (see Extrude, Profile generators)
+  | { type: 'generated'; generator: GeneratorName; sketch: Id;
+      operands: Record<string, Id>;                        // entities of the sketch by catalog name
+      params: Record<string, number | boolean | string>;   // numbers are numeric fields
+      refs?: Record<string, Id> };                         // earlier features by catalog name
 
 // `start` je posun začátku od roviny skici, `distance` se měří od začátku; obojí podél normály
 // roviny skici, kladné ve směru normály. Těleso vyplní interval [start, start + distance].
@@ -166,7 +172,7 @@ type Extent =
   | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
 ```
 
-The profile source and the extent are variants distinguished by the field `type`. The extent has two (D35, point 2); a further profile source (a profile generator) comes with D35 point 3 and the extent "up to a face" later.
+The profile source and the extent are variants distinguished by the field `type`. Each has two (D35, points 2 and 3); the extent "up to a face" comes later. A generated profile with another `generator` counts as another variant as well.
 
 ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). Vysunutí vytváří jen těleso bez místního jména; druhý tvar je připravený pro features, které vytvoří těles víc (pole, D35 bod 4). Délky jsou v milimetrech, úhly v radiánech.
 
@@ -367,7 +373,7 @@ Stěna má strukturované jméno odvozené z původu:
 
 ```ts
 type FaceName =
-  | { feature: Id; role: 'side'; curve: Id }     // z křivky skici
+  | { feature: Id; role: 'side'; curve: Id }     // z křivky skici; for a generated profile the side name of the catalog (`teeth`)
   | { feature: Id; role: 'startCap' }            // víko na začátku rozsahu (při nulovém `start` v rovině skici)
   | { feature: Id; role: 'endCap' };             // protější víko
 ```
@@ -383,6 +389,9 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | Stěna zanikne | Jméno nemá žádný trojúhelník → reference je rozbitá → feature je v chybě. |
 | Dvě stěny splynou do jedné roviny | Zůstávají dvě stěny s různými jmény. |
 | Kružnice nebo oblouk | Všechny segmenty mají stejné jméno, válcová plocha je jedna stěna. |
+| A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
+
+The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has three kinds: a plane, a cylinder and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and only an edge between a plane and a cylinder is a circle.
 
 ### Hrany (D22)
 
@@ -400,7 +409,7 @@ interface EdgeName { a: FaceName; b: FaceName }   // a < b v lexikografickém po
 - Hrana mezi dvěma stěnami v téže rovině (výstupek zarovnaný s horní stěnou) má druh `coplanar`. Průsečnice neexistuje a hranice nemusí být přímá. Nekreslí se a nejde promítnout. „V téže rovině" znamená, že normály obou stěn svírají úhel pod úhlovou tolerancí enginu. Přesná rovnoběžnost nestačí: stěna z úsečky přichycené na krajní body promítnutých hran je od stěny tělesa odkloněná o zlomek úhlové vteřiny a průsečnice takových rovin by vyšla kilometry daleko.
 - Hrana se vrací jako seznam úseček (`segments`), ne jako jedna lomená čára: hrana rozdělená výřezem má víc nesouvislých úseků a jedna čára by je spojila přes prázdný prostor.
 - Kruhová hrana je rozhraní boční stěny vzniklé z kružnice nebo oblouku a rovinné stěny kolmé na osu extrude. Střed a poloměr se počítají analyticky z vyřešené zdrojové křivky skici, ze sítě se nebere nic kromě ověření existence.
-- Ostatní hrany (válec říznutý šikmou rovinou, průnik dvou válců) mají druh `other` a promítnout nejdou.
+- Ostatní hrany (válec říznutý šikmou rovinou, průnik dvou válců, the edge of a cap with the side of a generated profile) mají druh `other` a promítnout nejdou.
 
 Pojmenování hran je zároveň předpokladem pro budoucí rovinu nakloněnou kolem hrany, zaoblení a zkosení.
 
@@ -413,6 +422,7 @@ Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. S
 | víko | počátek rodičovské skici promítnutý do roviny víka | osa Y rodičovské skici | ven z tělesa |
 | boční stěna z úsečky | počáteční bod úsečky (`a`) v rovině rodičovské skici | normála rodičovské skici | ven z tělesa |
 | boční stěna z kružnice nebo oblouku | není rovinná → chyba `nonPlanarFace` | | |
+| the side of a generated profile | not planar → error `nonPlanarFace` | | |
 
 Osa X se dopočítá jako Y × N. Nezávisí tedy na pořadí bodů úsečky ani na orientaci smyčky.
 
@@ -446,7 +456,7 @@ Omezení PoC: oblasti vzniklé křížením křivek se nedetekují, křížení 
 
 Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá později vyměnit nebo zopakovat samostatně:
 
-1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
+1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. A generated profile comes from its generator (below). U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
 2. **Tool.** The engine builds the closed mesh of a prism over an interval along the normal of the sketch plane: two caps (triangulated by the kernel) and the side faces. For the extent `distance` the interval is `start` to `start + distance`; for `throughAll` it is measured against the targets (below). Every triangle gets a face number by name; `startCap` is the cap at the start of the interval and `endCap` at its end, whichever way the interval points.
 3. **Application.** `new` stores the tool as a body. `add` and `cut` hand a tool recipe to `applyTool`, which runs one boolean per target body.
 
@@ -464,6 +474,46 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 - The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern will measure it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
 - The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
+
+### Profile generators (D35, point 3)
+
+A generator turns a few entities of a sketch and a few parameters into the loops an extrusion sweeps. Operation, extent and targets belong to the extrusion, so a generated profile gets "through all", several targets and later the pattern without further work.
+
+**Catalog.** `GENERATORS` in `generators.ts` is the single source of truth, like the constraint catalog. An entry lists:
+
+| Part | Meaning |
+|---|---|
+| `operands` | Entities of the sketch by name and the entity kinds accepted (a gear: `circle`). Own curves, construction or not, and projected ones qualify |
+| `params` | Numbers (`NumberSpec`: unit, range, default) and flags. A number is a numeric field at `profile/params/<name>` and accepts an expression. A number without a default is required. The document type already allows a string, for options and text of later generators |
+| `refs` | References to earlier extrusions whose profile comes from one of the listed generators |
+| `sides` | Names of the side faces the generator creates |
+| `facts` | What the generator publishes about the profile, with descriptions |
+
+Validation, expressions, `FEATURE_TYPE_INFO.extrude.fields` (the parameters with `when: profile/generator = <name>`), the app's form and the API description for AI are built from the catalog. A new generator is an entry and a build function; the document shape does not change.
+
+**Validation.** Dictionaries may hold only the names the catalog knows. Parameters a command leaves out get their defaults and are stored; the profile is stored in the order of the catalog. A command verifies the references the feature did not have before, as everywhere: the sketch, the operands (the entity exists in that sketch and has an accepted kind; `FeatureRef` of the kind `entity`) and the references to other features (an earlier extrusion with one of the accepted generators; kind `generated`). Loading a document verifies only the shape.
+
+**Recompute.** The generator is a pure function `(operands, params, refs, frame, chordTolerance) → regions, facts, warnings` or a failure with a message.
+
+- It reads only the solved operands (centre and radius of the circle), so it does not depend on the profile of the sketch being valid. Pitch circles of gears in mesh touch, which invalidates the profile of the sketch unless they are construction circles.
+- An operand that is no longer in the sketch is `brokenReference` with the entity in `refs`.
+- A failure (a pointed tooth) and a profile above 50 000 points are `invalidProfile` with the generator's message.
+- `refs` are handed over as the facts of the features referred to; a feature that is missing, suppressed or in error has none, and the generator decides what that means (a gear warns and goes on).
+- The regions have the shape of sketch regions (outer loop counter-clockwise, holes clockwise), so the prism builder takes them as they are. Every edge carries the name of its side instead of a curve ID.
+- `facts` and the generator's warnings become part of the feature result (`FeatureResult.facts`); warnings make the status `warning`. A feature in error publishes no facts.
+
+**Involute gear** (`involuteGear`). The pitch circle is the operand, the module follows from its diameter and the tooth count.
+
+- Parameters: `teeth` (integer, 4 to 500, required), `pressureAngle` (radians, in (0, π/2), default 20°), `backlash` (mm along the pitch arc, default 0), `rotation` (radians, default 0) and the flag `internal`.
+- An external profile is the gear: tip circle `r + m`, root circle `r − 1.25 m`. An internal profile is the tool that cuts a ring gear: it reaches from the tip circle of the ring `r − m` to its root circle `r + 1.25 m` and removes the centre as well.
+- The flank is an involute from the base circle; below it the flank is radial. No profile shift, no fillet at the root.
+- Backlash thins the tooth of an external gear on the pitch circle and widens the tooth space of a ring.
+- The flank is divided evenly in arc length until the chords stay within `chordTolerance`. Chords lie inside the exact tooth, which is the safe side for a gear. The flank of the ring tool is moved outwards by the sagitta of the chords (a curve parallel to an involute is the same involute turned by distance / base radius), so the polyline lies outside the exact tool and gears with zero backlash do not overlap. Without this the ring's teeth were up to 0.006 mm too thick.
+- `rotation` is the direction of the axis of one tooth in sketch coordinates (for a ring of one tooth space).
+- **Mesh.** With `refs.meshWith` the rotation is computed from the other gear's facts, which are in model coordinates, so the two gears may come from different sketches with parallel planes, also mirrored ones. The phase of a gear in a direction from its centre is the fractional part of `(direction − rotation) · teeth / 2π`. For two external gears the phases at the pitch point add up to 1/2; for a gear inside a ring they are equal. Either gear of an internal pair may be the one that refers.
+- The mesh needs equal modules (relative 1e-6) and pressure angles, parallel axes and tangent pitch circles (1e-6 of the size). If something does not hold, or the other gear has no facts, the feature has the warning `gearMesh` with the reason and uses the parameter `rotation`.
+- With the mesh in place the generator checks whether the tip of one gear runs into the root of the other below its base circle (`gearInterference`): the limit is `√(rb² + (a · sin α)²)`, both gears of an external pair are judged, and for a ring the inequality is reversed.
+- Facts: `module`, `teeth`, `pressureAngle`, `backlash`, `internal`, `pitchDiameter`, `baseDiameter`, `tipDiameter`, `rootDiameter` (of the gear; for a ring the tip circle is the inner one), `rotation`, `meshed`, and in model coordinates `center`, `axis` and `toothDirection`.
 
 Výsledky, které nejsou běžné:
 
@@ -642,7 +692,8 @@ type IssueCode =
   | 'invalidExpression'            // an error everywhere except a sketch, where it is a warning
   // varování: feature výsledek má
   | 'sketchConflict' | 'brokenProjection' | 'degenerateProjection' | 'unsupportedProjection'
-  | 'noEffect';
+  | 'noEffect'
+  | 'gearMesh' | 'gearInterference';   // from the gear generator, see Profile generators
 
 interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
@@ -660,6 +711,7 @@ interface FeatureResult {
     regions: { ref: RegionRef; loops: Float64Array[] }[];   // pro vykreslení a výběr
   };
   fieldErrors?: Record<FieldPath, ExpressionError>;   // expression errors by field
+  facts?: Record<string, number | boolean | Vec3>;    // what the profile generator published
   values?: Record<FieldPath, number>;                 // values of fields with an expression used in this recompute
 }
 ```
@@ -746,7 +798,8 @@ type Command =
 
 **`updateFeature` je slučovací změna.** `patch` obsahuje jen pole, která se mění, ve stejném tvaru jako feature; `{ extent: { distance: 12 } }` změní vzdálenost a začátek nechá být. Pravidla:
 
-- Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná.
+- Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná. A generated profile with another `generator` is another variant too.
+- The dictionaries of a generated profile (`operands`, `params`, `refs`) merge by entry: `{ profile: { params: { rotation: 'deg(5)' } } }` leaves the other parameters with their expressions. `null` removes an entry: a parameter returns to its default and loses its expression (a required one cannot be removed), a reference ceases to exist. Removing an entry that is not there is not an error.
 - Odkaz (objekt s polem `kind`, tedy `PlaneRef`) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
 - `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
 - Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.
@@ -807,7 +860,7 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 | Nástroj | Co dělá |
 |---|---|
 | `describe_api` | Konvence, katalog vazeb s operandy a příklady, typy dokumentu a příkazů. Generuje se ze zdrojů enginu. |
-| `get_model` | Časová osa se stavy a chybami, tělesa s objemem a rozměry; `at` = stav po dané feature. |
+| `get_model` | Časová osa se stavy a chybami, tělesa s objemem a rozměry; `at` = stav po dané feature. An extrusion with a generated profile carries its `facts`. |
 | `get_document` | Dokument tak, jak se ukládá, nebo jedna feature. |
 | `get_sketch` | Body s polohami, křivky, vazby, promítnutá geometrie, oblasti, diagnostika a slovní rada (`advice`). A constraint with expressions lists them by value name (`expressions: { value: "module * Zs" }`), so a constraint with more than one value stays unambiguous. |
 | `get_parameters` | Parameters with expressions, values and errors; checks with their result. |
@@ -820,7 +873,7 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 
 Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrací jako text s příznakem chyby, ne jako výjimka protokolu. Malý výsledek se vypisuje s odsazením, velký úsporně.
 
-`describe_api` also lists the expression syntax (operators, functions, constants) and the numeric fields that accept an expression; both come from the engine (`EXPRESSION_FUNCTIONS`, `FEATURE_TYPE_INFO[type].fields`, `CONSTRAINTS[type].values`), so a new field or function shows up without touching the server.
+`describe_api` lists the profile generators from `GENERATORS` (operands, parameters with ranges and defaults, references, side names, facts and an example profile). It also lists the expression syntax (operators, functions, constants) and the numeric fields that accept an expression; both come from the engine (`EXPRESSION_FUNCTIONS`, `FEATURE_TYPE_INFO[type].fields`, `CONSTRAINTS[type].values`), so a new field or function shows up without touching the server.
 
 **Proč se nové vazby a příkazy objeví samy.** `execute` bere jakoukoli hodnotu typu `Command` a validuje ji engine. `describe_api` skládá text ze tří zdrojů: z ručně psaných konvencí, z katalogu vazeb (`CONSTRAINTS`: jméno, shrnutí, operandy a jejich druhy, pravidlo hodnoty) a ze zdrojového textu `engine/src/types.ts` bez sekce portů. Vazba přidaná do enginu je tedy v popisu i v nástrojích bez změny v `packages/mcp`.
 
@@ -841,7 +894,7 @@ Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrac�
 | 3 Solver | `SolveResult` nese stupně volnosti a konfliktní vazby. Konfliktní skica má stav `warning` a model nezmizí. Tažení přes `preview` s `drag`. |
 | 4 Round-trip | Dokument je jediný zdroj pravdy, `evaluate` je čistá deterministická funkce. Po načtení se skici neřeší znovu, protože razítko odpovídá. Dokument s feature v chybě se načte také: odkaz na smazanou feature validaci neporušuje. |
 | 5 Časová osa a undo | Vlastní rovina je feature jako každá jiná. Vložení, potlačení a přesun jsou příkazy nad seznamem features, validace hlídá pořadí závislostí. Undo vrací předchozí dokument. |
-| 9 Robot joint (in progress) | As far as point 2 of D35 reaches (`packages/scenarios/test/scenario9.test.ts`): parameters, checks, pitch circles dimensioned by expressions, change of the ratio, save and load (parts a, i, k); the plate, the sun flange and the housing with holes through all, one of them through two bodies (parts d, e, f without teeth, patterns and pockets). The rest follows with points 3 to 7. |
+| 9 Robot joint (in progress) | As far as point 3 of D35 reaches (`packages/scenarios/test/scenario9.test.ts`): parameters, checks, pitch circles dimensioned by expressions, save and load (parts a, k); the sun gear, one planet and the ring gear in mesh without overlap (part b); the plate, the sun flange and the housing with holes through all, one of them through two bodies (parts d, e, f without patterns and pockets); the change of the ratio to 4 and to 6 with everything recomputed and in mesh (part i). A parameter change recomputes the joint so far in about 0.6 s. The rest follows with points 4 to 7. |
 | 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`, i když je jeho bok vedle roviny o chybu float32. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. Po odříznutém nálitku nezůstanou zbytky jeho stěn, takže reference na ně se rozbijí. |
 
 ## Výsledky spiků

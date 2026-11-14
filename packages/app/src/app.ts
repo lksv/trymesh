@@ -29,6 +29,8 @@ import {
   type Vec3,
   CONSTRAINTS,
   FEATURE_TYPE_INFO,
+  GENERATORS,
+  type GeneratorName,
   constraintKey,
   constraintPath,
   duplicateOf,
@@ -36,6 +38,7 @@ import {
   emptySketch,
   featureInput,
   isDimension,
+  isFlag,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h } from './dom';
@@ -51,7 +54,10 @@ import {
   arcCommands,
   asConstruction,
   type ExtrudeChange,
+  type ProfileKind,
   changeExtrude,
+  generatedProfile,
+  profileKind,
   circleCommands,
   deleteCommands,
   dimensionFor,
@@ -141,6 +147,16 @@ const TOOLS: [Tool, string, string][] = [
 const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
 const CHECK_STATUS = { ok: '✓ holds', failed: '✗ fails', error: '! cannot be evaluated' };
 const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
+// Facts of a generated profile shown below the form and at the selected feature, with their units.
+const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Unit][]> = {
+  involuteGear: [
+    ['module', 'module', 'mm'],
+    ['pitchDiameter', 'pitch ⌀', 'mm'],
+    ['tipDiameter', 'tip ⌀', 'mm'],
+    ['rootDiameter', 'root ⌀', 'mm'],
+    ['rotation', 'rotation', 'rad'],
+  ],
+};
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
 const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
@@ -627,7 +643,10 @@ export class App {
         const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shown('extent/start', f.extent.start)} mm` : '';
         const extent = f.extent.type === 'distance' ? `distance ${shown('extent/distance', f.extent.distance)} mm${start}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
         const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => this.nameOf(id)).join(', ')}` : '';
-        out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, regions: ${f.profile.regions.length}${targets}.`));
+        const profile = f.profile.type === 'regions' ? `regions: ${f.profile.regions.length}` : `${GENERATORS[f.profile.generator].title.toLowerCase()} over ${Object.values(f.profile.operands).join(', ')}`;
+        out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, ${profile}${targets}.`));
+        const facts = this.factsText(f, this.view().evaluation.features[f.id]);
+        if (facts) out.push(h('p', { className: 'hint' }, facts));
       }
       if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${shown('offset', f.offset)} mm.`));
     } else {
@@ -863,7 +882,7 @@ export class App {
     if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // otáčení a posun pohledu
     if (m.kind === 'sketch') return this.sketchMove(event, m);
     if (m.kind === 'extrude') {
-      const region = this.regionAt(event, m);
+      const region = m.draft.profile.type === 'regions' ? this.regionAt(event, m) : undefined;
       if ((region && m.hover && sameRegion(region, m.hover)) || region === m.hover) return;
       m.hover = region;
       return this.renderScene();
@@ -893,11 +912,11 @@ export class App {
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
     if (m.kind === 'sketch') return this.sketchClick(event, m);
     if (m.kind === 'extrude') {
-      const region = this.regionAt(event, m);
-      if (!region) return;
-      const chosen = m.draft.profile.regions;
-      const at = chosen.findIndex((r) => sameRegion(r, region));
-      m.draft = { ...m.draft, profile: { ...m.draft.profile, regions: at < 0 ? [...chosen, region] : chosen.filter((_, i) => i !== at) } };
+      const profile = m.draft.profile;
+      const region = profile.type === 'regions' ? this.regionAt(event, m) : undefined; // a generated profile has no regions to pick
+      if (!region || profile.type !== 'regions') return;
+      const at = profile.regions.findIndex((r) => sameRegion(r, region));
+      m.draft = { ...m.draft, profile: { ...profile, regions: at < 0 ? [...profile.regions, region] : profile.regions.filter((_, i) => i !== at) } };
       return this.draftChanged();
     }
     const pick = this.pick(event, { edges: m.kind === 'model' && !this.pending, faces: true, planes: true });
@@ -1439,7 +1458,7 @@ export class App {
     if (m.kind !== 'extrude' && m.kind !== 'plane') return;
     this.invalidate();
     // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám
-    if (m.kind === 'extrude' && m.draft.profile.regions.length === 0) {
+    if (m.kind === 'extrude' && this.unpicked(m)) {
       m.preview = undefined;
       m.problem = undefined;
       m.warning = false;
@@ -1466,6 +1485,8 @@ export class App {
       }
       // expression values next to the fields
       for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
+      const facts = document.getElementById('draft-facts');
+      if (facts && m.kind === 'extrude') facts.textContent = this.factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
     }
     this.renderScene();
   }
@@ -1483,10 +1504,38 @@ export class App {
       h(
         'div',
         { className: 'buttons' },
-        h('button', { textContent: 'OK', className: 'primary', disabled: m.kind === 'extrude' && m.draft.profile.regions.length === 0, onclick: () => this.confirmDraft(m) }),
+        h('button', { textContent: 'OK', className: 'primary', disabled: m.kind === 'extrude' && this.unpicked(m), onclick: () => this.confirmDraft(m) }),
         h('button', { textContent: 'Zrušit', onclick: () => this.setMode({ kind: 'model' }) }),
       ),
     ];
+  }
+
+  // A draft with a profile of regions and none picked yet: there is nothing to compute.
+  private unpicked(m: ExtrudeMode): boolean {
+    return m.draft.profile.type === 'regions' && m.draft.profile.regions.length === 0;
+  }
+
+  // Entities of a sketch a generator operand accepts: own curves and projected ones of the given kinds.
+  private operandChoices(sketch: Id, kinds: readonly string[]): { id: Id; label: string }[] {
+    const f = this.feature(sketch);
+    if (f?.type !== 'sketch') return [];
+    const radii = this.sketchRegions(sketch)?.result.radii ?? {};
+    const size = (id: Id): string => (radii[id] === undefined ? '' : ` ⌀ ${fmt(2 * radii[id])}`);
+    return [
+      ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
+      ...Object.entries(f.external).filter(([, ref]) => kinds.includes(ref.kind)).map(([id]) => ({ id, label: `${id}${size(id)} (projected)` })),
+    ];
+  }
+  // The first entity of each operand of a generator in a sketch; an operand without one is left out
+  // and the engine says what is missing.
+  private defaultOperands(generator: GeneratorName, sketch: Id): Record<string, Id> {
+    return Object.fromEntries(GENERATORS[generator].operands.flatMap((operand) => this.operandChoices(sketch, operand.kinds).slice(0, 1).map((choice) => [operand.field, choice.id])));
+  }
+  // What the generator of a feature published, for a human: "module 0.9 mm, pitch ⌀ 16.2 mm, …".
+  private factsText(f: { profile: ExtrudeDraft['profile'] }, result: FeatureResult | undefined): string {
+    if (f.profile.type !== 'generated' || !result?.facts) return '';
+    const facts = result.facts;
+    return FACTS_SHOWN[f.profile.generator].filter(([name]) => typeof facts[name] === 'number').map(([name, label, unit]) => `${label} ${valueText(facts[name] as number, unit)}`).join(', ');
   }
 
   // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
@@ -1527,24 +1576,37 @@ export class App {
     const missing = targets.filter((id) => !bodies.includes(id));
     const extent = m.draft.extent;
     const cut = m.draft.operation === 'cut';
-    const available = this.sketchRegions(m.draft.profile.sketch)?.result.regions ?? [];
-    const stale = m.draft.profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
+    const profile = m.draft.profile;
+    const kind = profileKind(profile);
+    // another sketch: the regions are picked again and the operands of a generator are found in it
+    const toSketch = (sketch: Id): ExtrudeChange => (profile.type === 'regions' ? { sketch, regions: [] } : { sketch, operands: this.defaultOperands(profile.generator, sketch) });
+    const toSource = (source: ProfileKind): ExtrudeChange => (source === 'regions' ? { source } : { source, operands: this.defaultOperands(source, profile.sketch) });
     return [
       h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nové vysunutí'),
+      // The profile: regions of the sketch, or a profile generator from the catalog.
+      h(
+        'label',
+        {},
+        'Profile',
+        h(
+          'select',
+          { onchange: (event: Event) => set(toSource((event.target as HTMLSelectElement).value as ProfileKind)) },
+          option('regions', 'Sketch regions', kind === 'regions'),
+          ...(Object.keys(GENERATORS) as GeneratorName[]).map((generator) => option(generator, GENERATORS[generator].title, kind === generator)),
+        ),
+      ),
       h(
         'label',
         {},
         'Skica',
         h(
           'select',
-          { onchange: (event: Event) => set({ sketch: (event.target as HTMLSelectElement).value, regions: [] }) },
-          ...sketches.map((f) => option(f.id, f.name, f.id === m.draft.profile.sketch)),
-          sketches.some((f) => f.id === m.draft.profile.sketch) ? null : option(m.draft.profile.sketch, '(chybí)', true),
+          { onchange: (event: Event) => set(toSketch((event.target as HTMLSelectElement).value)) },
+          ...sketches.map((f) => option(f.id, f.name, f.id === profile.sketch)),
+          sketches.some((f) => f.id === profile.sketch) ? null : option(profile.sketch, '(chybí)', true),
         ),
       ),
-      h('p', { className: 'hint' }, `Vybraných oblastí: ${m.draft.profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
-      stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
-      h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: m.draft.profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
+      ...(profile.type === 'regions' ? this.regionsFields(profile, set) : this.generatorFields(m, profile, set)),
       h(
         'label',
         {},
@@ -1615,6 +1677,64 @@ export class App {
     ].filter((element): element is HTMLElement => element !== null);
   }
 
+  // The part of the extrusion form for a profile of sketch regions.
+  private regionsFields(profile: Extract<ExtrudeDraft['profile'], { type: 'regions' }>, set: (change: ExtrudeChange) => void): (HTMLElement | null)[] {
+    const available = this.sketchRegions(profile.sketch)?.result.regions ?? [];
+    const stale = profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
+    return [
+      h('p', { className: 'hint' }, `Vybraných oblastí: ${profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
+      stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
+      h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
+    ];
+  }
+
+  // The part of the extrusion form for a generated profile, built from the generator catalog:
+  // a select per operand, a field per number, a checkbox per flag and a select per reference.
+  private generatorFields(m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
+    const spec = GENERATORS[profile.generator];
+    const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
+    const earlier = this.doc.features.slice(0, m.index).filter((f): f is ExtrudeFeature => f.type === 'extrude' && f.id !== m.draft.id);
+    return [
+      ...spec.operands.map((operand) => {
+        const choices = this.operandChoices(profile.sketch, operand.kinds);
+        const chosen = profile.operands[operand.field];
+        return h(
+          'label',
+          {},
+          `${operand.field} (${operand.kinds.join(' or ')} of the sketch)`,
+          h(
+            'select',
+            { onchange: (event: Event) => set({ operands: { [operand.field]: (event.target as HTMLSelectElement).value } }) },
+            ...choices.map((choice) => option(choice.id, choice.label, choice.id === chosen)),
+            choices.some((choice) => choice.id === chosen) ? null : option(chosen ?? '', chosen === undefined ? '(none in the sketch)' : `${chosen} (missing)`, true),
+          ),
+        );
+      }),
+      ...Object.entries(spec.params).map(([name, param]) =>
+        isFlag(param)
+          ? h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: profile.params[name] === true, onchange: (event: Event) => set({ params: { [name]: (event.target as HTMLInputElement).checked } }) }), param.title)
+          : this.draftField(m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
+      ),
+      ...Object.entries(spec.refs).map(([name, ref]) => {
+        const choices = earlier.filter((f) => f.profile.type === 'generated' && ref.generators.includes(f.profile.generator));
+        const chosen = profile.refs?.[name];
+        return h(
+          'label',
+          { title: ref.summary },
+          ref.title,
+          h(
+            'select',
+            { onchange: (event: Event) => set({ refs: { [name]: (event.target as HTMLSelectElement).value || null } }) },
+            option('', '(none)', chosen === undefined),
+            ...choices.map((f) => option(f.id, f.name, f.id === chosen)),
+            chosen === undefined || choices.some((f) => f.id === chosen) ? null : option(chosen, `${this.nameOf(chosen)} (missing)`, true),
+          ),
+        );
+      }),
+      h('p', { id: 'draft-facts', className: 'hint' }, this.factsText(m.draft, m.preview?.evaluation.features[m.draft.id])),
+    ];
+  }
+
   private planePanel(m: PlaneMode): HTMLElement[] {
     const base = m.draft.base;
     const label = base.kind === 'base' ? `rovina ${base.plane}` : base.kind === 'plane' ? `rovina „${this.nameOf(base.feature)}“` : `stěna ${this.nameOf(base.face.feature)} – ${ROLES[base.face.role]}`;
@@ -1683,8 +1803,9 @@ export class App {
     if (m.kind === 'sketch') this.sketchScene(model, m);
     if (m.kind === 'extrude') {
       const info = this.sketchRegions(m.draft.profile.sketch);
-      for (const region of info?.result.regions ?? []) {
-        const chosen = m.draft.profile.regions.some((r) => sameRegion(r, region.ref));
+      const picked = m.draft.profile.type === 'regions' ? m.draft.profile.regions : undefined; // a generated profile shows no regions
+      for (const region of picked ? (info?.result.regions ?? []) : []) {
+        const chosen = picked!.some((r) => sameRegion(r, region.ref));
         const hovered = m.hover !== undefined && sameRegion(m.hover, region.ref);
         model.fills.push({ frame: info!.frame, loops: region.loops, color: chosen ? COLOR.region : hovered ? COLOR.hover : COLOR.rubber, opacity: chosen ? (hovered ? 0.6 : 0.45) : hovered ? 0.35 : 0.15, onTop: true });
       }

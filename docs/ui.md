@@ -122,6 +122,8 @@ Typ kóty podle výběru:
 | Funkce | Příkaz / volání | Čte |
 |---|---|---|
 | Vybrat oblasti skici | | `sketch.regions` |
+| Choose the profile source and fill in a generator's operands, parameters and references | UI logic (`changeExtrude`) | `GENERATORS`; entities of the sketch; earlier extrusions |
+| Show what the generator built | | `evaluation.features[id].facts` |
 | Navrhnout výchozí operaci a cílové těleso | logika UI | `document` (rovina skici), `bodies` |
 | Choose the extent: a distance with a start, or through all with a side | UI logic (`changeExtrude`) | |
 | Choose the targets: one body for an addition, several for a cut | UI logic (`changeExtrude`) | `bodies` before the feature |
@@ -129,7 +131,12 @@ Typ kóty podle výběru:
 | Potvrdit | `addFeature` (extrude) | |
 | Change the extent, the operation, the regions, the targets | `updateFeature` | |
 
-The form (D35, point 2), top to bottom: sketch, regions, operation, extent, targets.
+The form (D35, points 2 and 3), top to bottom: profile, sketch, regions or the generator's fields, operation, extent, targets.
+
+- **Profile** is a select with *Sketch regions* and one entry per profile generator (`GENERATORS`; today *Involute gear*). Regions are picked by clicking in the view; a generated profile has none and the view does not offer them.
+- **A generated profile** is a form built from the catalog entry: a select per operand listing the entities of the sketch of the accepted kinds (own curves, construction ones marked, and projected ones, with their diameter), a field per numeric parameter (a number or an expression; an angle is shown in degrees), a checkbox per flag and a select per reference listing the earlier extrusions with an accepted generator, or *(none)*. A new one starts with the first suitable entity of the sketch and the defaults of the catalog (18 teeth). Changing the sketch picks the operands again.
+- Below the fields the form shows the facts of the preview (module, pitch, tip and root diameter, rotation); the same line is shown at a selected extrusion in the model panel. Warnings of the generator (`gearMesh` with its reason, `gearInterference`) appear as the problem of the preview in the warning style.
+- When editing, the form sends the whole profile; a reference the draft no longer has is sent as `null`, because the patch merges with the feature.
 
 - **Extent** is a select with *Distance* and *Through all*. *Through all* is enabled only for the operation *cut*; switching the operation away from a cut turns the extent back into a distance. The form remembers the distance extent the draft had last (start, distance and their expressions) and returns to it, both from the extent select and from the operation; a draft that never had one gets 10 mm from the sketch plane.
 - **Distance** shows two fields, *Start* (offset of the start from the sketch plane along its normal, default 0) and *Distance*. Both take a number or an expression.

@@ -310,6 +310,20 @@ Point 2 is in the code (`docs/decisions.md`, D35, point 2, "Status: done"; `docs
 - Implementation notes that are now done: the tool recipe is stored on `noEffect` as well; the overshoot against the kernel adapter and a cut into several targets are verified by tests.
 - The scenario test builds the plate, the sun flange, the housing and one bolt hole through the plate and the housing (`through('both')`, two targets); the M4 hole and the centre opening of the plate share one cut for now and split again when the pattern arrives.
 
+### After point 3 (2026-11-14)
+
+Point 3 is in the code (`docs/decisions.md`, D35, point 3, "Status: done"; `docs/architecture.md`, Extrude, Profile generators). `ProfileSource`, `GENERATORS`, `FeatureResult.facts` and the warnings `gearMesh` and `gearInterference` live in the engine. Differences from this draft:
+
+- `ParamSpec` is a number or a flag; `OptionSpec` and `TextSpec` wait for a generator that needs them.
+- A reference in `GeneratorSpec.refs` has `title`, `summary` and `generators`; there is no `required`.
+- `GeneratedProfile.warnings` are `{ code, detail, refs }`; the recompute turns them into issues.
+- The facts of a gear: `module`, `teeth`, `pressureAngle`, `backlash`, `internal`, `pitchDiameter`, `baseDiameter`, `tipDiameter`, `rootDiameter`, `rotation`, `meshed`, `center`, `axis`, `toothDirection`.
+- `teeth` has the upper bound 500; a generated profile is limited to 50 000 points.
+- The generator build takes only circles as operands so far (`ResolvedOperand`); points and lines come with a generator that needs them.
+- A patch may remove a dictionary entry that is not there.
+- Implementation notes that are now done: the tolerance of gear meshing, the third kind of face in `edgeKind` and `projectEdge`, operands verified only when new, a missing operand as `brokenReference`, the recompute time of the joint (about 0.6 s so far).
+- The scenario test uses English parameter names in the gear profile (`backlash` for `vule`).
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

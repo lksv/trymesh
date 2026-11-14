@@ -93,6 +93,12 @@ function featureStatus(result: FeatureResult | undefined): Record<string, unknow
   };
 }
 
+// What a profile generator published about the profile, rounded like every other number.
+function factsInfo(result: FeatureResult | undefined): { facts?: Record<string, unknown> } {
+  if (!result?.facts) return {};
+  return { facts: Object.fromEntries(Object.entries(result.facts).map(([name, value]) => [name, typeof value === 'number' ? round(value) : Array.isArray(value) ? value.map(round) : value])) };
+}
+
 function constraintExpressions(feature: SketchFeature, id: Id, c: Constraint): { expressions?: Record<string, string> } {
   const entries = Object.keys(CONSTRAINTS[c.type].values ?? {})
     .map((name): [string, string | undefined] => [name, feature.expressions && Object.prototype.hasOwnProperty.call(feature.expressions, constraintPath(id, name)) ? feature.expressions[constraintPath(id, name)] : undefined])
@@ -136,7 +142,7 @@ function featureSummary(feature: Feature, result: FeatureResult | undefined): un
   const base = { id: feature.id, name: feature.name, type: feature.type, ...(featureStatus(result) as object), ...(feature.expressions ? { expressions: feature.expressions } : {}) };
   if (feature.type === 'plane') return { ...base, base: feature.base as unknown as Json, offset: feature.offset };
   if (feature.type === 'extrude') {
-    return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }) };
+    return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }), ...factsInfo(result) };
   }
   const sketch = result?.sketch;
   return {

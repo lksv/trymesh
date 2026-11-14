@@ -138,8 +138,20 @@ export interface ExtrudeFeature extends FeatureBase {
   targets?: Id[]; // target bodies: none for new, exactly one for add, one or more for cut
 }
 
-// Odkud vysunutí bere profil. Další zdroje (generátor profilu) přibudou jako varianty.
-export type ProfileSource = { type: 'regions'; sketch: Id; regions: RegionRef[] };
+// Where an extrusion takes its profile from: regions of a sketch, or a profile generator.
+// `generated`: an entry of the generator catalog (GENERATORS) builds the loops.
+// - `operands` are entities of the sketch by the names of the catalog (a gear: `circle`, the pitch
+//   circle; it may be a construction circle or a projected one). A command verifies the operands the
+//   feature did not have before; an operand removed later is a broken reference in the recompute.
+// - `params` follow the catalog: numbers are numeric fields at `profile/params/<name>` and accept an
+//   expression, flags are booleans. What a command leaves out gets the default of the catalog and is
+//   stored. A number without a default (the tooth count) is required.
+// - `refs` are references to earlier features by the names of the catalog (a gear: `meshWith`).
+export type ProfileSource =
+  | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+  | { type: 'generated'; generator: GeneratorName; sketch: Id; operands: Record<string, Id>; params: Record<string, number | boolean | string>; refs?: Record<string, Id> };
+
+export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 
 // Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
 // měří od začátku, kladná míří ve směru normály a nesmí být nula.
@@ -153,6 +165,8 @@ export type Extent = { type: 'distance'; start: number; distance: number } | { t
 
 // ---------------------------------------------------------------- jména
 
+// `curve` of a side face is the ID of the sketch curve it came from; for a generated profile it is
+// the name of the side from the generator catalog (a gear: `teeth`).
 export type FaceName =
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
@@ -279,7 +293,13 @@ export type WarningCode =
   | 'degenerateProjection'
   | 'unsupportedProjection'
   | 'invalidExpression'
-  | 'noEffect';
+  | 'noEffect' // `refs` list the targets the operation did not change
+  // The reference `meshWith` of a gear cannot be used (the other gear is missing or in error, the
+  // modules or pressure angles differ, the axes are not parallel, the pitch circles are not
+  // tangent); the parameter `rotation` was used instead.
+  | 'gearMesh'
+  // The tip of one gear of a pair runs into the root of the other below its base circle.
+  | 'gearInterference';
 
 export type IssueCode = ErrorCode | WarningCode;
 
@@ -328,7 +348,13 @@ export interface FeatureResult {
   // Values of fields with an expression used in this recompute. The document has them only after
   // the write-back; a preview does not write to the document, so they are returned here as well.
   values?: Record<FieldPath, number>;
+  // What the profile generator published about the profile (a gear: module, diameters, the rotation
+  // used, placement in the model). A generator that refers to this feature reads them, and a caller
+  // can verify with them what it built. Absent when the feature is in error or suppressed.
+  facts?: Facts;
 }
+
+export type Facts = Record<string, number | boolean | Vec3>;
 
 // ---------------------------------------------------------------- API
 
@@ -376,6 +402,10 @@ export type Command =
   // - varianta (objekt s `type`: zdroj profilu, rozsah) se stejným `type` se slučuje po polích,
   //   s jiným `type` dosavadní nahradí a musí být úplná;
   // - odkaz (objekt s `kind`: rovina) a seznam se nahrazují celé; `null` odebere nepovinné pole;
+  // - a generated profile with another `generator` is another variant as well; its dictionaries
+  //   (`operands`, `params`, `refs`) merge by entry, and `null` removes one entry: a parameter then
+  //   returns to its default and loses its expression (a parameter without a default cannot be
+  //   removed), a reference ceases to exist;
   // - změna na `operation: 'new'` odebere `targets` sama;
   // - only references the feature did not have before are verified (a repeated broken reference passes);
   // - a number in a field with an expression removes the expression, a string sets one; fields the
@@ -419,7 +449,9 @@ export type Patch<T> = T extends number
   : T extends readonly unknown[] | { kind: string }
     ? Input<T>
     : T extends object
-      ? { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
+      ? string extends keyof T
+        ? { [K in keyof T]?: Patch<T[K]> | null } // a dictionary: null removes an entry
+        : { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
       : T;
 export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>;
 

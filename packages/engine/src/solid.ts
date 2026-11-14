@@ -7,10 +7,15 @@ import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
 export type FaceInfo =
   | { planar: true; origin: Vec3; y: Vec3; normal: Vec3 } // rovina bodem `origin`; `normal` bez znaménka směru ven
-  | { planar: false; center: Vec3; axis: Vec3; radius: number }; // válec
+  | { planar: false; surface: 'cylinder'; center: Vec3; axis: Vec3; radius: number }
+  // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
+  // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
+  | { planar: false; surface: 'swept'; axis: Vec3 };
+type Cylinder = Extract<FaceInfo, { surface: 'cylinder' }>;
+type Plane = Extract<FaceInfo, { planar: true }>;
 
-// Křivka skici, ze které vzniká boční stěna.
-export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number };
+// Křivka skici, ze které vzniká boční stěna. `general`: a side of a generated profile.
+export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number } | { type: 'general' };
 
 export const toWorld = (frame: Frame, u: number, v: number, w = 0): Vec3 => [
   frame.origin[0] + u * frame.x[0] + v * frame.y[0] + w * frame.normal[0],
@@ -106,8 +111,10 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [
     if (shape.type === 'line') {
       const direction = sub3(toWorld(frame, shape.b[0], shape.b[1]), toWorld(frame, shape.a[0], shape.a[1]));
       faces.push({ name: { feature, role: 'side', curve }, info: { planar: true, origin: toWorld(frame, shape.a[0], shape.a[1]), y: frame.normal, normal: unit3(cross3(direction, frame.normal)) } });
+    } else if (shape.type === 'round') {
+      faces.push({ name: { feature, role: 'side', curve }, info: { planar: false, surface: 'cylinder', center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius } });
     } else {
-      faces.push({ name: { feature, role: 'side', curve }, info: { planar: false, center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius } });
+      faces.push({ name: { feature, role: 'side', curve }, info: { planar: false, surface: 'swept', axis: frame.normal } });
     }
   }
 
@@ -206,8 +213,9 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
 function edgeKind(a: FaceInfo, b: FaceInfo): EdgeKind {
   if (a.planar && b.planar) return len3(cross3(a.normal, b.normal)) <= Math.sin(ANGLE_TOLERANCE) ? 'coplanar' : 'line';
   if (a.planar === b.planar) return 'other';
-  const [plane, cylinder] = a.planar ? [a, b as Extract<FaceInfo, { planar: false }>] : [b as Extract<FaceInfo, { planar: true }>, a as Extract<FaceInfo, { planar: false }>];
-  return len3(cross3(plane.normal, cylinder.axis)) <= Math.sin(ANGLE_TOLERANCE) ? 'circle' : 'other';
+  const [plane, round] = a.planar ? [a, b as Exclude<FaceInfo, Plane>] : [b as Plane, a as Exclude<FaceInfo, Plane>];
+  // only a plane across a cylinder gives a circle; the edge of a cap with a swept side is a general curve
+  return round.surface === 'cylinder' && len3(cross3(plane.normal, round.axis)) <= Math.sin(ANGLE_TOLERANCE) ? 'circle' : 'other';
 }
 
 // Normála rovinné stěny ven z tělesa: analytický směr, znaménko ze sítě. undefined = stěna v tělese není.
@@ -255,7 +263,7 @@ export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind
     return { kind: 'line', a: start, b: end };
   }
   if (edge.kind === 'circle') {
-    const [plane, cylinder] = a.planar ? [a, b as Extract<FaceInfo, { planar: false }>] : [b as Extract<FaceInfo, { planar: true }>, a as Extract<FaceInfo, { planar: false }>];
+    const [plane, cylinder] = a.planar ? [a, b as Cylinder] : [b as Plane, a as Cylinder]; // the kind `circle` guarantees a cylinder
     if (len3(cross3(cylinder.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // elipsa nebo úsečka
     const t = dot3(plane.normal, sub3(plane.origin, cylinder.center)) / dot3(plane.normal, cylinder.axis);
     return { kind: 'circle', center: toPlane(frame, add3(cylinder.center, mul3(cylinder.axis, t))), radius: cylinder.radius };

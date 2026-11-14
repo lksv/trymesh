@@ -1,12 +1,15 @@
 // Validation scenario 9: a robot joint with a planetary gearbox (docs/requirements.md).
 // It grows with the points of D35; so far part a) parameters, checks and the sketch of pitch circles,
-// the bodies of d), e) and f) with their through holes (no teeth, patterns or pockets yet), and the
-// parts of i) and k) that need nothing else.
+// b) the gears, the bodies of d), e) and f) with their through holes (no patterns or pockets yet),
+// and the parts of i) and k) that need nothing else.
 // Parameter names are English: `module` for `modul` of the requirements, `backlash` for `vule`,
 // `centers` (centre distance) for `osa`.
 import { describe, expect, it } from 'vitest';
-import type { Command, Constraint, Engine, EngineState, Extent, Id, Input, ProfileSource, SketchFeature } from '@trymesh/engine';
+import type { Command, Constraint, Engine, EngineState, Extent, Facts, Id, Input, ProfileSource, SketchFeature, Solid } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { XY, addSketch, batch, expectAllOk, faceNames, newEngine, run, status, volume } from './kit';
+
+const kernel = await createManifoldKernel();
 
 const point = (sk: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: sk, id, x, y });
 const circle = (sk: Id, id: Id, center: Id, radius: number, construction = false): Command => ({ type: 'addCurve', sketch: sk, id, curve: { type: 'circle', center, ...(construction ? { construction: true } : {}) }, radius });
@@ -22,7 +25,11 @@ const at = (sk: Id, p: Id, x: number | string, y: number | string): Command[] =>
 const regions = (sk: Id, ...loops: Id[][]): ProfileSource => ({ type: 'regions', sketch: sk, regions: loops.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })) });
 const span = (start: number | string, distance: number | string): Input<Extent> => ({ type: 'distance', start, distance });
 const through = (side: 'forward' | 'backward' | 'both'): Extent => ({ type: 'throughAll', side });
-function extrude(id: Id, operation: 'new' | 'add' | 'cut', profile: ProfileSource, extent: Input<Extent>, targets?: Id[]): Command {
+// gear teeth over a pitch circle of the gear sketch
+function gear(circleId: Id, teeth: string, internal: boolean, meshWith?: Id): Input<ProfileSource> {
+  return { type: 'generated', generator: 'involuteGear', sketch: 'skGears', operands: { circle: circleId }, params: { teeth, pressureAngle: 'deg(20)', backlash: 'backlash', rotation: 0, internal }, ...(meshWith ? { refs: { meshWith } } : {}) };
+}
+function extrude(id: Id, operation: 'new' | 'add' | 'cut', profile: Input<ProfileSource>, extent: Input<Extent>, targets?: Id[]): Command {
   return { type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile, extent, operation, ...(targets ? { targets } : {}) } };
 }
 
@@ -74,10 +81,11 @@ function parametersAndGearSketch(engine: Engine): EngineState {
   );
 }
 
-// f) The back plate below the sketch plane with one M4 hole and the centre opening, d) the flange of
-// the sun gear with the bore for the centring pin, e) the housing with the motor recess, and one M3
-// screw hole through the plate and the housing. Axial layout: zero is the seating face of the
-// stator, positive towards the rotor.
+// f) The back plate below the sketch plane with one M4 hole and the centre opening, d) the sun gear:
+// a flange, the teeth added to it and the bore for the centring pin, b) c) a planet in mesh with the
+// sun and its bore, e) the housing with the motor recess and the ring gear cut through all into the
+// solid part above it, in mesh with the planet, and one M3 screw hole through the plate and the
+// housing. Axial layout: zero is the seating face of the stator, positive towards the rotor.
 function bodiesAndHoles(engine: Engine): EngineState {
   run(
     engine,
@@ -101,8 +109,13 @@ function bodiesAndHoles(engine: Engine): EngineState {
     addSketch('skFlange', XY),
     batch(circle('skFlange', 'fl', 'origin', 19), dim('skFlange', 'dfl', { type: 'diameter', curve: 'fl' }, 40)),
     extrude('sun', 'new', regions('skFlange', ['fl']), span(26.5, 4)),
+    // the teeth are added to the flange; the first gear of the chain, its rotation is a number
+    extrude('sunTeeth', 'add', gear('s', 'Zs', false), span(30.5, 15.5), ['sun']),
     // the flange lies above the sketch plane of the gears, hence forward
     extrude('sunBore', 'cut', regions('skGears', ['sb']), through('forward'), ['sun']),
+    // the planet: rotation from the mesh with the sun; its bore is the annulus [ph] and the disc [pin] together
+    extrude('planet', 'new', gear('p', 'Zp', false, 'sunTeeth'), span(34, 12)),
+    extrude('planetHole', 'cut', regions('skGears', ['ph'], ['pin']), through('forward'), ['planet']),
   );
   return run(
     engine,
@@ -116,6 +129,8 @@ function bodiesAndHoles(engine: Engine): EngineState {
     // a solid cylinder = the annulus [ho] and the disc [hb]; then the recess for the motor
     extrude('housing', 'new', regions('skHousing', ['ho'], ['hb']), span(0, 46)),
     extrude('motorBore', 'cut', regions('skHousing', ['hb']), span(0, 28), ['housing']),
+    // the ring gear: the internal profile through all into the solid material above the motor
+    extrude('ring', 'cut', gear('r', 'Zr', true, 'planet'), through('forward'), ['housing']),
     addSketch('skBolts', XY),
     batch(point('skBolts', 'cb', 50, 1), circle('skBolts', 'bh', 'cb', 1.5), ...at('skBolts', 'cb', 50.5, 0), dim('skBolts', 'dbh', { type: 'diameter', curve: 'bh' }, 3.4)),
     // the sketch plane lies between the plate and the housing, hence both sides and two targets
@@ -130,6 +145,11 @@ const disc = (diameter: number): number => {
 };
 const bodyVolume = (state: EngineState, body: Id): number => volume(state.evaluation.bodies[body].solid);
 const holeFaces = (state: EngineState, body: Id, feature: Id): string[] => faceNames(state, body).filter((name) => name.startsWith(`${feature}/`));
+const factsOf = (state: EngineState, feature: Id): Facts => state.evaluation.features[feature].facts as Facts;
+const solidOf = (state: EngineState, body: Id): Solid => state.evaluation.bodies[body].solid;
+// volume the two bodies share; the interference query of point 5 will replace this
+const overlap = (state: EngineState, a: Id, b: Id): number => volume(kernel.boolean('intersection', solidOf(state, a), solidOf(state, b)));
+const gearsClear = (state: EngineState): number[] => [overlap(state, 'sun', 'planet'), overlap(state, 'planet', 'housing'), overlap(state, 'sun', 'housing')];
 
 const allChecks = (state: EngineState): Record<string, string> => Object.fromEntries(Object.entries(state.evaluation.checks).map(([name, result]) => [name, result.status]));
 const gears = (state: EngineState) => {
@@ -171,21 +191,25 @@ describe('scenario 9: robot joint', () => {
     parametersAndGearSketch(engine);
     const state = bodiesAndHoles(engine);
     expectAllOk(state);
-    expect(Object.keys(state.evaluation.bodies)).toEqual(['plate', 'sun', 'housing']);
+    expect(Object.keys(state.evaluation.bodies)).toEqual(['plate', 'sun', 'planet', 'housing']);
     // through holes have no caps in the body: only their sides
     expect(holeFaces(state, 'plate', 'plateHoles')).toEqual(['plateHoles/side/c20', 'plateHoles/side/m4']);
     expect(holeFaces(state, 'sun', 'sunBore')).toEqual(['sunBore/side/sb']);
     expect(holeFaces(state, 'plate', 'boltHole')).toEqual(['boltHole/side/bh']);
     expect(holeFaces(state, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
     expect(bodyVolume(state, 'plate')).toBeCloseTo((disc(110) - disc(4.5) - disc(20) - disc(3.4)) * 5, 1);
-    expect(bodyVolume(state, 'sun')).toBeCloseTo((disc(40) - disc(3.2)) * 4, 1);
-    expect(bodyVolume(state, 'housing')).toBeCloseTo(disc(110) * 46 - disc(92) * 28 - disc(3.4) * 46, 1);
+    // the ring gear takes between its tip and its root cylinder out of the 18 mm above the motor recess
+    const solidHousing = disc(110) * 46 - disc(92) * 28 - disc(3.4) * 46;
+    expect(bodyVolume(state, 'housing')).toBeLessThan(solidHousing - Math.PI * 31.5 ** 2 * 18);
+    expect(bodyVolume(state, 'housing')).toBeGreaterThan(solidHousing - Math.PI * 33.525 ** 2 * 18);
 
     // a thicker plate and a taller housing: the holes still go through
     const thicker = run(engine, { type: 'updateFeature', id: 'plate', patch: { extent: { start: -8, distance: 8 } } }, { type: 'updateFeature', id: 'housing', patch: { extent: { distance: 52 } } });
     expectAllOk(thicker);
     expect(bodyVolume(thicker, 'plate')).toBeCloseTo((disc(110) - disc(4.5) - disc(20) - disc(3.4)) * 8, 1);
-    expect(bodyVolume(thicker, 'housing')).toBeCloseTo(disc(110) * 52 - disc(92) * 28 - disc(3.4) * 52, 1);
+    // the ring follows the taller housing: it still goes through, so the housing has no cap of it
+    expect(holeFaces(thicker, 'housing', 'ring')).toEqual(['ring/side/teeth']);
+    expect(bodyVolume(thicker, 'housing')).toBeLessThan(disc(110) * 52 - disc(92) * 28 - disc(3.4) * 52 - Math.PI * 31.5 ** 2 * 24);
     expect(holeFaces(thicker, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
     engine.undo();
     engine.undo();
@@ -202,6 +226,68 @@ describe('scenario 9: robot joint', () => {
     expect(other.load(engine.save()).ok).toBe(true);
     expect(other.save()).toBe(engine.save());
     expect(other.getState().evaluation).toEqual(engine.getState().evaluation);
+  });
+
+  it('b) c) gears: the sun, a planet and the ring gear are in mesh and do not overlap', () => {
+    const engine = newEngine();
+    parametersAndGearSketch(engine);
+    const state = bodiesAndHoles(engine);
+    expectAllOk(state); // no gearMesh, no gearInterference
+    // what the generator built, for a caller that cannot see the model
+    expect(factsOf(state, 'sunTeeth')).toMatchObject({ module: expect.closeTo(0.9, 9), teeth: 18, tipDiameter: expect.closeTo(18, 9), meshed: false });
+    expect(factsOf(state, 'planet')).toMatchObject({ module: expect.closeTo(0.9, 9), teeth: 27, pitchDiameter: expect.closeTo(24.3, 9), meshed: true });
+    expect(factsOf(state, 'ring')).toMatchObject({ module: expect.closeTo(0.9, 9), teeth: 72, internal: true, pitchDiameter: expect.closeTo(64.8, 9), tipDiameter: expect.closeTo(63, 9), meshed: true });
+    // faces: one side for all the teeth, named by the generator catalog
+    expect(holeFaces(state, 'sun', 'sunTeeth')).toEqual(['sunTeeth/endCap', 'sunTeeth/side/teeth']);
+    expect(faceNames(state, 'planet')).toEqual(['planet/endCap', 'planet/side/teeth', 'planet/startCap', 'planetHole/side/ph']);
+    expect(holeFaces(state, 'housing', 'ring')).toEqual(['ring/side/teeth']);
+    // the tooth count comes from the parameters and the backlash as well
+    expect(state.document.features.find((f) => f.id === 'planet')?.expressions).toEqual({ 'profile/params/backlash': 'backlash', 'profile/params/pressureAngle': 'deg(20)', 'profile/params/teeth': 'Zp' });
+    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    // the planet's bore passes the carrier pin with clearance; the planet sits above the screw heads
+    expect(bodyVolume(state, 'planet')).toBeGreaterThan((Math.PI * 11.025 ** 2 - disc(5.3)) * 12);
+    expect(bodyVolume(state, 'planet')).toBeLessThan((Math.PI * 13.05 ** 2 - disc(5.3)) * 12);
+  });
+
+  it('i) changing the ratio with the gears built: everything recomputes, stays in mesh and clear', () => {
+    const engine = newEngine();
+    parametersAndGearSketch(engine);
+    bodiesAndHoles(engine);
+    const timed = (...commands: Command[]): [EngineState, number] => {
+      const started = performance.now();
+      const state = run(engine, ...commands);
+      return [state, performance.now() - started];
+    };
+    // ratio 5 → 4 with the same ring
+    let [state, elapsed] = timed(batch(param('Zs', '24'), param('Zp', '24')));
+    const times = [elapsed];
+    expectAllOk(state);
+    expect(Object.values(allChecks(state))).toEqual(['ok', 'ok', 'ok', 'ok']);
+    expect(factsOf(state, 'ring')).toMatchObject({ teeth: 72, meshed: true });
+    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    // ratio 5 → 6 with a larger ring: it still fits the housing
+    [state, elapsed] = timed(batch(param('Zs', '18'), param('Zp', '36')));
+    times.push(elapsed);
+    expectAllOk(state);
+    expect(factsOf(state, 'ring')).toMatchObject({ teeth: 90, pitchDiameter: expect.closeTo(81, 9), meshed: true });
+    for (const shared of gearsClear(state)) expect(shared).toBeLessThan(1e-3);
+    expect(holeFaces(state, 'housing', 'boltHole')).toEqual(['boltHole/side/bh']);
+    // a planet deliberately too large: its pitch circle is 1 mm larger than its tooth count gives
+    [state, elapsed] = timed({ type: 'setField', feature: 'skGears', path: 'constraints/dp/value', value: 'module * Zp + 1' });
+    times.push(elapsed);
+    expect(status(state)).toMatchObject({ planet: 'warning:gearMesh', ring: 'warning:gearMesh' });
+    expect(overlap(state, 'planet', 'housing')).toBeGreaterThan(0.1);
+    engine.undo();
+    // a removed parameter: the gears that use it are in error and can be fixed; the sketch stays
+    state = run(engine, { type: 'removeParameter', name: 'backlash' });
+    expect(status(state)).toMatchObject({ skGears: 'ok', sunTeeth: 'error:invalidExpression', planet: 'error:invalidExpression', ring: 'error:invalidExpression' });
+    expect(state.evaluation.features.sunTeeth.fieldErrors).toMatchObject({ 'profile/params/backlash': { code: 'unknownName' } });
+    engine.undo();
+    expectAllOk(engine.getState());
+    // The whole joint so far recomputes from the first feature on every parameter change. The spike
+    // measured about 1 s for the housing alone; the bound is generous, the measured times are logged.
+    console.log(`scenario 9: recompute of the joint after a parameter change ${times.map((ms) => `${Math.round(ms)} ms`).join(', ')}`);
+    for (const ms of times) expect(ms).toBeLessThan(10_000);
   });
 
   it('i) changing the ratio: the circles are recomputed, stay tangent and the checks hold', () => {

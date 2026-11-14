@@ -95,7 +95,7 @@ describe('dokument', () => {
 
   it('tatáž oblast dvakrát je jedna oblast', () => {
     const extrude: ExtrudeFeature = { id: 'E', name: 'E', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['l', 'm'] }, { outerLoop: ['m', 'l', 'l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
-    expect((apply([{ type: 'addFeature', feature: extrude }], doc).features[1] as ExtrudeFeature).profile.regions).toEqual([{ outerLoop: ['l', 'm'] }]);
+    expect(apply([{ type: 'addFeature', feature: extrude }], doc).features[1]).toMatchObject({ profile: { regions: [{ outerLoop: ['l', 'm'] }] } });
   });
 
   it('zmrazená promítnutá kružnice musí mít kladný poloměr', () => {

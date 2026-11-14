@@ -1,0 +1,71 @@
+// The texts the app makes of recompute issues: bodies, features and copies of a pattern are named.
+import { type Issue, type NumberSpec } from '@trymesh/engine';
+import { describe, expect, it } from 'vitest';
+import { angleProblem, bodyName, faceLabel, featureName, issueText, refName } from '../src/issue-text';
+
+const NAMES: Record<string, string> = { plate: 'Plate', hole: 'Hole', P: 'Pattern 5', S1: 'Sketch 1' };
+const nameOf = (id: string): string | undefined => (Object.hasOwn(NAMES, id) ? NAMES[id] : undefined);
+const text = (issue: Issue): string => issueText(issue, nameOf);
+
+describe('names for a human', () => {
+  it('a feature by its name, a body after its feature, a copy with its number', () => {
+    expect(featureName('plate', nameOf)).toBe('Plate');
+    expect(featureName('gone', nameOf)).toBe('(gone)');
+    expect(bodyName('plate', nameOf)).toBe('Plate');
+    expect(bodyName('P/2', nameOf)).toBe('Pattern 5 / 2');
+    expect(bodyName('gone/2', nameOf)).toBe('(gone) / 2');
+    expect(featureName('constructor', nameOf)).toBe('(constructor)');
+  });
+
+  it('a face names its feature, its role and the copies it went through', () => {
+    expect(faceLabel({ feature: 'plate', role: 'endCap' }, nameOf)).toBe('Plate – protější víko');
+    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }] }, nameOf)).toBe('Hole – bok, copy 2 of Pattern 5');
+    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }, { pattern: 'Q', index: 1 }] }, nameOf)).toBe('Hole – bok, copy 2 of Pattern 5, copy 1 of (Q)');
+  });
+
+  it('a string of refs is named only when the document knows it', () => {
+    expect(refName('plate', nameOf)).toBe('Plate');
+    expect(refName('P/3', nameOf)).toBe('Pattern 5 / 3');
+    expect(refName('hole2', nameOf)).toBe('hole2'); // a feature that is gone: no parentheses inside parentheses
+    expect(refName('x1/center', nameOf)).toBe('x1/center'); // a point of a projected circle
+    expect(refName('origin', nameOf)).toBe('origin');
+  });
+});
+
+describe('the text of an issue', () => {
+  it('names the bodies and features of issues that refer to them', () => {
+    expect(text({ code: 'noEffect', message: 'Operace těleso nezměnila.', refs: ['plate', 'P/1'] })).toBe('Operace těleso nezměnila. (Plate, Pattern 5 / 1)');
+    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: ['hole2'] })).toBe('Odkaz neplatí. (hole2)');
+    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: ['x1/center'] })).toBe('Odkaz neplatí. (x1/center)');
+    expect(text({ code: 'emptyResult', message: 'Operace by odebrala celé těleso.' })).toBe('Operace by odebrala celé těleso.');
+    // refs of other issues are constraints or field paths and stay out of the text
+    expect(text({ code: 'sketchConflict', message: 'Vazby si odporují.', refs: ['plate', 'k2'] })).toBe('Vazby si odporují.');
+    expect(text({ code: 'invalidExpression', message: 'Výraz nejde vyhodnotit.', refs: ['extent/distance'] })).toBe('Výraz nejde vyhodnotit.');
+  });
+
+  it('a pattern names the copy once, by the name of its feature, whatever the issue is', () => {
+    expect(text({ code: 'emptyResult', message: 'Operace by odebrala celé těleso.', refs: [{ copy: 1, feature: 'hole' }, 'plate'] })).toBe('Operace by odebrala celé těleso. (copy 1 of Hole, Plate)');
+    expect(text({ code: 'kernelFailure', message: 'Jádro selhalo. (not closed)', refs: [{ copy: 4, feature: 'hole' }] })).toBe('Jádro selhalo. (not closed) (copy 4 of Hole)');
+    expect(text({ code: 'noEffect', message: 'Operace těleso nezměnila.', refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }, { copy: 3, feature: 'gone', targets: ['plate'] }] })).toBe('Operace těleso nezměnila. (copy 1 of Hole, copy 3 of gone)');
+    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: [{ copy: 2, feature: 'hole' }, 'P/9'] })).toBe('Odkaz neplatí. (copy 2 of Hole, Pattern 5 / 9)');
+    // things that only look like a copy
+    expect(text({ code: 'noEffect', message: 'm', refs: [{ copy: '1', feature: 'hole' }, null, 3, { outerLoop: ['a'] }] })).toBe('m');
+  });
+});
+
+describe('an angle typed in degrees', () => {
+  const ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
+  it('out of range is reported in degrees; the rest is left to the engine', () => {
+    expect(angleProblem((400 * Math.PI) / 180, ANGLE)).toBe('Angle: 400° is not between -360° and 360°');
+    expect(angleProblem((-361 * Math.PI) / 180, ANGLE)).toBe('Angle: -361° is not between -360° and 360°');
+    expect(angleProblem(2 * Math.PI, ANGLE)).toBeUndefined();
+    expect(angleProblem(-2 * Math.PI, ANGLE)).toBeUndefined();
+    expect(angleProblem(0, ANGLE)).toBeUndefined(); // zero is the engine's to refuse
+    expect(angleProblem('deg(400)', ANGLE)).toBeUndefined(); // an expression is in radians as written
+    expect(angleProblem(NaN, ANGLE)).toBeUndefined();
+    expect(angleProblem(undefined, ANGLE)).toBeUndefined();
+    expect(angleProblem(4, { title: 'Helix', unit: 'rad', max: { value: Math.PI / 2, open: true } })).toBe('Helix: 229.183118° must be below 90°');
+    expect(angleProblem(Math.PI / 2, { title: 'Helix', unit: 'rad', max: { value: Math.PI / 2, open: true } })).toBe('Helix: 90° must be below 90°');
+    expect(angleProblem(500, { title: 'Count', unit: 'count', max: { value: 200 } })).toBeUndefined();
+  });
+});

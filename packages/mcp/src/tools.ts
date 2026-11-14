@@ -226,8 +226,18 @@ function edgeShape(kind: string, s: Float64Array): Record<string, unknown> {
     return { ...out, from: at(low).map(round), to: at(high).map(round), ...(length < span - 1e-6 * Math.max(1, span) ? { gaps: true } : {}) };
   }
   if (kind === 'circle' && count >= 3) {
-    // střed kružnice opsané třem vrcholům rozloženým po hraně
-    const [a, b, c] = [at(0), at(2 * Math.floor(count / 3)), at(2 * Math.floor((2 * count) / 3))];
+    // The centre of the circle through three vertices spread along the edge. The segments come in
+    // no particular order, so the three are chosen by geometry: the first vertex, the one farthest
+    // from it and the one farthest from the line through those two (three picked by position in
+    // the list can lie next to each other, which gives no centre or an imprecise one).
+    const a = at(0);
+    let [b, c] = [a, a];
+    for (let i = 1; i < 2 * count; i++) if (Math.hypot(...sub(at(i), a)) > Math.hypot(...sub(b, a))) b = at(i);
+    const off = (p: number[]): number => {
+      const [e, f] = [sub(b, a), sub(p, a)];
+      return Math.hypot(e[1] * f[2] - e[2] * f[1], e[2] * f[0] - e[0] * f[2], e[0] * f[1] - e[1] * f[0]);
+    };
+    for (let i = 1; i < 2 * count; i++) if (off(at(i)) > off(c)) c = at(i);
     const [u, v] = [sub(b, a), sub(c, a)];
     const [uu, vv, uv] = [dot(u, u), dot(v, v), dot(u, v)];
     const det = 2 * (uu * vv - uv * uv);

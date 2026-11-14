@@ -85,7 +85,7 @@ interface Document {
   features: Feature[];                    // časová osa
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature;
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 
@@ -174,7 +174,7 @@ type Extent =
 
 The profile source and the extent are variants distinguished by the field `type`. Each has two (D35, points 2 and 3); the extent "up to a face" comes later. A generated profile with another `generator` counts as another variant as well.
 
-ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). Vysunutí vytváří jen těleso bez místního jména; druhý tvar je připravený pro features, které vytvoří těles víc (pole, D35 bod 4). Délky jsou v milimetrech, úhly v radiánech.
+ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). An extrusion creates only a body without a local name; a pattern of a body creates the bodies `<pattern>/<number>` (D35, point 4). Délky jsou v milimetrech, úhly v radiánech.
 
 **Registr typů features** (`FEATURE_TYPES` v `document.ts`) drží pro každý typ vše, co o něm potřebuje vědět dokument: validaci a kanonický tvar, odkazy na jiné features s cestou, kde ve feature leží, zda feature vytváří těleso a pojmenovává stěny, a která pole smí měnit `updateFeature`. Validace odkazů, pořadí na časové ose, `moveFeature` i popis API pro AI se řídí registrem, takže nový typ feature je jedna položka registru a jedna větev kroku přepočtu v `evaluate.ts`; úplnost obou míst hlídá překladač. Veřejná část registru je `FEATURE_TYPE_INFO`. It also lists the numeric fields of each type (`fields`); validators read them through the field reader described in Parameters and expressions.
 
@@ -542,7 +542,7 @@ interface PatternFeature extends FeatureBase {
 type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id };
 ```
 
-**Transforms.** `count` includes the original, so there are `count − 1` copies, numbered from 1. `full` turns copy `k` by `k · 2π / count`; `angle` is the angle between the first and the last copy, so the step is `angle / (count − 1)` and may be negative. A base axis goes through the origin of the model. `sketchPoint` is the normal of the sketch plane through a point of the sketch (an own point, `origin` or a point of projected geometry), read from the solved sketch. A transform is `RigidTransform` (`solid.ts`): the rows of an orthogonal matrix and a translation.
+**Transforms.** `count` includes the original, so there are `count − 1` copies, numbered from 1. `full` turns copy `k` by `k · 2π / count`; `angle` is the angle between the first and the last copy, so the step is `angle / (count − 1)` and may be negative. A base axis goes through the origin of the model. `sketchPoint` is the normal of the sketch plane through a point of the sketch (an own point, `origin` or a point of projected geometry), read from the solved sketch. A positive angle turns counter-clockwise when seen against the axis (the right-hand rule): around the base axis Z it takes X towards Y. Around a sketch point it is counter-clockwise in the coordinates of that sketch, so a sketch on the base plane XZ, whose normal is −Y, turns the other way than the base axis Y. A transform is `RigidTransform` (`solid.ts`): the rows of an orthogonal matrix and a translation.
 
 **Numeric fields.** `transform/count` is an integer from 1 to 200 (the bound keeps a typo in an expression from starting thousands of booleans) and `transform/span/angle` lies in [−2π, 2π] and is not zero; the angle exists only with the span `angle`. A count that an expression makes fractional is an error of the field (`notInteger`), not a rounding.
 
@@ -551,9 +551,10 @@ type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; 
 - The recipe transforms the frame of the sketch plane and builds the prism there, it does not move a finished mesh. "Through all" is therefore measured along the direction the copy points in, against the targets as they are at the pattern: a hole turned by 90° passes the width of the body, and material added between the source and the pattern is cut as well.
 - The triangulation of the profile is computed once per recipe and reused by every build.
 - A source that is missing, suppressed or in error has no recipe: the pattern is `brokenReference` with the sources in `refs`. A source that ended with `noEffect` has one, because a turned copy can hit what the original missed.
-- The pattern is atomic. When one application fails (`emptyResult`, `kernelFailure`, a missing target), the pattern is in error and the model stays as it was before it; `refs` start with `{ copy, feature }` and the message names the copy.
+- The pattern is atomic. When one application fails (`emptyResult`, `kernelFailure`, a missing target), the pattern is in error and the model stays as it was before it; `refs` start with `{ copy, feature }`. The message does not repeat the copy: a client names it from `refs` in its own words.
 - Applications that changed none or only some of their targets are listed in one warning `noEffect` with `refs` of the shape `{ copy, feature, targets }`.
-- A copy that falls exactly onto the original (a full turn as an angle) cuts the same hole again: like an extrusion that repeats a cut, it takes over faces of the hole and changes nothing else.
+- A copy has no effect on a target whenever the volume of the target stays the same, for a cut as well as for an addition. (An extrusion that repeats a cut still counts when faces of its tool end up in the body.) A copy that falls onto the original, as the last of five copies over an angle of 360° does, is therefore listed in `noEffect` and the hole keeps the faces of the original.
+- Time: every copy is one boolean per target on the body as it has grown so far, so the time of a pattern of features grows with the square of the count (about 10 s for 100 holes in a disc and 30 s for 200; a pattern of a body copies meshes and takes 0.3 s for 200 gear bodies). Joining the copies of one cut into a single boolean per target would make it linear and is not done.
 
 **A pattern of a body.** The body in the state before the pattern is copied as new bodies `<pattern>/<number>`.
 
@@ -658,6 +659,7 @@ Po booleanu:
    - sloučí vrcholy na stejném místě,
    - zahodí trojúhelníky s vrcholy v přímce a blány nulové tloušťky,
    - hrany, které tím zůstaly bez protějšku, dorovná: trojúhelník s takovou hranou rozdělí ve vrcholu, který na ní leží a ve kterém protější strana navazuje (T-spoj),
+   - the two steps before can undo each other (a split leaves a piece the dropping takes for a null triangle, which opens the same edge again), so the cleanup remembers the states it has split and stops after splitting one of them for the second time; that state is the closed one,
    - kde se těleso samo sebe dotýká jen hranou, rozdělí povrch po klínech materiálu.
 7. Ověří výsledek a jinak skončí chybou (`kernelFailure`):
    - síť je uzavřená plocha (každá hrana právě ve dvou trojúhelnících, jednou v každém směru),
@@ -841,10 +843,10 @@ type Command =
 
 - Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná. A generated profile with another `generator` is another variant too.
 - The dictionaries of a generated profile (`operands`, `params`, `refs`) merge by entry: `{ profile: { params: { rotation: 'deg(5)' } } }` leaves the other parameters with their expressions. `null` removes an entry: a parameter returns to its default and loses its expression (a required one cannot be removed), a reference ceases to exist. Removing an entry that is not there is not an error.
-- Odkaz (objekt s polem `kind`, tedy `PlaneRef`) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
+- Odkaz (objekt s polem `kind`: `PlaneRef`, or the `AxisRef` of a pattern) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
 - `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
 - Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.
-- Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
+- Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`; a pattern `source`, `transform`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
 - Přechod na `operation: 'new'` cíle zahodí, pokud je změna sama neuvádí.
 - Výsledná feature se ověří celá. Odkazy na jiné features se ale ověřují jen ty, které feature dosud neměla (jiné místo, druh nebo ID): oprava rozbitého odkazu na skicu nesmí narazit na rozbitý cíl, který změna nechává být, a změna vzdálenosti projde i u feature, jejíž skica byla smazána. Platí to i tehdy, když změna dosavadní odkaz zopakuje (formulář aplikace posílá vysunutí celé) nebo mění jen operaci.
 

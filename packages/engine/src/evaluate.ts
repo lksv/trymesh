@@ -442,10 +442,13 @@ export class Evaluator {
         // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
         // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
         // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
+        // A copy of a pattern has no effect whenever the volume stays, for a cut as well: a copy that
+        // lands on what is cut already (five copies over 360°) would otherwise only take the faces
+        // of the original over, silently.
         const volume = volumeOf(before);
         const scale = Math.min(Math.abs(volume), Math.abs(volumeOf(tool.solid)));
         const sameVolume = Math.abs(volumeOf(result) - volume) <= 1e-6 * Math.max(1, scale);
-        if (sameVolume && (recipe.operation === 'add' || !result.faceIds.some((face) => face >= first))) unchanged.push(target);
+        if (sameVolume && (recipe.operation === 'add' || placement !== undefined || !result.faceIds.some((face) => face >= first))) unchanged.push(target);
         else bodies[target] = result;
       }
     } catch (error) {
@@ -499,12 +502,13 @@ export class Evaluator {
       for (const id of source.features) {
         const applied = this.applyTool(state.tools[id], model, placement);
         // The pattern is atomic: one failed copy and the model stays as it was before the pattern.
-        if (!applied.ok) return failed(applied.code, [{ copy: placement.copy.index, feature: id }, ...(applied.refs ?? [])], [`copy ${placement.copy.index} of "${id}"`, applied.detail].filter(Boolean).join(': '));
+        // The copy is named by the first of `refs`, not in the text: a client names it its own way.
+        if (!applied.ok) return failed(applied.code, [{ copy: placement.copy.index, feature: id }, ...(applied.refs ?? [])], applied.detail);
         if (applied.unchanged.length) idle.push({ copy: placement.copy.index, feature: id, targets: applied.unchanged });
         model = applied.model;
       }
     }
-    const warnings = idle.length ? [issue('noEffect', idle, 'the copies in refs changed none or only some of their targets')] : [];
+    const warnings = idle.length ? [issue('noEffect', idle, 'some copies changed none or only some of their targets')] : [];
     return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, model) };
   }
 

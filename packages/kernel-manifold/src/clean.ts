@@ -14,6 +14,10 @@ const edgeKey = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_$
 //  3. Hrany, které tím zůstaly bez protějšku, se dorovnají: trojúhelník s takovou hranou a–b se
 //     rozdělí ve vrcholu m, který na ní leží a ve kterém protější strana navazuje (T-spoj).
 //     Kroky 2 a 3 se opakují, dokud nějaká hrana bez protějšku zbývá.
+//     The two steps can undo each other: a split leaves a piece that step 2 takes for a null
+//     triangle and drops, which opens the same edge again. The loop therefore remembers the
+//     states it has split already and stops after splitting a repeated one (the split state is
+//     the closed one of the two; without this the loop ran all its passes, seconds per boolean).
 //  4. Kde sloučením srostly části povrchu, které se jen dotýkají, se vrcholy zase rozdělí.
 // Dělí se jen hrany bez protějšku. Hrana, která protějšek má, je v pořádku, i když těsně u ní leží
 // cizí vrchol; dělit ji podle vzdálenosti vrcholu od přímky vedlo ke střídání dvou neuzavřených stavů.
@@ -70,6 +74,7 @@ export function clean(s: Solid, eps: number): Solid {
     return along > 8 * eps && along < len(side) - 8 * eps;
   };
   const directed = (a: number, b: number) => a * 4294967296 + b;
+  const seen = new Set<string>(); // signatures of the states step 3 has split
 
   for (let pass = 0; pass < 1000; pass++) {
     // 2. nulové trojúhelníky a blány
@@ -98,6 +103,9 @@ export function clean(s: Solid, eps: number): Solid {
       }
     }
     if (!open) break;
+    const state = signature(tris);
+    const repeated = seen.has(state);
+    seen.add(state);
     const next: Tri[] = [];
     let split = false;
     for (const t of tris) {
@@ -130,9 +138,27 @@ export function clean(s: Solid, eps: number): Solid {
     }
     tris = next;
     if (!split) break; // zbylé hrany dorovnat nejde; výsledek nebude uzavřený a adaptér skončí chybou
+    if (repeated) break; // steps 2 and 3 alternate between two states; this is the split one
   }
 
   return splitNonManifold(pos, tris);
+}
+
+
+// A signature of a set of triangles that does not depend on their order nor on which vertex
+// a triangle starts with: two sums of mixed hashes and the count.
+function signature(tris: Tri[]): string {
+  let first = 0;
+  let second = 0;
+  for (const t of tris) {
+    const k = t[0] < t[1] ? (t[0] < t[2] ? 0 : 2) : t[1] < t[2] ? 1 : 2;
+    let x = Math.imul(t[k] + 1, 0x9e3779b1) ^ Math.imul(t[(k + 1) % 3] + 1, 0x85ebca6b) ^ Math.imul(t[(k + 2) % 3] + 1, 0xc2b2ae35) ^ Math.imul(t[3] + 1, 0x27d4eb2f);
+    x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d);
+    x ^= x >>> 12;
+    first = (first + x) | 0;
+    second = (second + Math.imul(x ^ (x >>> 7), 0x297a2d39)) | 0;
+  }
+  return `${tris.length}:${first}:${second}`;
 }
 
 // Blány: dvojice trojúhelníků na stejných vrcholech s opačnou orientací.

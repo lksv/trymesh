@@ -338,6 +338,17 @@ describe('model, tělesa a příkazy', () => {
     expect(labels('plate').filter((label) => label.startsWith('hole/'))).toEqual(['hole/side/k', 'hole/side/k@holes:1', 'hole/side/k@holes:2', 'hole/side/k@holes:3']);
     const copied = ok(engine, 'get_body', { body: 'plate' }).faces.find((face: { label: string }) => face.label === 'hole/side/k@holes:2');
     expect(copied.name).toEqual({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'holes', index: 2 }] });
+    // every circular edge of a hole and of its copies has a centre and the radius of the hole,
+    // whatever the order of its segments (six holes around the middle; `mid` is at (20, 15))
+    execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { count: 6 } } });
+    const rims = ok(engine, 'get_body', { body: 'plate' }).edges.filter((edge: { kind: string }) => edge.kind === 'circle');
+    expect(rims).toHaveLength(12);
+    for (const rim of rims) {
+      expect(rim.radius).toBeCloseTo(2, 4);
+      expect(Math.hypot(rim.center[0] - 20, rim.center[1] - 15)).toBeCloseTo(10, 4);
+      expect([0, 5]).toContain(rim.center[2]);
+    }
+    execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { count: 4 } } });
     // a copy that misses is named in the warning; a count that is not an integer is rejected
     expect(execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { axis: { kind: 'base', axis: 'Z' }, count: 2 } } }).problems).toEqual([
       { id: 'holes', name: 'holes', status: 'warning', warnings: [{ code: 'noEffect', message: expect.any(String), refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }] }] },

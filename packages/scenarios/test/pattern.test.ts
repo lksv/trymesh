@@ -133,12 +133,30 @@ describe('a circular pattern of features', () => {
     // the full circle with the same count divides it evenly instead
     state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { count: 3, span: { type: 'full' } } } });
     nearPoint(middle(state, 'A', copy(hole, ['P', 1])), [-6, 12 * Math.sin(Math.PI / 3), 2.5]);
-    // A full turn as an angle puts the last copy onto the original. As with an extrusion that cuts
-    // the same hole again, faces of the hole are taken over by the later tool and nothing else changes.
+    // A full turn as an angle puts the last copy onto the original: it removes nothing, so it is a
+    // copy without effect and the hole keeps the faces of the original (five copies over 360° is a
+    // common mistake; a later sketch on the rim of the hole must not lose its reference by it).
     state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { count: 2, span: { type: 'angle', angle: 2 * Math.PI } } } });
-    expect(status(state).P).toBe('ok');
+    expect(status(state).P).toBe('warning:noEffect');
+    expect(state.evaluation.features.P.warnings[0].refs).toEqual([{ copy: 1, feature: 'H', targets: ['A'] }]);
     near(volumeOf(state, 'A'), (DISC - HOLE) * 5, 0.05);
-    expect(names(state, 'A', 'H')).toContain('H/side/k@P:1');
+    expect(names(state, 'A', 'H')).toEqual(['H/side/k']);
+    const whole = faceBox(state, 'A', hole)!.area;
+    state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { count: 5 } } });
+    expect(state.evaluation.features.P.warnings[0].refs).toEqual([{ copy: 4, feature: 'H', targets: ['A'] }]);
+    near(volumeOf(state, 'A'), (DISC - 4 * HOLE) * 5, 0.05);
+    expect(names(state, 'A', 'H')).toEqual(['H/side/k', 'H/side/k@P:1', 'H/side/k@P:2', 'H/side/k@P:3']);
+    near(faceBox(state, 'A', hole)!.area, whole, 1e-6);
+  });
+
+  it('a copy of an addition onto the original has no effect either', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), circle('S1', 'o', 0, 0, 20), span('A', 'S1', [['o']], 0, 5), addSketch('S2', XY), circle('S2', 'k', 12, 0, 2), span('B', 'S2', [['k']], 5, 3, 'add', ['A']));
+    const state = run(engine, pattern('P', features('B'), 3, { span: { type: 'angle', angle: 2 * Math.PI } }));
+    expect(status(state).P).toBe('warning:noEffect');
+    expect(state.evaluation.features.P.warnings[0].refs).toEqual([{ copy: 2, feature: 'B', targets: ['A'] }]);
+    near(volumeOf(state, 'A'), DISC * 5 + 2 * HOLE * 3, 0.05);
+    expect(names(state, 'A', 'B').filter((name) => name.startsWith('B/side'))).toEqual(['B/side/k', 'B/side/k@P:1']);
   });
 
   it('the axis through a point of a sketch is the normal of its plane', () => {
@@ -161,7 +179,7 @@ describe('a circular pattern of features', () => {
     nearPoint(middle(state, 'A', copy(hole, ['P', 1])), [12, 6, 2.5]);
     // the base axis X goes through the origin: the copy falls onto the original
     state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { axis: { kind: 'base', axis: 'X' } } } });
-    expect(status(state).P).toBe('ok');
+    expect(status(state).P).toBe('warning:noEffect');
     near(volumeOf(state, 'A'), (DISC - HOLE) * 5, 0.05);
     // a missing point or sketch is a broken reference
     state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { axis: { kind: 'sketchPoint', sketch: 'S4', point: 'w' } } } }, { type: 'removeEntity', sketch: 'S4', id: 'w' });
@@ -289,7 +307,7 @@ describe('a circular pattern of features', () => {
     state = run(engine, { type: 'updateFeature', id: 'H', patch: { targets: ['A', 'C'] } });
     expect(status(state)).toMatchObject({ H: 'warning:noEffect', P: 'error:emptyResult' });
     expect(state.evaluation.features.P.error?.refs).toEqual([{ copy: 2, feature: 'H' }, 'C']);
-    expect(state.evaluation.features.P.error?.message).toMatch(/copy 2 of "H"/);
+    expect(state.evaluation.features.P.error?.message).toBe('Operace by odebrala celé těleso.'); // the copy is named by refs only
     near(volumeOf(state, 'A'), 1000);
     near(volumeOf(state, 'C'), disc(1.5) * 5);
     expect(names(state, 'A', 'H')).toEqual([]);
@@ -297,6 +315,56 @@ describe('a circular pattern of features', () => {
     state = run(engine, setCount('P', 2), { type: 'updateFeature', id: 'P', patch: { transform: { span: { type: 'angle', angle: Math.PI / 2 } } } });
     expect(status(state).P).toBe('warning:noEffect');
   });
+});
+
+describe('a pattern as a whole', () => {
+  it('a failed pattern leaves the bodies and the face table as they were; later features get fresh faces', () => {
+    const engine = drilled();
+    // a pin of the size of the hole above the place where copy 1 lands: the copy would remove it whole
+    run(engine, addSketch('S3', XY, 2), circle('S3', 'c', -12, 0, 1.5), { ...span('C', 'S3', [['c']], 10, 5), index: 3 } as Command, { type: 'updateFeature', id: 'H', patch: { targets: ['A', 'C'] } });
+    const before = engine.getState();
+    const state = run(engine, pattern('P', features('H'), 2));
+    expect(status(state).P).toBe('error:emptyResult');
+    expect(state.evaluation.features.P.error?.refs).toEqual([{ copy: 1, feature: 'H' }, 'C']);
+    expect(state.evaluation.features.P.bodies).toEqual([]);
+    expect(state.evaluation.faceNames).toEqual(before.evaluation.faceNames);
+    for (const body of ['A', 'C']) expect(state.evaluation.bodies[body].solid).toBe(before.evaluation.bodies[body].solid);
+    // a feature after the failed pattern works with the model before it
+    const later = run(engine, addSketch('S4', XY), circle('S4', 'd', 0, 0, 3), through('D', 'S4', [['d']], 'forward', ['A']));
+    expect(status(later)).toMatchObject({ P: 'error:emptyResult', D: 'ok' });
+    expect(names(later, 'A')).toEqual(['A/endCap', 'A/side/o', 'A/startCap', 'D/side/d', 'H/side/k']);
+  });
+
+  it('the state before the pattern and a preview of a change do not disturb the model', () => {
+    const engine = drilled();
+    const state = run(engine, pattern('P', features('H'), 4));
+    near(volumeOf(state, 'A'), (DISC - 4 * HOLE) * 5, 0.05);
+    const earlier = engine.getState('H');
+    near(volumeOf(earlier, 'A'), (DISC - HOLE) * 5, 0.05);
+    expect(earlier.evaluation.features.P).toBeUndefined();
+    const preview = engine.preview(setCount('P', 6));
+    expect(preview.ok).toBe(true);
+    if (preview.ok) near(volumeOf(preview.state, 'A'), (DISC - 6 * HOLE) * 5, 0.05);
+    expect(engine.getState().document).toBe(state.document);
+    expect(engine.getState().evaluation.bodies.A.solid).toBe(state.evaluation.bodies.A.solid);
+  });
+
+  // The mesh cleanup after a boolean used to alternate between two states for some counts and ran
+  // all of its passes (a second or more per copy): 25 holes took a minute where 24 or 26 took one.
+  it('a count is not slower than its neighbours by orders of magnitude', () => {
+    const timeOf = (count: number): number => {
+      const engine = newEngine();
+      run(engine, addSketch('S1', XY), circle('S1', 'o', 0, 0, 100), span('A', 'S1', [['o']], 0, 5), addSketch('S2', XY), circle('S2', 'k', 90, 0, 1), through('H', 'S2', [['k']], 'forward', ['A']));
+      const start = performance.now();
+      const state = run(engine, pattern('P', features('H'), count));
+      const time = performance.now() - start;
+      expect(status(state).P).toBe('ok');
+      near(volumeOf(state, 'A'), (disc(100) - count * disc(1)) * 5, 0.5);
+      return time;
+    };
+    const [fine, looped] = [timeOf(24), timeOf(25)];
+    expect(looped).toBeLessThan(10 * fine + 2000);
+  }, 120000);
 });
 
 describe('a circular pattern of a body', () => {
@@ -393,6 +461,35 @@ describe('a circular pattern of a body', () => {
     expect(state.evaluation.features.P.error?.refs).toEqual(['A']);
     expect(state.evaluation.features.P.bodies).toEqual([]);
     expect(Object.keys(state.evaluation.bodies)).toEqual([]);
+  });
+
+  it('the sense of rotation: counter-clockwise seen against the axis; a sketch point turns around the normal of its plane', () => {
+    // one copy a quarter turn away; the block lies at x from 10 to 14, y from -2 to 2, z from 0 to 6
+    const quarter = (axis: Transform['axis'], prepare: Command[] = []) => {
+      const engine = newEngine();
+      run(engine, addSketch('S1', XY), rectangle('S1', 'r', 10, -2, 4, 4, null), span('A', 'S1', [rectLoop('r')], 0, 6), ...prepare);
+      const state = run(engine, pattern('P', { type: 'body', body: 'A' }, 2, { axis, span: { type: 'angle', angle: Math.PI / 2 } }));
+      expectAllOk(state);
+      const box = bounds(state, 'P/1');
+      return [...box.min, ...box.max].map((value) => Math.round(value * 1000) / 1000 + 0);
+    };
+    // base axes: right-handed, X to Y around Z, Y to Z around X, Z to X around Y
+    expect(quarter({ kind: 'base', axis: 'Z' })).toEqual([-2, 10, 0, 2, 14, 6]);
+    expect(quarter({ kind: 'base', axis: 'X' })).toEqual([10, -6, -2, 14, 0, 2]);
+    expect(quarter({ kind: 'base', axis: 'Y' })).toEqual([0, -2, -14, 6, 2, -10]);
+    // A sketch in the XZ plane has the normal -Y, so its point turns the other way than the base
+    // axis Y: counter-clockwise in the coordinates of the sketch (its x is X, its y is Z).
+    const sketchOn = (plane: 'XY' | 'XZ' | 'YZ'): Command[] => [{ type: 'addFeature', feature: { ...extrude('x', 'S1', [], 1), id: 'S2', name: 'S2', type: 'sketch', plane: { kind: 'base', plane }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never }];
+    const origin: Transform['axis'] = { kind: 'sketchPoint', sketch: 'S2', point: 'origin' };
+    expect(quarter(origin, sketchOn('XZ'))).toEqual([-6, -2, 10, 0, 2, 14]);
+    expect(quarter(origin, sketchOn('XY'))).toEqual(quarter({ kind: 'base', axis: 'Z' }));
+    expect(quarter(origin, sketchOn('YZ'))).toEqual(quarter({ kind: 'base', axis: 'X' }));
+    // a sketch on the top face of the block: the normal of the face is +Z, the axis goes through the point
+    const onTop: Command[] = [addSketch('S2', onFace('A', cap('A'))), { type: 'addPoint', sketch: 'S2', id: 'q', x: 0, y: 0 }, { type: 'addConstraint', sketch: 'S2', id: 'fq', constraint: { type: 'coincident', a: 'q', b: 'origin' } }];
+    const turned = quarter({ kind: 'sketchPoint', sketch: 'S2', point: 'q' }, onTop);
+    expect(turned.slice(2, 3).concat(turned.slice(5))).toEqual([0, 6]); // the copy stays between the same heights
+    expect(turned[3] - turned[0]).toBeCloseTo(4, 6);
+    expect(turned[4] - turned[1]).toBeCloseTo(4, 6);
   });
 
   it('a pattern of a pattern: the tags of a face grow, the latest pattern last', () => {

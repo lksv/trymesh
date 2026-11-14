@@ -579,9 +579,16 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   return { ...feature, targets };
 }
 
+// A field of another variant is a mistake, not something to drop silently: a pattern of a body
+// given a list of features too would otherwise be stored as something else than what was sent.
+function onlyFields(o: Dict, fields: readonly string[], what: string, owner: string): void {
+  for (const key of Object.keys(o)) if (!fields.includes(key)) fail(`${what}.${key}: ${owner} has no such field`);
+}
+
 function axisRef(doc: Document, before: number | undefined, v: unknown, what: string): AxisRef {
   const o = object(v, what);
   const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
+  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : ['kind', 'sketch', 'point'], what, `an axis of the kind ${kind}`);
   if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
   const sketch = string(o.sketch, `${what}.sketch`);
   requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
@@ -600,7 +607,9 @@ const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
 function patternFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PatternFeature {
   const given = object(o.source, `${what}.source`);
   let source: PatternFeature['source'];
-  if (oneOf(given.type, ['features', 'body'] as const, `${what}.source.type`) === 'features') {
+  const sourceType = oneOf(given.type, ['features', 'body'] as const, `${what}.source.type`);
+  onlyFields(given, ['type', sourceType === 'features' ? 'features' : 'body'], `${what}.source`, `a source of the type ${sourceType}`);
+  if (sourceType === 'features') {
     if (!Array.isArray(given.features) || given.features.length === 0) return fail(`${what}.source.features: a non-empty list of feature IDs is expected`);
     const features = (given.features as unknown[]).map((id, i) => string(id, `${what}.source.features[${i}]`));
     if (new Set(features).size < features.length) fail(`${what}.source.features: a feature is listed twice`);
@@ -613,10 +622,12 @@ function patternFeature(doc: Document, before: number | undefined, o: Dict, what
   }
   const transform = object(o.transform, `${what}.transform`);
   const type = oneOf(transform.type, ['circular'] as const, `${what}.transform.type`);
+  onlyFields(transform, ['type', 'axis', 'count', 'span'], `${what}.transform`, `a transform of the type ${type}`);
   const axis = axisRef(doc, before, transform.axis, `${what}.transform.axis`);
   const count = fields.number(transform.count, 'transform/count', PATTERN_COUNT, `${what}.transform.count`);
   const span = object(transform.span, `${what}.transform.span`);
   const full = oneOf(span.type, ['full', 'angle'] as const, `${what}.transform.span.type`) === 'full';
+  onlyFields(span, full ? ['type'] : ['type', 'angle'], `${what}.transform.span`, `a span of the type ${full ? 'full' : 'angle'}`);
   return {
     ...base(o, what),
     type: 'pattern',

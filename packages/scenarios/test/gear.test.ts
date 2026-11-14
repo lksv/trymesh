@@ -327,3 +327,33 @@ describe('a gear in error', () => {
     expect(engine.save()).toBe(saved);
   });
 });
+
+describe('a gear tool in a pattern of features (D35, point 4)', () => {
+  it('a gear pocket and a gear boss are repeated through the same recipe as any other tool', () => {
+    const engine = gearSketch();
+    const plain = volume(solidOf(run(engine, disc('housing', 'S1', 'o', 0, 8)), 'housing'));
+    const pocket = plain - volume(solidOf(run(engine, extrude('pocket', gearProfile('p', { teeth: 'Zp' }), 5, 3, 'cut', ['housing'])), 'housing'));
+    let state = run(engine, extrude('boss', gearProfile('p', { teeth: 'Zp' }), 8, 2, 'add', ['housing']));
+    expectAllOk(state);
+    const boss = volume(solidOf(state, 'housing')) - plain + pocket;
+    expect(pocket / 3).toBeGreaterThan(Math.PI * 10.9 ** 2); // between the root and the tip cylinder of the planet
+    expect(pocket / 3).toBeLessThan(Math.PI * 13.1 ** 2);
+    expect(boss / pocket).toBeCloseTo(2 / 3, 4);
+
+    state = run(engine, { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'features', features: ['pocket', 'boss'] }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'full' } } } });
+    expectAllOk(state);
+    // every copy removes and adds what the original does
+    expect((volume(solidOf(state, 'housing')) - plain) / (3 * (boss - pocket))).toBeCloseTo(1, 4);
+    expect(faceNames(state, 'housing').filter((name) => name.includes('teeth'))).toEqual(['boss/side/teeth', 'boss/side/teeth@P:1', 'boss/side/teeth@P:2', 'pocket/side/teeth', 'pocket/side/teeth@P:1', 'pocket/side/teeth@P:2']);
+    // the facts belong to the source features; the pattern publishes none
+    expect(state.evaluation.features.P.facts).toBeUndefined();
+    expect(factsOf(state, 'pocket')).toMatchObject({ teeth: 27 });
+    // a change of the tooth count rebuilds the copies as well
+    const before = volume(solidOf(state, 'housing'));
+    state = run(engine, { type: 'setParameter', name: 'Zp', expr: '21' });
+    expectAllOk(state);
+    expect(volume(solidOf(state, 'housing'))).not.toBeCloseTo(before, 0);
+    expect(faceNames(state, 'housing').filter((name) => name.includes('teeth'))).toHaveLength(6);
+  });
+});
+

@@ -131,6 +131,20 @@ describe('the pattern feature', () => {
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'S1', point: 'q' } })), /transform\.axis\.point/);
   });
 
+  it('a field of another variant is rejected, not dropped', () => {
+    const doc = base();
+    invalid(doc, add(pattern('P', { type: 'body', body: 'A', features: ['H'] } as never)), /source\.features: a source of the type body has no such field/);
+    invalid(doc, add(pattern('P', { type: 'features', features: ['H'], body: 'A' } as never)), /source\.body: a source of the type features has no such field/);
+    invalid(doc, add(pattern('P', holes, { span: { type: 'full', angle: 3 } as never })), /transform\.span\.angle: a span of the type full has no such field/);
+    invalid(doc, add(pattern('P', holes, { axis: { kind: 'base', axis: 'Z', sketch: 'S1' } as never })), /transform\.axis\.sketch: an axis of the kind base has no such field/);
+    invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'S1', point: 'p', axis: 'Z' } as never })), /transform\.axis\.axis: an axis of the kind sketchPoint has no such field/);
+    invalid(doc, add(pattern('P', holes, { radius: 3 } as never)), /transform\.radius: a transform of the type circular has no such field/);
+    // a stored document is checked the same way
+    const stored = JSON.parse(JSON.stringify(run(doc, add(pattern('P')))));
+    stored.features.at(-1).source.body = 'A';
+    expect(() => validateDocument(stored)).toThrow(/source\.body: a source of the type features has no such field/);
+  });
+
   it('updateFeature merges the transform, replaces the axis and another variant of the span or the source', () => {
     const doc = run(base(), add(pattern('P', holes, { count: 'n', span: { type: 'angle', angle: 'deg(90)' } })));
     // only the count: the span and its expression stay

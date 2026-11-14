@@ -85,6 +85,7 @@ import {
 import { duplicateTwins, explanationText, freeEntities, freeSummary, markOf } from './sketch-diagnosis';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
 import { type SceneModel, Viewport } from './viewport';
+import { angleProblem, bodyName, faceLabel, featureName, issueText } from './issue-text';
 
 type Tool = 'select' | 'point' | 'line' | 'rect' | 'circle' | 'arc' | 'project';
 
@@ -187,8 +188,9 @@ const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Uni
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
 const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
-const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
 const PICK_REACH = 7; // px
+const SLOW_PREVIEW = 150; // ms; a preview slower than this is not recomputed on every keystroke
+const PREVIEW_PAUSE = 500; // ms without typing before such a preview is computed
 const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
 
 const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
@@ -214,6 +216,8 @@ export class App {
   private note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
+  private previewCost = 0; // ms the last preview of a draft took
+  private previewTimer?: number;
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
   private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
@@ -241,13 +245,13 @@ export class App {
   private feature(id: Id | undefined | null): Feature | undefined {
     return id == null ? undefined : this.doc.features.find((f) => f.id === id);
   }
+  // Names for a human: see issue-text.ts.
+  private readonly featureNames = (id: Id): string | undefined => this.feature(id)?.name;
   private nameOf(id: Id): string {
-    return this.feature(id)?.name ?? `(${id})`;
+    return featureName(id, this.featureNames);
   }
-  // A body is named after the feature that created it; a copy made by a pattern adds its number.
   private bodyName(body: Id): string {
-    const { feature, local } = bodyOwner(body);
-    return local === undefined ? this.nameOf(feature) : `${this.nameOf(feature)} / ${local}`;
+    return bodyName(body, this.featureNames);
   }
   // A body is hidden at the feature that created it; the copies of a pattern all at once.
   private bodyHidden(body: Id): boolean {
@@ -617,15 +621,9 @@ export class App {
     else panel.replaceChildren(...this.modelPanel());
   }
 
-  // The text of an issue for a human. Issues about bodies and features carry their IDs in `refs`
-  // (the targets a cut missed or would remove, a missing target or source); a pattern names the
-  // copy as `{ copy, feature }`. The text names them.
+  // The text of an issue for a human, with the bodies, features and copies it is about named.
   private issueText(issue: Issue): string {
-    const isCopy = (ref: unknown): ref is { copy: number; feature: Id } => typeof ref === 'object' && ref !== null && typeof (ref as { copy?: unknown }).copy === 'number' && typeof (ref as { feature?: unknown }).feature === 'string';
-    const named = ['noEffect', 'emptyResult', 'brokenReference'].includes(issue.code)
-      ? (issue.refs ?? []).flatMap((ref): string[] => (typeof ref === 'string' ? [this.bodyName(ref)] : isCopy(ref) ? [`copy ${ref.copy} of ${this.nameOf(ref.feature)}`] : []))
-      : [];
-    return named.length ? `${issue.message} (${named.join(', ')})` : issue.message;
+    return issueText(issue, this.featureNames);
   }
 
   private issues(result: FeatureResult | undefined): HTMLElement[] {
@@ -640,7 +638,7 @@ export class App {
 
   private describe(pick: Pick): string {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
-    const face = (name: FaceName) => `${this.nameOf(name.feature)} – ${ROLES[name.role]}${(name.copy ?? []).map((tag) => `, copy ${tag.index} of ${this.nameOf(tag.pattern)}`).join('')}`;
+    const face = (name: FaceName) => faceLabel(name, this.featureNames);
     if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
     const kinds: Record<EdgeKind, string> = { line: 'úsečka', circle: 'kružnice', coplanar: 'v ploše', other: 'obecná křivka' };
     return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
@@ -1538,9 +1536,20 @@ export class App {
 
   // Náhled: příkaz se spočítá po upravovanou feature a dokument se nemění.
   private updatePreview(): void {
+    window.clearTimeout(this.previewTimer);
+    this.previewTimer = undefined;
     const m = this.mode;
     if (!isDraft(m)) return;
     this.invalidate();
+    // An angle typed in degrees and out of range is reported in degrees here; the engine would
+    // report the radians it was converted to.
+    const angle = FEATURE_TYPE_INFO[m.draft.type].fields.map((field) => angleProblem(this.draftValue(m, field.path), field.spec)).find((problem) => problem !== undefined);
+    if (angle !== undefined) {
+      m.preview = undefined;
+      m.problem = angle;
+      m.warning = false;
+      return;
+    }
     // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám (a pattern without a source likewise)
     if ((m.kind === 'extrude' && this.unpicked(m)) || (m.kind === 'pattern' && patternIncomplete(m.draft))) {
       m.preview = undefined;
@@ -1548,7 +1557,9 @@ export class App {
       m.warning = false;
       return;
     }
+    const started = performance.now();
     const result = this.engine.preview(draftCommand(m.draft, m.editing, m.index), m.draft.id);
+    this.previewCost = performance.now() - started;
     m.preview = result.ok ? result.state : undefined;
     const outcome = result.ok ? result.state.evaluation.features[m.draft.id] : undefined;
     m.problem = result.ok ? (outcome?.error ? this.issueText(outcome.error) : outcome?.warnings.map((w) => this.issueText(w)).join(' ')) || undefined : result.error.message;
@@ -1557,7 +1568,23 @@ export class App {
     this.invalidate();
   }
 
+  // A change of the draft shows in the preview at once. When the last preview was slow (a pattern
+  // with many copies takes seconds), a change typed into a field waits for a pause in the typing
+  // instead: every keystroke would otherwise block the app for that long.
   private draftChanged(rebuild = true): void {
+    if (!rebuild && this.previewCost > SLOW_PREVIEW) {
+      window.clearTimeout(this.previewTimer);
+      this.previewTimer = window.setTimeout(() => isDraft(this.mode) && this.showDraft(false), PREVIEW_PAUSE);
+      const problem = document.getElementById('draft-problem');
+      if (problem) {
+        problem.textContent = 'The preview takes a while; it follows after a pause in typing.';
+        problem.className = 'issue warning';
+      }
+      return;
+    }
+    this.showDraft(rebuild);
+  }
+  private showDraft(rebuild: boolean): void {
     this.updatePreview();
     if (rebuild) this.renderPanel();
     else {
@@ -1825,7 +1852,7 @@ export class App {
 
   private planePanel(m: PlaneMode): HTMLElement[] {
     const base = m.draft.base;
-    const label = base.kind === 'base' ? `rovina ${base.plane}` : base.kind === 'plane' ? `rovina „${this.nameOf(base.feature)}“` : `stěna ${this.nameOf(base.face.feature)} – ${ROLES[base.face.role]}`;
+    const label = base.kind === 'base' ? `rovina ${base.plane}` : base.kind === 'plane' ? `rovina „${this.nameOf(base.feature)}“` : `stěna ${faceLabel(base.face as FaceName, this.featureNames)} (${this.bodyName(base.body)})`;
     return [
       h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nová rovina'),
       h('p', {}, `Základ: ${label}`),
@@ -1908,7 +1935,9 @@ export class App {
   // The bodies the previewed pattern creates, for the form.
   private patternBodies(m: PatternMode): string {
     const bodies = m.preview?.evaluation.features[m.draft.id]?.bodies ?? [];
-    return bodies.length ? `New bodies: ${bodies.join(', ')}.` : '';
+    // a new pattern is not in the document yet: its copies take the name of the draft
+    const nameOf = (id: Id): string | undefined => (id === m.draft.id ? m.draft.name : this.featureNames(id));
+    return bodies.length ? `New bodies: ${bodies.map((body) => bodyName(body, nameOf)).join(', ')}.` : '';
   }
 
   // ---------------------------------------------------------------- scéna

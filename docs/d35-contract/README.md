@@ -331,9 +331,10 @@ Point 4 is in the code (`docs/decisions.md`, D35, point 4, "Status: done"; `docs
 - `ToolRecipe.build` is `build(targets, firstFaceId, placement?)`, where `placement` is `{ transform, copy }` with one copy tag. A tool is built for one pattern at a time, so it never carries a list; the list grows only when a body with tagged faces is copied by another pattern.
 - The recipe returns a prism (`Prism`: the solid and its faces), not a separate type `Tool`.
 - `count` has the upper bound 200 and the angle the range [−2π, 2π] without zero.
-- `noEffect` of a pattern has `refs` of the shape `{ copy, feature, targets }`; an error of a copy starts its `refs` with `{ copy, feature }`.
+- `noEffect` of a pattern has `refs` of the shape `{ copy, feature, targets }`; an error of a copy starts its `refs` with `{ copy, feature }` and its message does not repeat the copy.
 - Reference kinds `tool` and `pattern` were added to the registry; the axis through a sketch point uses `sketch` and `entity`.
-- A copy that falls exactly onto the original is not `noEffect` (it takes over faces of the hole, like a repeated cut of an extrusion).
+- A copy has no effect whenever the volume of its target stays the same, so a copy that falls onto the original is `noEffect` and the original keeps its faces (changed by the review of point 4; the first version let the copy take the faces over, as a repeated cut of an extrusion does).
+- A field of another variant in `source`, `span`, `axis` or `transform` is an invalid command, on creation and on loading.
 - Implementation notes that are now done: validation of derived body IDs and of face names with `copy`, which faces get the copy tag, references to faces of copies, the recipe stored with a warning, the recompute time of the joint with the patterns (0.9 to 1.4 s).
 - The scenario test repeats only `boltHole` in the pattern `bolts` and cuts only the centre opening in `plateHoles`: the nut pocket needs the polygon tool (point 7) and the six controller holes the constraints of point 6.
 

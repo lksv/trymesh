@@ -5,8 +5,9 @@ import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { GENERATORS, type ResolvedOperand, generateProfile } from './generators';
 import { type Loop, type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
-import { type FaceInfo, type Prism, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
+import { type FaceInfo, type Prism, type RigidTransform, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, rotation, toWorld, transformFace, transformFrame, transformSolid, volumeOf } from './solid';
 import type {
+  CopyTag,
   Document,
   Evaluation,
   ExpressionError,
@@ -20,6 +21,7 @@ import type {
   Id,
   Issue,
   IssueCode,
+  PatternFeature,
   PlaneFeature,
   PlaneRef,
   Point2,
@@ -30,6 +32,7 @@ import type {
   SolidKernel,
   SolveInput,
   SolveResult,
+  Vec3,
 } from './types';
 import { faceKey, has } from './util';
 
@@ -68,8 +71,20 @@ export interface ToolRecipe {
   targets: Id[];
   // `targets`: the bodies the tool is about to be applied to, in the state it is applied in. An
   // extent that depends on them ("through all") is measured here, every time the tool is built.
-  build(targets: Solid[], firstFaceId: number): Prism;
+  // `placement`: where a copy made by a pattern stands and how its faces are tagged. The tool is
+  // built there, not moved afterwards, so that what depends on the targets is measured in the
+  // direction the copy points in.
+  build(targets: Solid[], firstFaceId: number, placement?: Placement): Prism;
 }
+export interface Placement {
+  transform: RigidTransform;
+  copy: CopyTag;
+}
+
+// The part of the state a tool changes: bodies and the face table.
+type Model = Pick<State, 'bodies' | 'faceNames' | 'faceInfos' | 'faceIds'>;
+// The model after a tool was applied and the targets it did not change, or why it could not be applied.
+type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false; code: IssueCode; refs?: unknown[]; detail?: string };
 
 // Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
 // A generated profile adds what its generator published and warned about.
@@ -250,8 +265,8 @@ export class Evaluator {
     const { feature, errors } = resolution;
     // Expression values and errors belong to the feature result in every state, suppressed included.
     const fields = { ...(resolution.values && Object.keys(resolution.values).length ? { values: resolution.values } : {}), ...(errors ? { fieldErrors: errors } : {}) };
-    const done = (result: FeatureResult, change: Partial<State> = {}): State => ({ ...state, ...change, features: { ...state.features, [feature.id]: { ...result, ...fields } } });
-    const failed = (code: IssueCode, refs?: unknown[], detail?: string): Step => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
+    const done: Done = (result, change = {}) => ({ ...state, ...change, features: { ...state.features, [feature.id]: { bodies: [], ...result, ...fields } } });
+    const failed: Failed = (code, refs, detail) => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
     // Potlačená feature je prázdná operace; co na ní závisí, skončí v chybě.
     if (feature.suppressed) return { state: done({ status: 'suppressed', warnings: [] }) };
     // A bad expression is an error of the feature. A sketch is the exception: it is computed with the
@@ -266,6 +281,8 @@ export class Evaluator {
         return this.sketch(feature, state, chordTolerance, drag, done, failed, errors ? Object.keys(errors) : []);
       case 'extrude':
         return this.extrude(feature, state, chordTolerance, done, failed);
+      case 'pattern':
+        return this.pattern(feature, state, done, failed);
       default: {
         const unknown: never = feature;
         throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
@@ -343,6 +360,7 @@ export class Evaluator {
     const sketchResult: FeatureResult = {
       status: warnings.length ? 'warning' : 'ok',
       warnings,
+      bodies: [],
       plane: frame,
       sketch: {
         points: geometry.points,
@@ -371,10 +389,26 @@ export class Evaluator {
       const warnings = [...(profile.warnings ?? []), ...result.warnings];
       return finish({ ...result, status: result.status === 'ok' && warnings.length ? 'warning' : result.status, warnings, ...(profile.facts ? { facts: profile.facts } : {}) }, change);
     };
-    // The tool: the length of "through all" is measured against the targets it is built for.
-    const build: ToolRecipe['build'] = (targets, firstFaceId) =>
-      buildPrism(feature.id, profile.regions, profile.frame, toolSpan(feature.extent, profile.frame, targets), profile.curveOf, firstFaceId, this.deps.kernel);
-    if (feature.operation !== 'new') return this.applyTool(feature.id, { operation: feature.operation, targets: feature.targets ?? [], build }, state, done, failed);
+    // The tool: the length of "through all" is measured against the targets it is built for, and
+    // a copy of a pattern is built in its own position. The planar triangulation is shared by all builds.
+    const triangulation = new Map<Region, Uint32Array>();
+    const build: ToolRecipe['build'] = (targets, firstFaceId, placement) => {
+      const frame = placement ? transformFrame(placement.transform, profile.frame) : profile.frame;
+      const prism = buildPrism(feature.id, profile.regions, frame, toolSpan(feature.extent, frame, targets), profile.curveOf, firstFaceId, this.deps.kernel, triangulation);
+      return placement ? { ...prism, faces: prism.faces.map((face) => ({ ...face, name: { ...face.name, copy: [placement.copy] } })) } : prism;
+    };
+    if (feature.operation !== 'new') {
+      const recipe: ToolRecipe = { operation: feature.operation, targets: feature.targets ?? [], build };
+      const applied = this.applyTool(recipe, state);
+      if (!applied.ok) return failed(applied.code, applied.refs, applied.detail);
+      // The recipe is stored even when nothing changed: a copy in a pattern can hit what the original missed.
+      const tools = { ...state.tools, [feature.id]: recipe };
+      const { unchanged } = applied;
+      if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings: [issue('noEffect', unchanged)] }, { tools }) };
+      // Only some targets were missed: the general text would read as if nothing had happened.
+      const warnings = unchanged.length ? [issue('noEffect', unchanged, 'only the targets in refs; the others were changed')] : [];
+      return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...applied.model, tools }) };
+    }
     const first = state.faceNames.length;
     let tool: Prism;
     try {
@@ -382,28 +416,29 @@ export class Evaluator {
     } catch (error) {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
-    return { state: done({ status: 'ok', warnings: [] }, { ...withFaces(state, tool, first), bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
+    return { state: done({ status: 'ok', warnings: [], bodies: [feature.id] }, { ...withFaces(state, tool, first), bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
   }
 
   // Applies a tool to its targets: a boolean operation with each of them. It works from the recipe
-  // alone, so any feature that produces a tool (an extrusion today) is applied the same way.
+  // alone, so any feature that produces a tool (an extrusion today) is applied the same way, and
+  // a pattern applies it again in another placement.
   // - A missing target is a broken reference.
   // - A cut that would remove a whole target is an error and changes none of them.
-  // - Targets the tool did not change are named in the `noEffect` warning; the recipe is stored even
-  //   then, because a copy in a pattern can hit what the original missed.
-  private applyTool(id: Id, recipe: ToolRecipe, state: State, done: Done, failed: Failed): Step {
-    const missing = recipe.targets.filter((target) => !lookup(state.bodies, target));
-    if (missing.length || recipe.targets.length === 0) return failed('brokenReference', missing.length ? missing : [recipe.targets]);
-    const first = state.faceNames.length;
-    const bodies = { ...state.bodies };
+  // - Targets the tool did not change are returned in `unchanged`. When it changed none, its faces
+  //   are in no body and do not enter the face table either.
+  private applyTool(recipe: ToolRecipe, model: Model, placement?: Placement): Applied {
+    const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
+    if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
+    const first = model.faceNames.length;
+    const bodies = { ...model.bodies };
     const unchanged: Id[] = [];
     let tool: Prism;
     try {
-      tool = recipe.build(recipe.targets.map((target) => state.bodies[target]), first);
+      tool = recipe.build(recipe.targets.map((target) => model.bodies[target]), first, placement);
       for (const target of recipe.targets) {
-        const before = state.bodies[target];
+        const before = model.bodies[target];
         const result = this.deps.kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);
-        if (result.triangles.length === 0) return failed('emptyResult', [target]);
+        if (result.triangles.length === 0) return { ok: false, code: 'emptyResult', refs: [target] };
         // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
         // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
         // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
@@ -414,14 +449,81 @@ export class Evaluator {
         else bodies[target] = result;
       }
     } catch (error) {
-      return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
+      return { ok: false, code: 'kernelFailure', detail: error instanceof Error ? error.message : String(error) };
     }
-    const tools = { ...state.tools, [id]: recipe };
-    // Nothing changed: the tool's faces are in no body, so they do not enter the table either.
-    if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings: [issue('noEffect', unchanged)] }, { tools }) };
-    // Only some targets were missed: the general text would read as if nothing had happened.
-    const warnings = unchanged.length ? [issue('noEffect', unchanged, 'only the targets in refs; the others were changed')] : [];
-    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...withFaces(state, tool, first), tools, bodies }) };
+    if (unchanged.length === recipe.targets.length) return { ok: true, model, unchanged };
+    return { ok: true, model: { ...withFaces(model, tool, first), bodies }, unchanged };
+  }
+
+  // A pattern: the transforms of its copies, then either the tools of the source features applied
+  // in each of them, or the source body copied into each of them. The rest of the step does not
+  // know what kind of transform it is.
+  private pattern(feature: PatternFeature, state: State, done: Done, failed: Failed): Step {
+    const transforms = this.transforms(feature.transform, state);
+    if ('code' in transforms) return failed(transforms.code, transforms.refs);
+    const placements = transforms.map((transform, i): Placement => ({ transform, copy: { pattern: feature.id, index: i + 1 } }));
+    const { source } = feature;
+
+    if (source.type === 'body') {
+      const solid = lookup(state.bodies, source.body);
+      if (!solid) return failed('brokenReference', [source.body]);
+      // Every face the body has at this moment (faces of several features, of earlier patterns too)
+      // gets a new number for each copy, with the copy tag appended to its name and its description
+      // moved with the copy.
+      const faces = [...new Set(solid.faceIds)].sort((a, b) => a - b);
+      const model: Model = { bodies: { ...state.bodies }, faceNames: [...state.faceNames], faceInfos: [...state.faceInfos], faceIds: new Map(state.faceIds) };
+      const created: Id[] = [];
+      for (const { transform, copy } of placements) {
+        const renumbered = new Map<number, number>();
+        for (const face of faces) {
+          const name: FaceName = { ...state.faceNames[face], copy: [...(state.faceNames[face].copy ?? []), copy] };
+          renumbered.set(face, model.faceNames.length);
+          model.faceIds.set(faceKey(name), model.faceNames.length);
+          model.faceNames.push(name);
+          model.faceInfos.push(transformFace(transform, state.faceInfos[face]));
+        }
+        const id = `${feature.id}/${copy.index}`;
+        model.bodies[id] = transformSolid(transform, solid, (face) => renumbered.get(face) as number);
+        created.push(id);
+      }
+      return { state: done({ status: 'ok', warnings: [], bodies: created }, model) };
+    }
+
+    // Features: a source that is missing, suppressed or in error has no recipe. A source that ended
+    // with `noEffect` has one, because a turned copy can hit what the original missed.
+    const missing = source.features.filter((id) => !lookup(state.tools, id));
+    if (missing.length) return failed('brokenReference', missing);
+    let model: Model = state;
+    const idle: { copy: number; feature: Id; targets: Id[] }[] = [];
+    for (const placement of placements) {
+      for (const id of source.features) {
+        const applied = this.applyTool(state.tools[id], model, placement);
+        // The pattern is atomic: one failed copy and the model stays as it was before the pattern.
+        if (!applied.ok) return failed(applied.code, [{ copy: placement.copy.index, feature: id }, ...(applied.refs ?? [])], [`copy ${placement.copy.index} of "${id}"`, applied.detail].filter(Boolean).join(': '));
+        if (applied.unchanged.length) idle.push({ copy: placement.copy.index, feature: id, targets: applied.unchanged });
+        model = applied.model;
+      }
+    }
+    const warnings = idle.length ? [issue('noEffect', idle, 'the copies in refs changed none or only some of their targets')] : [];
+    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, model) };
+  }
+
+  // The transforms of the copies of a pattern, the original excluded: copy 1 first.
+  private transforms(transform: PatternFeature['transform'], state: State): RigidTransform[] | { code: IssueCode; refs: unknown[] } {
+    const { axis, count, span } = transform;
+    let point: Vec3 = [0, 0, 0];
+    let direction: Vec3 = axis.kind === 'base' ? [axis.axis === 'X' ? 1 : 0, axis.axis === 'Y' ? 1 : 0, axis.axis === 'Z' ? 1 : 0] : [0, 0, 1];
+    if (axis.kind === 'sketchPoint') {
+      const sketch = lookup(state.sketches, axis.sketch);
+      if (!sketch) return { code: 'brokenReference', refs: [axis.sketch] };
+      const at = lookup(sketch.geometry.points, axis.point);
+      if (!at) return { code: 'brokenReference', refs: [axis.point] };
+      point = toWorld(sketch.frame, at.x, at.y);
+      direction = sketch.frame.normal;
+    }
+    // full circle: the copies divide it evenly; an angle: it lies between the first and the last copy
+    const step = span.type === 'full' ? (2 * Math.PI) / count : count > 1 ? span.angle / (count - 1) : 0;
+    return Array.from({ length: count - 1 }, (_, i) => rotation(point, direction, step * (i + 1)));
   }
 
   // Profil vysunutí podle jeho zdroje.
@@ -482,8 +584,8 @@ export class Evaluator {
   }
 }
 
-// The face tables of a state with the faces of a new tool appended.
-function withFaces(state: State, tool: Prism, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
+// The face tables of a model with the faces of a new tool appended.
+function withFaces(state: Model, tool: Prism, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
   return {
     faceNames: [...state.faceNames, ...tool.faces.map((f) => f.name)],
     faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],
@@ -518,5 +620,6 @@ function toolSpan(extent: ExtrudeFeature['extent'], frame: Frame, targets: Solid
   return [low - overshoot, high + overshoot];
 }
 
-type Done = (result: FeatureResult, change?: Partial<State>) => State;
+// `bodies` of a result may be left out: most steps create none.
+type Done = (result: Omit<FeatureResult, 'bodies'> & { bodies?: Id[] }, change?: Partial<State>) => State;
 type Failed = (code: IssueCode, refs?: unknown[], detail?: string) => Step;

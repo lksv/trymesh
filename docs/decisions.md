@@ -43,7 +43,7 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 3 are implemented, points 4 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 4 are implemented, points 5 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
 D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
@@ -687,7 +687,7 @@ Omezení:
 
 ## D35 Rozšíření pro robotický kloub
 
-Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 3 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 4 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
 
 **Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
 
@@ -945,6 +945,27 @@ type AxisRef =
 - **Jména stěn kopií.** Jméno stěny dostane volitelný údaj o kopii (pole a číslo kopie; u pole z pole seznam) na konci zápisu jména. Stěny originálu a všechna dosavadní jména se nemění. Analytický popis stěny se otočí s kopií.
 - Obě cesty sdílejí osu, otočení sítě i pojmenování kopií; liší se jen posledním krokem (boolean s cílem, nebo nové těleso).
 - Omezení: kopie jsou tuhá otočení. Kopie satelitu zůstanou v záběru, jen když jsou počty zubů centrálního i korunového kola dělitelné počtem satelitů. Obecná podmínka smontovatelnosti (součet obou počtů dělitelný počtem satelitů) je slabší a vyžadovala by každou kopii pootočit kolem vlastní osy; seznam transformací to později dovolí.
+
+  **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md, section Pattern. What the implementation settled or changed:
+
+  - **The tool is built in the place of the copy, not moved there.** `ToolRecipe.build(targets, firstFaceId, placement?)` transforms the frame of the sketch plane and builds the prism in it. A finished mesh that is only turned would keep the length measured for the original; "through all" has to be measured along the direction the copy points in and against the targets as they are at the pattern. The dedicated test turns a hole by 90° around an axis perpendicular to the extrusion: the copy passes 55 mm of a body whose original hole passed 30 mm, including a boss added between the hole and the pattern.
+  - **`applyTool` is a function of a model.** It takes bodies and the face table and returns the changed ones with the targets left unchanged, or a failure. The extrusion turns that into its result; the pattern chains the applications and throws the chain away when one fails, which is what makes it atomic.
+  - **Count** has the upper bound 200 (`MAX_PATTERN_COUNT`); the **angle** lies in [−2π, 2π] and is not zero, so an angle typed in degrees by mistake is an invalid command. With an angle the step is `angle / (count − 1)`; the count 1 creates no copy and ignores the span.
+  - **Issues.** A failed copy: the code of the failure, `refs` starting with `{ copy, feature }`, and the copy named in the message. Copies without effect: one warning `noEffect` with `refs` of the shape `{ copy, feature, targets }`. A missing source or axis is `brokenReference` with its ID.
+  - **A copy onto the original** (an angle of a full turn, an axis the source lies on) is not reported as `noEffect`: the cut removes nothing, but the faces of the hole are taken over by the later tool, exactly as when an extrusion repeats a cut. It was left that way because the rule "no volume change and no face of the tool" is the one extrusions use.
+  - **References in the registry.** Two more kinds of `FeatureRef`: `tool` (an extrusion with the operation add or cut) and `pattern` (the pattern a face of a copy names). The axis through a sketch point is a `sketch` reference and an `entity` reference with the kind `point`. `FEATURE_TYPE_INFO[type].bodies` has the third value `derived`.
+  - **`FeatureResult.bodies`** is filled for every feature: an extrusion with the operation `new` lists its own body, a pattern of a body its copies, everything else an empty list.
+  - **Face names.** `faceName()` keeps `copy`, rejects a number of a copy that is not an integer from 1 and drops an empty list. The key used for comparing appends `/@<pattern>:<index>`.
+  - **Rigid transforms** (`RigidTransform` in `solid.ts`) cover a mirror already: `transformSolid` reverses the triangles when the determinant is negative. No feature produces one yet.
+  - **MCP.** `get_model` returns the source and transform of a pattern and `bodies` of every feature that created some; `get_body` takes a derived ID and labels faces of copies `<name>@<pattern>:<number>`; the conventions of `describe_api` describe the pattern, derived IDs and copy tags.
+  - **App.** The form is described in ui.md, section Pattern. The app no longer takes a body ID for a feature ID: names and hiding go through `bodyOwner`.
+  - **Time.** The joint with the patterns (seven bodies, 4 + 4 + 6 repeated holes, two copies of the planet, three carrier pins) recomputes after a parameter change in 0.9 to 1.4 s on the development machine.
+  - **Tests.** `packages/engine/test/pattern.test.ts` (validation, merging, derived body IDs, copy tags, rigid transforms), `packages/scenarios/test/pattern.test.ts` (recompute against the real adapters: counts and angles, the axis through a sketch point, the perpendicular through-all test, several sources, copies that miss or fail, bodies and patterns of patterns), scenario 9 grown by the four patterns of holes, the copies of the planet and the carrier with its pins, an MCP test and a test of the form logic in the app.
+
+  What later points have to pick up:
+
+  - Point 5: `interference` should take the derived IDs from `FeatureResult.bodies`; export per body needs a file name for `planets/1`.
+  - Point 7: the pattern `bolts` of the scenario repeats only the hole; the nut pocket joins it once the polygon tool exists.
 
 **5. Export po tělesech a dotazy nad tělesy.**
 

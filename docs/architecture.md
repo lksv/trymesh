@@ -58,7 +58,7 @@ Stav 2026-11-14: oba adaptéry a engine jsou hotové včetně testů; všech še
 
 ## Dvě různé historie
 
-- **Časová osa (feature log)** je recept na model: uspořádaný seznam features (`Plane`, `Sketch`, `Extrude`). Je součástí dokumentu. Úprava feature uprostřed vyvolá přepočet.
+- **Časová osa (feature log)** je recept na model: uspořádaný seznam features (`Plane`, `Sketch`, `Extrude`, `Pattern`). Je součástí dokumentu. Úprava feature uprostřed vyvolá přepočet.
 - **Historie příkazů** je záznam uživatelských úprav dokumentu kvůli undo/redo. Není receptem na model.
 
 Skica je **jedna feature** na časové ose. Její obsah (body, křivky, vazby) je stav, ne log. Přidání úsečky do skici je příkaz (jde vrátit přes undo), ale není to nová položka časové osy.
@@ -372,10 +372,11 @@ Ostatní takové případy rozbor nepozná:
 Stěna má strukturované jméno odvozené z původu:
 
 ```ts
-type FaceName =
+type FaceName = (
   | { feature: Id; role: 'side'; curve: Id }     // z křivky skici; for a generated profile the side name of the catalog (`teeth`)
   | { feature: Id; role: 'startCap' }            // víko na začátku rozsahu (při nulovém `start` v rovině skici)
-  | { feature: Id; role: 'endCap' };             // protější víko
+  | { feature: Id; role: 'endCap' }              // protější víko
+) & { copy?: { pattern: Id; index: number }[] }; // a face of a copy made by a pattern, see Pattern
 ```
 
 Víko nenese označení oblasti. Všechna víka jedné extrude leží v jedné rovině, takže tvoří jednu logickou stěnu, i když je extrude složená z více oblastí. Nový výběr profilu tak víko nepřejmenuje a skici na něm se nerozbijí.
@@ -389,6 +390,7 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | Stěna zanikne | Jméno nemá žádný trojúhelník → reference je rozbitá → feature je v chybě. |
 | Dvě stěny splynou do jedné roviny | Zůstávají dvě stěny s různými jmény. |
 | Kružnice nebo oblouk | Všechny segmenty mají stejné jméno, válcová plocha je jedna stěna. |
+| A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. |
 | A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
 
 The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has three kinds: a plane, a cylinder and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and only an edge between a plane and a cylinder is a circle.
@@ -460,7 +462,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 2. **Tool.** The engine builds the closed mesh of a prism over an interval along the normal of the sketch plane: two caps (triangulated by the kernel) and the side faces. For the extent `distance` the interval is `start` to `start + distance`; for `throughAll` it is measured against the targets (below). Every triangle gets a face number by name; `startCap` is the cap at the start of the interval and `endCap` at its end, whichever way the interval points.
 3. **Application.** `new` stores the tool as a body. `add` and `cut` hand a tool recipe to `applyTool`, which runs one boolean per target body.
 
-**Tool recipe.** `ToolRecipe` is the operation, the targets and the function `build(targets, firstFaceId)`, which builds the tool again for the given target solids with face numbers from the given number. `applyTool` works from the recipe alone and knows nothing about extrusions, so any later feature that produces a tool (a revolve) is applied the same way. The recompute state keeps the recipe of every `add` and `cut`, also when the operation had no effect (`noEffect`); a feature in error (`brokenReference`, `kernelFailure`, `emptyResult`, a profile error) has none. Nobody reads the stored recipe yet: it is the interface for the pattern (D35 point 4), which repeats the tool in another position. A recipe is stored instead of a mesh because the length of "through all" has to be measured again for every copy.
+**Tool recipe.** `ToolRecipe` is the operation, the targets and the function `build(targets, firstFaceId, placement?)`, which builds the tool again for the given target solids with face numbers from the given number; `placement` is the rigid transform and the copy tag of a copy made by a pattern. `applyTool` works from the recipe alone and knows nothing about extrusions, so any later feature that produces a tool (a revolve) is applied the same way. It is a function of a model (bodies and the face table) that returns the changed model and the targets it left unchanged, or the reason it failed; the caller decides what that means for its feature. The recompute state keeps the recipe of every `add` and `cut`, also when the operation had no effect (`noEffect`); a feature in error (`brokenReference`, `kernelFailure`, `emptyResult`, a profile error) has none. The pattern reads the stored recipe to repeat the tool in another position. A recipe is stored instead of a mesh because the length of "through all" has to be measured again for every copy.
 
 ### Extent and targets (D35, point 2)
 
@@ -471,7 +473,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 - The interval is computed by `toolSpan` from the vertices of all targets together, projected onto the normal of the sketch plane: `forward` is `[0, high + overshoot]`, `backward` is `[0, low − overshoot]` and `both` is `[low − overshoot, high + overshoot]`, where `low ≤ 0 ≤ high` is the extent of the targets measured from the sketch plane.
 - The extent of the whole body counts, not only the part under the profile.
 - The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`. It keeps the cap of the tool out of the plane of a body face. The kernel adapter resolves about 1e-4 of the largest coordinate of body and tool together, so the overshoot is normally two orders of magnitude above it. Where it is not (a profile far larger than the targets), the adapter takes the cap as flush with the face, which it handles like any flush face; holes then still go through.
-- The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern will measure it for every copy.
+- The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern measures it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
 - The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
 
@@ -526,6 +528,44 @@ Výsledky, které nejsou běžné:
 | Jádro selže | Chyba `kernelFailure`. |
 
 **Koplanární stěny (D19).** Engine staví nástroj přesně podle skici a nic neposouvá. Skica na stěně znamená, že víko nástroje leží v rovině této stěny; že s tím jádro neumí pracovat spolehlivě, je vlastnost konkrétního jádra a řeší ji jeho adaptér (viz záruka č. 3 u SolidKernel).
+
+## Pattern (D35, point 4)
+
+A pattern repeats its source by a list of rigid transforms. The step asks one function for the transforms of the copies (`transforms` in `evaluate.ts`, by the kind of `transform`; today `circular`) and the rest does not know the kind, so a linear pattern or a mirror is another kind and nothing else.
+
+```ts
+interface PatternFeature extends FeatureBase {
+  type: 'pattern';
+  source: { type: 'features'; features: Id[] } | { type: 'body'; body: Id };
+  transform: { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
+}
+type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id };
+```
+
+**Transforms.** `count` includes the original, so there are `count − 1` copies, numbered from 1. `full` turns copy `k` by `k · 2π / count`; `angle` is the angle between the first and the last copy, so the step is `angle / (count − 1)` and may be negative. A base axis goes through the origin of the model. `sketchPoint` is the normal of the sketch plane through a point of the sketch (an own point, `origin` or a point of projected geometry), read from the solved sketch. A transform is `RigidTransform` (`solid.ts`): the rows of an orthogonal matrix and a translation.
+
+**Numeric fields.** `transform/count` is an integer from 1 to 200 (the bound keeps a typo in an expression from starting thousands of booleans) and `transform/span/angle` lies in [−2π, 2π] and is not zero; the angle exists only with the span `angle`. A count that an expression makes fractional is an error of the field (`notInteger`), not a rounding.
+
+**A pattern of features.** The sources are extrusions with the operation `add` or `cut` (reference kind `tool`). For every copy, in the order of the copies, the tool of every source is built in the transformed position and applied to the targets of that source, in the order of the list.
+
+- The recipe transforms the frame of the sketch plane and builds the prism there, it does not move a finished mesh. "Through all" is therefore measured along the direction the copy points in, against the targets as they are at the pattern: a hole turned by 90° passes the width of the body, and material added between the source and the pattern is cut as well.
+- The triangulation of the profile is computed once per recipe and reused by every build.
+- A source that is missing, suppressed or in error has no recipe: the pattern is `brokenReference` with the sources in `refs`. A source that ended with `noEffect` has one, because a turned copy can hit what the original missed.
+- The pattern is atomic. When one application fails (`emptyResult`, `kernelFailure`, a missing target), the pattern is in error and the model stays as it was before it; `refs` start with `{ copy, feature }` and the message names the copy.
+- Applications that changed none or only some of their targets are listed in one warning `noEffect` with `refs` of the shape `{ copy, feature, targets }`.
+- A copy that falls exactly onto the original (a full turn as an angle) cuts the same hole again: like an extrusion that repeats a cut, it takes over faces of the hole and changes nothing else.
+
+**A pattern of a body.** The body in the state before the pattern is copied as new bodies `<pattern>/<number>`.
+
+- The copy gets a new face number for every face the body has at that moment, whichever feature or earlier pattern it came from. The name is the old one with the copy tag appended and the analytic description is moved with the copy (`transformFace`), so the top of a copy is still a plane a sketch can stand on and the rim of its hole is still a circle.
+- `transformSolid` moves the vertices and renumbers the faces; with a negative determinant (a mirror, later) it reverses the order of the triangle vertices.
+- `FeatureResult.bodies` lists the copies in the order of their numbers. A feature that refers to a copy the count no longer reaches is `brokenReference`.
+- What is added to the source after the pattern is not copied; what is moved before it is.
+- The facts of a generated profile stay with the source feature; a copy publishes none.
+
+**Derived body IDs.** The ID of a body is the ID of the feature that created it or `<feature>/<local name>` (`bodyOwner`). The registry decides whether a feature creates the body: a pattern does for a body source and a local name that is a number from 1 without leading zeros. Whether the copy with that number exists shows only in the recompute, because the count may be an expression. A dependency on a copy is a dependency on its pattern (`featureRefs`), so `moveFeature` keeps the pattern in front of what uses its copies.
+
+**Copy tags.** A face of a copy carries `copy: [{ pattern, index }]`; a pattern of a pattern appends another tag, the latest last. Faces of the original have none, and an empty list is normalized to none, so one face has one spelling. A reference to such a face (the plane of a sketch, either face of a projected edge) is also a reference to every pattern in the list: validation requires each to be a pattern before the referring feature and the number an integer from 1. The key of a name used for comparing and ordering appends `/@<pattern>:<index>` per tag.
 
 ## Porty
 
@@ -699,6 +739,7 @@ interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
   error?: Issue;                 // jen při status 'error'
   warnings: Issue[];
+  bodies: Id[];                  // bodies the feature created: an extrusion with `new` its own, a pattern of a body its copies
   plane?: { origin: Vec3; x: Vec3; y: Vec3; normal: Vec3 };   // sketch, plane
   sketch?: {
     points: Record<Id, { x: number; y: number }>;   // použité polohy, včetně promítnutých

@@ -60,7 +60,8 @@ function sketchOf(engine: Engine, id: string): SketchFeature {
 
 // ---------------------------------------------------------------- popis modelu
 
-const faceLabel = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`);
+// A short text for a face name; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
+const faceLabel = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join('');
 
 function solidInfo(solid: Solid): { volume: number; min: number[]; max: number[] } {
   const p = solid.positions;
@@ -139,8 +140,17 @@ function sketchBrief(result: FeatureResult | undefined): Record<string, unknown>
 }
 
 function featureSummary(feature: Feature, result: FeatureResult | undefined): unknown {
-  const base = { id: feature.id, name: feature.name, type: feature.type, ...(featureStatus(result) as object), ...(feature.expressions ? { expressions: feature.expressions } : {}) };
+  // `bodies`: the bodies the feature created, so that derived IDs (`<pattern>/<number>`) need not be composed
+  const base = {
+    id: feature.id,
+    name: feature.name,
+    type: feature.type,
+    ...(featureStatus(result) as object),
+    ...(feature.expressions ? { expressions: feature.expressions } : {}),
+    ...(result?.bodies?.length ? { bodies: result.bodies } : {}),
+  };
   if (feature.type === 'plane') return { ...base, base: feature.base as unknown as Json, offset: feature.offset };
+  if (feature.type === 'pattern') return { ...base, source: feature.source as unknown as Json, transform: feature.transform as unknown as Json };
   if (feature.type === 'extrude') {
     return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }), ...factsInfo(result) };
   }
@@ -170,7 +180,7 @@ function modelSummary(state: EngineState): unknown {
 
 function bodyDetail(state: EngineState, id: string): unknown {
   const body = Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id) ? state.evaluation.bodies[id] : undefined;
-  if (!body) throw new ToolError(`těleso "${id}" v tomto místě časové osy není (ID tělesa je ID vysunutí s operací new)`);
+  if (!body) throw new ToolError(`the body "${id}" does not exist at this point of the timeline (a body ID is the ID of an extrusion with the operation new, or "<pattern>/<number>" for a copy made by a pattern; get_model lists the bodies)`);
   const p = body.solid.positions;
   // plocha a normála stěny ze součtu vektorových součinů jejích trojúhelníků
   const sums = new Map<number, number[]>();
@@ -436,7 +446,7 @@ export function tools(): Tool[] {
     {
       name: 'get_body',
       description: 'Těleso podrobně: stěny (jméno, rovinnost, plocha, normála) a hrany (jméno, druh, konce). Jména stěn a hran se používají v odkazech: rovina skici na stěně, promítnutí hrany.',
-      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'ID tělesa = ID vysunutí s operací new' }, at: { type: 'string', description: 'ID feature; stav po ní' } }, required: ['body'], additionalProperties: false },
+      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'ID feature; stav po ní' } }, required: ['body'], additionalProperties: false },
       run: (engine, args) => bodyDetail(stateAt(engine, optionalText(args, 'at')), text(args, 'body')),
     },
     {

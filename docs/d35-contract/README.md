@@ -324,6 +324,19 @@ Point 3 is in the code (`docs/decisions.md`, D35, point 3, "Status: done"; `docs
 - Implementation notes that are now done: the tolerance of gear meshing, the third kind of face in `edgeKind` and `projectEdge`, operands verified only when new, a missing operand as `brokenReference`, the recompute time of the joint (about 0.6 s so far).
 - The scenario test uses English parameter names in the gear profile (`backlash` for `vule`).
 
+### After point 4 (2026-11-14)
+
+Point 4 is in the code (`docs/decisions.md`, D35, point 4, "Status: done"; `docs/architecture.md`, Pattern). `PatternFeature`, `AxisRef`, `FaceName.copy` and `FeatureResult.bodies` live in the engine. Differences from this draft:
+
+- `ToolRecipe.build` is `build(targets, firstFaceId, placement?)`, where `placement` is `{ transform, copy }` with one copy tag. A tool is built for one pattern at a time, so it never carries a list; the list grows only when a body with tagged faces is copied by another pattern.
+- The recipe returns a prism (`Prism`: the solid and its faces), not a separate type `Tool`.
+- `count` has the upper bound 200 and the angle the range [−2π, 2π] without zero.
+- `noEffect` of a pattern has `refs` of the shape `{ copy, feature, targets }`; an error of a copy starts its `refs` with `{ copy, feature }`.
+- Reference kinds `tool` and `pattern` were added to the registry; the axis through a sketch point uses `sketch` and `entity`.
+- A copy that falls exactly onto the original is not `noEffect` (it takes over faces of the hole, like a repeated cut of an extrusion).
+- Implementation notes that are now done: validation of derived body IDs and of face names with `copy`, which faces get the copy tag, references to faces of copies, the recipe stored with a warning, the recompute time of the joint with the patterns (0.9 to 1.4 s).
+- The scenario test repeats only `boltHole` in the pattern `bolts` and cuts only the centre opening in `plateHoles`: the nut pocket needs the polygon tool (point 7) and the six controller holes the constraints of point 6.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

@@ -4,7 +4,31 @@ import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type E
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, generatedProfile, geometricFor, lineCommands, normalizeAngle, pointCommands, profileKind, rectangleCommands, rememberedProfile } from '../src/sketch-commands';
+import {
+  type Anchor,
+  GEOMETRIC_KINDS,
+  type PatternChoices,
+  type PatternDraft,
+  arcCommands,
+  asConstruction,
+  axisKind,
+  changeExtrude,
+  changePattern,
+  circleCommands,
+  deleteCommands,
+  dimensionFor,
+  draftCommand,
+  generatedProfile,
+  geometricFor,
+  lineCommands,
+  normalizeAngle,
+  patternIncomplete,
+  patternSource,
+  pointCommands,
+  profileKind,
+  rectangleCommands,
+  rememberedProfile,
+} from '../src/sketch-commands';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -467,6 +491,87 @@ describe('nálezy z revize aplikace', () => {
     expect(engine.getState().document.features[1]).toMatchObject({ profile: { params: { teeth: 24 } } });
     // the generated profile of a new draft comes from the catalog
     expect(generatedProfile('involuteGear', 's', {}).operands).toEqual({});
+  });
+
+  it('a pattern draft: the source, the axis, the count and the span', () => {
+    const choices: PatternChoices = { tools: ['h1', 'h2', 'h3'], bodies: ['a', 'b'], sketches: ['s', 's2'] };
+    // the first source: the selected feature when it can be one, else the latest tool, else the latest body
+    expect(patternSource(choices, 'h1')).toEqual({ type: 'features', features: ['h1'] });
+    expect(patternSource(choices, 'a')).toEqual({ type: 'body', body: 'a' });
+    expect(patternSource(choices, 's')).toEqual({ type: 'features', features: ['h3'] });
+    expect(patternSource(choices)).toEqual({ type: 'features', features: ['h3'] });
+    expect(patternSource({ ...choices, tools: [] })).toEqual({ type: 'body', body: 'b' });
+    expect(patternSource({ tools: [], bodies: [], sketches: ['s'] })).toBeUndefined();
+
+    const draft: PatternDraft = { id: 'n1', name: 'n1', suppressed: false, type: 'pattern', source: { type: 'features', features: ['h2'] }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } } };
+    // toggling keeps the order of the timeline, not of the clicks
+    const two = changePattern(draft, { toggleFeature: 'h1' }, choices);
+    expect(two.source).toEqual({ type: 'features', features: ['h1', 'h2'] });
+    expect(changePattern(two, { toggleFeature: 'h2' }, choices).source).toEqual({ type: 'features', features: ['h1'] });
+    // a feature that is no longer on offer stays in the list until it is unchecked
+    const stale: PatternDraft = { ...draft, source: { type: 'features', features: ['gone', 'h2'] } };
+    expect(changePattern(stale, { toggleFeature: 'h3' }, choices).source).toEqual({ type: 'features', features: ['gone', 'h2', 'h3'] });
+    expect(changePattern(stale, { toggleFeature: 'gone' }, choices).source).toEqual({ type: 'features', features: ['h2'] });
+    // nothing picked: there is nothing to compute
+    const none = changePattern(draft, { toggleFeature: 'h2' }, choices);
+    expect(none.source).toEqual({ type: 'features', features: [] });
+    expect([patternIncomplete(none), patternIncomplete(draft)]).toEqual([true, false]);
+    // the other kind of source starts from the latest choice; the same kind changes nothing
+    const body = changePattern(two, { source: 'body' }, choices);
+    expect(body.source).toEqual({ type: 'body', body: 'b' });
+    expect(changePattern(body, { body: 'a' }, choices).source).toEqual({ type: 'body', body: 'a' });
+    expect(changePattern(body, { toggleFeature: 'h1' }, choices).source).toEqual(body.source); // features belong to the other source
+    expect(changePattern(two, { source: 'features' }, choices).source).toEqual(two.source);
+    expect(changePattern(body, { source: 'features' }, choices).source).toEqual({ type: 'features', features: ['h3'] });
+    expect(patternIncomplete(changePattern(two, { source: 'body' }, { ...choices, bodies: [] }))).toBe(true);
+    // the axis: a base axis, or the origin of the latest sketch until a sketch and a point are chosen
+    expect(axisKind(draft.transform.axis)).toBe('Z');
+    expect(changePattern(draft, { axis: 'X' }, choices).transform.axis).toEqual({ kind: 'base', axis: 'X' });
+    const through = changePattern(draft, { axis: 'sketchPoint' }, choices);
+    expect(through.transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'origin' });
+    expect(axisKind(through.transform.axis)).toBe('sketchPoint');
+    expect(changePattern(through, { point: 'p1' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'p1' });
+    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { sketch: 's' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's', point: 'origin' }); // a point of the other sketch does not carry over
+    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { axis: 'sketchPoint' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'p1' });
+    expect(changePattern(draft, { axis: 'sketchPoint' }, { ...choices, sketches: [] }).transform.axis).toEqual({ kind: 'base', axis: 'Z' }); // no sketch to go through
+    expect(changePattern(draft, { point: 'p1' }, choices).transform.axis).toEqual({ kind: 'base', axis: 'Z' });
+    // the count and the span; the angle the draft had last comes back
+    expect(changePattern(draft, { count: 'n' }, choices).transform.count).toBe('n');
+    const angled = changePattern(draft, { span: 'angle' }, choices);
+    expect(angled.transform.span).toEqual({ type: 'angle', angle: Math.PI / 2 });
+    const typed = changePattern(angled, { angle: 'deg(120)' }, choices);
+    expect(typed.transform.span).toEqual({ type: 'angle', angle: 'deg(120)' });
+    expect(changePattern(typed, { span: 'full' }, choices).transform.span).toEqual({ type: 'full' });
+    expect(changePattern(changePattern(typed, { span: 'full' }, choices), { span: 'angle' }, choices, typed.transform.span).transform.span).toEqual({ type: 'angle', angle: 'deg(120)' });
+    expect(changePattern(draft, { angle: 1 }, choices).transform.span).toEqual({ type: 'full' }); // the full circle has no angle
+
+    // the engine accepts the draft as a new feature and as a change of an existing one
+    const { engine, run } = setup();
+    const extrude = (id: Id, curve: Id, operation: 'new' | 'cut'): Command => ({
+      type: 'addFeature',
+      feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: [curve] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation, ...(operation === 'cut' ? { targets: ['a'] } : {}) },
+    });
+    run([
+      { type: 'addPoint', sketch: 's', id: 'p1', x: 12, y: 0 },
+      { type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin' }, radius: 20 },
+      { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'circle', center: 'p1' }, radius: 2 },
+      extrude('a', 'c1', 'new'),
+      extrude('h1', 'c2', 'cut'),
+    ]);
+    const real: PatternChoices = { tools: ['h1'], bodies: ['a'], sketches: ['s'] };
+    const first: PatternDraft = { ...draft, source: patternSource(real) as PatternDraft['source'] };
+    run([draftCommand(first, false, 3)]);
+    expect(engine.getState().document.features[3]).toEqual(first);
+    expect(engine.getState().evaluation.features.n1.status).toBe('ok');
+    // editing sends the whole source and transform; another variant of either replaces the old one
+    const edited = changePattern(changePattern(changePattern(first, { source: 'body' }, real), { axis: 'sketchPoint' }, real), { span: 'angle', count: 3 }, real);
+    expect(draftCommand(edited, true, 3)).toEqual({ type: 'updateFeature', id: 'n1', patch: { source: { type: 'body', body: 'a' }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 's', point: 'origin' }, count: 3, span: { type: 'angle', angle: Math.PI / 2 } } } });
+    run([draftCommand(edited, true, 3)]);
+    expect(engine.getState().document.features[3]).toEqual(edited);
+    expect(engine.getState().evaluation.features.n1.bodies).toEqual(['n1/1', 'n1/2']);
+    run([draftCommand(changePattern(edited, { source: 'features', span: 'full' }, real), true, 3)]);
+    expect(engine.getState().document.features[3]).toMatchObject({ source: { type: 'features', features: ['h1'] }, transform: { span: { type: 'full' } } });
+    expect(engine.getState().evaluation.features.n1.bodies).toEqual([]);
   });
 
   it('bod uvnitř smyčky', () => {

@@ -69,7 +69,7 @@ Ke kloubu vedou dva milníky (D35):
 
 ### Rozšíření pro robotický kloub (D35)
 
-Status: **in progress.** Point 1 is implemented (2026-11-14), points 2 to 7 are not. Číslování je pořadí implementace. Ukázkový díl je planetová převodovka s převodem 4 až 6 jako robotický kloub: uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů, které návrh potřebuje, nese validační scénář 9.
+Status: **in progress.** Points 1 to 4 are implemented (2026-11-14), points 5 to 7 are not. Číslování je pořadí implementace. Ukázkový díl je planetová převodovka s převodem 4 až 6 jako robotický kloub: uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů, které návrh potřebuje, nese validační scénář 9.
 
 U každého bodu platí levná varianta, navržená tak, aby šla později rozšířit na plnou; kde malé rozšíření dá obecnější nástroj, má přednost. Co do PoC nepatří, je v budoucích funkcích; důvody a návrh provedení jsou v D35. Každá funkce má být dostupná z aplikace i přes MCP.
 
@@ -125,7 +125,7 @@ Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako 
    - e) Nálitek se stejným půdorysem se zase celý odřízne: po jeho stěnách nezůstane nic a skica na některé z nich ohlásí rozbitou referenci.
 7. **Skica krok za krokem s diagnostikou.** Obrys úhelníku od ruky, pak směry stran, rozměry a ukotvení. Po každém kroku diagnostika řekne, kolik volnosti zbývá a které body se hýbou; u určeného tvaru bez ukotvení ukáže, že volná je jen poloha. Vazby navíc označí, vysvětlí, z čeho plynou, a navrhne sadu k odebrání; po jejím odebrání se geometrie nezmění. Přesnou duplicitu engine odmítne.
 8. **Souměrný díl s konstrukční osou.** Konstrukční svislá osa z počátku, lichoběžník souměrný podle ní a díra ve středu osy. Souměrnost ubere každé dvojici bodů dva stupně volnosti a diagnostika to ukáže. Po změně šířky a výšky zůstane díl souměrný a díra uprostřed; bez kóty šířky jde rohem táhnout a protější roh ho zrcadlí. Vodorovnost základny přidaná navíc se označí jako plynoucí ze souměrnosti a svislosti osy. Dokument s novými vazbami se uloží a načte beze změny.
-9. **Robotický kloub s planetovou převodovkou** (in progress: tested as far as point 3 of D35 reaches, in `packages/scenarios/test/scenario9.test.ts`: parts a, b, i, k and the bodies of d, e, f with their through holes, without patterns; ověřuje rozšíření z D35). Planetová převodovka s převodem 4 až 6, uvnitř pouzdra je celý motor, za motorem je deska pro řídicí jednotku. Rozměry dílů, kolem kterých se kloub staví:
+9. **Robotický kloub s planetovou převodovkou** (in progress: tested as far as point 4 of D35 reaches, in `packages/scenarios/test/scenario9.test.ts`: parts a, b, c, i, k and the bodies of d, e, f, g with their through holes repeated by patterns, without the nut pockets and the controller holes; ověřuje rozšíření z D35). Planetová převodovka s převodem 4 až 6, uvnitř pouzdra je celý motor, za motorem je deska pro řídicí jednotku. Rozměry dílů, kolem kterých se kloub staví:
 
    | Díl | Rozměr |
    |---|---|

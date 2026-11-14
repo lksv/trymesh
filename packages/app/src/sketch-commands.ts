@@ -13,6 +13,7 @@ import {
   type GeometricConstraint,
   type Id,
   type Input,
+  type PatternFeature,
   type PlaneFeature,
   type ProfileSource,
   type RegionRef,
@@ -333,10 +334,87 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
   };
 }
 
+// ---------------------------------------------------------------- pattern
+
+export type PatternDraft = Input<PatternFeature>;
+export type PatternSpan = PatternDraft['transform']['span'];
+export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint';
+export const axisKind = (axis: PatternDraft['transform']['axis']): AxisKind => (axis.kind === 'base' ? axis.axis : 'sketchPoint');
+// One change of the pattern form.
+// - `source`: the other kind of source, filled with the latest choice of that kind.
+// - `toggleFeature`: adds a source feature or removes it; the list keeps the order of the timeline.
+// - `axis`: a base axis, or `sketchPoint` (the origin of the latest sketch until `sketch` and
+//   `point` say otherwise).
+// - `span`: `angle` returns to the angle the draft had last.
+export interface PatternChange {
+  source?: 'features' | 'body';
+  toggleFeature?: Id;
+  body?: Id;
+  axis?: AxisKind;
+  sketch?: Id;
+  point?: Id;
+  count?: number | Expr;
+  span?: PatternSpan['type'];
+  angle?: number | Expr;
+}
+// What the form offers at the place of the pattern on the timeline, in the order of the timeline:
+// extrusions that add or cut, bodies and sketches.
+export interface PatternChoices {
+  tools: Id[];
+  bodies: Id[];
+  sketches: Id[];
+}
+const DEFAULT_ANGLE: PatternSpan = { type: 'angle', angle: Math.PI / 2 };
+const last = <T>(items: T[]): T | undefined => items[items.length - 1];
+
+// The first source of a new pattern: `preferred` (the feature selected on the timeline) when it is
+// a tool or made a body, otherwise the latest tool, otherwise the latest body.
+export function patternSource(choices: PatternChoices, preferred?: Id): PatternDraft['source'] | undefined {
+  if (preferred !== undefined && choices.tools.includes(preferred)) return { type: 'features', features: [preferred] };
+  if (preferred !== undefined && choices.bodies.includes(preferred)) return { type: 'body', body: preferred };
+  const tool = last(choices.tools);
+  if (tool !== undefined) return { type: 'features', features: [tool] };
+  const body = last(choices.bodies);
+  return body === undefined ? undefined : { type: 'body', body };
+}
+
+// A pattern draft the engine has nothing to compute for yet: no source feature, or no body.
+export const patternIncomplete = (draft: PatternDraft): boolean => (draft.source.type === 'features' ? draft.source.features.length === 0 : draft.source.body === '');
+
+export function changePattern(draft: PatternDraft, change: PatternChange, choices: PatternChoices, angle: PatternSpan = DEFAULT_ANGLE): PatternDraft {
+  let { source } = draft;
+  if (change.source !== undefined && change.source !== source.type) {
+    const tool = last(choices.tools);
+    source = change.source === 'features' ? { type: 'features', features: tool === undefined ? [] : [tool] } : { type: 'body', body: last(choices.bodies) ?? '' };
+  }
+  if (change.toggleFeature !== undefined && source.type === 'features') {
+    const id = change.toggleFeature;
+    const picked = source.features.includes(id) ? source.features.filter((other) => other !== id) : [...source.features, id];
+    // a feature that is no longer on offer (removed, moved behind the pattern) stays where it was: in front
+    const order = (other: Id): number => choices.tools.indexOf(other);
+    source = { type: 'features', features: [...picked].sort((a, b) => order(a) - order(b)) };
+  }
+  if (change.body !== undefined && source.type === 'body') source = { type: 'body', body: change.body };
+
+  let { axis, span } = draft.transform;
+  if (change.axis !== undefined && change.axis !== axisKind(axis)) {
+    const sketch = last(choices.sketches);
+    if (change.axis !== 'sketchPoint') axis = { kind: 'base', axis: change.axis };
+    else if (sketch !== undefined) axis = { kind: 'sketchPoint', sketch, point: 'origin' };
+  }
+  if (change.sketch !== undefined && axis.kind === 'sketchPoint' && change.sketch !== axis.sketch) axis = { kind: 'sketchPoint', sketch: change.sketch, point: 'origin' };
+  if (change.point !== undefined && axis.kind === 'sketchPoint') axis = { ...axis, point: change.point };
+  if (change.span !== undefined && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : angle;
+  if (change.angle !== undefined && span.type === 'angle') span = { type: 'angle', angle: change.angle };
+  return { ...draft, source, transform: { ...draft.transform, axis, count: change.count ?? draft.transform.count, span } };
+}
+
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
-export function draftCommand(draft: ExtrudeDraft | PlaneDraft, editing: boolean, index: number): Command {
+export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
+  // the draft holds every field of the source and the transform, so merging them replaces both
+  if (draft.type === 'pattern') return { type: 'updateFeature', id: draft.id, patch: { source: draft.source, transform: draft.transform } };
   const { id, extent, operation, targets } = draft;
   // The patch merges with the feature, so a reference the draft no longer has must be removed
   // explicitly; every other entry of the profile is in the draft.

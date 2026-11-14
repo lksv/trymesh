@@ -24,6 +24,48 @@ export const toWorld = (frame: Frame, u: number, v: number, w = 0): Vec3 => [
 ];
 export const toPlane = (frame: Frame, p: Vec3): Vec2 => [dot3(sub3(p, frame.origin), frame.x), dot3(sub3(p, frame.origin), frame.y)];
 
+// ---------------------------------------------------------------- rigid transforms
+
+// An isometry p' = M · p + t; `matrix` holds the rows of an orthogonal matrix. A pattern is a list
+// of these. With a negative determinant (a mirror, later) the order of triangle vertices is
+// reversed; a face description carries its normal without a sign, so it is only mapped.
+export interface RigidTransform {
+  matrix: [Vec3, Vec3, Vec3];
+  translation: Vec3;
+}
+export const transformVector = (t: RigidTransform, v: Vec3): Vec3 => [dot3(t.matrix[0], v), dot3(t.matrix[1], v), dot3(t.matrix[2], v)];
+export const transformPoint = (t: RigidTransform, p: Vec3): Vec3 => add3(transformVector(t, p), t.translation);
+export const transformFrame = (t: RigidTransform, frame: Frame): Frame => ({ origin: transformPoint(t, frame.origin), x: transformVector(t, frame.x), y: transformVector(t, frame.y), normal: transformVector(t, frame.normal) });
+const determinant = (t: RigidTransform): number => dot3(t.matrix[0], cross3(t.matrix[1], t.matrix[2]));
+
+// Rotation by `angle` around the axis through `point` with the direction `axis` (right-handed).
+export function rotation(point: Vec3, axis: Vec3, angle: number): RigidTransform {
+  const [c, s] = [Math.cos(angle), Math.sin(angle)];
+  const [x, y, z] = mul3(axis, 1 / len3(axis));
+  const matrix: [Vec3, Vec3, Vec3] = [
+    [c + x * x * (1 - c), x * y * (1 - c) - z * s, x * z * (1 - c) + y * s],
+    [y * x * (1 - c) + z * s, c + y * y * (1 - c), y * z * (1 - c) - x * s],
+    [z * x * (1 - c) - y * s, z * y * (1 - c) + x * s, c + z * z * (1 - c)],
+  ];
+  const turned: Vec3 = [dot3(matrix[0], point), dot3(matrix[1], point), dot3(matrix[2], point)];
+  return { matrix, translation: sub3(point, turned) };
+}
+
+export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
+  if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
+  if (info.surface === 'cylinder') return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+  return { ...info, axis: transformVector(t, info.axis) };
+}
+
+// A copy of a solid in the transformed position, with its face numbers renumbered by `faceId`.
+export function transformSolid(t: RigidTransform, solid: Solid, faceId: (old: number) => number): Solid {
+  const positions = new Float32Array(solid.positions.length);
+  for (let i = 0; i < positions.length; i += 3) positions.set(transformPoint(t, [solid.positions[i], solid.positions[i + 1], solid.positions[i + 2]]), i);
+  const triangles = Uint32Array.from(solid.triangles);
+  if (determinant(t) < 0) for (let i = 0; i < triangles.length; i += 3) [triangles[i + 1], triangles[i + 2]] = [triangles[i + 2], triangles[i + 1]];
+  return { positions, triangles, faceIds: solid.faceIds.map(faceId) };
+}
+
 // ---------------------------------------------------------------- extrude
 
 export interface Prism {
@@ -35,7 +77,9 @@ export interface Prism {
 // z křivky na hranici právě jedné vybrané oblasti; křivka sdílená dvěma oblastmi se vyruší.
 // `span` je rozsah podél normály roviny skici: [začátek, konec], měřeno od roviny skici. Víko
 // startCap leží na začátku, endCap na konci.
-export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], curveOf: (id: Id) => SideCurve, firstFaceId: number, kernel: SolidKernel): Prism {
+// `triangulation`: a cache of the planar triangulation by region. A tool that is built again and
+// again (for every copy of a pattern) passes the same map, so the profile is triangulated once.
+export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], curveOf: (id: Id) => SideCurve, firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): Prism {
   const [start, end] = span;
   // 2D síť sjednocení oblastí. Vrcholy se sdílejí podle klíče, takže sousední oblasti na sebe navazují.
   const index = new Map<string, number>();
@@ -60,7 +104,9 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [
       ids.forEach((i, k) => curveAt.set(pair(i, ids[(k + 1) % count]), loop.curves[k]));
       local.push(...ids);
     }
-    for (const i of kernel.triangulate(loops.map((loop) => Float64Array.from(loop.xy)))) triangles.push(local[i]);
+    const flat = triangulation?.get(region) ?? kernel.triangulate(loops.map((loop) => Float64Array.from(loop.xy)));
+    triangulation?.set(region, flat);
+    for (const i of flat) triangles.push(local[i]);
   }
 
   // Kde se oblast dotýká sama sebe nebo jiné vybrané oblasti jen v bodě, by svislá hrana nesla čtyři

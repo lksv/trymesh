@@ -25,8 +25,12 @@ export const dist2 = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] 
 
 // ---------------------------------------------------------------- jména
 
-// Zápis jména stěny pro porovnání a řazení: feature/role/curve.
-export const faceKey = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`);
+// Zápis jména stěny pro porovnání a řazení: feature/role/curve. A face of a copy has the tags of
+// its copies appended (`@pattern:index`), so it differs from the face of the original and sorts
+// right after it. Neither `@` nor `:` needs escaping: the key is only compared with other keys built
+// here, and an ID cannot contain `/`, which separates the parts before the tags.
+export const faceKey = (name: FaceName): string =>
+  (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
 
 // Jméno hrany v kanonickém pořadí stěn.
 export function canonicalEdge(edge: EdgeName): EdgeName {

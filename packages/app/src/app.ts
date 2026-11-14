@@ -1,4 +1,4 @@
-// Ukázková aplikace nad enginem: časová osa, 3D pohled, skicář, panel vysunutí a roviny.
+// Ukázková aplikace nad enginem: časová osa, 3D pohled, skicář, panel vysunutí, roviny a pole (pattern).
 // Drží jen stav UI (režim, výběr, značku pozice, viditelnost); vše ostatní čte z EngineState.
 import {
   type Command,
@@ -17,6 +17,7 @@ import {
   type Frame,
   type Id,
   type Issue,
+  type PatternFeature,
   type PlaneFeature,
   type PlaneRef,
   type RegionRef,
@@ -31,6 +32,7 @@ import {
   FEATURE_TYPE_INFO,
   GENERATORS,
   type GeneratorName,
+  bodyOwner,
   constraintKey,
   constraintPath,
   duplicateOf,
@@ -45,18 +47,27 @@ import { byId, download, fmt, h } from './dom';
 import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from './fields';
 import {
   type Anchor,
+  type AxisKind,
   type DimensionVariant,
   type ExtentKind,
   type ExtentSide,
   type ExtrudeDraft,
   GEOMETRIC_KINDS,
+  type PatternChange,
+  type PatternChoices,
+  type PatternDraft,
+  type PatternSpan,
   type PlaneDraft,
   arcCommands,
   asConstruction,
+  axisKind,
   type ExtrudeChange,
   type ProfileKind,
   type RememberedProfiles,
   changeExtrude,
+  changePattern,
+  patternIncomplete,
+  patternSource,
   rememberedProfile,
   generatedProfile,
   profileKind,
@@ -120,7 +131,20 @@ interface PlaneMode {
   problem?: string;
   warning?: boolean;
 }
-type Mode = { kind: 'model' } | SketchMode | ExtrudeMode | PlaneMode;
+interface PatternMode {
+  kind: 'pattern';
+  editing: boolean;
+  index: number;
+  draft: PatternDraft;
+  angle?: PatternSpan; // the angle span the draft had last, to return to from the full circle
+  preview?: EngineState;
+  problem?: string;
+  warning?: boolean;
+}
+// A feature being created or changed in a form; it is not in the document until confirmed.
+type DraftMode = ExtrudeMode | PlaneMode | PatternMode;
+type Mode = { kind: 'model' } | SketchMode | DraftMode;
+const isDraft = (m: Mode): m is DraftMode => m.kind === 'extrude' || m.kind === 'plane' || m.kind === 'pattern';
 
 interface SketchContext {
   feature: SketchFeature;
@@ -162,6 +186,7 @@ const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Uni
 };
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
 const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
+const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
 const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
 const PICK_REACH = 7; // px
 const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
@@ -171,7 +196,7 @@ const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
   frame.origin[1] + u * frame.x[1] + v * frame.y[1],
   frame.origin[2] + u * frame.x[2] + v * frame.y[2],
 ];
-const faceKey = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`);
+const faceKey = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
 const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
 
@@ -218,6 +243,15 @@ export class App {
   }
   private nameOf(id: Id): string {
     return this.feature(id)?.name ?? `(${id})`;
+  }
+  // A body is named after the feature that created it; a copy made by a pattern adds its number.
+  private bodyName(body: Id): string {
+    const { feature, local } = bodyOwner(body);
+    return local === undefined ? this.nameOf(feature) : `${this.nameOf(feature)} / ${local}`;
+  }
+  // A body is hidden at the feature that created it; the copies of a pattern all at once.
+  private bodyHidden(body: Id): boolean {
+    return this.hidden.has(bodyOwner(body).feature);
   }
 
   // Stav, který se právě zobrazuje: model po značce pozice, po upravované feature, nebo náhled.
@@ -289,7 +323,7 @@ export class App {
           restore = this.swapUi();
           return;
         }
-        if (this.mode.kind !== 'extrude' && this.mode.kind !== 'plane') return;
+        if (!isDraft(this.mode)) return;
         const state = this.engine.getState();
         const changes = name === 'undo' ? state.canUndo : name === 'redo' ? state.canRedo : typeof args.command === 'object' && args.command !== null && this.engine.preview(args.command as Command).ok;
         if (changes) this.setMode({ kind: 'model' });
@@ -343,8 +377,8 @@ export class App {
     this.markerIndex = features.findIndex((f) => f.id === this.marker);
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
-    if ((m.kind === 'extrude' || m.kind === 'plane') && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
-    if (this.mode.kind === 'extrude' || this.mode.kind === 'plane') this.updatePreview();
+    if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
+    if (isDraft(this.mode)) this.updatePreview();
     if (this.mode.kind === 'sketch') {
       const context = this.sketchContext();
       const view = context?.view;
@@ -380,7 +414,7 @@ export class App {
     const state = this.view();
     if (pick.kind === 'plane') return this.planes(state).some((plane) => plane.key === pick.key);
     const body = state.evaluation.bodies[pick.body];
-    if (!body || this.hidden.has(pick.body)) return false;
+    if (!body || this.bodyHidden(pick.body)) return false;
     if (pick.kind === 'face') return body.faces.some((face) => face.id === pick.faceId) && faceKey(state.evaluation.faceNames[pick.faceId]) === faceKey(pick.name);
     const edge = body.edges[pick.index];
     return edge !== undefined && faceKey(edge.name.a) === faceKey(pick.name.a) && faceKey(edge.name.b) === faceKey(pick.name.b);
@@ -404,7 +438,7 @@ export class App {
     const group = (...items: HTMLElement[]) => h('div', { className: 'group' }, ...items);
     const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: () => void this.open(file) });
     // Rozpracované vysunutí nebo rovina v dokumentu ještě nejsou; undo pod nimi by jim vzalo půdu.
-    const drafting = m.kind === 'extrude' || m.kind === 'plane';
+    const drafting = isDraft(m);
 
     const groups = [
       group(
@@ -431,6 +465,7 @@ export class App {
           button('Skica', () => this.startOnPlane('sketch'), { title: 'Nová skica na rovině nebo rovinné stěně', active: this.pending === 'sketch' }),
           button('Vysunutí', () => this.startExtrude(), { title: 'Vysunout oblasti skici' }),
           button('Rovina', () => this.startOnPlane('plane'), { title: 'Rovina posunutá od roviny nebo rovinné stěny', active: this.pending === 'plane' }),
+          button('Pattern', () => this.startPattern(), { title: 'Repeat extrusions that add or cut, or a body, around an axis' }),
         ),
       );
     } else if (m.kind === 'sketch') {
@@ -500,11 +535,12 @@ export class App {
   private renderTimeline(): void {
     const full = this.engine.getState();
     const markerIndex = this.insertIndex();
-    const editing = this.mode.kind === 'sketch' ? this.mode.id : this.mode.kind === 'extrude' || this.mode.kind === 'plane' ? this.mode.draft.id : undefined;
+    const editing = this.mode.kind === 'sketch' ? this.mode.id : isDraft(this.mode) ? this.mode.draft.id : undefined;
     const busy = this.mode.kind !== 'model';
     const rows: HTMLElement[] = [h('h2', {}, 'Časová osa')];
     const markerRow = () => h('div', { className: 'marker', title: 'Sem se vkládají nové prvky' }, 'zde se vkládá');
 
+    const bodiless = (f: Feature): boolean => (f.type === 'extrude' && f.operation !== 'new') || (f.type === 'pattern' && f.source.type === 'features');
     full.document.features.forEach((f, index) => {
       const result: FeatureResult | undefined = full.evaluation.features[f.id];
       const status = result?.status ?? 'ok';
@@ -534,15 +570,16 @@ export class App {
         },
         h('span', { className: 'dot', textContent: status === 'error' ? '✖' : status === 'warning' ? '▲' : status === 'suppressed' ? '○' : '●' }),
         h('span', { className: 'name', textContent: f.name }),
-        // těleso se skrývá u vysunutí, které ho založilo; přidání a výřez vlastní těleso nemají
+        // A body is hidden at the feature that created it: an addition, a cut and a pattern of
+        // features have no body of their own; a pattern of a body hides all its copies.
         icon(
           this.hidden.has(f.id) ? '◌' : '👁',
-          f.type === 'extrude' && f.operation !== 'new' ? 'Těleso se skrývá u prvku, který ho založil' : 'Skrýt nebo zobrazit',
+          bodiless(f) ? 'A body is hidden at the feature that created it' : 'Hide or show',
           () => {
             if (!this.hidden.delete(f.id)) this.hidden.add(f.id);
             this.refresh();
           },
-          f.type === 'extrude' && f.operation !== 'new',
+          bodiless(f),
         ),
         icon('↑', 'Posunout dřív', () => this.run({ type: 'moveFeature', id: f.id, index: index - 1 }), index === 0),
         icon('↓', 'Posunout později', () => this.run({ type: 'moveFeature', id: f.id, index: index + 1 }), index === full.document.features.length - 1),
@@ -564,6 +601,7 @@ export class App {
     if (!f) return;
     if (f.type === 'sketch') this.enterSketch(id);
     else if (f.type === 'extrude') this.startExtrude(f);
+    else if (f.type === 'pattern') this.startPattern(f);
     else this.startPlane(f.base, f);
   }
 
@@ -575,14 +613,19 @@ export class App {
     if (m.kind === 'sketch') panel.replaceChildren(...this.sketchPanel(m));
     else if (m.kind === 'extrude') panel.replaceChildren(...this.extrudePanel(m));
     else if (m.kind === 'plane') panel.replaceChildren(...this.planePanel(m));
+    else if (m.kind === 'pattern') panel.replaceChildren(...this.patternPanel(m));
     else panel.replaceChildren(...this.modelPanel());
   }
 
-  // The text of an issue for a human. Issues about bodies carry their IDs in `refs` (the targets
-  // a cut missed or would remove, a missing target); the text names them.
+  // The text of an issue for a human. Issues about bodies and features carry their IDs in `refs`
+  // (the targets a cut missed or would remove, a missing target or source); a pattern names the
+  // copy as `{ copy, feature }`. The text names them.
   private issueText(issue: Issue): string {
-    const bodies = ['noEffect', 'emptyResult', 'brokenReference'].includes(issue.code) ? (issue.refs ?? []).filter((ref): ref is Id => typeof ref === 'string') : [];
-    return bodies.length ? `${issue.message} (${bodies.map((id) => this.nameOf(id)).join(', ')})` : issue.message;
+    const isCopy = (ref: unknown): ref is { copy: number; feature: Id } => typeof ref === 'object' && ref !== null && typeof (ref as { copy?: unknown }).copy === 'number' && typeof (ref as { feature?: unknown }).feature === 'string';
+    const named = ['noEffect', 'emptyResult', 'brokenReference'].includes(issue.code)
+      ? (issue.refs ?? []).flatMap((ref): string[] => (typeof ref === 'string' ? [this.bodyName(ref)] : isCopy(ref) ? [`copy ${ref.copy} of ${this.nameOf(ref.feature)}`] : []))
+      : [];
+    return named.length ? `${issue.message} (${named.join(', ')})` : issue.message;
   }
 
   private issues(result: FeatureResult | undefined): HTMLElement[] {
@@ -597,7 +640,7 @@ export class App {
 
   private describe(pick: Pick): string {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
-    const face = (name: FaceName) => `${this.nameOf(name.feature)} – ${ROLES[name.role]}`;
+    const face = (name: FaceName) => `${this.nameOf(name.feature)} – ${ROLES[name.role]}${(name.copy ?? []).map((tag) => `, copy ${tag.index} of ${this.nameOf(tag.pattern)}`).join('')}`;
     if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
     const kinds: Record<EdgeKind, string> = { line: 'úsečka', circle: 'kružnice', coplanar: 'v ploše', other: 'obecná křivka' };
     return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
@@ -645,13 +688,22 @@ export class App {
       if (f.type === 'extrude') {
         const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shown('extent/start', f.extent.start)} mm` : '';
         const extent = f.extent.type === 'distance' ? `distance ${shown('extent/distance', f.extent.distance)} mm${start}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
-        const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => this.nameOf(id)).join(', ')}` : '';
+        const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => this.bodyName(id)).join(', ')}` : '';
         const profile = f.profile.type === 'regions' ? `regions: ${f.profile.regions.length}` : `${GENERATORS[f.profile.generator].title.toLowerCase()} over ${Object.values(f.profile.operands).join(', ')}`;
         out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, ${profile}${targets}.`));
         const facts = this.factsText(f, this.view().evaluation.features[f.id]);
         if (facts) out.push(h('p', { className: 'hint' }, facts));
       }
       if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${shown('offset', f.offset)} mm.`));
+      if (f.type === 'pattern') {
+        const { axis, count, span } = f.transform;
+        const field = (path: string, value: number, unit: Unit): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${valueText(value, unit)}` : valueText(value, unit));
+        const source = f.source.type === 'features' ? `features: ${f.source.features.map((id) => this.nameOf(id)).join(', ')}` : `body: ${this.bodyName(f.source.body)}`;
+        const around = axis.kind === 'base' ? `axis ${axis.axis}` : `the point ${axis.point} of ${this.nameOf(axis.sketch)}`;
+        const extent = span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', span.angle, 'rad')}`;
+        out.push(h('p', { className: 'hint' }, `Count ${field('transform/count', count, 'count')} with the original, around ${around}, ${extent}; ${source}.`));
+        if (result?.bodies.length) out.push(h('p', { className: 'hint' }, `Bodies: ${result.bodies.map((id) => this.bodyName(id)).join(', ')}.`));
+      }
     } else {
       out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
     }
@@ -810,7 +862,7 @@ export class App {
       let best: Pick | undefined;
       let bestDistance = PICK_REACH;
       for (const [body, data] of Object.entries(state.evaluation.bodies)) {
-        if (this.hidden.has(body)) continue;
+        if (this.bodyHidden(body)) continue;
         data.edges.forEach((edge, index) => {
           if (edge.kind === 'coplanar') return;
           const s = edge.segments;
@@ -924,6 +976,13 @@ export class App {
     }
     const pick = this.pick(event, { edges: m.kind === 'model' && !this.pending, faces: true, planes: true });
     const ref = this.planeRefOf(pick);
+    if (m.kind === 'pattern') {
+      // a click on a body picks it as the source of a pattern of a body (not a copy of the preview itself)
+      const choices = this.patternChoices(m.index);
+      if (m.draft.source.type !== 'body' || !pick || pick.kind === 'plane' || !choices.bodies.includes(pick.body)) return;
+      m.draft = changePattern(m.draft, { body: pick.body }, choices, m.angle);
+      return this.draftChanged();
+    }
     if (m.kind === 'plane') {
       if (!ref) return this.say('Základem roviny může být rovina nebo rovinná stěna.', true);
       m.draft = { ...m.draft, base: ref };
@@ -947,7 +1006,7 @@ export class App {
     const target = event.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
     const m = this.mode;
-    const drafting = m.kind === 'extrude' || m.kind === 'plane';
+    const drafting = isDraft(m);
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       if (drafting) this.say('Nejdřív potvrďte nebo zrušte rozpracovaný prvek.', true);
@@ -1392,7 +1451,7 @@ export class App {
           onmouseenter: () => ((m.hover = id), this.renderScene()),
           onmouseleave: () => ((m.hover = undefined), this.renderScene()),
         },
-        h('span', { className: 'name' }, `${ref.kind === 'line' ? 'Úsečka' : 'Kružnice'} `, h('small', {}, `${id} · ${this.nameOf(ref.body)}${view.curves.has(id) ? '' : ' · bez geometrie'}`)),
+        h('span', { className: 'name' }, `${ref.kind === 'line' ? 'Úsečka' : 'Kružnice'} `, h('small', {}, `${id} · ${this.bodyName(ref.body)}${view.curves.has(id) ? '' : ' · bez geometrie'}`)),
         h('button', {
           className: 'icon',
           textContent: '↻',
@@ -1455,13 +1514,35 @@ export class App {
     this.say('Zadejte posun; kliknutím v pohledu lze změnit základ.');
   }
 
+  // A new pattern: its source is the feature selected on the timeline when it can be one, otherwise
+  // the latest extrusion that adds or cuts, otherwise the latest body.
+  private startPattern(existing?: PatternFeature): void {
+    if (existing) return this.setMode({ kind: 'pattern', editing: true, index: this.doc.features.findIndex((f) => f.id === existing.id), draft: featureInput(existing) });
+    const index = this.insertIndex();
+    const source = patternSource(this.patternChoices(index), this.selectedFeature);
+    if (!source) return this.say('A pattern needs an extrusion that adds or cuts, or a body. Create one first.', true);
+    const id = this.newId('n');
+    this.setMode({ kind: 'pattern', editing: false, index, draft: { id, name: `Pattern ${id.slice(1)}`, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } } } });
+    this.say('Choose what to repeat, the axis and the count.');
+  }
+
+  // What a pattern at this place of the timeline can repeat and turn around.
+  private patternChoices(index: number): PatternChoices {
+    const before = this.doc.features.slice(0, index);
+    return {
+      tools: before.filter((f) => f.type === 'extrude' && f.operation !== 'new').map((f) => f.id),
+      bodies: Object.keys(this.stateBefore(index).evaluation.bodies),
+      sketches: before.filter((f) => f.type === 'sketch').map((f) => f.id),
+    };
+  }
+
   // Náhled: příkaz se spočítá po upravovanou feature a dokument se nemění.
   private updatePreview(): void {
     const m = this.mode;
-    if (m.kind !== 'extrude' && m.kind !== 'plane') return;
+    if (!isDraft(m)) return;
     this.invalidate();
-    // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám
-    if (m.kind === 'extrude' && this.unpicked(m)) {
+    // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám (a pattern without a source likewise)
+    if ((m.kind === 'extrude' && this.unpicked(m)) || (m.kind === 'pattern' && patternIncomplete(m.draft))) {
       m.preview = undefined;
       m.problem = undefined;
       m.warning = false;
@@ -1480,7 +1561,7 @@ export class App {
     this.updatePreview();
     if (rebuild) this.renderPanel();
     else {
-      const m = this.mode as ExtrudeMode | PlaneMode;
+      const m = this.mode as DraftMode;
       const problem = document.getElementById('draft-problem');
       if (problem) {
         problem.textContent = m.problem ?? '';
@@ -1490,24 +1571,26 @@ export class App {
       for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
       const facts = document.getElementById('draft-facts');
       if (facts && m.kind === 'extrude') facts.textContent = this.factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
+      const bodies = document.getElementById('draft-bodies');
+      if (bodies && m.kind === 'pattern') bodies.textContent = this.patternBodies(m);
     }
     this.renderScene();
   }
 
-  private confirmDraft(m: ExtrudeMode | PlaneMode): void {
+  private confirmDraft(m: DraftMode): void {
     if (!this.run(draftCommand(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[m.draft.type]} přidáno.`)) return;
     if (!m.editing && this.marker) this.marker = m.draft.id;
     this.selectedFeature = undefined;
     this.setMode({ kind: 'model' });
   }
 
-  private draftButtons(m: ExtrudeMode | PlaneMode): HTMLElement[] {
+  private draftButtons(m: DraftMode): HTMLElement[] {
     return [
       h('p', { id: 'draft-problem', className: `issue ${m.warning ? 'warning' : 'error'}` }, m.problem ?? ''),
       h(
         'div',
         { className: 'buttons' },
-        h('button', { textContent: 'OK', className: 'primary', disabled: m.kind === 'extrude' && this.unpicked(m), onclick: () => this.confirmDraft(m) }),
+        h('button', { textContent: 'OK', className: 'primary', disabled: (m.kind === 'extrude' && this.unpicked(m)) || (m.kind === 'pattern' && patternIncomplete(m.draft)), onclick: () => this.confirmDraft(m) }),
         h('button', { textContent: 'Zrušit', onclick: () => this.setMode({ kind: 'model' }) }),
       ),
     ];
@@ -1542,7 +1625,7 @@ export class App {
   }
 
   // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
-  private draftField(m: ExtrudeMode | PlaneMode, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
+  private draftField(m: DraftMode, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
     const unit = FEATURE_TYPE_INFO[m.draft.type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
     const names = this.doc.parameters.map((p) => p.name);
     const input = h('input', {
@@ -1558,10 +1641,10 @@ export class App {
     note.dataset.unit = unit;
     return h('label', {}, label, h('span', { className: 'field' }, input, note));
   }
-  private draftValue(m: ExtrudeMode | PlaneMode, path: string): number | Expr {
+  private draftValue(m: DraftMode, path: string): number | Expr {
     return path.split('/').reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], m.draft) as number | Expr;
   }
-  private draftNote(m: ExtrudeMode | PlaneMode, path: string, unit: Unit): string {
+  private draftNote(m: DraftMode, path: string, unit: Unit): string {
     return fieldNote(this.draftValue(m, path), m.preview?.evaluation.features[m.draft.id]?.values?.[path], unit);
   }
 
@@ -1660,7 +1743,7 @@ export class App {
             h(
               'select',
               { onchange: (event: Event) => set({ target: (event.target as HTMLSelectElement).value }) },
-              ...bodies.map((body) => option(body, this.nameOf(body), body === targets[0])),
+              ...bodies.map((body) => option(body, this.bodyName(body), body === targets[0])),
               ...missing.map((body) => option(body, '(chybí)', true)),
             ),
           )
@@ -1673,7 +1756,7 @@ export class App {
             { className: 'targets' },
             h('legend', {}, 'Target bodies'),
             ...[...bodies, ...missing].map((body) =>
-              h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: targets.includes(body), onchange: () => set({ toggleTarget: body }) }), bodies.includes(body) ? this.nameOf(body) : `${body} (missing)`),
+              h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: targets.includes(body), onchange: () => set({ toggleTarget: body }) }), bodies.includes(body) ? this.bodyName(body) : `${body} (missing)`),
             ),
             bodies.length === 0 && missing.length === 0 ? h('p', { className: 'hint' }, 'There is no body to cut yet.') : null,
           )
@@ -1755,6 +1838,79 @@ export class App {
     ];
   }
 
+  // The pattern form: what to repeat (extrusions that add or cut, or one body), the axis and the
+  // count with the span. The preview shows the result; a source or an axis that no longer exists
+  // stays in the form marked as missing, so that it can be replaced.
+  private patternPanel(m: PatternMode): HTMLElement[] {
+    const choices = this.patternChoices(m.index);
+    const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
+    const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
+    const set = (change: PatternChange, rebuild = true) => {
+      if (m.draft.transform.span.type === 'angle') m.angle = m.draft.transform.span;
+      m.draft = changePattern(m.draft, change, choices, m.angle);
+      this.draftChanged(rebuild);
+    };
+    const { source } = m.draft;
+    const { axis, span } = m.draft.transform;
+    const out: (HTMLElement | null)[] = [
+      h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'New pattern'),
+      select('Repeat', (value) => set({ source: value as 'features' | 'body' }), option('features', 'Features (extrusions that add or cut)', source.type === 'features'), option('body', 'A body', source.type === 'body')),
+    ];
+    if (source.type === 'features') {
+      const missing = source.features.filter((id) => !choices.tools.includes(id));
+      out.push(
+        h(
+          'fieldset',
+          {},
+          h('legend', {}, 'Features'),
+          ...[...missing, ...choices.tools].map((id) =>
+            h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: source.features.includes(id), onchange: () => set({ toggleFeature: id }) }), choices.tools.includes(id) ? this.nameOf(id) : `${this.nameOf(id)} (missing)`),
+          ),
+          choices.tools.length === 0 && missing.length === 0 ? h('p', { className: 'hint' }, 'There is no extrusion that adds or cuts before this place of the timeline.') : null,
+        ),
+        h('p', { className: 'hint' }, 'Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy.'),
+      );
+    } else {
+      out.push(
+        select(
+          'Body',
+          (value) => set({ body: value }),
+          ...choices.bodies.map((body) => option(body, this.bodyName(body), body === source.body)),
+          choices.bodies.includes(source.body) ? null : option(source.body, source.body === '' ? '(no body yet)' : `${source.body} (missing)`, true),
+        ),
+        h('p', { className: 'hint' }, 'The copies are new bodies; what is added to the source after the pattern is not copied.'),
+      );
+    }
+    out.push(select('Axis', (value) => set({ axis: value as AxisKind }), ...(Object.keys(AXES) as AxisKind[]).map((kind) => option(kind, AXES[kind], kind === axisKind(axis)))));
+    if (axis.kind === 'sketchPoint') {
+      const sketch = this.feature(axis.sketch);
+      const points = sketch?.type === 'sketch' && choices.sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
+      out.push(
+        select(
+          'Sketch',
+          (value) => set({ sketch: value }),
+          ...choices.sketches.map((id) => option(id, this.nameOf(id), id === axis.sketch)),
+          choices.sketches.includes(axis.sketch) ? null : option(axis.sketch, `${this.nameOf(axis.sketch)} (missing)`, true),
+        ),
+        select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),
+        h('p', { className: 'hint' }, 'The axis is the normal of the sketch plane through the point.'),
+      );
+    } else if (choices.sketches.length === 0) out.push(h('p', { className: 'hint' }, 'An axis through a point needs a sketch before this place of the timeline.'));
+    out.push(
+      this.draftField(m, 'Count with the original (a whole number or an expression)', 'transform/count', (count) => set({ count }, false)),
+      select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),
+      span.type === 'angle' ? this.draftField(m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
+      h('p', { id: 'draft-bodies', className: 'hint' }, this.patternBodies(m)),
+      ...this.draftButtons(m),
+    );
+    return out.filter((element): element is HTMLElement => element !== null);
+  }
+  // The bodies the previewed pattern creates, for the form.
+  private patternBodies(m: PatternMode): string {
+    const bodies = m.preview?.evaluation.features[m.draft.id]?.bodies ?? [];
+    return bodies.length ? `New bodies: ${bodies.join(', ')}.` : '';
+  }
+
   // ---------------------------------------------------------------- scéna
 
   private renderScene(): void {
@@ -1767,11 +1923,13 @@ export class App {
     // tělesa a jejich obrysy
     const outline: number[] = [];
     for (const [id, body] of Object.entries(evaluation.bodies)) {
-      if (this.hidden.has(id)) continue;
+      if (this.bodyHidden(id)) continue;
       model.bodies.push({ id, solid: body.solid });
       for (const edge of body.edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) outline.push(edge.segments[i]);
-      if (highlighted?.type === 'extrude' && m.kind === 'model') {
-        for (const face of body.faces) if (evaluation.faceNames[face.id].feature === highlighted.id) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
+      // the faces of the selected extrusion, or of the copies the selected pattern made
+      if ((highlighted?.type === 'extrude' || highlighted?.type === 'pattern') && m.kind === 'model') {
+        const own = (name: FaceName): boolean => (highlighted.type === 'extrude' ? name.feature === highlighted.id : (name.copy ?? []).some((tag) => tag.pattern === highlighted.id));
+        for (const face of body.faces) if (own(evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
       }
     }
     model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });

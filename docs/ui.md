@@ -146,6 +146,30 @@ The form (D35, points 2 and 3), top to bottom: profile, sketch, regions or the g
 - **Problems of the preview.** An invalid command and an error of the feature are shown in the error style below the form, a warning in the warning style. An issue about bodies names them: the targets a cut missed (`noEffect`), the target a cut would remove (`emptyResult`), a missing target (`brokenReference`). The same text is used in the timeline and in the model panel.
 - The model panel describes a selected extrusion by its operation, extent (distance and a non-zero start, or through all with the side), number of regions and target bodies.
 
+## Pattern (D35, point 4)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| Choose the source: features of the timeline, or a body | UI logic (`changePattern`, `patternSource`) | `document.features` before the pattern, `bodies` before the pattern |
+| Choose the axis: a base axis, or a point of a sketch | UI logic (`changePattern`) | sketches before the pattern and their points |
+| Count; the full circle, or an angle between the first and the last copy | fields with an expression | `FEATURE_TYPE_INFO.pattern.fields` |
+| Preview while the values change | `preview(addFeature)` | |
+| Confirm | `addFeature` (pattern) | |
+| Change the source, the axis, the count, the span | `updateFeature` | |
+| Show the bodies the pattern created | | `evaluation.features[id].bodies` |
+
+The button *Pattern* on the toolbar opens the form; a pattern on the timeline is edited by a double click like every other feature. Top to bottom:
+
+- **Repeat** is a select with *Features* and *A body*. A new pattern takes the feature selected on the timeline when it can be a source (an extrusion that adds or cuts, or one that created a body), otherwise the latest extrusion that adds or cuts, otherwise the latest body. Without either the button says what is missing.
+- **Features** shows one checkbox per extrusion with the operation add or cut that lies before the pattern. The list sent to the engine keeps the order of the timeline, whatever the order of the clicks. A source that is no longer there stays in the list marked as missing, so that it can be unticked. With nothing ticked there is nothing to compute and OK is disabled.
+- **A body** is a select with the bodies that exist before the pattern; a click on a body in the view picks it too. A body that no longer exists stays selected and marked as missing.
+- **Axis** is a select with the three base axes and *Through a point of a sketch*. The latter adds a select with the sketches before the pattern and a select with the points of the chosen sketch (its origin, own points and the points of projected geometry); it starts at the origin of the latest sketch.
+- **Count** takes a whole number or an expression and includes the original. **Span** is *Full circle* or *Angle between the first and the last copy*; the angle is a field in degrees, or an expression in radians. The form remembers the angle the draft had last and returns to it from the full circle.
+- Below the fields the form lists the bodies the previewed pattern creates. The view shows the preview: the copies of a tool cut or added, the copies of a body in place.
+- **Problems of the preview** use the same texts as everywhere: a copy the issue is about is named as "copy N of <feature>" (`refs` of the shape `{ copy, feature }`).
+
+A body is named after the feature that created it; a copy is "<pattern name> / <number>" wherever a body is listed (targets of an extrusion, issues, the model panel). The eye of a pattern of a body hides all its copies at once; a pattern of features has no body of its own, like an addition or a cut. Selecting a pattern on the timeline highlights the faces its copies made, and the model panel says its count, axis, span, source and bodies. A face of a copy is described with its copy ("copy 2 of Pattern 1").
+
 ## Parameters, checks and expressions (D35, point 1)
 
 | Function | Command / call | Reads |
@@ -229,7 +253,7 @@ Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce
   - Volné entity jsou v pohledu modré, určené tmavé. Konstrukční křivky si nechávají svou barvu a čárkování; volnost ukazují jejich body. Dokud skica není vyřešená, o volnosti se nedá nic říct a vlastní geometrie je šedomodrá. Panel volné body a poloměry vyjmenuje, umí je vybrat a poradí, když skicu dourčí ukotvení jednoho bodu.
   - Vazbu, kterou skica už má, aplikace nepřidá a řekne to; ze sady vazeb přidá jen ty, které chybí. Platí to i pro referenční kótu mezi pevnými entitami.
 - **Oprava referencí**: rovina skici se mění tlačítkem u vybrané skici, základ roviny a skica, oblasti a cíl vysunutí v jejich panelu. Promítnutá geometrie má v panelu skici seznam se stavem; odtud jde promítnutí zrušit nebo promítnout znovu na jinou hranu (i když ho přepočet nedokázal vyhodnotit a v pohledu není).
-- **Viditelnost** se přepíná na časové ose a platí pro feature i těleso, které založila.
+- **Viditelnost** se přepíná na časové ose a platí pro feature i těleso, které založila (a pattern of a body: all its copies).
 - **Parameters and checks (D35, point 1)** are in the model panel, below the selected feature. A row is name, expression and value (or state of a check); both name and expression are edited in place and sent when the field is committed. An expression is checked while typing (red field, the reason in the tooltip). A check that a command made fail is announced in the status bar; failed checks are highlighted in the list.
 - **Fields with an expression**: the distance of an extrusion, the offset of a plane and the value of a driving dimension are text fields that take a number or an expression. Next to an expression in a draft is its value from the preview; a dimension shows it in the tooltip and in the label in the view. A bare number in an angle field is in degrees; an expression is in radians (`deg(30)`). A decimal comma in a bare number is accepted. An expression that is itself a bare number (`"0.5"` set over MCP) is shown as that number converted to degrees, so what the field shows always reads the same way as what the user would type.
 - New UI texts are in English (owner's instruction of 2026-11-14 for all new text in the repository); older texts stay in Czech until they are translated.

@@ -1,10 +1,12 @@
 // Dokument: validace a provedení příkazů. Vše pracuje jen se strukturou dokumentu, bez přepočtu.
 // Pravidla jsou v docs/architecture.md, sekce Příkazy.
 import type {
+  AxisRef,
   Check,
   Command,
   CommandResult,
   Constraint,
+  CopyTag,
   Curve,
   Dimension,
   Document,
@@ -19,6 +21,7 @@ import type {
   Id,
   Input,
   Parameter,
+  PatternFeature,
   PlaneFeature,
   PlaneRef,
   ProfileSource,
@@ -183,15 +186,38 @@ const NO_ENVIRONMENT = (): Environment => ({});
 const OFFSET: NumberSpec = { title: 'Offset', unit: 'mm' };
 const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
 const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
+// The count of a pattern includes the original. The upper bound keeps a typo in an expression from
+// starting thousands of booleans.
+export const MAX_PATTERN_COUNT = 200;
+const PATTERN_COUNT: NumberSpec = { title: 'Count', unit: 'count', integer: true, min: { value: 1 }, max: { value: MAX_PATTERN_COUNT } };
+const PATTERN_ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
 
 // ---------------------------------------------------------------- jména a odkazy mezi features
 
+// A face name in its canonical form. An empty `copy` is the same as none, so that one face has one
+// spelling.
 function faceName(v: unknown, what: string): FaceName {
   const o = object(v, what);
   const feature = string(o.feature, `${what}.feature`);
   const role = oneOf(o.role, ['side', 'startCap', 'endCap'] as const, `${what}.role`);
-  return role === 'side' ? { feature, role, curve: string(o.curve, `${what}.curve`) } : { feature, role };
+  const name: FaceName = role === 'side' ? { feature, role, curve: string(o.curve, `${what}.curve`) } : { feature, role };
+  if (o.copy === undefined) return name;
+  if (!Array.isArray(o.copy)) return fail(`${what}.copy: a list of { pattern, index } is expected`);
+  const copy = (o.copy as unknown[]).map((item, i): CopyTag => {
+    const tag = object(item, `${what}.copy[${i}]`);
+    const index = finite(tag.index, `${what}.copy[${i}].index`);
+    if (!Number.isInteger(index) || index < 1) fail(`${what}.copy[${i}].index: the number of a copy is an integer from 1`);
+    return { pattern: string(tag.pattern, `${what}.copy[${i}].pattern`), index };
+  });
+  return copy.length ? { ...name, copy } : name;
 }
+
+// A face exists only after the feature that named it and after every pattern that copied it.
+function requireFace(doc: Document, before: number | undefined, face: FaceName, what: string): void {
+  requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, what);
+  for (const tag of face.copy ?? []) requireRef(doc, before, { id: tag.pattern, kind: 'pattern' }, what);
+}
+const faceRefs = (face: FaceName, path: string): FeatureRef[] => [{ path, id: face.feature, kind: 'faceSource' }, ...(face.copy ?? []).map((tag): FeatureRef => ({ path, id: tag.pattern, kind: 'pattern' }))];
 
 function edgeName(v: unknown, what: string): EdgeName {
   const o = object(v, what);
@@ -205,7 +231,10 @@ function edgeName(v: unknown, what: string): EdgeName {
 //   entity, `sketch` its sketch and `accepts` the entity kinds allowed.
 // - `generated` is a reference to an extrusion whose profile comes from one of the generators in
 //   `accepts` (a gear in mesh with another gear).
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated';
+// - `tool` is a reference to a feature that applies a tool to bodies and can be repeated by
+//   a pattern: an extrusion with the operation add or cut.
+// - `pattern` is a reference to a pattern (the one that made the copy a face name speaks of).
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern';
 export interface FeatureRef {
   path: string;
   id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
@@ -213,7 +242,7 @@ export interface FeatureRef {
   sketch?: Id;
   accepts?: readonly string[];
 }
-const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude' };
+const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude', pattern: 'pole (pattern)' };
 
 // ID tělesa je ID feature, která ho vytvořila, nebo `<feature>/<místní jméno>`, když jich feature
 // vytváří víc. Lomítko v ID zadaném volajícím být nesmí, takže rozklad je jednoznačný.
@@ -244,6 +273,8 @@ function requireRef(doc: Document, before: number | undefined, ref: Omit<Feature
   if (ref.kind === 'generated') {
     const generator = target.type === 'extrude' && target.profile.type === 'generated' ? target.profile.generator : undefined;
     if (generator === undefined || !ref.accepts?.includes(generator)) fail(`${what}: feature "${ref.id}" is not an extrusion with a profile from the generator ${(ref.accepts ?? []).join(' or ')}`);
+  } else if (ref.kind === 'tool') {
+    if (target.type !== 'extrude' || target.operation === 'new') fail(`${what}: feature "${ref.id}" is not an extrusion with the operation add or cut`);
   } else {
     const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
     if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
@@ -263,7 +294,7 @@ function planeRef(doc: Document, before: number | undefined, v: unknown, what: s
   const body = string(o.body, `${what}.body`);
   requireRef(doc, before, { id: body, kind: 'body' }, what);
   const face = faceName(o.face, `${what}.face`);
-  requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, `${what}.face`);
+  requireFace(doc, before, face, `${what}.face`);
   return { kind, body, face };
 }
 
@@ -273,7 +304,7 @@ function externalRef(doc: Document, before: number | undefined, v: unknown, what
   const body = string(o.body, `${what}.body`);
   requireRef(doc, before, { id: body, kind: 'body' }, what);
   const edge = edgeName(o.edge, `${what}.edge`);
-  for (const face of [edge.a, edge.b]) requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, `${what}.edge`);
+  for (const face of [edge.a, edge.b]) requireFace(doc, before, face, `${what}.edge`);
   return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
 }
 
@@ -548,6 +579,52 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   return { ...feature, targets };
 }
 
+function axisRef(doc: Document, before: number | undefined, v: unknown, what: string): AxisRef {
+  const o = object(v, what);
+  const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
+  if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
+  const sketch = string(o.sketch, `${what}.sketch`);
+  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  const point = string(o.point, `${what}.point`);
+  requireRef(doc, before, { id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
+  return { kind, sketch, point };
+}
+const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
+  axis.kind === 'base'
+    ? []
+    : [
+        { path, id: axis.sketch, kind: 'sketch' },
+        { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
+      ];
+
+function patternFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PatternFeature {
+  const given = object(o.source, `${what}.source`);
+  let source: PatternFeature['source'];
+  if (oneOf(given.type, ['features', 'body'] as const, `${what}.source.type`) === 'features') {
+    if (!Array.isArray(given.features) || given.features.length === 0) return fail(`${what}.source.features: a non-empty list of feature IDs is expected`);
+    const features = (given.features as unknown[]).map((id, i) => string(id, `${what}.source.features[${i}]`));
+    if (new Set(features).size < features.length) fail(`${what}.source.features: a feature is listed twice`);
+    for (const id of features) requireRef(doc, before, { id, kind: 'tool' }, `${what}.source.features`);
+    source = { type: 'features', features };
+  } else {
+    const body = string(given.body, `${what}.source.body`);
+    requireRef(doc, before, { id: body, kind: 'body' }, `${what}.source.body`);
+    source = { type: 'body', body };
+  }
+  const transform = object(o.transform, `${what}.transform`);
+  const type = oneOf(transform.type, ['circular'] as const, `${what}.transform.type`);
+  const axis = axisRef(doc, before, transform.axis, `${what}.transform.axis`);
+  const count = fields.number(transform.count, 'transform/count', PATTERN_COUNT, `${what}.transform.count`);
+  const span = object(transform.span, `${what}.transform.span`);
+  const full = oneOf(span.type, ['full', 'angle'] as const, `${what}.transform.span.type`) === 'full';
+  return {
+    ...base(o, what),
+    type: 'pattern',
+    source,
+    transform: { type, axis, count, span: full ? { type: 'full' } : { type: 'angle', angle: fields.number(span.angle, 'transform/span/angle', PATTERN_ANGLE, `${what}.transform.span.angle`) } },
+  };
+}
+
 function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): SketchFeature {
   const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(doc, before, o.plane, `${what}.plane`));
   sketch.suppressed = boolean(o.suppressed, `${what}.suppressed`);
@@ -592,7 +669,10 @@ export interface FeatureTypeInfo {
   // not listed here: the constraint catalog describes them (`values`), the address is
   // `constraints/<id>/<value name>`.
   fields: readonly FieldSpec[];
-  bodies: 'none' | 'self'; // self: feature může vytvořit těleso se svým ID
+  // Which bodies the type can create: `self` a body with the feature's ID, `derived` bodies
+  // `<feature>/<local name>`. Whether a particular feature does is up to the registry (an extrusion
+  // only with the operation new, a pattern only with a body as its source).
+  bodies: 'none' | 'self' | 'derived';
   updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
 }
 
@@ -615,14 +695,7 @@ interface FeatureTypeSpec<F extends Feature> {
 }
 
 const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
-  ref.kind === 'plane'
-    ? [{ path, id: ref.feature, kind: 'plane' }]
-    : ref.kind === 'face'
-      ? [
-          { path, id: ref.body, kind: 'body' },
-          { path, id: ref.face.feature, kind: 'faceSource' },
-        ]
-      : [];
+  ref.kind === 'plane' ? [{ path, id: ref.feature, kind: 'plane' }] : ref.kind === 'face' ? [{ path, id: ref.body, kind: 'body' }, ...faceRefs(ref.face, path)] : [];
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane: {
@@ -640,8 +713,8 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
       ...planeRefs(f.plane, 'plane'),
       ...Object.entries(f.external).flatMap(([id, ref]): FeatureRef[] => [
         { path: `external/${id}`, id: ref.body, kind: 'body' },
-        { path: `external/${id}`, id: ref.edge.a.feature, kind: 'faceSource' },
-        { path: `external/${id}`, id: ref.edge.b.feature, kind: 'faceSource' },
+        ...faceRefs(ref.edge.a, `external/${id}`),
+        ...faceRefs(ref.edge.b, `external/${id}`),
       ]),
     ],
     createsBody: () => false,
@@ -674,6 +747,29 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
       },
       removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'profile' && removableFromProfile(f.profile, rest)),
     },
+  },
+  pattern: {
+    info: {
+      title: 'Pattern',
+      summary:
+        'Repeats its source around an axis: a list of extrusions with the operation add or cut (each copy of their tools is applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
+        'The count includes the original. The copies go around the full circle (`span: { type: "full" }`) or within an angle between the first and the last copy.',
+      fields: [
+        { path: 'transform/count', spec: PATTERN_COUNT },
+        { path: 'transform/span/angle', spec: PATTERN_ANGLE, when: { path: 'transform/span/type', equals: 'angle' } },
+      ],
+      bodies: 'derived',
+    },
+    validate: patternFeature,
+    refs: (f) => [
+      ...(f.source.type === 'features' ? f.source.features.map((id): FeatureRef => ({ path: 'source/features', id, kind: 'tool' })) : [{ path: 'source/body', id: f.source.body, kind: 'body' } as FeatureRef]),
+      ...axisRefs(f.transform.axis, 'transform/axis'),
+    ],
+    // Copies are numbered from 1. Whether the copy with that number exists shows in the recompute:
+    // the count may be an expression.
+    createsBody: (f, local) => f.source.type === 'body' && local !== undefined && /^[1-9][0-9]*$/.test(local),
+    namesFaces: false,
+    patch: { fields: ['source', 'transform'] },
   },
 };
 

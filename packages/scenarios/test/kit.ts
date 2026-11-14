@@ -114,5 +114,9 @@ export const status = (state: EngineState): Record<Id, string> =>
 export function expectAllOk(state: EngineState): void {
   expect(status(state)).toEqual(Object.fromEntries(state.document.features.map((f) => [f.id, 'ok'])));
 }
+// Face names of a body as text; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
 export const faceNames = (state: EngineState, body: Id): string[] =>
-  state.evaluation.bodies[body].faces.map((f) => state.evaluation.faceNames[f.id]).map((n) => (n.role === 'side' ? `${n.feature}/side/${n.curve}` : `${n.feature}/${n.role}`)).sort();
+  state.evaluation.bodies[body].faces
+    .map((f) => state.evaluation.faceNames[f.id])
+    .map((n) => (n.role === 'side' ? `${n.feature}/side/${n.curve}` : `${n.feature}/${n.role}`) + (n.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join(''))
+    .sort();

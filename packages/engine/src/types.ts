@@ -47,7 +47,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -153,6 +153,30 @@ export type ProfileSource =
 
 export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 
+// A pattern repeats its source by a list of rigid transforms. The kind of the transform is
+// a variant; the first one is a circular pattern around an axis.
+// - `features`: extrusions with the operation add or cut. For every copy the tool of each of them
+//   is built in the transformed position and applied to the targets of that feature, in the order of
+//   the list. The features need not share targets; the list lets a hole repeat with its pocket.
+// - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
+//   numbered from 1. A copy is a body like any other: a sketch can stand on it, it can be cut and its
+//   edges projected.
+// - `count` includes the original; 1 means the original alone. The pattern is atomic: when any copy
+//   fails, the whole pattern is in error and the model stays as it was before it.
+export interface PatternFeature extends FeatureBase {
+  type: 'pattern';
+  source: { type: 'features'; features: Id[] } | { type: 'body'; body: Id };
+  transform: PatternTransform;
+}
+
+// Circular pattern: copies turned around the axis. `full`: the step is 2π / count. `angle`: the
+// angle between the first and the last copy, so the step is angle / (count − 1); it may be negative.
+export type PatternTransform = { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
+
+// An axis: a base axis of the model, or the normal of a sketch plane led through a point of the
+// sketch (an own point, the origin or a point of projected geometry).
+export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id };
+
 // Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
 // měří od začátku, kladná míří ve směru normály a nesmí být nula.
 // `throughAll` is for a cut only: the tool passes through all targets. `forward` is along the normal
@@ -167,12 +191,21 @@ export type Extent = { type: 'distance'; start: number; distance: number } | { t
 
 // `curve` of a side face is the ID of the sketch curve it came from; for a generated profile it is
 // the name of the side from the generator catalog (a gear: `teeth`).
-export type FaceName =
+// A face of a copy made by a pattern carries `copy`: the pattern and the number of the copy (from
+// 1); for a pattern of a pattern the list grows, the latest pattern last. Faces of the original
+// have no `copy`. A reference to a face of a copy is also a reference to every pattern in the list.
+export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
-  | { feature: Id; role: 'endCap' }; // protější víko
+  | { feature: Id; role: 'endCap' } // protější víko
+) & { copy?: CopyTag[] };
 
-// a < b v lexikografickém pořadí zápisu feature/role/curve
+export interface CopyTag {
+  pattern: Id;
+  index: number;
+}
+
+// a < b v lexikografickém pořadí zápisu feature/role/curve (with `@pattern:index` appended for every copy tag)
 export interface EdgeName {
   a: FaceName;
   b: FaceName;
@@ -293,7 +326,7 @@ export type WarningCode =
   | 'degenerateProjection'
   | 'unsupportedProjection'
   | 'invalidExpression'
-  | 'noEffect' // `refs` list the targets the operation did not change
+  | 'noEffect' // `refs` list the targets the operation did not change; for a pattern `{ copy, feature, targets }` per application
   // The reference `meshWith` of a gear cannot be used (the other gear is missing or in error, the
   // modules or pressure angles differ, the axes are not parallel, the pitch circles are not
   // tangent); the parameter `rotation` was used instead.
@@ -342,6 +375,9 @@ export interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
   error?: Issue; // jen při status 'error'
   warnings: Issue[];
+  // Bodies the feature created: an extrusion with the operation `new` its own, a pattern of a body
+  // its copies in the order of their numbers. A caller does not have to compose derived IDs.
+  bodies: Id[];
   plane?: Frame; // sketch, plane
   sketch?: SketchResult;
   fieldErrors?: Record<FieldPath, ExpressionError>; // expression errors by field
@@ -398,10 +434,10 @@ export type Command =
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
-  // Změna roviny nebo vysunutí; obsah skici mění příkazy skici. Změna se s feature slučuje:
+  // Změna roviny, vysunutí nebo pole (a pattern); obsah skici mění příkazy skici. Změna se s feature slučuje:
   // - varianta (objekt s `type`: zdroj profilu, rozsah) se stejným `type` se slučuje po polích,
   //   s jiným `type` dosavadní nahradí a musí být úplná;
-  // - odkaz (objekt s `kind`: rovina) a seznam se nahrazují celé; `null` odebere nepovinné pole;
+  // - odkaz (objekt s `kind`: rovina, osa pole) a seznam se nahrazují celé; `null` odebere nepovinné pole;
   // - a generated profile with another `generator` is another variant as well; its dictionaries
   //   (`operands`, `params`, `refs`) merge by entry, and `null` removes one entry: a parameter then
   //   returns to its default and loses its expression (a parameter without a default cannot be
@@ -453,7 +489,7 @@ export type Patch<T> = T extends number
         ? { [K in keyof T]?: Patch<T[K]> | null } // a dictionary: null removes an entry
         : { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
       : T;
-export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>;
+export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>> | Patch<Pick<PatternFeature, 'source' | 'transform'>>;
 
 export interface Engine {
   execute(cmd: Command): CommandResult; // změní dokument, jeden krok undo

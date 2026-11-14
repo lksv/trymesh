@@ -312,6 +312,60 @@ describe('model, tělesa a příkazy', () => {
     expect(apiText()).toContain('one or more for `cut`');
   });
 
+  it('a pattern: copies of features and of a body, derived body IDs and face names of copies', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = { outerLoop: ['ab', 'bc', 'cd', 'da'] };
+    const pattern = (id: string, source: object, count: number | string): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 's2', point: 'mid' }, count, span: { type: 'full' } } } as never });
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'plate', name: 'plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } },
+        sketch('s2'),
+        { type: 'addPoint', sketch: 's2', id: 'mid', x: 20, y: 15 },
+        { type: 'addPoint', sketch: 's2', id: 'm', x: 30, y: 15 },
+        { type: 'addCurve', sketch: 's2', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 2 },
+        { type: 'addFeature', feature: { id: 'hole', name: 'hole', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['plate'] } },
+      ],
+    });
+    // four holes around the middle of the plate
+    expect(execute(engine, pattern('holes', { type: 'features', features: ['hole'] }, 4))).toMatchObject({ ok: true, bodies: ['plate'], problems: [] });
+    const summary = (id: string) => ok(engine, 'get_model').features.find((f: { id: string }) => f.id === id);
+    expect(summary('holes')).toEqual({ id: 'holes', name: 'holes', type: 'pattern', status: 'ok', source: { type: 'features', features: ['hole'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 's2', point: 'mid' }, count: 4, span: { type: 'full' } } });
+    expect(summary('plate')).toMatchObject({ bodies: ['plate'] });
+    expect(summary('hole')).not.toHaveProperty('bodies');
+    const labels = (body: string): string[] => ok(engine, 'get_body', { body }).faces.map((face: { label: string }) => face.label);
+    expect(labels('plate').filter((label) => label.startsWith('hole/'))).toEqual(['hole/side/k', 'hole/side/k@holes:1', 'hole/side/k@holes:2', 'hole/side/k@holes:3']);
+    const copied = ok(engine, 'get_body', { body: 'plate' }).faces.find((face: { label: string }) => face.label === 'hole/side/k@holes:2');
+    expect(copied.name).toEqual({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'holes', index: 2 }] });
+    // a copy that misses is named in the warning; a count that is not an integer is rejected
+    expect(execute(engine, { type: 'updateFeature', id: 'holes', patch: { transform: { axis: { kind: 'base', axis: 'Z' }, count: 2 } } }).problems).toEqual([
+      { id: 'holes', name: 'holes', status: 'warning', warnings: [{ code: 'noEffect', message: expect.any(String), refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }] }] },
+    ]);
+    expect(callTool(engine, 'execute', { command: { type: 'updateFeature', id: 'holes', patch: { transform: { count: 2.5 } } } })).toMatchObject({ ok: false, error: expect.stringContaining('transform.count') });
+
+    // copies of the plate: the pattern lists them, get_body takes the derived ID
+    const result = execute(engine, pattern('plates', { type: 'body', body: 'plate' }, 3));
+    expect(result).toMatchObject({ ok: true, bodies: ['plate', 'plates/1', 'plates/2'] });
+    expect(summary('plates')).toMatchObject({ type: 'pattern', bodies: ['plates/1', 'plates/2'], source: { type: 'body', body: 'plate' } });
+    expect(ok(engine, 'get_model').bodies.map((body: { id: string }) => body.id)).toEqual(['plate', 'plates/1', 'plates/2']);
+    const top = ok(engine, 'get_body', { body: 'plates/1' }).faces.find((face: { label: string }) => face.label === 'plate/endCap@plates:1');
+    expect(top).toMatchObject({ name: { feature: 'plate', role: 'endCap', copy: [{ pattern: 'plates', index: 1 }] }, planar: true, normal: [0, 0, 1] });
+    // the name of a face of a copy is a plane for the next sketch, and the copy a target of a cut
+    const onCopy = execute(engine, { type: 'addFeature', feature: { ...(sketch('s3') as { feature: object }).feature, plane: { kind: 'face', body: 'plates/1', face: top.name } } as never });
+    expect(onCopy.problems.map((problem: { id: string }) => problem.id)).toEqual(['holes']); // the warning from above; the sketch is fine
+    expect(callTool(engine, 'get_body', { body: 'plates/3' })).toMatchObject({ ok: false, error: expect.stringContaining('<pattern>/<number>') });
+    expect(callTool(engine, 'execute', { command: { type: 'addFeature', feature: { ...(sketch('s4') as { feature: object }).feature, plane: { kind: 'face', body: 'plates/1', face: { ...top.name, copy: [{ pattern: 'holes', index: 0 }] } } } } })).toMatchObject({ ok: false, error: expect.stringContaining('the number of a copy is an integer from 1') });
+    // the description of the API covers the feature, the derived IDs and the copy tags
+    const text = apiText();
+    expect(text).toContain('- pattern (Pattern)');
+    expect(text).toContain('`<pattern>/<number>`');
+    expect(text).toContain('copy: [{ pattern, index }]');
+    expect(text).toContain('{ kind: "sketchPoint", sketch, point }');
+    expect(text).toContain('PatternFeature');
+    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle']);
+  });
+
   it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {
     const engine = newEngine();
     rectangle(engine, true);
@@ -425,7 +479,7 @@ describe('model, tělesa a příkazy', () => {
     expect(error('get_sketch', { sketch: 'nic' })).toMatch(/skica "nic"/);
     expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/skica "constructor"/);
     expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/vazba "toString"/);
-    expect(error('get_body', { body: 'e' })).toMatch(/těleso "e"/);
+    expect(error('get_body', { body: 'e' })).toMatch(/the body "e"/);
     expect(error('get_model', { at: 'nic' })).toMatch(/feature "nic"/);
     expect(error('get_document', { feature: 'nic' })).toMatch(/feature "nic"/);
     expect(error('execute', {})).toMatch(/argument "command"/);

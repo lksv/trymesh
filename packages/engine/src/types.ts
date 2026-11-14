@@ -240,7 +240,7 @@ export interface FreeEntity {
 
 export interface ConstraintExplanation {
   redundant: boolean;
-  impliedBy: Id[]; // nejmenší sada ostatních vazeb, ze kterých vazba plyne; u nenadbytečné prázdná
+  impliedBy: Id[]; // sada ostatních vazeb, ze kterých vazba plyne a ze které nejde nic ubrat; u nenadbytečné prázdná
 }
 
 export interface FeatureResult {

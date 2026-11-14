@@ -227,3 +227,115 @@ describe('nálezy z revize diagnostiky', () => {
     expect(elapsed).toBeLessThan(2000); // obvykle kolem 0,1 s; rezerva na vytížený stroj
   });
 });
+
+describe('nálezy z druhé revize rozboru', () => {
+  const freedoms = (engine: Engine) => engine.diagnoseSketch('S1').free.map((entity) => [entity.id, entity.freedom]);
+
+  it('tečnost, jejíž bod dotyku padne do konce úsečky jen díky jiné vazbě: poloměr se neztratí', () => {
+    // poloměr m→b kolmý na úsečku: dotyk je v b, ale na kružnici b drží až tečnost sama
+    const engine = sketchWith(point('a', 0, 0.3), point('b', 30, -0.2), point('m', 29.5, 8), line('ab', 'a', 'b'), circle('k', 'm', 6), line('rad', 'm', 'b'));
+    run(engine, constrain('S1', 'perp', { type: 'perpendicular', a: 'rad', b: 'ab' }), constrain('S1', 't', { type: 'tangent', a: 'ab', b: 'k' }));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 5, redundant: [], removable: [] });
+    // S vazbou, která b na kružnici drží sama, je jedna z těch tří navíc (kterákoli plyne ze
+    // zbylých dvou). Rozbor pak tečnost bere jako kolmost poloměru a nabídne k odebrání ji.
+    run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'b', curve: 'k' }));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 5, redundant: ['perp', 't'], removable: ['t'] });
+    run(engine, { type: 'removeConstraint', sketch: 'S1', id: 't' });
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 5, redundant: [] });
+  });
+
+  it('tečnost, jejíž bod dotyku padne do rohu shodou rozměrů: kružnice je určená', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), point('m', 39, 11), circle('k', 'm', 8), dimension('S1', 'mx', { type: 'horizontalDistance', a: 'origin', b: 'm' }, 40), dimension('S1', 'my', { type: 'verticalDistance', a: 'origin', b: 'm' }, 10));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 1, free: [{ id: 'k', kind: 'radius', freedom: 1 }] });
+    run(engine, constrain('S1', 't', { type: 'tangent', a: 'ra', b: 'k' }));
+    expect(engine.getState().evaluation.features.S1.sketch!.radii.k).toBeCloseTo(10, 5);
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [], free: [] });
+  });
+
+  it('oblouk tečný ke kružnici, jehož konec na ní leží jen díky tečnosti: poloměr kružnice se neztratí', () => {
+    // středy a konec oblouku drží na přímce pomocná úsečka; dotyk je pak v konci oblouku
+    const engine = sketchWith(point('m1', 0, 0), point('s', -5, 0.2), point('q', 5.1, 0.1), point('m2', 12, 0.3), arc('r', 'm1', 'q', 's'), circle('k', 'm2', 6.5), line('axis', 'm1', 'm2'));
+    run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'q', curve: 'axis' }));
+    const before = engine.diagnoseSketch('S1').degreesOfFreedom;
+    run(engine, constrain('S1', 't', { type: 'tangent', a: 'r', b: 'k' }));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: before - 1, redundant: [] });
+    expect(freedoms(engine)).toContainEqual(['m2', 2]);
+  });
+
+  it('body, které splynou jen na přesnost solveru: vazby mezi nimi se počítají', () => {
+    let engine = sketchWith(point('a', 3, 4), point('b', 3.5, 4.2));
+    run(engine, dimension('S1', 'd0', { type: 'distance', a: 'a', b: 'b' }, 0));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [] });
+    engine = sketchWith(point('a', 3, 4), point('b', 23.5, 4.2), point('c', 3.4, 4.3), line('ab', 'a', 'b'));
+    run(
+      engine,
+      constrain('S1', 'co', { type: 'coincident', a: 'c', b: 'a' }),
+      dimension('S1', 'dl', { type: 'distancePointLine', point: 'c', line: 'ab' }, 0),
+      dimension('S1', 'vd', { type: 'verticalDistance', a: 'c', b: 'a' }, 0),
+      constrain('S1', 'h', { type: 'horizontal', line: 'ab' }),
+    );
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 3, removable: ['dl', 'vd'] });
+  });
+
+  it('volnost entit při větší volnosti skici: každý bod má oba směry', () => {
+    const engine = sketchWith(point('a', 0, 0.3), point('b', 30, -0.2), point('c', 2, 10.4), point('d', 28, 9.7), line('ab', 'a', 'b'), line('cd', 'c', 'd'));
+    run(engine, constrain('S1', 'h', { type: 'horizontal', line: 'ab' }), constrain('S1', 'par', { type: 'parallel', a: 'ab', b: 'cd' }));
+    expect(engine.diagnoseSketch('S1').degreesOfFreedom).toBe(6);
+    expect(freedoms(engine)).toEqual([['a', 2], ['b', 2], ['c', 2], ['d', 2]]);
+    // bez vazeb: deset bodů, každý dva směry
+    const loose = sketchWith(...Array.from({ length: 10 }, (_, i) => point(`p${i}`, 7 * i, i * i)));
+    expect(freedoms(loose)).toEqual(Array.from({ length: 10 }, (_, i) => [`p${i}`, 2]));
+  });
+
+  it('stejně dlouhé kolmé úsečky: rovnice kolmosti zůstanou hladké', () => {
+    // čtyřúhelník ze čtyř kolmostí a tří shodných délek je čtverec s volnou polohou, natočením a velikostí
+    const engine = sketchWith(point('a', 0.2, 0.1), point('b', 20.3, 0.4), point('c', 19.8, 20.2), point('d', -0.3, 19.9), line('l1', 'a', 'b'), line('l2', 'b', 'c'), line('l3', 'c', 'd'), line('l4', 'd', 'a'));
+    const perpendicular = (id: Id, a: Id, b: Id): Command => constrain('S1', id, { type: 'perpendicular', a, b });
+    const equal = (id: Id, a: Id, b: Id): Command => constrain('S1', id, { type: 'equalLength', a, b });
+    run(engine, perpendicular('p1', 'l1', 'l2'), perpendicular('p2', 'l2', 'l3'), perpendicular('p3', 'l3', 'l4'), perpendicular('p4', 'l4', 'l1'), equal('e1', 'l1', 'l2'), equal('e2', 'l2', 'l3'), equal('e3', 'l3', 'l4'));
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 4, removable: ['p4', 'e2', 'e3'] });
+
+    const square = newEngine();
+    run(square, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 40), perpendicular('p1', 'ra', 'rb'), perpendicular('p2', 'rb', 'rc'), perpendicular('p3', 'rc', 'rd'), perpendicular('p4', 'rd', 'ra'));
+    expect(square.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 0, removable: ['p1', 'p2', 'p3', 'p4'] });
+    expect(square.explainConstraint('S1', 'rh2')).toEqual({ redundant: true, impliedBy: ['rv1', 'p2'] }); // dřív se sem přimíchala kóta výšky
+  });
+
+  it('malý útvar daleko od počátku: nadbytečná vazba se pozná', () => {
+    // trojúhelník daný třemi různě dlouhými stranami; pravý úhel mezi dvěma z nich je navíc
+    for (const [x, y, s] of [[1000, 300, 0.01], [1e6, 3e5, 1], [0, 0, 10]]) {
+      const engine = sketchWith(point('a', x, y), point('b', x + 4.1 * s, y + 0.2 * s), point('c', x - 0.1 * s, y + 2.9 * s), line('l1', 'a', 'b'), line('l2', 'b', 'c'), line('l3', 'a', 'c'));
+      run(engine, dimension('S1', 'd1', { type: 'distance', a: 'a', b: 'b' }, 4 * s), dimension('S1', 'd2', { type: 'distance', a: 'b', b: 'c' }, 5 * s), dimension('S1', 'd3', { type: 'distance', a: 'c', b: 'a' }, 3 * s), dimension('S1', 'ang', { type: 'angle', a: 'l1', b: 'l3' }, Math.PI / 2));
+      expect(engine.diagnoseSketch('S1'), `${x} ${s}`).toMatchObject({ status: 'solved', degreesOfFreedom: 3, redundant: ['d1', 'd2', 'd3', 'ang'], removable: ['ang'] });
+    }
+  });
+
+  it('vysvětlení neobsahuje vazbu, bez které se obejde', () => {
+    // totožnost má dvě rovnice; jednu z nich v bázi zastoupí vodorovná kóta, která ale potřeba není
+    const engine = sketchWith(point('a', 3, 4), point('b', 3.4, 4.3), point('c', 20, 12));
+    run(
+      engine,
+      dimension('S1', 'hd', { type: 'horizontalDistance', a: 'a', b: 'b' }, 0),
+      constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' }),
+      dimension('S1', 'dbc', { type: 'distance', a: 'b', b: 'c' }, 18),
+      dimension('S1', 'dac', { type: 'distance', a: 'a', b: 'c' }, 18),
+    );
+    expect(engine.explainConstraint('S1', 'dac')).toEqual({ redundant: true, impliedBy: ['co', 'dbc'] });
+    expect(engine.explainConstraint('S1', 'hd')).toEqual({ redundant: true, impliedBy: ['co'] });
+  });
+
+  it('sada k odebrání u vazeb se dvěma rovnicemi: počet rovnic sedí, počet vazeb závisí na pořadí', () => {
+    const variants: [Command[], Id[]][] = [
+      [[constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' }), dimension('S1', 'hd', { type: 'horizontalDistance', a: 'a', b: 'b' }, 0), dimension('S1', 'vd', { type: 'verticalDistance', a: 'a', b: 'b' }, 0)], ['hd', 'vd']],
+      [[dimension('S1', 'hd', { type: 'horizontalDistance', a: 'a', b: 'b' }, 0), dimension('S1', 'vd', { type: 'verticalDistance', a: 'a', b: 'b' }, 0), constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' })], ['co']],
+    ];
+    for (const [commands, removable] of variants) {
+      const engine = sketchWith(point('a', 3, 4), point('b', 3.4, 4.3));
+      run(engine, ...commands);
+      expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 2, redundant: ['co', 'hd', 'vd'].sort((p, q) => commands.findIndex((c) => (c as { id: Id }).id === p) - commands.findIndex((c) => (c as { id: Id }).id === q)), removable });
+      run(engine, ...removable.map((id): Command => ({ type: 'removeConstraint', sketch: 'S1', id })));
+      expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 2, redundant: [] });
+    }
+  });
+});

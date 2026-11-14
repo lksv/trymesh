@@ -244,7 +244,7 @@ interface SketchDiagnosis {
 }
 interface ConstraintExplanation {
   redundant: boolean;
-  impliedBy: Id[];      // nejmenší sada ostatních vazeb, ze kterých vazba plyne
+  impliedBy: Id[];      // sada ostatních vazeb, ze kterých vazba plyne a ze které nejde nic ubrat
 }
 ```
 
@@ -252,24 +252,29 @@ Diagnostika se počítá **rozborem v prvním řádu**, bez solveru. Každá vaz
 
 - **Stupně volnosti** jsou počet proměnných minus hodnost matice. Tuto hodnotu nese i výsledek skici (`degreesOfFreedom`); počet, který hlásí solver, engine nepoužívá.
 - **Nadbytečná** je řídicí vazba, jejíž řádky leží v prostoru řádků ostatních vazeb: po jejím odebrání zůstane volnost stejná. V závislé skupině jsou tak označené všechny členy, ne jen ten poslední přidaný: kterýkoli z nich jde odebrat.
-- **Sada k odebrání** vzniká postupným odebíráním od nejnovější vazby, dokud to hodnost nesnižuje. Počet vazeb v sadě na pořadí nezávisí (je to počet vazeb navíc), složení ano: starší vazby zůstávají. Po odebrání celé sady nezbude nadbytečná žádná vazba a geometrie se nezmění. Pořadí vazeb je pořadí klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně před ostatní, takže u nich pořadí vzniku neplatí.
-- **Vysvětlení vazby** je nejmenší sada ostatních vazeb, ze kterých plyne. Sad může být víc; přednost má duplicita a pak vazby na stejných entitách. Prázdná sada u nadbytečné vazby znamená, že vazba plyne z definice křivky samotné (konec oblouku leží na oblouku).
+- **Sada k odebrání** vzniká postupným odebíráním od nejnovější vazby, dokud to hodnost nesnižuje. Složení sady závisí na pořadí vazeb: starší vazby zůstávají. Počet vazeb v ní na pořadí nezávisí, pokud mají všechny závislé vazby jednu rovnici; vazba se dvěma rovnicemi (totožnost, souměrnost, střed úsečky) může nahradit dvě jiné, takže vedle totožnosti a nulové vodorovné i svislé vzdálenosti týchž bodů je sadou buď totožnost, nebo obě kóty. Odebírá se jen celá vazba: vazba, ze které je navíc jen jedna rovnice ze dvou, v sadě není. Po odebrání celé sady nezbude nadbytečná žádná vazba a geometrie se nezmění. Pořadí vazeb je pořadí klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně před ostatní, takže u nich pořadí vzniku neplatí.
+- **Vysvětlení vazby** je sada ostatních vazeb, ze kterých plyne a ze které už nejde žádnou vynechat. Sad může být víc a nemusí jít o tu s nejmenším počtem vazeb; přednost má duplicita a pak vazby na stejných entitách. Prázdná sada u nadbytečné vazby znamená, že vazba plyne z definice křivky samotné (konec oblouku leží na oblouku).
 - **Volnost entity** je počet nezávislých směrů, kterými se bod může pohnout, aniž poruší vazby (u poloměru kružnice 0 nebo 1). Bod na křivce má volnost 1, volný bod 2. Součet volností může být větší než volnost skici, protože body se hýbou spolu. Rovná-li se volnost bodu volnosti celé skici, stačí ho ukotvit a skica je určená: tak se pozná tvar, kterému chybí jen poloha.
 - **Stav.** Při konfliktu nebo neúspěchu solveru se vrací jen stav, konfliktní vazby a duplicity. `unavailable` znamená, že se skica nevyhodnotila (je potlačená nebo má rozbitou rovinu). Neznámá skica nebo vazba je chyba volání (výjimka), stejně jako u `getState(at)`.
 - **Referenční kóty a vazby vynechané kvůli ztracené promítnuté geometrii** se diagnostiky netýkají, solver je nedostává.
 
-**Rovnice vazeb** mají rozměr délky, takže jejich derivace jsou bezrozměrné a prahy rozboru nezávisí na měřítku skici. Jejich význam musí odpovídat adaptéru solveru; testy ověřují pro každý typ vazby, že vyřešená skica rovnice splňuje a že vazba ubere tolik volnosti, kolik má rovnic. Tabulka rovnic je úplná z typů: nová vazba bez rovnice se nepřeloží.
+**Rovnice vazeb** mají rozměr délky, takže jejich derivace jsou bezrozměrné a prahy rozboru nezávisí na měřítku skici. Závisí jen na rozdílech poloh: vyhodnocují se v souřadnicích vzhledem k bodu vazby, aby malý útvar daleko od počátku neztrácel přesnost, a krok derivace se řídí velikostí geometrie vazby. Kde se rovnice s nulovou pravou stranou dělí délkou (rovnoběžnost, kolmost), je dělitelem délka ve vyřešeném stavu, tedy konstanta; dělení větší z obou délek by u stejně dlouhých úseček mělo zlom. Jejich význam musí odpovídat adaptéru solveru; testy ověřují pro každý typ vazby, že vyřešená skica rovnice splňuje a že vazba ubere tolik volnosti, kolik má rovnic. Tabulka rovnic je úplná z typů: nová vazba bez rovnice se nepřeloží.
 
-**Dvojnásobné kořeny.** Rozbor v prvním řádu nevidí podmínku, jejíž rovnice má v řešení nulovou derivaci. Dva takové případy jsou běžné a rovnice se pro ně volí jinak:
+**Dvojnásobné kořeny.** Rozbor v prvním řádu nevidí podmínku, která ve vyřešeném stavu říká v prvním řádu totéž co jiné vazby, i když skicu ve skutečnosti omezuje. Dva takové případy jsou běžné a rovnice se pro ně volí jinak:
 
-- **Tečnost ve společném bodě.** Úsečka končící na kružnici, které se má dotýkat, nebo dva oblouky navazující ve společném konci (zaoblení, drážka). Tečnost se pak počítá jako kolmost poloměru na úsečku v tom bodě, respektive jako tři body na přímce (oba středy a společný bod).
+- **Tečnost ve společném bodě.** Úsečka končící na kružnici, které se má dotýkat, nebo dva oblouky navazující ve společném konci (zaoblení, drážka). Obecná rovnice tečnosti (vzdálenost středu od přímky se rovná poloměru) tu má stejný řádek jako podmínka, že konec úsečky leží na kružnici. Tečnost se pak počítá jako kolmost poloměru na úsečku v tom bodě, respektive jako tři body na přímce (oba středy a společný bod). Tato podoba se použije jen tehdy, když konec úsečky nebo oblouku na kružnici drží ostatní vazby (společný bod, totožnost, bod na křivce, obecně cokoli kromě tečností): rozbor to pozná tak, že podmínka „bod leží na kružnici" leží v prostoru řádků ostatních vazeb. Leží-li tam bod jen shodou rozměrů nebo až díky tečnosti samé, platí obecná rovnice; jinak by z rozboru vypadl poloměr kružnice.
 - **Nulová vzdálenost dvou bodů** se počítá jako totožnost (dvě rovnice).
 
-Ostatní takové případy rozbor nepozná a vazbu, která z ostatních plyne jen díky konkrétním hodnotám, jako nadbytečnou neoznačí (vzdálenost dvou bodů rovná jejich vodorovné vzdálenosti dělá úsečku vodorovnou). Totéž platí pro společný bod tečnosti, který drží jiné vazby než konec úsečky nebo oblouku.
+Ostatní takové případy rozbor nepozná:
+
+- Vazbu, která z ostatních plyne jen díky konkrétním hodnotám, jako nadbytečnou neoznačí (vzdálenost dvou bodů rovná jejich vodorovné vzdálenosti dělá úsečku vodorovnou). Výsledek tu může záviset na šumu ve vyřešených polohách.
+- Společný bod tečnosti, který není koncem úsečky ani oblouku (samostatný bod přichycený na obě křivky), nebo který na kružnici drží až jiná tečnost: volnost vyjde o jedna větší.
+- Plyne-li v trojici tečnost, bod na kružnici a kolmost poloměru kterákoli vazba ze zbylých dvou, označí rozbor jako zaměnitelné jen tečnost a kolmost.
+- Skica blízko singulárního stavu (řádky závislé s odchylkou řádu 1e-7 až 1e-6) leží na hraně prahu a výsledek může záviset na pořadí vazeb.
 
 **Proč ne solver.** První verze se ptala solveru: řešila skicu znovu bez každé vazby a porovnávala stupně volnosti. Revize ukázala, že počet ze solveru není spolehlivý (cyklus shodných délek v trojúhelníku ohlásí jako plně určený, u úsečky stažené do bodu volnost s přidanou vazbou vzroste, šum ve vyřešených polohách mění výsledek) a že desítky řešení jsou u větších skic pomalé (sekundy až desítky sekund při stovkách vazeb).
 
-**Cena.** Rozbor se počítá při každém vyhodnocení vyřešené skici (jedna ortogonalizace řádků). Diagnostika a vysvětlení k němu přidají další lineární algebru: u skici s 240 vazbami kolem 0,1 s, u 480 vazeb kolem sekundy (roste se třetí mocninou). Výsledek diagnostiky se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní nezmění, nepočítá se znovu.
+**Cena.** Rozbor (derivace a jedna ortogonalizace řádků) se počítá při každém vyhodnocení vyřešené skici, tedy i při každém kroku tažení. Roste se třetí mocninou počtu vazeb: do stovky vazeb jednotky milisekund, 240 vazeb kolem 15 ms, 480 kolem 0,1 s, 960 kolem 0,8 s. Skici v PoC mají desítky vazeb; pro stovky by se rozbor musel počítat až na vyžádání nebo po souvislých částech skici. Diagnostika a vysvětlení k němu přidají další lineární algebru stejného řádu. Výsledek diagnostiky se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní nezmění, nepočítá se znovu.
 
 **Omezení solveru, které diagnostika odhalí, ale neodstraní.** Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver jako plnohodnotnou; skica se pak chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere.
 

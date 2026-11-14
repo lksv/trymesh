@@ -15,6 +15,7 @@ const DEPENDENT = 1e-6; // řádek se po odečtení průmětu do prostoru ostatn
 const ZERO_ROW = 1e-9; // rovnice, která v tomto stavu nic neurčuje
 const SUPPORT = 1e-6; // koeficient, od kterého se vazba počítá mezi ty, ze kterých jiná plyne
 const STEP = 1e-6; // krok numerické derivace vzhledem k velikosti geometrie vazby
+const PROBE = 1e-3; // část pomocného vektoru, která musí zbýt, aby se počítala za nový pohyb
 const SHARED = 1e-6; // bod leží na kružnici (vzhledem k velikosti křivek)
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
@@ -23,6 +24,16 @@ const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
 const len = (a: Vec2): number => Math.hypot(a[0], a[1]);
 const nonZero = (value: number): number => (value > 0 ? value : 1);
 const sign = (value: number): number => (value < 0 ? -1 : 1);
+// Opakovatelná „náhodná" čísla z (−1, 1) (mulberry32); výsledek rozboru se tak nemění.
+const random = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 2147483648 - 1;
+  };
+};
 const norm = (vector: Float64Array): number => {
   let sum = 0;
   for (let k = 0; k < vector.length; k++) sum += vector[k] * vector[k];
@@ -46,14 +57,18 @@ const direction = (g: Geometry, id: Id): Vec2 => {
 const centerOf = (g: Geometry, id: Id): Vec2 => g.point((g.curve(id) as Extract<Curve, { center: Id }>).center);
 
 type Equations = (g: Geometry) => number[];
+// Drží ostatní vazby (bez tečností) bod na kružnici nebo oblouku?
+type Held = (point: Id, round: Id) => boolean;
 // Varianta vazby daného typu (i když ji typy sdružují s jinou, jako horizontal a vertical).
 type Variant<C, T> = C extends { type: infer U } ? (T extends U ? C : never) : never;
 type Of<T extends Constraint['type']> = Variant<Constraint, T>;
 
 // Rovnice každé vazby: v řešení jsou nulové. `g0` je vyřešený stav; rozhoduje se podle něj to,
-// co rovnice sama neurčuje (na které straně přímky bod leží, vnější nebo vnitřní dotyk kružnic).
+// co rovnice sama neurčuje (na které straně přímky bod leží, vnější nebo vnitřní dotyk kružnic),
+// a berou se z něj délky, kterými se dělí rovnice s nulovou pravou stranou: dělitel je pak
+// konstanta a rovnice zůstane hladká. Rovnice závisí jen na rozdílech poloh, ne na počátku.
 // Význam musí odpovídat adaptéru solveru; hlídá to test, že vyřešená skica rovnice splňuje.
-const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry) => Equations } = {
+const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Held) => Equations } = {
   coincident: (c) => (g) => sub(g.point(c.a), g.point(c.b)),
   pointOnCurve: (c, g0) => {
     if (g0.curve(c.curve).type === 'line') {
@@ -72,21 +87,22 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry) => Equati
     const [a, b] = lineOf(g, c.line);
     return [b[0] - a[0]];
   },
-  parallel: (c) => (g) => {
-    const [u, v] = [direction(g, c.a), direction(g, c.b)];
-    return [cross(u, v) / nonZero(Math.max(len(u), len(v)))];
+  parallel: (c, g0) => {
+    const scale = nonZero(Math.max(len(direction(g0, c.a)), len(direction(g0, c.b))));
+    return (g) => [cross(direction(g, c.a), direction(g, c.b)) / scale];
   },
-  perpendicular: (c) => (g) => {
-    const [u, v] = [direction(g, c.a), direction(g, c.b)];
-    return [dot(u, v) / nonZero(Math.max(len(u), len(v)))];
+  perpendicular: (c, g0) => {
+    const scale = nonZero(Math.max(len(direction(g0, c.a)), len(direction(g0, c.b))));
+    return (g) => [dot(direction(g, c.a), direction(g, c.b)) / scale];
   },
   equalLength: (c) => (g) => [len(direction(g, c.a)) - len(direction(g, c.b))],
   // Tečnost má dvě podoby. Obecně: vzdálenost středu od přímky (nebo středů od sebe) odpovídá
-  // poloměrům. Leží-li ale společný bod obou křivek už v jejich určujícím bodě (konec úsečky na
-  // kružnici, konec oblouku na druhé kružnici), je tato rovnice v řešení dvojnásobným kořenem
-  // a její derivace je nulová. Tečnost pak znamená, že poloměr v tom bodě je kolmý na úsečku,
-  // respektive že oba středy a společný bod leží na přímce.
-  tangent: (c, g0) => {
+  // poloměrům. Drží-li ale ostatní vazby na kružnici už určující bod druhé křivky (konec úsečky,
+  // konec oblouku), říká tahle rovnice v prvním řádu totéž co ony: soustava má v řešení
+  // dvojnásobný kořen. Tečnost pak znamená, že poloměr v tom bodě je kolmý na úsečku, respektive
+  // že oba středy a společný bod leží na přímce. Když bod na kružnici leží jen shodou okolností
+  // nebo až díky tečnosti samé, platí obecná podoba: jinak by z rozboru vypadl poloměr.
+  tangent: (c, g0, held) => {
     const [first, second] = g0.curve(c.a).type === 'line' ? [c.a, c.b] : [c.b, c.a];
     const onCircle = (point: Id, round: Id, size: number): boolean => Math.abs(len(sub(g0.point(point), centerOf(g0, round))) - g0.radius(round)) <= SHARED * nonZero(size);
     const ends = (round: Id): Id[] => {
@@ -96,7 +112,7 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry) => Equati
     if (g0.curve(first).type === 'line') {
       const line = g0.curve(first) as Extract<Curve, { type: 'line' }>;
       const size = Math.max(len(direction(g0, first)), g0.radius(second));
-      const shared = [line.a, line.b].find((point) => onCircle(point, second, size));
+      const shared = [line.a, line.b].find((point) => onCircle(point, second, size) && held(point, second));
       if (shared !== undefined) {
         return (g) => {
           const u = direction(g, first);
@@ -111,12 +127,11 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry) => Equati
       return (g) => [s * side(g) - g.radius(second)];
     }
     const [r1, r2] = [g0.radius(first), g0.radius(second)];
-    const shared = [...ends(first).filter((point) => onCircle(point, second, Math.max(r1, r2))), ...ends(second).filter((point) => onCircle(point, first, Math.max(r1, r2)))][0];
+    const touches = (point: Id, round: Id): boolean => onCircle(point, round, Math.max(r1, r2)) && held(point, round);
+    const shared = [...ends(first).filter((point) => touches(point, second)), ...ends(second).filter((point) => touches(point, first))][0];
     if (shared !== undefined) {
-      return (g) => {
-        const [u, v] = [sub(centerOf(g, first), g.point(shared)), sub(centerOf(g, second), g.point(shared))];
-        return [cross(u, v) / nonZero(Math.max(len(u), len(v)))];
-      };
+      const scale = nonZero(Math.max(r1, r2));
+      return (g) => [cross(sub(centerOf(g, first), g.point(shared)), sub(centerOf(g, second), g.point(shared))) / scale];
     }
     const between = (g: Geometry): number => len(sub(centerOf(g, first), centerOf(g, second)));
     const outer = Math.abs(between(g0) - (r1 + r2)) <= Math.abs(between(g0) - Math.abs(r1 - r2));
@@ -179,10 +194,12 @@ class Basis {
     return this.q.length;
   }
 
-  // Odečte průmět do báze (dvakrát, kvůli zaokrouhlení); vrací zbytek a složky v bázi.
+  // Odečte průmět do báze; vrací zbytek a složky v bázi. Když se odečetla větší část vektoru,
+  // zbytek nese zaokrouhlovací chybu a odečítá se podruhé; jinak stačí jeden průchod.
   private reduce(vector: Float64Array): { rest: Float64Array; parts: Float64Array } {
     const rest = Float64Array.from(vector);
     const parts = new Float64Array(this.q.length);
+    const before = norm(vector);
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < this.q.length; i++) {
         const qi = this.q[i];
@@ -192,6 +209,7 @@ class Basis {
         for (let k = 0; k < rest.length; k++) rest[k] -= d * qi[k];
         parts[i] += d;
       }
+      if (norm(rest) > 0.5 * before) break;
     }
     return { rest, parts };
   }
@@ -271,17 +289,24 @@ export class SketchAnalysis {
     for (const [id, index] of at) values.set([input.points[id].x, input.points[id].y], index);
     for (const [id, index] of radiusAt) values[index] = input.radii[id];
 
+    // Rovnice se vyhodnocují v polohách vzhledem k bodu vazby (`origin`), ne k počátku skici:
+    // malý útvar daleko od počátku by jinak ztratil přesnost v zaokrouhlení souřadnic.
+    // Derivuje se posunem jedné proměnné (`moved`) o `shift`.
+    let origin: Vec2 = [0, 0];
+    let moved = -1;
+    let shift = 0;
     const geometry: Geometry = {
       point: (id) => {
         const index = at.get(id);
-        return index === undefined ? [input.points[id].x, input.points[id].y] : [values[index], values[index + 1]];
+        if (index === undefined) return [input.points[id].x - origin[0], input.points[id].y - origin[1]];
+        return [values[index] - origin[0] + (index === moved ? shift : 0), values[index + 1] - origin[1] + (index + 1 === moved ? shift : 0)];
       },
       curve: (id) => input.curves[id],
       radius: (id) => {
         const curve = input.curves[id];
         if (curve.type === 'arc') return len(sub(geometry.point(curve.start), geometry.point(curve.center)));
         const index = radiusAt.get(id);
-        return index === undefined ? input.radii[id] : values[index];
+        return index === undefined ? input.radii[id] : values[index] + (index === moved ? shift : 0);
       },
     };
     const pointsOf = (entity: Id): Id[] => {
@@ -290,12 +315,15 @@ export class SketchAnalysis {
       return curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'circle' ? [curve.center] : [curve.center, curve.start, curve.end];
     };
 
-    // Řádky Jacobiho matice numerickou derivací; krok se řídí velikostí geometrie, které se vazba týká.
+    // Jednotkové řádky Jacobiho matice numerickou derivací; krok se řídí velikostí geometrie,
+    // které se vazba týká. Řádek rovnice, která v tomto stavu nic neurčuje, je undefined.
     let extent = 0;
     for (const p of Object.values(input.points)) extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y));
     let residual = 0;
-    const addRows = (owner: Id | undefined, equations: Equations, entities: Id[]) => {
+    const derive = (build: (g0: Geometry) => Equations, entities: Id[]): (Float64Array | undefined)[] => {
       const points = [...new Set(entities.flatMap(pointsOf))];
+      const outer = origin; // derive se volá i zevnitř `build` (otázka tečnosti)
+      origin = points.length > 0 ? [input.points[points[0]].x, input.points[points[0]].y] : [0, 0];
       const touched = new Set<number>();
       let size = 0;
       for (const point of points) {
@@ -309,28 +337,48 @@ export class SketchAnalysis {
         if (input.curves[entity] && input.curves[entity].type !== 'line') size = Math.max(size, geometry.radius(entity));
       }
       const step = STEP * (size > 0 ? size : nonZero(extent));
+      const equations = build(geometry);
       const base = equations(geometry);
-      for (const value of base) residual = Math.max(residual, Math.abs(value));
+      for (const off of base) residual = Math.max(residual, Math.abs(off));
       const vectors = base.map(() => new Float64Array(count));
       for (const index of touched) {
-        const saved = values[index];
-        values[index] = saved + step;
+        moved = index;
+        shift = step;
         const plus = equations(geometry);
-        values[index] = saved - step;
+        shift = -step;
         const minus = equations(geometry);
-        values[index] = saved;
         for (let e = 0; e < vectors.length; e++) vectors[e][index] = (plus[e] - minus[e]) / (2 * step);
       }
-      for (const vector of vectors) this.rows.push({ owner, vector: normalized(vector) });
+      moved = -1;
+      origin = outer;
+      return vectors.map(normalized);
     };
 
-    for (const curve of Object.values(input.curves)) if (curve.type === 'arc') addRows(undefined, arcRule(curve), [curve.center, curve.start, curve.end]);
+    // Tečnost se ptá, jestli bod drží na kružnici ostatní vazby. Proto se nejdřív spočítají řádky
+    // všeho ostatního; z nich se (jen když je to potřeba) postaví báze, proti které se otázka řeší.
+    const arcRows = Object.values(input.curves).flatMap((curve) => (curve.type === 'arc' ? derive(() => arcRule(curve), [curve.center, curve.start, curve.end]) : []));
     this.order = Object.keys(input.constraints);
-    for (const id of this.order) {
+    const operands = (c: Constraint): Id[] => CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
+    const rowsOf = (id: Id, held: Held): (Float64Array | undefined)[] => {
       const c = input.constraints[id];
-      const build = EQUATIONS[c.type] as (c: Constraint, g0: Geometry) => Equations;
-      addRows(id, build(c, geometry), CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]));
-    }
+      const build = EQUATIONS[c.type] as (c: Constraint, g0: Geometry, held: Held) => Equations;
+      return derive((g0) => build(c, g0, held), operands(c));
+    };
+    const built = new Map<Id, (Float64Array | undefined)[]>();
+    for (const id of this.order) if (input.constraints[id].type !== 'tangent') built.set(id, rowsOf(id, () => false));
+    let others: Basis | undefined;
+    const held: Held = (point, round) => {
+      const [row] = derive(() => (g) => [len(sub(g.point(point), centerOf(g, round))) - g.radius(round)], [point, round]);
+      if (!row) return true; // začátek oblouku na něm leží z definice
+      if (!others) {
+        others = new Basis();
+        for (const vector of [...arcRows, ...this.order.flatMap((id) => built.get(id) ?? [])]) if (vector) others.add(vector, 0);
+      }
+      return norm(others.outside(row)) <= DEPENDENT;
+    };
+    for (const id of this.order) if (!built.has(id)) built.set(id, rowsOf(id, held));
+    for (const vector of arcRows) this.rows.push({ owner: undefined, vector });
+    for (const id of this.order) for (const vector of built.get(id) as (Float64Array | undefined)[]) this.rows.push({ owner: id, vector });
     this.residual = residual;
 
     // Báze řádků v pořadí dokumentu. Každý závislý řádek dává jednu závislost: sám minus
@@ -402,9 +450,9 @@ export class SketchAnalysis {
     if (this.freeCache) return this.freeCache;
     const out: FreeEntity[] = [];
     const motions: Float64Array[] = [];
-    for (let seed = 0; motions.length < this.degreesOfFreedom && seed < 4 * this.degreesOfFreedom + 8; seed++) {
-      // pomocný vektor s pevně danými „náhodnými" složkami, aby byl výsledek opakovatelný
-      const probe = Float64Array.from({ length: this.count }, (_, k) => Math.sin(12.9898 * (k + 1) + 78.233 * (seed + 1)));
+    const next = random(1);
+    for (let attempt = 0; motions.length < this.degreesOfFreedom && attempt < 4 * this.degreesOfFreedom + 8; attempt++) {
+      const probe = Float64Array.from({ length: this.count }, next);
       const rest = this.basis.outside(probe);
       for (let pass = 0; pass < 2; pass++) {
         for (const motion of motions) {
@@ -414,7 +462,7 @@ export class SketchAnalysis {
         }
       }
       const length = norm(rest);
-      if (length > 1e-3 * norm(probe)) motions.push(rest.map((value) => value / length));
+      if (length > PROBE * norm(probe)) motions.push(rest.map((value) => value / length));
     }
     const along = (index: number): Float64Array => Float64Array.from(motions, (motion) => motion[index]);
     for (const variable of this.variables) {
@@ -436,8 +484,8 @@ export class SketchAnalysis {
     return (this.freeCache = out);
   }
 
-  // Nejmenší sada ostatních vazeb, ze kterých vazba plyne; undefined = neplyne z nich.
-  // Sad může být víc: `prefer` říká, které vazby mají mít přednost (menší číslo dřív).
+  // Sada ostatních vazeb, ze kterých vazba plyne a ze které už nejde nic ubrat; undefined =
+  // neplyne z nich. Sad může být víc: `prefer` říká, které vazby mají mít přednost (menší číslo dřív).
   explain(constraint: Id, prefer: (other: Id) => number): Id[] | undefined {
     const own = this.rowsOf(constraint);
     if (own.length === 0) return undefined;
@@ -460,6 +508,20 @@ export class SketchAnalysis {
         if (Math.abs(value) > SUPPORT && owner !== undefined) implied.add(owner);
       });
     }
-    return [...implied].sort((a, b) => (position.get(a) as number) - (position.get(b) as number));
+    // Vazba se dvěma rovnicemi se do báze může dostat jen jednou z nich a druhou za ni zastoupí
+    // jiná vazba, která pak v sadě zbytečně zůstane. Proto se ze sady zkouší ubírat, od nejméně
+    // vhodných vazeb: co jde vynechat, aniž vazba přestane plynout, tam nepatří.
+    const targets = own.map((index) => this.rows[index].vector).filter((vector) => vector !== undefined);
+    const follows = (from: Set<Id>): boolean => {
+      const span = new Basis();
+      this.rows.forEach((row, index) => row.vector && (row.owner === undefined || from.has(row.owner)) && span.add(row.vector, index));
+      return targets.every((vector) => norm(span.outside(vector)) <= DEPENDENT);
+    };
+    const order = (id: Id): number => position.get(id) as number;
+    for (const id of [...implied].sort((a, b) => prefer(b) - prefer(a) || order(b) - order(a))) {
+      implied.delete(id);
+      if (!follows(implied)) implied.add(id);
+    }
+    return [...implied].sort((a, b) => order(a) - order(b));
   }
 }

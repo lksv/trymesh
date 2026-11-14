@@ -342,7 +342,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'explain_constraint',
-      description: 'Řekne, jestli vazba plyne z ostatních vazeb skici, a vrátí nejmenší sadu vazeb, ze kterých plyne.',
+      description: 'Řekne, jestli vazba plyne z ostatních vazeb skici, a vrátí sadu vazeb, ze kterých plyne (nejde z ní nic ubrat).',
       inputSchema: { type: 'object', properties: { sketch: { type: 'string' }, constraint: { type: 'string', description: 'ID vazby' } }, required: ['sketch', 'constraint'], additionalProperties: false },
       run: (engine, args) => {
         const feature = sketchOf(engine, text(args, 'sketch'));

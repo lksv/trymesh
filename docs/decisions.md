@@ -580,13 +580,27 @@ Nálezy revize a jejich řešení:
 | Nulová vzdálenost vedle totožnosti neměla vysvětlení | Nulová vzdálenost se počítá jako totožnost |
 | Diagnostika trvala sekundy až desítky sekund | Rozbor nevolá solver; 240 vazeb kolem 0,1 s |
 
+Druhá revize (už nad rozborem z vlastních rovnic) našla chyby v jeho číselné stránce:
+
+| Nález | Řešení |
+|---|---|
+| Tečnost se počítala jako kolmost poloměru, kdykoli konec úsečky nebo oblouku na kružnici ležel, i jen shodou rozměrů nebo díky tečnosti samé: z rozboru vypadl poloměr (volnost o 1 vyšší, tečnost „navíc") | Podoba pro společný bod se použije, jen když bod na kružnici drží ostatní vazby; pozná se to z prostoru jejich řádků |
+| Body splynulé jen na přesnost solveru: krok derivace podtekl a vazba mezi nimi se nepočítala (volnost až o 2 vyšší) | Rovnice se vyhodnocují v souřadnicích vzhledem k bodu vazby a posun se přičítá až k nim |
+| Volnost entit: pomocné vektory pokrývaly jen dva rozměry, při volnosti skici 3 a víc vycházela bodům volnost nižší | Pomocné vektory z generátoru pseudonáhodných čísel s pevným semínkem |
+| Kolmost a rovnoběžnost stejně dlouhých úseček: dělení větší z obou délek má zlom, řádek měl chybu na hraně prahu (čtverec s volností 3 místo 4, kóta navíc ve vysvětlení) | Dělitelem je délka ve vyřešeném stavu |
+| Malý útvar daleko od počátku ztrácel nadbytečnost | Souřadnice vzhledem k bodu vazby (viz výše) |
+| Vysvětlení obsahovalo vazbu, bez které se obejde (totožnost zastoupená v bázi jen jednou rovnicí) | Ze sady se zkouší ubírat, dokud vazba plyne ze zbytku |
+| Počet vazeb v sadě k odebrání závisí na pořadí, když je mezi nimi vazba se dvěma rovnicemi | Chování zůstává, dokumentace opravena: na pořadí nezávisí počet odebraných rovnic, ne vazeb |
+| Rozbor běží při každém vyhodnocení a roste se třetí mocninou | Druhý průchod ortogonalizace jen tam, kde je potřeba; cena změřena a zapsána, u stovek vazeb zůstává omezením |
+
 Omezení:
 
-- Závislost se posuzuje v prvním řádu. Vazba plynoucí z ostatních jen díky konkrétním hodnotám se jako nadbytečná neoznačí; tečnost ve společném bodě je ošetřená jen tehdy, když je tím bodem konec úsečky nebo oblouku.
+- Závislost se posuzuje v prvním řádu. Vazba plynoucí z ostatních jen díky konkrétním hodnotám se jako nadbytečná neoznačí a výsledek u ní může záviset na šumu ve vyřešených polohách; tečnost ve společném bodě je ošetřená jen tehdy, když je tím bodem konec úsečky nebo oblouku a na kružnici ho drží jiné vazby než tečnosti. Skica na hraně singulárního stavu může dát výsledek závislý na pořadí vazeb.
+- Vysvětlení vazby je sada, ze které nejde nic ubrat, ne nutně ta s nejmenším počtem vazeb. Do sady k odebrání se dostane jen celá vazba; vazba, ze které je navíc jedna rovnice ze dvou, označená není.
 - Při konfliktu diagnostika nadbytečnost ani volnost nepočítá a konfliktní vazby přebírá ze solveru, který jich označí víc, než je nutné.
 - „Starší vazby zůstávají" se řídí pořadím klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně, takže u nich pořadí vzniku neplatí.
 - Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver dál jako plnohodnotnou: skica se chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere. Diagnostika ji ukáže.
-- Cena roste se třetí mocninou počtu vazeb: 480 vazeb v jedné skice kolem sekundy.
+- Cena roste se třetí mocninou počtu vazeb a rozbor běží při každém vyhodnocení skici včetně kroků tažení: 240 vazeb kolem 15 ms, 480 kolem 0,1 s, 960 kolem 0,8 s. Diagnostika a vysvětlení přidají čas stejného řádu.
 
 ## D33 Rozhraní pro AI (MCP server)
 

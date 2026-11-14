@@ -2,7 +2,7 @@
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
 import { CONSTRAINTS, FEATURE_TYPE_INFO, type Command, type Constraint, type Engine } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
-import { apiText, constraintCatalog, engineTypes } from '../src/api';
+import { apiDescription, apiText, constraintCatalog, engineTypes } from '../src/api';
 import { callTool, tools } from '../src/tools';
 import { newEngine } from './kit';
 
@@ -89,13 +89,13 @@ describe('popis API', () => {
     expect(description).toMatch(/^# Konvence\n- Délky jsou v milimetrech/);
     expect(description).toContain('export type Command =');
     for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
-    expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: nezáporná, mm }');
+    expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: non-negative, mm }');
     // typy features jsou z registru enginu
     for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
     expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
     expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
-    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'explain_constraint', 'get_body', 'execute', 'preview', 'undo', 'redo']);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'execute', 'preview', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
@@ -283,6 +283,59 @@ describe('model, tělesa a příkazy', () => {
     expect(engine.save()).toBe(before);
     ok(engine, 'redo');
     expect(JSON.parse(engine.save()).features[0].constraints.w.value).toBe(55);
+  });
+
+  it('parameters and checks: get_parameters, expressions in fields and what execute reports in addition', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const param = (name: string, expr: string): Command => ({ type: 'setParameter', name, expr });
+    expect(execute(engine, { type: 'batch', commands: [param('width', '40'), param('height', 'width / 2'), { type: 'setCheck', name: 'wider than tall', expr: 'width > height' }] })).not.toHaveProperty('failedChecks');
+    execute(engine, { type: 'setConstraintValue', sketch: 's', id: 'w', value: 'width' });
+    expect(ok(engine, 'get_parameters')).toEqual({
+      parameters: [
+        { name: 'width', expr: '40', value: 40 },
+        { name: 'height', expr: 'width / 2', value: 20 },
+      ],
+      checks: [{ name: 'wider than tall', expr: 'width > height', status: 'ok' }],
+    });
+    // the dimension's expression shows on the constraint and on the feature
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).constraints.find((c: { id: string }) => c.id === 'w')).toMatchObject({ value: 40, expr: 'width' });
+    expect(ok(engine, 'get_model').features[0].expressions).toEqual({ 'constraints/w/value': 'width' });
+    expect(ok(engine, 'get_model').parameters).toEqual({ width: 40, height: 20 });
+
+    // a failed check and a parameter in error are not a feature state: execute reports them separately
+    const failed = execute(engine, param('height', 'width * 2'));
+    expect(failed.failedChecks).toEqual([{ name: 'wider than tall', expr: 'width > height', status: 'failed' }]);
+    expect(failed.problems).toEqual([]);
+    const broken = execute(engine, { type: 'removeParameter', name: 'width' });
+    expect(broken.parameterErrors).toEqual([{ name: 'height', expr: 'width * 2', error: 'unknown name "width"' }]);
+    expect(broken.failedChecks).toMatchObject([{ status: 'error' }]);
+    expect(broken.problems).toMatchObject([{ id: 's', status: 'warning', warnings: [{ code: 'invalidExpression' }], fieldErrors: { 'constraints/w/value': 'unknown name "width"' } }]);
+    expect(ok(engine, 'get_model').parameterErrors).toHaveLength(1);
+    expect(ok(engine, 'undo')).not.toHaveProperty('parameterErrors');
+
+    // a rejected expression says where the error is
+    expect(callTool(engine, 'execute', { command: { type: 'setConstraintValue', sketch: 's', id: 'w', value: 'width *' } })).toEqual({
+      ok: false,
+      error: 'invalidCommand: setConstraintValue.value: expression "width *": the expression is incomplete (character 8 of the expression)',
+    });
+    expect(callTool(engine, 'execute', { command: { type: 'setConstraintValue', sketch: 's', id: 'w', value: 'nothing' } })).toMatchObject({ ok: false, error: expect.stringMatching(/unknown name "nothing"/) });
+  });
+
+  it('the API description contains the expression syntax and numeric fields from the engine catalogs', () => {
+    const description = apiText();
+    expect(description).toContain('# Expressions');
+    expect(description).toContain('- deg(a): Degrees to radians');
+    expect(description).toContain('- atan2(a, b): ');
+    expect(description).toContain('- min(a, b, …): ');
+    expect(description).toContain('- pi: ');
+    expect(description).toContain('- extrude: extent/distance (Distance, mm, non-zero (only when extent/type is distance))');
+    expect(description).toContain('- plane: offset (Offset, mm, any)');
+    expect(description).toContain('- sketch, constraint angle: constraints/<id>/value (Angle, rad, in the interval (−π, π] (driving dimension only))');
+    expect(description).toContain("| { type: 'setParameter'; name: string; expr: Expr; index?: number }");
+    // every dimension in the catalog has its field
+    const fields = apiDescription().numericFields;
+    for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(fields.some((field) => field.owner === `sketch, constraint ${type}`), type).toBe(spec.dimension === true);
   });
 
   it('chyby volání se vracejí jako text, ne jako výjimka', () => {

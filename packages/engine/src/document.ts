@@ -1,23 +1,31 @@
 // Dokument: validace a provedení příkazů. Vše pracuje jen se strukturou dokumentu, bez přepočtu.
 // Pravidla jsou v docs/architecture.md, sekce Příkazy.
 import type {
+  Check,
   Command,
+  CommandResult,
   Constraint,
   Curve,
+  Dimension,
   Document,
   EdgeName,
+  Expr,
   ExternalRef,
   ExtrudeFeature,
   FaceName,
   Feature,
+  FieldPath,
   Id,
+  Input,
+  Parameter,
   PlaneFeature,
   PlaneRef,
   Projected,
   RegionRef,
   SketchFeature,
 } from './types';
-import { CONSTRAINTS, type EntityKind, VALUE_RULES } from './catalog';
+import { CONSTRAINTS, type EntityKind, type FieldSpec, MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
+import { type Environment, analyzeExpression, evaluateNumber, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
 export const SCHEMA_VERSION = 2;
@@ -39,11 +47,15 @@ export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeatur
 });
 
 // Neplatný příkaz nebo dokument. `commandIndex` říká, který příkaz dávky to byl.
+type ExpressionProblem = NonNullable<Extract<CommandResult, { ok: false }>['error']['expression']>;
 export class CommandError extends Error {
   commandIndex?: number;
+  expression?: ExpressionProblem; // when the command rejected an expression: where and why
 }
-const fail = (message: string): never => {
-  throw new CommandError(message);
+const fail = (message: string, expression?: ExpressionProblem): never => {
+  const error = new CommandError(message);
+  if (expression) error.expression = expression;
+  throw error;
 };
 
 // ---------------------------------------------------------------- základní kontroly
@@ -54,7 +66,6 @@ const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${wh
 const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: čeká se řetězec`));
 // Čísla dokumentu: konečná a v rozumném rozsahu (souřadnice tělesa jsou float32). Záporná nula
 // se ukládá jako nula, aby se uložený a znovu načtený dokument nelišil.
-const MAX_NUMBER = 1e9;
 const finite = (v: unknown, what: string): number => {
   if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: čeká se konečné číslo`);
   if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: číslo je mimo rozsah ±${MAX_NUMBER}`);
@@ -82,6 +93,93 @@ function allIds(doc: Document): Set<Id> {
   return ids;
 }
 const sketchIds = (s: SketchFeature): Id[] => [s.points, s.curves, s.constraints, s.external].flatMap((group) => Object.keys(group));
+
+// ---------------------------------------------------------------- numeric fields and expressions
+
+// A numeric field of a particular feature: address, catalog description, value and expression, if any.
+export interface FieldInfo {
+  path: FieldPath;
+  spec: NumberSpec;
+  value: number;
+  expr?: Expr;
+}
+
+// How validation treats expressions:
+// - load: a document. The field holds a number (the last valid value), the expression is in
+//   `expressions` and only its syntax is checked; the recompute evaluates it.
+// - add: a command creates a feature. The expression may be in the field as a string or in
+//   `expressions`; it is evaluated right away and what cannot be evaluated is an invalid command.
+// - update: a command changes a feature. A string in a field is evaluated right away; expressions
+//   of fields the change does not touch stay unevaluated (fixing one field must not trip over an
+//   error in another) and expressions of fields that ceased to exist are dropped.
+type FieldMode = 'load' | 'add' | 'update';
+
+// Reads the numeric fields of a feature during validation. The fields validation went through are
+// the fields the feature has; `fieldsOf` and the check that `expressions` holds no address of
+// a non-existent field both follow from that.
+class Fields {
+  readonly found: FieldInfo[] = [];
+  private readonly used = new Set<FieldPath>();
+
+  constructor(
+    private readonly mode: FieldMode,
+    private readonly given: Record<FieldPath, Expr>,
+    private readonly environment: () => Environment,
+  ) {}
+
+  number(value: unknown, path: FieldPath, spec: NumberSpec, what: string): number {
+    const given = has(this.given, path) ? this.given[path] : undefined;
+    if (typeof value === 'string') {
+      if (this.mode === 'load') fail(`${what}: a number is expected; an expression belongs in expressions`);
+      if (given !== undefined) fail(`${what}: the expression is given both in the field and in expressions`);
+      return this.add(path, spec, this.evaluate(value, path, spec, what), value);
+    }
+    const number = finite(value, what);
+    if (given === undefined) return this.add(path, spec, plain(number, spec, what));
+    this.used.add(path);
+    if (this.mode === 'add') return this.add(path, spec, this.evaluate(given, path, spec, what), given);
+    const syntax = analyzeExpression(given);
+    if (!syntax.ok) fail(`${what}: expression "${given}": ${syntax.error.message}`, { path, error: syntax.error });
+    return this.add(path, spec, plain(number, spec, what), given);
+  }
+
+  private add(path: FieldPath, spec: NumberSpec, value: number, expr?: Expr): number {
+    this.found.push({ path, spec, value, ...(expr === undefined ? {} : { expr: expr.trim() }) });
+    return value;
+  }
+
+  private evaluate(expr: Expr, path: FieldPath, spec: NumberSpec, what: string): number {
+    const result = evaluateNumber(expr, this.environment());
+    if (!result.ok) return fail(`${what}: expression "${expr}": ${result.error.message}`, { path, error: result.error });
+    const checked = checkNumber(result.value, spec);
+    if (!checked.ok) return fail(`${what}: expression "${expr}" gives ${result.value}: ${checked.message}`, { path, error: { code: checked.code, message: checked.message } });
+    return checked.value;
+  }
+
+  // Expressions of the fields the feature has, sorted by address. An expression for an address
+  // validation did not go through is an error; when a feature is being changed it is dropped (the
+  // field ceased to exist with the change).
+  expressions(what: string): Record<FieldPath, Expr> | undefined {
+    if (this.mode !== 'update') for (const path of Object.keys(this.given)) if (!this.used.has(path)) fail(`${what}.expressions: "${path}" is not a numeric field of this feature`);
+    const entries = this.found.filter((field) => field.expr !== undefined).map((field): [FieldPath, Expr] => [field.path, field.expr as Expr]);
+    return entries.length ? Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : 1))) : undefined;
+  }
+}
+
+// The number of a field without an expression.
+function plain(value: number, spec: NumberSpec, what: string): number {
+  const checked = checkNumber(value, spec);
+  return checked.ok ? checked.value : fail(`${what}: ${checked.message}`);
+}
+
+const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
+  o.expressions === undefined ? {} : Object.fromEntries(Object.entries(object(o.expressions, `${what}.expressions`)).map(([path, expr]) => [path, string(expr, `${what}.expressions.${path}`)]));
+
+const NO_ENVIRONMENT = (): Environment => ({});
+
+const OFFSET: NumberSpec = { title: 'Offset', unit: 'mm' };
+const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
+const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
 
 // ---------------------------------------------------------------- jména a odkazy mezi features
 
@@ -209,7 +307,11 @@ export function constraintOperands(c: Constraint): Id[] {
   return CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
 }
 
-export const isDimension = (c: Constraint): c is Extract<Constraint, { value: number }> => 'value' in c;
+// A dimension is a constraint the catalog marks with the `dimension` flag: it has a value and `driving`.
+export const isDimension = (c: Constraint): c is Dimension => CONSTRAINTS[c.type].dimension === true;
+
+// The address of a constraint value among the numeric fields of a sketch.
+export const constraintPath = (constraint: Id, value = 'value'): FieldPath => `constraints/${constraint}/${value}`;
 
 // Vazby, které dostává solver: geometrické a řídicí kóty.
 export const isDriving = (c: Constraint): boolean => !isDimension(c) || c.driving;
@@ -255,7 +357,7 @@ function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
 // Vazba podle katalogu: operandy existují, mají správný druh a jsou navzájem různé, hodnota
 // splňuje konvenci znamének a aspoň jedním operandem může solver hýbat (řídicí vazbu jen mezi
 // pevnými entitami solver tiše ignoruje).
-function constraint(sketch: SketchFeature, v: unknown, what: string): Constraint {
+function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fields, id: Id): Constraint {
   const o = object(v, what);
   const type = string(o.type, `${what}.type`);
   if (!has(CONSTRAINTS, type)) return fail(`${what}.type: neznámá vazba "${type}"`);
@@ -275,11 +377,12 @@ function constraint(sketch: SketchFeature, v: unknown, what: string): Constraint
   const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
   if (problem) fail(`${what}: ${problem}`);
   let dimension = {};
-  if (spec.value) {
-    const value = finite(o.value, `${what}.value`);
-    const rule = VALUE_RULES[spec.value.rule];
-    if (!rule.check(value)) fail(`${what}.value: ${rule.message}`);
-    dimension = { value, driving: boolean(o.driving, `${what}.driving`) };
+  if (spec.dimension && spec.values) {
+    // A driving dimension is a numeric field and may have an expression; a reference one only measures.
+    const driving = boolean(o.driving, `${what}.driving`);
+    if (!driving && typeof o.value === 'string') fail(`${what}.value: a reference dimension cannot have an expression`);
+    const value = driving ? fields.number(o.value, constraintPath(id), spec.values.value, `${what}.value`) : plain(finite(o.value, `${what}.value`), spec.values.value, `${what}.value`);
+    dimension = { value, driving };
   }
   const result = { type, ...operands, ...dimension } as Constraint;
   if (isDriving(result) && !constraintOperands(result).some((id) => entityOf(sketch, id)?.own)) {
@@ -310,20 +413,19 @@ function base(o: Dict, what: string): { id: Id; name: string; suppressed: boolea
   return { id: newId(o.id, `${what}.id`), name: string(o.name, `${what}.name`), suppressed: boolean(o.suppressed, `${what}.suppressed`) };
 }
 
-function planeFeature(doc: Document, before: number | undefined, o: Dict, what: string): PlaneFeature {
-  return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: finite(o.offset, `${what}.offset`) };
+function planeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PlaneFeature {
+  return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
 }
 
-function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what: string): ExtrudeFeature {
+function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): ExtrudeFeature {
   const profile = object(o.profile, `${what}.profile`);
   if (profile.type !== 'regions') fail(`${what}.profile.type: čeká se regions`);
   const sketch = string(profile.sketch, `${what}.profile.sketch`);
   requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.profile.sketch`);
   const extent = object(o.extent, `${what}.extent`);
   if (extent.type !== 'distance') fail(`${what}.extent.type: čeká se distance`);
-  const start = finite(extent.start, `${what}.extent.start`);
-  const distance = finite(extent.distance, `${what}.extent.distance`);
-  if (distance === 0) fail(`${what}.extent.distance: vzdálenost nesmí být nula`);
+  const start = fields.number(extent.start, 'extent/start', EXTENT_START, `${what}.extent.start`);
+  const distance = fields.number(extent.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.extent.distance`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
   const feature: ExtrudeFeature = {
     ...base(o, what),
@@ -342,7 +444,7 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   return { ...feature, targets: [target] };
 }
 
-function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string): SketchFeature {
+function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): SketchFeature {
   const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(doc, before, o.plane, `${what}.plane`));
   sketch.suppressed = boolean(o.suppressed, `${what}.suppressed`);
   const seen = new Set<Id>();
@@ -365,7 +467,7 @@ function sketchFeature(doc: Document, before: number | undefined, o: Dict, what:
     if (sketch.radii[id] <= 0) fail(`${what}.radii.${id}: poloměr musí být kladný`);
   }
   for (const [id, c] of Object.entries(sketch.curves)) if (c.type === 'circle' && !has(sketch.radii, id)) fail(`${what}.radii: kružnice "${id}" nemá poloměr`);
-  for (const [id, value] of entries(o.constraints, 'constraints')) sketch.constraints[id] = constraint(sketch, value, `${what}.constraints.${id}`);
+  for (const [id, value] of entries(o.constraints, 'constraints')) sketch.constraints[id] = constraint(sketch, value, `${what}.constraints.${id}`, fields, id);
   const solved = object(o.solved, `${what}.solved`);
   sketch.solved.inputs = string(solved.inputs, `${what}.solved.inputs`);
   for (const [id, value] of Object.entries(object(solved.external, `${what}.solved.external`))) {
@@ -382,6 +484,10 @@ function sketchFeature(doc: Document, before: number | undefined, o: Dict, what:
 export interface FeatureTypeInfo {
   title: string;
   summary: string;
+  // Numeric fields of the type (unit, range) that accept an expression. Sketch constraint values are
+  // not listed here: the constraint catalog describes them (`values`), the address is
+  // `constraints/<id>/<value name>`.
+  fields: readonly FieldSpec[];
   bodies: 'none' | 'self'; // self: feature může vytvořit těleso se svým ID
   updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
 }
@@ -391,7 +497,8 @@ export interface FeatureTypeInfo {
 interface FeatureTypeSpec<F extends Feature> {
   info: Omit<FeatureTypeInfo, 'updatable'>;
   // Ověří feature a vrátí její kanonickou kopii. `before`: viz requireRef.
-  validate(doc: Document, before: number | undefined, o: Dict, what: string): F;
+  // Numeric fields are read through `fields`.
+  validate(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): F;
   // Odkazy na jiné features s místem, kde ve feature leží.
   refs(f: F): FeatureRef[];
   // Vytváří feature těleso s tímto ID? `local` je část ID za lomítkem (bez lomítka chybí).
@@ -413,7 +520,7 @@ const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane: {
-    info: { title: 'Rovina', summary: 'Vlastní rovina posunutá od základní roviny, jiné vlastní roviny nebo rovinné stěny tělesa.', bodies: 'none' },
+    info: { title: 'Rovina', summary: 'Vlastní rovina posunutá od základní roviny, jiné vlastní roviny nebo rovinné stěny tělesa.', fields: [{ path: 'offset', spec: OFFSET }], bodies: 'none' },
     validate: planeFeature,
     refs: (f) => planeRefs(f.base, 'base'),
     createsBody: () => false,
@@ -421,7 +528,7 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
     patch: { fields: ['base', 'offset'] },
   },
   sketch: {
-    info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', bodies: 'none' },
+    info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
     validate: sketchFeature,
     refs: (f) => [
       ...planeRefs(f.plane, 'plane'),
@@ -435,7 +542,15 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
     namesFaces: false,
   },
   extrude: {
-    info: { title: 'Vysunutí', summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa.', bodies: 'self' },
+    info: {
+      title: 'Vysunutí',
+      summary: 'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa.',
+      fields: [
+        { path: 'extent/start', spec: EXTENT_START, when: { path: 'extent/type', equals: 'distance' } },
+        { path: 'extent/distance', spec: EXTENT_DISTANCE, when: { path: 'extent/type', equals: 'distance' } },
+      ],
+      bodies: 'self',
+    },
     validate: extrudeFeature,
     refs: (f) => [{ path: 'profile/sketch', id: f.profile.sketch, kind: 'sketch' }, ...(f.targets ?? []).map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' }))],
     createsBody: (f, local) => local === undefined && f.operation === 'new',
@@ -457,11 +572,57 @@ export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Objec
 
 const specOf = (f: Feature): FeatureTypeSpec<Feature> => FEATURE_TYPES[f.type] as FeatureTypeSpec<Feature>;
 
-// Ověří feature a vrátí její kanonickou kopii. `before`: viz requireRef.
-function feature(doc: Document, before: number | undefined, v: unknown, what: string): Feature {
+// Validates a feature and returns its canonical copy. `before`: see requireRef; `mode`: see FieldMode.
+function feature(doc: Document, before: number | undefined, v: unknown, what: string, mode: FieldMode): Feature {
   const o = object(v, what);
   const type = oneOf(o.type, Object.keys(FEATURE_TYPES) as Feature['type'][], `${what}.type`);
-  return (FEATURE_TYPES[type] as FeatureTypeSpec<Feature>).validate(doc, before, o, what);
+  return validated(FEATURE_TYPES[type] as FeatureTypeSpec<Feature>, doc, before, o, what, mode);
+}
+
+function validated(spec: FeatureTypeSpec<Feature>, doc: Document, before: number | undefined, o: Dict, what: string, mode: FieldMode): Feature {
+  const fields = new Fields(mode, expressionsOf(o, what), () => evaluateParameters(doc.parameters));
+  const checked = spec.validate(doc, before, o, what, fields);
+  const expressions = fields.expressions(what);
+  return expressions ? { ...checked, expressions } : checked;
+}
+
+const EMPTY: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] };
+const fieldCache = new WeakMap<Feature, FieldInfo[]>();
+
+// Numeric fields of a feature that accept an expression: driving inputs only, not the coordinates
+// and radii the solver computes, nor the values of reference dimensions. Derived from a validation
+// pass, so it matches what commands accept.
+export function fieldsOf(f: Feature): FieldInfo[] {
+  let found = fieldCache.get(f);
+  if (!found) {
+    const fields = new Fields('load', f.expressions ?? {}, NO_ENVIRONMENT);
+    specOf(f).validate(EMPTY, undefined, f as unknown as Dict, 'feature', fields);
+    fieldCache.set(f, (found = fields.found));
+  }
+  return found;
+}
+
+// The value at an address inside an object, and a copy of the object with another value at the address.
+export function atPath(value: unknown, path: FieldPath): unknown {
+  let current = value;
+  for (const key of path.split('/')) {
+    if (!isObject(current) || !has(current, key)) return undefined;
+    current = current[key];
+  }
+  return current;
+}
+export function withPath<T>(value: T, path: FieldPath, leaf: unknown): T {
+  const set = (current: unknown, keys: string[]): unknown => (keys.length === 0 ? leaf : { ...(isObject(current) ? current : {}), [keys[0]]: set(isObject(current) ? current[keys[0]] : undefined, keys.slice(1)) });
+  return set(value, path.split('/')) as T;
+}
+
+// The input form of a feature: numeric fields that have an expression carry it as a string and the
+// `expressions` map is absent. `addFeature` with this form gives the same feature back; a form that
+// sends the whole feature when editing starts from it, otherwise the numbers in the command would
+// remove the expressions.
+export function featureInput<F extends Feature>(f: F): Input<F> {
+  const { expressions, ...rest } = f;
+  return Object.entries(expressions ?? {}).reduce((input, [path, expr]) => withPath(input, path, expr), rest as unknown) as Input<F>;
 }
 
 // Features, na které feature odkazuje: rovina, skica, feature, která vytvořila těleso, a extrude,
@@ -485,6 +646,16 @@ function mergePatch(old: unknown, patch: unknown, what: string): unknown {
     else out[key] = mergePatch(old[key], value, `${what}.${key}`);
   }
   return out;
+}
+
+// Addresses the patch overwrites as a whole (a leaf, a list, a reference, another variant, a removed
+// field). Expressions at and below them cease to exist; fields the patch does not mention keep theirs.
+function replacedPaths(old: unknown, patch: Dict, prefix: string[] = []): string[] {
+  return Object.entries(patch).flatMap(([key, value]) => {
+    const before = isObject(old) ? old[key] : undefined;
+    const merges = isObject(value) && !has(value, 'kind') && isObject(before) && (value.type === undefined || value.type === before.type);
+    return merges ? replacedPaths(before, value as Dict, [...prefix, key]) : [[...prefix, key].join('/')];
+  });
 }
 
 // Cesty k hodnotám, které změna nastavuje: listy, seznamy a odkazy (odebraná pole ne).
@@ -514,16 +685,25 @@ export function validateDocument(value: unknown): Document {
   if (o.schemaVersion !== SCHEMA_VERSION) fail(`dokument: verze schématu ${String(o.schemaVersion)} není podporovaná (čeká se ${SCHEMA_VERSION})`);
   const chordTolerance = finite(object(o.settings, 'dokument.settings').chordTolerance, 'dokument.settings.chordTolerance');
   if (chordTolerance <= 0) fail('dokument.settings.chordTolerance: musí být kladná');
-  // Parametry a kontroly do schématu verze 2 patří, engine je ale zatím neumí (D35 bod 1).
-  for (const name of ['parameters', 'checks'] as const) {
-    if (!Array.isArray(o[name])) fail(`dokument.${name}: čeká se seznam`);
-    if ((o[name] as unknown[]).length > 0) fail(`dokument.${name}: parametry a kontroly engine zatím neumí`);
-  }
+  // Parameters and checks: names and expression syntax. Values, unknown names and cycles are up to the recompute.
+  const named = <T extends Parameter | Check>(list: unknown, what: string, kind: 'number' | 'check', nameOf: (name: unknown, at: string) => string): T[] => {
+    if (!Array.isArray(list)) return fail(`${what}: a list is expected`);
+    const seen = new Set<string>();
+    return list.map((item, i) => {
+      const entry = object(item, `${what}[${i}]`);
+      const name = nameOf(entry.name, `${what}[${i}].name`);
+      if (seen.has(name)) fail(`${what}[${i}].name: the name "${name}" is in the list twice`);
+      seen.add(name);
+      return { name, expr: expression(entry.expr, `${what}[${i}].expr`, kind, kind === 'number' ? { parameter: name } : { check: name }) } as T;
+    });
+  };
+  const parameters = named<Parameter>(o.parameters, 'document.parameters', 'number', parameterName);
+  const checks = named<Check>(o.checks, 'document.checks', 'check', checkName);
   if (!Array.isArray(o.features)) fail('dokument.features: čeká se seznam');
-  const doc: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance }, parameters: [], checks: [], features: [] };
+  const doc: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance }, parameters, checks, features: [] };
   const ids = new Set<Id>();
   (o.features as unknown[]).forEach((item, i) => {
-    const f = feature(doc, undefined, item, `features[${i}]`);
+    const f = feature(doc, undefined, item, `features[${i}]`, 'load');
     for (const id of [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])]) {
       if (ids.has(id)) fail(`features[${i}]: ID "${id}" je v dokumentu dvakrát`);
       ids.add(id);
@@ -549,6 +729,57 @@ function upgrade(o: Dict): Dict {
   const features = Array.isArray(o.features) ? o.features.map((f: unknown) => (isObject(f) && f.type === 'extrude' ? extrude(f) : f)) : o.features;
   // parametry a kontroly verze 1 neměla; co tam přesto je, se nezahodí a posoudí to validace
   return { ...o, schemaVersion: 2, parameters: o.parameters ?? [], checks: o.checks ?? [], features };
+}
+
+// ---------------------------------------------------------------- parameters and checks
+
+function parameterName(v: unknown, what: string): string {
+  const name = string(v, what);
+  const problem = parameterNameProblem(name);
+  return problem ? fail(`${what}: ${problem}`) : name;
+}
+
+// A check name is free text for a human; it is the key in commands and in the recompute result.
+function checkName(v: unknown, what: string): string {
+  const name = string(v, what);
+  if (name === '' || name !== name.trim() || name in Object.prototype) fail(`${what}: the check name "${name}" is not allowed (non-empty, no leading or trailing spaces)`);
+  return name;
+}
+
+// The expression of a parameter or a check: only the syntax and the result type are verified.
+function expression(v: unknown, what: string, kind: 'number' | 'check', owner: { parameter: string } | { check: string }): Expr {
+  const expr = string(v, what).trim();
+  const result = analyzeExpression(expr, { kind });
+  if (!result.ok) fail(`${what}: expression "${expr}": ${result.error.message}`, { ...owner, error: result.error });
+  return expr;
+}
+
+// Inserts or replaces a list entry by name; `index` moves it.
+function upsert<T extends { name: string }>(list: T[], entry: T, index: unknown, what: string): T[] {
+  const at = list.findIndex((item) => item.name === entry.name);
+  if (index === undefined) return at < 0 ? [...list, entry] : list.map((item, i) => (i === at ? entry : item));
+  const rest = list.filter((_, i) => i !== at);
+  const to = finite(index, `${what}.index`);
+  if (!Number.isInteger(to) || to < 0 || to > rest.length) fail(`${what}.index: mimo rozsah seznamu`);
+  return [...rest.slice(0, to), entry, ...rest.slice(to)];
+}
+
+function existing<T extends { name: string }>(list: T[], name: unknown, what: string): number {
+  const at = list.findIndex((item) => item.name === name);
+  return at < 0 ? fail(`${what}: "${String(name)}" is not in the document`) : at;
+}
+
+// A sketch with new constraints. Expressions of constraints that are no longer in the sketch or
+// stopped being a driving dimension cease to exist; `changes` sets (a string) or removes (null) the
+// expression of one address.
+function withConstraints(s: SketchFeature, constraints: Record<Id, Constraint>, changes: Record<FieldPath, Expr | null> = {}): SketchFeature {
+  const { expressions: old, ...rest } = s;
+  const kept = Object.entries({ ...old, ...changes }).filter(([path, expr]) => {
+    const [group, id] = path.split('/');
+    const c = has(constraints, id) ? constraints[id] : undefined;
+    return expr !== null && group === 'constraints' && c !== undefined && isDimension(c) && c.driving;
+  }) as [FieldPath, Expr][];
+  return { ...rest, constraints, ...(kept.length ? { expressions: Object.fromEntries(kept.sort(([a], [b]) => (a < b ? -1 : 1))) } : {}) };
 }
 
 // ---------------------------------------------------------------- příkazy
@@ -604,7 +835,7 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addFeature': {
       const index = cmd.index === undefined ? doc.features.length : finite(cmd.index, 'addFeature.index');
       if (!Number.isInteger(index) || index < 0 || index > doc.features.length) fail('addFeature.index: mimo rozsah časové osy');
-      const f = feature(doc, index, cmd.feature, 'addFeature.feature');
+      const f = feature(doc, index, cmd.feature, 'addFeature.feature', 'add');
       const ids = allIds(doc);
       const added = [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])];
       for (const id of added) if (ids.has(id) || added.indexOf(id) !== added.lastIndexOf(id)) fail(`addFeature: ID "${id}" už v dokumentu je`);
@@ -655,7 +886,10 @@ export function applyCommand(doc: Document, command: Command): Document {
       for (const key of Object.keys(patch)) if (!spec.patch.fields.includes(key)) fail(`updateFeature.patch.${key}: ${title} takové pole nemá`);
       const merged = mergePatch(f, patch, 'updateFeature.patch') as Dict;
       spec.patch.normalize?.(merged, patch);
-      const checked = spec.validate(doc, undefined, merged, 'updateFeature.patch');
+      // Expressions of fields the patch overwrites cease to exist: a number removes one, a string sets a new one.
+      const replaced = replacedPaths(f, patch);
+      merged.expressions = without(f.expressions ?? {}, (path) => replaced.some((gone) => path === gone || path.startsWith(`${gone}/`)));
+      const checked = validated(spec, doc, undefined, merged, 'updateFeature.patch', 'update');
       // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
       // jinak skončilo úspěchem bez účinku.
       for (const path of patchPaths(patch)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
@@ -664,6 +898,69 @@ export function applyCommand(doc: Document, command: Command): Document {
       const kept = new Set(spec.refs(f).map(refKey));
       for (const ref of spec.refs(checked)) if (!kept.has(refKey(ref))) requireRef(doc, index, ref, `updateFeature.patch.${ref.path.split('/').join('.')}`);
       return replaceAt(doc, index, checked);
+    }
+
+    case 'setField': {
+      const index = indexOf(doc, cmd.feature, 'setField');
+      const f = doc.features[index];
+      const path = string(cmd.path, 'setField.path');
+      if (!fieldsOf(f).some((field) => field.path === path)) fail(`setField.path: "${path}" is not a numeric field of feature "${f.id}"`);
+      if (typeof cmd.value !== 'number' && typeof cmd.value !== 'string') fail('setField.value: a number or an expression is expected');
+      const { expressions, ...rest } = f;
+      const input = { ...withPath(rest, path, cmd.value), expressions: without(expressions ?? {}, (other) => other === path) } as Dict;
+      return replaceAt(doc, index, validated(specOf(f), doc, undefined, input, 'setField', 'update'));
+    }
+
+    case 'setParameter': {
+      const name = parameterName(cmd.name, 'setParameter.name');
+      const entry: Parameter = { name, expr: expression(cmd.expr, 'setParameter.expr', 'number', { parameter: name }) };
+      return { ...doc, parameters: upsert(doc.parameters, entry, cmd.index, 'setParameter') };
+    }
+
+    case 'renameParameter': {
+      const at = existing(doc.parameters, cmd.name, 'renameParameter.name');
+      const from = doc.parameters[at].name;
+      const to = parameterName(cmd.to, 'renameParameter.to');
+      if (from === to) return doc;
+      if (doc.parameters.some((p) => p.name === to)) fail(`renameParameter.to: parameter "${to}" is already in the document`);
+      const renamed = <T extends { expr: Expr }>(entry: T): T => {
+        const expr = renameInExpression(entry.expr, from, to);
+        return expr === entry.expr ? entry : { ...entry, expr };
+      };
+      return {
+        ...doc,
+        parameters: doc.parameters.map((p, i) => renamed(i === at ? { ...p, name: to } : p)),
+        checks: doc.checks.map(renamed),
+        features: doc.features.map((f) => {
+          if (!f.expressions) return f;
+          const expressions = Object.fromEntries(Object.entries(f.expressions).map(([path, expr]) => [path, renameInExpression(expr, from, to)]));
+          return Object.keys(expressions).every((path) => expressions[path] === f.expressions?.[path]) ? f : { ...f, expressions };
+        }),
+      };
+    }
+
+    case 'removeParameter': {
+      const at = existing(doc.parameters, cmd.name, 'removeParameter.name');
+      return { ...doc, parameters: doc.parameters.filter((_, i) => i !== at) };
+    }
+
+    case 'setCheck': {
+      const name = checkName(cmd.name, 'setCheck.name');
+      const entry: Check = { name, expr: expression(cmd.expr, 'setCheck.expr', 'check', { check: name }) };
+      return { ...doc, checks: upsert(doc.checks, entry, cmd.index, 'setCheck') };
+    }
+
+    case 'renameCheck': {
+      const at = existing(doc.checks, cmd.name, 'renameCheck.name');
+      const to = checkName(cmd.to, 'renameCheck.to');
+      if (doc.checks[at].name === to) return doc;
+      if (doc.checks.some((c) => c.name === to)) fail(`renameCheck.to: check "${to}" is already in the document`);
+      return { ...doc, checks: doc.checks.map((c, i) => (i === at ? { ...c, name: to } : c)) };
+    }
+
+    case 'removeCheck': {
+      const at = existing(doc.checks, cmd.name, 'removeCheck.name');
+      return { ...doc, checks: doc.checks.filter((_, i) => i !== at) };
     }
 
     case 'setSketchPlane':
@@ -697,13 +994,11 @@ export function applyCommand(doc: Document, command: Command): Document {
         // Mazání kaskáduje: bod vezme křivky, které na něm stojí; bod i křivka vezmou své vazby.
         const gone = new Set<Id>([id]);
         for (const [curveId, c] of Object.entries(s.curves)) if (curvePoints(c).includes(id)) gone.add(curveId);
-        return {
-          ...s,
-          points: without(s.points, (p) => gone.has(p)),
-          curves: without(s.curves, (c) => gone.has(c)),
-          radii: without(s.radii, (c) => gone.has(c)),
-          constraints: without(s.constraints, (_, c) => constraintOperands(c).some((operand) => gone.has(operand))),
-        };
+        const left = { ...s, points: without(s.points, (p) => gone.has(p)), curves: without(s.curves, (c) => gone.has(c)), radii: without(s.radii, (c) => gone.has(c)) };
+        return withConstraints(
+          left,
+          without(s.constraints, (_, c) => constraintOperands(c).some((operand) => gone.has(operand))),
+        );
       });
 
     case 'setConstruction':
@@ -719,17 +1014,18 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addConstraint':
       return editSketch(doc, cmd.sketch, (s) => {
         const id = unique(doc, cmd.id, 'addConstraint.id');
-        const added = constraint(s, cmd.constraint, 'addConstraint.constraint');
+        const fields = new Fields('add', {}, () => evaluateParameters(doc.parameters));
+        const added = constraint(s, cmd.constraint, 'addConstraint.constraint', fields, id);
         const twin = duplicateOf(s, added);
         if (twin !== undefined) fail(`addConstraint: stejná vazba už ve skice je ("${twin}")`);
-        return { ...s, constraints: { ...s.constraints, [id]: added } };
+        return withConstraints(s, { ...s.constraints, [id]: added }, fields.expressions('addConstraint.constraint') ?? {});
       });
 
     case 'removeConstraint':
       return editSketch(doc, cmd.sketch, (s) => {
         const id = string(cmd.id, 'removeConstraint.id');
         if (!has(s.constraints, id)) fail(`removeConstraint: vazba "${id}" ve skice není`);
-        return { ...s, constraints: without(s.constraints, (c) => c === id) };
+        return withConstraints(s, without(s.constraints, (c) => c === id));
       });
 
     case 'setConstraintValue':
@@ -738,13 +1034,19 @@ export function applyCommand(doc: Document, command: Command): Document {
         if (!has(s.constraints, id)) fail(`setConstraintValue: vazba "${id}" ve skice není`);
         const old = s.constraints[id];
         if (!isDimension(old)) return fail(`setConstraintValue: vazba "${id}" není kóta`);
+        // Without `value` neither the value nor the expression changes; a number removes the
+        // expression, a string sets it. The expression of a reference dimension is dropped in
+        // withConstraints.
+        const path = constraintPath(id);
+        const kept = cmd.value === undefined && s.expressions && has(s.expressions, path) ? { [path]: s.expressions[path] } : {};
+        const fields = new Fields('update', kept, () => evaluateParameters(doc.parameters));
         const changed = { ...old, value: cmd.value === undefined ? old.value : cmd.value, driving: cmd.driving === undefined ? old.driving : cmd.driving };
-        const next = constraint(s, changed, 'setConstraintValue');
+        const next = constraint(s, changed, 'setConstraintValue', fields, id);
         // Duplicitu smí vyrobit jen přepnutí referenční kóty na řídicí. Změna hodnoty projde
         // i u kót, které jsou duplicitní už z načteného dokumentu.
         const twin = old.driving ? undefined : duplicateOf(s, next, id);
         if (twin !== undefined) fail(`setConstraintValue: stejnou řídicí kótu už skica má ("${twin}")`);
-        return { ...s, constraints: { ...s.constraints, [id]: next } };
+        return withConstraints(s, { ...s.constraints, [id]: next }, { [path]: fields.expressions('setConstraintValue')?.[path] ?? null });
       });
 
     case 'dragPoint':
@@ -778,12 +1080,11 @@ export function applyCommand(doc: Document, command: Command): Document {
         const id = string(cmd.id, 'removeExternal.id');
         if (!has(s.external, id)) fail(`removeExternal: promítnutí "${id}" ve skice není`);
         const derived = (operand: Id) => operand === id || operand.startsWith(`${id}/`);
-        return {
-          ...s,
-          external: without(s.external, (e) => e === id),
-          constraints: without(s.constraints, (_, c) => constraintOperands(c).some(derived)),
-          solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) },
-        };
+        const left = { ...s, external: without(s.external, (e) => e === id), solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
+        return withConstraints(
+          left,
+          without(s.constraints, (_, c) => constraintOperands(c).some(derived)),
+        );
       });
 
     default:

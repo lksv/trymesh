@@ -283,9 +283,22 @@ Dvě místa, kde backlog slibuje víc, než kolik dnes platí, a pozdější pr�
 - **Knihovna dílů.** Stěny vloženého dílu nesou ID features vloženého dokumentu s předponou (`<vložení>/<feature>`). Validace odkazu na stěnu dnes hledá feature přímo; bude potřebovat stejný rozklad jako ID těles (`bodyOwner`).
 - **Jména referenčních kót.** Výraz v poli feature se ověřuje už při příkazu, a to jen proti tabulce parametrů. Jméno, jehož hodnota vzniká až přepočtem, příkaz vyhodnotit neumí; ověření při příkazu se pro taková jména bude muset přesunout do fasády enginu, která stav přepočtu má.
 
+### After point 1 (2026-11-14)
+
+Point 1 is in the code (`docs/decisions.md`, D35, point 1, "Status: done"; `docs/architecture.md`, Parameters and expressions). The types of point 1 now live in `packages/engine/src/types.ts`; `contract.ts` keeps its copies only so that `scenario9.ts` type-checks. Differences from this draft:
+
+- The patch type is still called `Patch` (the draft says `Merge`); it gains dictionaries with point 3.
+- `EXPRESSION_FUNCTIONS` entries have `variadic` (for `min` and `max`); there is also `EXPRESSION_SYNTAX` (a text for the API description) and the operator `^`.
+- The kind of an expression (number or truth value) is checked without evaluating, so `setCheck` with a number and `setParameter` with a comparison are invalid commands with the code `type`.
+- `ExpressionError.position` is filled for an unknown name as well as for a syntax error.
+- The engine also exports `fieldsOf`, `featureInput`, `constraintPath`, `isDimension`, `checkNumber`, `rangeText`, `atPath` and `withPath`.
+- `Evaluation.checks` holds a result for every check, and `Evaluation.parameters` for every parameter, also when the recompute stops early (`at`).
+- MCP: the outcome of `execute` carries `failedChecks` and `parameterErrors` only when they are not empty; `fieldErrors` is part of the feature entry in `problems`. `get_model` lists `parameters` as name → value.
+- Implementation notes that are now done: cache for a feature in error, write-back for all feature types, the `dimension` flag in the constraint catalog and its four call sites.
+- The scenario test uses English names; `scenario9.ts` keeps the names of the draft.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.
-- Přesný seznam funkcí ve výrazech a pravidla jmen parametrů (v typech je jen místo pro ně).
 - Vnitřní stavbu přepočtu: dosazení výrazů, cache, zápis hodnot. Rozhraní receptu nástroje a generátoru jsou v `contract.ts` jen pro úplnost.
 - Převod dokumentu verze 1 na verzi 2 krok po kroku.

@@ -43,7 +43,7 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden, implementace nezačala | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and point 1 are implemented, points 2 to 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
 D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
@@ -687,7 +687,7 @@ Omezení:
 
 ## D35 Rozšíření pro robotický kloub
 
-Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementace nezačala. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and point 1 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
 
 **Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
 
@@ -754,7 +754,7 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   - Recept nástroje je `ToolRecipe { operation, targets, build(firstFaceId) }`. Transformaci dostane `build` s bodem 4, cíle jako argument s bodem 2. Recept zatím nikdo nečte.
   - Posun začátku rozsahu (`extent.start`) engine už počítá, protože interval stavba hranolu dostala tak jako tak; pole v UI přidá bod 2.
   - `targets` smí mít zatím právě jedno těleso i u výřezu (víc bod 2).
-  - `parameters` a `checks` jsou ve schématu verze 2, ale musí být prázdné; dokument, který je má, engine odmítne, aby je tiše nezahodil (bod 1).
+  - `parameters` a `checks` jsou ve schématu verze 2, ale musí být prázdné; dokument, který je má, engine odmítne, aby je tiše nezahodil (bod 1). (No longer true since point 1: both are validated and evaluated.)
   - `updateFeature` ověřuje odkazy, které feature dosud neměla (porovnává místo, druh a ID). Proti `updateExtrude` je to mírnější ve dvou případech: změna, která rozbitý odkaz jen zopakuje, projde (formulář aplikace posílá vysunutí celé, takže dřív nešla v UI změnit vzdálenost u vysunutí se smazanou skicou), a změna operace bez cílů cíl znovu neověřuje. Nový rozbitý stav tím vzniknout nemůže. Pravidlo platí i pro víc cílů v bodě 2: oprava jednoho cíle nenarazí na druhý.
   - Změna s polem, které výsledná feature nemá, a půlka odkazu (objekt bez `kind`) jsou neplatné příkazy; pole s hodnotou `undefined` se přeskočí. Vzešlo z revize: překlep jinak končil úspěchem bez účinku a půlka odkazu vybrala jinou stěnu.
   - Popis API pro AI (`describe_api`) vypisuje typy features z registru včetně polí, která mění `updateFeature`.
@@ -762,7 +762,7 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   Na co musí navázat další body (z nezávislé revize kroku 0):
 
   - Bod 3: slučování pozná variantu a odkaz podle obsahu změny (`type`, `kind`), ne podle schématu. Slovníky generátoru (`params`, `operands`, `refs`) a pravidla „jiný generátor nahrazuje" a „`null` v parametrech vrací výchozí hodnotu" potřebují v registru popis cest (varianta, odkaz, slovník).
-  - Bod 1: zápis po přepočtu umí jen vyřešenou skicu (`WriteBack` v `engine.ts`); hodnoty výrazů potřebují totéž pro ostatní features.
+  - Bod 1: zápis po přepočtu umí jen vyřešenou skicu (`WriteBack` v `engine.ts`); hodnoty výrazů potřebují totéž pro ostatní features. (Done with point 1.)
   - Bod 4: `FeatureTypeInfo.bodies` nemá hodnotu pro odvozená tělesa, aplikace na pěti místech bere ID tělesa jako ID feature (`app.ts`: skrývání a názvy těles) a recept při každé stavbě znovu trianguluje profil, tedy u pole pro každou kopii.
 
 **1. Parametry a výrazy.**
@@ -779,6 +779,28 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
 - **Úhly.** Úhel je v radiánech všude, v čísle i ve výrazu; `30` a `"30"` znamenají totéž. Stupně se píšou funkcí `deg(x)`, `pi` je konstanta a goniometrické funkce berou radiány. Aplikace převádí jen čísla: číslo ukazuje a přijímá ve stupních. Výraz zobrazuje a ukládá beze změny, v jednotkách enginu, a vedle něj ukáže výslednou hodnotu ve stupních; automatické obalování do `deg(...)` by tiše změnilo výraz vytvořený jinde (`pi / 2` z MCP by se stal 1,57°). Úhlová pole mají rozsahy v radiánech (úhel záběru mezi 0 a π/2, úhel pole nejvýš 2π), takže hodnota zadaná omylem ve stupních je neplatný příkaz, ne tichá chyba. Původní rozhodnutí (výraz ve stupních, číslo v radiánech) revize kontraktu označila za zdroj tichých chyb: `angle: 360` bylo 360 radiánů. Zamítnuto: volba jednotky nastavením (totéž číslo by znamenalo dvě věci podle příznaku jinde) a stupně na celé veřejné hranici (hodnota zadaná omylem v radiánech je malé číslo a rozsahem projde vždy).
 - **Kontroly.** Dokument nese vedle parametrů seznam kontrol (jméno, výraz s porovnáním), například `modul * (Zs / 2 + 1) < 12.75` nebo `Zs % 3 == 0`. Vyhodnotí se při každém přepočtu; nesplněná kontrola je varování u dokumentu, model se počítá dál. Výsledek kontrol je součástí výsledku přepočtu, takže ho vidí aplikace i AI přes MCP. Jméno kontroly je volný text pro člověka, ne identifikátor. Porovnání má toleranci: `a == b`, když se liší nejvýš o 1e-9 · max(1, |a|, |b|); jen relativní tolerance by selhala u nuly. Důvod: podmínky, které plynou z konstrukce a po změně parametru je jinak nikdo nehlídá (u kloubu čtyři: hlavový poloměr centrálního kola, dělitelnost počtu zubů počtem satelitů, odstup sousedních satelitů, stěna u koruny).
 - **Otevřené pro později.** Výraz se vyhodnocuje uvnitř přepočtu, ne při příkazu. Jména ve výrazu tak půjde rozšířit o hodnoty, které vznikají až přepočtem (referenční kóty dřívějších skic).
+
+  **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md, section Parameters and expressions. What the implementation settled or changed:
+
+  - **Functions and operators.** `deg sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round`, the constant `pi`, and the power operator `^` in addition to the operators listed above. Parameter names are identifiers of letters of any alphabet, digits and underscores. A dot inside a name is a syntax error and stays reserved for names of values produced by the recompute.
+  - **Kind of result.** An expression is a number or a truth value and the kind is decided without evaluating. A check that is a number, or a parameter that is a comparison, is therefore an invalid command like a syntax error, not a state found later. The same mechanism later serves a `suppressed` field driven by an expression.
+  - **One reader for numeric fields.** Feature validators read every numeric field through one reader, which takes the range from the catalog, accepts a string as an expression where the mode allows it, and records what it saw. `fieldsOf` is a validation pass in collecting mode, so the catalog of a concrete feature cannot differ from what commands accept. The static list (`FEATURE_TYPE_INFO[type].fields`, `CONSTRAINTS[type].values`) serves descriptions and forms; a test compares the two.
+  - **Three validation modes** (load, add, update). A document is loaded without evaluating its expressions. `addFeature` evaluates them, also when the feature arrives in the document form (numbers plus the `expressions` map). A change evaluates only what it sets: an expression of a field the change does not touch is kept even if it no longer evaluates, so fixing one field does not trip over another. This is the same principle as verifying only new references.
+  - **Input form.** `featureInput(feature)` puts the expressions back into the fields. The app's drafts for editing an extrusion and a plane are in this form; the rule that a number removes the expression stays explicit (third review, finding A).
+  - **Cache.** The feature with substituted values is memoised by the original feature object and by the values and errors of its expressions, at most eight per feature object. The step cache is keyed by it. A parameter no feature uses recomputes nothing, and a parameter with the same value from a different expression recomputes nothing either. The environment of names is an argument, so names from the recompute can be added later.
+  - **Write-back** covers every feature type and does not depend on the sketch having solved. Re-hanging the cache carries the substituted feature along.
+  - **Ranges replace named rules** in the constraint catalog as well (`values` with a `NumberSpec`, the flag `dimension`). Error messages for numbers out of range are generated from the range. `isDimension` reads the flag, not the presence of `value`.
+  - **MCP.** New tool `get_parameters`. `execute`, `preview`, `undo`, `redo` and `get_model` report failed checks and parameters in error; a feature in the result carries `fieldErrors`; `get_sketch` shows the expression of a dimension; `describe_api` lists the expression syntax and the numeric fields.
+  - **App.** Parameter table and checks in the model panel; text fields that take a number or an expression for the extrusion distance, the plane offset and dimension values (ui.md).
+  - **Tests.** Unit tests of the parser and of the commands, a multi-step scenario of the recompute (`packages/scenarios/test/parameters.test.ts`), and the start of scenario 9 as a real test (`scenario9.test.ts`: parts a, i and k as far as point 1 reaches). The scenario uses English parameter names (`module` for `modul`, `backlash`, `centers`).
+
+  What later points have to pick up:
+
+  - Point 2: the field `extent/start` is in the catalog and the engine, the app has no input for it yet. A new variant of the extent needs its fields listed with `when`.
+  - Point 3: generator parameters are numeric fields under `profile/params/<name>` with specs from the generator catalog; the reader takes a spec per call, so this needs no change to the reader. Expressions under a replaced variant are dropped by address prefix; a different generator must count as a different variant there.
+  - Point 4: the count of copies is an `integer` field with an upper bound.
+  - Point 6: `fixed` has the values `x` and `y`; `constraintPath(id, name)` already takes the value name, the dimension row in the app reads only `value`.
+  - Names from the recompute (backlog): the check of a field expression at command time knows only the parameter table.
 
 **2. Rozsah vysunutí.**
 
@@ -965,7 +987,7 @@ Dvě nezávislé revize dodané vlastníkem projektu. Tvrzení o kódu jsou ově
 | Scénář neověřuje převod 6 | Ano | Scénář 9i má změnu na 18/36/90 (rozhodnutí 2) |
 | Scénář není sestavitelný mechanismus: chybí osové uspořádání, uložení unašeče a satelitů, uchycení magnetu, tiskové vůle | Ano | Dva milníky; scénář 9 má osové uspořádání, zbytek je druhý milník (rozhodnutí 1) |
 
-Zbývá doplnit při implementaci bodu 1: přesný seznam funkcí ve výrazech a pravidla jmen a přejmenování parametrů.
+The list of functions in expressions and the rules for names and renaming of parameters were settled with point 1 (see its status paragraph).
 
 ### Spike ozubení (2026-11-14)
 

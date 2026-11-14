@@ -16,19 +16,35 @@ export interface Document {
   settings: {
     chordTolerance: number; // dělení oblouků na segmenty
   };
-  parameters: Parameter[]; // pojmenované parametry (D35 bod 1); engine je zatím neumí, seznam je prázdný
-  checks: Check[]; // kontroly parametrů (D35 bod 1); zatím prázdný
+  parameters: Parameter[]; // named parameters; the order is for display only
+  checks: Check[]; // checks: expressions that are supposed to hold
   features: Feature[]; // časová osa
 }
 
+// An expression over parameters. Units are the same as for numbers: lengths in millimetres, angles in
+// radians. Degrees are written with the function `deg(x)` (degrees → radians), `pi` is a constant.
+// A function is recognised by the parenthesis after its name, so a parameter may share a name with
+// a function; only the names of constants are reserved.
+export type Expr = string;
+
+// The address of a numeric field inside a feature, parts separated by slashes (not allowed in IDs):
+// 'offset', 'extent/start', 'extent/distance', 'constraints/<id>/value'.
+export type FieldPath = string;
+
+// The name is an identifier (letters, digits, underscore) because it is used in expressions.
+// A parameter may refer to any other one regardless of order; a cycle is an error.
 export interface Parameter {
   name: string;
-  expr: string;
+  expr: Expr;
 }
 
+// An expression with a comparison that is supposed to hold; a failed check is a warning and the
+// model keeps computing. The name is free text for a human: non-empty, without leading or trailing
+// spaces, unique among checks. Equality is compared with the tolerance 1e-9 · max(1, |a|, |b|);
+// `<` means less than and not equal.
 export interface Check {
   name: string;
-  expr: string;
+  expr: Expr;
 }
 
 export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature;
@@ -37,6 +53,12 @@ export interface FeatureBase {
   id: Id;
   name: string;
   suppressed: boolean;
+  // Expressions of numeric fields; the only place a feature keeps expressions. The number in the
+  // field is the last valid value of the expression; the engine rewrites it after a recompute. A key
+  // must be the address of an existing numeric field (see fieldsOf): removing a constraint or
+  // changing a variant removes the expression, and a reference dimension has none. In a command the
+  // expression is written straight into the field as a string (see Input).
+  expressions?: Record<FieldPath, Expr>;
 }
 
 export interface PlaneFeature extends FeatureBase {
@@ -193,6 +215,29 @@ export interface Evaluation {
   features: Record<Id, FeatureResult>;
   bodies: Record<Id, BodyResult>; // stav po poslední vyhodnocené feature
   faceNames: FaceName[]; // společná tabulka, index = číslo stěny
+  parameters: Record<string, ParameterResult>; // values and errors of parameters
+  checks: Record<string, CheckResult>; // check results by name
+}
+
+export type ParameterResult = { ok: true; value: number } | { ok: false; error: ExpressionError };
+
+export interface CheckResult {
+  status: 'ok' | 'failed' | 'error'; // failed: the check does not hold; error: the expression cannot be evaluated
+  error?: ExpressionError;
+}
+
+export interface ExpressionError {
+  code:
+    | 'syntax'
+    | 'unknownName'
+    | 'cycle'
+    | 'dependsOnError' // uses a parameter that is itself in error
+    | 'notFinite'
+    | 'outOfRange' // the value is outside the range of the field
+    | 'notInteger'
+    | 'type'; // a number where a comparison is expected, or the other way round
+  message: string;
+  position?: number; // index of the character in the expression where the error is
 }
 
 export type EdgeKind = 'line' | 'circle' | 'coplanar' | 'other';
@@ -209,19 +254,25 @@ export interface Issue {
   refs?: unknown[];
 }
 
+// invalidExpression: the expression of some field cannot be evaluated or gave a value outside the
+// range of the field (details in `fieldErrors`). For a sketch it is a warning: the sketch is computed
+// with the last valid value of the field, so that it stays visible and can be fixed. For other
+// feature types it is an error.
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
   | 'invalidProfile'
   | 'nonPlanarFace'
   | 'emptyResult'
-  | 'kernelFailure';
+  | 'kernelFailure'
+  | 'invalidExpression';
 
 export type WarningCode =
   | 'sketchConflict'
   | 'brokenProjection'
   | 'degenerateProjection'
   | 'unsupportedProjection'
+  | 'invalidExpression'
   | 'noEffect';
 
 export type IssueCode = ErrorCode | WarningCode;
@@ -267,6 +318,10 @@ export interface FeatureResult {
   warnings: Issue[];
   plane?: Frame; // sketch, plane
   sketch?: SketchResult;
+  fieldErrors?: Record<FieldPath, ExpressionError>; // expression errors by field
+  // Values of fields with an expression used in this recompute. The document has them only after
+  // the write-back; a preview does not write to the document, so they are returned here as well.
+  values?: Record<FieldPath, number>;
 }
 
 // ---------------------------------------------------------------- API
@@ -280,11 +335,33 @@ export interface EngineState {
 
 export type CommandResult =
   | { ok: true; state: EngineState }
-  | { ok: false; error: { code: 'invalidCommand' | 'invalidDocument'; message: string; commandIndex?: number } };
+  | {
+      ok: false;
+      error: {
+        code: 'invalidCommand' | 'invalidDocument';
+        message: string;
+        commandIndex?: number;
+        // when the command rejected an expression: where and why
+        expression?: { path?: FieldPath; parameter?: string; check?: string; error: ExpressionError };
+      };
+    };
+
+// Command input. Where the document expects a number from the catalog of numeric fields (see
+// fieldsOf), a command may send a number or an expression as a string. The engine evaluates the
+// expression, fills in the number and stores the expression in `expressions`.
+// - A number and an expression use the same units: `"0.5"` and `0.5` mean the same, degrees are
+//   written `"deg(30)"`.
+// - An expression that cannot be evaluated at that moment, or gives a value outside the range of the
+//   field, is an invalid command.
+// - A string in the field together with an `expressions` entry for the same address is an invalid
+//   command.
+// - A string in a numeric field outside the catalog (sketch point coordinates, a radius, the value
+//   of a reference dimension) is an invalid command even though the type allows it.
+export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
 export type Command =
   // časová osa
-  | { type: 'addFeature'; feature: Feature; index?: number } // bez indexu na konec
+  | { type: 'addFeature'; feature: Input<Feature>; index?: number } // bez indexu na konec
   | { type: 'removeFeature'; id: Id }
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
@@ -294,17 +371,34 @@ export type Command =
   //   s jiným `type` dosavadní nahradí a musí být úplná;
   // - odkaz (objekt s `kind`: rovina) a seznam se nahrazují celé; `null` odebere nepovinné pole;
   // - změna na `operation: 'new'` odebere `targets` sama;
-  // - ověřují se jen odkazy, které feature dosud neměla (zopakovaný rozbitý odkaz projde).
+  // - only references the feature did not have before are verified (a repeated broken reference passes);
+  // - a number in a field with an expression removes the expression, a string sets one; fields the
+  //   patch does not mention keep theirs. Whoever sends the whole feature starts from its input form
+  //   (featureInput).
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
+  // One numeric field by its address (see fieldsOf); a number removes the expression, a string sets it.
+  | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }
+  // Parameters and checks. Only a syntax error (including a number where a comparison is expected)
+  // and a disallowed name make the command invalid; an unknown name and a cycle are accepted and
+  // show up in the recompute result (otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`).
+  | { type: 'setParameter'; name: string; expr: Expr; index?: number } // creates or changes; index = position in the table
+  | { type: 'renameParameter'; name: string; to: string } // rewrites the name in every expression as well
+  | { type: 'removeParameter'; name: string } // expressions that use it end up as an error or a warning of their feature
+  | { type: 'setCheck'; name: string; expr: Expr; index?: number }
+  | { type: 'renameCheck'; name: string; to: string }
+  | { type: 'removeCheck'; name: string }
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
   | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
   | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number } // radius u kružnice
   | { type: 'removeEntity'; sketch: Id; id: Id } // bod nebo křivka
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
-  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Constraint }
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> }
   | { type: 'removeConstraint'; sketch: Id; id: Id }
-  | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number; driving?: boolean }
+  // Without `value` neither the value nor the expression changes; a number removes the expression,
+  // a string sets it. Switching to a reference dimension removes the expression; an expression given
+  // to a reference dimension is an invalid command.
+  | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
   | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
   | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
@@ -313,7 +407,13 @@ export type Command =
   | { type: 'batch'; commands: Command[] };
 
 // Slučovací změna (viz příkaz updateFeature).
-export type Patch<T> = T extends readonly unknown[] | { kind: string } ? T : T extends object ? { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) } : T;
+export type Patch<T> = T extends number
+  ? number | Expr
+  : T extends readonly unknown[] | { kind: string }
+    ? Input<T>
+    : T extends object
+      ? { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
+      : T;
 export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>;
 
 export interface Engine {

@@ -1,6 +1,6 @@
 // Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
 // sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
-import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type ExtrudeFeature, type GeometricConstraint, type Id, type PlaneFeature, type RegionRef, type SketchFeature, type Vec2 } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type Dimension, type DimensionShape, type Expr, type ExtrudeFeature, type GeometricConstraint, type Id, type Input, type PlaneFeature, type RegionRef, type SketchFeature, type Vec2 } from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
 // Místo kliknutí ve skice a to, k čemu se přichytilo.
@@ -110,7 +110,7 @@ export type GeometricKind = GeometricConstraint['type'];
 
 // Geometrické vazby, které engine zná (vazby bez hodnoty), v pořadí katalogu. Nová vazba enginu
 // se tu objeví sama.
-export const GEOMETRIC_KINDS: GeometricKind[] = (Object.keys(CONSTRAINTS) as Constraint['type'][]).filter((type) => !CONSTRAINTS[type].value) as GeometricKind[];
+export const GEOMETRIC_KINDS: GeometricKind[] = (Object.keys(CONSTRAINTS) as Constraint['type'][]).filter((type) => !CONSTRAINTS[type].dimension) as GeometricKind[];
 
 interface Sorted {
   points: Id[];
@@ -222,17 +222,23 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
 
 // ---------------------------------------------------------------- rozpracované vysunutí a rovina
 
+// A feature draft is in the input form (featureInput): a numeric field holds a number or an
+// expression. When an existing feature is edited the form therefore sends its expressions back
+// instead of removing them with numbers.
+export type ExtrudeDraft = Input<ExtrudeFeature>;
+export type PlaneDraft = Input<PlaneFeature>;
+
 // Změna rozpracovaného vysunutí. Nové těleso cíl nemá; přidání a výřez bez cíle dostanou poslední
 // existující těleso. Cíl, který už neexistuje, se sám nepřepisuje: má ho vidět a změnit uživatel.
 export interface ExtrudeChange {
   sketch?: Id;
   regions?: RegionRef[];
-  distance?: number;
+  distance?: number | Expr;
   operation?: ExtrudeFeature['operation'];
   target?: Id;
 }
-export function changeExtrude(draft: ExtrudeFeature, change: ExtrudeChange, bodies: Id[]): ExtrudeFeature {
-  const next: ExtrudeFeature = {
+export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[]): ExtrudeDraft {
+  const next: ExtrudeDraft = {
     ...draft,
     profile: { ...draft.profile, ...(change.sketch === undefined ? {} : { sketch: change.sketch }), ...(change.regions === undefined ? {} : { regions: change.regions }) },
     extent: { ...draft.extent, ...(change.distance === undefined ? {} : { distance: change.distance }) },
@@ -245,7 +251,7 @@ export function changeExtrude(draft: ExtrudeFeature, change: ExtrudeChange, bodi
 }
 
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
-export function draftCommand(draft: ExtrudeFeature | PlaneFeature, editing: boolean, index: number): Command {
+export function draftCommand(draft: ExtrudeDraft | PlaneDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
   const { id, profile, extent, operation, targets } = draft;

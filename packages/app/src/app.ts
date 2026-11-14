@@ -9,6 +9,7 @@ import {
   type EdgeName,
   type Engine,
   type EngineState,
+  type Expr,
   type ExtrudeFeature,
   type FaceName,
   type Feature,
@@ -22,20 +23,28 @@ import {
   type SketchFeature,
   type SketchResult,
   type Solid,
+  type Unit,
   type Vec2,
   type Vec3,
   CONSTRAINTS,
+  FEATURE_TYPE_INFO,
   constraintKey,
+  constraintPath,
   duplicateOf,
   emptyDocument,
   emptySketch,
+  featureInput,
+  isDimension,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h } from './dom';
+import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from './fields';
 import {
   type Anchor,
   type DimensionVariant,
+  type ExtrudeDraft,
   GEOMETRIC_KINDS,
+  type PlaneDraft,
   arcCommands,
   asConstruction,
   type ExtrudeChange,
@@ -83,7 +92,7 @@ interface ExtrudeMode {
   kind: 'extrude';
   editing: boolean;
   index: number; // pozice feature na časové ose
-  draft: ExtrudeFeature;
+  draft: ExtrudeDraft; // input form: a numeric field holds a number or an expression
   preview?: EngineState;
   problem?: string;
   hover?: RegionRef;
@@ -92,7 +101,7 @@ interface PlaneMode {
   kind: 'plane';
   editing: boolean;
   index: number;
-  draft: PlaneFeature;
+  draft: PlaneDraft;
   preview?: EngineState;
   problem?: string;
 }
@@ -123,7 +132,8 @@ const TOOLS: [Tool, string, string][] = [
   ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
   ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
 ];
-const FEATURE_TYPES: Record<Feature['type'], string> = { sketch: 'Skica', extrude: 'Vysunutí', plane: 'Rovina' };
+const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
+const CHECK_STATUS = { ok: '✓ holds', failed: '✗ fails', error: '! cannot be evaluated' };
 const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
 const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
 const PICK_REACH = 7; // px
@@ -194,7 +204,9 @@ export class App {
   }
   private stateBefore(index: number): EngineState {
     const previous = this.doc.features[index - 1];
-    return previous ? this.engine.getState(previous.id) : { ...this.engine.getState(), evaluation: { features: {}, bodies: {}, faceNames: [] } };
+    if (previous) return this.engine.getState(previous.id);
+    const state = this.engine.getState();
+    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [] } };
   }
   private invalidate(): void {
     this.cache = undefined;
@@ -276,11 +288,18 @@ export class App {
 
   // Provede příkaz; neplatný příkaz dokument nezmění a zpráva se ukáže ve stavovém řádku.
   private run(command: Command, done?: string): boolean {
+    const before = this.failedChecks(this.engine.getState());
     const result = this.engine.execute(command);
-    if (!result.ok) this.say(result.error.message, true);
+    if (!result.ok) return this.say(result.error.message, true), false;
+    // a check the command made fail takes precedence over the ordinary message
+    const failed = this.failedChecks(result.state).filter((name) => !before.includes(name));
+    if (failed.length > 0) this.say(`Check failed: ${failed.join('; ')}`, true);
     else if (done !== undefined) this.say(done);
     else if (this.note.error) this.say(''); // stará chyba po úspěšném příkazu už neplatí
-    return result.ok;
+    return true;
+  }
+  private failedChecks(state: EngineState): string[] {
+    return state.document.checks.map((check) => check.name).filter((name) => state.evaluation.checks[name]?.status !== 'ok');
   }
 
   // ---------------------------------------------------------------- překreslení
@@ -537,6 +556,8 @@ export class App {
     const out: HTMLElement[] = [];
     if (result.error) out.push(h('p', { className: 'issue error' }, result.error.message));
     for (const warning of result.warnings) out.push(h('p', { className: 'issue warning' }, warning.message));
+    // expression errors by field
+    for (const [path, error] of Object.entries(result.fieldErrors ?? {})) out.push(h('p', { className: 'issue error' }, `Field ${path}: ${error.message}`));
     return out;
   }
 
@@ -586,13 +607,96 @@ export class App {
           h('button', { textContent: 'Přenést skicu na vybranou rovinu', disabled: !ref, title: 'Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu', onclick: () => ref && this.run({ type: 'setSketchPlane', sketch: f.id, plane: ref }, 'Rovina skici změněna.') }),
         );
       }
-      if (f.type === 'extrude') out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, vzdálenost ${fmt(f.extent.distance)} mm, oblastí: ${f.profile.regions.length}.`));
-      if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${fmt(f.offset)} mm.`));
+      const shown = (path: string, value: number): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${fmt(value)}` : fmt(value));
+      if (f.type === 'extrude') out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, vzdálenost ${shown('extent/distance', f.extent.distance)} mm, oblastí: ${f.profile.regions.length}.`));
+      if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${shown('offset', f.offset)} mm.`));
     } else {
       out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
     }
     if (this.selected) out.push(h('h2', {}, 'Výběr'), h('p', {}, this.describe(this.selected)));
+    out.push(...this.parametersPanel());
     return out;
+  }
+
+  // The parameter table and checks. An expression is only checked while typing; the command is sent once the field is committed.
+  private parametersPanel(): HTMLElement[] {
+    const { document: doc, evaluation } = this.engine.getState();
+    const expr = (value: string, kind: 'number' | 'check', commit: (text: string) => boolean): HTMLInputElement => {
+      const input = h('input', {
+        className: 'expr',
+        value,
+        placeholder: kind === 'number' ? 'expression, e.g. 2 * a' : 'condition, e.g. a < b',
+        oninput: () => this.markProblem(input, input.value.trim() === '' ? undefined : expressionProblem(input.value, kind)),
+        onchange: () => {
+          if (input.value.trim() === value || !commit(input.value)) this.refresh();
+        },
+      });
+      return input;
+    };
+    const rename = (value: string, title: string, commit: (text: string) => boolean): HTMLInputElement => {
+      const input = h('input', { className: 'pname', value, title, onchange: () => (input.value.trim() === value || !commit(input.value.trim())) && this.refresh() });
+      return input;
+    };
+    const adder = (label: string, kind: 'number' | 'check', add: (name: string, text: string) => boolean): HTMLElement => {
+      const name = h('input', { className: 'pname', placeholder: 'name' });
+      const value = expr('', kind, () => true);
+      value.onchange = null;
+      const submit = () => {
+        if (name.value.trim() === '' || value.value.trim() === '') return this.say(`${label}: fill in both the name and the expression.`, true);
+        add(name.value.trim(), value.value);
+      };
+      for (const input of [name, value]) input.onkeydown = (event: KeyboardEvent) => event.key === 'Enter' && submit();
+      return h('div', { className: 'constraint' }, name, value, h('button', { textContent: 'Add', onclick: submit }));
+    };
+
+    const out: HTMLElement[] = [h('h2', {}, `Parameters (${doc.parameters.length})`)];
+    for (const p of doc.parameters) {
+      const result = evaluation.parameters[p.name];
+      out.push(
+        h(
+          'div',
+          { className: `constraint ${result && !result.ok ? 'conflict' : ''}`, title: result && !result.ok ? result.error.message : '' },
+          rename(p.name, 'Parameter name; renaming also rewrites the expressions that use it', (to) => this.run({ type: 'renameParameter', name: p.name, to }, 'Parameter renamed.')),
+          expr(p.expr, 'number', (text) => this.run({ type: 'setParameter', name: p.name, expr: text })),
+          h('small', { className: 'computed' }, result?.ok ? `= ${plainNumber(result.value)}` : 'error'),
+          h('button', { className: 'icon', textContent: '✕', title: 'Delete parameter', onclick: () => this.run({ type: 'removeParameter', name: p.name }, `Parameter ${p.name} deleted. Expressions that use it report an error.`) }),
+        ),
+      );
+    }
+    out.push(
+      adder('Parameter', 'number', (name, text) => {
+        if (doc.parameters.some((p) => p.name === name)) return this.say(`Parameter ${name} already exists.`, true), false;
+        return this.run({ type: 'setParameter', name, expr: text }, `Parameter ${name} added.`);
+      }),
+      h('p', { className: 'hint' }, 'An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30).'),
+      h('h2', {}, `Checks (${doc.checks.length})`),
+    );
+    for (const c of doc.checks) {
+      const result = evaluation.checks[c.name];
+      const status = result?.status ?? 'error';
+      out.push(
+        h(
+          'div',
+          { className: `constraint ${status === 'ok' ? '' : status === 'failed' ? 'redundant' : 'conflict'}`, title: result?.error?.message ?? '' },
+          rename(c.name, 'Check name', (to) => this.run({ type: 'renameCheck', name: c.name, to })),
+          expr(c.expr, 'check', (text) => this.run({ type: 'setCheck', name: c.name, expr: text })),
+          h('small', { className: 'computed' }, CHECK_STATUS[status]),
+          h('button', { className: 'icon', textContent: '✕', title: 'Delete check', onclick: () => this.run({ type: 'removeCheck', name: c.name }) }),
+        ),
+      );
+    }
+    out.push(
+      adder('Check', 'check', (name, text) => {
+        if (doc.checks.some((c) => c.name === name)) return this.say(`Check "${name}" already exists.`, true), false;
+        return this.run({ type: 'setCheck', name, expr: text }, 'Check added.');
+      }),
+    );
+    return out;
+  }
+
+  private markProblem(input: HTMLInputElement, problem: string | undefined): void {
+    input.classList.toggle('invalid', problem !== undefined);
+    input.title = problem ?? '';
   }
 
   // ---------------------------------------------------------------- výběr v pohledu
@@ -1024,17 +1128,17 @@ export class App {
     // Vazbu, kterou skica už má, engine odmítne; ze sady se přidá jen to, co chybí.
     const feature = this.sketchContext()?.feature;
     const fresh = feature ? constraints.filter((c) => duplicateOf(feature, c) === undefined) : constraints;
-    if (fresh.length === 0) return this.say(constraints.some((c) => 'value' in c) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
+    if (fresh.length === 0) return this.say(constraints.some(isDimension) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
     constraints = fresh;
     const commands = (list: Constraint[]): Command => ({ type: 'batch', commands: list.map((constraint): Command => ({ type: 'addConstraint', sketch: m.id, id: this.newId('k'), constraint })) });
     const result: CommandResult = this.engine.execute(commands(constraints));
     if (result.ok) return this.say('Vazba přidána.');
     // kótu jen mezi pevnými entitami engine odmítne jako řídicí; nabídne se jako referenční
-    const reference = constraints.map((c) => ('value' in c ? { ...c, driving: false } : c));
+    const reference = constraints.map((c) => (isDimension(c) ? { ...c, driving: false } : c));
     // stejná referenční kóta už ve skice je: engine duplicity hlídá jen u řídicích vazeb
     const keys = new Set(Object.values(feature?.constraints ?? {}).map(constraintKey));
-    if (reference.every((c) => 'value' in c && keys.has(constraintKey(c)))) return this.say('Tuhle kótu už skica má.', true);
-    if (constraints.some((c) => 'value' in c) && this.engine.execute(commands(reference)).ok) return this.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
+    if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return this.say('Tuhle kótu už skica má.', true);
+    if (constraints.some(isDimension) && this.engine.execute(commands(reference)).ok) return this.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
     this.say(result.error.message, true);
   }
 
@@ -1126,6 +1230,8 @@ export class App {
     if (m.focus && !feature.constraints[m.focus]) m.focus = undefined;
     const explanation = m.focus ? this.explain(m.id, m.focus, diagnosis) : undefined;
     const label = (id: Id): string => (feature.constraints[id] ? `${constraintName(feature.constraints[id].type)} (${operandsOf(feature.constraints[id]).join(', ')})` : id);
+    const parameterNames = this.doc.parameters.map((p) => p.name);
+    out.push(...this.issues(this.view().evaluation.features[m.id]).filter((element) => element.textContent?.startsWith('Field ')));
     out.push(...this.diagnosisSummary(m, diagnosis));
 
     const dimension = (label: string, variant: DimensionVariant, title: string) => {
@@ -1189,24 +1295,28 @@ export class App {
       });
       const tag = mark === 'duplicate' ? ' · duplicita' : mark === 'surplus' ? ' · navíc' : '';
       row.append(h('span', { className: 'name' }, `${constraintName(c.type)} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
-      if ('value' in c) {
-        const scale = c.type === 'angle' ? 180 / Math.PI : 1;
+      if (isDimension(c)) {
+        const unit: Unit = CONSTRAINTS[c.type].values?.value.unit ?? 'mm';
         const shown = c.driving ? c.value : (result.measurements[id] ?? measure(c, view) ?? c.value);
+        const expression: Expr | undefined = c.driving ? feature.expressions?.[constraintPath(id)] : undefined;
+        const input = h('input', {
+          className: 'value',
+          value: fieldText(expression ?? shown, unit),
+          disabled: !c.driving,
+          title: expression ? `= ${valueText(shown, unit)}` : unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : 'mm, or an expression',
+          oninput: () => {
+            const parsed = parseField(input.value, unit);
+            this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
+          },
+          onchange: () => {
+            // an empty field does not change the value; an angle number is wrapped into the range the engine accepts
+            const parsed = parseField(input.value, unit);
+            const value = typeof parsed === 'number' && c.type === 'angle' ? normalizeAngle(parsed) : parsed;
+            if (value === undefined || !this.run({ type: 'setConstraintValue', sketch: m.id, id, value }, 'Hodnota kóty změněna.')) this.refresh();
+          },
+        });
         row.append(
-          h('input', {
-            type: 'number',
-            step: 'any',
-            value: fmt(shown * scale),
-            disabled: !c.driving,
-            title: c.type === 'angle' ? 'stupně' : 'mm',
-            onchange: (event: Event) => {
-              // prázdné nebo nečíselné pole hodnotu nemění; úhel se převede do rozsahu, který engine bere
-              const text = (event.target as HTMLInputElement).value.trim();
-              const entered = Number(text) / scale;
-              const value = c.type === 'angle' ? normalizeAngle(entered) : entered;
-              if (text === '' || !Number.isFinite(entered) || !this.run({ type: 'setConstraintValue', sketch: m.id, id, value }, 'Hodnota kóty změněna.')) this.refresh();
-            },
-          }),
+          input,
           h(
             'label',
             { className: 'check', title: 'Řídicí kóta geometrii určuje, referenční ji jen měří' },
@@ -1277,7 +1387,7 @@ export class App {
   private startExtrude(existing?: ExtrudeFeature): void {
     if (existing) {
       const index = this.doc.features.findIndex((f) => f.id === existing.id);
-      return this.setMode({ kind: 'extrude', editing: true, index, draft: existing });
+      return this.setMode({ kind: 'extrude', editing: true, index, draft: featureInput(existing) });
     }
     const index = this.insertIndex();
     const sketches = this.doc.features.slice(0, index).filter((f): f is SketchFeature => f.type === 'sketch');
@@ -1297,7 +1407,7 @@ export class App {
   }
 
   private startPlane(base: PlaneRef, existing?: PlaneFeature): void {
-    if (existing) return this.setMode({ kind: 'plane', editing: true, index: this.doc.features.findIndex((f) => f.id === existing.id), draft: existing });
+    if (existing) return this.setMode({ kind: 'plane', editing: true, index: this.doc.features.findIndex((f) => f.id === existing.id), draft: featureInput(existing) });
     const id = this.newId('r');
     this.setMode({ kind: 'plane', editing: false, index: this.insertIndex(), draft: { id, name: `Rovina ${id.slice(1)}`, suppressed: false, type: 'plane', base, offset: 10 } });
     this.say('Zadejte posun; kliknutím v pohledu lze změnit základ.');
@@ -1325,8 +1435,11 @@ export class App {
     this.updatePreview();
     if (rebuild) this.renderPanel();
     else {
+      const m = this.mode as ExtrudeMode | PlaneMode;
       const problem = document.getElementById('draft-problem');
-      if (problem) problem.textContent = (this.mode as ExtrudeMode | PlaneMode).problem ?? '';
+      if (problem) problem.textContent = m.problem ?? '';
+      // expression values next to the fields
+      for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
     }
     this.renderScene();
   }
@@ -1350,8 +1463,28 @@ export class App {
     ];
   }
 
-  private numberField(label: string, value: number, change: (value: number) => void): HTMLElement {
-    return h('label', {}, label, h('input', { type: 'number', step: 'any', value: String(value), oninput: (event: Event) => change(Number((event.target as HTMLInputElement).value || NaN)) }));
+  // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
+  private draftField(m: ExtrudeMode | PlaneMode, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
+    const unit = FEATURE_TYPE_INFO[m.draft.type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
+    const names = this.doc.parameters.map((p) => p.name);
+    const input = h('input', {
+      value: fieldText(this.draftValue(m, path), unit),
+      oninput: () => {
+        const parsed = parseField(input.value, unit);
+        this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
+        change(parsed ?? NaN); // the engine rejects an empty field and the preview says so
+      },
+    });
+    const note = h('small', { className: 'computed' }, this.draftNote(m, path, unit));
+    note.dataset.field = path;
+    note.dataset.unit = unit;
+    return h('label', {}, label, h('span', { className: 'field' }, input, note));
+  }
+  private draftValue(m: ExtrudeMode | PlaneMode, path: string): number | Expr {
+    return path.split('/').reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], m.draft) as number | Expr;
+  }
+  private draftNote(m: ExtrudeMode | PlaneMode, path: string, unit: Unit): string {
+    return fieldNote(this.draftValue(m, path), m.preview?.evaluation.features[m.draft.id]?.values?.[path], unit);
   }
 
   private extrudePanel(m: ExtrudeMode): HTMLElement[] {
@@ -1381,7 +1514,7 @@ export class App {
       h('p', { className: 'hint' }, `Vybraných oblastí: ${m.draft.profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
       stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
       h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: m.draft.profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
-      this.numberField('Vzdálenost (mm; záporná = proti normále)', m.draft.extent.distance, (distance) => set({ distance }, false)),
+      this.draftField(m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
       h(
         'label',
         {},
@@ -1416,7 +1549,7 @@ export class App {
       h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nová rovina'),
       h('p', {}, `Základ: ${label}`),
       h('p', { className: 'hint' }, 'Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu.'),
-      this.numberField('Posun ve směru normály (mm)', m.draft.offset, (offset) => {
+      this.draftField(m, 'Offset along the normal (mm or an expression)', 'offset', (offset) => {
         m.draft = { ...m.draft, offset };
         this.draftChanged(false);
       }),
@@ -1574,7 +1707,7 @@ export class App {
 
     // kóty jako popisky u svých operandů
     for (const [id, c] of Object.entries(feature.constraints)) {
-      if (!('value' in c)) continue;
+      if (!isDimension(c)) continue;
       const at = anchorOf(c, view);
       if (!at) continue;
       const value = c.driving ? c.value : (result.measurements[id] ?? c.value);

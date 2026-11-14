@@ -1,7 +1,7 @@
 // Popis API enginu pro AI. Sestavuje se ze zdrojů enginu, ne z ručně psaného seznamu: typy
 // dokumentu a příkazů se berou přímo ze zdrojového textu types.ts a vazby z katalogu, kterým se
 // řídí validace; typy features z registru enginu. Co engine přijme, to popis obsahuje, a naopak.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, type FeatureTypeInfo } from '@trymesh/engine';
+import { CONSTRAINTS, EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, FEATURE_TYPE_INFO, type FeatureTypeInfo, type NumberSpec, rangeText } from '@trymesh/engine';
 import typesSource from '../../engine/src/types.ts?raw';
 
 const CONVENTIONS = [
@@ -15,7 +15,11 @@ const CONVENTIONS = [
   'ID tělesa je ID vysunutí s operací `new`. Operace `add` a `cut` potřebují `targets`: seznam s jedním cílovým tělesem.',
   'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici, `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
   'Promítnutá hrana (addExternal) je ve skice pevná křivka: úsečka má odvozené body `<id>/a` a `<id>/b`, kružnice `<id>/center`. Jde k nim vázat a kótovat.',
-  'Chyba přepočtu (rozbitý odkaz, konflikt vazeb) není chyba příkazu: příkaz se provede a problém je ve stavu feature. Po každém execute zkontroluj `problems`.',
+  'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
+  'An expression in a feature field must evaluate right away (the parameters it uses must exist), otherwise the command is invalid. A parameter itself may refer to a parameter that does not exist yet; get_parameters returns its state. A number sent to a field with an expression removes the expression; fields updateFeature does not mention keep theirs. The command setField (`{ feature, path, value }`) changes a single field.',
+  'Angles are in radians both as a number and in an expression; degrees are written with the function `deg()`: an angle of 30° is `"deg(30)"`. Angle fields have ranges in radians, so a value entered in degrees by mistake is an invalid command.',
+  'Checks (command setCheck) are expressions with a comparison that are supposed to hold, for example `Zs % 3 == 0`. A check that fails does not stop the model; execute returns it in `failedChecks`.',
+  'A recompute error (a broken reference, conflicting constraints, an expression that can no longer be evaluated) is not a command error: the command is carried out and the problem is in the feature state. After every execute check `problems`, `failedChecks` and `parameterErrors`.',
   'Diagnostika skici: get_sketch vrací stupně volnosti, volné entity, vazby navíc a radu, co chybí; explain_constraint říká, z čeho vazba plyne.',
 ];
 
@@ -37,32 +41,65 @@ export interface ConstraintDescription {
   example: Record<string, unknown>;
 }
 
-const RULES: Record<string, string> = { nonNegative: 'nezáporná', positive: 'kladná', any: 'libovolná (orientovaná)', angle: 'v intervalu (−π, π]' };
-
 export function constraintCatalog(): ConstraintDescription[] {
   return Object.entries(CONSTRAINTS).map(([type, spec]) => ({
     type,
     title: spec.title,
     summary: spec.summary,
     operands: spec.operands.map((operand) => ({ field: operand.field, kinds: [...operand.kinds] })),
-    ...(spec.value ? { value: { unit: spec.value.unit, rule: RULES[spec.value.rule] } } : {}),
-    example: { type, ...Object.fromEntries(spec.operands.map((operand) => [operand.field, `<${operand.kinds.join('|')}>`])), ...(spec.value ? { value: spec.value.unit === 'rad' ? 1.5708 : 10, driving: true } : {}) },
+    ...(spec.values?.value ? { value: { unit: spec.values.value.unit, rule: rangeText(spec.values.value) } } : {}),
+    example: {
+      type,
+      ...Object.fromEntries(spec.operands.map((operand) => [operand.field, `<${operand.kinds.join('|')}>`])),
+      ...Object.fromEntries(Object.entries(spec.values ?? {}).map(([name, value]) => [name, value.unit === 'rad' ? 1.5708 : 10])),
+      ...(spec.dimension ? { driving: true } : {}),
+    },
   }));
 }
 
 export type FeatureDescription = FeatureTypeInfo & { type: string };
 
+const fieldText = (spec: NumberSpec): string => `${spec.title}, ${spec.unit}, ${rangeText(spec)}${spec.default === undefined ? '' : `, default ${spec.default}`}`;
+
+// Expression syntax: operators, functions and constants.
+export function expressionSyntax(): { syntax: string; functions: { name: string; signature: string; summary: string }[]; constants: { name: string; summary: string }[] } {
+  return {
+    syntax: EXPRESSION_SYNTAX,
+    functions: Object.entries(EXPRESSION_FUNCTIONS).map(([name, spec]) => ({ name, signature: `${name}(${spec.variadic ? 'a, b, …' : Array.from({ length: spec.args }, (_, i) => 'abc'[i]).join(', ')})`, summary: spec.summary })),
+    constants: Object.entries(EXPRESSION_CONSTANTS).map(([name, spec]) => ({ name, summary: spec.summary })),
+  };
+}
+
+// Numeric fields that accept an expression: feature fields and dimension values.
+export function numericFields(): { owner: string; path: string; description: string }[] {
+  return [
+    ...Object.entries(FEATURE_TYPE_INFO).flatMap(([type, info]) =>
+      info.fields.map((field) => ({ owner: type, path: field.path, description: fieldText(field.spec) + (field.when ? ` (only when ${field.when.path} is ${field.when.equals})` : '') })),
+    ),
+    ...Object.entries(CONSTRAINTS).flatMap(([type, spec]) =>
+      Object.entries(spec.values ?? {}).map(([name, value]) => ({ owner: `sketch, constraint ${type}`, path: `constraints/<id>/${name}`, description: fieldText(value) + (spec.dimension ? ' (driving dimension only)' : '') })),
+    ),
+  ];
+}
+
 export function featureCatalog(): FeatureDescription[] {
   return Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => ({ type, ...info }));
 }
 
-export function apiDescription(): { conventions: string[]; features: FeatureDescription[]; constraints: ConstraintDescription[]; types: string } {
-  return { conventions: CONVENTIONS, features: featureCatalog(), constraints: constraintCatalog(), types: engineTypes() };
+export function apiDescription(): {
+  conventions: string[];
+  features: FeatureDescription[];
+  constraints: ConstraintDescription[];
+  expressions: ReturnType<typeof expressionSyntax>;
+  numericFields: ReturnType<typeof numericFields>;
+  types: string;
+} {
+  return { conventions: CONVENTIONS, features: featureCatalog(), constraints: constraintCatalog(), expressions: expressionSyntax(), numericFields: numericFields(), types: engineTypes() };
 }
 
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, constraints, types } = apiDescription();
+  const { conventions, features, constraints, expressions, numericFields: fields, types } = apiDescription();
   const feature = (entry: FeatureDescription): string => {
     const body = entry.bodies === 'self' ? ' Může vytvořit těleso se svým ID.' : '';
     const update = entry.updatable.length > 0 ? ` updateFeature mění pole: ${entry.updatable.join(', ')}.` : ' Obsah mění vlastní příkazy, ne updateFeature.';
@@ -84,6 +121,17 @@ export function apiText(): string {
     '# Vazby a kóty',
     'Vazba je objekt `constraint` příkazu addConstraint. Operandy jsou ID entit skici daného druhu; kóty mají navíc `value` a `driving`.',
     ...constraints.map(constraint),
+    '',
+    '# Expressions',
+    expressions.syntax,
+    'Functions:',
+    ...expressions.functions.map((fn) => `- ${fn.signature}: ${fn.summary}`),
+    'Constants:',
+    ...expressions.constants.map((constant) => `- ${constant.name}: ${constant.summary}`),
+    '',
+    '# Numeric fields',
+    'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField.',
+    ...fields.map((field) => `- ${field.owner}: ${field.path} (${field.description})`),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

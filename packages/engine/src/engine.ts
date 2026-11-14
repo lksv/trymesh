@@ -54,25 +54,28 @@ export function createEngine(deps: Deps): Engine {
   const invalid = (error: unknown, code: 'invalidCommand' | 'invalidDocument'): CommandResult => {
     if (!(error instanceof CommandError) && !(error instanceof SyntaxError)) throw error;
     const commandIndex = error instanceof CommandError ? error.commandIndex : undefined;
-    return { ok: false, error: { code, message: error.message, ...(commandIndex === undefined ? {} : { commandIndex }) } };
+    const expression = error instanceof CommandError ? error.expression : undefined;
+    return { ok: false, error: { code, message: error.message, ...(commandIndex === undefined ? {} : { commandIndex }), ...(expression ? { expression } : {}) } };
   };
   const dragOf = (cmd: Command): DragTarget | undefined => (cmd.type === 'dragPoint' ? { sketch: cmd.sketch, point: cmd.point, target: { x: cmd.x, y: cmd.y } } : undefined);
 
-  // Přepočítá dokument a zapíše do něj výsledek skic, které se při tom vyřešily (řešené proměnné
-  // a razítko). Cache se převěsí na nové objekty features.
+  // Recomputes the document and writes back what the recompute determined: expression values in
+  // numeric fields and, for sketches solved along the way, the solved variables and the stamp. The
+  // cache is re-hung onto the new feature objects.
   const settle = (doc: Document, drag?: DragTarget): { document: Document; evaluation: Evaluation } => {
     const { evaluation: result, writeBacks, trace } = evaluator.evaluate(doc, { drag });
     if (writeBacks.size === 0) return { document: doc, evaluation: result };
     const replaced = new Map<Id, Feature>();
     const features = doc.features.map((feature) => {
-      const solved: WriteBack | undefined = writeBacks.get(feature.id);
-      if (!solved || feature.type !== 'sketch') return feature;
-      const next = { ...feature, ...solved };
+      const written: WriteBack | undefined = writeBacks.get(feature.id);
+      if (!written) return feature;
+      const next = { ...written.feature, ...written.solved } as Feature;
       replaced.set(feature.id, next);
       return next;
     });
-    evaluator.rehang(replaced, trace);
-    return { document: { ...doc, features }, evaluation: result };
+    const document = { ...doc, features };
+    evaluator.rehang(document, replaced, trace);
+    return { document, evaluation: result };
   };
   const commit = (next: { document: Document; evaluation: Evaluation }) => {
     document = next.document;

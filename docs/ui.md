@@ -127,6 +127,26 @@ Typ kóty podle výběru:
 | Potvrdit | `addFeature` (extrude) | |
 | Změnit vzdálenost, operaci, oblasti, cíl | `updateFeature` | |
 
+## Parameters, checks and expressions (D35, point 1)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| Show the parameter table with values | | `document.parameters`, `evaluation.parameters` |
+| Add or change a parameter | `setParameter` | syntax error from `error.expression`; other errors from `evaluation.parameters[name]` |
+| Check an expression while typing | `analyzeExpression` | parameter names |
+| Rename, delete a parameter | `renameParameter`, `removeParameter` | |
+| Show checks and their state | | `document.checks`, `evaluation.checks` |
+| Add, change, rename, delete a check | `setCheck`, `renameCheck`, `removeCheck` | |
+| Warn about a check a command made fail | | `evaluation.checks` before and after the command |
+| Which fields of a feature take an expression, with unit and range | `fieldsOf(feature)`; for a draft `FEATURE_TYPE_INFO[type].fields` | |
+| Show a field: the expression, next to it its value | | `feature.expressions[path]`, the number in the field |
+| Enter a number or an expression | `updateFeature` from the draft, `setConstraintValue` for a dimension | |
+| Edit an existing feature without losing expressions | the draft starts from `featureInput(feature)` | |
+| Enter and show an angle | a bare number is in degrees and is converted; an expression is sent unchanged (`deg(30)`) and its value is shown in degrees | unit from the catalog |
+| Rejected expression (unknown name, out of range) | | `error.message`, `error.expression` |
+| Mark a field whose expression stopped evaluating | | `evaluation.features[id].fieldErrors` |
+| Preview while typing | `preview(...)` | `evaluation.features[id].values` |
+
 ## Chyby a oprava referencí
 
 | Chyba | Co UI nabídne | Příkaz |
@@ -143,6 +163,7 @@ Typ kóty podle výběru:
 | `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateFeature` |
 | `emptyResult` | upravit vzdálenost nebo oblasti | `updateFeature` |
 | `sketchConflict` (varování, model zůstává) | otevřít skicu, smazat konfliktní vazbu | `removeConstraint` |
+| `invalidExpression` (an error; a warning for a sketch, which keeps the last valid value) | fix the expression or the parameter, or enter a number | `setParameter`, `updateFeature`, `setConstraintValue` |
 
 Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
 
@@ -190,4 +211,7 @@ Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce
   - Vazbu, kterou skica už má, aplikace nepřidá a řekne to; ze sady vazeb přidá jen ty, které chybí. Platí to i pro referenční kótu mezi pevnými entitami.
 - **Oprava referencí**: rovina skici se mění tlačítkem u vybrané skici, základ roviny a skica, oblasti a cíl vysunutí v jejich panelu. Promítnutá geometrie má v panelu skici seznam se stavem; odtud jde promítnutí zrušit nebo promítnout znovu na jinou hranu (i když ho přepočet nedokázal vyhodnotit a v pohledu není).
 - **Viditelnost** se přepíná na časové ose a platí pro feature i těleso, které založila.
+- **Parameters and checks (D35, point 1)** are in the model panel, below the selected feature. A row is name, expression and value (or state of a check); both name and expression are edited in place and sent when the field is committed. An expression is checked while typing (red field, the reason in the tooltip). A check that a command made fail is announced in the status bar; failed checks are highlighted in the list.
+- **Fields with an expression**: the distance of an extrusion, the offset of a plane and the value of a driving dimension are text fields that take a number or an expression. Next to an expression in a draft is its value from the preview; a dimension shows it in the tooltip and in the label in the view. A bare number in an angle field is in degrees; an expression is in radians (`deg(30)`). A decimal comma in a bare number is accepted.
+- New UI texts are in English (owner's instruction of 2026-11-14 for all new text in the repository); older texts stay in Czech until they are translated.
 

@@ -1,15 +1,19 @@
 // Přepočet: přehrání časové osy s memoizací. Pravidla jsou v docs/architecture.md, sekce Přepočet.
 import { SketchAnalysis } from './analysis';
-import { constraintOperands } from './document';
+import { checkNumber } from './catalog';
+import { atPath, constraintOperands, fieldsOf, withPath } from './document';
+import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
 import { type FaceInfo, type Prism, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, toWorld, volumeOf } from './solid';
 import type {
   Document,
   Evaluation,
+  ExpressionError,
   ExtrudeFeature,
   FaceName,
   Feature,
   FeatureResult,
+  FieldPath,
   Frame,
   Id,
   Issue,
@@ -84,15 +88,32 @@ export interface SketchState {
 // jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
 const lookup = <T>(record: Record<Id, T>, id: Id): T | undefined => (has(record, id) ? record[id] : undefined);
 
-// Z jakého stavu a kam vedl krok feature, která se při přepočtu vyřešila.
+// The state a feature's step started from and led to, for features whose result is written back to the document.
 export type Trace = Map<Id, { before: State; after: State }>;
 
-// Skica vyřešená při přepočtu: řešené proměnné a razítko k zápisu do dokumentu.
-export type WriteBack = Pick<SketchFeature, 'points' | 'radii' | 'solved'>;
+// A sketch solved during the recompute: solved variables and the stamp to write back to the document.
+type SolvedSketch = Pick<SketchFeature, 'points' | 'radii' | 'solved'>;
+// What the recompute writes back to the document: the feature with expression values substituted
+// into its fields and, for a sketch, the solved variables.
+export interface WriteBack {
+  feature: Feature;
+  solved?: SolvedSketch;
+}
 interface Step {
   state: State;
-  writeBack?: WriteBack;
+  writeBack?: SolvedSketch;
 }
+
+// A feature with its expression values substituted. The recompute step works with `feature`; a field
+// whose expression cannot be evaluated or gave a value out of range keeps the last valid number from
+// the document. The object is memoised by the original feature and the expression results, so its
+// identity (and with it the step cache) changes only when a value or an error changes.
+interface Resolution {
+  feature: Feature;
+  values?: Record<FieldPath, number>;
+  errors?: Record<FieldPath, ExpressionError>;
+}
+const RESOLUTIONS_KEPT = 8; // per feature; a preview while typing alternates between a few values
 
 const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
   XY: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] },
@@ -112,13 +133,15 @@ const MESSAGE: Record<IssueCode, string> = {
   degenerateProjection: 'Hrana je kolmá na rovinu skici a nejde promítnout.',
   unsupportedProjection: 'Hranu nejde promítnout jako zvolený druh křivky.',
   noEffect: 'Operace těleso nezměnila.',
+  invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
 };
 const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 
 // Přepočet s cache. Stav po každé feature se pamatuje podle identity objektu feature a identity
 // předchozího stavu, takže nezměněný začátek časové osy se nepočítá znovu.
 export class Evaluator {
-  private readonly memo = new WeakMap<Feature, WeakMap<State, Step>>();
+  private readonly memo = new WeakMap<Resolution, WeakMap<State, Step>>();
+  private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
   private readonly initial = new WeakMap<Document['settings'], State>();
 
   constructor(private readonly deps: Deps) {}
@@ -126,7 +149,45 @@ export class Evaluator {
   evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; writeBacks: Map<Id, WriteBack>; trace: Trace } {
     const { state: final, writeBacks, trace } = this.run(doc, options);
     const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
-    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames }, writeBacks, trace };
+    const parameters = evaluateParameters(doc.parameters);
+    const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
+    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, parameters, checks }, writeBacks, trace };
+  }
+
+  // Substitutes the values of the feature's expressions. `environment` holds the values of the names
+  // expressions may use; the cache follows the expression values, not the identity of the
+  // environment, so changing a parameter the feature does not use does not recompute its step.
+  private resolve(feature: Feature, environment: Environment): Resolution {
+    let known = this.resolutions.get(feature);
+    if (!known) this.resolutions.set(feature, (known = new Map()));
+    if (!feature.expressions) {
+      let plain = known.get('');
+      if (!plain) known.set('', (plain = { feature }));
+      return plain;
+    }
+    const specs = new Map(fieldsOf(feature).map((field) => [field.path, field.spec]));
+    const values: Record<FieldPath, number> = {};
+    const errors: Record<FieldPath, ExpressionError> = {};
+    for (const [path, expr] of Object.entries(feature.expressions)) {
+      const spec = specs.get(path);
+      if (!spec) continue; // validation does not let an address without a field into the document
+      const result = evaluateNumber(expr, environment);
+      const checked = result.ok ? checkNumber(result.value, spec) : undefined;
+      if (checked?.ok) values[path] = checked.value;
+      else errors[path] = result.ok ? { code: (checked as { code: ExpressionError['code'] }).code, message: (checked as { message: string }).message } : result.error;
+    }
+    const key = JSON.stringify([values, errors]);
+    let resolution = known.get(key);
+    if (resolution) {
+      known.delete(key); // most recently used goes last
+    } else {
+      const changed = Object.entries(values).filter(([path, value]) => atPath(feature, path) !== value);
+      const resolved = changed.reduce((f, [path, value]) => withPath(f, path, value), feature);
+      resolution = { feature: resolved, values, ...(Object.keys(errors).length ? { errors } : {}) };
+      if (known.size >= RESOLUTIONS_KEPT) known.delete(known.keys().next().value as string);
+    }
+    known.set(key, resolution);
+    return resolution;
   }
 
   // Vyhodnocená skica ve svém místě časové osy; undefined, když se nevyhodnotila (potlačená,
@@ -140,15 +201,17 @@ export class Evaluator {
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
     const trace: Trace = new Map();
+    const environment = evaluateParameters(doc.parameters);
     for (const feature of doc.features) {
       const dragged = options.drag && options.drag.sketch === feature.id ? options.drag : undefined;
-      let step: Step | undefined = dragged ? undefined : this.memo.get(feature)?.get(state);
+      const resolution = this.resolve(feature, environment);
+      let step: Step | undefined = dragged ? undefined : this.memo.get(resolution)?.get(state);
       if (!step) {
-        step = this.step(feature, state, doc.settings.chordTolerance, dragged);
-        if (!dragged) this.remember(feature, state, step);
+        step = this.step(resolution, state, doc.settings.chordTolerance, dragged);
+        if (!dragged) this.remember(resolution, state, step);
       }
-      if (step.writeBack) {
-        writeBacks.set(feature.id, step.writeBack);
+      if (step.writeBack || resolution.feature !== feature) {
+        writeBacks.set(feature.id, { feature: resolution.feature, ...(step.writeBack ? { solved: step.writeBack } : {}) });
         trace.set(feature.id, { before: state, after: step.state }); // pro převěšení cache po zápisu výsledku
       }
       state = step.state;
@@ -157,32 +220,41 @@ export class Evaluator {
     return { state, writeBacks, trace };
   }
 
-  // Zápis výsledku vytvoří nový objekt feature. Záznam v cache se na něj převěsí: nový objekt by
-  // při přepočtu použil uložené proměnné a dal přesně tentýž stav.
-  rehang(replaced: Map<Id, Feature>, trace: Trace): void {
+  // Writing the result back creates a new feature object. The cache entry is re-hung onto it: on
+  // a recompute the new object would use the stored variables and expression values and give exactly
+  // the same state.
+  rehang(doc: Document, replaced: Map<Id, Feature>, trace: Trace): void {
+    const environment = evaluateParameters(doc.parameters);
     for (const [id, feature] of replaced) {
       const record = trace.get(id);
-      if (record) this.remember(feature, record.before, { state: record.after });
+      if (record) this.remember(this.resolve(feature, environment), record.before, { state: record.after });
     }
   }
 
-  private remember(feature: Feature, before: State, step: Step): void {
-    let map = this.memo.get(feature);
-    if (!map) this.memo.set(feature, (map = new WeakMap()));
+  private remember(resolution: Resolution, before: State, step: Step): void {
+    let map = this.memo.get(resolution);
+    if (!map) this.memo.set(resolution, (map = new WeakMap()));
     map.set(before, step);
   }
 
-  private step(feature: Feature, state: State, chordTolerance: number, drag?: DragTarget): Step {
-    const done = (result: FeatureResult, change: Partial<State> = {}): State => ({ ...state, ...change, features: { ...state.features, [feature.id]: result } });
+  private step(resolution: Resolution, state: State, chordTolerance: number, drag?: DragTarget): Step {
+    const { feature, errors } = resolution;
+    // Expression values and errors belong to the feature result in every state, suppressed included.
+    const fields = { ...(resolution.values && Object.keys(resolution.values).length ? { values: resolution.values } : {}), ...(errors ? { fieldErrors: errors } : {}) };
+    const done = (result: FeatureResult, change: Partial<State> = {}): State => ({ ...state, ...change, features: { ...state.features, [feature.id]: { ...result, ...fields } } });
     const failed = (code: IssueCode, refs?: unknown[], detail?: string): Step => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
     // Potlačená feature je prázdná operace; co na ní závisí, skončí v chybě.
     if (feature.suppressed) return { state: done({ status: 'suppressed', warnings: [] }) };
+    // A bad expression is an error of the feature. A sketch is the exception: it is computed with the
+    // last valid value and reports a warning, so that it stays visible, can be fixed and everything
+    // built on it does not fail.
+    if (errors && feature.type !== 'sketch') return failed('invalidExpression', Object.keys(errors));
     // Krok podle typu feature; úplnost hlídá překladač (viz registr typů v document.ts).
     switch (feature.type) {
       case 'plane':
         return this.plane(feature, state, done, failed);
       case 'sketch':
-        return this.sketch(feature, state, chordTolerance, drag, done, failed);
+        return this.sketch(feature, state, chordTolerance, drag, done, failed, errors ? Object.keys(errors) : []);
       case 'extrude':
         return this.extrude(feature, state, done, failed);
       default: {
@@ -208,10 +280,10 @@ export class Evaluator {
     return { state: done({ status: 'ok', warnings: [], plane: frame }, { planes: { ...state.planes, [feature.id]: frame } }) };
   }
 
-  private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed): Step {
+  private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed, badFields: FieldPath[]): Step {
     const frame = this.frame(feature.plane, state);
     if (typeof frame === 'string') return failed(frame, [feature.plane]);
-    const warnings: Issue[] = [];
+    const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the dimension keeps its last valid value')] : [];
 
     // 1. promítnutá geometrie ze stavu těles před skicou
     const external: Record<Id, Projected> = {};
@@ -245,7 +317,7 @@ export class Evaluator {
       warnings.push(issue('sketchConflict', undefined, error instanceof Error ? error.message : String(error)));
     }
     let geometry = stored;
-    let writeBack: WriteBack | undefined;
+    let writeBack: SolvedSketch | undefined;
     if (result.status === 'solved') {
       if (mustSolve) {
         geometry = { points: result.points, radii: result.radii };

@@ -272,8 +272,30 @@ select {
 .constraint small {
   color: var(--muted);
 }
-.constraint input[type='number'] {
-  width: 68px;
+.constraint input.value {
+  width: 84px;
+}
+.constraint input.pname {
+  width: 78px;
+}
+.constraint input.expr {
+  flex: 1;
+}
+.computed {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.field input {
+  flex: 1;
+}
+input.invalid {
+  border-color: var(--error);
+  background: #fdecea;
 }
 .constraint.conflict {
   background: #fdecea;

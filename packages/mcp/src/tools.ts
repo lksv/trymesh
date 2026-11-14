@@ -18,6 +18,8 @@ import {
   type SketchFeature,
   type Solid,
   constraintOperands,
+  constraintPath,
+  isDimension,
 } from '@trymesh/engine';
 import { apiText } from './api';
 
@@ -81,7 +83,32 @@ function featureStatus(result: FeatureResult | undefined): Record<string, unknow
     status: result.status,
     ...(result.error ? { error: { code: result.error.code, message: result.error.message } } : {}),
     ...(result.warnings.length > 0 ? { warnings: result.warnings.map((w) => ({ code: w.code, message: w.message })) } : {}),
+    // expression errors by field: field address → reason
+    ...(result.fieldErrors ? { fieldErrors: Object.fromEntries(Object.entries(result.fieldErrors).map(([path, error]) => [path, error.message])) } : {}),
   };
+}
+
+// Parameters with values and errors, checks with their result.
+function parametersInfo(state: EngineState): { parameters: Record<string, unknown>[]; checks: Record<string, unknown>[] } {
+  const { document, evaluation } = state;
+  return {
+    parameters: document.parameters.map(({ name, expr }) => {
+      const result = Object.prototype.hasOwnProperty.call(evaluation.parameters, name) ? evaluation.parameters[name] : undefined;
+      return { name, expr, ...(result?.ok ? { value: round(result.value) } : result ? { error: result.error.message } : {}) };
+    }),
+    checks: document.checks.map(({ name, expr }) => {
+      const result = Object.prototype.hasOwnProperty.call(evaluation.checks, name) ? evaluation.checks[name] : undefined;
+      return { name, expr, status: result?.status ?? 'error', ...(result?.error ? { error: result.error.message } : {}) };
+    }),
+  };
+}
+
+// What is not a feature state but the caller should know: checks that fail and parameters in error.
+function documentProblems(state: EngineState): Record<string, unknown> {
+  const { parameters, checks } = parametersInfo(state);
+  const failedChecks = checks.filter((check) => check.status !== 'ok');
+  const parameterErrors = parameters.filter((parameter) => parameter.error !== undefined);
+  return { ...(failedChecks.length ? { failedChecks } : {}), ...(parameterErrors.length ? { parameterErrors } : {}) };
 }
 
 // Stav skici v přehledech. U nevyřešené skici (konflikt, neúspěch solveru) stupně volnosti nic
@@ -94,7 +121,7 @@ function sketchBrief(result: FeatureResult | undefined): Record<string, unknown>
 }
 
 function featureSummary(feature: Feature, result: FeatureResult | undefined): unknown {
-  const base = { id: feature.id, name: feature.name, type: feature.type, ...(featureStatus(result) as object) };
+  const base = { id: feature.id, name: feature.name, type: feature.type, ...(featureStatus(result) as object), ...(feature.expressions ? { expressions: feature.expressions } : {}) };
   if (feature.type === 'plane') return { ...base, base: feature.base as unknown as Json, offset: feature.offset };
   if (feature.type === 'extrude') {
     return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }) };
@@ -116,6 +143,8 @@ function modelSummary(state: EngineState): unknown {
     features: document.features.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
     bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body.solid), faces: body.faces.length, edges: body.edges.length })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
+    ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
+    ...documentProblems(state),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
   };
@@ -246,7 +275,9 @@ function sketchDetail(engine: Engine, id: string): unknown {
       id: constraint,
       label: constraintLabel(c),
       ...(c as unknown as { [key: string]: Json }),
-      ...('value' in c && !c.driving && solved?.measurements[constraint] !== undefined ? { measured: round(solved.measurements[constraint]) } : {}),
+      // the document keeps a dimension's expression in the feature's map, not on the constraint
+      ...(feature.expressions && Object.prototype.hasOwnProperty.call(feature.expressions, constraintPath(constraint)) ? { expr: feature.expressions[constraintPath(constraint)] } : {}),
+      ...(isDimension(c) && !c.driving && solved?.measurements[constraint] !== undefined ? { measured: round(solved.measurements[constraint]) } : {}),
       ...(diagnosis.conflicting.includes(constraint) ? { conflicting: true } : {}),
       ...(twins.has(constraint) ? { duplicate: true } : {}),
       ...(diagnosis.removable.includes(constraint) ? { surplus: true } : {}),
@@ -268,10 +299,15 @@ function sketchDetail(engine: Engine, id: string): unknown {
 
 // ---------------------------------------------------------------- příkazy
 
-// Co se po příkazu změnilo natolik, že to má volající vědět: stavy features, které nejsou v pořádku.
+// What changed after a command enough for the caller to know: feature states that are not ok,
+// checks that fail and parameters in error.
 function outcome(result: CommandResult): unknown {
   // Neplatný příkaz dokument nezměnil: je to chyba volání, ne výsledek.
-  if (!result.ok) throw new ToolError(`${result.error.code}: ${result.error.message}${result.error.commandIndex === undefined ? '' : ` (příkaz dávky s indexem ${result.error.commandIndex})`}`);
+  if (!result.ok) {
+    const { code, message, commandIndex, expression } = result.error;
+    const where = expression?.error.position === undefined ? '' : ` (character ${expression.error.position + 1} of the expression)`;
+    throw new ToolError(`${code}: ${message}${where}${commandIndex === undefined ? '' : ` (příkaz dávky s indexem ${commandIndex})`}`);
+  }
   const { document, evaluation } = result.state;
   const problems = document.features
     .map((feature) => ({ id: feature.id, name: feature.name, ...(featureStatus(evaluation.features[feature.id]) as { status: string }) }))
@@ -281,6 +317,7 @@ function outcome(result: CommandResult): unknown {
     features: document.features.length,
     bodies: Object.keys(evaluation.bodies),
     problems: problems as unknown as Json,
+    ...documentProblems(result.state),
     sketches: document.features
       .filter((feature) => feature.type === 'sketch' && evaluation.features[feature.id]?.sketch)
       .map((feature) => ({ id: feature.id, ...sketchBrief(evaluation.features[feature.id]) })),
@@ -317,7 +354,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_model',
-      description: 'Přehled modelu: features na časové ose se stavem a chybami, tělesa s objemem a rozměry, co je v chybě. `at` = stav po dané feature.',
+      description: 'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size, parameter values, checks that fail, and what is in error. `at` = the state after the given feature.',
       inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'ID feature; model se vyhodnotí jen po ni' } }, additionalProperties: false },
       run: (engine, args) => modelSummary(stateAt(engine, optionalText(args, 'at'))),
     },
@@ -340,6 +377,12 @@ export function tools(): Tool[] {
         'Skica podrobně: body s polohami, křivky, vazby a kóty, promítnutá geometrie, oblasti k vysunutí a diagnostika (stupně volnosti, co je volné, které vazby jsou navíc nebo v konfliktu). Pole `advice` shrnuje, co se skicou je. Sem patří otázky typu „proč má skica dva stupně volnosti".',
       inputSchema: { type: 'object', properties: { sketch: { type: 'string', description: 'ID skici' } }, required: ['sketch'], additionalProperties: false },
       run: (engine, args) => sketchDetail(engine, text(args, 'sketch')),
+    },
+    {
+      name: 'get_parameters',
+      description: 'Parameters of the document with their expressions, values and errors, and checks (expressions that are supposed to hold) with their result: ok, failed (does not hold), error (cannot be evaluated).',
+      inputSchema: NONE,
+      run: (engine) => parametersInfo(engine.getState()),
     },
     {
       name: 'explain_constraint',

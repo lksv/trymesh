@@ -68,7 +68,7 @@ describe('příkazy časové osy', () => {
 
   it('extrude: nulová vzdálenost a prázdné oblasti jsou neplatné, oblasti se uloží seřazené', () => {
     const doc = base();
-    invalid(doc, update('E1', { extent: { distance: 0 } }), /nesmí být nula/);
+    invalid(doc, update('E1', { extent: { distance: 0 } }), /must not be zero/);
     invalid(doc, update('E1', { profile: { regions: [] } }), /neprázdný seznam/);
     invalid(doc, update('E1', { extent: { distance: Number.NaN } }), /konečné číslo/);
     invalid(doc, update('E1', { extent: { start: Number.POSITIVE_INFINITY } }), /konečné číslo/);
@@ -214,8 +214,8 @@ describe('příkazy skici', () => {
     invalid(doc, add({ type: 'horizontal', line: 'p1' }), /čeká se line/);
     invalid(doc, add({ type: 'tangent', a: 'l1', b: 'l2' }), /tečnost dvou úseček/);
     invalid(doc, add({ type: 'coincident', a: 'p1', b: 'ghost' }), /ve skice není/);
-    invalid(doc, add({ type: 'distance', a: 'p1', b: 'p2', value: -1, driving: true }), /nesmí být záporná/);
-    invalid(doc, add({ type: 'radius', curve: 'c', value: 0, driving: true }), /musí být kladné/);
+    invalid(doc, add({ type: 'distance', a: 'p1', b: 'p2', value: -1, driving: true }), /must not be negative/);
+    invalid(doc, add({ type: 'radius', curve: 'c', value: 0, driving: true }), /must be positive/);
     invalid(doc, add({ type: 'angle', a: 'l1', b: 'l2', value: 4, driving: true }), /\(−π, π\]/);
     invalid(doc, add({ type: 'radius', curve: 'l1', value: 3, driving: true }), /čeká se circle nebo arc/);
     invalid(doc, add({ type: 'frobnicate' } as never), /neznámá vazba/);
@@ -276,7 +276,7 @@ describe('příkazy skici', () => {
     const doc = run(base(), { type: 'addConstraint', sketch: 'S1', id: 'w', constraint: { type: 'distance', a: 'p1', b: 'p2', value: 40, driving: true } }, { type: 'addConstraint', sketch: 'S1', id: 'h', constraint: { type: 'horizontal', line: 'l1' } });
     const next = run(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: 50 }, { type: 'setConstraintValue', sketch: 'S1', id: 'w', driving: false });
     expect(sketchOf(next).constraints.w).toEqual({ type: 'distance', a: 'p1', b: 'p2', value: 50, driving: false });
-    invalid(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: -1 }, /nesmí být záporná/);
+    invalid(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'w', value: -1 }, /must not be negative/);
     invalid(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'h', value: 1 }, /není kóta/);
     invalid(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'zzz', value: 1 }, /ve skice není/);
   });
@@ -411,11 +411,18 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.features[0].constraints.k = { type: 'horizontal', line: 'p1' }), /čeká se line/);
     bad((d) => (d.features[0].solved.external.x9 = { kind: 'line', a: [0, 0], b: [1, 1] }), /neodpovídá promítnuté geometrii/);
     bad((d) => d.features.push({ ...d.features[1] }), /dvakrát/);
-    bad((d) => (d.features[1].extent.distance = 0), /nesmí být nula/);
+    bad((d) => (d.features[1].extent.distance = 0), /must not be zero/);
     bad((d) => (d.features[1].extent.type = 'throughAll'), /čeká se distance/);
     bad((d) => (d.features[1].profile.type = 'generator'), /čeká se regions/);
-    bad((d) => d.parameters.push({ id: 'a', value: 1 }), /parametry/i);
-    bad((d) => d.checks.push({ id: 'c', a: 1, relation: '<', b: 2 }), /kontroly/i);
+    bad((d) => d.parameters.push({ id: 'a', value: 1 }), /parameters\[0\].name/);
+    bad((d) => d.parameters.push({ name: 'a', expr: '1 +' }), /the expression is incomplete/);
+    bad((d) => d.parameters.push({ name: 'a', expr: '1' }, { name: 'a', expr: '2' }), /is in the list twice/);
+    bad((d) => d.parameters.push({ name: 'pi', expr: '3' }), /name of a constant/);
+    bad((d) => d.checks.push({ id: 'c', a: 1, relation: '<', b: 2 }), /checks\[0\].name/);
+    bad((d) => d.checks.push({ name: 'c', expr: '1 + 2' }), /a comparison is expected/);
+    bad((d) => (d.features[1].expressions = { 'extent/depth': '5' }), /is not a numeric field/);
+    bad((d) => (d.features[1].expressions = { 'extent/distance': '5 *' }), /the expression is incomplete/);
+    bad((d) => (d.features[1].extent.distance = '5'), /an expression belongs in expressions/);
     bad((d) => (d.features[1].type = 'revolve'), /čeká se jedna z hodnot/);
     expect(() => validateDocument(null)).toThrow(/čeká se objekt/);
   });
@@ -434,15 +441,15 @@ describe('načtení dokumentu', () => {
     expect(validateDocument(old)).toEqual(doc);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
     // parametry a kontroly ve verzi 1 nebyly; co tam přesto je, převod tiše nezahodí
-    expect(() => validateDocument({ ...old, parameters: [{ id: 'a', name: 'a', value: 1 }] })).toThrow(/parametry/);
-    expect(() => validateDocument({ ...old, checks: [{ id: 'c' }] })).toThrow(/kontroly/);
-    expect(() => validateDocument({ ...old, parameters: 5 })).toThrow(/čeká se seznam/);
+    expect(() => validateDocument({ ...old, parameters: [{ id: 'a', name: 'a', value: 1 }] })).toThrow(/parameters\[0\].expr/);
+    expect(() => validateDocument({ ...old, checks: [{ id: 'c' }] })).toThrow(/checks\[0\].name/);
+    expect(() => validateDocument({ ...old, parameters: 5 })).toThrow(/a list is expected/);
     // tvar verze 2 ve verzi 1 a naopak neprojde
     expect(() => validateDocument({ ...old, schemaVersion: 2, parameters: [], checks: [] })).toThrow(/profile/);
     expect(() => validateDocument({ ...JSON.parse(JSON.stringify(doc)), schemaVersion: 1 })).toThrow(/profile|sketch/);
     // chybná feature ve verzi 1 skončí chybou validace, ne výjimkou převodu
     expect(() => validateDocument({ ...old, features: [null] })).toThrow(CommandError);
     expect(() => validateDocument({ ...old, features: 5 })).toThrow(/čeká se seznam/);
-    expect(() => validateDocument({ ...old, features: [{ ...old.features[1], distance: 0 }] })).toThrow(/nesmí být nula/);
+    expect(() => validateDocument({ ...old, features: [{ ...old.features[1], distance: 0 }] })).toThrow(/must not be zero/);
   });
 });

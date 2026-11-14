@@ -1,5 +1,5 @@
 // MCP server přes protokol: klient MCP v paměti, soubory na disku a most do „aplikace" (druhý engine).
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,7 +129,7 @@ describe('MCP server', () => {
     expect(stl.bytes).toBe(84 + 50 * exported.files[0].triangles);
 
     const other = await connect();
-    expect(await other.call('export_stl', { path: join(dir, 'nic.stl') })).toEqual({ error: 'model nemá žádné těleso' });
+    expect(await other.call('export_stl', { path: join(dir, 'nic.stl') })).toEqual({ error: 'the model has no body to export' });
     expect((await other.call('open_document', { path: file })).model.bodies).toEqual((await session.call('get_model')).bodies);
     expect(await other.call('get_document')).toEqual(JSON.parse(await readFile(file, 'utf8')));
     expect(await other.call('open_document', { path: join(dir, 'chybi.json') })).toEqual({ error: expect.stringMatching(/soubor nejde přečíst/) });
@@ -163,12 +163,22 @@ describe('MCP server: bodies', () => {
     const session = await connect();
     await build(session);
     const report = await session.call('check_interference');
-    expect(report).toEqual({ pairs: [{ a: 'Wheel', b: 'base', volume: expect.any(Number) }], failed: [], checked: 6 });
+    expect(report).toEqual({ pairs: [{ a: 'Wheel', b: 'base', volume: expect.any(Number), depth: expect.closeTo(1.43, 1) }], fits: [], failed: [], checked: 6 });
     expect(report.pairs[0].volume).toBeGreaterThan(0.99 * Math.PI * 25 * 2);
     expect(report.pairs[0].volume).toBeLessThan(Math.PI * 25 * 2);
-    expect(await session.call('check_interference', { bodies: ['base', 'planets/1'] })).toEqual({ pairs: [], failed: [], checked: 1 });
+    expect(await session.call('check_interference', { bodies: ['base', 'planets/1'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
     expect((await session.call('check_interference', { threshold: 1000 })).pairs).toEqual([]);
-    expect(await session.call('check_interference', { at: 'base' })).toEqual({ pairs: [], failed: [], checked: 0 });
+    // nothing to compare is said, not left to read as "no collisions"
+    expect(await session.call('check_interference', { at: 'base' })).toEqual({ pairs: [], fits: [], failed: [], checked: 0, note: 'The model has fewer than two bodies: nothing was checked.' });
+    expect(await session.call('check_interference', { bodies: ['base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
+    expect(await session.call('check_interference', { bodies: ['base', 'base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
+    expect(await session.call('check_interference', { bodies: [] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
+    // an argument the tool does not have is refused, not ignored (it would check all bodies instead)
+    expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at' });
+    expect(await session.call('check_interference', { threshold: '0.5' })).toEqual({ error: 'argument "threshold": a number is expected' });
+    // a volume above a small threshold keeps its digits
+    const tiny = await session.call('check_interference', { threshold: 0 });
+    for (const pair of [...tiny.pairs, ...tiny.fits]) expect(pair.volume).toBeGreaterThan(0);
     expect(await session.call('check_interference', { bodies: ['base', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
     expect(await session.call('check_interference', { bodies: ['Wheel'], at: 'base' })).toEqual({ error: expect.stringContaining('after the feature "base"') });
     expect(await session.call('check_interference', { threshold: -1 })).toEqual({ error: expect.stringContaining('threshold') });
@@ -190,7 +200,12 @@ describe('MCP server: bodies', () => {
     expect(some.files).toEqual([{ path: join(dir, 'all.stl'), bodies: ['Wheel', 'planets/1'], triangles: triangles / 2, bytes: 84 + 25 * triangles }]);
     expect((await readFile(join(dir, 'all.stl'))).length).toBe(84 + 25 * triangles);
     expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: ['nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
-    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: [] })).toEqual({ error: 'model nemá žádné těleso' });
+    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: [] })).toEqual({ error: expect.stringContaining('the list is empty') });
+    // arguments that are not what the schema says: refused, nothing written
+    expect(await session.call('export_stl', { path: join(dir, 'pb'), perBody: 'true' })).toEqual({ error: 'argument "perBody": true or false is expected' });
+    expect(await session.call('export_stl', { path: join(dir, 'pb'), perbody: true })).toEqual({ error: 'unknown argument "perbody"; the tool takes path, bodies, perBody, overwrite' });
+    expect(await session.call('export_stl', { path: join(dir, 'pb'), perBody: true, overwrite: 1 })).toEqual({ error: 'argument "overwrite": true or false is expected' });
+    await expect(readdir(join(dir, 'pb'))).rejects.toThrow();
 
     // one file per body: the directory is created, the names are the escaped IDs
     const parts = join(dir, 'parts');
@@ -211,6 +226,27 @@ describe('MCP server: bodies', () => {
     const two = await session.call('export_stl', { path: join(dir, 'two'), perBody: true, bodies: ['planets/2', 'Wheel'] });
     expect(two.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['planets/2'], ['Wheel']]);
     expect((await readdir(join(dir, 'two'))).sort()).toEqual(['Wheel.stl', 'planets%2F2.stl']);
+    // A body whose file name is too long for a file system: nothing is written, not even the
+    // files of the bodies before it, and no temporary file stays behind.
+    const long = 'L'.repeat(252);
+    expect((await session.call('execute', { command: disc(long, 's1', 20) })).ok).toBe(true);
+    const tooLong = await session.call('export_stl', { path: join(dir, 'long'), perBody: true, bodies: ['base', long] });
+    expect(tooLong).toEqual({ error: expect.stringMatching(/nothing was written, the file names of these bodies are longer than 255 bytes: L+ /) });
+    await expect(readdir(join(dir, 'long'))).rejects.toThrow();
+    // a directory stands where a file should go: found before anything is written, also with overwrite
+    await mkdir(join(dir, 'blocked', 'Wheel.stl'), { recursive: true });
+    const blocked = await session.call('export_stl', { path: join(dir, 'blocked'), perBody: true, bodies: ['base', 'Wheel'], overwrite: true });
+    expect(blocked).toEqual({ error: expect.stringMatching(/nothing was written, .*Wheel\.stl exists and is not a file/) });
+    expect(await readdir(join(dir, 'blocked'))).toEqual(['Wheel.stl']);
+    // a failure while writing (the directory cannot be written to): the directory stays as it was
+    await mkdir(join(dir, 'locked'));
+    await writeFile(join(dir, 'locked', 'base.stl'), 'old');
+    await chmod(join(dir, 'locked'), 0o555);
+    const locked = await session.call('export_stl', { path: join(dir, 'locked'), perBody: true, bodies: ['Wheel', 'base'], overwrite: true });
+    await chmod(join(dir, 'locked'), 0o755);
+    expect(locked).toEqual({ error: expect.stringContaining('the export failed and its unfinished files were removed') });
+    expect(await readdir(join(dir, 'locked'))).toEqual(['base.stl']);
+    expect(await readFile(join(dir, 'locked', 'base.stl'), 'utf8')).toBe('old');
     await session.close();
 
     // names that differ only in the case of letters: nothing is written
@@ -290,6 +326,16 @@ describe('most do běžící aplikace', () => {
     const file = join(dir, 'z-aplikace.json');
     await session.call('save_document', { path: file });
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(app.getState().document);
+    // bodies of the app: the collision query runs there and the server writes the files it gets back
+    const disc = (id: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start, distance: 5 }, operation: 'new' } });
+    const built = await session.call('execute', { command: { type: 'batch', commands: [{ type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 }, disc('low', 0), disc('high', 3)] } });
+    expect(built).toMatchObject({ ok: true, bodies: ['low', 'high'] });
+    expect(await session.call('check_interference')).toMatchObject({ pairs: [{ a: 'high', b: 'low' }], fits: [], failed: [], checked: 1 });
+    expect(await session.call('check_interference', { bodies: ['low', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
+    const parts = await session.call('export_stl', { path: join(dir, 'z-aplikace'), perBody: true, bodies: ['high'] });
+    expect(parts.files).toEqual([{ path: join(dir, 'z-aplikace', 'high.stl'), bodies: ['high'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    expect((await readFile(parts.files[0].path)).length).toBe(84 + 50 * parts.files[0].triangles);
+    expect(session.engine.getState().document.features).toEqual([]);
 
     // po odpojení pracují nástroje nad vlastním enginem serveru
     connection.stop();

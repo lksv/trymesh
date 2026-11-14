@@ -346,6 +346,8 @@ Point 5 is in the code (`docs/decisions.md`, D35, point 5, "Status: done"; `docs
 - `get_model` and `get_body` keep the shape they had for the box of a body (`min`, `max` next to `volume`), not an object `bounds`.
 - `bodyFileName` is a function of the engine; the check for names that differ only in the case of letters and for existing files stays in the server, which is the one that writes files.
 - The engine remembers computed pairs between queries; the draft did not ask for it.
+- After the review of point 5 a reported pair has a `depth` and the report a list `fits` next to `pairs`: pairs whose shared volume is no deeper than the chord tolerance (a pin in a hole of the same diameter with differently turned polygons) are not collisions. `contract.ts` still has the shape without them.
+- `export_stl` per body appears on disk only as a whole (temporary names, then renames), refuses file names over 255 bytes, and both export modes and `check_interference` refuse arguments their schema does not have.
 - Implementation notes that are now done: the port guarantee mentions the use of the intersection, and the scenario test measures collisions with the query.
 
 ## Co kontrakt neřeší

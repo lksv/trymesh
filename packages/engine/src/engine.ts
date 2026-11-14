@@ -200,8 +200,8 @@ export function createEngine(deps: Deps): Engine {
     },
 
     interference(options = {}) {
-      const { bodies } = stateAt(options.at).evaluation;
-      return interferences.report(bodies, options.bodies, options.threshold);
+      const state = stateAt(options.at);
+      return interferences.report(state.evaluation.bodies, options.bodies, options.threshold, state.document.settings.chordTolerance);
     },
 
     subscribe(listener) {

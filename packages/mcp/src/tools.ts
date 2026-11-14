@@ -16,6 +16,7 @@ import {
   type Feature,
   type FeatureResult,
   type Id,
+  type Interference,
   type Issue,
   INTERFERENCE_THRESHOLD,
   type SketchFeature,
@@ -461,12 +462,12 @@ export function tools(): Tool[] {
     {
       name: 'check_interference',
       description:
-        'Which bodies collide: pairs of bodies that share a volume above the threshold, with the volume in mm³. Bodies that only touch (flush faces, a pin in a hole of the same diameter) are not reported. `failed` lists pairs the geometric kernel could not compute; they are neither colliding nor clear. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
+        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and its mean depth in mm. `fits` are pairs whose shared volume is no deeper than the chord tolerance of the document: round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap that thin. Bodies that only touch (flush faces) and overlaps thinner than about a millionth of the model size are not reported at all. `failed` lists pairs the geometric kernel could not compute; they are neither colliding nor clear. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
       inputSchema: {
         type: 'object',
         properties: {
           bodies: { type: 'array', items: { type: 'string' }, description: 'Body IDs; only pairs among them are checked. All bodies by default.' },
-          threshold: { type: 'number', description: `Volume in mm³ above which a pair is reported; ${INTERFERENCE_THRESHOLD} by default.` },
+          threshold: { type: 'number', description: `Volume in mm³ above which a pair is reported; ${INTERFERENCE_THRESHOLD} by default. Zero reports numeric noise as well.` },
           at: { type: 'string', description: 'Feature ID; the state after it' },
         },
         additionalProperties: false,
@@ -476,8 +477,12 @@ export function tools(): Tool[] {
         const bodies = bodyList(engine, args, at);
         const threshold = args.threshold ?? undefined;
         if (threshold !== undefined && (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0)) throw new ToolError('argument "threshold": a volume in mm³, zero or more, is expected');
+        // one body has nothing to collide with: an empty answer would read as "no collisions"
+        if (bodies !== undefined && new Set(bodies).size < 2) throw new ToolError('argument "bodies": at least two different bodies are needed to check pairs; leave the list out to check all bodies');
         const report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
-        return { ...report, pairs: report.pairs.map((pair) => ({ ...pair, volume: round(pair.volume) })) };
+        // significant digits, not decimal places: a volume above a small threshold must not round to zero
+        const rounded = (pair: Interference) => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
+        return { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
       },
     },
     {
@@ -537,6 +542,8 @@ export function tools(): Tool[] {
       run: (engine, args) => {
         const all = engine.getState().evaluation.bodies;
         const chosen = bodyList(engine, args) ?? Object.keys(all);
+        if (chosen.length === 0) throw new ToolError(args.bodies === undefined || args.bodies === null ? 'the model has no body to export' : 'argument "bodies": the list is empty; leave it out to export all bodies');
+        if (args.perBody !== undefined && typeof args.perBody !== 'boolean') throw new ToolError('argument "perBody": true or false is expected');
         const file = (bodies: string[]) => {
           const bytes = engine.exportMesh('stl', bodies);
           let binary = '';
@@ -550,10 +557,31 @@ export function tools(): Tool[] {
   ];
 }
 
+// The arguments of a call against the published schema of the tool: an argument the tool does
+// not have (a misspelt `perbody`, `body` for `bodies`) and a value of another type (`"true"` for
+// a flag) are refused; silently ignoring them would run the tool with defaults the caller did not
+// ask for. `null` counts as not given. Returns the problem as text.
+export function argumentProblem(schema: JsonSchema, args: Record<string, unknown>): string | undefined {
+  const properties = (schema as { properties?: Record<string, { type?: string }> }).properties ?? {};
+  const known = Object.keys(properties);
+  for (const [name, value] of Object.entries(args)) {
+    if (!Object.prototype.hasOwnProperty.call(properties, name)) return `unknown argument "${name}"; the tool takes ${known.length ? known.join(', ') : 'no arguments'}`;
+    if (value === undefined || value === null) continue;
+    const type = properties[name].type;
+    const fits =
+      type === 'boolean' ? typeof value === 'boolean' : type === 'string' ? typeof value === 'string' : type === 'number' ? typeof value === 'number' : type === 'array' ? Array.isArray(value) : type === 'object' ? typeof value === 'object' && !Array.isArray(value) : true;
+    if (!fits) return `argument "${name}": ${type === 'boolean' ? 'true or false' : type === 'array' ? 'a list' : `a ${type}`} is expected`;
+  }
+  return undefined;
+}
+
 // Zavolá nástroj. Chyby volání se vracejí jako text, ostatní výjimky jsou chyba programu a propadnou.
 export function callTool(engine: Engine, name: string, args: Record<string, unknown> = {}): ToolOutcome {
   const tool = tools().find((candidate) => candidate.name === name);
   if (!tool) return { ok: false, error: `neznámý nástroj "${name}"` };
+  // internal tools are called by the server with its own arguments, not by a client
+  const problem = tool.hidden ? undefined : argumentProblem(tool.inputSchema, args);
+  if (problem) return { ok: false, error: problem };
   try {
     // přes JSON: typovaná pole (Float64Array) se nepřenášejí a výsledek musí projít mostem beze změny
     return { ok: true, result: JSON.parse(JSON.stringify(tool.run(engine, args) ?? null)) as Json };

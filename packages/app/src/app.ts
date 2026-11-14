@@ -16,6 +16,7 @@ import {
   type FeatureResult,
   type Frame,
   type Id,
+  type Interference,
   type InterferenceReport,
   type Issue,
   type PatternFeature,
@@ -219,6 +220,7 @@ export class App {
   // `picked` is the pair highlighted in the view. A change of the document throws it away.
   private collisions?: { at: Id | null; report: InterferenceReport; picked?: number };
   private note = { text: '', error: false };
+  private collisionNote?: { text: string; error: boolean }; // the note of the last collision check, while it is the one shown
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   private previewCost = 0; // ms the last preview of a draft took
@@ -231,6 +233,8 @@ export class App {
     this.viewport = new Viewport(byId('viewport'));
     engine.subscribe(() => {
       this.collisions = undefined; // the answer belonged to the document as it was
+      if (this.collisionNote && this.note === this.collisionNote) this.say(''); // and so did the note that told it
+      this.collisionNote = undefined;
       this.refresh();
     });
     const canvas = this.viewport.element;
@@ -754,8 +758,10 @@ export class App {
     const report = this.engine.interference(this.marker ? { at: this.marker } : {});
     this.collisions = { at: this.marker, report };
     const failed = report.failed.length ? ` ${report.failed.length} pair(s) could not be computed.` : '';
-    if (report.pairs.length) this.say(`Collisions: ${report.pairs.length} pair(s) of bodies share a volume.${failed}`, true);
-    else this.say(`No collisions: ${report.checked} pair(s) checked.${failed}`, report.failed.length > 0);
+    const fits = report.fits.length ? ` ${report.fits.length} fit(s) within the chord tolerance.` : '';
+    if (report.pairs.length) this.say(`Collisions: ${report.pairs.length} pair(s) of bodies share a volume.${fits}${failed}`, true);
+    else this.say(`No collisions: ${report.checked} pair(s) checked.${fits}${failed}`, report.failed.length > 0);
+    this.collisionNote = this.note; // the note states a fact about the model: it goes when the model changes
     this.refresh();
   }
 
@@ -769,12 +775,20 @@ export class App {
       this.renderPanel();
       this.renderScene();
     };
+    // collisions first, then the fits; `picked` counts through both lists
+    const row = (pair: Interference, index: number, fit: boolean) =>
+      h(
+        'div',
+        { className: `row ${shown.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. Mean depth of what they share: ${fmt(pair.depth)} mm`, onclick: () => pick(index) },
+        h('span', { className: 'name', textContent: `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}` }),
+        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³`),
+      );
     const rows: (HTMLElement | null)[] = [
       h('h2', {}, `Collisions (${report.pairs.length})`),
-      report.pairs.length === 0 && report.failed.length === 0 ? h('p', { className: 'hint' }, `No two bodies share a volume; ${report.checked} pair(s) checked. Bodies that only touch do not count.`) : null,
-      ...report.pairs.map((pair, index) =>
-        h('div', { className: `row ${shown.picked === index ? 'selected' : ''}`, title: 'Highlight the two bodies', onclick: () => pick(index) }, h('span', { className: 'name', textContent: `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}` }), h('small', {}, `${fmt(pair.volume)} mm³`)),
-      ),
+      report.pairs.length === 0 && report.failed.length === 0 ? h('p', { className: 'hint' }, `No two bodies collide; ${report.checked} pair(s) checked. Bodies that only touch do not count.`) : null,
+      ...report.pairs.map((pair, index) => row(pair, index, false)),
+      report.fits.length ? h('p', { className: 'hint' }, 'Fits: what these pairs share is no deeper than the chord tolerance. Round faces are polygons, so a pin in a hole of the same diameter overlaps its wall by slivers; that is not a collision of the design.') : null,
+      ...report.fits.map((pair, index) => row(pair, report.pairs.length + index, true)),
       ...report.failed.map((pair) => h('p', { className: 'issue warning' }, `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}: could not be computed (${pair.message})`)),
       h('div', { className: 'buttons' }, h('button', { textContent: 'Check again', onclick: () => this.checkCollisions() }), h('button', { textContent: 'Close', onclick: () => ((this.collisions = undefined), this.refresh()) })),
     ];
@@ -2035,7 +2049,7 @@ export class App {
     model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
     // the two bodies of the picked collision
     const collisions = m.kind === 'model' ? this.shownCollisions() : undefined;
-    const clash = collisions?.picked === undefined ? undefined : collisions.report.pairs[collisions.picked];
+    const clash = collisions?.picked === undefined ? undefined : [...collisions.report.pairs, ...collisions.report.fits][collisions.picked];
     for (const [id, color] of clash ? ([[clash.a, COLOR.select], [clash.b, COLOR.clash]] as [Id, number][]) : []) {
       const body = evaluation.bodies[id];
       if (body && !this.bodyHidden(id)) for (const face of body.faces) model.faces.push({ solid: body.solid, faceId: face.id, color, opacity: 0.45 });

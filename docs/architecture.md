@@ -807,20 +807,23 @@ type CommandResult =
 
 **Volume and bounds.** `BodyResult` carries `volume` (mm³) and `bounds` (`min` and `max` of the box along the axes of the model). They are computed with the faces and edges of the body and remembered by the identity of its mesh. A caller that cannot see the model (AI through MCP) checks with them what it built.
 
-**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list all bodies. A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters are left to the caller that writes files.
+**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list all bodies. A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters, names too long for a file system and names a system reserves are left to the caller that writes files.
 
 **Interference.** `interference({ bodies?, threshold?, at? })` answers which bodies share a volume.
 
 ```ts
+interface Interference { a: Id; b: Id; volume: number; depth: number }   // `a` is the smaller ID in string order
 interface InterferenceReport {
-  pairs: { a: Id; b: Id; volume: number }[];          // above the threshold; `a` is the smaller ID in string order
+  pairs: Interference[];                               // collisions: above the threshold and deeper than the chord tolerance
+  fits: Interference[];                                // above the threshold, no deeper than the chord tolerance
   failed: { a: Id; b: Id; message: string }[];        // the kernel could not compute the pair
   checked: number;                                    // pairs examined
 }
 ```
 
 - Every pair of the chosen bodies (all by default) is examined, in the order of the bodies in the model; `at` asks about the state after a feature.
-- The volume is that of the kernel's `intersection` of the two meshes. A pair is reported above the threshold, 0.001 mm³ by default: in the spike flush faces, a pin in its hole and identical cylinders gave exactly zero, and gears with a negative backlash of 0.05 mm gave 0.5 to 1.7 mm³.
+- The volume is that of the kernel's `intersection` of the two meshes. A pair is reported above the threshold, 0.001 mm³ by default: in the spike flush faces, a pin in the hole cut by the same circle and identical cylinders gave exactly zero, and gears with a negative backlash of 0.05 mm gave 0.5 to 1.7 mm³. The kernel has a floor of its own: an overlap thinner than about a millionth of the size of the two bodies is welded away and counts as touching, whatever the threshold.
+- **Collision or fit.** Round faces are polygons. A pin in a hole of the same diameter coincides with the wall only when the two polygons have the same vertices (the same sketch circle, or both turned the same way). A pin drawn on a plane that looks the other way, or a copy turned by a pattern, has its corners between the corners of the hole and shares slivers with the wall: up to a quarter of the chord tolerance times the area of the fit, 0.6 mm³ for a pin of radius 4 and length 10, hundreds of times the threshold. Each reported pair therefore has a `depth`, the mean thickness of what the two bodies share: twice the volume over the surface of the shared volume. A pair deeper than the chord tolerance of the document is a collision (`pairs`); a pair no deeper is a fit (`fits`). The slivers of a fit reach half the chord tolerance at most. A real overlap thinner than the chord tolerance lands among the fits too: the faceted model cannot tell the two apart.
 - The kernel gives no guarantee for an intersection with flush faces and may throw after cleaning and verifying its result. Such a pair goes to `failed`: it is neither colliding nor clear, and the query itself never fails because of one pair.
 - Bodies whose boxes do not overlap, or only touch, are not sent to the kernel.
 - Computed pairs are remembered by the identity of the two meshes (`Interferences` in `interference.ts`), so a repeated query is free and after a change only pairs with a rebuilt body are computed. Bodies replayed after the changed feature are rebuilt even when their shape is the same.

@@ -102,14 +102,14 @@ describe('interference of bodies', () => {
   it('reports pairs that share a volume, with the volume', () => {
     const engine = overlapping();
     const report = engine.interference();
-    expect(report).toEqual({ pairs: [{ a: 'A', b: 'B', volume: expect.closeTo(500, 3) }], failed: [], checked: 1 });
+    expect(report).toEqual({ pairs: [{ a: 'A', b: 'B', volume: expect.closeTo(500, 3), depth: expect.closeTo((2 * 500) / (2 * 100 + 2 * 50 + 2 * 50), 3) }], fits: [], failed: [], checked: 1 });
     // the threshold: a pair is reported only above it
     expect(engine.interference({ threshold: 499 }).pairs).toHaveLength(1);
     expect(engine.interference({ threshold: 501 }).pairs).toEqual([]);
     expect(engine.interference({ threshold: 0 }).pairs).toHaveLength(1);
     expect(INTERFERENCE_THRESHOLD).toBe(0.001);
     // the state after an earlier feature: B does not exist yet
-    expect(engine.interference({ at: 'A' })).toEqual({ pairs: [], failed: [], checked: 0 });
+    expect(engine.interference({ at: 'A' })).toEqual({ pairs: [], fits: [], failed: [], checked: 0 });
     expect(engine.interference({ at: 'B' }).pairs).toHaveLength(1);
     // wrong input is the caller's mistake
     expect(() => engine.interference({ bodies: ['A', 'X'] })).toThrow(/the body "X" does not exist/);
@@ -141,27 +141,65 @@ describe('interference of bodies', () => {
       ['B', 'D', 500],
     ]);
     // only some bodies: pairs among them
-    expect(engine.interference({ bodies: ['A', 'C', 'D', 'PIN'] })).toEqual({ pairs: [], failed: [], checked: 6 });
-    expect(engine.interference({ bodies: ['PIN', 'A'] })).toEqual({ pairs: [], failed: [], checked: 1 });
-    expect(engine.interference({ bodies: ['A'] })).toEqual({ pairs: [], failed: [], checked: 0 });
-    expect(engine.interference({ bodies: [] })).toEqual({ pairs: [], failed: [], checked: 0 });
+    expect(engine.interference({ bodies: ['A', 'C', 'D', 'PIN'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 6 });
+    expect(engine.interference({ bodies: ['PIN', 'A'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
+    expect(engine.interference({ bodies: ['A'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 0 });
+    expect(engine.interference({ bodies: [] })).toEqual({ pairs: [], fits: [], failed: [], checked: 0 });
     // a pin thicker than its hole collides by the ring between the two radii
     run(engine, { type: 'setConstraintValue', sketch: 'S4', id: 'kr', value: 4 }, addSketch('S5', XY), circle('S5', 'w', 12, 12, 5), span('WIDE', 'S5', [['w']], 0, 10));
     report = engine.interference({ bodies: ['A', 'WIDE'] });
-    expect(report.pairs).toEqual([{ a: 'A', b: 'WIDE', volume: expect.closeTo((disc(5) - disc(4)) * 10, 1) }]);
+    expect(report.pairs).toEqual([{ a: 'A', b: 'WIDE', volume: expect.closeTo((disc(5) - disc(4)) * 10, 1), depth: expect.any(Number) }]);
     // a body inside another one shares its whole volume; identical bodies share everything
     run(engine, addSketch('S6', XY), rectangle('S6', 'n', 25, 2, 5, 5, null), span('IN', 'S6', [rectLoop('n')], 2, 5), span('A2', 'S1', [rectLoop('r')], 0, 10));
     report = engine.interference({ bodies: ['A', 'IN'] });
-    expect(report.pairs).toEqual([{ a: 'A', b: 'IN', volume: expect.closeTo(125, 3) }]);
+    expect(report.pairs).toEqual([{ a: 'A', b: 'IN', volume: expect.closeTo(125, 3), depth: expect.any(Number) }]);
     report = engine.interference({ bodies: ['C', 'A2', 'D'] });
-    expect(report).toEqual({ pairs: [], failed: [], checked: 3 });
+    expect(report).toEqual({ pairs: [], fits: [], failed: [], checked: 3 }); // A2 lies under C and beside D
+    // A2 is the plate A without its hole: the two share all of A; two identical bodies share everything
+    report = engine.interference({ bodies: ['A', 'A2'] });
+    expect(report.failed).toEqual([]);
+    expect(report.pairs).toEqual([{ a: 'A', b: 'A2', volume: expect.closeTo(body(engine.getState(), 'A').volume, 2), depth: expect.any(Number) }]);
+    run(engine, span('A3', 'S1', [rectLoop('r')], 0, 10));
+    report = engine.interference({ bodies: ['A2', 'A3'] });
+    expect(report).toEqual({ pairs: [{ a: 'A2', b: 'A3', volume: expect.closeTo(12000, 2), depth: expect.closeTo((2 * 12000) / (2 * 1200 + 140 * 10), 3) }], fits: [], failed: [], checked: 1 });
+  });
+
+  it('a pin in a hole of the same diameter is a fit, not a collision, however the two polygons are turned', () => {
+    // A plate with two holes of radius 4 and a pin in the first one. The copy of the pin lands in
+    // the second hole turned by half a turn: a circle of radius 4 is a polygon with an odd number
+    // of sides, so the corners of the copy stick out of the wall of the hole.
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -20, -10, 40, 20, null), circle('S1', 'h1', 10, 0, 4), circle('S1', 'h2', -10, 0, 4));
+    run(engine, span('PLATE', 'S1', [rectLoop('r'), ['h1'], ['h2']], 0, 10), span('holes', 'S1', [['h1'], ['h2']], 0, 10, 'cut', ['PLATE']), span('PIN', 'S1', [['h1']], 0, 10));
+    const pattern = (count: number): Command => ({ type: 'addFeature', feature: { id: 'PP', name: 'PP', suppressed: false, type: 'pattern', source: { type: 'body', body: 'PIN' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count, span: { type: 'full' } } } });
+    expectAllOk(run(engine, pattern(2)));
+    let report = engine.interference();
+    expect(report.failed).toEqual([]);
+    expect(report.pairs).toEqual([]);
+    // the slivers: up to a quarter of the chord tolerance times the wall of the hole, far above the volume threshold
+    expect(report.fits).toEqual([{ a: 'PLATE', b: 'PP/1', volume: expect.any(Number), depth: expect.any(Number) }]);
+    const [fit] = report.fits;
+    expect(fit.volume).toBeGreaterThan(100 * INTERFERENCE_THRESHOLD);
+    expect(fit.volume).toBeLessThan((2 * Math.PI * 4 * 10 * 0.01) / 4);
+    expect(fit.depth).toBeLessThan(0.01);
+    // the pin in the hole it was drawn with shares nothing at all
+    expect(engine.interference({ bodies: ['PLATE', 'PIN'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
+    // a pin thicker by more than the chord tolerance is a collision whatever its turn
+    run(engine, { type: 'setConstraintValue', sketch: 'S1', id: 'h1r', value: 4.05 });
+    report = engine.interference();
+    expect(report.pairs.map((pair) => [pair.a, pair.b])).toEqual([['PLATE', 'PP/1']]);
+    expect(report.pairs[0].depth).toBeGreaterThan(0.02);
+    expect(report.fits).toEqual([]);
+    // a finer chord tolerance of the document narrows what counts as a fit
+    run(engine, { type: 'setConstraintValue', sketch: 'S1', id: 'h1r', value: 4 });
+    expect(engine.interference().fits).toHaveLength(1);
   });
 
   it('`a` is the smaller ID whatever the order of the bodies; copies are named by their derived IDs', () => {
     const engine = newEngine();
     // `z` is created before `a`; the copies of `a` turn by 10° and overlap their neighbours
     run(engine, addSketch('S1', XY), rectangle('S1', 'r', 10, -5, 20, 10, null), span('z', 'S1', [rectLoop('r')], 0, 5), span('a', 'S1', [rectLoop('r')], 2, 5));
-    expect(engine.interference().pairs).toEqual([{ a: 'a', b: 'z', volume: expect.closeTo(600, 3) }]);
+    expect(engine.interference().pairs).toEqual([{ a: 'a', b: 'z', volume: expect.closeTo(600, 3), depth: expect.any(Number) }]);
     const state = run(engine, { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'body', body: 'a' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'angle', angle: Math.PI / 9 } } } });
     expect(state.evaluation.features.P.bodies).toEqual(['P/1', 'P/2']);
     const report = engine.interference();

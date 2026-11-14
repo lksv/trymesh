@@ -1,13 +1,13 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Engine } from '@trymesh/engine';
 import type { Bridge } from './bridge';
-import { type Json, type JsonSchema, type ToolOutcome, callTool, tools } from './tools';
+import { type Json, type JsonSchema, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
 
 export interface TrymeshServerOptions {
   engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
@@ -63,6 +63,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     return resolve(value === '~' || value.startsWith('~/') ? homedir() + value.slice(1) : value);
   };
   const PATH = (description: string, required = true): JsonSchema => ({ type: 'object', properties: { path: { type: 'string', description } }, required: required ? ['path'] : [], additionalProperties: false });
+
+  const MAX_FILE_NAME = 255; // bytes
 
   const fileTools: FileTool[] = [
     {
@@ -123,7 +125,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     {
       name: 'export_stl',
       description:
-        'Saves bodies of the model as binary STL. By default all bodies go into the one file `path`, which is overwritten. `bodies` chooses the bodies. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists or two names differ only in the case of letters, unless `overwrite` allows replacing existing files.',
+        'Saves bodies of the model as binary STL. By default all bodies go into the one file `path`, which is overwritten. `bodies` chooses the bodies. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -138,11 +140,15 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       run: async (args) => {
         const session = bridge?.session();
         const target = path(args, true) as string;
+        for (const flag of ['perBody', 'overwrite']) if (args[flag] !== undefined && args[flag] !== null && typeof args[flag] !== 'boolean') throw new Failure(`argument "${flag}": true or false is expected`);
         const perBody = args.perBody === true;
         const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[] };
         const files = exported.files.filter((file) => file.bodies.length > 0).map((file) => ({ ...file, path: perBody ? join(target, `${file.name}.stl`) : target }));
-        if (files.length === 0) throw new Failure('model nemá žádné těleso');
+        if (files.length === 0) throw new Failure('the model has no body to export');
         if (perBody) {
+          // a file name is limited to 255 bytes on the common file systems; found before anything is written
+          const long = files.filter((file) => Buffer.byteLength(`${file.name}.stl`) > MAX_FILE_NAME);
+          if (long.length) throw new Failure(`nothing was written, the file names of these bodies are longer than ${MAX_FILE_NAME} bytes: ${long.map((file) => file.bodies[0]).join(', ')} (export them into one file with \`bodies\`, or rename the features)`);
           // File names come from body IDs, so the caller did not name them one by one: nothing is
           // written unless every file can be written without replacing or shadowing another.
           const seen = new Map<string, string>();
@@ -152,18 +158,41 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
             if (other !== undefined) throw new Failure(`the bodies "${other}" and "${file.bodies[0]}" would get file names that differ only in the case of letters; export them separately`);
             seen.set(folded, file.bodies[0]);
           }
-          if (args.overwrite !== true) {
-            const existing: string[] = [];
-            for (const file of files) if (await access(file.path).then(() => true, () => false)) existing.push(file.path);
-            if (existing.length) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
+          const existing: string[] = [];
+          for (const file of files) {
+            const found = await lstat(file.path).catch(() => undefined);
+            // something that is not a file (a directory of that name) cannot be replaced by one
+            if (found && !found.isFile()) throw new Failure(`nothing was written, ${file.path} exists and is not a file`);
+            if (found) existing.push(file.path);
           }
+          if (existing.length && args.overwrite !== true) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
         }
         await mkdir(perBody ? target : dirname(target), { recursive: true });
         const written: { path: string; bodies: string[]; triangles: number; bytes: number }[] = [];
-        for (const file of files) {
-          const bytes = Buffer.from(file.base64, 'base64');
-          await writeFile(file.path, bytes);
-          written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+        if (!perBody) {
+          for (const file of files) {
+            const bytes = Buffer.from(file.base64, 'base64');
+            await writeFile(file.path, bytes);
+            written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+          }
+          return { files: written };
+        }
+        // Per body the files are written under temporary names and renamed once all of them are
+        // on disk: a failure midway (a full disk, a name the file system refuses) leaves the
+        // directory as it was instead of a part of the set, or a mix of new and old files.
+        const temporary: string[] = [];
+        try {
+          for (const [index, file] of files.entries()) {
+            const bytes = Buffer.from(file.base64, 'base64');
+            const draft = join(target, `.trymesh-export-${process.pid}-${index}.tmp`);
+            temporary.push(draft);
+            await writeFile(draft, bytes);
+            written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+          }
+          for (const [index, file] of files.entries()) await rename(temporary[index], file.path);
+        } catch (error) {
+          await Promise.all(temporary.map((draft) => rm(draft, { force: true })));
+          throw new Failure(`the export failed and its unfinished files were removed: ${error instanceof Error ? error.message : String(error)}`);
         }
         return { files: written };
       },
@@ -188,7 +217,10 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     const fileTool = fileTools.find((tool) => tool.name === name);
     try {
-      if (fileTool) return reply(await fileTool.run(args));
+      if (fileTool) {
+        const problem = argumentProblem(fileTool.inputSchema, args);
+        return problem ? reply(problem, true) : reply(await fileTool.run(args));
+      }
       if (name.startsWith('_')) return reply(`neznámý nástroj "${name}"`, true);
       const outcome = await call(bridge?.session(), name, args);
       return outcome.ok ? reply(outcome.result) : reply(outcome.error, true);

@@ -197,6 +197,18 @@ export function volumeOf(s: Solid): number {
   return volume / 6;
 }
 
+// The area of the surface of a solid.
+export function areaOf(s: Solid): number {
+  let area = 0;
+  const p = s.positions;
+  for (let t = 0; t < s.triangles.length; t += 3) {
+    const [a, b, c] = [3 * s.triangles[t], 3 * s.triangles[t + 1], 3 * s.triangles[t + 2]];
+    const [ux, uy, uz, vx, vy, vz] = [p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2], p[c] - p[a], p[c + 1] - p[a + 1], p[c + 2] - p[a + 2]];
+    area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+  }
+  return area / 2;
+}
+
 // ---------------------------------------------------------------- stěny a hrany tělesa
 
 interface EdgeData {

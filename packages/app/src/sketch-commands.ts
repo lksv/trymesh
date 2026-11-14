@@ -234,7 +234,9 @@ export type PlaneDraft = Input<PlaneFeature>;
 // - An addition has exactly one target, so switching to it keeps the first one. A cut may have
 //   several: `toggleTarget` adds or removes one of them.
 // - "Through all" exists only for a cut: another operation turns it back into a distance. A new
-//   "through all" goes to both sides (D35, decision 13).
+//   "through all" goes to both sides (D35, decision 13). `distance` is the distance extent to return
+//   to: the form passes the one the draft had last, so that switching the extent there and back
+//   does not lose the start, the distance and their expressions.
 // - `start` and `distance` belong to the distance extent and `side` to "through all"; a change for
 //   the other variant is ignored.
 export type ExtentKind = ExtrudeFeature['extent']['type'];
@@ -251,19 +253,21 @@ export interface ExtrudeChange {
   toggleTarget?: Id;
 }
 const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
-export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[]): ExtrudeDraft {
+export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], distance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE): ExtrudeDraft {
   const operation = change.operation ?? draft.operation;
   let extent = draft.extent;
-  if (extent.type === 'throughAll' && operation !== 'cut') extent = DEFAULT_DISTANCE;
+  if (extent.type === 'throughAll' && operation !== 'cut') extent = distance;
   // a request for "through all" outside a cut is ignored: the draft keeps the distance it has
-  if (change.extent === 'distance' && extent.type !== 'distance') extent = DEFAULT_DISTANCE;
+  if (change.extent === 'distance' && extent.type !== 'distance') extent = distance;
   if (change.extent === 'throughAll' && extent.type !== 'throughAll' && operation === 'cut') extent = { type: 'throughAll', side: 'both' };
   if (extent.type === 'distance') extent = { ...extent, ...(change.start === undefined ? {} : { start: change.start }), ...(change.distance === undefined ? {} : { distance: change.distance }) };
   else if (change.side !== undefined) extent = { ...extent, side: change.side };
   let targets = change.target === undefined ? draft.targets : [change.target];
   if (change.toggleTarget !== undefined) targets = targets?.includes(change.toggleTarget) ? targets.filter((id) => id !== change.toggleTarget) : [...(targets ?? []), change.toggleTarget];
   if (operation === 'add' && targets && targets.length > 1) targets = targets.slice(0, 1);
-  // An empty list (the user unticked every target of a cut) stays empty; the engine says what is missing.
+  // An empty list (the user unticked every target of a cut) stays empty for a cut; the engine says
+  // what is missing. An addition shows a select, which always displays some body, so it gets one.
+  if (operation === 'add' && targets?.length === 0) targets = undefined;
   if (operation !== 'new' && targets === undefined && bodies.length > 0) targets = [bodies[bodies.length - 1]];
   const { targets: _old, ...rest } = draft;
   return {

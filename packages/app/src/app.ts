@@ -16,6 +16,7 @@ import {
   type FeatureResult,
   type Frame,
   type Id,
+  type Issue,
   type PlaneFeature,
   type PlaneRef,
   type RegionRef,
@@ -95,8 +96,10 @@ interface ExtrudeMode {
   editing: boolean;
   index: number; // pozice feature na časové ose
   draft: ExtrudeDraft; // input form: a numeric field holds a number or an expression
+  distance?: ExtrudeDraft['extent']; // the distance extent the draft had last, to return to from "through all"
   preview?: EngineState;
   problem?: string;
+  warning?: boolean; // the problem is a warning of the preview, not an error
   hover?: RegionRef;
 }
 interface PlaneMode {
@@ -106,6 +109,7 @@ interface PlaneMode {
   draft: PlaneDraft;
   preview?: EngineState;
   problem?: string;
+  warning?: boolean;
 }
 type Mode = { kind: 'model' } | SketchMode | ExtrudeMode | PlaneMode;
 
@@ -485,7 +489,7 @@ export class App {
     full.document.features.forEach((f, index) => {
       const result: FeatureResult | undefined = full.evaluation.features[f.id];
       const status = result?.status ?? 'ok';
-      const issue = result?.error?.message ?? result?.warnings.map((w) => w.message).join(' ') ?? '';
+      const issue = result?.error ? this.issueText(result.error) : (result?.warnings.map((w) => this.issueText(w)).join(' ') ?? '');
       const icon = (label: string, title: string, action: () => void, disabled = false) =>
         h('button', {
           className: 'icon',
@@ -555,11 +559,18 @@ export class App {
     else panel.replaceChildren(...this.modelPanel());
   }
 
+  // The text of an issue for a human. Issues about bodies carry their IDs in `refs` (the targets
+  // a cut missed or would remove, a missing target); the text names them.
+  private issueText(issue: Issue): string {
+    const bodies = ['noEffect', 'emptyResult', 'brokenReference'].includes(issue.code) ? (issue.refs ?? []).filter((ref): ref is Id => typeof ref === 'string') : [];
+    return bodies.length ? `${issue.message} (${bodies.map((id) => this.nameOf(id)).join(', ')})` : issue.message;
+  }
+
   private issues(result: FeatureResult | undefined): HTMLElement[] {
     if (!result) return [];
     const out: HTMLElement[] = [];
-    if (result.error) out.push(h('p', { className: 'issue error' }, result.error.message));
-    for (const warning of result.warnings) out.push(h('p', { className: 'issue warning' }, warning.message));
+    if (result.error) out.push(h('p', { className: 'issue error' }, this.issueText(result.error)));
+    for (const warning of result.warnings) out.push(h('p', { className: 'issue warning' }, this.issueText(warning)));
     // expression errors by field
     for (const [path, error] of Object.entries(result.fieldErrors ?? {})) out.push(h('p', { className: 'issue error' }, `Field ${path}: ${error.message}`));
     return out;
@@ -1431,12 +1442,15 @@ export class App {
     if (m.kind === 'extrude' && m.draft.profile.regions.length === 0) {
       m.preview = undefined;
       m.problem = undefined;
+      m.warning = false;
       return;
     }
     const result = this.engine.preview(draftCommand(m.draft, m.editing, m.index), m.draft.id);
     m.preview = result.ok ? result.state : undefined;
     const outcome = result.ok ? result.state.evaluation.features[m.draft.id] : undefined;
-    m.problem = result.ok ? (outcome?.error?.message ?? outcome?.warnings.map((w) => w.message).join(' ')) || undefined : result.error.message;
+    m.problem = result.ok ? (outcome?.error ? this.issueText(outcome.error) : outcome?.warnings.map((w) => this.issueText(w)).join(' ')) || undefined : result.error.message;
+    // a warning does not stop the feature from being confirmed; it is shown as one
+    m.warning = result.ok && !outcome?.error;
     this.invalidate();
   }
 
@@ -1446,7 +1460,10 @@ export class App {
     else {
       const m = this.mode as ExtrudeMode | PlaneMode;
       const problem = document.getElementById('draft-problem');
-      if (problem) problem.textContent = m.problem ?? '';
+      if (problem) {
+        problem.textContent = m.problem ?? '';
+        problem.className = `issue ${m.warning ? 'warning' : 'error'}`;
+      }
       // expression values next to the fields
       for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
     }
@@ -1462,7 +1479,7 @@ export class App {
 
   private draftButtons(m: ExtrudeMode | PlaneMode): HTMLElement[] {
     return [
-      h('p', { id: 'draft-problem', className: 'issue error' }, m.problem ?? ''),
+      h('p', { id: 'draft-problem', className: `issue ${m.warning ? 'warning' : 'error'}` }, m.problem ?? ''),
       h(
         'div',
         { className: 'buttons' },
@@ -1501,7 +1518,9 @@ export class App {
     const bodies = Object.keys(this.stateBefore(m.index).evaluation.bodies);
     const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
     const set = (change: ExtrudeChange, rebuild = true) => {
-      m.draft = changeExtrude(m.draft, change, bodies);
+      // the distance extent the draft had last comes back when the extent or the operation returns to it
+      if (m.draft.extent.type === 'distance') m.distance = m.draft.extent;
+      m.draft = changeExtrude(m.draft, change, bodies, m.distance);
       this.draftChanged(rebuild);
     };
     const targets = m.draft.targets ?? [];

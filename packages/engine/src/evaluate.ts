@@ -403,9 +403,10 @@ export class Evaluator {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
     const tools = { ...state.tools, [id]: recipe };
-    const warnings = unchanged.length ? [issue('noEffect', unchanged)] : [];
     // Nothing changed: the tool's faces are in no body, so they do not enter the table either.
-    if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings }, { tools }) };
+    if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings: [issue('noEffect', unchanged)] }, { tools }) };
+    // Only some targets were missed: the general text would read as if nothing had happened.
+    const warnings = unchanged.length ? [issue('noEffect', unchanged, 'only the targets in refs; the others were changed')] : [];
     return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...withFaces(state, tool, first), tools, bodies }) };
   }
 
@@ -442,13 +443,15 @@ function withFaces(state: State, tool: Prism, first: number): Pick<State, 'faceN
 // The interval of the tool along the normal of the sketch plane, measured from the plane: [start,
 // end]. "Through all" takes the extent of all targets together along the normal (their vertices
 // projected onto it) and adds an overshoot, so that the cap of the tool does not lie in a face of
-// a body. The overshoot follows the size of the targets and stays far above the resolution of the
-// kernel adapter (about 1e-4 of the largest coordinate), which would otherwise treat it as flush.
+// a body. The overshoot follows the largest coordinate of the targets and of the sketch plane, so
+// it normally stays far above the resolution of the kernel adapter (about 1e-4 of the largest
+// coordinate of body and tool). Where it does not (a profile much larger than the targets), the
+// adapter takes the cap as flush with the face, which it handles like any flush face.
 // A side on which the targets do not reach gets just the overshoot: the tool then misses them and
 // the feature reports `noEffect`.
 function toolSpan(extent: ExtrudeFeature['extent'], frame: Frame, targets: Solid[]): [number, number] {
   if (extent.type === 'distance') return [extent.start, extent.start + extent.distance];
-  let [low, high, reach] = [0, 0, 0];
+  let [low, high, reach] = [0, 0, Math.max(...frame.origin.map(Math.abs))];
   for (const solid of targets) {
     const p = solid.positions;
     for (let i = 0; i < p.length; i += 3) {

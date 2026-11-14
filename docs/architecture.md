@@ -460,7 +460,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 
 - The interval is computed by `toolSpan` from the vertices of all targets together, projected onto the normal of the sketch plane: `forward` is `[0, high + overshoot]`, `backward` is `[0, low − overshoot]` and `both` is `[low − overshoot, high + overshoot]`, where `low ≤ 0 ≤ high` is the extent of the targets measured from the sketch plane.
 - The extent of the whole body counts, not only the part under the profile.
-- The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`. It keeps the cap of the tool out of the plane of a body face and stays two orders of magnitude above the resolution of the kernel adapter (about 1e-4 of the model size), which would otherwise treat the cap as flush.
+- The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`. It keeps the cap of the tool out of the plane of a body face. The kernel adapter resolves about 1e-4 of the largest coordinate of body and tool together, so the overshoot is normally two orders of magnitude above it. Where it is not (a profile far larger than the targets), the adapter takes the cap as flush with the face, which it handles like any flush face; holes then still go through.
 - The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern will measure it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
 - The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
@@ -469,7 +469,7 @@ Výsledky, které nejsou běžné:
 
 | Situace | Chování |
 |---|---|
-| `cut` misses a target, `add` adds nothing | The target stays unchanged and the feature has the warning `noEffect`, whose `refs` list the unchanged targets. The other targets of a cut are cut. When nothing changed at all, no face of the tool enters the face table. The change of volume is measured against the smaller of the two solids (body, tool), so a small boss on a large plate does have an effect. |
+| `cut` misses a target, `add` adds nothing | The target stays unchanged and the feature has the warning `noEffect`, whose `refs` list the unchanged targets. The other targets of a cut are cut, and the message then says that only the targets in `refs` were missed. When nothing changed at all, no face of the tool enters the face table. The change of volume is measured against the smaller of the two solids (body, tool), so a small boss on a large plate does have an effect. |
 | `add` kusu, který se tělesa nedotýká | Těleso má dvě nesouvislé části; stav je `ok`. |
 | `cut` would remove a whole target | Error `emptyResult` with the target in `refs`; the feature behaves as an empty operation and none of its targets changes, not even those cut before the failing one. |
 | A target is missing (removed, suppressed, in error) | Error `brokenReference` with the missing targets in `refs`; nothing is cut. |

@@ -303,7 +303,7 @@ Point 1 is in the code (`docs/decisions.md`, D35, point 1, "Status: done"; `docs
 Point 2 is in the code (`docs/decisions.md`, D35, point 2, "Status: done"; `docs/architecture.md`, Extrude, Extent and targets). `Extent` and `targets` in `packages/engine/src/types.ts` have the shape of this draft. Differences and additions:
 
 - `ToolRecipe.build` is `build(targets, firstFaceId)` so far; the transform and the copy tag come with point 4.
-- The overshoot of "through all" is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`.
+- The overshoot of "through all" is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`.
 - A duplicate target is an invalid command. `emptyResult` and `brokenReference` name the targets concerned in `refs`, and `noEffect` the targets the tool did not change.
 - "Through all" with an operation other than `cut` is an invalid command also when only the operation changes; a caller that changes the operation of a through-all cut has to send a new extent in the same patch.
 - MCP: errors and warnings in command results and in `get_model` carry `refs`.

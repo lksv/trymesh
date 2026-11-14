@@ -398,6 +398,9 @@ describe('nálezy z revize aplikace', () => {
     const none = changeExtrude(cut, { toggleTarget: 'e1' }, ['e0', 'e1']);
     expect(none.targets).toEqual([]);
     expect(changeExtrude(none, { distance: 3 }, ['e0', 'e1']).targets).toEqual([]);
+    // an addition shows a select, which always displays a body: it does not stay without one
+    expect(changeExtrude(none, { operation: 'add' }, ['e0', 'e1'])).toMatchObject({ operation: 'add', targets: ['e1'] });
+    expect(changeExtrude(none, { operation: 'add' }, [])).not.toHaveProperty('targets');
 
     // the extent: through all exists only for a cut and starts on both sides
     const all = changeExtrude(cut, { extent: 'throughAll' }, ['e1']);
@@ -410,6 +413,10 @@ describe('nálezy z revize aplikace', () => {
     expect(changeExtrude(draft, { extent: 'throughAll' }, ['e1']).extent).toEqual({ type: 'distance', start: 0, distance: 5 }); // not a cut
     expect(changeExtrude(draft, { operation: 'cut', extent: 'throughAll' }, ['e1'])).toMatchObject({ operation: 'cut', extent: { type: 'throughAll', side: 'both' } });
     expect(changeExtrude(draft, { start: 'h / 2', side: 'both' }, ['e1']).extent).toEqual({ type: 'distance', start: 'h / 2', distance: 5 });
+    // the form passes the distance extent the draft had last: switching there and back keeps it
+    const last = { type: 'distance' as const, start: 'h / 2', distance: 'h' };
+    expect(changeExtrude(all, { extent: 'distance' }, ['e1'], last).extent).toEqual(last);
+    expect(changeExtrude(all, { operation: 'add' }, ['e1'], last).extent).toEqual(last);
     expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: all.profile, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });

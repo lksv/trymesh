@@ -840,7 +840,7 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md, section Extrude, Extent and targets. What the implementation settled:
 
   - **Applying a tool is a function over the recipe** (`applyTool` in `evaluate.ts`), not over the extrusion, as the generality check against the backlog asked. The recipe is `ToolRecipe { operation, targets, build(targets, firstFaceId) }`; the transform argument comes with point 4.
-  - **Overshoot** of the through-all tool is `max(1 mm, 1 % of the largest absolute coordinate of the targets)`. The kernel adapter resolves about 1e-4 of the model size, so the overshoot is at least a hundred times that. Verified against the real adapter for a plate 500 and 800 mm from the sketch plane, a plate 0.1 mm thin and one 300 mm thick.
+  - **Overshoot** of the through-all tool is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`. The kernel adapter resolves about 1e-4 of the model size, so the overshoot is normally a hundred times that. Verified against the real adapter for a plate 500 and 800 mm from the sketch plane, a plate 0.1 mm thin and one 300 mm thick.
   - **The interval starts at the sketch plane** for `forward` and `backward`. A side on which no target reaches gets just the overshoot, so the tool misses and the feature reports `noEffect`.
   - **Through all without a cut is an invalid command**, also when it arises from `updateFeature` changing only the operation. The app therefore turns the extent back into a distance when the operation changes away from a cut.
   - **Several targets:** one tool, one boolean per target in the order of the list. A duplicate target is an invalid command. `emptyResult` names the target that would vanish and `brokenReference` the missing targets; in both cases no target changes. The `noEffect` warning lists the unchanged targets in `refs` and the feature is `warning` even if other targets were cut.
@@ -848,6 +848,20 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   - **MCP.** The conventions describe both extents and several targets. An error or a warning in the result of `execute`, `preview` and `get_model` now carries `refs` (the missed targets of a cut, the target that would vanish, the missing reference).
   - **App.** The extrusion form has the extent select, the start field, the side select and a checkbox list of targets for a cut (ui.md, Extrude).
   - **Tests.** `packages/engine/test/extent.test.ts` (validation and `updateFeature`), `packages/scenarios/test/extent.test.ts` (recompute against the real adapters) and scenario 9 grown by the plate, the sun flange and the housing with holes through all, one of them through two bodies.
+
+  **Review of point 2 (2026-11-14).** An independent review (another instance of the model, read-only) probed the commit with its own tests against the real kernel and solver and drove the app in a browser. It found no defect in the engine, the validation or MCP: all three sides on the base planes, offset planes and a tilted face, bodies straddling or only touching the plane, targets up to 100 m apart, and undo, redo, save and load gave the same evaluation as a fresh engine. A random walk of 1500 sequences of form changes found one rejected state. What it found and what changed:
+
+  | Finding | Fix |
+  |---|---|
+  | App: a cut with every target unticked, switched to an addition, kept an empty target list while the select showed a body; with one body the form was stuck | An addition with an empty list gets the last body |
+  | App: the text of `noEffect`, `emptyResult` and `brokenReference` did not name the bodies, and a partial miss read as "nothing happened" in the error style | The app names the bodies from `refs`; a warning of the preview is shown as a warning; the engine's message for a partial miss says that only the targets in `refs` were missed |
+  | App: switching the extent to through all and back lost the start, the distance and their expressions | The form remembers the last distance extent of the draft |
+  | Tests covered through all only along +Z | Tests on the XZ and YZ planes, an offset XZ plane and a tilted face |
+  | A kernel failure on one of several targets was untested | A test with the real kernel failing on the second boolean: no target changes |
+  | MCP: `refs` on an error was untested | Tested for `brokenReference` |
+  | Docs claimed the overshoot always exceeds the adapter resolution a hundred times; a sketch plane or a profile far from the targets makes the tool larger than the targets | The largest coordinate of the plane origin counts as well, and the sentence says what happens otherwise (the adapter treats the cap as flush, holes still go through) |
+
+  Behaviour the review noted that predates the commit and stays: a cut identical to an existing hole reports `ok` (the tool's wall replaces the old one), so with several targets an already drilled target is not listed as unchanged; a model 300 m from the origin is beyond the float32 resolution of the kernel.
 
   What later points have to pick up:
 

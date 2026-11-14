@@ -258,6 +258,10 @@ describe('model, tělesa a příkazy', () => {
     // through all outside a cut is an invalid command
     const add = callTool(engine, 'execute', { command: { type: 'updateFeature', id: 'hole', patch: { operation: 'add', targets: ['low'] } } });
     expect(add).toMatchObject({ ok: false, error: expect.stringContaining('throughAll is only for the operation cut') });
+    // an error names what it is about as well: the target that is missing
+    const broken = execute(engine, { type: 'removeFeature', id: 'low' });
+    expect(broken.problems).toEqual([{ id: 'hole', name: 'hole', status: 'error', error: { code: 'brokenReference', message: expect.any(String), refs: ['low'] } }]);
+    expect(ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'hole').error).toMatchObject({ code: 'brokenReference', refs: ['low'] });
     // the description of the API mentions both
     expect(apiText()).toContain('{ type: "throughAll", side }');
     expect(apiText()).toContain('one or more for `cut`');

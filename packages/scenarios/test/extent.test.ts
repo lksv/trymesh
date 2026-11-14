@@ -1,8 +1,10 @@
 // D35 point 2 in the recompute, against the real adapters: a cut through all and a cut with several
 // target bodies.
 import { describe, expect, it } from 'vitest';
-import type { Command, Engine, EngineState, ExtrudeFeature, Id } from '@trymesh/engine';
-import { XY, addExtrude, addSketch, cap, circle, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, status, volume } from './kit';
+import { type Command, type Engine, type EngineState, type ExtrudeFeature, type Id, type SolidKernel, createEngine } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
+import { XY, addExtrude, addSketch, cap, circle, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 
 type Side = 'forward' | 'backward' | 'both';
 const through = (id: Id, sketch: Id, curves: Id[][], side: Side, targets: Id[]): ExtrudeFeature => ({ ...extrude(id, sketch, curves, 1, 'cut'), extent: { type: 'throughAll', side }, targets });
@@ -117,6 +119,65 @@ describe('a cut through all', () => {
     }
   });
 
+  it('measures along the normal of the sketch plane, whichever way it points', () => {
+    // base planes: XZ has the normal −Y, YZ the normal +X; the plate is 40 × 30 × 10 from the origin
+    const cases: [plane: 'XZ' | 'YZ', x: number, y: number, length: number, hits: Side, misses: Side][] = [
+      ['XZ', 20, 5, 30, 'backward', 'forward'], // the plate lies at y 0..30, against the normal −Y
+      ['YZ', 15, 5, 40, 'forward', 'backward'], // the plate lies at x 0..40, along the normal +X
+    ];
+    for (const [plane, x, y, length, hits, misses] of cases) {
+      const engine = plate(0, 10);
+      run(engine, addSketch('S3', { kind: 'base', plane }), circle('S3', 'q', x, y, 3));
+      for (const side of [hits, 'both'] as const) {
+        const state = run(engine, addThrough('H', 'S3', [['q']], side, ['A']));
+        expectAllOk(state);
+        near(volumeOf(state, 'A'), 12000 - disc(3) * length);
+        expect(faceNames(state, 'A').filter((name) => name.startsWith('H/')), `${plane}/${side}`).toEqual(['H/side/q']);
+        engine.undo();
+      }
+      const missed = run(engine, addThrough('H', 'S3', [['q']], misses, ['A']));
+      expect(status(missed).H, plane).toBe('warning:noEffect');
+      expect(volumeOf(missed, 'A')).toBeCloseTo(12000, 6);
+    }
+    // an offset plane in the middle of the plate: each side cuts its part
+    const engine = plate(0, 10);
+    run(engine, { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XZ' }, offset: -12 } }, addSketch('S3', { kind: 'plane', feature: 'P' }), circle('S3', 'q', 20, 5, 3));
+    near(volumeOf(run(engine, addThrough('H', 'S3', [['q']], 'forward', ['A'])), 'A'), 12000 - disc(3) * 12); // the plane is at y = 12, forward is −Y
+    near(volumeOf(run(engine, { type: 'updateFeature', id: 'H', patch: { extent: { side: 'backward' } } }), 'A'), 12000 - disc(3) * 18);
+  });
+
+  it('through a body from a tilted face', () => {
+    // a parallelogram prism: the two slanted faces are parallel, 40 · 40 / √1616 apart
+    const engine = newEngine();
+    const corners: [Id, number, number][] = [['a', 0, 0], ['b', 40, 0], ['c', 44, 40], ['d', 4, 40]];
+    run(
+      engine,
+      addSketch('S1', XY),
+      ...corners.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 'S1', id, x, y })),
+      ...corners.map(([id], i): Command => ({ type: 'addCurve', sketch: 'S1', id: `l${id}`, curve: { type: 'line', a: id, b: corners[(i + 1) % 4][0] } })),
+      addExtrude('A', 'S1', [['la', 'lb', 'lc', 'ld']], 10),
+    );
+    const solid = 1600 * 10;
+    expect(volumeOf(engine.getState(), 'A')).toBeCloseTo(solid, 3);
+    // a sketch on the right slanted face with a circle in its middle, at the model point (42, 20, 5)
+    const frame = run(engine, addSketch('S2', onFace('A', side('A', 'lb')))).evaluation.features.S2.plane!;
+    expect(frame.normal[0]).toBeCloseTo(40 / Math.sqrt(1616), 9);
+    expect(frame.normal[1]).toBeCloseTo(-4 / Math.sqrt(1616), 9);
+    const middle = [42 - frame.origin[0], 20 - frame.origin[1], 5 - frame.origin[2]];
+    const [u, v] = [frame.x, frame.y].map((axis) => middle[0] * axis[0] + middle[1] * axis[1] + middle[2] * axis[2]);
+    run(engine, circle('S2', 'q', u, v, 3));
+    const across = 1600 / Math.sqrt(1616);
+    // the normal of the face points out of the body: the hole goes against it, to the opposite face
+    for (const side of ['backward', 'both'] as const) {
+      const state = run(engine, addThrough('H', 'S2', [['q']], side, ['A']));
+      expectAllOk(state);
+      near(volumeOf(state, 'A'), solid - disc(3) * across);
+      expect(faceNames(state, 'A').filter((name) => name.startsWith('H/'))).toEqual(['H/side/q']);
+      engine.undo();
+    }
+    expect(status(run(engine, addThrough('H', 'S2', [['q']], 'forward', ['A']))).H).toBe('warning:noEffect');
+  });
+
   it('a preview and a change to a distance and back', () => {
     const engine = plate(0, 10);
     run(engine, span('H', 'S2', [['k']], 0, 3, 'cut', ['A']));
@@ -175,7 +236,8 @@ describe('a cut with several target bodies', () => {
     const before = untouched(engine.getState());
     let state = run(engine, addThrough('H', 'S4', [['q']], 'forward', ['A', 'B']));
     expect(status(state).H).toBe('warning:noEffect');
-    expect(state.evaluation.features.H.warnings).toMatchObject([{ code: 'noEffect', refs: ['A'] }]);
+    // the text says that only some targets were missed; which ones is in refs
+    expect(state.evaluation.features.H.warnings).toMatchObject([{ code: 'noEffect', refs: ['A'], message: expect.stringContaining('only the targets in refs') }]);
     expect(volumeOf(state, 'A')).toBe(before.A);
     near(volumeOf(state, 'B'), 12000 - HOLE * 10);
     expect(faceNames(state, 'A').some((name) => name.startsWith('H/'))).toBe(false);
@@ -192,6 +254,7 @@ describe('a cut with several target bodies', () => {
     const faces = state.evaluation.faceNames.length;
     state = run(engine, { type: 'updateFeature', id: 'H', patch: { profile: { sketch: 'S3', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 100, distance: 5 } } });
     expect(state.evaluation.features.H.warnings).toMatchObject([{ code: 'noEffect', refs: ['A', 'B'] }]);
+    expect(state.evaluation.features.H.warnings[0].message).not.toContain('only the targets');
     expect(untouched(state)).toEqual(before);
     expect(state.evaluation.faceNames.length).toBeLessThan(faces);
   });
@@ -214,6 +277,37 @@ describe('a cut with several target bodies', () => {
     const state = run(engine, addThrough('H', 'S4', [['big']], 'forward', ['A', 'B']));
     expectAllOk(state);
     expect(volumeOf(state, 'C')).toBe(before.C);
+  });
+
+  it('a kernel failure on a later target changes none of them', async () => {
+    // the real kernel, failing on the n-th boolean
+    const real = await createManifoldKernel();
+    let failAt = Infinity;
+    let calls = 0;
+    const kernel: SolidKernel = {
+      triangulate: (loops) => real.triangulate(loops),
+      boolean: (op, a, b) => {
+        if (++calls === failAt) throw new Error('the kernel gave up');
+        return real.boolean(op, a, b);
+      },
+    };
+    const engine = createEngine({ solver: await createPlanegcsSolver(), kernel });
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), span('A', 'S1', [rectLoop('r')], 0, 10), span('B', 'S1', [rectLoop('r')], 20, 10), addSketch('S2', XY), circle('S2', 'k', 20, 15, 4));
+    const before = engine.getState();
+    [calls, failAt] = [0, 2]; // the cut of A succeeds, the cut of B fails
+    const state = run(engine, addThrough('H', 'S2', [['k']], 'forward', ['A', 'B']));
+    expect(calls).toBe(2);
+    expect(status(state).H).toBe('error:kernelFailure');
+    expect(state.evaluation.features.H.error?.message).toContain('the kernel gave up');
+    expect(state.evaluation.bodies.A.solid).toBe(before.evaluation.bodies.A.solid);
+    expect(state.evaluation.bodies.B.solid).toBe(before.evaluation.bodies.B.solid);
+    expect(state.evaluation.faceNames).toEqual(before.evaluation.faceNames);
+    // a change that makes the step run again succeeds once the kernel does
+    failAt = Infinity;
+    const fixed = run(engine, { type: 'updateFeature', id: 'H', patch: { extent: { side: 'both' } } });
+    expectAllOk(fixed);
+    near(volumeOf(fixed, 'A'), 12000 - HOLE * 10);
+    near(volumeOf(fixed, 'B'), 12000 - HOLE * 10);
   });
 
   it('a missing target is a broken reference that names it; suppressing a target breaks the cut as well', () => {

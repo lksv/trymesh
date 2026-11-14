@@ -99,7 +99,10 @@ Poslední úprava: 2026-11-14
 | Zobrazit vazby a kóty | | `document` (vazby), `sketch.points` |
 | Zobrazit hodnotu referenční kóty | | `sketch.measurements` (počítá engine) |
 | Zobrazit stav skici | | `sketch.degreesOfFreedom` |
-| Zvýraznit konfliktní a nadbytečné vazby | | `sketch.conflicting`, `sketch.redundant` |
+| Zvýraznit konfliktní vazby | | `sketch.conflicting` |
+| Ukázat vazby navíc a duplicity, smazat duplicity | `removeConstraint` | `diagnoseSketch` (`removable`, `duplicates`) |
+| Vysvětlit označenou vazbu: ze kterých vazeb plyne | | `explainConstraint` |
+| Odlišit volné a určené entity, poradit s ukotvením | | `diagnoseSketch` (`free`, `degreesOfFreedom`) |
 | Upozornit na křížící se křivky | | `sketch.valid` |
 
 Typ kóty podle výběru:
@@ -174,7 +177,12 @@ Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce
 
 - **Přichycení a odvozené vazby**: přichycení na bod a na křivku je hotové; z odvozených vazeb jen vodorovná a svislá u volného konce úsečky.
 - **Kóta mezi dvěma body** je vždy `distance`; vodorovná a svislá mají vlastní tlačítko, podle umístění myší se nerozlišují.
-- **Vazby se zobrazují v seznamu** v panelu skici (s hodnotou, přepínačem řídicí/referenční a zvýrazněním konfliktních a nadbytečných); v pohledu jsou jen popisky kót.
+- **Vazby se zobrazují v seznamu** v panelu skici (s hodnotou, přepínačem řídicí/referenční a zvýrazněním konfliktních); v pohledu jsou jen popisky kót.
+- **Diagnostika skici (D32)** je v panelu pod stavem skici:
+  - Souhrn „Vazby navíc: N, z toho duplicity: M". V seznamu jsou označené právě vazby ze sady, kterou engine navrhuje odebrat (`navíc`, `duplicita`); starší vazby ze stejné závislé skupiny označené nejsou. Tlačítko maže jen duplicity, u ostatních volí uživatel.
+  - Kliknutí na řádek vazby ji označí. Panel pak jednou větou řekne, jestli je potřebná, nebo ze kterých vazeb plyne; ty se v seznamu podbarví a v pohledu se zvýrazní entity označené vazby (azurově) a vazeb, ze kterých plyne (fialově). Druhé kliknutí nebo Esc označení ruší.
+  - Volné entity jsou v pohledu modré, určené tmavé. Panel volné body a poloměry vyjmenuje, umí je vybrat a poradí, když skicu dourčí ukotvení jednoho bodu.
+  - Vazbu, kterou skica už má, aplikace nepřidá a řekne to; ze sady vazeb přidá jen ty, které chybí.
 - **Oprava referencí**: rovina skici se mění tlačítkem u vybrané skici, základ roviny a skica, oblasti a cíl vysunutí v jejich panelu. Promítnutá geometrie má v panelu skici seznam se stavem; odtud jde promítnutí zrušit nebo promítnout znovu na jinou hranu (i když ho přepočet nedokázal vyhodnotit a v pohledu není).
 - **Viditelnost** se přepíná na časové ose a platí pro feature i těleso, které založila.
 

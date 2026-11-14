@@ -284,6 +284,21 @@ select {
 .constraint.repair {
   outline: 2px solid var(--accent);
 }
+.constraint {
+  cursor: pointer;
+}
+.constraint.implies {
+  background: #ede9fe;
+}
+.constraint.focus {
+  outline: 2px solid #0ea5e9;
+}
+.explain {
+  margin: 4px 0 6px;
+  padding: 5px 8px;
+  border-left: 3px solid #0ea5e9;
+  background: #f0f9ff;
+}
 
 /* popisky kót v pohledu */
 .labels {

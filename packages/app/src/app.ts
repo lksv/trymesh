@@ -4,6 +4,7 @@ import {
   type Command,
   type CommandResult,
   type Constraint,
+  type ConstraintExplanation,
   type EdgeKind,
   type EdgeName,
   type Engine,
@@ -17,11 +18,13 @@ import {
   type PlaneFeature,
   type PlaneRef,
   type RegionRef,
+  type SketchDiagnosis,
   type SketchFeature,
   type SketchResult,
   type Solid,
   type Vec2,
   type Vec3,
+  duplicateOf,
   emptyDocument,
   emptySketch,
 } from '@trymesh/engine';
@@ -43,6 +46,7 @@ import {
   positionOf,
   rectangleCommands,
 } from './sketch-commands';
+import { anchorPoints, duplicateTwins, explanationText, freeEntities, markOf } from './sketch-diagnosis';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
 import { type SceneModel, Viewport } from './viewport';
 
@@ -63,6 +67,7 @@ interface SketchMode {
   selection: Id[];
   hover?: Id;
   hoverConstraint?: Id;
+  focus?: Id; // vazba označená v seznamu: pohled ukáže ji a vazby, ze kterých plyne
   hoverEdge?: Pick;
   drag?: { point: Id; moved: boolean };
   preview?: EngineState; // stav při tažení bodu
@@ -132,7 +137,7 @@ const FEATURE_TYPES: Record<Feature['type'], string> = { sketch: 'Skica', extrud
 const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
 const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
 const PICK_REACH = 7; // px
-const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
+const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb };
 
 const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
   frame.origin[0] + u * frame.x[0] + v * frame.y[0],
@@ -751,7 +756,8 @@ export class App {
         if (m.clicks.length > 0) m.clicks = [];
         else if (m.repair) m.repair = undefined;
         else if (m.tool !== 'select') m.tool = 'select';
-        else m.selection = [];
+        else if (m.selection.length > 0) m.selection = [];
+        else m.focus = undefined;
         this.refresh();
       } else if (m.kind === 'model') {
         this.pending = undefined;
@@ -955,6 +961,11 @@ export class App {
 
   private addConstraints(m: SketchMode, constraints: Constraint[] | undefined): void {
     if (!constraints) return;
+    // Vazbu, kterou skica už má, engine odmítne; ze sady se přidá jen to, co chybí.
+    const feature = this.sketchContext()?.feature;
+    const fresh = feature ? constraints.filter((c) => duplicateOf(feature, c) === undefined) : constraints;
+    if (fresh.length === 0) return this.say(constraints.some((c) => 'value' in c) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
+    constraints = fresh;
     const commands = (list: Constraint[]): Command => ({ type: 'batch', commands: list.map((constraint): Command => ({ type: 'addConstraint', sketch: m.id, id: this.newId('k'), constraint })) });
     const result: CommandResult = this.engine.execute(commands(constraints));
     if (result.ok) return this.say('Vazba přidána.');
@@ -1004,12 +1015,55 @@ export class App {
     document.getElementById('sketch-status')?.replaceChildren(...this.sketchStatus(this.mode));
   }
 
+  // Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
+  // pohledu nepočítalo znovu.
+  private explained?: { diagnosis: SketchDiagnosis; id: Id; value: ConstraintExplanation };
+  private explain(sketch: Id, id: Id, diagnosis: SketchDiagnosis): ConstraintExplanation {
+    if (this.explained?.diagnosis !== diagnosis || this.explained.id !== id) this.explained = { diagnosis, id, value: this.engine.explainConstraint(sketch, id) };
+    return this.explained.value;
+  }
+
+  // Souhrn diagnostiky pod stavem skici: vazby navíc a co se ještě může hýbat.
+  private diagnosisSummary(m: SketchMode, d: SketchDiagnosis): HTMLElement[] {
+    if (d.status !== 'solved') return [];
+    const out: HTMLElement[] = [];
+    const list = (ids: Id[]): string => (ids.length > 8 ? `${ids.slice(0, 8).join(', ')} a dalších ${ids.length - 8}` : ids.join(', '));
+    const twins = duplicateTwins(d);
+    if (d.removable.length > 0) {
+      out.push(
+        h('p', { className: 'issue warning' }, `Vazby navíc: ${d.removable.length}${twins.length > 0 ? `, z toho duplicity: ${twins.length}` : ''}. V seznamu jsou označené; kliknutím na vazbu se ukáže, z čeho plyne.`),
+      );
+      if (twins.length > 0) {
+        const commands = twins.map((id): Command => ({ type: 'removeConstraint', sketch: m.id, id }));
+        out.push(h('div', { className: 'buttons' }, h('button', { textContent: `Smazat duplicity (${twins.length})`, onclick: () => this.run({ type: 'batch', commands }, 'Duplicitní vazby smazány.') })));
+      }
+    }
+    const points = d.free.filter((entity) => entity.kind === 'point').map((entity) => entity.id);
+    const radii = d.free.filter((entity) => entity.kind === 'radius').map((entity) => entity.id);
+    if (points.length + radii.length > 0) {
+      const anchors = anchorPoints(d);
+      const what = [points.length > 0 ? `body ${list(points)}` : '', radii.length > 0 ? `poloměry ${list(radii)}` : ''].filter((part) => part !== '').join('; ');
+      const which = anchors.length === 1 ? `bodu ${anchors[0]}` : anchors.length === points.length ? 'kteréhokoli z nich' : `kteréhokoli z bodů ${list(anchors)}`;
+      const advice = anchors.length === 0 ? '' : ` Skicu dourčí ukotvení ${which}, například k počátku.`;
+      out.push(
+        h('p', { className: 'hint' }, `Volné (v pohledu modře): ${what}.${advice}`),
+        h('div', { className: 'buttons' }, h('button', { textContent: 'Vybrat volné', title: 'Vybere volné body a kružnice s volným poloměrem', onclick: () => ((m.selection = [...points, ...radii]), this.refresh()) })),
+      );
+    }
+    return out;
+  }
+
   private sketchPanel(m: SketchMode): HTMLElement[] {
     const context = this.sketchContext();
     const out: HTMLElement[] = [h('h2', {}, `Skica: ${this.nameOf(m.id)}`), h('div', { id: 'sketch-status' }, ...this.sketchStatus(m))];
     if (!context) return out;
     const { feature, view, result } = context;
     const action = (label: string, enabled: boolean, run: () => void, title = '') => h('button', { textContent: label, disabled: !enabled, title, onclick: run });
+    const diagnosis = this.engine.diagnoseSketch(m.id);
+    if (m.focus && !feature.constraints[m.focus]) m.focus = undefined;
+    const explanation = m.focus ? this.explain(m.id, m.focus, diagnosis) : undefined;
+    const label = (id: Id): string => (feature.constraints[id] ? `${CONSTRAINT_NAMES[feature.constraints[id].type]} (${operandsOf(feature.constraints[id]).join(', ')})` : id);
+    out.push(...this.diagnosisSummary(m, diagnosis));
 
     const dimension = (label: string, variant: DimensionVariant, title: string) => {
       const d = dimensionFor(variant, view, m.selection);
@@ -1045,14 +1099,30 @@ export class App {
     );
 
     const rows = Object.entries(feature.constraints).map(([id, c]) => {
-      const tone = result.conflicting.includes(id) ? 'conflict' : result.redundant.includes(id) ? 'redundant' : '';
+      const mark = markOf(diagnosis, id);
+      const tone = result.conflicting.includes(id) ? 'conflict' : mark ? 'redundant' : '';
       const row = h('div', {
-        className: `constraint ${tone}`,
-        title: tone === 'conflict' ? 'V konfliktu s jinou vazbou' : tone === 'redundant' ? 'Nadbytečná' : '',
+        className: `constraint ${tone} ${m.focus === id ? 'focus' : ''} ${explanation?.impliedBy.includes(id) ? 'implies' : ''}`,
+        title:
+          tone === 'conflict'
+            ? 'V konfliktu s jinou vazbou'
+            : mark === 'duplicate'
+              ? 'Duplicita: stejnou vazbu už skica má'
+              : mark === 'surplus'
+                ? 'Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých.'
+                : 'Kliknutím se ukáže, jestli vazba plyne z jiných',
         onmouseenter: () => ((m.hoverConstraint = id), this.renderScene()),
         onmouseleave: () => ((m.hoverConstraint = undefined), this.renderScene()),
+        // klik na řádek (ne na jeho pole a tlačítka) vazbu označí nebo označení zruší
+        onclick: (event: Event) => {
+          if ((event.target as HTMLElement).closest('input, button, label')) return;
+          m.focus = m.focus === id ? undefined : id;
+          this.renderPanel();
+          this.renderScene();
+        },
       });
-      row.append(h('span', { className: 'name' }, `${CONSTRAINT_NAMES[c.type]} `, h('small', {}, operandsOf(c).join(', '))));
+      const tag = mark === 'duplicate' ? ' · duplicita' : mark === 'surplus' ? ' · navíc' : '';
+      row.append(h('span', { className: 'name' }, `${CONSTRAINT_NAMES[c.type]} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
       if ('value' in c) {
         const scale = c.type === 'angle' ? 180 / Math.PI : 1;
         const shown = c.driving ? c.value : (result.measurements[id] ?? measure(c, view) ?? c.value);
@@ -1087,7 +1157,9 @@ export class App {
       row.append(h('button', { className: 'icon', textContent: '✕', title: 'Smazat vazbu', onclick: () => this.run({ type: 'removeConstraint', sketch: m.id, id }) }));
       return row;
     });
-    out.push(h('h2', {}, `Vazby a kóty (${rows.length})`), ...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
+    out.push(h('h2', {}, `Vazby a kóty (${rows.length})`));
+    if (m.focus && explanation) out.push(h('p', { className: 'explain' }, h('strong', {}, label(m.focus)), ` ${explanationText(feature.constraints[m.focus], m.focus, explanation, diagnosis, label)}`));
+    out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
 
     // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
     const warnings = this.view().evaluation.features[m.id]?.warnings ?? [];
@@ -1359,28 +1431,71 @@ export class App {
     const { feature, view, result, frame } = context;
     const selected = new Set(m.selection);
     const hovered = new Set(m.hoverConstraint && feature.constraints[m.hoverConstraint] ? operandsOf(feature.constraints[m.hoverConstraint]) : m.hover ? [m.hover] : []);
+    // Diagnostika: volné entity modře, určené tmavě; označená vazba a vazby, ze kterých plyne.
+    const diagnosis = this.engine.diagnoseSketch(m.id);
+    const free = freeEntities(diagnosis, view);
+    const focus = m.focus && feature.constraints[m.focus] ? m.focus : undefined;
+    const focused = new Set(focus ? operandsOf(feature.constraints[focus]) : []);
+    const implying = new Set(focus ? this.explain(m.id, focus, diagnosis).impliedBy.flatMap((id) => operandsOf(feature.constraints[id])) : []);
 
     if (result.valid) for (const region of result.regions) model.fills.push({ frame, loops: region.loops, color: COLOR.region, opacity: 0.1 });
 
-    const lines: Record<'own' | 'construction' | 'external' | 'selected' | 'hover', number[]> = { own: [], construction: [], external: [], selected: [], hover: [] };
+    const lines: Record<'own' | 'determined' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };
     for (const curve of view.curves.values()) {
-      const bucket = selected.has(curve.id) ? 'selected' : hovered.has(curve.id) ? 'hover' : !curve.own ? 'external' : curve.construction ? 'construction' : 'own';
+      const bucket = selected.has(curve.id)
+        ? 'selected'
+        : hovered.has(curve.id)
+          ? 'hover'
+          : focused.has(curve.id)
+            ? 'focus'
+            : implying.has(curve.id)
+              ? 'implying'
+              : !curve.own
+                ? 'external'
+                : curve.construction
+                  ? 'construction'
+                  : free && !free.curves.has(curve.id)
+                    ? 'determined'
+                    : 'own';
       pushPolyline(lines[bucket], frame, polyline(curve.shape));
     }
     model.lines.push(
+      { segments: lines.determined, color: COLOR.determined, width: 2, onTop: true },
       { segments: lines.own, color: COLOR.sketch, width: 2, onTop: true },
       { segments: lines.construction, color: COLOR.construction, width: 1.5, dashed: true, onTop: true },
       { segments: lines.external, color: COLOR.external, width: 2, onTop: true },
+      { segments: lines.implying, color: COLOR.implied, width: 3, onTop: true },
+      { segments: lines.focus, color: COLOR.hover, width: 4, onTop: true },
       { segments: lines.hover, color: COLOR.hover, width: 3, onTop: true },
       { segments: lines.selected, color: COLOR.select, width: 3, onTop: true },
     );
 
-    const points: Record<'own' | 'fixed' | 'selected' | 'hover', number[]> = { own: [], fixed: [], selected: [], hover: [] };
+    const points: Record<'own' | 'determined' | 'fixed' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], fixed: [], selected: [], hover: [], focus: [], implying: [] };
     for (const point of view.points.values()) {
-      const bucket = selected.has(point.id) ? 'selected' : hovered.has(point.id) ? 'hover' : point.own ? 'own' : 'fixed';
+      const bucket = selected.has(point.id)
+        ? 'selected'
+        : hovered.has(point.id)
+          ? 'hover'
+          : focused.has(point.id)
+            ? 'focus'
+            : implying.has(point.id)
+              ? 'implying'
+              : !point.own
+                ? 'fixed'
+                : free && !free.points.has(point.id)
+                  ? 'determined'
+                  : 'own';
       points[bucket].push(...toWorld(frame, point.at[0], point.at[1]));
     }
-    model.points.push({ positions: points.own, color: COLOR.sketch, size: 7 }, { positions: points.fixed, color: COLOR.external, size: 7 }, { positions: points.hover, color: COLOR.hover, size: 10 }, { positions: points.selected, color: COLOR.select, size: 10 });
+    model.points.push(
+      { positions: points.determined, color: COLOR.determined, size: 7 },
+      { positions: points.own, color: COLOR.sketch, size: 7 },
+      { positions: points.fixed, color: COLOR.external, size: 7 },
+      { positions: points.implying, color: COLOR.implied, size: 10 },
+      { positions: points.focus, color: COLOR.hover, size: 11 },
+      { positions: points.hover, color: COLOR.hover, size: 10 },
+      { positions: points.selected, color: COLOR.select, size: 10 },
+    );
 
     // kóty jako popisky u svých operandů
     for (const [id, c] of Object.entries(feature.constraints)) {

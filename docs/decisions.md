@@ -565,6 +565,7 @@ Rozhodnuto 2026-11-14 na podnět vlastníka projektu. Skica nakreslená v aplika
 - **Přesnou duplicitu engine odmítne** už v příkazu (`addConstraint`, přepnutí kóty na řídicí). Druhá kóta téhož s jinou hodnotou je také duplicita: správná cesta je upravit tu stávající. Načtení duplicity přijímá, jinak by nešly otevřít dokumenty ze starší verze; hodnotu takové kóty jde dál měnit.
 - **Katalog vazeb** (`engine/src/catalog.ts`) je jediný zdroj pravdy o tom, jaké vazby engine zná, jaké mají operandy a hodnoty. Řídí se jím validace příkazů, hledání duplicit i rozbor.
 - **Validační scénář 7** (skica krok za krokem s diagnostikou) a testy nad skicou, ze které podnět vzešel.
+- **Zobrazení v aplikaci.** V seznamu vazeb je označená jen sada navržená k odebrání, ne všechny členy závislých skupin: souhrn „6 vazeb navíc" tak odpovídá šesti označeným řádkům. Z čeho vazba plyne, ukáže kliknutí na ni (podbarvení v seznamu, zvýraznění v pohledu, věta v panelu). Hromadně jde smazat jen duplicity; u ostatních je na uživateli, kterou vazbu ze skupiny nechá. Volné entity jsou modré a určené tmavé, jak je v CAD zvykem. Podrobnosti jsou v ui.md, Stav implementace.
 
 Nálezy revize a jejich řešení:
 

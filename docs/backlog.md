@@ -64,7 +64,7 @@ Závěr zkoušky: žádná z konstrukcí nevyžaduje jiný tvar dokumentu, než 
 
 ## Direction after D35 (discussion of 2026-11-14)
 
-From a discussion with the owner. The owner confirmed the intended use and, on 2026-11-14, the order of the steps in "Proposed order" (recorded as D36 in [decisions.md](decisions.md)). The designs of the individual features below remain proposals: each step gets its own decision when its work starts.
+From a discussion with the owner. The owner confirmed the intended use and, on 2026-11-14, the order of the steps in "Proposed order" (recorded as D36 in [decisions/D36-order-after-d35.md](decisions/D36-order-after-d35.md); the plan of the work is [d36/README.md](d36/README.md)). The designs of the individual features below remain proposals: each step gets its own decision when its work starts.
 
 **Intended use (owner, 2026-11-14).** Design for a 3D printer and tinkering. Brackets and boxes are the base; most parts will be for a robotic arm and similar mechanisms. Models are mostly not drawn by hand: they are built together with an AI through MCP.
 

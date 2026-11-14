@@ -68,7 +68,9 @@ The docs are living documents kept good enough to repeat the implementation from
 | File | Content |
 |---|---|
 | `docs/requirements.md` | What the PoC must do, validation scenarios |
-| `docs/decisions.md` | Decisions D1 to D36 with reasons and alternatives; D36 is the order of work ahead |
+| `docs/decisions.md` | Overview table of decisions D1 to D36 and the short ones in full, with reasons and alternatives |
+| `docs/decisions/` | Decisions too long for the overview; `D36-order-after-d35.md` is the order of work ahead |
+| `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, and the design of each package |
 | `docs/architecture.md` | The design as implemented |
 | `docs/ui.md` | UI functions as tables of commands and state read; implementation status of the app |
 | `docs/backlog.md` | Features not done yet and why the design does not block them |

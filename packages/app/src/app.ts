@@ -236,6 +236,10 @@ export class App {
         else if (status === 'connecting') this.say('Čekám na MCP server (spouští ho klient AI)…');
         this.renderToolbar();
       },
+      onDisplaced: () => {
+        this.bridge = undefined;
+        this.say('K AI se připojila jiná aplikace (jiné okno nebo záložka); tady je propojení vypnuté.', true);
+      },
       // Změna od AI pod rozpracovanou operací (vysunutí, rovina) by jí vzala půdu, proto se
       // operace ruší ještě před změnou; jen když příkaz dokument opravdu změní. Načtení jiného
       // dokumentu vymění i stav UI, stejně jako Otevřít; při neúspěchu se stav vrátí.
@@ -406,6 +410,7 @@ export class App {
   private newDocument(): void {
     this.resetUi();
     this.engine.load(JSON.stringify(emptyDocument()));
+    this.bridge?.documentReplaced();
     this.say('Nový dokument.');
   }
 
@@ -416,6 +421,7 @@ export class App {
     const restore = this.swapUi();
     const result = this.engine.load(text);
     if (result.ok) {
+      this.bridge?.documentReplaced();
       this.say('Dokument načten.');
       return this.fit();
     }

@@ -646,6 +646,14 @@ Nálezy nezávislé revize a jejich řešení:
 | Volby příkazové řádky: neplatný port, chybějící hodnota a neznámá volba se tiše ignorovaly | Jsou to chyby spuštění s nápovědou |
 
 Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
+Další revize (2026-11-14, dodaná vlastníkem projektu):
+
+| Nález | Řešení |
+|---|---|
+| Po Nový nebo Otevřít v aplikaci zůstal zapamatovaný soubor předchozího dokumentu a `save_document` bez cesty ho přepsal novým dokumentem | Aplikace s každou odpovědí hlásí pořadové číslo dokumentu; zapamatovaný soubor platí jen pro dokument, ke kterému patří. `session_status` si číslo před odpovědí ověří |
+| Dvě aplikace se zapnutým propojením si spojení přebíraly dokola (vytlačená se po třech sekundách připojila znovu) a příkaz mohl změnit nesprávný dokument | Vytlačená aplikace dostane událost `displaced`, propojení v ní zhasne a sama se nepřipojuje |
+| `explain_constraint` radil odebrat kteroukoli vazbu z `impliedBy`, i když by se tím skica uvolnila (bod na úsečce plyne ze středu úsečky) | Rada se řídí tím, které z těch vazeb jsou samy navíc; každá má příznak `removableInstead` (stejné pravidlo jako v panelu aplikace) |
+
 
 ## D34 Souměrnost a střed úsečky
 

@@ -28,15 +28,19 @@ const COMPACT_FROM = 20_000; // znaků
 
 export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const { engine, bridge } = options;
-  // Každý dokument má svůj soubor: vlastní dokument serveru jeden, dokument v aplikaci druhý
-  // (a jen po dobu jednoho připojení aplikace). Uložení bez cesty tak nikdy nezapíše dokument
-  // jednoho enginu přes soubor druhého.
+  // Každý dokument má svůj soubor: vlastní dokument serveru jeden, dokument v aplikaci druhý.
+  // Soubor aplikace platí jen po dobu jednoho připojení a jen pro dokument, který v ní byl
+  // otevřený, když se do souboru ukládalo nebo z něj načítalo: po Nový nebo Otevřít v aplikaci
+  // už neplatí. Uložení bez cesty tak nikdy nezapíše jeden dokument přes soubor jiného.
   let serverFile = options.file === undefined ? undefined : resolve(options.file);
-  let appFile: { session: number; path: string } | undefined;
-  const fileOf = (session: number | undefined): string | undefined => (session === undefined ? serverFile : appFile?.session === session ? appFile.path : undefined);
+  let appFile: { session: number; document: number | undefined; path: string } | undefined;
+  // Číslo dokumentu aplikace je tak čerstvé jako její poslední odpověď; kdo ho potřebuje přesně,
+  // zavolá předtím nástroj aplikace (_save, _ping).
+  const fileOf = (session: number | undefined): string | undefined =>
+    session === undefined ? serverFile : appFile?.session === session && appFile.document === bridge?.document() ? appFile.path : undefined;
   const remember = (session: number | undefined, path: string) => {
     if (session === undefined) serverFile = path;
-    else appFile = { session, path };
+    else appFile = { session, document: bridge?.document(), path };
   };
 
   // Nástroj se provede nad enginem aplikace, je-li připojená, jinak nad vlastním. `session` je
@@ -67,6 +71,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       run: async () => {
         const session = bridge?.session();
+        if (session !== undefined) await call(session, '_ping'); // aplikace mohla mezitím dokument vyměnit
         return {
           engine: session === undefined ? 'server' : 'app',
           file: fileOf(session) ?? null,
@@ -103,9 +108,12 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       inputSchema: PATH('cesta k souboru .json; výchozí je soubor tohoto dokumentu (viz session_status)', false),
       run: async (args) => {
         const session = bridge?.session();
-        const target = path(args, false) ?? fileOf(session);
-        if (target === undefined) throw new Failure('dokument nemá soubor; zadejte "path"');
+        const given = path(args, false);
+        // Nejdřív dokument, pak soubor: s dokumentem přijde i to, jestli je to pořád ten, kterému
+        // zapamatovaný soubor patří.
         const json = (await must(session, '_save')) as string;
+        const target = given ?? fileOf(session);
+        if (target === undefined) throw new Failure('dokument nemá soubor; zadejte "path"');
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, json);
         remember(session, target);

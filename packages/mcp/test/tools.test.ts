@@ -142,14 +142,37 @@ describe('dotazy na skicu', () => {
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Rovnoběžně (ab, cd)' });
     expect(detail.advice.join(' ')).toMatch(/Vazby navíc: par\./);
-    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toMatchObject({
+    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toEqual({
+      constraint: { id: 'par', label: 'Rovnoběžně (ab, cd)' },
       redundant: true,
       impliedBy: [
-        { id: 'h1', label: 'Vodorovně (ab)' },
-        { id: 'h2', label: 'Vodorovně (cd)' },
+        { id: 'h1', label: 'Vodorovně (ab)', removableInstead: true },
+        { id: 'h2', label: 'Vodorovně (cd)', removableInstead: true },
       ],
+      note: 'Odebrat jde vazba sama nebo kterákoli z vazeb v impliedBy; geometrie se nezmění.',
     });
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'w' })).toMatchObject({ redundant: false, impliedBy: [] });
+  });
+
+  it('explain_constraint neradí odebrat vazbu, bez které by se skica uvolnila', () => {
+    // bod na úsečce plyne ze středu úsečky, ale střed určuje i polohu bodu podél úsečky
+    const engine = newEngine();
+    rectangle(engine, false);
+    execute(engine, { type: 'addPoint', sketch: 's', id: 'm', x: 18, y: 1 });
+    execute(engine, constrain('mid', { type: 'midpoint', point: 'm', line: 'ab' }));
+    execute(engine, constrain('on', { type: 'pointOnCurve', point: 'm', curve: 'ab' }));
+    const freedom = () => ok(engine, 'get_sketch', { sketch: 's' }).diagnosis.degreesOfFreedom;
+    const before = freedom();
+    const explained = ok(engine, 'explain_constraint', { sketch: 's', constraint: 'on' });
+    expect(explained).toMatchObject({ redundant: true, impliedBy: [{ id: 'mid', removableInstead: false }] });
+    expect(explained.note).toBe('Odebrat jde jen vazba sama; geometrie se nezmění. Vazby v impliedBy odebrat nejde: určují víc než tuhle vazbu a skica by se uvolnila.');
+    // rada platí: bez `on` se volnost nezmění, bez `mid` vzroste
+    expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'on' } }).sketches[0].degreesOfFreedom).toBe(before);
+    expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'mid' } }).sketches[0].degreesOfFreedom).toBe(before + 1);
+    // smíšený případ: jedna z vazeb, ze kterých plyne, je sama navíc, druhá ne
+    execute(engine, constrain('co', { type: 'coincident', a: 'a', b: 'origin' }));
+    execute(engine, constrain('hd', { type: 'horizontalDistance', a: 'origin', b: 'a', value: 0, driving: true }));
+    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'hd' })).toMatchObject({ impliedBy: [{ id: 'co', removableInstead: false }] });
   });
 
   it('konflikt a referenční kóta', () => {

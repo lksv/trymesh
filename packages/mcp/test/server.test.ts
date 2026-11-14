@@ -195,7 +195,7 @@ describe('most do běžící aplikace', () => {
     expect(app.getState().document.features.map((feature) => feature.id)).toEqual(['s']);
     expect(session.engine.getState().document.features).toEqual([]);
     expect(notified).toBe(1);
-    expect(seen).toEqual(['execute']);
+    expect(seen).toEqual(['_ping', 'execute']); // _ping: dotaz serveru na dokument při session_status
     // chyba nástroje a výsledek dotazu projdou mostem beze změny
     expect(await session.call('get_sketch', { sketch: 'nic' })).toEqual({ error: 'skica "nic" v dokumentu není' });
     expect((await session.call('get_model')).features).toEqual([expect.objectContaining({ id: 's', status: 'ok' })]);
@@ -251,6 +251,48 @@ describe('most do běžící aplikace', () => {
     connection = connectBridge(newEngine(), { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
     await until(() => status === 'connected' && bridge.connected(), 'druhé připojení aplikace');
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
+    connection.stop();
+    await until(() => !bridge.connected(), 'odpojení');
+    await session.close();
+  });
+
+  it('výměna dokumentu v aplikaci: soubor předchozího dokumentu novému nepatří', async () => {
+    const first = join(dir, 'prvni-dokument.json');
+    const second = join(dir, 'druhy-dokument.json');
+    const session = await connect({ bridge });
+    const app = newEngine();
+    let status: BridgeStatus = 'off';
+    const connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
+    await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
+    const ids = async (path: string) => JSON.parse(await readFile(path, 'utf8')).features.map((feature: { id: string }) => feature.id);
+
+    await session.call('execute', { command: emptySketch('a', { kind: 'base', plane: 'XY' }) });
+    await session.call('save_document', { path: first });
+    expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: first });
+    // uživatel v aplikaci klikne na Nový (nebo Otevřít): spojení zůstává, dokument je jiný
+    expect(app.load(JSON.stringify({ ...app.getState().document, features: [] })).ok).toBe(true);
+    connection.documentReplaced();
+    await session.call('execute', { command: emptySketch('b', { kind: 'base', plane: 'XY' }) });
+    expect(await session.call('save_document')).toEqual({ error: 'dokument nemá soubor; zadejte "path"' });
+    expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
+    expect(await ids(first)).toEqual(['a']);
+    // nový dokument dostane vlastní soubor a ukládání bez cesty pak patří jemu
+    await session.call('save_document', { path: second });
+    await session.call('execute', { command: emptySketch('c', { kind: 'base', plane: 'XY' }) });
+    await session.call('save_document');
+    expect(await ids(second)).toEqual(['b', 'c']);
+    expect(await ids(first)).toEqual(['a']);
+
+    // výměna těsně před dotazem na stav, bez jiného volání mezi tím: stav starý soubor neukáže
+    app.load(JSON.stringify({ ...app.getState().document, features: [] }));
+    connection.documentReplaced();
+    expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
+    // dokument otevřený serverem do aplikace svůj soubor má
+    expect(await session.call('open_document', { path: first })).toMatchObject({ file: first });
+    expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: first });
+    await session.call('save_document');
+    expect(await ids(first)).toEqual(['a']);
+    expect(await ids(second)).toEqual(['b', 'c']);
     connection.stop();
     await until(() => !bridge.connected(), 'odpojení');
     await session.close();
@@ -324,16 +366,29 @@ describe('most do běžící aplikace', () => {
     expect(local.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
     expect(await local.json()).toEqual({ service: 'trymesh-mcp-bridge', connected: false });
 
+    // Vytlačená aplikace se znovu nepřipojuje: jinak by si obě spojení přebíraly dokola
+    // a příkaz od AI by mohl změnit nesprávný dokument.
     const [first, second] = [newEngine(), newEngine()];
-    const states: Record<string, BridgeStatus> = {};
-    const one = connectBridge(first, { url, retryMs: 10_000, onStatus: (next) => (states.one = next) });
-    await until(() => states.one === 'connected', 'první aplikace');
-    const two = connectBridge(second, { url, retryMs: 10_000, onStatus: (next) => (states.two = next) });
-    await until(() => states.two === 'connected' && states.one === 'connecting', 'druhá aplikace nahradí první');
+    const states: Record<string, BridgeStatus[]> = { one: [], two: [] };
+    let displaced = 0;
+    const one = connectBridge(first, { url, retryMs: 10, onStatus: (next) => states.one.push(next), onDisplaced: () => displaced++ });
+    await until(() => states.one.at(-1) === 'connected', 'první aplikace');
+    const two = connectBridge(second, { url, retryMs: 10, onStatus: (next) => states.two.push(next), onDisplaced: () => displaced++ });
+    await until(() => states.two.at(-1) === 'connected' && states.one.at(-1) === 'off', 'druhá aplikace nahradí první');
+    await new Promise((resolve) => setTimeout(resolve, 150)); // mnohonásobek prodlevy mezi pokusy
+    expect(states.one).toEqual(['connecting', 'connected', 'off']);
+    expect(states.two).toEqual(['connecting', 'connected']);
+    expect(displaced).toBe(1);
     const session = await connect({ bridge });
     await session.call('execute', { command: emptySketch('s', { kind: 'base', plane: 'XY' }) });
     expect(second.getState().document.features).toHaveLength(1);
     expect(first.getState().document.features).toHaveLength(0);
+    // vytlačenou aplikaci jde připojit znovu jen výslovně (tlačítkem AI): pak převezme spojení ona
+    const again = connectBridge(first, { url, retryMs: 10, onStatus: (next) => states.one.push(next) });
+    await until(() => states.one.at(-1) === 'connected' && states.two.at(-1) === 'off', 'první aplikace se připojí znovu');
+    await session.call('execute', { command: emptySketch('t', { kind: 'base', plane: 'XY' }) });
+    expect(first.getState().document.features.map((feature) => feature.id)).toEqual(['t']);
+    again.stop();
     one.stop();
     two.stop();
     await until(() => !bridge.connected(), 'odpojení');

@@ -16,6 +16,9 @@ export interface Bridge {
   port: number;
   connected(): boolean;
   session(): number | undefined; // číslo připojení aplikace; s novým připojením se mění
+  // Pořadové číslo dokumentu v připojené aplikaci, jak ho hlásila v poslední odpovědi. Roste,
+  // kdykoli aplikace dokument vymění za jiný (Nový, Otevřít, načtení od AI).
+  document(): number | undefined;
   call(name: string, args: Record<string, unknown>): Promise<ToolOutcome>;
   close(): Promise<void>;
 }
@@ -39,7 +42,7 @@ function allowedOrigin(origin: string | undefined): string | undefined | false {
 
 // port 0 = volný port přidělí systém. Když port otevřít nejde (běží jiný server), slib se zamítne.
 export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge> {
-  let client: { response: ServerResponse; session: number } | undefined;
+  let client: { response: ServerResponse; session: number; document: number } | undefined;
   let sessions = 0;
   let calls = 0;
   const pending = new Map<number, { resolve: (outcome: ToolOutcome) => void; timer: ReturnType<typeof setTimeout>; session: number }>();
@@ -73,10 +76,12 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
       const session = ++sessions;
       response.writeHead(200, { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       response.write(`event: hello\ndata: ${JSON.stringify({ session })}\n\n`);
-      client = { response, session };
+      client = { response, session, document: 0 };
       if (previous) {
+        // Vytlačená aplikace se dozví proč, aby se nepřipojovala znovu: dvě aplikace by si
+        // jinak spojení přebíraly dokola a příkaz by mohl skončit v nesprávném dokumentu.
         drop(previous.session, 'připojila se jiná aplikace');
-        previous.response.end();
+        previous.response.end('event: displaced\ndata: {}\n\n');
       }
       const keepalive = setInterval(() => response.write(': keepalive\n\n'), KEEPALIVE_MS);
       response.on('close', () => {
@@ -90,8 +95,11 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
       request.on('data', (chunk: string) => (body += chunk));
       request.on('end', () => {
         try {
-          const reply = JSON.parse(body) as { id: number; session: number; outcome: ToolOutcome };
-          if (pending.get(reply.id)?.session === reply.session && typeof reply.outcome?.ok === 'boolean') settle(reply.id, reply.outcome);
+          const reply = JSON.parse(body) as { id: number; session: number; outcome: ToolOutcome; document?: number };
+          if (pending.get(reply.id)?.session === reply.session && typeof reply.outcome?.ok === 'boolean') {
+            if (client?.session === reply.session && typeof reply.document === 'number') client.document = reply.document;
+            settle(reply.id, reply.outcome);
+          }
           response.writeHead(204, cors).end();
         } catch {
           response.writeHead(400, cors).end('bad reply');
@@ -113,6 +121,7 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
         port: listening,
         connected: () => client !== undefined,
         session: () => client?.session,
+        document: () => client?.document,
         call(name, args) {
           const target = client;
           if (!target) return Promise.resolve({ ok: false, error: 'aplikace není připojená' });

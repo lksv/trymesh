@@ -350,15 +350,24 @@ export function tools(): Tool[] {
         const id = text(args, 'constraint');
         if (!Object.prototype.hasOwnProperty.call(feature.constraints, id)) throw new ToolError(`vazba "${id}" ve skice "${feature.id}" není`);
         const explanation = engine.explainConstraint(feature.id, id);
+        // Místo vazby samé jde odebrat jen ta z vazeb, ze kterých plyne, která je sama celá navíc.
+        // Vazba se dvěma rovnicemi (střed úsečky, totožnost) může téhle stačit jen jednou z nich
+        // a po jejím odebrání by se skica uvolnila.
+        const redundant = new Set(explanation.impliedBy.length > 0 ? engine.diagnoseSketch(feature.id).redundant : []);
+        const others = explanation.impliedBy.filter((other) => redundant.has(other));
         return {
           constraint: { id, label: constraintLabel(feature.constraints[id]) },
           redundant: explanation.redundant,
-          impliedBy: explanation.impliedBy.map((other) => ({ id: other, label: constraintLabel(feature.constraints[other]) })),
+          impliedBy: explanation.impliedBy.map((other) => ({ id: other, label: constraintLabel(feature.constraints[other]), removableInstead: redundant.has(other) })),
           note: !explanation.redundant
             ? 'Vazba z ostatních neplyne (nebo je to referenční kóta, případně skica není vyřešená).'
             : explanation.impliedBy.length === 0
               ? 'Vazba plyne už z definice křivky.'
-              : 'Odebrat jde vazba sama nebo kterákoli z vazeb v impliedBy; geometrie se nezmění.',
+              : others.length === explanation.impliedBy.length
+                ? 'Odebrat jde vazba sama nebo kterákoli z vazeb v impliedBy; geometrie se nezmění.'
+                : others.length === 0
+                  ? 'Odebrat jde jen vazba sama; geometrie se nezmění. Vazby v impliedBy odebrat nejde: určují víc než tuhle vazbu a skica by se uvolnila.'
+                  : `Odebrat jde vazba sama, nebo místo ní ${others.join(', ')} (removableInstead); geometrie se nezmění. Ostatní vazby v impliedBy odebrat nejde: skica by se uvolnila.`,
         };
       },
     },
@@ -402,6 +411,8 @@ export function tools(): Tool[] {
     },
     // Vnitřní nástroje: soubory čte a zapisuje server, engine může běžet v aplikaci.
     { name: '_save', description: '', inputSchema: NONE, hidden: true, run: (engine) => engine.save() },
+    // Dotaz bez účinku: s odpovědí přijde serveru i pořadové číslo dokumentu v aplikaci.
+    { name: '_ping', description: '', inputSchema: NONE, hidden: true, run: () => null },
     {
       name: '_load',
       description: '',

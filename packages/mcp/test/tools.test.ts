@@ -1,0 +1,282 @@
+// Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
+// a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
+import { CONSTRAINTS, type Command, type Constraint, type Engine } from '@trymesh/engine';
+import { describe, expect, it } from 'vitest';
+import { apiText, constraintCatalog, engineTypes } from '../src/api';
+import { callTool, tools } from '../src/tools';
+import { newEngine } from './kit';
+
+const ok = (engine: Engine, name: string, args: Record<string, unknown> = {}): any => {
+  const outcome = callTool(engine, name, args);
+  if (!outcome.ok) throw new Error(outcome.error);
+  return outcome.result;
+};
+const execute = (engine: Engine, command: Command) => ok(engine, 'execute', { command });
+const sketch = (id: string): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
+const constrain = (id: string, constraint: Constraint): Command => ({ type: 'addConstraint', sketch: 's', id, constraint });
+
+// Obdélník 40 × 30 od ruky; `anchored` ho přichytí k počátku.
+function rectangle(engine: Engine, anchored: boolean) {
+  const corners: [string, number, number][] = [
+    ['a', 0.4, -0.3],
+    ['b', 39.2, 0.6],
+    ['c', 40.7, 29.5],
+    ['d', -0.6, 30.4],
+  ];
+  return execute(engine, {
+    type: 'batch',
+    commands: [
+      sketch('s'),
+      ...corners.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 's', id, x, y })),
+      ...corners.map(([id], i): Command => ({ type: 'addCurve', sketch: 's', id: `${id}${corners[(i + 1) % 4][0]}`, curve: { type: 'line', a: id, b: corners[(i + 1) % 4][0] } })),
+      constrain('h1', { type: 'horizontal', line: 'ab' }),
+      constrain('v1', { type: 'vertical', line: 'bc' }),
+      constrain('h2', { type: 'horizontal', line: 'cd' }),
+      constrain('v2', { type: 'vertical', line: 'da' }),
+      constrain('w', { type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true }),
+      constrain('h', { type: 'verticalDistance', a: 'b', b: 'c', value: 30, driving: true }),
+      ...(anchored ? [constrain('fix', { type: 'coincident', a: 'a', b: 'origin' })] : []),
+    ],
+  });
+}
+
+describe('popis API', () => {
+  it('katalog vazeb obsahuje každou vazbu enginu a každý příklad engine přijme', () => {
+    const catalog = constraintCatalog();
+    expect(catalog.map((entry) => entry.type).sort()).toEqual(Object.keys(CONSTRAINTS).sort());
+    // Skica s entitami všech druhů; příklad z katalogu se doplní skutečnými ID a pošle enginu.
+    const engine = newEngine();
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        sketch('s'),
+        ...[1, 2, 3, 4, 5, 6, 7, 8].map((i): Command => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x: 10 * i, y: 3 * i * (i % 2 ? 1 : -1) })),
+        { type: 'addCurve', sketch: 's', id: 'l1', curve: { type: 'line', a: 'p1', b: 'p2' } },
+        { type: 'addCurve', sketch: 's', id: 'l2', curve: { type: 'line', a: 'p3', b: 'p4' } },
+        { type: 'addCurve', sketch: 's', id: 'k1', curve: { type: 'circle', center: 'p5' }, radius: 4 },
+        { type: 'addCurve', sketch: 's', id: 'k2', curve: { type: 'circle', center: 'p6' }, radius: 6 },
+      ],
+    });
+    const pick: Record<string, string[]> = { point: ['p7', 'p8'], line: ['l1', 'l2'], circle: ['k1', 'k2'], arc: [] };
+    for (const entry of catalog) {
+      const used: Record<string, number> = {};
+      const example = { ...entry.example };
+      for (const operand of entry.operands) {
+        // první druh, pro který ještě zbývá entita; tečnost dvou úseček engine nebere, proto u ní kružnice
+        const kind = (entry.type === 'tangent' ? ['circle'] : operand.kinds).find((candidate) => (used[candidate] ?? 0) < pick[candidate].length) as string;
+        example[operand.field] = pick[kind][used[kind] ?? 0];
+        used[kind] = (used[kind] ?? 0) + 1;
+      }
+      const result = callTool(engine, 'preview', { command: { type: 'addConstraint', sketch: 's', id: `x-${entry.type}`, constraint: example } });
+      expect(result, entry.type).toMatchObject({ ok: true, result: { ok: true } });
+    }
+  });
+
+  it('typy se berou ze zdroje enginu: obsahují příkazy a dokument, neobsahují porty', () => {
+    const types = engineTypes();
+    expect(types).toContain('export type Command =');
+    expect(types).toContain('export interface SketchFeature');
+    expect(types).toContain('export interface SketchDiagnosis');
+    expect(types).not.toContain('interface SolidKernel');
+    expect(types).not.toContain('interface SketchSolver');
+    // každý typ vazby z katalogu je i v typech
+    for (const type of Object.keys(CONSTRAINTS)) expect(types, type).toContain(`'${type}'`);
+  });
+
+  it('describe_api vrací konvence, katalog a typy; seznam nástrojů neukazuje vnitřní nástroje', () => {
+    const description: string = ok(newEngine(), 'describe_api');
+    expect(description).toBe(apiText());
+    expect(description).toMatch(/^# Konvence\n- Délky jsou v milimetrech/);
+    expect(description).toContain('export type Command =');
+    for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
+    expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: nezáporná, mm }');
+    const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'explain_constraint', 'get_body', 'execute', 'preview', 'undo', 'redo']);
+    // popis execute vyjmenuje vazby z katalogu
+    const executeTool = tools().find((tool) => tool.name === 'execute')!;
+    for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
+  });
+});
+
+describe('dotazy na skicu', () => {
+  it('get_sketch u neukotveného obdélníku řekne, co je volné a čím skicu dourčit', () => {
+    const engine = newEngine();
+    expect(rectangle(engine, false)).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', degreesOfFreedom: 2, profileValid: true, regions: 1 }] });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.status).toBe('ok');
+    expect(detail.diagnosis).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [], removable: [] });
+    expect(detail.points).toEqual(['a', 'b', 'c', 'd'].map((id) => ({ id, at: [expect.any(Number), expect.any(Number)], freedom: 2 })));
+    expect(detail.curves[0]).toEqual({ id: 'ab', type: 'line', a: 'a', b: 'b' });
+    expect(detail.constraints.find((c: { id: string }) => c.id === 'w')).toEqual({ id: 'w', label: 'Vodorovná vzdálenost (a, b)', type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
+    expect(detail.regions).toEqual([{ ref: { outerLoop: ['ab', 'bc', 'cd', 'da'] }, area: expect.closeTo(1200, 4), holes: 0 }]);
+    expect(detail.advice.join(' ')).toMatch(/2 stupně volnosti/);
+    expect(detail.advice.join(' ')).toMatch(/určení polohy jednoho z bodů a, b, c, d \(například vazbou coincident/);
+  });
+
+  it('rada při jednom stupni volnosti nenavrhuje totožnost, která by skončila konfliktem', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, { type: 'removeConstraint', sketch: 's', id: 'h' });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.diagnosis.degreesOfFreedom).toBe(1);
+    const advice = detail.advice.join(' ');
+    expect(advice).toMatch(/1 stupeň volnosti/);
+    expect(advice).toMatch(/určení polohy jednoho z bodů c, d \(jednou kótou nebo vazbou/);
+    expect(advice).not.toMatch(/například vazbou coincident/);
+    // totožnost s počátkem je opravdu konflikt, jedna kóta skicu určí
+    expect(ok(engine, 'preview', { command: constrain('bad', { type: 'coincident', a: 'c', b: 'origin' }) }).sketches[0]).toMatchObject({ solved: false });
+    expect(execute(engine, constrain('fixed', { type: 'verticalDistance', a: 'origin', b: 'c', value: 30, driving: true })).sketches[0]).toEqual({ id: 's', solved: true, degreesOfFreedom: 0, profileValid: true, regions: 1 });
+  });
+
+  it('počet stupňů volnosti se skloňuje', () => {
+    const engine = newEngine();
+    execute(engine, { type: 'batch', commands: [sketch('s'), { type: 'addPoint', sketch: 's', id: 'p', x: 1, y: 1 }, { type: 'addPoint', sketch: 's', id: 'q', x: 5, y: 1 }, { type: 'addPoint', sketch: 's', id: 'r', x: 9, y: 4 }] });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice[0]).toMatch(/^Skica má 6 stupňů volnosti/);
+  });
+
+  it('po ukotvení je skica určená; vazba navíc se označí a explain_constraint ji vysvětlí', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice).toEqual(['Skica je plně určená.']);
+    execute(engine, constrain('par', { type: 'parallel', a: 'ab', b: 'cd' }));
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Rovnoběžně (ab, cd)' });
+    expect(detail.advice.join(' ')).toMatch(/Vazby navíc: par\./);
+    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toMatchObject({
+      redundant: true,
+      impliedBy: [
+        { id: 'h1', label: 'Vodorovně (ab)' },
+        { id: 'h2', label: 'Vodorovně (cd)' },
+      ],
+    });
+    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'w' })).toMatchObject({ redundant: false, impliedBy: [] });
+  });
+
+  it('konflikt a referenční kóta', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, constrain('ref', { type: 'distance', a: 'a', b: 'c', value: 1, driving: false }));
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).constraints.find((c: { id: string }) => c.id === 'ref').measured).toBeCloseTo(50, 5);
+    const result = execute(engine, constrain('bad', { type: 'distance', a: 'a', b: 'd', value: 31, driving: true }));
+    expect(result.problems).toEqual([expect.objectContaining({ id: 's', status: 'warning', warnings: [expect.objectContaining({ code: 'sketchConflict' })] })]);
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.diagnosis.status).toBe('conflict');
+    // přehledy u nevyřešené skici stupně volnosti neuvádějí
+    expect(result.sketches).toEqual([{ id: 's', solved: false, conflicting: expect.arrayContaining(['bad']), profileValid: true, regions: 1 }]);
+    expect(ok(engine, 'get_model').features[0]).toMatchObject({ id: 's', solved: false });
+    expect(ok(engine, 'get_model').features[0]).not.toHaveProperty('degreesOfFreedom');
+    expect(detail.constraints.find((c: { id: string }) => c.id === 'bad').conflicting).toBe(true);
+    expect(detail.advice[0]).toMatch(/konfliktu/);
+  });
+});
+
+describe('hrany tělesa', () => {
+  it('kruhová hrana má střed a poloměr, hrana přerušená výřezem krajní body a příznak mezery', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addPoint', sketch: 's', id: 'm', x: 12, y: 14 },
+        { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 5 },
+        constrain('mx', { type: 'horizontalDistance', a: 'origin', b: 'm', value: 12, driving: true }),
+        constrain('my', { type: 'verticalDistance', a: 'origin', b: 'm', value: 14, driving: true }),
+        constrain('kr', { type: 'radius', curve: 'k', value: 5, driving: true }),
+        { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }], distance: 10, operation: 'new' } },
+      ],
+    });
+    let body = ok(engine, 'get_body', { body: 'e' });
+    const rim = body.edges.find((edge: { label: string }) => edge.label === 'e/endCap | e/side/k');
+    expect(rim).toMatchObject({ kind: 'circle', center: [expect.closeTo(12, 4), expect.closeTo(14, 4), 10], radius: expect.closeTo(5, 4) });
+    expect(rim.length).toBeGreaterThan(2 * Math.PI * 5 * 0.999);
+    expect(rim.length).toBeLessThan(2 * Math.PI * 5);
+    expect(rim).not.toHaveProperty('from');
+
+    // zářez uprostřed přední hrany: hrana má dva kusy
+    const top = body.faces.find((face: { label: string }) => face.label === 'e/endCap').name;
+    const notch: [string, number, number][] = [['n1', 15, -2], ['n2', 25, -2], ['n3', 25, 4], ['n4', 15, 4]];
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { ...(sketch('s2') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: top } } as never },
+        ...notch.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 's2', id, x, y })),
+        ...notch.map(([id], i): Command => ({ type: 'addCurve', sketch: 's2', id: `nl${i}`, curve: { type: 'line', a: id, b: notch[(i + 1) % 4][0] } })),
+        { type: 'addFeature', feature: { id: 'cut', name: 'Zářez', suppressed: false, type: 'extrude', sketch: 's2', regions: [{ outerLoop: ['nl0', 'nl1', 'nl2', 'nl3'] }], distance: -10, operation: 'cut', target: 'e' } },
+      ],
+    });
+    body = ok(engine, 'get_body', { body: 'e' });
+    const split = body.edges.find((edge: { label: string }) => edge.label === 'e/endCap | e/side/ab');
+    expect(split).toMatchObject({ kind: 'line', gaps: true, length: expect.closeTo(30, 4) });
+    expect([split.from, split.to].sort()).toEqual([[0, 0, 10], [40, 0, 10]]);
+  });
+});
+
+describe('model, tělesa a příkazy', () => {
+  it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
+    const result = execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', sketch: 's', regions: [region], distance: 10, operation: 'new' } });
+    expect(result).toMatchObject({ ok: true, bodies: ['e'], problems: [] });
+    const model = ok(engine, 'get_model');
+    expect(model.features.map((f: { id: string; status: string }) => [f.id, f.status])).toEqual([['s', 'ok'], ['e', 'ok']]);
+    expect(model.bodies).toEqual([{ id: 'e', volume: expect.closeTo(12000, 2), min: [0, 0, 0], max: [40, 30, 10], faces: 6, edges: 12 }]);
+    expect(ok(engine, 'get_model', { at: 's' }).bodies).toEqual([]);
+
+    const body = ok(engine, 'get_body', { body: 'e' });
+    const top = body.faces.find((face: { label: string }) => face.label === 'e/endCap');
+    expect(top).toMatchObject({ name: { feature: 'e', role: 'endCap' }, planar: true, area: expect.closeTo(1200, 3), normal: [0, 0, 1] });
+    expect(body.edges.every((edge: { kind: string }) => edge.kind === 'line')).toBe(true);
+    // přímá hrana: délka a krajní body
+    const front = body.edges.find((edge: { label: string }) => edge.label === 'e/endCap | e/side/ab');
+    expect(front).toMatchObject({ segments: 1, length: 40 });
+    expect([front.from, front.to].sort()).toEqual([[0, 0, 10], [40, 0, 10]]);
+    expect(front).not.toHaveProperty('gaps');
+    // jméno stěny z get_body jako rovina další skici
+    const onTop = execute(engine, { type: 'addFeature', feature: { ...(sketch('s2') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: top.name } } as never });
+    expect(onTop).toMatchObject({ ok: true, problems: [] });
+    expect(ok(engine, 'get_sketch', { sketch: 's2' }).frame).toMatchObject({ origin: [0, 0, 10], normal: [0, 0, 1] });
+  });
+
+  it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const before = engine.save();
+    // neplatný příkaz je chyba volání: klient ji dostane s příznakem chyby
+    expect(callTool(engine, 'execute', { command: constrain('h1', { type: 'vertical', line: 'ab' }) })).toEqual({ ok: false, error: 'invalidCommand: addConstraint.id: ID "h1" už v dokumentu je' });
+    expect(callTool(engine, 'execute', { command: { type: 'batch', commands: [constrain('x', { type: 'parallel', a: 'ab', b: 'cd' }), constrain('y', { type: 'nic', a: 'ab' } as never)] } })).toEqual({
+      ok: false,
+      error: expect.stringMatching(/^invalidCommand: .*neznámá vazba "nic" \(příkaz dávky s indexem 1\)$/),
+    });
+    expect(callTool(engine, 'preview', { command: { type: 'nic' } })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidCommand: /) });
+    expect(ok(engine, 'preview', { command: { type: 'setConstraintValue', sketch: 's', id: 'w', value: 55 } })).toMatchObject({ ok: true });
+    expect(engine.save()).toBe(before);
+    execute(engine, { type: 'setConstraintValue', sketch: 's', id: 'w', value: 55 });
+    expect(ok(engine, 'undo').canRedo).toBe(true);
+    expect(engine.save()).toBe(before);
+    ok(engine, 'redo');
+    expect(JSON.parse(engine.save()).features[0].constraints.w.value).toBe(55);
+  });
+
+  it('chyby volání se vracejí jako text, ne jako výjimka', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const error = (name: string, args: Record<string, unknown> = {}) => {
+      const outcome = callTool(engine, name, args);
+      expect(outcome.ok, name).toBe(false);
+      return outcome.ok ? '' : outcome.error;
+    };
+    expect(error('nic')).toMatch(/neznámý nástroj/);
+    expect(error('get_sketch', {})).toMatch(/argument "sketch"/);
+    expect(error('get_sketch', { sketch: 'nic' })).toMatch(/skica "nic"/);
+    expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/skica "constructor"/);
+    expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/vazba "toString"/);
+    expect(error('get_body', { body: 'e' })).toMatch(/těleso "e"/);
+    expect(error('get_model', { at: 'nic' })).toMatch(/feature "nic"/);
+    expect(error('get_document', { feature: 'nic' })).toMatch(/feature "nic"/);
+    expect(error('execute', {})).toMatch(/argument "command"/);
+    expect(error('execute', { command: 'addPoint' })).toMatch(/argument "command"/);
+    expect(callTool(newEngine(), 'undo')).toEqual({ ok: false, error: 'není co vracet' });
+    expect(callTool(newEngine(), 'redo')).toEqual({ ok: false, error: 'není co opakovat' });
+  });
+});

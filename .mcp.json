@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "trymesh": {
+      "command": "node",
+      "args": [
+        "packages/mcp/dist/server.js"
+      ]
+    }
+  }
+}

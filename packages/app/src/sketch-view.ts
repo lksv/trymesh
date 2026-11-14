@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import type { Constraint, DimensionShape, Id, SketchFeature, SketchResult, Vec2 } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchFeature, type SketchResult, type Vec2, constraintOperands } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -177,23 +177,8 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
   }
 }
 
-// Operandy vazby (ID entit skici).
-export function operandsOf(c: Constraint): Id[] {
-  switch (c.type) {
-    case 'pointOnCurve':
-      return [c.point, c.curve];
-    case 'horizontal':
-    case 'vertical':
-      return [c.line];
-    case 'distancePointLine':
-      return [c.point, c.line];
-    case 'radius':
-    case 'diameter':
-      return [c.curve];
-    default:
-      return [c.a, c.b];
-  }
-}
+// Operandy vazby (ID entit skici), podle katalogu enginu.
+export const operandsOf = constraintOperands;
 
 // Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu.
 export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {

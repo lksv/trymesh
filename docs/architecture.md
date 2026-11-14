@@ -1,6 +1,6 @@
 # Architektura
 
-Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení; D32 je odsouhlaseno 2026-11-14.
+Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení; D32 a D33 jsou odsouhlaseny 2026-11-14.
 
 Vychází z [requirements.md](requirements.md) a [decisions.md](decisions.md). Návrh UI je v [ui.md](ui.md).
 
@@ -43,11 +43,14 @@ packages/
   kernel-manifold/   adaptér SolidKernel
   scenarios/         validační scénáře proti skutečným adaptérům (jen testy)
   app/               ukázkové UI + renderer (three.js)
+  mcp/               rozhraní pro AI: MCP server a most do běžící aplikace
 ```
 
 Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
 
-Moduly enginu (`packages/engine/src`): `document.ts` (validace a provedení příkazů, načtení), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
+Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (validace a provedení příkazů, načtení), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
+
+Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
 Testy: Vitest (`pnpm test`), typová kontrola `pnpm typecheck`. Validační scénáře běží v Node proti skutečným adaptérům. Balíčky se neskládají: každý vystavuje přímo zdrojový TypeScript.
 
@@ -664,6 +667,38 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 Výběr myší: renderer zjistí index trojúhelníku, přes `faceIds` číslo stěny a přes `faceNames` jméno, které pošle zpět v příkazu. Hrany a oblasti analogicky.
 
 **Web Worker.** Vše, co přes API prochází, jsou serializovatelná data. API je ale synchronní, takže přesun enginu do Workeru znamená asynchronní obal nad stejnými příkazy a stavem, ne nulovou změnu. V PoC běží engine v hlavním vlákně.
+
+## Rozhraní pro AI (D33)
+
+```
+klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine (dokument ze souboru)
+                                         └─▶ most HTTP 127.0.0.1 ──▶ engine běžící aplikace
+```
+
+**Nástroje** jsou čisté funkce nad `Engine` (`tools.ts`), takže tentýž kód obsluhuje engine v serveru i engine aplikace. Server k nim přidává nástroje pro soubory, které potřebují disk.
+
+| Nástroj | Co dělá |
+|---|---|
+| `describe_api` | Konvence, katalog vazeb s operandy a příklady, typy dokumentu a příkazů. Generuje se ze zdrojů enginu. |
+| `get_model` | Časová osa se stavy a chybami, tělesa s objemem a rozměry; `at` = stav po dané feature. |
+| `get_document` | Dokument tak, jak se ukládá, nebo jedna feature. |
+| `get_sketch` | Body s polohami, křivky, vazby, promítnutá geometrie, oblasti, diagnostika a slovní rada (`advice`). |
+| `explain_constraint` | Jestli vazba plyne z ostatních a ze kterých. |
+| `get_body` | Stěny (rovinnost, plocha, normála) a hrany (druh, délka; u přímé krajní body, u kruhové střed a poloměr) se jmény použitelnými v odkazech. |
+| `execute`, `preview` | Příkaz enginu (i `batch`); `preview` nezapisuje. Výsledek shrne, co není v pořádku, a u každé skici řekne, jestli je vyřešená a kolik má volnosti. |
+| `undo`, `redo` | Historie příkazů. |
+| `session_status` | Jestli nástroje pracují nad aplikací, nebo nad vlastním dokumentem serveru. |
+| `open_document`, `save_document`, `export_stl` | Soubory na disku; dokument může být v aplikaci. |
+
+Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrací jako text s příznakem chyby, ne jako výjimka protokolu. Malý výsledek se vypisuje s odsazením, velký úsporně.
+
+**Proč se nové vazby a příkazy objeví samy.** `execute` bere jakoukoli hodnotu typu `Command` a validuje ji engine. `describe_api` skládá text ze tří zdrojů: z ručně psaných konvencí, z katalogu vazeb (`CONSTRAINTS`: jméno, shrnutí, operandy a jejich druhy, pravidlo hodnoty) a ze zdrojového textu `engine/src/types.ts` bez sekce portů. Vazba přidaná do enginu je tedy v popisu i v nástrojích bez změny v `packages/mcp`.
+
+**Most.** Server otevře HTTP na `127.0.0.1` (výchozí port 4517). Aplikace se po zapnutí propojení připojí na `GET /events` (proud událostí) a na každý požadavek odpoví `POST /reply`. Dokud je připojená, nástroje se provádějí nad jejím enginem; po odpojení nad vlastním enginem serveru. Platí poslední připojená aplikace; požadavek bez odpovědi do 30 s skončí chybou. Připojit se smí jen stránka z tohoto počítače: server ověřuje původ (`Origin`), cílovou adresu (`Host`) a vlastní hlavičku `x-trymesh-bridge`, kterou musí mít každý požadavek kromě `GET /status`.
+
+**Soubory.** Server si pamatuje soubor vlastního dokumentu a zvlášť soubor dokumentu v aplikaci (po dobu jednoho připojení). `save_document` bez cesty ukládá do souboru toho dokumentu, se kterým se právě pracuje; nemá-li žádný, je to chyba. Nástroj složený z více kroků pracuje celý nad enginem zjištěným na svém začátku.
+
+**Spuštění.** `pnpm mcp:build`, pak v klientu AI příkaz `node packages/mcp/dist/server.js` (volby `--file model.json`, `--port`, `--no-bridge`). Pro Claude Code je v kořeni repa `.mcp.json`. V aplikaci se propojení zapíná tlačítkem AI na liště.
 
 ## Ověření proti scénářům
 

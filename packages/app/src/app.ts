@@ -24,10 +24,12 @@ import {
   type Solid,
   type Vec2,
   type Vec3,
+  CONSTRAINTS,
   duplicateOf,
   emptyDocument,
   emptySketch,
 } from '@trymesh/engine';
+import { type BridgeConnection, type BridgeStatus, MUTATING, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h } from './dom';
 import {
   type Anchor,
@@ -108,23 +110,8 @@ const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
   YZ: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1], normal: [1, 0, 0] },
 };
 
-const CONSTRAINT_NAMES: Record<Constraint['type'], string> = {
-  coincident: 'Totožné',
-  pointOnCurve: 'Bod na křivce',
-  horizontal: 'Vodorovně',
-  vertical: 'Svisle',
-  parallel: 'Rovnoběžně',
-  perpendicular: 'Kolmo',
-  equalLength: 'Stejná délka',
-  tangent: 'Tečně',
-  distance: 'Vzdálenost',
-  distancePointLine: 'Vzdálenost bodu od úsečky',
-  horizontalDistance: 'Vodorovná vzdálenost',
-  verticalDistance: 'Svislá vzdálenost',
-  angle: 'Úhel',
-  radius: 'Poloměr',
-  diameter: 'Průměr',
-};
+// Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
+const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
 const GEOMETRIC: GeometricKind[] = ['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent'];
 const TOOLS: [Tool, string, string][] = [
   ['select', 'Výběr', 'Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.'],
@@ -232,6 +219,49 @@ export class App {
     return `${prefix}${n}`;
   };
 
+  // Propojení s MCP serverem: AI pak pracuje s dokumentem otevřeným v aplikaci.
+  private bridge?: BridgeConnection;
+  private bridgeStatus: BridgeStatus = 'off';
+  private toggleBridge(): void {
+    if (this.bridge) {
+      this.bridge.stop();
+      this.bridge = undefined;
+      return this.say('Propojení s AI vypnuto.');
+    }
+    let restore: (() => void) | undefined;
+    this.bridge = connectBridge(this.engine, {
+      onStatus: (status) => {
+        this.bridgeStatus = status;
+        if (status === 'connected') this.say('Propojeno s MCP serverem: AI vidí a mění tento dokument.');
+        else if (status === 'connecting') this.say('Čekám na MCP server (spouští ho klient AI)…');
+        this.renderToolbar();
+      },
+      // Změna od AI pod rozpracovanou operací (vysunutí, rovina) by jí vzala půdu, proto se
+      // operace ruší ještě před změnou; jen když příkaz dokument opravdu změní. Načtení jiného
+      // dokumentu vymění i stav UI, stejně jako Otevřít; při neúspěchu se stav vrátí.
+      beforeCall: (name, args) => {
+        if (!MUTATING.includes(name)) return;
+        if (name === '_load') {
+          restore = this.swapUi();
+          return;
+        }
+        if (this.mode.kind !== 'extrude' && this.mode.kind !== 'plane') return;
+        const state = this.engine.getState();
+        const changes = name === 'undo' ? state.canUndo : name === 'redo' ? state.canRedo : typeof args.command === 'object' && args.command !== null && this.engine.preview(args.command as Command).ok;
+        if (changes) this.setMode({ kind: 'model' });
+      },
+      onCall: (name, outcome) => {
+        if (!MUTATING.includes(name)) return;
+        if (name === '_load') {
+          if (!outcome.ok) restore?.();
+          restore = undefined;
+          this.refresh();
+        }
+        this.say(outcome.ok ? `AI: ${name === '_load' ? 'otevřen dokument' : name}` : `AI: ${name === '_load' ? 'otevření dokumentu' : name} selhalo: ${outcome.error}`, !outcome.ok);
+      },
+    });
+  }
+
   private say(text: string, error = false): void {
     this.note = { text, error };
     const bar = byId('status');
@@ -334,6 +364,12 @@ export class App {
         file,
       ),
       group(
+        button(this.bridgeStatus === 'connected' ? 'AI: připojeno' : this.bridgeStatus === 'connecting' ? 'AI: čeká…' : 'AI', () => this.toggleBridge(), {
+          title: 'Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci',
+          active: this.bridgeStatus !== 'off',
+        }),
+      ),
+      group(
         button('↶ Zpět', () => this.engine.undo(), { disabled: !state.canUndo || drafting, title: 'Ctrl+Z' }),
         button('↷ Znovu', () => this.engine.redo(), { disabled: !state.canRedo || drafting, title: 'Ctrl+Shift+Z' }),
       ),
@@ -377,16 +413,24 @@ export class App {
     const text = await input.files?.[0]?.text();
     if (text === undefined) return;
     // Stav UI se vymění před načtením (engine při něm rozešle nový stav) a při chybě se vrátí.
-    const saved = { mode: this.mode, marker: this.marker, hidden: [...this.hidden], pending: this.pending, selectedFeature: this.selectedFeature };
-    this.resetUi();
+    const restore = this.swapUi();
     const result = this.engine.load(text);
     if (result.ok) {
       this.say('Dokument načten.');
       return this.fit();
     }
-    Object.assign(this, { mode: saved.mode, marker: saved.marker, pending: saved.pending, selectedFeature: saved.selectedFeature });
-    for (const id of saved.hidden) this.hidden.add(id);
+    restore();
     this.say(`Soubor nejde otevřít: ${result.error.message}`, true);
+  }
+
+  // Vrátí UI do výchozího stavu a dá funkci, která původní stav obnoví.
+  private swapUi(): () => void {
+    const saved = { mode: this.mode, marker: this.marker, hidden: [...this.hidden], pending: this.pending, selectedFeature: this.selectedFeature };
+    this.resetUi();
+    return () => {
+      Object.assign(this, { mode: saved.mode, marker: saved.marker, pending: saved.pending, selectedFeature: saved.selectedFeature });
+      for (const id of saved.hidden) this.hidden.add(id);
+    };
   }
 
   private resetUi(): void {
@@ -1052,7 +1096,9 @@ export class App {
       const anchors = anchorPoints(d);
       const what = [points.length > 0 ? `body ${list(points)}` : '', radii.length > 0 ? `poloměry ${list(radii)}` : ''].filter((part) => part !== '').join('; ');
       const which = anchors.length === 1 ? `bodu ${anchors[0]}` : anchors.length === points.length ? 'kteréhokoli z nich' : `kteréhokoli z bodů ${list(anchors)}`;
-      const advice = anchors.length === 0 ? '' : ` Skicu dourčí ukotvení ${which}, například k počátku.`;
+      // totožnost s pevným bodem ubírá dva stupně volnosti; při jednom by byla v konfliktu
+      const how = d.degreesOfFreedom === 2 ? 'například totožností s počátkem nebo dvěma kótami' : 'stačí jedna kóta nebo vazba ve směru, kterým se může hýbat';
+      const advice = anchors.length === 0 ? '' : ` Skicu dourčí určení polohy ${which}: ${how}.`;
       out.push(
         h('p', { className: 'hint' }, `Volné (v pohledu modře): ${what}.${advice}`),
         h('div', { className: 'buttons' }, h('button', { textContent: 'Vybrat volné', title: 'Vybere volné body a kružnice s volným poloměrem', onclick: () => ((m.selection = [...points, ...radii]), this.refresh()) })),
@@ -1070,7 +1116,7 @@ export class App {
     const diagnosis = this.engine.diagnoseSketch(m.id);
     if (m.focus && !feature.constraints[m.focus]) m.focus = undefined;
     const explanation = m.focus ? this.explain(m.id, m.focus, diagnosis) : undefined;
-    const label = (id: Id): string => (feature.constraints[id] ? `${CONSTRAINT_NAMES[feature.constraints[id].type]} (${operandsOf(feature.constraints[id]).join(', ')})` : id);
+    const label = (id: Id): string => (feature.constraints[id] ? `${constraintName(feature.constraints[id].type)} (${operandsOf(feature.constraints[id]).join(', ')})` : id);
     out.push(...this.diagnosisSummary(m, diagnosis));
 
     const dimension = (label: string, variant: DimensionVariant, title: string) => {
@@ -1086,7 +1132,7 @@ export class App {
         { className: 'buttons' },
         ...GEOMETRIC.map((kind) => {
           const constraints = geometricFor(kind, view, m.selection);
-          return action(CONSTRAINT_NAMES[kind], constraints !== undefined, () => this.addConstraints(m, constraints));
+          return action(constraintName(kind), constraints !== undefined, () => this.addConstraints(m, constraints));
         }),
       ),
       h(
@@ -1130,7 +1176,7 @@ export class App {
         },
       });
       const tag = mark === 'duplicate' ? ' · duplicita' : mark === 'surplus' ? ' · navíc' : '';
-      row.append(h('span', { className: 'name' }, `${CONSTRAINT_NAMES[c.type]} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
+      row.append(h('span', { className: 'name' }, `${constraintName(c.type)} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
       if ('value' in c) {
         const scale = c.type === 'angle' ? 180 / Math.PI : 1;
         const shown = c.driving ? c.value : (result.measurements[id] ?? measure(c, view) ?? c.value);

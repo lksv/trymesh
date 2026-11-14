@@ -12,6 +12,7 @@
     "@salusoft89/planegcs": "1.3.0",
     "@trymesh/engine": "workspace:*",
     "@trymesh/kernel-manifold": "workspace:*",
+    "@trymesh/mcp": "workspace:*",
     "@trymesh/solver-planegcs": "workspace:*",
     "manifold-3d": "3.5.5",
     "three": "^0.187.0"

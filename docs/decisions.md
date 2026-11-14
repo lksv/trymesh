@@ -40,9 +40,10 @@ Poslední úprava: 2026-11-14
 | D30 | Rozhodnutí z implementace enginu | provedeno při implementaci, vlastník projektu zatím nepotvrdil | Upřesnění, která návrh nechával otevřená: tažení mimo dávku, kritérium „bez účinku", profil dotýkající se v bodě, načtení dokumentu s odkazem na feature v jiném pořadí a další |
 
 | D31 | Ukázková aplikace | provedeno při implementaci, vlastník projektu zatím nepotvrdil | `packages/app`: three.js a Vite bez UI frameworku; pokrývá funkce z ui.md potřebné k projití validačních scénářů; co UI odvozuje samo a co je vynecháno |
+| D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
 
-D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 je odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
+D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 a D33 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
 ## D1 Jazyk enginu: TypeScript
 
@@ -52,7 +53,7 @@ Rozhodnuto 2026-11-12. Engine běží v browseru i v Node. Výpočetně náročn
 
 Rozhodnuto 2026-11-12. Použití knihoven nevadí, ale každou vlastník projektu schvaluje výslovně. Každá knihovna je schovaná za úzkým rozhraním definovaným v enginu, aby šla vyměnit a aby šla napsat testovací implementace.
 
-Schválené: planegcs (D6), Manifold (D8).
+Schválené: planegcs (D6), Manifold (D8), `@modelcontextprotocol/sdk` pro MCP server (D33, schváleno 2026-11-14).
 
 ## D3 Model dokumentu: log operací
 
@@ -585,6 +586,38 @@ Omezení:
 - „Starší vazby zůstávají" se řídí pořadím klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně, takže u nich pořadí vzniku neplatí.
 - Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver dál jako plnohodnotnou: skica se chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere. Diagnostika ji ukáže.
 - Cena roste se třetí mocninou počtu vazeb: 480 vazeb v jedné skice kolem sekundy.
+
+## D33 Rozhraní pro AI (MCP server)
+
+Rozhodnuto 2026-11-14 na podnět vlastníka projektu: místo předávání souboru má stačit říct „mám narýsovanou skicu se dvěma stupni volnosti, proč" a AI se na model podívá sama.
+
+- **Balíček `packages/mcp`** s MCP serverem nad standardním vstupem a výstupem. Používá oficiální knihovnu `@modelcontextprotocol/sdk` (schválena vlastníkem; táhne s sebou zhruba devadesát tranzitivních balíčků, v běhu aplikace není).
+- **Málo obecných nástrojů místo nástroje na každou operaci:** `describe_api`, `get_model`, `get_document`, `get_sketch`, `explain_constraint`, `get_body`, `execute`, `preview`, `undo`, `redo` a pro soubory `session_status`, `open_document`, `save_document`, `export_stl`. Příkaz je hodnota typu `Command` enginu, validuje ho engine a vrací srozumitelnou chybu.
+- **Popis se generuje ze zdrojů enginu,** aby se rozhraní nerozcházelo s enginem a nové vazby a příkazy se v něm objevily samy: typy dokumentu a příkazů se berou přímo ze zdrojového textu `types.ts`, vazby z katalogu (`catalog.ts`), kterým se řídí i validace. Ručně psané jsou jen konvence (jednotky, ID, jak se staví skica). Test ověřuje, že každou vazbu z katalogu engine podle příkladu z popisu přijme. Zvažováno: nástroj na každý příkaz se schématem JSON (přesnější nápověda pro klienta, ale schémata by se psala ručně vedle typů a s každou vazbou by přibýval nástroj).
+- **Dva režimy, stejné nástroje.** Server má vlastní engine pro dokument ze souboru. Když se k němu připojí běžící aplikace, nástroje se provádějí nad jejím enginem: uživatel změny hned vidí a jdou vrátit přes Zpět. Soubory čte a zapisuje vždy server.
+- **Most do aplikace** je místní HTTP na `127.0.0.1` (výchozí port 4517): aplikace čte požadavky jako proud událostí a odpovědi posílá zpět. Bez další knihovny (WebSocket by v Node potřeboval balíček `ws`). Propojení se v aplikaci zapíná tlačítkem AI, samo se nenavazuje; platí poslední připojená aplikace.
+- **Kdo se smí k mostu připojit.** Jen stránka z tohoto počítače. Hlídají to tři věci zároveň: původ stránky (`Origin`), cílová adresa v hlavičce `Host` (obrana proti přesměrování DNS) a vlastní hlavička požadavku, kterou cizí stránka bez svolení serveru poslat nemůže a prvky jako obrázek ji neposílají vůbec. Sama kontrola původu nestačila: požadavek bez hlavičky `Origin` dokázal odpojit skutečnou aplikaci a převzít příkazy určené pro ni.
+- **Každý dokument má svůj soubor.** Server si pamatuje zvlášť soubor vlastního dokumentu a soubor dokumentu v aplikaci (jen po dobu jednoho připojení). Uložení bez cesty tak nezapíše dokument jednoho enginu přes soubor druhého.
+- **Rozpracovaná operace v aplikaci** (vysunutí, rovina) se zruší, když AI dokument opravdu změní; neplatný příkaz ani undo bez historie ji nechají. Načtení dokumentu od AI vymění stav UI stejně jako Otevřít a při neúspěchu ho vrátí.
+- **Neplatný příkaz je chyba volání** (příznak chyby v odpovědi), ne výsledek: klient i aplikace ho tak poznají bez čtení těla odpovědi.
+- **Spuštění:** `pnpm mcp:build` sestaví `packages/mcp/dist/server.js`; klient AI ho spouští příkazem `node packages/mcp/dist/server.js [--file model.json] [--port 4517] [--no-bridge]`. V kořeni repa je `.mcp.json`, takže Claude Code server nabídne sám.
+
+Nálezy nezávislé revize a jejich řešení:
+
+| Nález | Řešení |
+|---|---|
+| Uložení bez cesty zapsalo dokument aplikace přes soubor serveru a naopak | Soubor se pamatuje pro každý dokument zvlášť |
+| Server po zavření vstupu neskončil a dál držel port mostu | Končí i při zavření standardního vstupu |
+| Most přijal požadavek bez hlavičky `Origin` a nehlídal `Host` | Kontrola `Host` a povinná vlastní hlavička |
+| Konce hran v `get_body` byly u oblouků, kružnic a přerušených hran špatně | Přímá hrana má krajní body a příznak mezery, kruhová střed a poloměr, každá délku |
+| Rada u skici s jedním stupněm volnosti navrhovala totožnost, která končí konfliktem | Rada se řídí počtem stupňů volnosti (i v panelu aplikace) |
+| Neplatný příkaz se vracel bez příznaku chyby; aplikace kvůli němu rušila rozpracovanou operaci | Chyba volání; operace se ruší jen při skutečné změně |
+| Neúspěšné otevření dokumentu od AI nechalo UI ve výchozím stavu | Stav UI se při neúspěchu vrací |
+| Výjimka v obsluze aplikace nechala volajícího bez odpovědi | Odpověď se pošle vždy; hlášení říká, že změna už mohla proběhnout |
+| Nevyřešená skica vypadala v přehledech jako „0 stupňů volnosti" | Přehledy mají příznak `solved` a volnost uvádějí jen u vyřešené skici |
+| Volby příkazové řádky: neplatný port, chybějící hodnota a neznámá volba se tiše ignorovaly | Jsou to chyby spuštění s nápovědou |
+
+Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
 
 ## Spiky 2026-11-13
 

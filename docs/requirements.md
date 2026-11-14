@@ -54,6 +54,12 @@ PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžišt
 - Geometrie pro renderer: trojúhelníky s mapováním trojúhelník → ID stěny (kvůli výběru myší), hrany k vykreslení.
 - Export do STL.
 
+### Rozhraní pro AI
+
+- MCP server (`packages/mcp`), přes který AI model čte a mění dokument: přehled modelu, skica včetně diagnostiky („proč má skica dva stupně volnosti"), tělesa se jmény stěn a hran, provedení a náhled příkazů, undo a redo, soubory (otevřít, uložit, export STL).
+- Dva režimy se stejnými nástroji: nad dokumentem ze souboru (engine běží v serveru) a nad dokumentem otevřeným v běžící aplikaci (změny od AI uživatel hned vidí a může je vrátit).
+- Nástroje jsou obecné a jejich popis se generuje ze zdrojů enginu (typy příkazů a dokumentu, katalog vazeb). Nová vazba nebo příkaz v enginu se v rozhraní objeví bez zásahu do serveru.
+
 ## Budoucí funkce (mimo PoC, návrh je nemá znemožnit)
 
 - Vlastní rovina nakloněná pod úhlem kolem hrany tělesa. Předpoklad (stabilní reference na hrany) je součástí PoC.

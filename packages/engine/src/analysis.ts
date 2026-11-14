@@ -9,6 +9,7 @@
 // a opakované řešení je pomalé.
 import { CONSTRAINTS } from './catalog';
 import type { Constraint, Curve, FreeEntity, Id, SolveInput, Vec2 } from './types';
+import { ORIGIN } from './util';
 
 // Rovnice mají rozměr délky, jejich derivace jsou tedy bezrozměrné a prahy nezávisí na měřítku.
 const DEPENDENT = 1e-6; // řádek se po odečtení průmětu do prostoru ostatních počítá za závislý
@@ -96,6 +97,13 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     return (g) => [dot(direction(g, c.a), direction(g, c.b)) / scale];
   },
   equalLength: (c) => (g) => [len(direction(g, c.a)) - len(direction(g, c.b))],
+  equalRadius: (c) => (g) => [g.radius(c.a) - g.radius(c.b)],
+  // Positions are given relative to a point of the constraint, not to the origin of the sketch, so
+  // the coordinates are measured from the origin point: two equations over an ordinary variable point.
+  fixed: (c) => (g) => {
+    const [p, o] = [g.point(c.point), g.point(ORIGIN)];
+    return [p[0] - o[0] - c.x, p[1] - o[1] - c.y];
+  },
   // Tečnost má dvě podoby. Obecně: vzdálenost středu od přímky (nebo středů od sebe) odpovídá
   // poloměrům. Drží-li ale ostatní vazby na kružnici už určující bod druhé křivky (konec úsečky,
   // konec oblouku), říká tahle rovnice v prvním řádu totéž co ony: soustava má v řešení

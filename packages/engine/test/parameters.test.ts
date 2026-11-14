@@ -307,3 +307,102 @@ describe('catalog of numeric fields', () => {
     for (const spec of Object.values(CONSTRAINTS)) expect(Boolean(spec.dimension)).toBe(spec.values?.value !== undefined);
   });
 });
+
+describe('a fixed point and equal radius (D35, point 6)', () => {
+  const sketch = (doc: Document): SketchFeature => feature<SketchFeature>(doc, 'S1');
+  const add = (id: string, constraint: object): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint: constraint as Input<Constraint> });
+  // the base sketch with a second circle, an arc and a point of the projected origin
+  const wide = (): Document =>
+    run(
+      base(),
+      { type: 'addPoint', sketch: 'S1', id: 'p3', x: 50, y: 0 },
+      { type: 'addPoint', sketch: 'S1', id: 'p4', x: 55, y: 0 },
+      { type: 'addPoint', sketch: 'S1', id: 'p5', x: 50, y: 5 },
+      { type: 'addCurve', sketch: 'S1', id: 'c2', curve: { type: 'circle', center: 'p2' }, radius: 3 },
+      { type: 'addCurve', sketch: 'S1', id: 'arc', curve: { type: 'arc', center: 'p3', start: 'p4', end: 'p5' } },
+    );
+
+  it('the coordinates of a fixed point are numeric fields with expressions', () => {
+    let doc = run(wide(), add('f', { type: 'fixed', point: 'p2', x: 'h * 2', y: -3 }));
+    expect(sketch(doc).constraints.f).toEqual({ type: 'fixed', point: 'p2', x: 24, y: -3 });
+    expect(sketch(doc).expressions).toEqual({ 'constraints/f/x': 'h * 2' });
+    expect(fieldsOf(sketch(doc)).map((field) => field.path)).toEqual(['constraints/f/x', 'constraints/f/y']);
+    expect(fieldsOf(sketch(doc))[0]).toMatchObject({ value: 24, expr: 'h * 2', spec: CONSTRAINTS.fixed.values!.x });
+    // setField changes one coordinate: a string sets the expression, a number removes it
+    doc = run(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/y', value: '-d' });
+    expect(sketch(doc).constraints.f).toMatchObject({ x: 24, y: -8 });
+    expect(sketch(doc).expressions).toEqual({ 'constraints/f/x': 'h * 2', 'constraints/f/y': '-d' });
+    doc = run(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/x', value: 7.5 });
+    expect(sketch(doc).constraints.f).toEqual({ type: 'fixed', point: 'p2', x: 7.5, y: -8 });
+    expect(sketch(doc).expressions).toEqual({ 'constraints/f/y': '-d' });
+    // a coordinate may be negative or zero, but it must be a finite number
+    doc = run(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/x', value: 0 });
+    expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/x', value: '1 / 0' })).toThrow(CommandError);
+    expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/x', value: 'nope' })).toThrow(CommandError);
+    expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/z', value: 1 })).toThrow(/is not a numeric field/);
+    expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/point', value: 1 })).toThrow(/is not a numeric field/);
+    // it is not a dimension: setConstraintValue does not apply
+    expect(() => applyCommand(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'f', value: 3 })).toThrow(/není kóta/);
+    // renaming a parameter rewrites the expression, removing the constraint removes it
+    doc = run(doc, { type: 'renameParameter', name: 'd', to: 'bore' });
+    expect(sketch(doc).expressions).toEqual({ 'constraints/f/y': '-bore' });
+    // the document survives a save and a load, and the input form gives the same feature back
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    expect(featureInput(sketch(doc)).constraints.f).toEqual({ type: 'fixed', point: 'p2', x: 0, y: '-bore' });
+    doc = run(doc, { type: 'removeConstraint', sketch: 'S1', id: 'f' });
+    expect(sketch(doc).expressions).toBeUndefined();
+    expect(fieldsOf(sketch(doc))).toEqual([]);
+  });
+
+  it('a fixed point without coordinates stays where it is', () => {
+    let doc = run(wide(), add('f', { type: 'fixed', point: 'p2' }));
+    expect(sketch(doc).constraints.f).toEqual({ type: 'fixed', point: 'p2', x: 30, y: 1 });
+    expect(sketch(doc).expressions).toBeUndefined();
+    // one coordinate given, the other taken from the point
+    doc = run(doc, add('g', { type: 'fixed', point: 'p3', y: 'h' }));
+    expect(sketch(doc).constraints.g).toEqual({ type: 'fixed', point: 'p3', x: 50, y: 12 });
+    expect(sketch(doc).expressions).toEqual({ 'constraints/g/y': 'h' });
+    // a loaded document must have both coordinates as numbers
+    const stored = JSON.parse(JSON.stringify(doc));
+    delete stored.features[0].constraints.f.x;
+    expect(() => validateDocument(stored)).toThrow(CommandError);
+    const text = JSON.parse(JSON.stringify(doc));
+    text.features[0].constraints.f.x = 'h';
+    expect(() => validateDocument(text)).toThrow(/an expression belongs in expressions/);
+    const unknown = JSON.parse(JSON.stringify(doc));
+    unknown.features[0].expressions['constraints/f/z'] = 'h';
+    expect(() => validateDocument(unknown)).toThrow(/is not a numeric field/);
+  });
+
+  it('what a fixed point refuses', () => {
+    const doc = run(wide(), add('f', { type: 'fixed', point: 'p2', x: 1, y: 2 }));
+    // one point is fixed once, whatever the coordinates
+    expect(() => applyCommand(doc, add('f2', { type: 'fixed', point: 'p2', x: 5, y: 5 }))).toThrow(/stejná vazba už ve skice je \("f"\)/);
+    // the origin is fixed already; a curve is not a point
+    expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toThrow(/by se nikdy neprojevila/);
+    expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/čeká se point/);
+    expect(() => applyCommand(doc, add('m', { type: 'fixed', point: 'missing' }))).toThrow(/entita "missing" ve skice není/);
+    expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: null, y: 2 }))).toThrow(CommandError); // only a missing coordinate is filled in
+    expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: true, y: 2 }))).toThrow(CommandError);
+    expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: Infinity, y: 2 }))).toThrow(CommandError);
+    // removing the point removes the constraint with its expression
+    const tied = run(doc, add('g', { type: 'fixed', point: 'p3', x: 'h', y: 0 }));
+    const removed = sketch(run(tied, { type: 'removeEntity', sketch: 'S1', id: 'p3' }));
+    expect(Object.keys(removed.constraints)).toEqual(['f']);
+    expect(removed.expressions).toBeUndefined();
+  });
+
+  it('equal radius takes two different circles or arcs, in either order once', () => {
+    let doc = run(wide(), add('e1', { type: 'equalRadius', a: 'c', b: 'c2' }));
+    expect(sketch(doc).constraints.e1).toEqual({ type: 'equalRadius', a: 'c', b: 'c2' });
+    expect(fieldsOf(sketch(doc))).toEqual([]);
+    doc = run(doc, add('e2', { type: 'equalRadius', a: 'arc', b: 'c' }));
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c2', b: 'c' }))).toThrow(/stejná vazba už ve skice je \("e1"\)/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c' }))).toThrow(/různé entity/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'l' }))).toThrow(/čeká se circle nebo arc/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'p2' }))).toThrow(/čeká se circle nebo arc/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c2', value: 3 }))).toThrow(/stejná vazba/);
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+  });
+});
+

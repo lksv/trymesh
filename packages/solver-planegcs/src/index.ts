@@ -13,6 +13,11 @@ export interface PlanegcsOptions {
 // (odvozená ID promítnuté geometrie), takže dvě lomítka na začátku nemohou kolidovat.
 const SYNTHETIC = '//';
 const isSynthetic = (id: string) => id.startsWith(SYNTHETIC);
+// A constraint of the engine that needs two primitives of the library (a fixed point: one per
+// coordinate) carries the second one under this prefix; what the library says about it is said
+// about the constraint.
+const SECOND = `${SYNTHETIC}second/`;
+const owners = (ids: string[]): Id[] => [...new Set(ids.map((id) => (id.startsWith(SECOND) ? id.slice(SECOND.length) : id)).filter((id) => !isSynthetic(id)))].sort();
 
 const MERGED = 1e-7; // dva body leží ve stejném místě (vzhledem k velikosti souřadnic)
 const SPREAD = 1e-3; // o kolik se splynulé body rozestoupí (vzhledem k rozměru skici)
@@ -40,8 +45,8 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
       gcs.debug_mode = DebugMode.NoDebug; // jinak solver vypisuje na standardní výstup
       gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed) as unknown as Primitive[]);
       const status = gcs.solve(extra.algorithm);
-      const conflicting = gcs.get_gcs_conflicting_constraints().filter((id) => !isSynthetic(id)).sort();
-      const redundant = gcs.get_gcs_redundant_constraints().filter((id) => !isSynthetic(id)).sort();
+      const conflicting = owners(gcs.get_gcs_conflicting_constraints());
+      const redundant = owners(gcs.get_gcs_redundant_constraints());
       const ok = (status === SolveStatus.Success || status === SolveStatus.Converged) && conflicting.length === 0;
       const pass: Pass = { ok, settled: status === SolveStatus.Success, points: {}, radii: {}, degreesOfFreedom: 0, conflicting, redundant };
       if (!ok) return pass;
@@ -251,6 +256,11 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
       continue;
     }
+    if (constraint.type === 'fixed') {
+      point(constraint.point);
+      out.push({ id, type: 'coordinate_x', p_id: constraint.point, x: constraint.x }, { id: `${SECOND}${id}`, type: 'coordinate_y', p_id: constraint.point, y: constraint.y });
+      continue;
+    }
     out.push({ id, ...translate(id, constraint, input.curves) });
   }
 
@@ -264,7 +274,8 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
 }
 
 // Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
-function translate(id: Id, c: Constraint, curves: Record<Id, Curve>): Record<string, unknown> & { type: string } {
+// (A fixed point is the exception with two primitives and is translated by the caller.)
+function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
     if (!curve) throw new Error(`solver: vazba ${id} odkazuje na neznámou křivku ${curveId}`);
@@ -294,6 +305,15 @@ function translate(id: Id, c: Constraint, curves: Record<Id, Curve>): Record<str
       return { type: 'perpendicular_ll', l1_id: line(c.a), l2_id: line(c.b) };
     case 'equalLength':
       return { type: 'equal_length', l1_id: line(c.a), l2_id: line(c.b) };
+    case 'equalRadius': {
+      // operand order of the library: circle before arc
+      const [first, second] = kind(c.a) === 'arc' && kind(c.b) === 'circle' ? [c.b, c.a] : [c.a, c.b];
+      const pair = `${kind(first)}-${kind(second)}`;
+      if (pair === 'circle-circle') return { type: 'equal_radius_cc', c1_id: first, c2_id: second };
+      if (pair === 'circle-arc') return { type: 'equal_radius_ca', c1_id: first, a2_id: second };
+      if (pair === 'arc-arc') return { type: 'equal_radius_aa', a1_id: first, a2_id: second };
+      throw new Error(`solver: vazba ${id}: equal radius needs circles or arcs`);
+    }
     case 'tangent': {
       // pořadí operandů knihovny: úsečka, kružnice, oblouk
       const rank = { line: 0, circle: 1, arc: 2 } as const;

@@ -43,7 +43,7 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 5 are implemented, points 6 and 7 remain | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; step 0 and points 1 to 6 are implemented, point 7 remains | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
 D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
@@ -687,7 +687,7 @@ Omezení:
 
 ## D35 Rozšíření pro robotický kloub
 
-Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 5 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementation status: step 0 and points 1 to 6 are done, see the paragraphs "Stav: provedeno" and "Status: done" below. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
 
 **Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
 
@@ -1006,7 +1006,6 @@ type AxisRef =
 
   What later points have to pick up: nothing; the scenario test no longer calls the kernel directly.
 
-**6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
   **Review of point 5 (2026-11-14).** An independent review (another instance of the model, read-only) probed the query through the real kernel (stacked, nested, tangent and identical bodies, flush wedges of patterns, thresholds, `at`), the export on disk with odd names, the tools over the bridge and the app in a browser. It found no crash and no loss of data in the main paths. What it found and what changed:
 
   | Finding | Fix |
@@ -1023,12 +1022,28 @@ type AxisRef =
 
   Left as they are: file names a system reserves (`CON` on Windows) are not escaped; integer-like body IDs (`9`, `10`) are listed before the others by the order of object keys, which also sets the order of pairs (older than this point); the collision panel of the app has no automated test.
 
+**6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
 
 - Stejný poloměr: planegcs má vazby `equal_radius_cc`, `equal_radius_ca` a `equal_radius_aa` (nalezeno v typech knihovny 1.3.0, nespuštěno).
 - Pevný bod je vazba se souřadnicemi: `{ type: 'fixed'; point: Id; x: number; y: number }`. V rozboru volnosti jsou to dvě rovnice nad běžným proměnným bodem (`x − x0 = 0`, `y − y0 = 0`), pro solver se překládá na `coordinate_x` a `coordinate_y` (planegcs je má). Diagnostika, vysvětlení nadbytečných vazeb i konflikt s kótou tak fungují jako u ostatních vazeb.
 - Souřadnice jsou číselná pole katalogu, mohou tedy být výraz a pevný bod se může hýbat s parametry. Příkaz bez souřadnic doplní současnou polohu bodu.
 - Katalog vazeb dnes počítá s jednou hodnotou na vazbu; dvě hodnoty jsou jeho rozšíření.
 - Zamítnuto: seznam pevných entit, který solver dostává pro počátek a promítnutou geometrii (první návrh). Bod z tohoto seznamu rozbor volnosti vynechává z proměnných, takže vazba na něm by neměla žádnou rovnici a diagnostika by ji neuměla vysvětlit ani ohlásit konflikt s kótou. Seznam zůstává jen pro počátek a promítnutou geometrii.
+
+  **Status: done 2026-11-14.** The rules above are implemented as written; the description of the code is in architecture.md (the constraint types, Diagnostika skici, the solver adapter). What the implementation settled or changed:
+
+  - **The library has the constraints** and they behave as expected: `equal_radius_cc`, `equal_radius_ca` (circle first) and `equal_radius_aa`, `coordinate_x` and `coordinate_y`. A fixed point is two constraints of the library; the second one carries a derived ID and the adapter maps it back, so a conflict or a redundancy names the constraint once.
+  - **The equations of the analysis.** `fixed` is measured from the origin of the sketch, because the analysis evaluates positions relative to a local point to keep small shapes far from the origin precise. The complete table of the analysis against the solver covers both constraints, in every combination of circle and arc.
+  - **The catalog** got named values for a constraint that is not a dimension (`values: { x, y }` without the flag `dimension`). Validation reads them through the same reader of numeric fields, so `fieldsOf`, `setField`, expressions, `renameParameter` and the API description took them over without code of their own. `setConstraintValue` stays for dimensions.
+  - **A coordinate left out** in `addConstraint` (`FixedInput`) is filled in from the position the document has for the point. `null` is rejected: only a missing coordinate is filled in. A loaded document must have both.
+  - **What a fixed point refuses:** the origin and points of projected geometry (they are fixed already and the constraint would never show), a second `fixed` on the same point (a duplicate, whatever the coordinates), a curve as its operand.
+  - **A known limit of the library, not new:** a point held by a horizontal distance, a vertical distance of zero and a plain distance of the same length is reported as a conflict although the three agree (found while testing a fixed point with the same dimensions; a fixed point at (6, 8) with the distance 10 is solved and reported redundant). Such a sketch shows `sketchConflict`; removing one of the three dimensions resolves it.
+  - **MCP.** `get_sketch` lists the expressions of a fixed point as `expressions: { x, y }` (prepared in point 1); `describe_api` lists the named values of the constraint, the two numeric fields and a convention on fixing a point and sharing one diameter.
+  - **App.** Buttons for both constraints come from the catalog; *Fixed point* fixes every selected own point where it is. The row of a constraint with named values has a field for each (ui.md, Skica: vazby a kóty).
+  - **Scenario 9** got the six holes of the controller as the contract has them: three centres fixed at the coordinates of the drawing, three mirrored about a construction axis whose end is a fixed point, one diameter shared by equal radii. The sketch is fully determined with nothing redundant.
+  - **Tests.** `packages/solver-planegcs/test/solver.test.ts` (both constraints in the solver: every combination of circle and arc, chains, conflicts and redundancy by ID, dragging a fixed point), `packages/engine/test/parameters.test.ts` (validation, expressions, `setField`, what is refused, save and load), `packages/scenarios/test/analysis.test.ts` (the table of equations), `packages/scenarios/test/constraints.test.ts` (a plate with holes at coordinates that follow a parameter, diagnosis and explanations, conflicts), an MCP test, an app test of what the buttons offer, and scenario 9.
+
+  What point 7 has to pick up: nothing from this point.
 
 **7. Nástroje skici.** Sdílený modul čistých funkcí, které z několika údajů složí dávku příkazů. Aplikace je volá ze svých nástrojů, MCP je nabízí jako nástroj s popisem generovaným ze seznamu funkcí. Engine se nemění. AI tak neskládá desítky příkazů podle textového receptu a každý další nástroj je hned na obou místech. Do modulu se přesune stávající obdélník; nový je pravidelný mnohoúhelník. Kde modul leží (balíček enginu, nebo vlastní), se určí při implementaci.
 

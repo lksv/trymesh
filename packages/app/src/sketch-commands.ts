@@ -21,7 +21,7 @@ import {
   type Vec2,
   isFlag,
 } from '@trymesh/engine';
-import { type EntityKind, ORIGIN, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
+import { type EntityKind, ORIGIN, type PointView, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
 
 // Místo kliknutí ve skice a to, k čemu se přichytilo.
 export interface Anchor {
@@ -166,6 +166,12 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
       return only(0, 2, 0) ? [{ type: kind, a: lines[0], b: lines[1] }] : undefined;
     case 'tangent':
       return points.length === 0 && lines.length + round.length === 2 && round.length >= 1 ? [{ type: kind, a: [...lines, ...round][0], b: [...lines, ...round][1] }] : undefined;
+    case 'fixed': {
+      // Every selected own point is fixed where it is (unrounded: a rounded coordinate could clash
+      // with what already holds the point); the coordinates are then edited in the constraint list.
+      const own = points.map((id) => view.points.get(id)).filter((point) => point?.own) as PointView[];
+      return points.length > 0 && own.length === selection.length ? own.map((point) => ({ type: kind, point: point.id, x: point.at[0], y: point.at[1] })) : undefined;
+    }
     default:
       return fromCatalog(kind, view, selection);
   }

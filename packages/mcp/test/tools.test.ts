@@ -158,6 +158,45 @@ describe('dotazy na skicu', () => {
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'w' })).toMatchObject({ redundant: false, impliedBy: [] });
   });
 
+  it('a fixed point and equal radii: coordinates as fields with expressions, explained when a dimension repeats them', () => {
+    const engine = newEngine();
+    execute(engine, { type: 'setParameter', name: 'margin', expr: '6' });
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        sketch('s'),
+        { type: 'addPoint', sketch: 's', id: 'c1', x: 5, y: 5 },
+        { type: 'addPoint', sketch: 's', id: 'c2', x: 30, y: 4 },
+        { type: 'addCurve', sketch: 's', id: 'q1', curve: { type: 'circle', center: 'c1' }, radius: 2 },
+        { type: 'addCurve', sketch: 's', id: 'q2', curve: { type: 'circle', center: 'c2' }, radius: 3 },
+      ],
+    });
+    // the coordinates may be expressions; without them the point is fixed where it is
+    const added = execute(engine, { type: 'batch', commands: [constrain('f1', { type: 'fixed', point: 'c1', x: 'margin', y: 'margin * 2' } as never), constrain('f2', { type: 'fixed', point: 'c2' } as never), constrain('eq', { type: 'equalRadius', a: 'q1', b: 'q2' })] });
+    expect(added.sketches[0]).toMatchObject({ id: 's', solved: true, degreesOfFreedom: 1 });
+    let detail = ok(engine, 'get_sketch', { sketch: 's' });
+    const constraintOf = (id: string) => detail.constraints.find((c: { id: string }) => c.id === id);
+    expect(constraintOf('f1')).toEqual({ id: 'f1', label: 'Fixed point (c1)', type: 'fixed', point: 'c1', x: 6, y: 12, expressions: { x: 'margin', y: 'margin * 2' } });
+    expect(constraintOf('f2')).toEqual({ id: 'f2', label: 'Fixed point (c2)', type: 'fixed', point: 'c2', x: 30, y: 4 });
+    expect(constraintOf('eq')).toEqual({ id: 'eq', label: 'Equal radius (q1, q2)', type: 'equalRadius', a: 'q1', b: 'q2' });
+    expect(detail.points.find((p: { id: string }) => p.id === 'c1')).toEqual({ id: 'c1', at: [6, 12] });
+    expect(detail.curves.map((c: { radius: number }) => c.radius)).toEqual([expect.closeTo(detail.curves[0].radius, 6), expect.closeTo(detail.curves[0].radius, 6)]);
+    // one coordinate is changed by setField; the parameter moves the other
+    execute(engine, { type: 'setField', feature: 's', path: 'constraints/f1/x', value: 9.5 });
+    execute(engine, { type: 'setParameter', name: 'margin', expr: '10' });
+    detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(constraintOf('f1')).toMatchObject({ x: 9.5, y: 20, expressions: { y: 'margin * 2' } });
+    expect(ok(engine, 'get_model').features[0].expressions).toEqual({ 'constraints/f1/y': 'margin * 2' });
+    expect(callTool(engine, 'execute', { command: { type: 'setConstraintValue', sketch: 's', id: 'f1', value: 3 } })).toMatchObject({ ok: false, error: expect.stringContaining('není kóta') });
+    // a dimension that repeats a coordinate is surplus and explained by the fixed point
+    execute(engine, constrain('dx', { type: 'horizontalDistance', a: 'origin', b: 'c1', value: 9.5, driving: true }));
+    expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'dx' })).toMatchObject({ redundant: true, impliedBy: [{ id: 'f1', label: 'Fixed point (c1)' }] });
+    // one that contradicts it is a conflict the outcome names
+    const clash = execute(engine, { type: 'setConstraintValue', sketch: 's', id: 'dx', value: 12 });
+    expect(clash.sketches[0]).toMatchObject({ solved: false });
+    expect(clash.problems[0]).toMatchObject({ id: 's', warnings: [{ code: 'sketchConflict', refs: expect.arrayContaining(['dx', 'f1']) }] });
+  });
+
   it('explain_constraint neradí odebrat vazbu, bez které by se skica uvolnila', () => {
     // bod na úsečce plyne ze středu úsečky, ale střed určuje i polohu bodu podél úsečky
     const engine = newEngine();
@@ -472,9 +511,15 @@ describe('model, tělesa a příkazy', () => {
     expect(description).toContain('- plane: offset (Offset, mm, any)');
     expect(description).toContain('- sketch, constraint angle: constraints/<id>/value (Angle, rad, in the interval (−π, π] (driving dimension only))');
     expect(description).toContain("| { type: 'setParameter'; name: string; expr: Expr; index?: number }");
-    // every dimension in the catalog has its field
+    // every value of a constraint in the catalog has its field: the value of a dimension, the coordinates of a fixed point
     const fields = apiDescription().numericFields;
-    for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(fields.some((field) => field.owner === `sketch, constraint ${type}`), type).toBe(spec.dimension === true);
+    for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(fields.some((field) => field.owner === `sketch, constraint ${type}`), type).toBe(spec.values !== undefined);
+    expect(fields.filter((field) => field.owner === 'sketch, constraint fixed').map((field) => [field.path, field.description])).toEqual([
+      ['constraints/<id>/x', 'X, mm, any'],
+      ['constraints/<id>/y', 'Y, mm, any'],
+    ]);
+    expect(description).toContain('- fixed (Fixed point) { point: point; x: any, mm; y: any, mm }');
+    expect(description).toContain('- equalRadius (Equal radius) { a: circle | arc, b: circle | arc }');
   });
 
   it('chyby volání se vracejí jako text, ne jako výjimka', () => {

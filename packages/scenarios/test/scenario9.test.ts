@@ -93,6 +93,13 @@ function parametersAndGearSketch(engine: Engine): EngineState {
 // solid part above it, in mesh with the planet, and six M3 screw holes through the plate and the
 // housing, g) the carrier with three pins. Axial layout: zero is the seating face of the stator,
 // positive towards the rotor.
+// The holes of the controller on the left side of the plate, by the drawing; the right ones mirror them.
+const CONTROLLER: [Id, number, number][] = [
+  ['k1', -28.3, 25.75],
+  ['k2', -28.3, 1.75],
+  ['k3', -28.3, -25.75],
+];
+
 function bodiesAndHoles(engine: Engine): EngineState {
   // h) the motor as a simplified body: a cylinder between the back plate and the flange of the sun
   run(engine, addSketch('skMotor', XY), batch(circle('skMotor', 'mo', 'origin', 40), dim('skMotor', 'dmo', { type: 'diameter', curve: 'mo' }, 90)), extrude('motor', 'new', regions('skMotor', ['mo']), span(0, 26.5)));
@@ -109,11 +116,30 @@ function bodiesAndHoles(engine: Engine): EngineState {
       dim('skPlateHoles', 'dm4', { type: 'diameter', curve: 'm4' }, 4.5),
       circle('skPlateHoles', 'c20', 'origin', 9),
       dim('skPlateHoles', 'dc20', { type: 'diameter', curve: 'c20' }, 20),
+      // the vertical axis of symmetry: a fixed point holds its end
+      point('skPlateHoles', 'ax', 0.5, 39),
+      { type: 'addCurve', sketch: 'skPlateHoles', id: 'axis', curve: { type: 'line', a: 'origin', b: 'ax', construction: true } },
+      constrain('skPlateHoles', 'fax', { type: 'fixed', point: 'ax', x: 0, y: 40 }),
+      // the left three holes of the controller: fixed points at the coordinates of the drawing
+      ...CONTROLLER.flatMap(([id, x, y], i): Command[] => [
+        point('skPlateHoles', id, x + 0.4, y - 0.3),
+        circle('skPlateHoles', `q${i + 1}`, id, 1.5),
+        constrain('skPlateHoles', `f${id}`, { type: 'fixed', point: id, x, y }),
+      ]),
+      // the right three: symmetric about the axis
+      ...CONTROLLER.flatMap(([id, x, y], i): Command[] => [
+        point('skPlateHoles', `k${i + 4}`, -x + 0.3, y + 0.2),
+        circle('skPlateHoles', `q${i + 4}`, `k${i + 4}`, 1.5),
+        constrain('skPlateHoles', `s${i + 4}`, { type: 'symmetric', a: id, b: `k${i + 4}`, line: 'axis' }),
+      ]),
+      // one diameter for all six
+      ...[2, 3, 4, 5, 6].map((i) => constrain('skPlateHoles', `e${i}`, { type: 'equalRadius', a: 'q1', b: `q${i}` })),
+      dim('skPlateHoles', 'dq', { type: 'diameter', curve: 'q1' }, 3.3),
     ),
     // the plate lies below the sketch plane, hence backward
     extrude('m4hole', 'cut', regions('skPlateHoles', ['m4']), through('backward'), ['plate']),
     around('m4holes', { type: 'features', features: ['m4hole'] }, 4),
-    extrude('plateHoles', 'cut', regions('skPlateHoles', ['c20']), through('backward'), ['plate']),
+    extrude('plateHoles', 'cut', regions('skPlateHoles', ['c20'], ['q1'], ['q2'], ['q3'], ['q4'], ['q5'], ['q6']), through('backward'), ['plate']),
   );
   run(
     engine,
@@ -238,13 +264,20 @@ describe('scenario 9: robot joint', () => {
     expect([state.evaluation.bodies.motor.bounds.min[2], state.evaluation.bodies.motor.bounds.max[2]]).toEqual([0, 26.5]);
     expect(state.evaluation.features.planets.bodies).toEqual(['planets/1', 'planets/2']);
     // through holes have no caps in the body: only their sides, the copies with the pattern and the number
-    expect(holeFaces(state, 'plate', 'plateHoles')).toEqual(['plateHoles/side/c20']);
+    expect(holeFaces(state, 'plate', 'plateHoles')).toEqual(['plateHoles/side/c20', 'plateHoles/side/q1', 'plateHoles/side/q2', 'plateHoles/side/q3', 'plateHoles/side/q4', 'plateHoles/side/q5', 'plateHoles/side/q6']);
+    // the sketch of the plate holes is fully determined with nothing redundant: three fixed centres,
+    // three mirrored ones and one diameter shared by equal radii
+    expect(engine.diagnoseSketch('skPlateHoles')).toEqual({ status: 'solved', degreesOfFreedom: 0, conflicting: [], duplicates: [], redundant: [], removable: [], free: [] });
+    const holes = state.evaluation.features.skPlateHoles.sketch!;
+    expect(CONTROLLER.map(([id]) => [holes.points[id].x, holes.points[id].y])).toEqual(CONTROLLER.map(([, x, y]) => [expect.closeTo(x, 6), expect.closeTo(y, 6)]));
+    expect(CONTROLLER.map((_, i) => [holes.points[`k${i + 4}`].x, holes.points[`k${i + 4}`].y])).toEqual(CONTROLLER.map(([, x, y]) => [expect.closeTo(-x, 6), expect.closeTo(y, 6)]));
+    for (let i = 1; i <= 6; i++) expect(holes.radii[`q${i}`]).toBeCloseTo(1.65, 8);
     expect(holeFaces(state, 'plate', 'm4hole')).toEqual(copies('m4hole/side/m4', 'm4holes', 4));
     expect(holeFaces(state, 'sun', 'sunBore')).toEqual(['sunBore/side/sb']);
     expect(holeFaces(state, 'sun', 'flangeHole')).toEqual(copies('flangeHole/side/h3', 'flangeHoles', 4));
     expect(holeFaces(state, 'plate', 'boltHole')).toEqual(copies('boltHole/side/bh', 'bolts', 6));
     expect(holeFaces(state, 'housing', 'boltHole')).toEqual(copies('boltHole/side/bh', 'bolts', 6));
-    expect(bodyVolume(state, 'plate')).toBeCloseTo((disc(110) - 4 * disc(4.5) - disc(20) - 6 * disc(3.4)) * 5, 1);
+    expect(bodyVolume(state, 'plate')).toBeCloseTo((disc(110) - 4 * disc(4.5) - disc(20) - 6 * disc(3.4) - 6 * disc(3.3)) * 5, 1);
     // the carrier: a disc with three pins that reach down into the planets
     expect(bodyVolume(state, 'carrier')).toBeCloseTo(disc(60) * 5 + 3 * disc(5) * 12.5, 1);
     expect(holeFaces(state, 'carrier', 'carrierPin')).toEqual([...copies('carrierPin/side/pin', 'carrierPins', 3), ...copies('carrierPin/startCap', 'carrierPins', 3)].sort());
@@ -256,7 +289,7 @@ describe('scenario 9: robot joint', () => {
     // a thicker plate and a taller housing: the holes still go through
     const thicker = run(engine, { type: 'updateFeature', id: 'plate', patch: { extent: { start: -8, distance: 8 } } }, { type: 'updateFeature', id: 'housing', patch: { extent: { distance: 52 } } });
     expectAllOk(thicker);
-    expect(bodyVolume(thicker, 'plate')).toBeCloseTo((disc(110) - 4 * disc(4.5) - disc(20) - 6 * disc(3.4)) * 8, 1);
+    expect(bodyVolume(thicker, 'plate')).toBeCloseTo((disc(110) - 4 * disc(4.5) - disc(20) - 6 * disc(3.4) - 6 * disc(3.3)) * 8, 1);
     // the ring follows the taller housing: it still goes through, so the housing has no cap of it
     expect(holeFaces(thicker, 'housing', 'ring')).toEqual(['ring/side/teeth']);
     expect(bodyVolume(thicker, 'housing')).toBeLessThan(disc(110) * 52 - disc(92) * 28 - 6 * disc(3.4) * 52 - Math.PI * 31.5 ** 2 * 24);

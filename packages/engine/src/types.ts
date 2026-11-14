@@ -114,7 +114,15 @@ export type GeometricConstraint =
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id } // úsečky
   | { type: 'tangent'; a: Id; b: Id } // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
   | { type: 'symmetric'; a: Id; b: Id; line: Id } // body a, b souměrně podle přímky úsečky (osy)
-  | { type: 'midpoint'; point: Id; line: Id }; // bod ve středu úsečky
+  | { type: 'midpoint'; point: Id; line: Id } // bod ve středu úsečky
+  | { type: 'equalRadius'; a: Id; b: Id } // circles or arcs
+  // The point lies at the coordinates of the sketch. `x` and `y` are numeric fields
+  // (`constraints/<id>/x`, `constraints/<id>/y`), so they may be expressions and the point moves
+  // with the parameters.
+  | { type: 'fixed'; point: Id; x: number; y: number };
+
+// A fixed point in a command may leave its coordinates out: the point is then fixed where it is.
+export type FixedInput = { type: 'fixed'; point: Id; x?: number | Expr; y?: number | Expr };
 
 export type DimensionShape =
   | { type: 'distance'; a: Id; b: Id } // bod–bod
@@ -499,7 +507,7 @@ export type Command =
   | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number } // radius u kružnice
   | { type: 'removeEntity'; sketch: Id; id: Id } // bod nebo křivka
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
-  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> }
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | FixedInput } // `fixed` without x, y takes the position of the point
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   // Without `value` neither the value nor the expression changes; a number removes the expression,
   // a string sets it. Switching to a reference dimension removes the expression; an expression given

@@ -11,6 +11,7 @@ const CONVENTIONS = [
   'Skica se kreslí přibližně a geometrii určují vazby a kóty: body se zadají odhadem, solver je po každém příkazu posune tak, aby vazby platily. Více příkazů ke skice je lepší poslat jedním příkazem `batch`; řeší se pak jednou.',
   'Křivky odkazují na body: úsečka má `a`, `b`; kružnice `center` a poloměr (parametr `radius` příkazu addCurve); oblouk `center`, `start`, `end` a vede proti směru hodin. Křivky se spojují sdílením bodu nebo vazbou coincident.',
   'Stejnou řídicí vazbu (stejný typ a operandy) nejde přidat dvakrát. Kóta s `driving: false` jen měří.',
+  'A point is put at given coordinates of the sketch by the constraint `fixed` (`{ type: "fixed", point, x, y }`); without `x` and `y` it is fixed where it is. The coordinates are numeric fields `constraints/<id>/x` and `constraints/<id>/y` (command setField) and may be expressions. Holes of the same size share one dimension through `equalRadius`.',
   'Closed regions of a sketch (`regions` in the result of get_sketch) are extruded by the command addFeature with a feature of type extrude: `profile` is `{ type: "regions", sketch, regions }`, where `regions` is a list of `{ outerLoop }` taken from get_sketch. The extent is one of two variants. `{ type: "distance", start, distance }`: `start` is the offset of the start from the sketch plane along its normal (usually 0, may be negative), `distance` is measured from the start; a positive one points along the normal of the sketch plane, for a sketch on a face out of the body. `{ type: "throughAll", side }` is for the operation `cut` only: the tool passes through all target bodies and its length follows them at every recompute. `side` is `forward` (along the normal of the sketch plane), `backward` (against it) or `both`; on a face of a body an ordinary hole is `backward`, and `both` is the safe default unless the body reaches to both sides of the plane and only one part should be cut.',
   'The ID of a body is the ID of the extrusion with the operation `new`; a copy of a body made by a pattern has the ID `<pattern>/<number>` (numbered from 1), listed in `bodies` of the pattern in get_model. The operations `add` and `cut` need `targets`: exactly one body for `add`, one or more for `cut` (a screw hole through two bolted parts is one cut with both bodies as targets). A cut that would remove a whole target is an error and changes none of them; a target the tool does not reach is left unchanged and the warning `noEffect` lists it in `refs`.',
   'Instead of regions, the profile of an extrusion may come from a profile generator: `profile` is `{ type: "generated", generator, sketch, operands, params, refs }` (section Profile generators). `operands` name entities of the sketch, `params` take numbers, expressions and flags (what is left out gets its default), `refs` name earlier features. The generator reads only the solved operands, so the sketch needs no closed regions; pitch circles of gears in mesh touch and should be construction circles. Operation, extent and targets work as for any extrusion. The result of the feature carries `facts` (for a gear its module, diameters and the rotation used): read them with get_model to verify what was built. updateFeature merges the dictionaries by entry: `{ profile: { params: { teeth: 24 } } }` changes one parameter, `null` returns a parameter to its default or removes a reference.',
@@ -41,7 +42,8 @@ export interface ConstraintDescription {
   title: string;
   summary: string;
   operands: { field: string; kinds: string[] }[];
-  value?: { unit: string; rule: string };
+  value?: { unit: string; rule: string }; // the value of a dimension
+  values?: { name: string; unit: string; rule: string }[]; // named values of a constraint that is not a dimension (a fixed point: x, y)
   example: Record<string, unknown>;
 }
 
@@ -51,7 +53,8 @@ export function constraintCatalog(): ConstraintDescription[] {
     title: spec.title,
     summary: spec.summary,
     operands: spec.operands.map((operand) => ({ field: operand.field, kinds: [...operand.kinds] })),
-    ...(spec.values?.value ? { value: { unit: spec.values.value.unit, rule: rangeText(spec.values.value) } } : {}),
+    ...(spec.dimension && spec.values?.value ? { value: { unit: spec.values.value.unit, rule: rangeText(spec.values.value) } } : {}),
+    ...(!spec.dimension && spec.values ? { values: Object.entries(spec.values).map(([name, value]) => ({ name, unit: value.unit, rule: rangeText(value) })) } : {}),
     example: {
       type,
       ...Object.fromEntries(spec.operands.map((operand) => [operand.field, `<${operand.kinds.join('|')}>`])),
@@ -163,7 +166,7 @@ export function apiText(): string {
   };
   const constraint = (entry: ConstraintDescription): string => {
     const operands = entry.operands.map((operand) => `${operand.field}: ${operand.kinds.join(' | ')}`).join(', ');
-    const value = entry.value ? `; value: ${entry.value.rule}, ${entry.value.unit}` : '';
+    const value = entry.value ? `; value: ${entry.value.rule}, ${entry.value.unit}` : (entry.values ?? []).map((named) => `; ${named.name}: ${named.rule}, ${named.unit}`).join('');
     return `- ${entry.type} (${entry.title}) { ${operands}${value} }: ${entry.summary}\n  příklad: ${JSON.stringify(entry.example)}`;
   };
   return [

@@ -350,6 +350,16 @@ Point 5 is in the code (`docs/decisions.md`, D35, point 5, "Status: done"; `docs
 - `export_stl` per body appears on disk only as a whole (temporary names, then renames), refuses file names over 255 bytes, and both export modes and `check_interference` refuse arguments their schema does not have.
 - Implementation notes that are now done: the port guarantee mentions the use of the intersection, and the scenario test measures collisions with the query.
 
+### After point 6 (2026-11-14)
+
+Point 6 is in the code (`docs/decisions.md`, D35, point 6, "Status: done"). The constraints `equalRadius` and `fixed` and the command input `FixedInput` live in the engine as this draft has them. Differences and notes:
+
+- A fixed point is two constraints of the solver library; the adapter reports them under the one ID of the constraint.
+- `null` in place of a coordinate is an invalid command; only a coordinate that is left out is filled in.
+- `fixed` on the origin or on a point of projected geometry and a second `fixed` on the same point are invalid commands.
+- The app fixes a point with its unrounded position, unlike a new dimension, which rounds its measured value.
+- The scenario test now has the six controller holes of the plate exactly as `scenario9.ts`; only the nut pocket and its pattern still wait for the polygon tool of point 7.
+
 ## Co kontrakt neřeší
 
 - Rozložení a vzhled UI; to patří do `ui.md` při implementaci každého bodu.

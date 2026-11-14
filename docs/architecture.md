@@ -133,7 +133,9 @@ type GeometricConstraint =
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // úsečky
   | { type: 'tangent';      a: Id; b: Id }            // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
   | { type: 'symmetric';    a: Id; b: Id; line: Id }  // body a, b souměrně podle přímky úsečky (osy)
-  | { type: 'midpoint';     point: Id; line: Id };    // bod ve středu úsečky
+  | { type: 'midpoint';     point: Id; line: Id }     // bod ve středu úsečky
+  | { type: 'equalRadius';  a: Id; b: Id }            // two circles or arcs, in any combination (D35, point 6)
+  | { type: 'fixed';        point: Id; x: number; y: number };  // an own point at coordinates of the sketch; x, y are numeric fields
 
 type Dimension = { value: number; driving: boolean } & (
   | { type: 'distance';           a: Id; b: Id }      // bod–bod (délka úsečky = její koncové body)
@@ -224,7 +226,7 @@ Angles are in radians both as numbers and in expressions; `deg(x)` converts degr
 
 **Catalog of numeric fields** (`catalog.ts`, `document.ts`). A field is described by `NumberSpec`: title, unit (`mm`, `rad`, `count`, `none`), optional `min` and `max` with an `open` flag, `nonZero`, `integer` (within 1e-9 of an integer, then rounded) and `default`. `checkNumber` verifies a value against it; plain numbers in commands and values of expressions go through the same function.
 
-- Static description: `FEATURE_TYPE_INFO[type].fields` (`FieldSpec`: address, spec, the variant that has the field) and `CONSTRAINTS[type].values` (named values of a constraint; a dimension has `value` and the flag `dimension`). The API description for AI and the forms of the app read these.
+- Static description: `FEATURE_TYPE_INFO[type].fields` (`FieldSpec`: address, spec, the variant that has the field) and `CONSTRAINTS[type].values` (named values of a constraint; a dimension has `value` and the flag `dimension`, a fixed point has `x` and `y`, at the addresses `constraints/<id>/x` and `constraints/<id>/y`). The API description for AI and the forms of the app read these.
 - Fields of a concrete feature: `fieldsOf(feature)` returns address, spec, value and expression. It is not a second list: feature validators read every numeric field through one reader (`Fields.number(value, path, spec)`), and `fieldsOf` is a validation pass that collects what the reader saw. What commands accept and what `fieldsOf` reports therefore cannot drift apart.
 - Only driving inputs are fields. Coordinates and radii computed by the solver and values of reference dimensions are not; a string there is an invalid command.
 
@@ -351,6 +353,10 @@ Diagnostika se počítá **rozborem v prvním řádu**, bez solveru. Každá vaz
 
 - **Tečnost ve společném bodě.** Úsečka končící na kružnici, které se má dotýkat, nebo dva oblouky navazující ve společném konci (zaoblení, drážka). Obecná rovnice tečnosti (vzdálenost středu od přímky se rovná poloměru) tu má stejný řádek jako podmínka, že konec úsečky leží na kružnici. Tečnost se pak počítá jako kolmost poloměru na úsečku v tom bodě, respektive jako tři body na přímce (oba středy a společný bod). Tato podoba se použije jen tehdy, když konec úsečky nebo oblouku na kružnici drží ostatní vazby (společný bod, totožnost, bod na křivce, obecně cokoli kromě tečností): rozbor to pozná tak, že podmínka „bod leží na kružnici" leží v prostoru řádků ostatních vazeb. Leží-li tam bod jen shodou rozměrů nebo až díky tečnosti samé, platí obecná rovnice; jinak by z rozboru vypadl poloměr kružnice.
 - **Nulová vzdálenost dvou bodů** se počítá jako totožnost (dvě rovnice).
+
+**A fixed point and equal radius (D35, point 6).** `fixed` is two equations over an ordinary variable point: its coordinates relative to the origin of the sketch minus `x` and `y`. It therefore removes two degrees of freedom, a dimension that repeats a coordinate is redundant and explained by the fixed point, and one that contradicts it is a conflict that names both. The list `fixed` of `SolveInput` (the origin and projected geometry) is something else: its points are not variables at all, which is why a constraint on them could not be diagnosed and why `fixed` on the origin or on a projected point is an invalid command. `equalRadius` is one equation, the difference of the two radii; the radius of an arc is the distance of its start from its centre.
+
+**Values of a fixed point.** `x` and `y` are numeric fields like the value of a driving dimension: they take expressions, `setField` changes one of them, `renameParameter` rewrites them and removing the constraint or its point removes them. `setConstraintValue` is for dimensions only. `addConstraint` may leave a coordinate out (`FixedInput`): the engine fills in the position the document has for the point, which is the last solved one; `null` is not "left out". A point can be fixed once.
 
 Ostatní takové případy rozbor nepozná:
 
@@ -612,7 +618,7 @@ Jak adaptér planegcs řeší:
 2. Vyřeší skicu. Když výchozí algoritmus (DogLeg) nedoběhne a konflikt nehlásí, zkusí Levenberg–Marquardt; stejně postupuje FreeCAD.
 3. Řeší znovu z nalezeného stavu, dokud není ustálený. Knihovna totiž stupně volnosti a nadbytečné vazby hlásí podle výchozího odhadu, ne podle výsledku, a ve stavu `Converged` může nechat nadbytečnou vazbu nesplněnou. Vrácená diagnostika tak popisuje vrácenou geometrii a opakované řešení z výsledku dá totéž; o to se opírá krok 2 řešení skici (jen diagnostika z uložených proměnných).
 
-Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Neznámý druh křivky nebo ID ve `fixed`, které není bod ani kružnice, je výjimka. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
+Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Two exceptions (D35, point 6): `equalRadius` becomes `equal_radius_cc`, `equal_radius_ca` or `equal_radius_aa` by the kinds of its two curves (the library wants the circle first in the mixed one), and `fixed` becomes two constraints of the library, `coordinate_x` under the ID of the constraint and `coordinate_y` under a derived ID that the adapter maps back, so `conflicting` and `redundant` name the constraint once. Neznámý druh křivky nebo ID ve `fixed`, které není bod ani kružnice, je výjimka. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
 
 Referenční kóty (`driving: false`) se solveru neposílají. Engine je před voláním odfiltruje a jejich hodnotu spočítá z vyřešených poloh. planegcs s nimi podle spiku nepracuje spolehlivě.
 

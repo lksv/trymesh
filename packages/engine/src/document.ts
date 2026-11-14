@@ -387,6 +387,14 @@ export function duplicateOf(sketch: SketchFeature, c: Constraint, except?: Id): 
   return Object.keys(sketch.constraints).find((id) => id !== except && isDriving(sketch.constraints[id]) && constraintKey(sketch.constraints[id]) === key);
 }
 
+// A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
+// the position the sketch has stored for the point (its last solved one).
+function withPosition(sketch: SketchFeature, given: unknown): unknown {
+  if (!isObject(given) || given.type !== 'fixed' || typeof given.point !== 'string' || !has(sketch.points, given.point)) return given;
+  const at = sketch.points[given.point];
+  return { ...given, x: given.x === undefined ? at.x : given.x, y: given.y === undefined ? at.y : given.y };
+}
+
 // Křivka smí odkazovat jen na vlastní body skici a na počátek.
 function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   const o = object(v, what);
@@ -430,15 +438,18 @@ function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fie
   const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
   const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
   if (problem) fail(`${what}: ${problem}`);
-  let dimension = {};
+  let values: Record<string, number | boolean> = {};
   if (spec.dimension && spec.values) {
     // A driving dimension is a numeric field and may have an expression; a reference one only measures.
     const driving = boolean(o.driving, `${what}.driving`);
     if (!driving && typeof o.value === 'string') fail(`${what}.value: a reference dimension cannot have an expression`);
     const value = driving ? fields.number(o.value, constraintPath(id), spec.values.value, `${what}.value`) : plain(finite(o.value, `${what}.value`), spec.values.value, `${what}.value`);
-    dimension = { value, driving };
+    values = { value, driving };
+  } else if (spec.values) {
+    // values of a constraint that is not a dimension (the coordinates of a fixed point): numeric fields
+    for (const [name, number] of Object.entries(spec.values)) values[name] = fields.number(o[name], constraintPath(id, name), number, `${what}.${name}`);
   }
-  const result = { type, ...operands, ...dimension } as Constraint;
+  const result = { type, ...operands, ...values } as Constraint;
   if (isDriving(result) && !constraintOperands(result).some((id) => entityOf(sketch, id)?.own)) {
     fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
   }
@@ -1023,7 +1034,8 @@ function withConstraints(s: SketchFeature, constraints: Record<Id, Constraint>, 
   const kept = Object.entries({ ...old, ...changes }).filter(([path, expr]) => {
     const [group, id] = path.split('/');
     const c = has(constraints, id) ? constraints[id] : undefined;
-    return expr !== null && group === 'constraints' && c !== undefined && isDimension(c) && c.driving;
+    // the address must be a value of a constraint that is still there and still driving
+    return expr !== null && group === 'constraints' && c !== undefined && isDriving(c) && has(CONSTRAINTS[c.type].values ?? {}, path.split('/')[2] ?? '');
   }) as [FieldPath, Expr][];
   return { ...rest, constraints, ...(kept.length ? { expressions: Object.fromEntries(kept.sort(([a], [b]) => (a < b ? -1 : 1))) } : {}) };
 }
@@ -1275,7 +1287,7 @@ export function applyCommand(doc: Document, command: Command): Document {
       return editSketch(doc, cmd.sketch, (s) => {
         const id = unique(doc, cmd.id, 'addConstraint.id');
         const fields = new Fields('add', {}, () => evaluateParameters(doc.parameters));
-        const added = constraint(s, cmd.constraint, 'addConstraint.constraint', fields, id);
+        const added = constraint(s, withPosition(s, cmd.constraint), 'addConstraint.constraint', fields, id);
         const twin = duplicateOf(s, added);
         if (twin !== undefined) fail(`addConstraint: stejná vazba už ve skice je ("${twin}")`);
         return withConstraints(s, { ...s.constraints, [id]: added }, fields.expressions('addConstraint.constraint') ?? {});

@@ -1,6 +1,6 @@
 // Kreslicí nástroje a vazby z výběru proti skutečnému enginu: příkazy, které UI sestaví, musí
 // engine přijmout a výsledek musí odpovídat tomu, co uživatel nakreslil.
-import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, createEngine, emptySketch } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, createEngine, duplicateOf, emptySketch } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
@@ -29,7 +29,7 @@ import {
   rectangleCommands,
   rememberedProfile,
 } from '../src/sketch-commands';
-import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
+import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
 
@@ -236,7 +236,7 @@ describe('vazby a kóty z výběru', () => {
 
   it('vazby bez zvláštního pravidla se nabízejí podle katalogu enginu: souměrnost a střed úsečky', () => {
     // seznam geometrických vazeb je katalog bez kót, takže nová vazba enginu v něm je sama
-    expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint']);
+    expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint', 'equalRadius', 'fixed']);
     expect(Object.keys(CONSTRAINTS).filter((type) => !GEOMETRIC_KINDS.includes(type as (typeof GEOMETRIC_KINDS)[number]))).toEqual(['distance', 'distancePointLine', 'horizontalDistance', 'verticalDistance', 'angle', 'radius', 'diameter']);
 
     const t = setup();
@@ -299,6 +299,44 @@ describe('vazby a kóty z výběru', () => {
       s.t.run(offer(kind, ids)!.map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: s.t.newId('k'), constraint })));
     }
     expect(s.t.result().conflicting).toEqual([]);
+  });
+
+  it('equal radius and a fixed point are offered for a fitting selection (D35, point 6)', () => {
+    const s = shapes();
+    const offer = (kind: Parameters<typeof geometricFor>[0], ids: Id[]) => geometricFor(kind, s.view, ids);
+    // two circles or arcs, in the order of the selection
+    expect(offer('equalRadius', [s.circle, s.arc])).toEqual([{ type: 'equalRadius', a: s.circle, b: s.arc }]);
+    expect(offer('equalRadius', [s.arc, s.circle])).toEqual([{ type: 'equalRadius', a: s.arc, b: s.circle }]);
+    expect(offer('equalRadius', [s.circle])).toBeUndefined();
+    expect(offer('equalRadius', [s.circle, s.bottom])).toBeUndefined();
+    expect(offer('equalRadius', [s.circle, s.top])).toBeUndefined();
+    // every selected own point is fixed where it is; the origin and curves are not offered
+    const [top, start] = [s.view.points.get(s.top)!.at, s.view.points.get(s.start)!.at];
+    expect(offer('fixed', [s.top])).toEqual([{ type: 'fixed', point: s.top, x: top[0], y: top[1] }]);
+    expect(offer('fixed', [s.top, s.start])).toEqual([
+      { type: 'fixed', point: s.top, x: top[0], y: top[1] },
+      { type: 'fixed', point: s.start, x: start[0], y: start[1] },
+    ]);
+    expect(offer('fixed', [])).toBeUndefined();
+    expect(offer('fixed', ['origin'])).toBeUndefined();
+    expect(offer('fixed', [s.top, 'origin'])).toBeUndefined();
+    expect(offer('fixed', [s.top, s.circle])).toBeUndefined();
+    // the engine accepts what is offered: nothing moves, the radii become equal, the points lose their freedom
+    const before = s.t.result().degreesOfFreedom;
+    s.t.run([...offer('equalRadius', [s.circle, s.arc])!, ...offer('fixed', [s.top, s.start])!].map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: s.t.newId('k'), constraint })));
+    const result = s.t.result();
+    expect(result.conflicting).toEqual([]);
+    expect(result.degreesOfFreedom).toBe(before - 5);
+    expect(result.points[s.top]).toEqual({ x: expect.closeTo(top[0], 9), y: expect.closeTo(top[1], 9) });
+    const arc = s.t.view().curves.get(s.arc)!.shape as Extract<Shape, { type: 'arc' }>;
+    expect(arc.radius).toBeCloseTo(result.radii[s.circle], 6);
+    // the label of the constraint sits at its point; the operands come from the catalog
+    const fixed = Object.values(s.t.sketch().constraints).find((c) => c.type === 'fixed')!;
+    expect(anchorOf(fixed, s.t.view())).toEqual([expect.closeTo(top[0], 6), expect.closeTo(top[1], 6)]);
+    expect(operandsOf(fixed)).toEqual([s.top]);
+    // the same constraint is not offered twice by the engine's duplicate rule
+    expect(duplicateOf(s.t.sketch(), offer('fixed', [s.top])![0])).toBeDefined();
+    expect(duplicateOf(s.t.sketch(), { type: 'equalRadius', a: s.arc, b: s.circle })).toBeDefined();
   });
 });
 

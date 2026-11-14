@@ -267,6 +267,11 @@ describe('mapování vazeb', () => {
     parallel: { type: 'parallel', a: 'ab', b: 'cd' },
     perpendicular: { type: 'perpendicular', a: 'ab', b: 'bcLine' },
     equalLength: { type: 'equalLength', a: 'ab', b: 'cd' },
+    'equalRadius circle–circle': { type: 'equalRadius', a: 'circ', b: 'circ2' },
+    'equalRadius arc–circle': { type: 'equalRadius', a: 'arcA', b: 'circ' },
+    'equalRadius circle–arc': { type: 'equalRadius', a: 'circ2', b: 'arcB' },
+    'equalRadius arc–arc': { type: 'equalRadius', a: 'arcA', b: 'arcB' },
+    fixed: { type: 'fixed', point: 'c', x: -3, y: 12 },
     'tangent úsečka–kružnice': { type: 'tangent', a: 'ab', b: 'circ' },
     'tangent kružnice–úsečka': { type: 'tangent', a: 'circ', b: 'ab' },
     'tangent úsečka–oblouk': { type: 'tangent', a: 'arcA', b: 'ab' },
@@ -689,5 +694,110 @@ describe('nálezy z revize', () => {
     expect(distanceOf(r.points, 'd', 'as')).toBeGreaterThan(0.1); // ne totožnost se začátkem oblouku
     r = solved({ type: 'pointOnCurve', point: 'd', curve: 'k' });
     expect(distanceOf(r.points, 'd', 'm')).toBeCloseTo(r.radii.k!, 6);
+  });
+});
+
+describe('equal radius and a fixed point (D35, point 6)', () => {
+  const base = (constraints: Record<Id, Constraint> = {}): SolveInput =>
+    input({
+      points: { origin: { x: 0, y: 0 }, m: { x: 20, y: 5 }, m2: { x: 30, y: 6 }, ac: { x: 40, y: 0 }, as: { x: 45, y: 0 }, ae: { x: 40, y: 5 }, bc: { x: 52, y: 0 }, bs: { x: 55, y: 0 }, be: { x: 52, y: 3 }, p: { x: 3, y: 4 } },
+      radii: { k: 3, k2: 2 },
+      curves: {
+        k: { type: 'circle', center: 'm' },
+        k2: { type: 'circle', center: 'm2' },
+        arcA: { type: 'arc', center: 'ac', start: 'as', end: 'ae' },
+        arcB: { type: 'arc', center: 'bc', start: 'bs', end: 'be' },
+      },
+      constraints,
+      fixed: ['origin'],
+    });
+  const radiusOf = (r: ReturnType<SketchSolver['solve']>, arc: 'arcA' | 'arcB') => {
+    const [c, s] = arc === 'arcA' ? ['ac', 'as'] : ['bc', 'bs'];
+    return Math.hypot(r.points[s]!.x - r.points[c]!.x, r.points[s]!.y - r.points[c]!.y);
+  };
+  const radius = (curve: Id, value: number): Constraint => ({ type: 'radius', curve, value, driving: true });
+
+  it('equal radius: circles and arcs in every combination follow the one dimension', () => {
+    let r = solver.solve(base({ r: radius('k', 4), eq: { type: 'equalRadius', a: 'k', b: 'k2' } }));
+    expect(r.status).toBe('solved');
+    expect([r.radii.k, r.radii.k2]).toEqual([expect.closeTo(4, 8), expect.closeTo(4, 8)]);
+    // the dimension may be on either of the two
+    r = solver.solve(base({ r: radius('k2', 5), eq: { type: 'equalRadius', a: 'k', b: 'k2' } }));
+    expect(r.radii.k).toBeCloseTo(5, 8);
+    // an arc with a circle, in both orders of the operands
+    for (const eq of [{ type: 'equalRadius', a: 'k', b: 'arcA' }, { type: 'equalRadius', a: 'arcA', b: 'k' }] as Constraint[]) {
+      r = solver.solve(base({ r: radius('k', 4), eq }));
+      expect(r.status).toBe('solved');
+      expect(radiusOf(r, 'arcA')).toBeCloseTo(4, 6);
+    }
+    r = solver.solve(base({ r: radius('arcA', 6), eq: { type: 'equalRadius', a: 'arcB', b: 'arcA' } }));
+    expect(r.status).toBe('solved');
+    expect(radiusOf(r, 'arcB')).toBeCloseTo(6, 6);
+    // a chain: one dimension sizes four curves
+    r = solver.solve(base({ r: radius('k', 2.5), e1: { type: 'equalRadius', a: 'k', b: 'k2' }, e2: { type: 'equalRadius', a: 'k2', b: 'arcA' }, e3: { type: 'equalRadius', a: 'arcA', b: 'arcB' } }));
+    expect(r.status).toBe('solved');
+    expect([r.radii.k2, radiusOf(r, 'arcA'), radiusOf(r, 'arcB')]).toEqual([expect.closeTo(2.5, 6), expect.closeTo(2.5, 6), expect.closeTo(2.5, 6)]);
+    // without a dimension the radii only become equal: one degree of freedom less
+    const free = solver.solve(base()).degreesOfFreedom;
+    r = solver.solve(base({ eq: { type: 'equalRadius', a: 'k', b: 'k2' } }));
+    expect(r.radii.k).toBeCloseTo(r.radii.k2!, 8);
+    expect(r.degreesOfFreedom).toBe(free - 1);
+  });
+
+  it('equal radius: a conflict and a redundant constraint are reported by their IDs', () => {
+    const conflict = solver.solve(base({ r1: radius('k', 4), r2: radius('k2', 6), eq: { type: 'equalRadius', a: 'k', b: 'k2' } }));
+    expect(conflict.status).toBe('conflict');
+    expect(conflict.conflicting).toEqual(['eq', 'r1', 'r2']);
+    const redundant = solver.solve(base({ r1: radius('k', 4), r2: radius('k2', 4), eq: { type: 'equalRadius', a: 'k', b: 'k2' } }));
+    expect(redundant.status).toBe('solved');
+    expect(redundant.redundant).toHaveLength(1);
+    expect(() => solver.solve({ ...base({ eq: { type: 'equalRadius', a: 'k', b: 'line' } }), curves: { ...base().curves, line: { type: 'line', a: 'm', b: 'm2' } } })).toThrow(/equal radius needs circles or arcs/);
+  });
+
+  it('a fixed point goes to its coordinates and takes two degrees of freedom', () => {
+    const free = solver.solve(base()).degreesOfFreedom;
+    const r = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 10, y: -2 } }));
+    expect(r.status).toBe('solved');
+    expect(r.points.p).toEqual({ x: expect.closeTo(10, 9), y: expect.closeTo(-2, 9) });
+    expect(r.degreesOfFreedom).toBe(free - 2);
+    expect(r.redundant).toEqual([]);
+    // the centre of a circle or of an arc is a point like any other
+    const centre = solver.solve(base({ f: { type: 'fixed', point: 'ac', x: 41, y: 1 } }));
+    expect(centre.status).toBe('solved');
+    expect(centre.points.ac).toEqual({ x: expect.closeTo(41, 9), y: expect.closeTo(1, 9) });
+    // dragging a fixed point does not move it; dragging another point leaves it where it is
+    const dragged = solver.solve({ ...base({ f: { type: 'fixed', point: 'p', x: 10, y: -2 } }), drag: { point: 'p', target: { x: 30, y: 30 } } });
+    expect(dragged.status).toBe('solved');
+    expect(dragged.points.p).toEqual({ x: expect.closeTo(10, 6), y: expect.closeTo(-2, 6) });
+    const other = solver.solve({ ...base({ f: { type: 'fixed', point: 'p', x: 10, y: -2 } }), drag: { point: 'm', target: { x: 25, y: 9 } } });
+    expect(other.points.m).toEqual({ x: expect.closeTo(25, 6), y: expect.closeTo(9, 6) });
+    expect(other.points.p).toEqual({ x: expect.closeTo(10, 6), y: expect.closeTo(-2, 6) });
+  });
+
+  it('a fixed point is one constraint: both of its coordinates report under its ID', () => {
+    // 10 mm from the origin is impossible for a point fixed at (10, 3)
+    const conflict = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 10, y: 3 }, d: { type: 'distance', a: 'origin', b: 'p', value: 10, driving: true } }));
+    expect(conflict.status).toBe('conflict');
+    expect(conflict.conflicting).toEqual(['d', 'f']);
+    // the coordinate y alone clashes with a vertical distance
+    const half = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 10, y: 3 }, v: { type: 'verticalDistance', a: 'origin', b: 'p', value: 5, driving: true } }));
+    expect(half.status).toBe('conflict');
+    expect(half.conflicting).toEqual(['f', 'v']);
+    // a dimension that says the same is redundant; whichever the library names, it is named once
+    const redundant = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 6, y: 8 }, d: { type: 'distance', a: 'origin', b: 'p', value: 10, driving: true }, h: { type: 'horizontalDistance', a: 'origin', b: 'p', value: 6, driving: true } }));
+    expect(redundant.status).toBe('solved');
+    expect(redundant.points.p).toEqual({ x: expect.closeTo(6, 8), y: expect.closeTo(8, 8) });
+    expect(redundant.redundant.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(redundant.redundant).size).toBe(redundant.redundant.length);
+    expect(redundant.redundant.every((id) => ['f', 'd', 'h'].includes(id))).toBe(true);
+    // two fixed points and a distance between them that fits
+    const pair = solver.solve(base({ f: { type: 'fixed', point: 'p', x: 0, y: 0 }, g: { type: 'fixed', point: 'm', x: 3, y: 4 }, d: { type: 'distance', a: 'p', b: 'm', value: 5, driving: true } }));
+    expect(pair.status).toBe('solved');
+    expect(pair.redundant).toHaveLength(1);
+    expect(['f', 'g', 'd']).toContain(pair.redundant[0]);
+    // the result does not depend on the order of the keys
+    const one = base({ f: { type: 'fixed', point: 'p', x: 10, y: -2 }, eq: { type: 'equalRadius', a: 'k', b: 'k2' } });
+    const reversed = <T,>(record: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.entries(record).reverse());
+    expect(solver.solve({ ...one, points: reversed(one.points), constraints: reversed(one.constraints) })).toEqual(solver.solve(one));
   });
 });

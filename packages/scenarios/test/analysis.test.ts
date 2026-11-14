@@ -44,6 +44,16 @@ describe('rovnice vazeb odpovídají solveru', () => {
     parallel: [{ type: 'parallel', a: 'ab', b: 'cd' }],
     perpendicular: [{ type: 'perpendicular', a: 'cd', b: 'ab' }],
     equalLength: [{ type: 'equalLength', a: 'ab', b: 'cd' }],
+    equalRadius: [
+      { type: 'equalRadius', a: 'k', b: 'q' },
+      { type: 'equalRadius', a: 'r', b: 'k' },
+      { type: 'equalRadius', a: 'q', b: 'r' },
+    ],
+    // far from where the point was drawn and at the place it was drawn
+    fixed: [
+      { type: 'fixed', point: 'c', x: -30, y: 44 },
+      { type: 'fixed', point: 'm', x: 40, y: 10 },
+    ],
     tangent: [
       { type: 'tangent', a: 'ab', b: 'k' },
       { type: 'tangent', a: 'k', b: 'q' },
@@ -85,7 +95,7 @@ describe('rovnice vazeb odpovídají solveru', () => {
         expect(engine.getState().evaluation.features.S1.status, `${type} ${i}`).toBe('ok');
         const after = new SketchAnalysis(inputOf(engine));
         expect(after.residual, `${type} ${i}`).toBeLessThan(1e-6);
-        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (['coincident', 'symmetric', 'midpoint'].includes(type) ? 2 : 1));
+        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (['coincident', 'symmetric', 'midpoint', 'fixed'].includes(type) ? 2 : 1));
         expect(after.surplus()).toEqual({ redundant: [], removable: [] });
         expect(dofOf(engine)).toBe(after.degreesOfFreedom);
       });

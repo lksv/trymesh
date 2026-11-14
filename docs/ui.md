@@ -96,6 +96,7 @@ Poslední úprava: 2026-11-14
 | Přidat geometrickou vazbu | `addConstraint` | typy vybraných entit (`document`) |
 | Přidat kótu (typ podle výběru, viz níže) | `addConstraint` | |
 | Změnit hodnotu kóty | `setConstraintValue` | |
+| Change a coordinate of a fixed point | `setField` (`constraints/<id>/x`, `…/y`) | `document` (the constraint and its expressions) |
 | Přepnout řídicí a referenční kótu | `setConstraintValue` (`driving`) | |
 | Smazat vazbu nebo kótu | `removeConstraint` | |
 | Zobrazit vazby a kóty | | `document` (vazby), `sketch.points` |
@@ -261,6 +262,7 @@ Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce
 - **Kóta mezi dvěma body** je vždy `distance`; vodorovná a svislá mají vlastní tlačítko, podle umístění myší se nerozlišují.
 - **Vazby se zobrazují v seznamu** v panelu skici (s hodnotou, přepínačem řídicí/referenční a zvýrazněním konfliktních); v pohledu jsou jen popisky kót.
 - **Vazby z katalogu (D34)**: tlačítka geometrických vazeb v panelu skici se berou z katalogu enginu včetně jména a nápovědy. Souměrnost: vyberte dva body a osu; střed úsečky: bod a úsečku. Tlačítko je dostupné, jen když výběr projde i vlastním pravidlem vazby (souměrný bod nesmí být koncem osy).
+- **Equal radius and fixed point (D35, point 6)**: both are buttons from the catalog. *Equal radius* takes two circles or arcs. *Fixed point* takes one or more own points and fixes each where it is, with the unrounded position (a rounded coordinate could contradict what already holds the point); the origin and points of projected geometry are not offered. The row of a fixed point in the list of constraints has the fields *X* and *Y*: each takes a number or an expression, shows the value of an expression in its tooltip and is sent by `setField`. A constraint with named values other than a dimension gets such fields from the catalog, so the next one needs no change of the app.
 - **Propojení s AI (D33)**: tlačítko AI na liště připojí aplikaci k MCP serveru. Dokud je připojená, AI čte a mění otevřený dokument; její změny jsou běžné příkazy a jdou vrátit přes Zpět. Rozpracované vysunutí nebo rovina se při změně od AI zruší.
 - **Konstrukční kreslení**: přepínač Konstrukčně na liště skici. Dokud je zapnutý, kreslicí nástroje zakládají konstrukční křivky (čárkovaně, netvoří profil); odvozené vazby vznikají stejně. Existující křivky se přepínají tlačítkem v panelu jako dřív.
 - **Diagnostika skici (D32)** je v panelu pod stavem skici:

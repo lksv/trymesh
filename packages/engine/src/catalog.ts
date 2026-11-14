@@ -94,7 +94,7 @@ export interface ConstraintSpec {
   summary: string; // co vazba zajišťuje a jak se čtou operandy
   operands: OperandSpec[];
   unordered?: string[]; // operandy, na jejichž pořadí nezáleží (u orientovaných kót záměna jen obrací znaménko)
-  // Named values of the constraint (numeric fields): a dimension has `value`.
+  // Named values of the constraint (numeric fields): a dimension has `value`, a fixed point `x` and `y`.
   values?: Record<string, NumberSpec>;
   dimension?: boolean; // true: the constraint is a dimension, has `driving` and can be a reference dimension
   // Dodatečné pravidlo nad operandy (v pořadí `operands`): jejich druhy, ID a body, kterými je
@@ -157,6 +157,13 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
       { field: 'line', kinds: LINE },
     ],
     check: (_kinds, [point, line], pointsOf) => (pointsOf(line).includes(point) ? 'středem úsečky nemůže být její konec' : undefined),
+  },
+  equalRadius: { title: 'Equal radius', summary: 'Two circles or arcs have the same radius.', ...pair(ROUND) },
+  fixed: {
+    title: 'Fixed point',
+    summary: 'The point lies at the coordinates x, y of the sketch. A command may leave the coordinates out; the point is then fixed where it is.',
+    operands: [{ field: 'point', kinds: POINT }],
+    values: { x: { title: 'X', unit: 'mm' }, y: { title: 'Y', unit: 'mm' } },
   },
   distance: { title: 'Vzdálenost', summary: 'Vzdálenost dvou bodů.', ...pair(POINT), ...LENGTH },
   distancePointLine: {

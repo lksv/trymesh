@@ -1513,6 +1513,29 @@ export class App {
             'řídicí',
           ),
         );
+      } else {
+        // Named values of a constraint that is not a dimension (the coordinates of a fixed point):
+        // numeric fields of the sketch, changed one at a time by setField.
+        for (const [name, spec] of Object.entries(CONSTRAINTS[c.type].values ?? {})) {
+          const path = constraintPath(id, name);
+          const current = (c as unknown as Record<string, number>)[name];
+          const expression: Expr | undefined = feature.expressions?.[path];
+          const input = h('input', {
+            className: 'value',
+            value: fieldText(expression ?? current, spec.unit),
+            title: expression ? `= ${valueText(current, spec.unit)}` : `${spec.unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : `${spec.unit}, or an expression`}`,
+            oninput: () => {
+              const parsed = parseField(input.value, spec.unit);
+              this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
+            },
+            onchange: () => {
+              // an empty field does not change the value
+              const value = parseField(input.value, spec.unit);
+              if (value === undefined || !this.run({ type: 'setField', feature: m.id, path, value }, `${constraintName(c.type)}: ${spec.title} changed.`)) this.refresh();
+            },
+          });
+          row.append(h('label', { className: 'named' }, spec.title, input));
+        }
       }
       row.append(h('button', { className: 'icon', textContent: '✕', title: 'Smazat vazbu', onclick: () => this.run({ type: 'removeConstraint', sketch: m.id, id }) }));
       // Vysvětlení je hned pod označeným řádkem: řádky nad ním se nehnou a druhé kliknutí

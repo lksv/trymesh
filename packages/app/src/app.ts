@@ -234,8 +234,6 @@ export class App {
     this.viewport = new Viewport(byId('viewport'));
     engine.subscribe(() => {
       this.collisions = undefined; // the answer belonged to the document as it was
-      if (this.collisionNote && this.note === this.collisionNote) this.say(''); // and so did the note that told it
-      this.collisionNote = undefined;
       this.refresh();
     });
     const canvas = this.viewport.element;
@@ -392,6 +390,12 @@ export class App {
     if (this.marker && at < 0) this.marker = features[Math.min(this.markerIndex, features.length) - 1]?.id ?? null;
     if (this.marker && this.marker === features[features.length - 1]?.id) this.marker = null;
     this.markerIndex = features.findIndex((f) => f.id === this.marker);
+    // The note of a collision check goes with its answer: when the document changed, the marker
+    // moved to another state or the section was closed.
+    if (this.collisionNote && !this.shownCollisions()) {
+      if (this.note === this.collisionNote) this.say('');
+      this.collisionNote = undefined;
+    }
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
@@ -780,7 +784,7 @@ export class App {
     const row = (pair: Interference, index: number, fit: boolean) =>
       h(
         'div',
-        { className: `row ${shown.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. Mean depth of what they share: ${fmt(pair.depth)} mm`, onclick: () => pick(index) },
+        { className: `row ${shown.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${fmt(pair.depth)} mm into the other`, onclick: () => pick(index) },
         h('span', { className: 'name', textContent: `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}` }),
         h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³`),
       );
@@ -788,7 +792,7 @@ export class App {
       h('h2', {}, `Collisions (${report.pairs.length})`),
       report.pairs.length === 0 && report.failed.length === 0 ? h('p', { className: 'hint' }, `No two bodies collide; ${report.checked} pair(s) checked. Bodies that only touch do not count.`) : null,
       ...report.pairs.map((pair, index) => row(pair, index, false)),
-      report.fits.length ? h('p', { className: 'hint' }, 'Fits: what these pairs share is no deeper than the chord tolerance. Round faces are polygons, so a pin in a hole of the same diameter overlaps its wall by slivers; that is not a collision of the design.') : null,
+      report.fits.length ? h('p', { className: 'hint' }, 'Fits: round faces that reach into each other by no more than the chord tolerance. Round faces are polygons, so a pin in a hole of the same diameter overlaps its wall by slivers; that is not a collision of the design.') : null,
       ...report.fits.map((pair, index) => row(pair, report.pairs.length + index, true)),
       ...report.failed.map((pair) => h('p', { className: 'issue warning' }, `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}: could not be computed (${pair.message})`)),
       h('div', { className: 'buttons' }, h('button', { textContent: 'Check again', onclick: () => this.checkCollisions() }), h('button', { textContent: 'Close', onclick: () => ((this.collisions = undefined), this.refresh()) })),

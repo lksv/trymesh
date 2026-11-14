@@ -208,6 +208,7 @@ function expectClear(engine: Engine): void {
   const report = engine.interference();
   expect(report.failed).toEqual([]);
   expect(report.pairs).toEqual([]);
+  expect(report.fits).toEqual([]); // a shallow overlap of round faces would hide here
   expect(report.checked).toBe((PARTS.length * (PARTS.length - 1)) / 2);
 }
 const copies = (name: string, pattern: Id, count: number): string[] => [name, ...Array.from({ length: count - 1 }, (_, i) => `${name}@${pattern}:${i + 1}`)];

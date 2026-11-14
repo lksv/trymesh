@@ -312,20 +312,23 @@ export interface BodyResult {
 }
 
 // A pair of bodies that share a volume above the threshold; `a` is the smaller ID in string order.
-// `depth` is the mean thickness of what they share: twice its volume over its surface. For
-// a sliver it is the thickness of the sliver, for a chunk it is of the order of its size.
+// `depth` is how deep one body reaches into the other: the largest distance from a point of the
+// surface of what they share to the surface of the body it lies inside of. For the slivers of
+// a fit it is the sagitta of the polygons, for a chunk how far it goes in.
 export interface Interference {
   a: Id;
   b: Id;
   volume: number; // mm³
   depth: number; // mm
 }
-// - `pairs`: the collisions, bodies that share a volume deeper than the chord tolerance of the document.
-// - `fits`: pairs whose shared volume is no deeper than the chord tolerance. Round faces are
-//   polygons; a pin in a hole of the same diameter overlaps the wall by the slivers at its corners
-//   wherever the two polygons are turned differently (up to about a quarter of the chord tolerance
-//   times the area of the fit). The model cannot tell such a fit from a real overlap that thin, so
-//   these pairs are listed apart and are not collisions of the design.
+// - `pairs`: the collisions.
+// - `fits`: pairs in which neither body reaches deeper into the other than the chord tolerance of
+//   the document and what they share has a round face. Round faces are polygons; a pin in a hole
+//   of the same diameter overlaps the wall by the slivers at its corners wherever the two
+//   polygons are turned differently (up to about a quarter of the chord tolerance times the area
+//   of the fit). The model cannot tell such a fit from a real overlap of round faces that
+//   shallow, so these pairs are listed apart and are not collisions of the design. Planar bodies
+//   have no such excuse: their overlap is a collision however shallow.
 // - `failed`: the kernel computes an intersection without a guarantee for flush faces and may
 //   fail; such a pair is neither among the colliding ones nor among the clear ones.
 export interface InterferenceReport {

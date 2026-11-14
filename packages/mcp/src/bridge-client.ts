@@ -1,7 +1,7 @@
 // Strana aplikace: připojí engine k mostu MCP serveru a obsluhuje jeho požadavky. Běží v prohlížeči
 // i v Node (testy), proto čte proud událostí přes fetch a ne přes EventSource.
 import type { Engine } from '@trymesh/engine';
-import { type ToolOutcome, callTool } from './tools';
+import { type ToolOutcome, callProblem, callTool } from './tools';
 
 export { MUTATING } from './tools';
 
@@ -40,8 +40,10 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
   const serve = async (session: number, call: { id: number; name: string; args: Record<string, unknown> }) => {
     let outcome: ToolOutcome;
     try {
-      options.beforeCall?.(call.name, call.args ?? {});
-      outcome = callTool(engine, call.name, call.args);
+      // a call the tools refuse outright (an argument outside the schema) must not cancel what the user is doing
+      const refused = callProblem(call.name, call.args ?? {});
+      if (refused === undefined) options.beforeCall?.(call.name, call.args ?? {});
+      outcome = refused === undefined ? callTool(engine, call.name, call.args) : { ok: false, error: refused };
       if (call.name === '_load' && outcome.ok) document += 1;
     } catch (error) {
       // Výjimka může přijít i z posluchače enginu až po zapsání změny, proto ta výhrada.

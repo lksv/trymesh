@@ -468,7 +468,7 @@ export function tools(): Tool[] {
     {
       name: 'check_interference',
       description:
-        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and its mean depth in mm. `fits` are pairs whose shared volume is no deeper than the chord tolerance of the document: round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap that thin. Bodies that only touch (flush faces) and overlaps thinner than about a millionth of the model size are not reported at all. `failed` lists pairs the geometric kernel could not compute; they are neither colliding nor clear. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
+        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and `depth` in mm, how deep one body reaches into the other. `fits` are pairs with round faces in which neither body reaches deeper into the other than the chord tolerance of the document (`tolerance` in the answer): round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap of round faces that shallow. An overlap of planar bodies is a collision however shallow. Bodies that only touch (flush faces) and overlaps thinner than about a millionth of the model size are not reported at all. `failed` lists pairs the geometric kernel could not compute; they are neither colliding nor clear. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -488,7 +488,7 @@ export function tools(): Tool[] {
         const report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = (pair: Interference) => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
-        return { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+        return { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
       },
     },
     {
@@ -576,18 +576,25 @@ export function argumentProblem(schema: JsonSchema, args: Record<string, unknown
     const type = properties[name].type;
     const fits =
       type === 'boolean' ? typeof value === 'boolean' : type === 'string' ? typeof value === 'string' : type === 'number' ? typeof value === 'number' : type === 'array' ? Array.isArray(value) : type === 'object' ? typeof value === 'object' && !Array.isArray(value) : true;
-    if (!fits) return `argument "${name}": ${type === 'boolean' ? 'true or false' : type === 'array' ? 'a list' : `a ${type}`} is expected`;
+    if (!fits) return `argument "${name}": ${type === 'boolean' ? 'true or false' : type === 'array' ? 'a list' : `${type === 'object' ? 'an' : 'a'} ${type}`} is expected`;
   }
   return undefined;
 }
 
+// Why a call is refused before the tool runs: an unknown tool, or arguments its schema does not
+// have. The bridge asks first, so that a call refused here does not touch the app at all.
+export function callProblem(name: string, args: Record<string, unknown> = {}): string | undefined {
+  const tool = tools().find((candidate) => candidate.name === name);
+  if (!tool) return `neznámý nástroj "${name}"`;
+  // internal tools are called by the server with its own arguments, not by a client
+  return tool.hidden ? undefined : argumentProblem(tool.inputSchema, args);
+}
+
 // Zavolá nástroj. Chyby volání se vracejí jako text, ostatní výjimky jsou chyba programu a propadnou.
 export function callTool(engine: Engine, name: string, args: Record<string, unknown> = {}): ToolOutcome {
-  const tool = tools().find((candidate) => candidate.name === name);
-  if (!tool) return { ok: false, error: `neznámý nástroj "${name}"` };
-  // internal tools are called by the server with its own arguments, not by a client
-  const problem = tool.hidden ? undefined : argumentProblem(tool.inputSchema, args);
+  const problem = callProblem(name, args);
   if (problem) return { ok: false, error: problem };
+  const tool = tools().find((candidate) => candidate.name === name) as Tool;
   try {
     // přes JSON: typovaná pole (Float64Array) se nepřenášejí a výsledek musí projít mostem beze změny
     return { ok: true, result: JSON.parse(JSON.stringify(tool.run(engine, args) ?? null)) as Json };

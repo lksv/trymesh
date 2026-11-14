@@ -1,13 +1,31 @@
 // MCP server přes protokol: klient MCP v paměti, soubory na disku a most do „aplikace" (druhý engine).
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONSTRAINTS, type Command } from '@trymesh/engine';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Bridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { connect, newEngine } from './kit';
+
+// File operations of the server can be made to fail: a test sets a hook that sees every write and
+// every rename before it happens and may throw. The real operation runs otherwise.
+const disk = vi.hoisted(() => ({ beforeWrite: undefined as ((path: string) => void) | undefined, beforeRename: undefined as ((from: string, to: string) => void) | undefined }));
+vi.mock('node:fs/promises', async (original) => {
+  const real = await original<typeof import('node:fs/promises')>();
+  return {
+    ...real,
+    writeFile: async (...args: Parameters<typeof real.writeFile>) => {
+      disk.beforeWrite?.(String(args[0]));
+      return real.writeFile(...args);
+    },
+    rename: async (from: string, to: string) => {
+      disk.beforeRename?.(from, to);
+      return real.rename(from, to);
+    },
+  };
+});
 
 let dir: string;
 beforeAll(async () => {
@@ -121,6 +139,7 @@ describe('MCP server', () => {
     expect(await session.call('save_document')).toEqual({ error: 'dokument nemá soubor; zadejte "path"' });
     expect(await session.call('save_document', { path: file })).toMatchObject({ file });
     expect(await session.call('save_document')).toMatchObject({ file }); // podruhé už bez cesty
+    expect(await session.call('save_document', { path: null })).toMatchObject({ file }); // null counts as not given
     expect(await session.call('session_status')).toMatchObject({ file });
     const exported = await session.call('export_stl', { path: join(dir, 'out', 'deska.stl') });
     expect(exported.files).toEqual([{ path: join(dir, 'out', 'deska.stl'), bodies: ['e1'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
@@ -163,22 +182,22 @@ describe('MCP server: bodies', () => {
     const session = await connect();
     await build(session);
     const report = await session.call('check_interference');
-    expect(report).toEqual({ pairs: [{ a: 'Wheel', b: 'base', volume: expect.any(Number), depth: expect.closeTo(1.43, 1) }], fits: [], failed: [], checked: 6 });
+    // the wheel goes 2 mm down into the base; the answer carries the tolerance fits are judged by
+    expect(report).toEqual({ pairs: [{ a: 'Wheel', b: 'base', volume: expect.any(Number), depth: expect.closeTo(2, 3) }], fits: [], failed: [], checked: 6, tolerance: 0.01 });
     expect(report.pairs[0].volume).toBeGreaterThan(0.99 * Math.PI * 25 * 2);
     expect(report.pairs[0].volume).toBeLessThan(Math.PI * 25 * 2);
-    expect(await session.call('check_interference', { bodies: ['base', 'planets/1'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
+    expect(await session.call('check_interference', { bodies: ['base', 'planets/1'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1, tolerance: 0.01 });
     expect((await session.call('check_interference', { threshold: 1000 })).pairs).toEqual([]);
     // nothing to compare is said, not left to read as "no collisions"
-    expect(await session.call('check_interference', { at: 'base' })).toEqual({ pairs: [], fits: [], failed: [], checked: 0, note: 'The model has fewer than two bodies: nothing was checked.' });
+    expect(await session.call('check_interference', { at: 'base' })).toEqual({ pairs: [], fits: [], failed: [], checked: 0, tolerance: 0.01, note: 'The model has fewer than two bodies: nothing was checked.' });
     expect(await session.call('check_interference', { bodies: ['base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     expect(await session.call('check_interference', { bodies: ['base', 'base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     expect(await session.call('check_interference', { bodies: [] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     // an argument the tool does not have is refused, not ignored (it would check all bodies instead)
     expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at' });
     expect(await session.call('check_interference', { threshold: '0.5' })).toEqual({ error: 'argument "threshold": a number is expected' });
-    // a volume above a small threshold keeps its digits
-    const tiny = await session.call('check_interference', { threshold: 0 });
-    for (const pair of [...tiny.pairs, ...tiny.fits]) expect(pair.volume).toBeGreaterThan(0);
+    expect(await session.call('check_interference', { bodies: { 0: 'base' } })).toEqual({ error: 'argument "bodies": a list is expected' });
+    expect(await session.call('execute', { command: 'undo' })).toEqual({ error: 'argument "command": an object is expected' });
     expect(await session.call('check_interference', { bodies: ['base', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
     expect(await session.call('check_interference', { bodies: ['Wheel'], at: 'base' })).toEqual({ error: expect.stringContaining('after the feature "base"') });
     expect(await session.call('check_interference', { threshold: -1 })).toEqual({ error: expect.stringContaining('threshold') });
@@ -238,16 +257,83 @@ describe('MCP server: bodies', () => {
     const blocked = await session.call('export_stl', { path: join(dir, 'blocked'), perBody: true, bodies: ['base', 'Wheel'], overwrite: true });
     expect(blocked).toEqual({ error: expect.stringMatching(/nothing was written, .*Wheel\.stl exists and is not a file/) });
     expect(await readdir(join(dir, 'blocked'))).toEqual(['Wheel.stl']);
-    // a failure while writing (the directory cannot be written to): the directory stays as it was
-    await mkdir(join(dir, 'locked'));
-    await writeFile(join(dir, 'locked', 'base.stl'), 'old');
-    await chmod(join(dir, 'locked'), 0o555);
-    const locked = await session.call('export_stl', { path: join(dir, 'locked'), perBody: true, bodies: ['Wheel', 'base'], overwrite: true });
-    await chmod(join(dir, 'locked'), 0o755);
-    expect(locked).toEqual({ error: expect.stringContaining('the export failed and its unfinished files were removed') });
-    expect(await readdir(join(dir, 'locked'))).toEqual(['base.stl']);
-    expect(await readFile(join(dir, 'locked', 'base.stl'), 'utf8')).toBe('old');
+    // the path of a per-body export is a directory: a file of that name says so
+    const asFile = await session.call('export_stl', { path: join(dir, 'all.stl'), perBody: true, bodies: ['base'] });
+    expect(asFile).toEqual({ error: expect.stringMatching(/nothing was written, the directory .*all\.stl cannot be created/) });
+    expect((await readFile(join(dir, 'all.stl'))).length).toBe(84 + 25 * triangles);
     await session.close();
+  });
+
+  it('export_stl per body: a failure midway leaves the directory as it was, exports at once do not mix their files', async () => {
+    const session = await connect();
+    await build(session);
+    // what every body looks like on disk, from an export of each one alone
+    const alone = join(dir, 'alone');
+    await session.call('export_stl', { path: alone, perBody: true });
+    const bytesOf = async (name: string) => (await readFile(join(alone, `${name}.stl`))).toString('base64');
+    const [base, wheel, planet] = [await bytesOf('base'), await bytesOf('Wheel'), await bytesOf('planets%2F1')];
+    expect(new Set([base, wheel, planet]).size).toBe(3);
+
+    // a failure while the second file is written: an old file of the set and a file of the user stay, nothing else appears
+    const failing = join(dir, 'failing');
+    await mkdir(failing);
+    await writeFile(join(failing, 'base.stl'), 'old');
+    await writeFile(join(failing, `.trymesh-export-${process.pid}-0.tmp`), 'mine'); // the name an earlier version wrote under
+    let writes = 0;
+    disk.beforeWrite = () => {
+      if (++writes === 2) throw new Error('disk full');
+    };
+    const midway = await session.call('export_stl', { path: failing, perBody: true, bodies: ['Wheel', 'base'], overwrite: true });
+    disk.beforeWrite = undefined;
+    expect(midway).toEqual({ error: 'the export failed: disk full. Nothing of it was left in the directory' });
+    expect((await readdir(failing)).sort()).toEqual([`.trymesh-export-${process.pid}-0.tmp`, 'base.stl']);
+    expect(await readFile(join(failing, 'base.stl'), 'utf8')).toBe('old');
+    expect(await readFile(join(failing, `.trymesh-export-${process.pid}-0.tmp`), 'utf8')).toBe('mine');
+
+    // a failure while the files are moved to their names: a new file that replaced nothing is
+    // removed again, one that replaced an old file is named
+    let moves = 0;
+    disk.beforeRename = () => {
+      if (++moves === 3) throw new Error('no permission');
+    };
+    const moving = await session.call('export_stl', { path: failing, perBody: true, bodies: ['Wheel', 'base', 'planets/1'], overwrite: true });
+    disk.beforeRename = undefined;
+    expect(moving).toEqual({ error: `the export failed: no permission. The set is not complete; these files had already been replaced by new ones: ${join(failing, 'base.stl')}` });
+    expect((await readdir(failing)).sort()).toEqual([`.trymesh-export-${process.pid}-0.tmp`, 'base.stl']);
+    expect((await readFile(join(failing, 'base.stl'))).toString('base64')).toBe(base);
+    // without an old file in the way nothing is left at all
+    moves = 0;
+    disk.beforeRename = () => {
+      if (++moves === 2) throw new Error('no permission');
+    };
+    const clean = join(dir, 'clean');
+    expect(await session.call('export_stl', { path: clean, perBody: true, bodies: ['Wheel', 'base'] })).toEqual({ error: 'the export failed: no permission. Nothing of it was left in the directory' });
+    disk.beforeRename = undefined;
+    expect(await readdir(clean)).toEqual([]);
+    // and the export works again afterwards
+    expect((await session.call('export_stl', { path: clean, perBody: true, bodies: ['Wheel', 'base'] })).files).toHaveLength(2);
+
+    // exports sent at once into one directory: every file holds the body it is named after
+    const shared = join(dir, 'shared');
+    const [first, second] = await Promise.all([session.call('export_stl', { path: shared, perBody: true, bodies: ['base'] }), session.call('export_stl', { path: shared, perBody: true, bodies: ['Wheel'] })]);
+    expect([first.files.length, second.files.length]).toEqual([1, 1]);
+    expect((await readdir(shared)).sort()).toEqual(['Wheel.stl', 'base.stl']);
+    expect((await readFile(join(shared, 'base.stl'))).toString('base64')).toBe(base);
+    expect((await readFile(join(shared, 'Wheel.stl'))).toString('base64')).toBe(wheel);
+    // the same set in another order, replacing the files: one of the two wins as a whole
+    const both = await Promise.all([
+      session.call('export_stl', { path: shared, perBody: true, bodies: ['base', 'Wheel', 'planets/1'], overwrite: true }),
+      session.call('export_stl', { path: shared, perBody: true, bodies: ['planets/1', 'Wheel', 'base'], overwrite: true }),
+    ]);
+    expect(both.map((answer) => answer.files.length)).toEqual([3, 3]);
+    expect((await readdir(shared)).sort()).toEqual(['Wheel.stl', 'base.stl', 'planets%2F1.stl']);
+    expect((await readFile(join(shared, 'base.stl'))).toString('base64')).toBe(base);
+    expect((await readFile(join(shared, 'Wheel.stl'))).toString('base64')).toBe(wheel);
+    expect((await readFile(join(shared, 'planets%2F1.stl'))).toString('base64')).toBe(planet);
+    await session.close();
+  });
+
+  it('names of bodies that differ only in the case of letters are not exported per body together', async () => {
 
     // names that differ only in the case of letters: nothing is written
     const other = await connect();
@@ -451,6 +537,10 @@ describe('most do běžící aplikace', () => {
     await session.call('execute', { command });
     await session.call('get_model');
     expect(before).toEqual([['execute', { command }], ['get_model', {}]]);
+    // a call the tools refuse outright never reaches the app: it must not cancel what the user is doing
+    expect(await session.call('execute', { command: emptySketch('x', { kind: 'base', plane: 'XY' }), extra: 1 })).toEqual({ error: 'unknown argument "extra"; the tool takes command' });
+    expect(await session.call('undo', { steps: 2 })).toEqual({ error: 'unknown argument "steps"; the tool takes no arguments' });
+    expect(before).toHaveLength(2);
     // výjimka po provedení: odpověď dorazí a spojení zůstane
     failAfter = true;
     expect(await session.call('execute', { command: emptySketch('s2', { kind: 'base', plane: 'XY' }) })).toMatchObject({ ok: true, features: 2 });

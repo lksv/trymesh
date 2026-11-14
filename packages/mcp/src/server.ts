@@ -1,6 +1,6 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -58,13 +58,24 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   };
   const path = (args: Record<string, unknown>, required: boolean): string | undefined => {
     const value = args.path;
-    if (value === undefined && !required) return undefined;
+    if ((value === undefined || value === null) && !required) return undefined; // null counts as not given, as for every other argument
     if (typeof value !== 'string' || value === '') throw new Failure('argument "path": čeká se cesta k souboru');
     return resolve(value === '~' || value.startsWith('~/') ? homedir() + value.slice(1) : value);
   };
   const PATH = (description: string, required = true): JsonSchema => ({ type: 'object', properties: { path: { type: 'string', description } }, required: required ? ['path'] : [], additionalProperties: false });
 
   const MAX_FILE_NAME = 255; // bytes
+  const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+  // Exports run one after another: a client may send several at once, and two of them checking
+  // and writing the same directory at the same time could not keep "nothing is written unless
+  // every file can be written".
+  let exporting: Promise<unknown> = Promise.resolve();
+  const oneByOne = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = exporting.then(work, work);
+    exporting = run.catch(() => undefined);
+    return run;
+  };
 
   const fileTools: FileTool[] = [
     {
@@ -137,7 +148,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         required: ['path'],
         additionalProperties: false,
       },
-      run: async (args) => {
+      run: (args) => oneByOne(async () => {
         const session = bridge?.session();
         const target = path(args, true) as string;
         for (const flag of ['perBody', 'overwrite']) if (args[flag] !== undefined && args[flag] !== null && typeof args[flag] !== 'boolean') throw new Failure(`argument "${flag}": true or false is expected`);
@@ -145,6 +156,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[] };
         const files = exported.files.filter((file) => file.bodies.length > 0).map((file) => ({ ...file, path: perBody ? join(target, `${file.name}.stl`) : target }));
         if (files.length === 0) throw new Failure('the model has no body to export');
+        const existing: string[] = []; // files of the set that are on disk already
         if (perBody) {
           // a file name is limited to 255 bytes on the common file systems; found before anything is written
           const long = files.filter((file) => Buffer.byteLength(`${file.name}.stl`) > MAX_FILE_NAME);
@@ -158,7 +170,6 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
             if (other !== undefined) throw new Failure(`the bodies "${other}" and "${file.bodies[0]}" would get file names that differ only in the case of letters; export them separately`);
             seen.set(folded, file.bodies[0]);
           }
-          const existing: string[] = [];
           for (const file of files) {
             const found = await lstat(file.path).catch(() => undefined);
             // something that is not a file (a directory of that name) cannot be replaced by one
@@ -167,7 +178,10 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           }
           if (existing.length && args.overwrite !== true) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
         }
-        await mkdir(perBody ? target : dirname(target), { recursive: true });
+        const directory = perBody ? target : dirname(target);
+        await mkdir(directory, { recursive: true }).catch((error) => {
+          throw new Failure(`nothing was written, the directory ${directory} cannot be created: ${reason(error)}`);
+        });
         const written: { path: string; bodies: string[]; triangles: number; bytes: number }[] = [];
         if (!perBody) {
           for (const file of files) {
@@ -177,25 +191,40 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           }
           return { files: written };
         }
-        // Per body the files are written under temporary names and renamed once all of them are
-        // on disk: a failure midway (a full disk, a name the file system refuses) leaves the
-        // directory as it was instead of a part of the set, or a mix of new and old files.
-        const temporary: string[] = [];
+        // Per body the files are first written into a directory of this call inside the target,
+        // under their final names, and moved once all of them are on disk. A failure while writing
+        // (a full disk, a name or a path the file system refuses) leaves the target as it was
+        // instead of a part of the set. The directory is new for every call (mkdtemp), so two
+        // exports, or a file of the user, cannot get in each other's way.
+        let staging: string | undefined;
+        const moved: string[] = [];
         try {
-          for (const [index, file] of files.entries()) {
+          staging = await mkdtemp(join(target, '.trymesh-export-'));
+          for (const file of files) {
             const bytes = Buffer.from(file.base64, 'base64');
-            const draft = join(target, `.trymesh-export-${process.pid}-${index}.tmp`);
-            temporary.push(draft);
-            await writeFile(draft, bytes);
+            await writeFile(join(staging, `${file.name}.stl`), bytes);
             written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
           }
-          for (const [index, file] of files.entries()) await rename(temporary[index], file.path);
+          for (const file of files) {
+            await rename(join(staging, `${file.name}.stl`), file.path);
+            moved.push(file.path);
+          }
         } catch (error) {
-          await Promise.all(temporary.map((draft) => rm(draft, { force: true })));
-          throw new Failure(`the export failed and its unfinished files were removed: ${error instanceof Error ? error.message : String(error)}`);
+          // A move that fails after others succeeded: the new files that replaced nothing are
+          // removed again; a file that replaced an old one cannot be brought back and is named.
+          const added = moved.filter((file) => !existing.includes(file));
+          const replaced = moved.filter((file) => existing.includes(file));
+          const kept = (await Promise.all(added.map((file) => rm(file, { force: true }).then(() => undefined, () => file)))).filter((file) => file !== undefined);
+          const left = [
+            replaced.length ? `these files had already been replaced by new ones: ${replaced.join(', ')}` : '',
+            kept.length ? `these new files could not be removed again: ${kept.join(', ')}` : '',
+          ].filter((text) => text !== '');
+          throw new Failure(`the export failed: ${reason(error)}. ${left.length ? `The set is not complete; ${left.join('; ')}` : 'Nothing of it was left in the directory'}`);
+        } finally {
+          if (staging !== undefined) await rm(staging, { recursive: true, force: true }).catch(() => undefined);
         }
         return { files: written };
-      },
+      }),
     },
   ];
 

@@ -439,6 +439,32 @@ describe('model, tělesa a příkazy', () => {
     expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle']);
   });
 
+  it('check_interference: a tiny overlap under threshold 0 keeps its digits; planar bodies collide however shallow', () => {
+    const engine = newEngine();
+    // two boxes that share 0.002 × 0.002 × 0.1 mm at a corner; the corners are held by fixed points
+    const box = (id: string, x: number, y: number, size: number, start: number): Command[] => {
+      const corners: [number, number][] = [[x, y], [x + size, y], [x + size, y + size], [x, y + size]];
+      return [
+        sketch(`s${id}`),
+        ...corners.map(([px, py], i): Command => ({ type: 'addPoint', sketch: `s${id}`, id: `${id}p${i}`, x: px, y: py })),
+        ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: `s${id}`, id: `${id}l${i}`, curve: { type: 'line', a: `${id}p${i}`, b: `${id}p${(i + 1) % 4}` } })),
+        ...corners.map(([px, py], i): Command => ({ type: 'addConstraint', sketch: `s${id}`, id: `${id}f${i}`, constraint: { type: 'fixed', point: `${id}p${i}`, x: px, y: py } })),
+        { type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: `s${id}`, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}l${i}`) }] }, extent: { type: 'distance', start, distance: 1 }, operation: 'new' } },
+      ];
+    };
+    expect(execute(engine, { type: 'batch', commands: [...box('A', 0, 0, 10, 0), ...box('B', 9.998, 9.998, 10, 0.9)] })).toMatchObject({ ok: true, bodies: ['A', 'B'], problems: [] });
+    // below the default threshold nothing is reported
+    expect(ok(engine, 'check_interference')).toEqual({ pairs: [], fits: [], failed: [], checked: 1, tolerance: 0.01 });
+    const tiny = ok(engine, 'check_interference', { threshold: 0 });
+    expect(tiny).toEqual({ pairs: [{ a: 'A', b: 'B', volume: expect.any(Number), depth: expect.any(Number) }], fits: [], failed: [], checked: 1, tolerance: 0.01 });
+    // 4e-7 mm³: six decimal places would have made it zero
+    expect(tiny.pairs[0].volume).toBeGreaterThan(3.5e-7);
+    expect(tiny.pairs[0].volume).toBeLessThan(4.5e-7);
+    // 0.002 mm into each other, far below the chord tolerance, and still a collision: no round face
+    expect(tiny.pairs[0].depth).toBeGreaterThan(0.0015);
+    expect(tiny.pairs[0].depth).toBeLessThan(0.0025);
+  });
+
   it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {
     const engine = newEngine();
     rectangle(engine, true);

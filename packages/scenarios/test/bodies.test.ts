@@ -102,7 +102,7 @@ describe('interference of bodies', () => {
   it('reports pairs that share a volume, with the volume', () => {
     const engine = overlapping();
     const report = engine.interference();
-    expect(report).toEqual({ pairs: [{ a: 'A', b: 'B', volume: expect.closeTo(500, 3), depth: expect.closeTo((2 * 500) / (2 * 100 + 2 * 50 + 2 * 50), 3) }], fits: [], failed: [], checked: 1 });
+    expect(report).toEqual({ pairs: [{ a: 'A', b: 'B', volume: expect.closeTo(500, 3), depth: expect.closeTo(5, 4) }], fits: [], failed: [], checked: 1 }); // B goes 5 mm down into A
     // the threshold: a pair is reported only above it
     expect(engine.interference({ threshold: 499 }).pairs).toHaveLength(1);
     expect(engine.interference({ threshold: 501 }).pairs).toEqual([]);
@@ -148,11 +148,13 @@ describe('interference of bodies', () => {
     // a pin thicker than its hole collides by the ring between the two radii
     run(engine, { type: 'setConstraintValue', sketch: 'S4', id: 'kr', value: 4 }, addSketch('S5', XY), circle('S5', 'w', 12, 12, 5), span('WIDE', 'S5', [['w']], 0, 10));
     report = engine.interference({ bodies: ['A', 'WIDE'] });
-    expect(report.pairs).toEqual([{ a: 'A', b: 'WIDE', volume: expect.closeTo((disc(5) - disc(4)) * 10, 1), depth: expect.any(Number) }]);
+    expect(report.pairs).toEqual([{ a: 'A', b: 'WIDE', volume: expect.closeTo((disc(5) - disc(4)) * 10, 1), depth: expect.closeTo(1, 1) }]); // a millimetre into the wall
     // a body inside another one shares its whole volume; identical bodies share everything
     run(engine, addSketch('S6', XY), rectangle('S6', 'n', 25, 2, 5, 5, null), span('IN', 'S6', [rectLoop('n')], 2, 5), span('A2', 'S1', [rectLoop('r')], 0, 10));
     report = engine.interference({ bodies: ['A', 'IN'] });
     expect(report.pairs).toEqual([{ a: 'A', b: 'IN', volume: expect.closeTo(125, 3), depth: expect.any(Number) }]);
+    expect(report.pairs[0].depth).toBeGreaterThan(3); // IN lies from 2 to 7 mm under the faces of A
+    expect(report.pairs[0].depth).toBeLessThanOrEqual(5);
     report = engine.interference({ bodies: ['C', 'A2', 'D'] });
     expect(report).toEqual({ pairs: [], fits: [], failed: [], checked: 3 }); // A2 lies under C and beside D
     // A2 is the plate A without its hole: the two share all of A; two identical bodies share everything
@@ -161,7 +163,12 @@ describe('interference of bodies', () => {
     expect(report.pairs).toEqual([{ a: 'A', b: 'A2', volume: expect.closeTo(body(engine.getState(), 'A').volume, 2), depth: expect.any(Number) }]);
     run(engine, span('A3', 'S1', [rectLoop('r')], 0, 10));
     report = engine.interference({ bodies: ['A2', 'A3'] });
+    // neither reaches into the other (their surfaces coincide), so the depth is the mean thickness of what they share
     expect(report).toEqual({ pairs: [{ a: 'A2', b: 'A3', volume: expect.closeTo(12000, 2), depth: expect.closeTo((2 * 12000) / (2 * 1200 + 140 * 10), 3) }], fits: [], failed: [], checked: 1 });
+    // the same with round bodies: two identical pins are a collision, not a fit
+    run(engine, span('PIN2', 'S4', [['k']], 0, 10));
+    report = engine.interference({ bodies: ['PIN', 'PIN2'] });
+    expect(report).toEqual({ pairs: [{ a: 'PIN', b: 'PIN2', volume: expect.closeTo(disc(4) * 10, 1), depth: expect.closeTo((2 * disc(4) * 10) / (2 * disc(4) + 2 * Math.PI * 4 * 10), 2) }], fits: [], failed: [], checked: 1 });
   });
 
   it('a pin in a hole of the same diameter is a fit, not a collision, however the two polygons are turned', () => {
@@ -181,18 +188,76 @@ describe('interference of bodies', () => {
     const [fit] = report.fits;
     expect(fit.volume).toBeGreaterThan(100 * INTERFERENCE_THRESHOLD);
     expect(fit.volume).toBeLessThan((2 * Math.PI * 4 * 10 * 0.01) / 4);
-    expect(fit.depth).toBeLessThan(0.01);
+    // no corner of the pin is deeper in the wall than the sagitta of the polygon
+    expect(fit.depth).toBeGreaterThan(0.001);
+    expect(fit.depth).toBeLessThanOrEqual(0.01);
     // the pin in the hole it was drawn with shares nothing at all
     expect(engine.interference({ bodies: ['PLATE', 'PIN'] })).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
     // a pin thicker by more than the chord tolerance is a collision whatever its turn
     run(engine, { type: 'setConstraintValue', sketch: 'S1', id: 'h1r', value: 4.05 });
     report = engine.interference();
     expect(report.pairs.map((pair) => [pair.a, pair.b])).toEqual([['PLATE', 'PP/1']]);
-    expect(report.pairs[0].depth).toBeGreaterThan(0.02);
+    expect(report.pairs[0].depth).toBeGreaterThan(0.05);
+    expect(report.pairs[0].depth).toBeLessThan(0.07); // the 0.05 of the radius and up to the sagitta
     expect(report.fits).toEqual([]);
-    // a finer chord tolerance of the document narrows what counts as a fit
-    run(engine, { type: 'setConstraintValue', sketch: 'S1', id: 'h1r', value: 4 });
-    expect(engine.interference().fits).toHaveLength(1);
+  });
+
+  it('a real overlap is a collision whatever else the pair shares: next to coincident faces, on a turned copy', () => {
+    // The plate and the pins of the test above, with a key of 1 mm on the pin and no keyway in the
+    // plate. The pin sits in the hole cut by its own circle (the two walls coincide), its copy is
+    // turned in the other hole (slivers of a fit all around). The key must show in both.
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -20, -10, 40, 20, null), circle('S1', 'h1', 10, 0, 4), circle('S1', 'h2', -10, 0, 4));
+    run(engine, span('PLATE', 'S1', [rectLoop('r'), ['h1'], ['h2']], 0, 10), span('holes', 'S1', [['h1'], ['h2']], 0, 10, 'cut', ['PLATE']), span('PIN', 'S1', [['h1']], 0, 10));
+    run(engine, addSketch('S2', XY), rectangle('S2', 'k', 13.5, -0.5, 1.5, 1, null), span('KEY', 'S2', [rectLoop('k')], 0, 1, 'add', ['PIN']));
+    expectAllOk(run(engine, { type: 'addFeature', feature: { id: 'PP', name: 'PP', suppressed: false, type: 'pattern', source: { type: 'body', body: 'PIN' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } }));
+    const report = engine.interference();
+    expect(report.failed).toEqual([]);
+    expect(report.fits).toEqual([]);
+    expect(report.pairs.map((pair) => [pair.a, pair.b])).toEqual([['PIN', 'PLATE'], ['PLATE', 'PP/1']]);
+    // the key is 1 mm outside the wall of the hole; its volume there is small next to the slivers of the copy
+    expect(report.pairs[0].volume).toBeCloseTo(1, 1);
+    expect(report.pairs[0].depth).toBeCloseTo(1, 2);
+    expect(report.pairs[1].depth).toBeCloseTo(1, 2);
+
+    // planar bodies only: two blocks flush on a face 30 × 10, a rib of 1 mm of one inside the other
+    const blocks = newEngine();
+    run(blocks, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 30, 10, null), span('X', 'S1', [rectLoop('r')], 0, 10), span('Y', 'S1', [rectLoop('r')], 10, 10));
+    expect(blocks.interference()).toEqual({ pairs: [], fits: [], failed: [], checked: 1 });
+    run(blocks, addSketch('S2', XY), rectangle('S2', 'q', 5, 5, 1, 1, null), span('RIB', 'S2', [rectLoop('q')], 10, 1, 'add', ['X']));
+    expect(blocks.interference()).toEqual({ pairs: [{ a: 'X', b: 'Y', volume: expect.closeTo(1, 4), depth: expect.closeTo(1, 4) }], fits: [], failed: [], checked: 1 });
+    // an overlap along an edge, 0.02 × 0.02 × 10: its corners lie on the common top and bottom faces
+    run(blocks, addSketch('S3', XY), rectangle('S3', 'e', 29.98, 9.98, 20, 20, null), span('E', 'S3', [rectLoop('e')], 0, 10));
+    expect(blocks.interference({ bodies: ['X', 'E'] })).toEqual({ pairs: [{ a: 'E', b: 'X', volume: expect.closeTo(0.004, 4), depth: expect.closeTo(0.02, 4) }], fits: [], failed: [], checked: 1 });
+  });
+
+  it('a fit needs a round face and the chord tolerance of the document: thin overlaps of planar bodies are collisions', () => {
+    // a pin thicker than its hole by 0.005 and then by 0.05 on the radius, drawn around the same centre
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -20, -10, 40, 20, null), circle('S1', 'h1', 10, 0, 4), circle('S1', 'p1', 10, 0, 4.005));
+    run(engine, span('PLATE', 'S1', [rectLoop('r'), ['p1'], ['h1']], 0, 10), span('holes', 'S1', [['h1']], 0, 10, 'cut', ['PLATE']), span('PIN', 'S1', [['p1'], ['h1']], 0, 10));
+    // half the tolerance into the wall all around: far above the volume threshold, and a fit
+    let report = engine.interference();
+    expect(report).toEqual({ pairs: [], fits: [{ a: 'PIN', b: 'PLATE', volume: expect.any(Number), depth: expect.closeTo(0.005, 4) }], failed: [], checked: 1 });
+    expect(report.fits[0].volume).toBeGreaterThan(1);
+    run(engine, { type: 'setConstraintValue', sketch: 'S1', id: 'p1r', value: 4.05 });
+    report = engine.interference();
+    expect(report).toEqual({ pairs: [{ a: 'PIN', b: 'PLATE', volume: expect.any(Number), depth: expect.closeTo(0.05, 4) }], fits: [], failed: [], checked: 1 });
+    // the same document with a chord tolerance of 0.1: the circles are coarser and 0.05 is within it
+    const stored = JSON.parse(engine.save());
+    stored.settings.chordTolerance = 0.1;
+    const coarse = newEngine();
+    expect(coarse.load(JSON.stringify(stored)).ok).toBe(true);
+    report = coarse.interference();
+    expect(report).toEqual({ pairs: [], fits: [{ a: 'PIN', b: 'PLATE', volume: expect.any(Number), depth: expect.closeTo(0.05, 4) }], failed: [], checked: 1 });
+
+    // two plates that overlap by 0.05 over 20 × 20: no round face, so nothing a polygon could explain
+    const plates = newEngine();
+    run(plates, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 20, 20, null), span('LOW', 'S1', [rectLoop('r')], 0, 5), span('HIGH', 'S1', [rectLoop('r')], 4.95, 5));
+    const flat = JSON.parse(plates.save());
+    flat.settings.chordTolerance = 0.1;
+    expect(plates.load(JSON.stringify(flat)).ok).toBe(true);
+    expect(plates.interference()).toEqual({ pairs: [{ a: 'HIGH', b: 'LOW', volume: expect.closeTo(20, 2), depth: expect.closeTo(0.05, 4) }], fits: [], failed: [], checked: 1 });
   });
 
   it('`a` is the smaller ID whatever the order of the bodies; copies are named by their derived IDs', () => {

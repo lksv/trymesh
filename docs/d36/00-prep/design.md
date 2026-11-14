@@ -1,6 +1,16 @@
 # 00 Preparatory step
 
-**State: scope approved, design not written.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees). Each part below still says "proposal" for how it is done: nothing is designed to the level of signatures yet. That is the next piece of work on this file, together with `contract.ts`.
+**State: scope approved; parts 1 and 4 have a contract, not reviewed.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees).
+
+| Part | State |
+|---|---|
+| 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); type-checked, no review yet |
+| 4 Shared vocabulary | same |
+| 2 A module per feature type | proposal below; the interface of a step is not designed |
+| 3 Panels and forms of the app | proposal below; the context of a panel is not designed |
+| 5, 6 Documents by area, several trees | proposal below; no code |
+
+The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type, so they get a design here and no contract.
 
 The step is the counterpart of step 0 of D35. It changes no behaviour: every existing test passes unchanged, except where a test calls a method that moved. Its purpose is that the packages of [the plan](../README.md) add files and single lines instead of rewriting the same places.
 
@@ -25,12 +35,24 @@ It is done by one session, not in parallel, after D35 point 7 is closed, and it 
 - The description of a body (`bodyDetail`, `edgeShape`) moves into the engine as a query. Package 1b builds on it.
 - Tests: every entry of the catalog is offered as a tool and its example runs, as the tests of the constraint catalog do today. The guard table over the methods of `Engine` stays, with fewer rows.
 
+**What the contract settles** (2026-11-14, `contract.ts`):
+
+- **A query answers, it does not throw.** `QueryOutcome` is a result or an error with a code (`invalidArguments` with the name of the argument, `notAvailable`, `failed`), like `CommandResult`. Today the three query methods throw for a wrong argument and each caller catches in its own way.
+- **Arguments are flat and named** (`ArgSpec`): a number with a `NumberSpec`, a flag, a choice, an ID of a body, a feature or a sketch, a constraint of a sketch, a reference to a named entity, a vector. The checks, the input schema of the tool and a form in the app read the same description. The sketch tools of D35 point 7 made the same choice.
+- **The types of queries are a map by name that modules extend by declaration merging** (`Queries`). A package adds its arguments, its result and its entry in its own file; no shared type is edited. The first draft kept whole specifications in the map and read the result type back by inference; writing `calls.ts` showed that the result came out as `never`, so the map now holds `{ args, result }`.
+- **A query can run over a previewed state** (`QueryOptions.state`). `calls.ts` steps a parameter through `preview` and asks for collisions at each value without writing anything.
+- **A cache comes with the context** (`memo(owner, key, compute)`): a result lives as long as the object it was computed for.
+- **Tools.** A query that names a `tool` gets a generated one. `check_interference` is generated. `get_sketch`, `explain_constraint` and `get_body` stay hand-written and call `query` inside, because they add labels and advice. `get_model`, `get_document` and `get_parameters` are views of the state, not computations, and stay as they are.
+- **The description of a body moves into the engine** (`BodyDescription`): faces with their surface, area and outward normal, edges with their length and their line or circle. The centre and radius of a circular edge are fitted to vertices in `tools.ts` today; the engine knows them from the surfaces.
+- **Guards.** A table of fixtures by query name: a query without a fixture does not compile, and the test runs each one through its tool.
+
+**The one visible change.** A generated tool rounds every number of the answer the same way (six significant digits). `check_interference` rounds the volume to six and the depth to four today, and adds the chord tolerance and a note when the model has fewer than two bodies; the tolerance moves into the result of the query, the note into the error `invalidArguments`. Tests that compare its exact output change.
+
 **Open.**
 
-- How a query reports a failure: a result with an error, as commands do, or an exception, as the three methods do today.
-- A cache. `interference` has one of its own; the context should give every query the same means.
-- A limit on the time and on the size of the answer. A subtraction with a clearance or a section through a gear can be slow or large.
-- Whether `get_model`, `get_document` and `get_sketch` become entries as well or stay hand-written summaries. Proposed: they stay, they are views of the state and not computations; only what they compute moves.
+- A limit on the time and on the size of the answer. A subtraction with a clearance or a section through a gear can be slow or large. Nothing in the contract yet.
+- Whether a query may change with the document (a result that names features) or only with the evaluation. It decides what `memo` may use as an owner.
+- The generated form of a query in the app (part 3).
 
 ## 2. A module per feature type
 
@@ -55,7 +77,7 @@ It is done by one session, not in parallel, after D35 point 7 is closed, and it 
 
 ## 4. Shared vocabulary
 
-Things that several packages need and that must be the same in all of them. They are settled here, before the contracts, not by whichever package is merged first.
+Things that several packages need and that must be the same in all of them. They are settled here, before the contracts, not by whichever package is merged first. The types are in `contract.ts`; the table says what had to be decided and the list below it what the contract proposes.
 
 | Item | Who needs it | What has to be decided |
 |---|---|---|
@@ -66,6 +88,17 @@ Things that several packages need and that must be the same in all of them. They
 | Data catalogs | 2c (hardware), 3a (materials), 7 (threads) | One shape for a table of data in the engine and one way it reaches the description for the AI. The rule is already decided: a catalog fills fields, the document stores numbers |
 | Version of the document schema | 3a, 5a, every new feature type | `SCHEMA_VERSION` is 2 and `upgrade` is one function from version 1. Two branches cannot both raise the version. Proposed: `upgrade` becomes a list of steps, one per version, and the version is raised at the merge, not in the branch of a package |
 | Issue codes | most packages | `IssueCode` only grows. A package states the codes it adds in its design |
+
+What `contract.ts` proposes:
+
+- **Surfaces** (`Surface`): plane, cylinder, cone, swept, general. A sketch stands only on a plane. An edge is a circle where a plane across the axis meets a cylinder or a cone, a line where two planes meet, `other` otherwise; `EdgeKind` keeps its four values. The type becomes public: today `FaceInfo` is internal to `solid.ts` and the evaluation publishes only `planar`, which is why `tools.ts` has to fit circles to vertices.
+- **References** (`EntityRef`): a body, a face, an edge, a sketch point, a plane (`PlaneRef`), an axis (`AxisRef`).
+- **Placement** (`FramePlacement`): a frame taken from a plane, three offsets and a turn about the normal, all numeric fields. A draft; no package of steps 1 and 2 uses it.
+- **Export** (`ExportFormats`, `ExportFile`): a format is an entry that returns files; `Engine.export(format, options)` replaces `exportMesh`. One MCP tool `export`; `export_stl` stays as the same tool with the format fixed.
+- **Data catalogs** (`DataCatalog`): a title, a source, columns with units, rows by key. Read through the query `catalog`; the description for the AI lists catalogs by name only, so it does not grow with the tables.
+- **Schema version** (`UPGRADES`): a list of upgrade steps, the version is its length plus one, a branch appends its step and the number is fixed at the merge.
+
+Not settled: the sign of a normal. A plane's normal and an axis carry no sign in the engine today; the contract keeps that and gives the outward direction only in the description of a body. Whether a query that takes a face as a print orientation needs more is for package 1e.
 
 ## 5. Documents by area
 

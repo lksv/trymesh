@@ -17,6 +17,7 @@ pnpm workspace (`pnpm@9.15.9`), Node, TypeScript, Vitest. `pnpm` is often not on
 | One test by name | `npx vitest run packages/engine/test/expression.test.ts -t "name"` |
 | Type check (all packages and tests) | `npx tsc -p tsconfig.json --noEmit` (`pnpm typecheck`) |
 | Type check the D35 contract draft | `npx tsc -p docs/d35-contract/tsconfig.json` |
+| Type check the D36 contracts | `npx tsc -p docs/d36/tsconfig.json` |
 | Spikes (slow, real adapters) | `npx vitest run --config spikes/vitest.config.ts` |
 | Build the MCP server | `cd packages/mcp && npx vite build` (`pnpm mcp:build`) |
 | Run the app | `pnpm dev` (Vite, port 5173) |

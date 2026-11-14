@@ -17,7 +17,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 point 7 | scope approved; full design is next |
+| 00 | Preparatory step | | | D35 point 7 | parts 1 and 4 have a contract, not reviewed; parts 2 and 3 are next |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
 | 1b | Measuring between two named entities; takes over the description of faces and edges that `tools.ts` computes today | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |
@@ -100,7 +100,7 @@ A directory `docs/d36/<id>-<name>/` with:
 | `contract.ts` | Public types and signatures. Unlike the contract of D35, it imports the real types of the engine and states only what is added or changed, so it cannot drift away from the code unnoticed |
 | `calls.ts` | The validation scenario written as calls against the contract. A step that cannot be written is a hole in the contract. After the implementation it becomes a test in `packages/scenarios` |
 
-`docs/d36/tsconfig.json` will type-check all contracts together, so two packages that define the same thing differently do not compile. It comes with the first contract.
+`docs/d36/tsconfig.json` type-checks all contracts together (`npx tsc -p docs/d36/tsconfig.json`), so two packages that define the same thing differently do not compile. A package adds its queries to the map `Queries` of [00-prep/contract.ts](00-prep/contract.ts) by declaration merging; `00-prep/calls.ts` shows it on a shortened smallest gap.
 
 What exists about a package today is in [backlog.md](../backlog.md), part "Direction after D35"; the design of a package takes that text over and the backlog keeps only what has no package.
 

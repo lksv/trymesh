@@ -166,7 +166,7 @@ Konvence:
 - **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
 - **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
 - **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`) a engine ho po prvním řešení přepíše.
-- **Rozsah extrude** je v PoC jen pevná `distance`. Varianty „skrz vše" a „po stěnu" jsou budoucí funkce a přibudou jako další pole vedle `distance`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane.
+- **Rozsah extrude** je v kódu zatím jen pevná `distance`; díra okótovaná pevnou vzdáleností po změně tloušťky tělesa procházet přestane. D35 to mění (zatím neimplementováno): rozsah bude varianta (`distance`, „skrz vše", později „po stěnu") a vysunutí dostane zdroj profilu. Dokud se D35 neimplementuje, popisuje tento dokument stav kódu a plánované změny jsou v decisions.md, D35.
 
 ### Skica
 

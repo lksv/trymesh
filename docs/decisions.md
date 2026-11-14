@@ -43,8 +43,9 @@ Poslední úprava: 2026-11-14
 | D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
 | D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
 | D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
+| D35 | Rozšíření pro robotický kloub | rozhodnuto včetně oprav po dvou revizích; spike ozubení proveden, implementace nezačala | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
 
-D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D34 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
+D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. Podrobnosti jsou v [architecture.md](architecture.md), návrh UI v [ui.md](ui.md).
 
 ## D1 Jazyk enginu: TypeScript
 
@@ -645,7 +646,6 @@ Nálezy nezávislé revize a jejich řešení:
 | Nevyřešená skica vypadala v přehledech jako „0 stupňů volnosti" | Přehledy mají příznak `solved` a volnost uvádějí jen u vyřešené skici |
 | Volby příkazové řádky: neplatný port, chybějící hodnota a neznámá volba se tiše ignorovaly | Jsou to chyby spuštění s nápovědou |
 
-Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
 Další revize (2026-11-14, dodaná vlastníkem projektu):
 
 | Nález | Řešení |
@@ -654,6 +654,7 @@ Další revize (2026-11-14, dodaná vlastníkem projektu):
 | Dvě aplikace se zapnutým propojením si spojení přebíraly dokola (vytlačená se po třech sekundách připojila znovu) a příkaz mohl změnit nesprávný dokument | Vytlačená aplikace dostane událost `displaced`, propojení v ní zhasne a sama se nepřipojuje |
 | `explain_constraint` radil odebrat kteroukoli vazbu z `impliedBy`, i když by se tím skica uvolnila (bod na úsečce plyne ze středu úsečky) | Rada se řídí tím, které z těch vazeb jsou samy navíc; každá má příznak `removableInstead` (stejné pravidlo jako v panelu aplikace) |
 
+Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
 
 ## D34 Souměrnost a střed úsečky
 
@@ -683,6 +684,279 @@ Omezení:
 - Solver souměrnost nevyřeší, když oba body leží na téže straně osy a osu nic nedrží (stáhne osu do bodu a ohlásí neúspěch, nebo tím „splní" i vazby, které si odporují). S osou drženou vazbami nebo s body nakreslenými zhruba souměrně problém není; v aplikaci se osa obvykle kreslí jako konstrukční úsečka z počátku.
 - Přidání středu úsečky nebo souměrnosti dá platné řešení, ale tvar okolní geometrie nemusí zachovat (úsečka se může natáhnout nebo pootočit). Je to vlastnost solveru: hledá nejbližší řešení ve svých proměnných, ne nejmenší změnu tvaru.
 - Souměrnou dvojici splynulou na ose rozestoupí kóta nebo tažení jednoho z bodů; samotné odebrání vazby, která ji stáhla, ji nechá na místě.
+
+## D35 Rozšíření pro robotický kloub
+
+Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník projektu 2026-11-14. Implementace nezačala. Tvary typů níže jsou návrh, který se při implementaci může upřesnit; rozhodnutá jsou pravidla v textu. Návrh pak prošel dvěma nezávislými revizemi a spikem ozubení; co se podle nich změnilo, je v částech Revize návrhu a Spike ozubení na konci. Opravy podle revize i rozhodnutí po ní vlastník potvrdil týž den.
+
+**Podnět.** Ukázkový díl: planetová převodovka s převodem 4 až 6 jako robotický kloub. Uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů nese validační scénář 9; podklady, ze kterých pocházejí, jsou v adresáři `robot-joint-parts-schemas/` (není v repozitáři). Rozbor ukázal, že takový díl dnes nejde rozumně udělat v aplikaci ani přes MCP: skica zná jen úsečku, kružnici a oblouk, takže do ní nejde dostat ozubení, a chybí opakování, parametry a práce s více díly.
+
+**Posun zadání.** Parametry s výrazy a vysunutí „skrz vše" byly budoucí funkce mimo PoC; teď do PoC patří. Cílem už není jen ověřit architekturu, ale dojít k vytištěnému kloubu (requirements.md, Cíl).
+
+**Zásady výběru.** U každého bodu platí levná varianta. Kde malé rozšíření dá obecnější nástroj, má přednost. Levná varianta nemá zavřít cestu k plné: tvar dokumentu se volí tak, aby se plná varianta dala přidat bez jeho změny.
+
+**Rozsah.** Číslování je pořadí implementace. Parametry jsou první, protože jimi začíná scénář 9; pole přichází až po rozsahu a ozubení, aby umělo opakovat všechny druhy nástrojů.
+
+| # | Funkce | Varianta (rozhodnuto) | Odloženo; návrh to nemá znemožnit |
+|---|---|---|---|
+| 1 | Parametry a výrazy | Tabulka parametrů v dokumentu; výraz jde dát do každého číselného pole, které uvádí katalog číselných polí. Kontroly: výrazy, které mají platit | Jména referenčních kót ve výrazech |
+| 2 | Rozsah vysunutí | Rozsah je varianta: vzdálenost s posunem začátku od roviny skici, nebo „skrz vše" (dopředu, dozadu, oběma směry). Výřez smí mít víc cílových těles | „Po stěnu"; revolve, zkosení a zkrut (kloub se bez nich obejde skládáním vysunutí) |
+| 3 | Ozubení | Katalog generátorů profilu pro vysunutí; první položka je ozubení nad kružnicí skici. Vnější, nebo vnitřní ozubení se zadává výslovně | Generovaný blok uvnitř skici: zasahuje do solveru, detekce profilů i pojmenování stěn. Posunutí profilu |
+| 4 | Pole | Feature „pole" jako seznam transformací; první druh je kruhové pole kolem osy. Opakuje seznam features, nebo hotové těleso | Posuvné pole a zrcadlení (další druhy transformací). Pole uvnitř skici: kopie by musely být entity solveru svázané vazbami |
+| 5 | Více dílů | Export STL po tělesech; dotazy nad tělesy: kolize dvojic, objem a obálka | Sestava s vazbami mezi díly a pohybem: druhý constraint solver, tentokrát prostorový; největší nafouknutí projektu ze všech zvažovaných věcí. Řez modelem v pohledu |
+| 6 | Vazby | Stejný poloměr, pevný bod | Úhlová poloha bodu na kružnici (jde složit z konstrukční úsečky a úhlu) |
+| 7 | Nástroje skici | Sdílený modul nástrojů (dávky příkazů) pro aplikaci i MCP; nový nástroj je pravidelný mnohoúhelník | Mnohoúhelník jako nová entita skici |
+
+**Proč ne sestava.** Kloub má sedm tištěných dílů, ale ty sdílejí rozměry (osová vzdálenost kol, rozteč šroubů motoru). Více těles v jednom dokumentu, která se o sebe opírají promítnutím hran, je pro to výhodnější než díly kreslené zvlášť a skládané vazbami. Ze sestavy kloub potřebuje jen opakované použití dílu (satelit třikrát), a to pokryje pole těles.
+
+**Co se nedělá vůbec:** import souborů (importovaná síť nemá pojmenované stěny, nešlo by na ni kreslit ani ji promítat; STEP bez výměny jádra nejde; motor a řídicí jednotka se modelují ručně jako zjednodušená tělesa) a zaoblení a zkosení hran (na síti obtížné, pro funkci kloubu nepodstatné).
+
+### Návrh provedení
+
+**0. Úvodní krok: rozdělení vysunutí a verze schématu.** Bez změny chování, připravuje body 2 až 4.
+
+- Krok vysunutí se rozdělí na tři části: profil (rovinné smyčky, u každé hrany křivka, ze které vznikla), nástroj (síť a nové stěny) a použití (nové těleso, nebo booleovská operace s cílem). Dnes je to jedna metoda a nástroj po ní zanikne.
+- Do stavu přepočtu se uloží recept nástroje: profil s rovinnou triangulací, rovina skici a rozsah. Síť nástroje se z něj staví pro každé použití zvlášť, tedy i pro každou kopii v poli. Hotovou síť uložit nestačí: nástroj „skrz vše" musí mít délku podle cíle v místě a směru každé kopie (viz bod 2). Recept je rozhraní („postav nástroj pro tuto transformaci a tyto cíle"), ne data hranolu; revolve, zkosený nebo zkroucený hranol jsou později jen jiné stavby nástroje.
+- Stavba hranolu dostane interval podél normály roviny skici místo jedné vzdálenosti. „Skrz vše" na obě strany a nástroj, který začíná mimo rovinu skici, jinak postavit nejde.
+- Feature vysunutí dostane zdroj profilu a rozsah jako varianty:
+
+  ```ts
+  interface ExtrudeFeature extends FeatureBase {
+    type: 'extrude';
+    profile: ProfileSource;
+    extent: Extent;
+    operation: 'new' | 'add' | 'cut';
+    targets?: Id[];   // add: právě jedno těleso; cut: jedno nebo víc (bod 2)
+  }
+  type ProfileSource =
+    | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+    | {                                   // bod 3
+        type: 'generated';
+        generator: string;                // položka katalogu generátorů, například 'involuteGear'
+        sketch: Id;
+        operands: Record<string, Id>;     // entity skici, které generátor potřebuje (roztečná kružnice)
+        params: Record<string, number | boolean>;
+        refs?: Record<string, Id>;        // odkazy na jiné features (kolo „v záběru s")
+      };
+  type Extent =
+    | { type: 'distance'; start: number; distance: number }            // start: posun začátku od roviny skici
+    | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };   // bod 2
+  ```
+
+- **Registr typů features.** Typ feature je položka registru: validace, odkazy na jiné features, krok přepočtu, číselná pole a tělesa, která vytváří. Dnes se engine podle typu větví na dvanácti místech; nový typ (pole a další později) je pak jedna položka.
+- **Obecný příkaz `updateFeature`** (`{ id, patch }`) nahrazuje `updatePlane` a `updateExtrude`. Změna se sloučí s feature a výsledek se ověří jako celek pravidly jejího typu; typ a ID měnit nejde. Příkazy skici zůstávají. Nový typ feature tak nepotřebuje vlastní příkaz ani vlastní popis pro MCP.
+- **Tělesa a jejich ID.** Feature může vytvořit víc těles. Těleso má buď ID feature (vysunutí s operací `new`), nebo `<feature>/<místní jméno>` (kopie v poli). O tom, která tělesa feature vytváří, rozhoduje jedna funkce registru; validace odkazů na ni spoléhá a nezná výjimky pro jednotlivé typy. Rozdělení, zrcadlení nebo spojení těles pak přibudou jako nové typy bez zásahu do validace.
+- Verze schématu se zvedne na 2. Dokument verze 1 se při načtení převede (vzdálenost na rozsah s nulovým začátkem, skica a oblasti na zdroj profilu, cíl na seznam cílů, prázdná tabulka parametrů a kontrol); ukládá se vždy verze 2. Zvednutí je potřeba, protože se mění tvar vysunutí a starší kód má nový dokument odmítnout srozumitelně.
+
+**1. Parametry a výrazy.**
+
+- **Tabulka.** Dokument dostane seřazenou tabulku parametrů (jméno, výraz). Pořadí je jen pro zobrazení; parametr se může odkazovat na kterýkoli jiný, cyklus je chyba.
+- **Katalog číselných polí.** Po vzoru katalogu vazeb (D34) říká u každého číselného pole každé feature jeho jednotku (délka, úhel, počet) a pravidlo (libovolné, kladné, nenulové, celé číslo od dané hodnoty). Hodnoty kót jednotku a pravidlo v katalogu vazeb už mají. Katalogem se řídí validace, vyhodnocení výrazů a popis API pro aplikaci a MCP. Výraz tak jde dát do každého číselného pole včetně těch, která přibudou; nové pole je položka katalogu. V katalogu jsou jen řídicí vstupy: souřadnice a poloměry, které počítá solver, a hodnoty referenčních kót do něj nepatří.
+- **Uložení.** Feature nese u pole volitelný výraz, kóta u hodnoty také. Číslo vedle výrazu je poslední vyhodnocená hodnota. Zadání čísla výraz zruší. Číslo bez výrazu se chová jako dnes, takže stávající příkazy se nemění.
+- **Výrazy:** čísla, `+ − * /`, zbytek po dělení `%`, závorky, jména parametrů, několik funkcí; v kontrolách navíc porovnání a logické spojky. Parser vlastní, bez knihovny (D2: každá knihovna by se schvalovala zvlášť a rozsah je malý).
+- **Vyhodnocení a cache.** Výraz se vyhodnotí ve smyčce přepočtu těsně před krokem feature: z feature vznikne feature s dosazenými čísly a krok počítá s ní. Dosazená feature se pamatuje podle původní feature a hodnot, které její výrazy daly, takže její identita se změní, jen když se změní některá hodnota. Cache kroků se nemění (klíčem je identita feature a předchozího stavu): změna parametru přepočítá model od první feature, která ho používá, do konce časové osy; začátek před ní se bere z cache a změna nepoužitého parametru nepřepočítá nic. Features za první změněnou se přepočítají, i když na ní nezávisí; graf závislostí je možná pozdější optimalizace, stejně jako dosud.
+- **Příkaz s výrazem.** Příkaz, který nastavuje výraz, ho hned vyhodnotí proti tabulce parametrů a číslo doplní; číslo v příkazu je pak nepovinné. Výraz, který v té chvíli nejde vyhodnotit, je neplatný příkaz. Chybou feature se výraz stane až pozdější změnou (smazaný parametr, hodnota mimo pravidlo). Číslo v dokumentu je vždy poslední platná hodnota, takže dokument uložený s chybným výrazem jde načíst.
+- **Zápis hodnot.** Poslední vyhodnocená hodnota se do dokumentu zapíše stejnou cestou jako vyřešené proměnné skici (zápis po přepočtu a převěšení cache).
+- **Chyby.** Neznámé jméno, cyklus, neplatný výraz, nekonečná hodnota a hodnota proti pravidlu pole jsou chyba feature, která výraz používá; přepočet pokračuje a chyba jde opravit, stejně jako rozbitá reference. Necelé číslo u počtu je chyba, nezaokrouhluje se.
+- **Úhly.** Úhel se ve výrazu píše ve stupních, jak ho ukazuje aplikace; goniometrické funkce berou stupně. Engine dál ukládá a počítá radiány a převádí při vyhodnocení výrazu podle jednotky pole. Číslo bez výrazu zůstává v radiánech.
+- **Kontroly.** Dokument nese vedle parametrů seznam kontrol (jméno, výraz s porovnáním), například `modul * (Zs / 2 + 1) < 12.75` nebo `Zs % 3 == 0`. Vyhodnotí se při každém přepočtu; nesplněná kontrola je varování u dokumentu, model se počítá dál. Výsledek kontrol je součástí výsledku přepočtu, takže ho vidí aplikace i AI přes MCP. Důvod: podmínky, které plynou z konstrukce a po změně parametru je jinak nikdo nehlídá (u kloubu čtyři: hlavový poloměr centrálního kola, dělitelnost počtu zubů počtem satelitů, odstup sousedních satelitů, stěna u koruny).
+- **Otevřené pro později.** Výraz se vyhodnocuje uvnitř přepočtu, ne při příkazu. Jména ve výrazu tak půjde rozšířit o hodnoty, které vznikají až přepočtem (referenční kóty dřívějších skic).
+
+**2. Rozsah vysunutí.**
+
+- **Začátek.** Rozsah se vzdáleností má posun začátku od roviny skici ve směru její normály (výchozí 0, smí být záporný); vzdálenost se měří od začátku. Jedna skica tak poslouží features v různých výškách: u kloubu vycházejí kola i čepy z jedné skici roztečných kružnic. Vysunutí na obě strany roviny je začátek `-t / 2` a vzdálenost `t`, zvláštní symetrický rozsah není potřeba. Víko `startCap` je víko na začátku; v rovině skici leží jen při nulovém posunu.
+- **Víc cílů.** Výřez smí mít víc cílových těles (díra skrz dva sešroubované díly); přidání má právě jedno, jinak by tělesa splynula. Chybějící cíl je rozbitá reference. Výřez, který by některý cíl odebral celý, je chyba a nezmění žádný z cílů. Varování „bez účinku" vyjmenuje cíle, které výřez minul.
+- „Skrz vše" je jen u výřezu a při víc cílech se bere rozsah všech cílů dohromady. Hloubka se při přepočtu určí z rozsahu cílového tělesa ve směru normály roviny skici (průmět vrcholů tělesa na normálu) a přidá se přesah, aby víko nástroje neleželo v rovině stěny tělesa.
+- Strana: `forward` je ve směru normály roviny skici, `backward` proti ní, `both` na obě strany. U skici na stěně míří normála ven z tělesa, takže běžná díra je `backward`.
+- Bere se rozsah celého tělesa, ne jen místa pod profilem.
+- Délka se počítá při každém použití nástroje znovu, proti cíli ve stavu, ve kterém se nástroj používá, a ve směru, kterým nástroj právě míří. V poli tedy pro každou kopii zvlášť: po otočení kolem osy, která není rovnoběžná se směrem vysunutí, je těleso v novém směru jinak dlouhé, a mezi zdrojovým výřezem a polem mohl k tělesu přibýt materiál.
+- „Po stěnu" bude další varianta téhož pole; zatím se nedělá.
+
+**3. Ozubené kolo.** Generátor profilu pro vysunutí. Operaci, cíl a rozsah má od vysunutí, takže ozubení dostává „skrz vše", pole i budoucí rozsahy bez další práce.
+
+- **Katalog generátorů.** Po vzoru katalogu vazeb: položka říká, které entity skici generátor potřebuje (operandy podle druhu entity), jaké má parametry (číselná pole s jednotkou a pravidlem, příznaky), na které features se smí odkazovat a jak pojmenuje boční stěny. K ní patří čistá funkce, která z vyřešených operandů a parametrů vrátí rovinné smyčky a případná varování. Validace, výrazy v parametrech, popis pro aplikaci a MCP se řídí katalogem. Ozubení je první položka (`involuteGear`: operand `circle`, parametry `teeth`, `pressureAngle`, `backlash`, `rotation`, `internal`, odkaz `meshWith`). Cykloidní kotouč, řemenice, řetězové kolo nebo text jsou později další položky beze změny tvaru dokumentu.
+
+- Generátor je čistá funkce parametrů, která vrací rovinné smyčky. Odkazuje na skicu a její kružnici, která je roztečnou kružnicí; parametry jsou počet zubů, úhel záběru (výchozí 20°), vůle, natočení a příznak vnitřního ozubení. Modul se nezadává, plyne z průměru kružnice a počtu zubů.
+- Vnější, nebo vnitřní ozubení se zadává výslovně, neodvozuje se z operace. Vnější profil je tvar kola; vnitřní profil je tvar, který se vyřízne z tělesa, aby vzniklo korunové kolo. Výřez vnějším profilem dá drážkované spojení (otvor, do kterého kolo zapadne).
+- Roztečná kružnice smí být konstrukční a generátor nezávisí na platnosti profilu skici: čte jen vyřešený střed a poloměr kružnice. Roztečné kružnice kol v záběru se dotýkají, a dotyk dvou běžných křivek mimo spojený bod profil skici zneplatní (D28). Ve skice kol proto mají být konstrukční; pak ve stejné skice mohou být i běžné oblasti (díra pro čep).
+- Rozměry profilu (potvrzené spikem): hlavová kružnice `r + m`, patní `r − 1,25 m`; u vnitřního profilu sahá nástroj od hlavové kružnice koruny `r − m` k její patní `r + 1,25 m`. Bok je evolventa od základní kružnice; pod ní pokračuje radiální úsečkou, bez přechodového zaoblení.
+- Vůle je úbytek tloušťky zubu jednoho kola na roztečné kružnici, v milimetrech po oblouku. Vnější zub je o ni tenčí; u vnitřního profilu je o ni širší zubová mezera koruny (nástroj je tlustší). Dvojice kol s vůlemi `b1` a `b2` má na každé straně zubu normálovou mezeru `(b1 + b2) / 2 · cos α`.
+- Vnitřní profil se vyřezává do plného materiálu, nebo do díry zřetelně menší, než je hlavová kružnice koruny. Nástroj je uzavřený tvar, vyřízne středový otvor i zubové mezery naráz. Díra přesně na hlavové kružnici by dala shodné válcové plochy nástroje a tělesa, které adaptér jádra neřeší; ve spiku po ní zůstaly zbytky stěny díry.
+- Záběr hlídá skica: roztečné kružnice dvou kol v záběru jsou tečné, osovou vzdálenost tak drží stávající vazba tečnosti.
+- Natočení zubů má dvě cesty. Základ je číslo (výchozí 0); první kolo v řetězu jinou možnost nemá. Volitelně kolo nese odkaz „v záběru s" na jiné ozubené kolo: natočení se pak dopočítá tak, aby na spojnici středů ležel zub jednoho kola proti mezeře druhého, a zadané číslo se nepoužije. Platí pro dvojici vnějších kol i pro vnější kolo s vnitřním. Pro tisk na natočení nezáleží; potřebuje ho kontrola kolizí a pohled na model.
+- Odkaz „v záběru s" smí vést jen na dřívější vysunutí s profilem ozubení. Kola v záběru musí mít stejný modul a úhel záběru a tečné roztečné kružnice (vnější dvojice zvenku, vnější s vnitřním zevnitř); tečnost sama stejný modul nezaručí. Když odkazované kolo chybí, je v chybě nebo některá podmínka neplatí, je to varování a použije se zadané číslo natočení.
+- Vzorec natočení (potvrzený spikem). Fáze kola ve směru `β` od jeho středu je zlomková část `(β − natočení) · z / 2π`; nula znamená, že tím směrem míří osa zubu. U vnější dvojice dávají fáze obou kol v roztečném bodě dohromady 1/2. U vnitřního záběru leží roztečný bod od obou středů stejným směrem a fáze satelitu se rovná fázi zubové mezery koruny.
+- Evolventa se nahrazuje lomenou čarou podle `chordTolerance`, stejně jako oblouky. Lomená čára vnějšího kola leží uvnitř přesného tvaru. U vnitřního profilu musí ležet vně přesného tvaru nástroje (tečny místo tětiv, nebo odsazení o toleranci): tětivy by zuby koruny ztlustily až o toleranci a kola s nulovou vůlí by se prolínala (ve spiku 0,006 mm, 0,012 mm³).
+- Stěny: obě víka jako u vysunutí a jedna logická boční stěna pro celé ozubení, pojmenovaná podle roztečné kružnice. Popis stěny dostane třetí druh vedle roviny a válce (obecná plocha rovnoběžná s osou vysunutí); není rovinná, nejde na ni kreslit a její hrany nejdou promítnout.
+- Omezení první verze: bez posunutí profilu. Hranice 17 zubů platí pro kola vyráběná odvalováním, kde nástroj patu podřízne; generovaný profil podříznutý není. U malého počtu zubů jde o to, jestli hlava protikola narazí do paty pod základní kružnicí. Podmínka pro dvojici se středy ve vzdálenosti `a`: hlavový poloměr protikola nesmí přesáhnout `√(rb² + (a · sin α)²)`, kde `rb` je jeho základní poloměr. Při odkazu „v záběru s" ji feature ověří a při porušení dá varování. Ve spiku dvojice 15/30 zabírá bez průniku, 12/24 a 10/20 se prolínají. Posunutí profilu je později další parametr generátoru.
+- Otevřené pro později: plná varianta (ozubení jako blok ve skice) zavolá tentýž generátor a výsledek vloží do skici jako odvozenou geometrii.
+
+**4. Pole.** Feature, která zdroj opakuje podle seznamu tuhých transformací. Druh transformace je varianta; první je kruhové pole. Posuvné pole a zrcadlení jsou později jen další druhy, zbytek feature se nemění.
+
+```ts
+interface PatternFeature extends FeatureBase {
+  type: 'pattern';
+  source: { type: 'features'; features: Id[] } | { type: 'body'; body: Id };
+  transform: { type: 'circular'; axis: AxisRef; count: number; angle: number };
+}
+type AxisRef =
+  | { kind: 'base'; axis: 'X' | 'Y' | 'Z' }
+  | { kind: 'sketchPoint'; sketch: Id; point: Id };   // normála roviny skici vedená bodem skici
+```
+
+- **Osa** je typ odkazu jako rovina. Později k němu přibude přímá hrana a osa válcové stěny; poslouží i pro revolve.
+- **Počet a úhel.** Počet zahrnuje originál. Úhel je celkový; při plném kruhu je krok úhel děleno počtem, jinak úhel děleno počtem bez jedné (první a poslední kopie leží na krajích).
+- **Zdroj features** (vysunutí s operací `add` nebo `cut`, tedy i ozubení): pro každou kopii se z receptu každé zdrojové feature postaví otočený nástroj a použije se v pořadí seznamu na cílech té feature. Zdrojové features nemusí mít společné cíle. Seznam dovoluje opakovat díru i s jejím zapuštěním.
+- **Pravidla.** Počet je celé číslo od 1; jednička znamená jen originál. Zdroj, který chybí, je potlačený nebo v chybě, dává chybu pole (rozbitá reference). Pole je nedělitelné: když selže kterákoli kopie, je v chybě celé pole a model zůstane ve stavu před ním. Kopie bez účinku je varování.
+- **Zdroj těleso:** těleso ve stavu před polem se zkopíruje jako nová tělesa. Je potřeba pro díl složený z více features (satelit je ozubené kolo a díra pro čep). Opakování jednotlivých features by u každé kopie muselo přesměrovat cíl výřezu na odpovídající kopii tělesa.
+- **ID kopií těles** je `<pole>/<číslo>`, číslo od 1; je to případ obecného pravidla `<feature>/<místní jméno>` z kroku 0. Lomítko je v ID zadávaných uživatelem zakázané, takže odvozené ID s jiným ID nekoliduje (stejně jsou pojmenované konce promítnutých hran).
+- **Kopie jsou plnohodnotná tělesa.** Jde na ně kreslit, řezat do nich a promítat jejich hrany. Validace odkazu přeloží `<pole>/<číslo>` na feature pole, která musí ležet před odkazující feature. Jestli kopie s tím číslem existuje, se ukáže až při přepočtu (počet může být výraz); když ne, je to rozbitá reference.
+- **Jména stěn kopií.** Jméno stěny dostane volitelný údaj o kopii (pole a číslo kopie; u pole z pole seznam) na konci zápisu jména. Stěny originálu a všechna dosavadní jména se nemění. Analytický popis stěny se otočí s kopií.
+- Obě cesty sdílejí osu, otočení sítě i pojmenování kopií; liší se jen posledním krokem (boolean s cílem, nebo nové těleso).
+- Omezení: kopie jsou tuhá otočení. Kopie satelitu zůstanou v záběru, jen když jsou počty zubů centrálního i korunového kola dělitelné počtem satelitů. Obecná podmínka smontovatelnosti (součet obou počtů dělitelný počtem satelitů) je slabší a vyžadovala by každou kopii pootočit kolem vlastní osy; seznam transformací to později dovolí.
+
+**5. Export po tělesech a dotazy nad tělesy.**
+
+- `exportMesh` dostane volitelný seznam těles (dnes exportuje vždy celý model).
+- Kontrola kolizí je dotaz enginu nad vybranými tělesy nebo nad všemi: vrací dvojice s objemem průniku nad prahem. Operaci `intersection` port jádra už má; záruku pro lícující stěny u ní adaptér neplní, ve spiku ale lícující víka, čep v díře i shodné válce daly objem přesně nula. Práh je 0,001 mm³: šum vyšel nulový, kola se zápornou vůlí 0,05 mm dala 0,5 až 1,7 mm³.
+- Objem a obálka tělesa jsou součástí popisu tělesa; AI jimi ověřuje, co postavila.
+- V aplikaci tlačítko, které vypíše kolidující dvojice; v MCP nástroj.
+- Otevřené pro později: sestava by stála nad tělesy dokumentu a odkazovala se na jejich ID. Proto mají kopie těles stabilní odvozená ID.
+
+**6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
+
+- Stejný poloměr: planegcs má vazby `equal_radius_cc`, `equal_radius_ca` a `equal_radius_aa` (nalezeno v typech knihovny 1.3.0, nespuštěno).
+- Pevný bod je vazba se souřadnicemi: `{ type: 'fixed'; point: Id; x: number; y: number }`. V rozboru volnosti jsou to dvě rovnice nad běžným proměnným bodem (`x − x0 = 0`, `y − y0 = 0`), pro solver se překládá na `coordinate_x` a `coordinate_y` (planegcs je má). Diagnostika, vysvětlení nadbytečných vazeb i konflikt s kótou tak fungují jako u ostatních vazeb.
+- Souřadnice jsou číselná pole katalogu, mohou tedy být výraz a pevný bod se může hýbat s parametry. Příkaz bez souřadnic doplní současnou polohu bodu.
+- Katalog vazeb dnes počítá s jednou hodnotou na vazbu; dvě hodnoty jsou jeho rozšíření.
+- Zamítnuto: seznam pevných entit, který solver dostává pro počátek a promítnutou geometrii (první návrh). Bod z tohoto seznamu rozbor volnosti vynechává z proměnných, takže vazba na něm by neměla žádnou rovnici a diagnostika by ji neuměla vysvětlit ani ohlásit konflikt s kótou. Seznam zůstává jen pro počátek a promítnutou geometrii.
+
+**7. Nástroje skici.** Sdílený modul čistých funkcí, které z několika údajů složí dávku příkazů. Aplikace je volá ze svých nástrojů, MCP je nabízí jako nástroj s popisem generovaným ze seznamu funkcí. Engine se nemění. AI tak neskládá desítky příkazů podle textového receptu a každý další nástroj je hned na obou místech. Do modulu se přesune stávající obdélník; nový je pravidelný mnohoúhelník. Kde modul leží (balíček enginu, nebo vlastní), se určí při implementaci.
+
+- Mnohoúhelník: konstrukční opsaná kružnice, vrcholy na ní (`pointOnCurve`) a shodné délky stran.
+- Zbývající volnost jsou čtyři stupně: střed, velikost, natočení.
+- Velikost se kótuje průměrem opsané kružnice, nebo u sudého počtu stran rozměrem přes plochy (kóta bod–úsečka mezi vrcholem a protější stranou), což je u matice rozměr klíče.
+- Zvažováno: vepsaná kružnice s tečnými stranami (její průměr by byl přímo rozměr přes plochy). Zamítnuto: tečný mnohoúhelník se shodnými stranami nemusí být pravidelný (kosočtverec).
+- Zapuštění matice je pak šestiúhelník a výřez do hloubky; nic dalšího nepotřebuje.
+
+### Co potvrdil vlastník projektu
+
+Při prvním návrhu 2026-11-14 tři body, které návrh nechával otevřené:
+
+- **Natočení zubů** jde zadat číslem i odkazem „v záběru s". Číslo je základ, který první kolo v řetězu potřebuje vždy; odkaz je volitelná nadstavba. Bez odkazu by kontrola kolizí u kol v záběru hlásila průnik, dokud by uživatel natočení nedopočítal ručně.
+- **Pole** opakuje features i hotové těleso. Samotné opakování features nestačí na díl složený z více features (satelit s dírou pro čep); samotné pole těles nepokryje díry na roztečné kružnici.
+- **Úhel ve výrazu** se píše ve stupních, engine dál počítá v radiánech.
+
+Po revizi návrhu téhož dne:
+
+- Zobecnění všech sedmi funkcí (sloupec „Varianta" v tabulce rozsahu) a zásadu, že levná varianta nemá zavřít cestu k plné.
+- Rozhodnutí, která se dělají před implementací: vyhodnocení výrazů a cache, necelý počet jako chyba, jména a ID kopií, počet včetně originálu, verze schématu 2 s převodem, úvodní rozdělení vysunutí a pořadí implementace.
+- Upřesnění scénáře 9 v další části.
+
+Po dvou revizích a spiku ozubení téhož dne:
+
+- Všechny opravy z části Revize návrhu.
+- Čtyři rozhodnutí z části Rozhodnutí po revizi: dva milníky, převod 6 jako akceptační případ, pevný bod jako vazba se souřadnicemi a kopie těles jako plnohodnotná tělesa.
+
+Po rozboru obecnosti téhož dne (kloub je ukázkový příklad postupu, ne dodávka; rozšíření mají sloužit i jiným konstrukcím) sedm zobecnění, která jdou do tvaru dokumentu nebo příkazů a později by znamenala jeho změnu:
+
+| Zobecnění | Kde | Proč teď |
+|---|---|---|
+| Katalog generátorů profilu místo pevné varianty ozubení | bod 3 | Další profily (cykloida, řemenice, text) bez změny schématu |
+| Posun začátku rozsahu vysunutí | bod 2 | Jedna skica pro features v různých výškách; potřebuje to sám kloub. Pokrývá i symetrické vysunutí |
+| Recept nástroje jako rozhraní | krok 0 | Revolve, zkosení a zkrut později jako jiné stavby nástroje |
+| Feature může vytvořit víc těles, obecné ID `<feature>/<místní jméno>` | krok 0, bod 4 | Rozdělení, zrcadlení a spojení těles bez výjimek ve validaci |
+| Registr typů features a obecný příkaz `updateFeature` | krok 0 | Nový typ je jedna položka; tvar vysunutí se mění a přibývá pole, psalo by se to znovu |
+| Kontroly v tabulce parametrů | bod 1 | Konstrukční podmínky, které po změně parametru jinak nikdo nehlídá; parser výrazů vzniká teď |
+| Výřez do více těles | bod 2 | Šroubovaný spoj prochází dvěma díly; tvar vysunutí se mění teď |
+
+Co se odložilo a proč to architekturu nezamyká, je v pracovním souboru [backlog.md](backlog.md).
+
+### Návrh kontraktu
+
+V adresáři [d35-contract](d35-contract/README.md) je návrh kontraktu jako typy, které projdou typovou kontrolou, scénář 9 zapsaný jako příkazy proti nim a tabulky toho, co potřebuje GUI a co přibude v MCP. Je to výchozí bod pro implementaci, ne zmrazené rozhraní. Při psaní vzniklo třináct rozhodnutí, která tento dokument nechával otevřená, a sedm nálezů ze zápisu scénáře; obojí je v README návrhu a vlastník je zatím nepotvrdil. Jedno z nich se od textu výše liší: boční stěna ozubení se v návrhu jmenuje podle katalogu generátoru (`teeth`), ne podle roztečné kružnice.
+
+### Upřesnění scénáře 9
+
+Vlastník projektu zadal vyřešit nejasnosti scénáře; řešení navrhl Claude a vlastník je potvrdil 2026-11-14.
+
+| Nejasnost | Řešení | Důvod |
+|---|---|---|
+| Pouzdro mělo dno s dírami do statoru | Pouzdro je válec otevřený na straně motoru (vybrání pro motor, nad ním plný materiál pro korunu), dno je zadní deska (jeden díl s deskou pro řídicí jednotku) | Hlavová kružnice korunového kola je menší než motor, takže motor nejde vložit shora. Korunové kolo větší než motor by při převodu 4 a 5 chtělo centrální kolo, kolem kterého už nejdou zasunout šrouby do rotoru |
+| Zapuštění matice bylo u díry M3, která vede do závitu rotoru | Matice jsou ve spoji pouzdra se zadní deskou: šest šroubů M3 skrz stěnu pouzdra, zapuštění na čele u korunového kola | Do závitu se matice nedává; spoj pouzdra s deskou po rozdělení pouzdra stejně vzniknout musí |
+| Scénář neměl unašeč | Přidán unašeč se třemi čepy; ložisko výstupu scénář neřeší | Bez unašeče kloub nemá výstup. Čep přidaný k tělesu a zopakovaný polem navíc ověřuje pole s operací přidání |
+| Chyběl otvor pro magnet enkodéru | Zadní deska má středový otvor průměru 20 mm | Enkodér řídicí jednotky čte magnet na hřídeli motoru |
+| Pevný bod scénář nepoužíval | Levou trojici děr řídicí jednotky drží pevné body na souřadnicích z výkresu | Souřadnice z katalogového listu jsou typické použití pevného bodu, hlavně pro AI přes MCP |
+| Modul nebyl zadaný | `modul = 0,9` | Šrouby M3 do rotoru (roztečná kružnice 31 mm, hlava 5,5 mm) se zasouvají podél ozubení centrálního kola; jeho hlavový poloměr musí být pod 12,75 mm. Při `Zs = 24` dává modul 1 poloměr 13 mm, modul 0,9 dává 11,7 mm |
+| Satelit tečný k centrálnímu kolu mohl kolem něj obíhat | Střed satelitu leží na vodorovné přímce počátkem | Bez toho skica není plně určená |
+| „Uvnitř je celý motor" nic neověřovalo | Motor je zjednodušené těleso a kontrola kolizí ho porovná s pouzdrem | S ručně modelovaným motorem D35 počítá |
+
+Tři údaje z podkladů jsou nejisté a scénář na nich nestojí: strana středicího čepu motoru, konec hřídele na straně statoru (kam přijde magnet) a hloubka závitů.
+
+### Revize návrhu (2026-11-14)
+
+Dvě nezávislé revize dodané vlastníkem projektu. Tvrzení o kódu jsou ověřená proti zdrojům nebo spikem. Řešení navrhl Claude a vlastník je potvrdil týž den.
+
+| Nález | Platí? | Řešení |
+|---|---|---|
+| Do trubky s vnitřním průměrem 92 mm nejde vyříznout koruna o průměru 63 mm, není tam materiál | Ano, scénář byl nepřesný | Pouzdro je plný válec s vybráním pro motor; koruna se řeže do plné části nad ním (scénář 9e) |
+| „Skrz vše" a opakování uloženého nástroje: délka nástroje po otočení kolem obecné osy nebo po přidání materiálu nestačí | Ano | Ukládá se recept nástroje, délka se počítá pro každou kopii (kroky 0 a 2) |
+| Slib „přepočítá se jen to, co na parametru závisí" neodpovídá cache | Ano | Opravena formulace: přepočet od první ovlivněné feature dál (bod 1) |
+| Tečné roztečné kružnice zneplatní profil skici a vysunutí z ní skončí chybou | Ano, potvrzeno spikem | Roztečné kružnice jsou konstrukční, generátor na platnosti profilu nezávisí (bod 3, scénář 9a) |
+| Ozubení nemá přesný kontrakt: význam vůle, hlava a pata, kontroly u „v záběru s" | Ano | Doplněno do bodu 3 |
+| Nulový průnik při otáčení není důkaz správného profilu, projdou i příliš malé zuby | Ano | Spike měří i mezeru boků a tloušťku zubu; kontrolní případ s menšími zuby pozná |
+| Spike má jít přes adaptér jádra, ne přímo přes Manifold | Ano | Spike používá `buildPrism` enginu a adaptér jádra |
+| Vůle u vnitřního profilu má opačné znaménko, patní kružnice koruny je `m · (Zr + 2,5)` | Ano | Doplněno do bodu 3 a potvrzeno spikem |
+| Koruna do díry přesně na hlavové kružnici naráží na shodné válcové plochy | Zčásti: chyba nenastala a objem sedí, ale zůstaly zbytky stěny díry | Koruna se řeže do plného materiálu (bod 3) |
+| Pevný bod přes seznam pevných entit rozbije diagnostiku | Ano | Vazba se souřadnicemi (bod 6, rozhodnutí 3) |
+| Stavba hranolu potřebuje interval místo jedné vzdálenosti | Ano | Krok 0 |
+| ID kopií těles: validace odkazů zná jen těleso jako vysunutí s operací `new` | Ano | Kopie jsou plnohodnotná tělesa, validace odkaz přeloží na feature pole (bod 4, rozhodnutí 4) |
+| Příkaz s výrazem a načtení dokumentu s chybným výrazem | Ano | Bod 1, Příkaz s výrazem |
+| Výrazy nemají zahrnovat hodnoty počítané solverem a referenční kóty | Ano | Bod 1, katalog |
+| Pole nemá pravidla pro počet, neplatný zdroj a selhání kopie | Ano | Bod 4, Pravidla |
+| architecture.md tvrdí, že „skrz vše" je mimo PoC | Ano | Opraveno, architecture.md odkazuje na D35 |
+| Scénář neověřuje převod 6 | Ano | Scénář 9i má změnu na 18/36/90 (rozhodnutí 2) |
+| Scénář není sestavitelný mechanismus: chybí osové uspořádání, uložení unašeče a satelitů, uchycení magnetu, tiskové vůle | Ano | Dva milníky; scénář 9 má osové uspořádání, zbytek je druhý milník (rozhodnutí 1) |
+
+Zbývá doplnit při implementaci bodu 1: přesný seznam funkcí ve výrazech a pravidla jmen a přejmenování parametrů.
+
+### Spike ozubení (2026-11-14)
+
+Skript `spikes/gear.spike.ts`, spuštění z kořene repozitáře: `npx vitest run --config spikes/vitest.config.ts`. Běží přes `buildPrism` enginu, adaptér jádra a solver planegcs. Modul 0,9, tolerance dělení 0,01 mm, tři sestavy: 18/27/72, 24/24/72 a 18/36/90.
+
+| Otázka | Výsledek |
+|---|---|
+| Je profil evolventy správně? | Ano. Při otáčení v převodovém poměru přes jednu rozteč se vnější kola s nulovou vůlí neprolínají a mezera boků zůstává 0,000 až 0,006 mm, boky se tedy po celou dobu dotýkají. Kontrolní případ se zuby o 3 % menšími dá mezeru 0,23 mm. Tloušťka zubu na roztečné kružnici vychází o 0,000 až 0,008 mm menší než `π · m / 2 − vůle` (tětivy) |
+| Odpovídá vůle definici? | Ano. Při vůli 0,05 a 0,1 mm na každém kole vychází normálová mezera 0,047 až 0,050 a 0,094 až 0,100 mm; výpočet `(b1 + b2) / 2 · cos α` dává 0,047 a 0,094 |
+| Vnitřní profil | Tětivy nástroje ztlušťují zuby koruny: při nulové vůli průnik se satelitem 0,005 až 0,006 mm (0,011 až 0,012 mm³ při šířce 8 mm), při vůli 0,05 mm mezera 0,041 až 0,044 mm místo 0,047. Lomená čára vnitřního profilu proto musí ležet vně přesného tvaru |
+| Vzorec natočení ze záběru | Platí pro vnější dvojici i pro satelit s korunou, ve všech třech sestavách. Tuhé kopie satelitu po 120° se s centrálním kolem ani s korunou neprolínají (objem 0) |
+| Málo zubů | Dvojice 15/30 zabírá bez průniku i při nulové vůli; 12/24 se prolíná o 0,002 mm a 10/20 o 0,007 mm. Odpovídá podmínce nárazu hlavy do paty, ne hranici 17 zubů |
+| Jádro: výřez koruny | 72 zubů do plného kotouče 75 až 180 ms, výsledek 2964 trojúhelníků; 90 zubů 73 až 138 ms, 3540 trojúhelníků. Žádná chyba jádra |
+| Jádro: celé pouzdro | Válec, vybrání pro motor, koruna skrz vše, šest děr a šest zapuštění: 14 booleanů, každý 17 až 103 ms, dohromady asi 1 s, 4432 trojúhelníků. Centrální kolo (příruba, ozubení přidáním, čtyři díry): přidání ozubení 389 ms, díry 27 až 61 ms |
+| Šum objemu průniku | Nulový: kola s vůlí 0,05 a 0,1 mm, lícující víka, čep v díře s vůlí i shodné válce dávají přesně 0 mm³. Záporná vůle 0,05 mm dá 0,46 až 1,75 mm³. Práh kontroly kolizí 0,001 mm³ |
+| Zůstane tečnost vnější? | Ano. Po změně 18/27 → 24/24 → 18/27, po změně kol jednotlivě, po 18/36/90 i po skoku na průměry 2 a 60 mm leží střed satelitu ve vzdálenosti součtu poloměrů |
+| Platnost profilu skici | Běžné tečné kružnice: profil neplatný. Konstrukční: profil platný, skica plně určená |
+
+Co spike neověřoval: stejný poloměr a pevný bod v solveru, ozubení v obecně natočené rovině, čas přepočtu celého kloubu v enginu.
+
+### Rozhodnutí po revizi
+
+Čtyři otázky, které revize otevřela. Doporučení dal Claude, vlastník projektu je potvrdil 2026-11-14.
+
+1. **Dva milníky.** První milník je scénář 9: model kloubu v editoru. Scénář dostal osové uspořádání (tloušťky a polohy dílů v ose), aby byl model geometricky úplný a kontrola kolizí měla smysl. Druhý milník je fyzický prototyp: uložení a osové zajištění unašeče a satelitů, držák magnetu a jeho vzdálenost od enkodéru, prostor pro desku a kabely, tiskové vůle. Práci na editoru neblokuje. Vlastník téhož dne upřesnil, že kloub je ukázkový příklad postupu, ne dodávka: druhý milník je proto volitelný, rozhodne se o něm po prvním a scénář 10 se doplní, jen pokud se bude dělat. Měření nejistých údajů na skutečném motoru tím zatím odpadá.
+2. **Převod 6 je akceptační případ.** Scénář 9i má vedle změny 5 → 4 (stejná koruna) i změnu 5 → 6: `Zp` z 27 na 36, tedy 18/36/90. Koruna se zvětší na roztečný průměr 81 mm a vejde se do pouzdra; `Zs` i `Zr` jsou dělitelné třemi a centrální kolo má 18 zubů. Zvažováno: 15/30/75 s menší korunou; zamítnuto, protože 18 zubů je dál od hranice, kde hlava protikola naráží do paty, a změna koruny ověří i přepočet pouzdra.
+3. **Pevný bod je vazba se souřadnicemi.** Podrobnosti a zamítnutá varianta jsou v návrhu provedení, bod 6.
+4. **Kopie těles jsou plnohodnotná tělesa.** Podrobnosti jsou v návrhu provedení, bod 4. Scénář 9 to nepotřebuje, ale kopie, na které nejde navázat, by byly druhořadá tělesa.
+
+Osové uspořádání scénáře 9 (nula na dosedací ploše statoru, kladný směr k rotoru) vychází z těchto úvah:
+
+- Vybrání pro motor končí 1,5 mm nad čelem rotoru (28 mm), aby se rotor neotíral o plný materiál s korunou.
+- Příruba centrálního kola má průměr 40 mm (náboj rotoru podle podkladů) a tloušťku 4 mm. Hlavy šroubů M3 na ní sahají do 33,5 mm; satelity proto začínají na 34 mm a ozubení centrálního kola je delší než satelity.
+- Unašeč leží 0,5 mm nad čelem pouzdra a kol, čepy míří dolů do děr satelitů. Průměr kotouče 60 mm pokryje čepy i při převodu 6 (osová vzdálenost 24,3 mm).
+- Sousední satelity se nepotkají v žádné ze tří sestav: nejmenší vzdálenost středů je 35,1 mm při hlavovém průměru 26,1 mm (převod 5), 37,4 a 23,4 mm (převod 4), 42,1 a 34,2 mm (převod 6).
+- Stěna mezi patní kružnicí koruny a dírami pro šrouby pouzdra je i při převodu 6 silná 7,2 mm (patní poloměr 41,6 mm, díry na poloměru 50,5 mm).
+
+Ověření: validační scénář 9.
 
 ## Spiky 2026-11-13
 

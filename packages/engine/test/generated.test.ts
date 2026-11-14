@@ -104,8 +104,13 @@ describe('an extrusion with a generated profile', () => {
     invalid(doc, add(extrude('g', { ...good, refs: { meshWith: 'sun' } } as Input<ProfileSource>), 1), /musí ležet před odkazující feature/);
     // an ordinary (not construction) circle is an operand as well
     expect(profileOf(run(doc, add(extrude('g', gearProfile('c', { teeth: 8 })))), 'g').operands).toEqual({ circle: 'c' });
-    // a field of the other variant is dropped by validation on creation, like any unknown field
-    expect(profileOf(run(doc, add(extrude('g', { ...good, regions: [{ outerLoop: ['c'] }] } as never))), 'g')).not.toHaveProperty('regions');
+    // a field of the other variant or an unknown one is a mistake, on creation and on loading
+    bad({ ...good, regions: [{ outerLoop: ['c'] }] }, /profile\.regions: a profile of the type generated has no such field/);
+    bad({ ...good, bogus: 1 }, /profile\.bogus: a profile of the type generated has no such field/);
+    bad({ type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['c'] }], operands: { circle: 'p' }, params: { teeth: 3 } }, /profile\.operands: a profile of the type regions has no such field/);
+    const loaded = JSON.parse(JSON.stringify(run(doc, add(extrude('g', good as Input<ProfileSource>)))));
+    loaded.features[loaded.features.length - 1].profile.regions = [];
+    expect(() => validateDocument(loaded)).toThrow(/profile\.regions: a profile of the type generated has no such field/);
   });
 
   it('a gear refers to its mate: moving and removing features respects the reference', () => {
@@ -195,6 +200,31 @@ describe('updateFeature on a generated profile', () => {
     // and back
     expect(profileOf(run(free, update('planet', { profile: { refs: { meshWith: 'sun' } } })), 'planet').refs).toEqual({ meshWith: 'sun' });
     invalid(doc, update('planet', { profile: { operands: { circle: null } } }), /operands\.circle: čeká se řetězec/);
+    // a name the feature does not know is a typo, not a removal that succeeds and resets nothing
+    invalid(doc, update('planet', { profile: { params: { rotaton: null } } } as FeaturePatch), /profile\.params\.rotaton: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { profile: { operands: { bogus: null } } } as FeaturePatch), /profile\.operands\.bogus: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { profile: { refs: { gear: null } } } as FeaturePatch), /profile\.refs\.gear: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { profile: { bogus: null } } as FeaturePatch), /profile\.bogus: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { extent: { side: null } } as FeaturePatch), /extent\.side: vysunutí takové pole nemá/);
+    // a profile of regions has no dictionaries to remove from
+    invalid(disc, update('planet', { profile: { refs: { meshWith: null } } } as FeaturePatch), /profile\.refs: a profile of the type regions has no such field/);
+    invalid(disc, update('planet', { profile: { refs: null } } as FeaturePatch), /profile\.refs: vysunutí takové pole nemá/);
+    // an optional field of the feature may be removed whether it is there or not
+    expect(feature(run(doc, update('sun', { targets: null })), 'sun')).not.toHaveProperty('targets');
+  });
+
+  it('an expression that stopped evaluating may be repeated in a patch, not set anew', () => {
+    // Zp is gone: the planet keeps its last tooth count and its expression
+    const doc = run(gears(), { type: 'removeParameter', name: 'Zp' });
+    const kept = run(doc, update('planet', { profile: { params: { teeth: 'Zp', rotation: 0.1 } } }));
+    expect(feature(kept, 'planet')).toMatchObject({ profile: { params: { teeth: 27, rotation: 0.1 } }, expressions: { 'profile/params/teeth': 'Zp' } });
+    expect(feature(run(doc, update('planet', { profile: { params: { teeth: '  Zp ' } } })), 'planet')).toMatchObject({ profile: { params: { teeth: 27 } }, expressions: { 'profile/params/teeth': 'Zp' } });
+    // the whole feature in its input form, as a form sends it
+    const whole = featureInput(feature(doc, 'planet'));
+    expect(feature(run(doc, update('planet', { profile: whole.profile, extent: whole.extent })), 'planet')).toEqual(feature(doc, 'planet'));
+    // any other text is a new expression and has to evaluate
+    invalid(doc, update('planet', { profile: { params: { teeth: 'Zp + 0' } } }), /Zp/);
+    invalid(doc, { type: 'setField', feature: 'planet', path: 'profile/params/teeth', value: 'Zp' }, /Zp/);
   });
 
   it('another source or another generator replaces the profile and drops its expressions', () => {
@@ -212,8 +242,8 @@ describe('updateFeature on a generated profile', () => {
     const same = run(doc, update('planet', { profile: { type: 'generated', generator: 'involuteGear', params: { teeth: 30 } } }));
     expect(feature(same, 'planet')).toMatchObject({ profile: { params: { teeth: 30, backlash: 0.05 }, refs: { meshWith: 'sun' } }, expressions: { 'profile/params/backlash': 'backlash' } });
     // a field of the other variant is a mistake, not a silent success
-    invalid(doc, update('planet', { profile: { regions: [{ outerLoop: ['c'] }] } } as FeaturePatch), /profile\.regions: vysunutí takové pole nemá/);
-    invalid(disc, update('planet', { profile: { params: { teeth: 5 } } } as FeaturePatch), /profile\.params\.teeth: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { profile: { regions: [{ outerLoop: ['c'] }] } } as FeaturePatch), /profile\.regions: a profile of the type generated has no such field/);
+    invalid(disc, update('planet', { profile: { params: { teeth: 5 } } } as FeaturePatch), /profile\.params: a profile of the type regions has no such field/);
     invalid(doc, update('planet', { profile: { params: { helix: 1 } } } as FeaturePatch), /params\.helix: the generator involuteGear has no such entry/);
   });
 

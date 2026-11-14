@@ -149,13 +149,46 @@ describe('involute gear: the profile', () => {
         const g = gear({ teeth, backlash, internal: true });
         const r = (0.9 * teeth) / 2;
         const all = radii(g.loop);
-        expect(Math.max(...all)).toBeCloseTo(r + 1.25 * 0.9, 9);
+        // the arcs of the tool are made of tangents, so its corners lie outside the circles by less than the tolerance
+        expect(Math.max(...all)).toBeGreaterThan(r + 1.25 * 0.9);
+        expect(Math.max(...all)).toBeLessThan(r + 1.25 * 0.9 + TOLERANCE);
         expect(Math.min(...all)).toBeCloseTo(r - 0.9, 9);
         const width = widthAtPitch(g.loop, r, teeth);
         const exact = (Math.PI * 0.9) / 2 + backlash;
         expect(width, `${teeth}/${backlash}`).toBeGreaterThanOrEqual(exact - 1e-9);
         expect(width, `${teeth}/${backlash}`).toBeLessThan(exact + 2 * TOLERANCE);
         expect(g.facts).toMatchObject({ internal: true, tipDiameter: expect.closeTo(2 * (r - 0.9), 9), rootDiameter: expect.closeTo(2 * (r + 1.125), 9) });
+      }
+    }
+  });
+
+  it('the tool of a ring gear contains the exact tool everywhere, not only at its vertices', () => {
+    // The exact boundary of one tooth of the tool, sampled densely: the involute flank, the radial
+    // part below the base circle and both arcs. Every sample has to lie inside the polyline or on it.
+    const involute = (angle: number): number => Math.tan(angle) - angle;
+    for (const [teeth, chordTolerance] of [[20, 0.01], [30, 0.01], [34, 0.01], [40, 0.01], [72, 0.01], [72, 0.1], [90, 0.001]] as const) {
+      for (const backlash of [0, 0.05]) {
+        const g = gear({ teeth, module: 1, internal: true, backlash, chordTolerance });
+        const [r, alpha] = [teeth / 2, 20 * DEG];
+        const [rb, inner, outer] = [r * Math.cos(alpha), r - 1, r + 1.25];
+        const psi = Math.PI / (2 * teeth) + backlash / (2 * r);
+        const halfAt = (rho: number): number => psi + involute(alpha) - involute(Math.acos(Math.min(1, rb / rho)));
+        const samples: P[] = [];
+        const N = 3000;
+        for (let i = 0; i <= N; i++) {
+          const rho = inner + ((outer - inner) * i) / N;
+          for (const sign of [1, -1]) samples.push([rho * Math.cos(sign * halfAt(rho)), rho * Math.sin(sign * halfAt(rho))]);
+          const tip = -halfAt(outer) + (2 * halfAt(outer) * i) / N;
+          samples.push([outer * Math.cos(tip), outer * Math.sin(tip)]);
+          const root = halfAt(inner) + (((2 * Math.PI) / teeth - 2 * halfAt(inner)) * i) / N;
+          samples.push([inner * Math.cos(root), inner * Math.sin(root)]);
+        }
+        let worst = 0;
+        for (const p of samples) if (!inside(p, g.loop)) worst = Math.max(worst, toBoundary(p, g.loop));
+        expect(worst, `${teeth} teeth, tolerance ${chordTolerance}, backlash ${backlash}`).toBeLessThan(1e-10);
+        // and it is not wider than the tolerance allows
+        const width = widthAtPitch(g.loop, r, teeth);
+        expect(width - (Math.PI / 2 + backlash)).toBeLessThan(2.5 * chordTolerance);
       }
     }
   });
@@ -198,6 +231,28 @@ describe('involute gear: the profile', () => {
     expect(failure({ teeth: 24, internal: true, backlash: 1.4 })).toMatch(/pointed|overlap/);
     expect(failure({ teeth: 500, module: 2, chordTolerance: 1e-9 })).toMatch(new RegExp(`more than ${MAX_PROFILE_POINTS}`));
     expect(failure({ teeth: 500, module: 2 })).toBe('');
+    // the size is refused before the loop is built, also for a tolerance the arc rule cannot divide by
+    const started = performance.now();
+    expect(failure({ teeth: 18, chordTolerance: 1e-13 })).toMatch(new RegExp(`more than ${MAX_PROFILE_POINTS}`));
+    expect(failure({ teeth: 18, chordTolerance: 1e-30 })).toMatch(new RegExp(`more than ${MAX_PROFILE_POINTS}`));
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it('a tooth exactly at a limit is refused: no edges of zero length', () => {
+    // the pressure angles and backlashes at which the tip width or the root gap is exactly zero
+    expect(failure({ teeth: 4, module: 1, pressureAngle: 28.480844051985287 * DEG })).toMatch(/the tooth is pointed/);
+    expect(failure({ teeth: 10, module: 1, pressureAngle: 33.95349654107833 * DEG })).toMatch(/the tooth is pointed/);
+    for (const g of [{ teeth: 20, module: 1, backlash: 0.631709076882948 }, { teeth: 20, module: 1, internal: true, backlash: 1.2537838865067876 }]) {
+      const result = generateProfile('involuteGear', input(g));
+      if (!result.ok) expect(result.message).toMatch(/pointed|overlap/);
+      else {
+        // what passes has no degenerate edge
+        const xy = result.regions[0].outer.xy;
+        let shortest = Infinity;
+        for (let i = 0; i < xy.length; i += 2) shortest = Math.min(shortest, Math.hypot(xy[(i + 2) % xy.length] - xy[i], xy[(i + 3) % xy.length] - xy[i + 1]));
+        expect(shortest).toBeGreaterThan(1e-7);
+      }
+    }
   });
 });
 
@@ -231,6 +286,18 @@ describe('involute gear: rotation from the gear in mesh', () => {
       const inner = sweep({ ...planetInput, rotation: planet.facts.rotation as number }, { ...ringInput, rotation: ring.facts.rotation as number });
       expect(inner.overlap, JSON.stringify(t)).toBeLessThan(1e-9);
       expect(inner.gapMax).toBeLessThan(2 * TOLERANCE);
+    }
+  });
+
+  it('a gear in a ring with other tooth counts: no vertex of one inside the other at zero backlash', () => {
+    for (const [zr, zp, module] of [[60, 33, 0.9], [60, 33, 1], [54, 38, 0.5]] as const) {
+      const ringInput = { teeth: zr, module, internal: true, rotation: 0.05 };
+      const ring = gear(ringInput);
+      const planetInput = { teeth: zp, module, center: [(module * (zr - zp)) / 2, 0] as P };
+      const planet = gear({ ...planetInput, meshWith: ring.facts });
+      expect(planet.warnings.filter((w) => w.code === 'gearMesh')).toEqual([]);
+      const inner = sweep({ ...planetInput, rotation: planet.facts.rotation as number }, ringInput);
+      expect(inner.overlap, `${zr}/${zp}`).toBeLessThan(1e-9);
     }
   });
 
@@ -292,7 +359,7 @@ describe('involute gear: rotation from the gear in mesh', () => {
       expect(result.warnings).toMatchObject([{ code: 'gearMesh', detail: expect.stringMatching(pattern) }]);
       expect(result.facts).toMatchObject({ rotation: g.rotation ?? 0, meshed: false });
     };
-    warned({ ...base, meshWith: null }, /missing, suppressed or in error/);
+    warned({ ...base, meshWith: null }, /missing, suppressed, in error or not a gear/);
     warned({ ...base, module: 1, center: [21.6, 0], meshWith: sun.facts }, /the modules differ/);
     warned({ ...base, pressureAngle: 25 * DEG, meshWith: sun.facts }, /pressure angles differ/);
     warned({ ...base, center: [20.3, 0], meshWith: sun.facts }, /not tangent from outside/);

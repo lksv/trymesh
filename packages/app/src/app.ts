@@ -55,7 +55,9 @@ import {
   asConstruction,
   type ExtrudeChange,
   type ProfileKind,
+  type RememberedProfiles,
   changeExtrude,
+  rememberedProfile,
   generatedProfile,
   profileKind,
   circleCommands,
@@ -103,6 +105,7 @@ interface ExtrudeMode {
   index: number; // pozice feature na časové ose
   draft: ExtrudeDraft; // input form: a numeric field holds a number or an expression
   distance?: ExtrudeDraft['extent']; // the distance extent the draft had last, to return to from "through all"
+  profiles?: RememberedProfiles; // the profile of each kind the draft had last, to return to from the other source
   preview?: EngineState;
   problem?: string;
   warning?: boolean; // the problem is a warning of the preview, not an error
@@ -1569,7 +1572,8 @@ export class App {
     const set = (change: ExtrudeChange, rebuild = true) => {
       // the distance extent the draft had last comes back when the extent or the operation returns to it
       if (m.draft.extent.type === 'distance') m.distance = m.draft.extent;
-      m.draft = changeExtrude(m.draft, change, bodies, m.distance);
+      m.profiles = { ...m.profiles, [profileKind(m.draft.profile)]: m.draft.profile };
+      m.draft = changeExtrude(m.draft, change, bodies, m.distance, m.profiles);
       this.draftChanged(rebuild);
     };
     const targets = m.draft.targets ?? [];
@@ -1580,7 +1584,8 @@ export class App {
     const kind = profileKind(profile);
     // another sketch: the regions are picked again and the operands of a generator are found in it
     const toSketch = (sketch: Id): ExtrudeChange => (profile.type === 'regions' ? { sketch, regions: [] } : { sketch, operands: this.defaultOperands(profile.generator, sketch) });
-    const toSource = (source: ProfileKind): ExtrudeChange => (source === 'regions' ? { source } : { source, operands: this.defaultOperands(source, profile.sketch) });
+    // a source the draft already had in this sketch comes back as it was; a new one finds its operands
+    const toSource = (source: ProfileKind): ExtrudeChange => (source === 'regions' || rememberedProfile(m.profiles ?? {}, source, profile.sketch) ? { source } : { source, operands: this.defaultOperands(source, profile.sketch) });
     return [
       h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nové vysunutí'),
       // The profile: regions of the sketch, or a profile generator from the catalog.

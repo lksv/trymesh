@@ -440,11 +440,30 @@ function planeFeature(doc: Document, before: number | undefined, o: Dict, what: 
   return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
 }
 
+const PROFILE_FIELDS: Record<ProfileSource['type'], readonly string[]> = { regions: ['type', 'sketch', 'regions'], generated: ['type', 'generator', 'sketch', 'operands', 'params', 'refs'] };
+
+// What `null` in a patch may remove from a profile that does not have it: an entry of a dictionary
+// the generator catalog knows (a parameter returns to its default, a reference is not set) and the
+// dictionary of references itself. Anything else that is not there is a typo.
+function removableFromProfile(profile: ProfileSource, path: string[]): boolean {
+  if (profile.type !== 'generated') return false;
+  const spec = GENERATORS[profile.generator];
+  const [dictionary, name, ...rest] = path;
+  if (rest.length) return false;
+  if (name === undefined) return dictionary === 'refs';
+  if (dictionary === 'params') return has(spec.params, name);
+  if (dictionary === 'refs') return has(spec.refs, name);
+  return dictionary === 'operands' && spec.operands.some((operand) => operand.field === name);
+}
+
 // The profile source of an extrusion. A generated profile follows the generator catalog: operands
 // and references by its names, parameters with its ranges and defaults, in the order of the catalog.
 function profileSource(doc: Document, before: number | undefined, v: unknown, what: string, fields: Fields): ProfileSource {
   const profile = object(v, what);
   const type = oneOf(profile.type, ['regions', 'generated'] as const, `${what}.type`);
+  // A field of the other variant is a mistake: a profile of regions with generator parameters would
+  // otherwise be accepted as plain regions.
+  for (const key of Object.keys(profile)) if (!PROFILE_FIELDS[type].includes(key)) fail(`${what}.${key}: a profile of the type ${type} has no such field`);
   const sketch = string(profile.sketch, `${what}.sketch`);
   requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
   if (type === 'regions') return { type, sketch, regions: regions(profile.regions, `${what}.regions`) };
@@ -590,7 +609,9 @@ interface FeatureTypeSpec<F extends Feature> {
   createsBody(f: F, local: string | undefined): boolean;
   namesFaces: boolean; // pojmenovává feature stěny těles?
   // Pole, která smí měnit updateFeature; bez nich feature tímto příkazem měnit nejde.
-  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void };
+  // `removable`: may `null` in a patch name this path although the feature did not have it? (An
+  // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
+  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
 }
 
 const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
@@ -651,6 +672,7 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
       normalize: (merged, patch) => {
         if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
       },
+      removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'profile' && removableFromProfile(f.profile, rest)),
     },
   },
 };
@@ -774,6 +796,10 @@ function replacedPaths(old: unknown, patch: Dict, prefix: string[] = []): string
 // Cesty k hodnotám, které změna nastavuje: listy, seznamy a odkazy (odebraná pole ne).
 function patchPaths(patch: Dict, prefix: string[] = []): string[][] {
   return Object.entries(patch).flatMap(([key, value]) => (value === null ? [] : isObject(value) && !has(value, 'kind') ? patchPaths(value, [...prefix, key]) : [[...prefix, key]]));
+}
+// Paths the patch removes (`null`).
+function removedPaths(patch: Dict, prefix: string[] = []): string[][] {
+  return Object.entries(patch).flatMap(([key, value]) => (value === null ? [[...prefix, key]] : isObject(value) && !has(value, 'kind') ? removedPaths(value, [...prefix, key]) : []));
 }
 
 // Změna bez polí s hodnotou `undefined`: v JSON nejsou a volající z kódu jimi myslí „neměnit".
@@ -1016,6 +1042,10 @@ export function applyCommand(doc: Document, command: Command): Document {
       // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
       // jinak skončilo úspěchem bez účinku.
       for (const path of patchPaths(patch)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
+      // The same for `null`: removing what the feature did not have is fine only for a name the
+      // feature knows (a form sends `refs: { meshWith: null }` whether the reference was set or
+      // not); `params: { rotaton: null }` must not report success and reset nothing.
+      for (const path of removedPaths(patch)) if (!hasPath(f, path) && !spec.patch.removable?.(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
       // Tvar se ověří celý, odkazy jen ty, které feature dosud neměla: oprava jedné rozbité
       // reference nesmí narazit na jinou, kterou změna nechává být (i když ji zopakuje).
       const kept = new Set(spec.refs(f).map(refKey));

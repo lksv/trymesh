@@ -6,7 +6,7 @@
 // change.
 import type { NumberSpec, OperandSpec } from './catalog';
 import type { Facts, Frame, GeneratorName, Vec2, Vec3, WarningCode } from './types';
-import { ANGLE_TOLERANCE, cross3, dot3, len3, sub3 } from './util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross3, dot3, len3, sub3 } from './util';
 
 // ---------------------------------------------------------------- catalog
 
@@ -107,11 +107,15 @@ export interface GeneratedProfile {
 // ends with the error `invalidProfile` and this message.
 export type GeneratorResult = ({ ok: true } & GeneratedProfile) | { ok: false; message: string };
 
+const tooLarge = (points: number): string => `the generated profile has ${points} points, more than ${MAX_PROFILE_POINTS}; lower the number of teeth or raise the chord tolerance`;
+
+// The limit on the number of points holds for every generator; one that knows the size of its
+// profile beforehand refuses it before building (the gear does).
 export function generateProfile(generator: GeneratorName, input: GeneratorInput): GeneratorResult {
   const result = BUILD[generator](input);
   if (!result.ok) return result;
   const points = result.regions.reduce((sum, region) => sum + [region.outer, ...region.holes].reduce((n, loop) => n + loop.xy.length / 2, 0), 0);
-  if (points > MAX_PROFILE_POINTS) return { ok: false, message: `the generated profile has ${points} points, more than ${MAX_PROFILE_POINTS}; lower the number of teeth or raise the chord tolerance` };
+  if (points > MAX_PROFILE_POINTS) return { ok: false, message: tooLarge(points) };
   return result;
 }
 
@@ -122,10 +126,13 @@ const involute = (angle: number): number => Math.tan(angle) - angle;
 const frac = (x: number): number => x - Math.floor(x);
 const fail = (message: string): GeneratorResult => ({ ok: false, message });
 
-// Number of chords for an arc of the given sweep, the same rule as for arcs of a sketch.
+// Number of chords for an arc of the given sweep, the same rule as for arcs of a sketch, with the
+// same cap: a tolerance far below the radius must not ask for an endless arc.
+const MAX_ARC_STEPS = 4096;
+const MAX_FLANK_STEPS = 256; // chords of one flank; a finer tolerance is not met
 function arcSteps(sweep: number, radius: number, chordTolerance: number): number {
   const step = Math.min(2 * Math.acos(1 - Math.min(chordTolerance / radius, 1)), Math.PI / 4);
-  return Math.max(1, Math.ceil(sweep / step - 1e-9));
+  return Math.min(MAX_ARC_STEPS, Math.max(1, Math.ceil(sweep / step - 1e-9)));
 }
 
 // What one gear needs to know about the other one to mesh with it; read from its facts.
@@ -143,7 +150,7 @@ interface Mate {
 // Reads the facts of the gear in `meshWith` in the coordinates of this sketch. A text = why the
 // reference cannot be used.
 function mate(facts: Facts | undefined, frame: Frame): Mate | string {
-  if (!facts) return 'the gear in meshWith is missing, suppressed or in error';
+  if (!facts) return 'the feature in meshWith has no gear to mesh with: it is missing, suppressed, in error or not a gear';
   const number = (name: string): number => facts[name] as number;
   const vector = (name: string): Vec3 => facts[name] as Vec3;
   if (len3(cross3(vector('axis'), frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'the axes of the two gears are not parallel';
@@ -236,7 +243,8 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
   // backlash, a tooth space of a ring wider by it.
   const psi = Math.PI / (2 * teeth) + ((internal ? 1 : -1) * backlash) / (2 * r);
   const halfAt = (rho: number): number => psi + involute(pressureAngle) - involute(Math.acos(Math.min(1, rb / rho)));
-  if (halfAt(outer) <= 0) return fail(`the tooth is pointed: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm it has no width at the ${internal ? 'root' : 'tip'} circle`);
+  // the width of the tooth at the outer circle, as a length: an edge shorter than the tolerance is no edge
+  if (2 * halfAt(outer) * outer <= LENGTH_TOLERANCE) return fail(`the tooth is pointed: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm it has no width at the ${internal ? 'root' : 'tip'} circle`);
 
   // The flank is an involute from the base circle (or from the inner circle, if that is larger) to
   // the outer circle, divided evenly in arc length until the chords stay within the tolerance.
@@ -249,21 +257,42 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
     return [rho, halfAt(rho)];
   };
   const point = ([rho, angle]: Vec2): Vec2 => [rho * Math.cos(angle), rho * Math.sin(angle)];
-  let [steps, sagitta] = [1, 0];
-  for (; ; steps++) {
-    sagitta = 0;
-    for (let k = 0; k < steps; k++) {
-      const [a, b] = [point(polar(roll(k, steps))), point(polar(roll(k + 1, steps)))];
-      const middle = point(polar(Math.sqrt((roll(k, steps) ** 2 + roll(k + 1, steps) ** 2) / 2)));
-      sagitta = Math.max(sagitta, Math.hypot(middle[0] - (a[0] + b[0]) / 2, middle[1] - (a[1] + b[1]) / 2));
+  // The largest distance of the flank from its chord between two roll angles. The curvature of an
+  // involute changes along the chord (it is infinite at the base circle), so the farthest point is
+  // not the middle one; the distance has a single maximum, which a ternary search finds.
+  const deviation = (ta: number, tb: number): number => {
+    const [a, b] = [point(polar(ta)), point(polar(tb))];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (length === 0) return 0;
+    const distance = (t: number): number => {
+      const p = point(polar(t));
+      return Math.abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) / length;
+    };
+    // 24 rounds narrow the interval to 6e-5 of the chord; the distance is flat at its maximum, so
+    // the error is far below the margin the offset gets
+    let [low, high] = [ta, tb];
+    for (let i = 0; i < 24; i++) {
+      const [m1, m2] = [low + (high - low) / 3, high - (high - low) / 3];
+      if (distance(m1) < distance(m2)) low = m1;
+      else high = m2;
     }
-    if (sagitta <= chordTolerance || steps >= 256) break;
+    return distance((low + high) / 2);
+  };
+  let [steps, sagitta] = [1, 0];
+  for (;;) {
+    sagitta = 0;
+    for (let k = 0; k < steps; k++) sagitta = Math.max(sagitta, deviation(roll(k, steps), roll(k + 1, steps)));
+    if (sagitta <= chordTolerance || steps >= MAX_FLANK_STEPS) break;
+    // The deviation falls with the square of the number of chords: jump just below the estimate,
+    // then go on by one. Trying every count on the way would cost the square of the final one.
+    steps = Math.min(MAX_FLANK_STEPS, Math.max(steps + 1, Math.floor(0.95 * steps * Math.sqrt(sagitta / chordTolerance))));
   }
   // Chords lie inside the exact tooth. For a gear that is the safe side: the tooth is thinner by at
   // most the tolerance. For the tool of a ring it is not: the ring's teeth would be thicker and gears
   // with zero backlash would overlap. The flank of the tool is therefore moved outwards by the
-  // sagitta; a curve parallel to an involute is the same involute turned by distance / base radius.
-  const widen = internal ? sagitta / rb : 0;
+  // largest deviation of its chords (with a margin for rounding); a curve parallel to an involute is
+  // the same involute turned by distance / base radius.
+  const widen = internal ? (sagitta * 1.001 + 1e-12) / rb : 0;
   const flank: Vec2[] = []; // [radius, half-angle], from the inner circle outwards
   for (let k = 0; k <= steps; k++) {
     const [rho, angle] = polar(roll(k, steps));
@@ -272,7 +301,7 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
   if (inner < rb) flank.unshift([inner, flank[0][1]]); // below the base circle the flank is radial
   const pitch = TAU / teeth;
   const [innerHalf, outerHalf] = [flank[0][1], flank[flank.length - 1][1]];
-  if (pitch - 2 * innerHalf <= 1e-9) return fail(`the teeth overlap at the ${internal ? 'tip' : 'root'} circle: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm no space is left between them`);
+  if ((pitch - 2 * innerHalf) * inner <= LENGTH_TOLERANCE) return fail(`the teeth overlap at the ${internal ? 'tip' : 'root'} circle: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm no space is left between them`);
 
   // rotation: from the gear in mesh, or the parameter
   const shape: GearShape = { center: circle.center, teeth, module, pressureAngle, pitchRadius: r, tipRadius: internal ? inner : outer, internal };
@@ -297,12 +326,24 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
   const outerSteps = arcSteps(2 * outerHalf, outer, chordTolerance);
   const innerSweep = pitch - 2 * innerHalf;
   const innerSteps = arcSteps(innerSweep, inner, chordTolerance);
+  // The size of the loop is known before it is built: a profile that is too large is refused here,
+  // not after millions of points exist.
+  const points = teeth * (2 * flank.length + outerSteps + innerSteps - (internal ? 0 : 2));
+  if (points > MAX_PROFILE_POINTS) return fail(tooLarge(points));
+  // The points between the ends of an arc. A gear gets points on the circle, so the chords lie
+  // inside the exact shape. The tool of a ring gets the corners of the tangents instead (the first
+  // and the last chord leave the ends along the tangent), so that it lies outside the exact shape
+  // on its arcs as it does on its flanks.
+  const arc = (radius: number, start: number, sweep: number, n: number) => {
+    if (internal) for (let i = 0; i < n; i++) push(radius / Math.cos(sweep / (2 * n)), start + (sweep * (i + 0.5)) / n);
+    else for (let i = 1; i < n; i++) push(radius, start + (sweep * i) / n);
+  };
   for (let k = 0; k < teeth; k++) {
     const axis = rotation + k * pitch;
     for (const [rho, angle] of flank) push(rho, axis - angle);
-    for (let i = 1; i < outerSteps; i++) push(outer, axis - outerHalf + (2 * outerHalf * i) / outerSteps);
+    arc(outer, axis - outerHalf, 2 * outerHalf, outerSteps);
     for (let i = flank.length - 1; i >= 0; i--) push(flank[i][0], axis + flank[i][1]);
-    for (let i = 1; i < innerSteps; i++) push(inner, axis + innerHalf + (innerSweep * i) / innerSteps);
+    arc(inner, axis + innerHalf, innerSweep, innerSteps);
   }
 
   const toModel = (u: number, v: number): Vec3 => [frame.origin[0] + u * frame.x[0] + v * frame.y[0], frame.origin[1] + u * frame.x[1] + v * frame.y[1], frame.origin[2] + u * frame.x[2] + v * frame.y[2]];

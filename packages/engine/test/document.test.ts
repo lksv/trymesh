@@ -103,7 +103,7 @@ describe('příkazy časové osy', () => {
     expect(run(doc, update('E2', { operation: 'new', targets: undefined })).features[3]).not.toHaveProperty('targets');
     // neznámé vnořené pole (překlep, pole jiné varianty) neskončí úspěchem bez účinku
     for (const patch of [{ extent: { dist: 12 } }, { extent: { end: 5, distance: 3 } }, { profile: { outerLoop: ['x'] } }, { profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1'] }], generator: 'g' } }, { extent: { type: 'distance', start: 0, distance: 5, side: 'both' } }])
-      invalid(doc, update('E2', patch as unknown as FeaturePatch), /updateFeature\.patch\.(extent|profile)\.\w+: vysunutí takové pole nemá/);
+      invalid(doc, update('E2', patch as unknown as FeaturePatch), /updateFeature\.patch\.(extent|profile)\.\w+: (vysunutí takové pole nemá|a profile of the type regions has no such field)/);
     // seznam se nahrazuje celý
     expect(run(doc, update('E2', { profile: { regions: [{ outerLoop: ['l1'] }] } })).features[3]).toMatchObject({ profile: { regions: [{ outerLoop: ['l1'] }] } });
     // prázdná změna feature nemění

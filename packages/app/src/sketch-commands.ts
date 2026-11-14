@@ -292,16 +292,22 @@ export function generatedProfile(generator: GeneratorName, sketch: Id, operands:
   return { type: 'generated', generator, sketch, operands, params };
 }
 
-function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange): ExtrudeDraft['profile'] {
+// The profile of each kind the draft had last. Switching the source and back returns to it instead
+// of resetting regions, parameters and references, as long as the sketch is still the same.
+export type RememberedProfiles = Partial<Record<ProfileKind, ExtrudeDraft['profile']>>;
+export const rememberedProfile = (remembered: RememberedProfiles, source: ProfileKind, sketch: Id): ExtrudeDraft['profile'] | undefined => (remembered[source]?.sketch === sketch ? remembered[source] : undefined);
+
+function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange, remembered: RememberedProfiles): ExtrudeDraft['profile'] {
   const sketch = change.sketch ?? profile.sketch;
   let next = profile;
-  if (change.source !== undefined && change.source !== profileKind(profile)) next = change.source === 'regions' ? { type: 'regions', sketch, regions: [] } : generatedProfile(change.source, sketch, {});
+  if (change.source !== undefined && change.source !== profileKind(profile))
+    next = rememberedProfile(remembered, change.source, sketch) ?? (change.source === 'regions' ? { type: 'regions', sketch, regions: [] } : generatedProfile(change.source, sketch, {}));
   if (next.type === 'regions') return { ...next, sketch, ...(change.regions === undefined ? {} : { regions: change.regions }) };
   const refs = Object.fromEntries(Object.entries({ ...next.refs, ...change.refs }).filter((entry): entry is [string, Id] => entry[1] !== null));
   const { refs: _old, ...rest } = next;
   return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params: { ...next.params, ...change.params }, ...(Object.keys(refs).length ? { refs } : {}) };
 }
-export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], distance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE): ExtrudeDraft {
+export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], distance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE, remembered: RememberedProfiles = {}): ExtrudeDraft {
   const operation = change.operation ?? draft.operation;
   let extent = draft.extent;
   if (extent.type === 'throughAll' && operation !== 'cut') extent = distance;
@@ -320,7 +326,7 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
   const { targets: _old, ...rest } = draft;
   return {
     ...rest,
-    profile: changeProfile(draft.profile, change),
+    profile: changeProfile(draft.profile, change, remembered),
     extent,
     operation,
     ...(operation === 'new' || targets === undefined ? {} : { targets }),

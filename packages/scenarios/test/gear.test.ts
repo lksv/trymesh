@@ -197,7 +197,7 @@ describe('gears in mesh', () => {
     let state = run(engine, { type: 'setSuppressed', id: 'sun', suppressed: true });
     expect(status(state)).toMatchObject({ sun: 'suppressed', planet: 'warning:gearMesh', ring: 'ok' });
     expect(factsOf(state, 'planet')).toMatchObject({ meshed: false, rotation: 0 });
-    expect(state.evaluation.features.planet.warnings[0].message).toMatch(/missing, suppressed or in error/);
+    expect(state.evaluation.features.planet.warnings[0].message).toMatch(/missing, suppressed, in error or not a gear/);
     expect(Object.keys(state.evaluation.bodies)).toEqual(['planet', 'housing']);
     state = run(engine, { type: 'setSuppressed', id: 'sun', suppressed: false });
     expect(factsOf(state, 'planet')).toMatchObject({ meshed: true, rotation: meshed });
@@ -210,6 +210,72 @@ describe('gears in mesh', () => {
     // the mate removed: a broken reference of this kind is a warning as well
     state = run(engine, { type: 'removeFeature', id: 'sun' });
     expect(status(state).planet).toBe('warning:gearMesh');
+  });
+
+  it('a mate that is not a gear; a chain through a gear with a warning; two warnings at once', () => {
+    const engine = gearSketch();
+    train(engine);
+    // the sun turned into a plain disc: healthy, but there is no gear to mesh with
+    let state = run(engine, { type: 'updateFeature', id: 'sun', patch: { profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['o'] }] } } });
+    expect(status(state)).toMatchObject({ sun: 'ok', planet: 'warning:gearMesh', ring: 'ok' });
+    expect(state.evaluation.features.planet.warnings[0].message).toMatch(/not a gear/);
+    // the ring still meshes with the planet: a gear with a warning publishes its facts
+    expect(factsOf(state, 'ring')).toMatchObject({ meshed: true });
+    expect(overlap(solidOf(state, 'planet'), solidOf(state, 'housing'))).toBeLessThan(1e-3);
+    engine.undo();
+    // a gear that refers to itself (only a loaded document can) has no facts to read either
+    const saved = JSON.parse(engine.save());
+    saved.features.find((f: { id: Id }) => f.id === 'planet').profile.refs = { meshWith: 'planet' };
+    const other = newEngine();
+    expect(other.load(JSON.stringify(saved)).ok).toBe(true);
+    expect(status(other.getState()).planet).toBe('warning:gearMesh');
+    // a ring cut that misses its target and cannot mesh: both warnings are reported
+    state = run(engine, { type: 'setSuppressed', id: 'planet', suppressed: true }, { type: 'updateFeature', id: 'ring', patch: { extent: { side: 'backward' } } });
+    expect(warningsOf(state, 'ring').sort()).toEqual(['gearMesh', 'noEffect']);
+    expect(state.evaluation.features.ring.status).toBe('warning');
+  });
+
+  it('gears on mirrored planes: a planet drawn on the bottom of a body meshes like one drawn from above', () => {
+    const engine = gearSketch();
+    let state = train(engine);
+    // a sketch on the bottom face of the housing looks at the plane from below
+    state = run(engine, addSketch('S2', onFace('housing', cap('housing', 'startCap'))));
+    const frame = state.evaluation.features.S2.plane!;
+    expect(frame.normal[2]).toBeCloseTo(-1, 9);
+    const centre: Vec3 = [20.25, 0, 0];
+    const local = (axis: Vec3): number => axis.reduce((sum, value, i) => sum + value * (centre[i] - frame.origin[i]), 0);
+    const dim = (id: Id, shape: object, value: number): Command => ({ type: 'addConstraint', sketch: 'S2', id, constraint: { ...shape, value, driving: true } as never });
+    state = run(
+      engine,
+      { type: 'addPoint', sketch: 'S2', id: 'c2', x: local(frame.x) + 0.3, y: local(frame.y) - 0.2 },
+      { type: 'addCurve', sketch: 'S2', id: 'p2', curve: { type: 'circle', center: 'c2', construction: true }, radius: 12 },
+      dim('c2x', { type: 'horizontalDistance', a: 'origin', b: 'c2' }, local(frame.x)),
+      dim('c2y', { type: 'verticalDistance', a: 'origin', b: 'c2' }, local(frame.y)),
+      dim('d2', { type: 'diameter', curve: 'p2' }, 24.3),
+      // against the normal of the sketch, so the gear occupies the same 8 mm as the others
+      extrude('mirrored', gearProfile('p2', { teeth: 27, backlash: 0.05 }, 'sun', 'S2'), 0, -8),
+    );
+    expect(status(state).mirrored).toBe('ok');
+    expect(factsOf(state, 'mirrored')).toMatchObject({ meshed: true });
+    expect(overlap(solidOf(state, 'sun'), solidOf(state, 'mirrored'))).toBeLessThan(1e-3);
+    // it is the same gear in the same place as the planet drawn from above
+    const planet = volume(solidOf(state, 'planet'));
+    expect(overlap(solidOf(state, 'planet'), solidOf(state, 'mirrored')) / planet).toBeGreaterThan(0.995);
+  });
+
+  it('a loaded document whose operand is not a circle of the sketch is a broken reference, not an exception', () => {
+    const engine = gearSketch();
+    run(engine, extrude('sun', gearProfile('s', { teeth: 'Zs' }), 0, 8));
+    for (const operand of ['cp', 'origin', 'tsp', 'missing', 'constructor', '__proto__', 'toString']) {
+      const saved = JSON.parse(engine.save());
+      saved.features.find((f: { id: Id }) => f.id === 'sun').profile.operands.circle = operand;
+      const other = newEngine();
+      expect(other.load(JSON.stringify(saved)).ok, operand).toBe(true);
+      const state = other.getState();
+      expect(status(state).sun, operand).toBe('error:brokenReference');
+      expect(state.evaluation.features.sun.error?.refs, operand).toEqual([operand]);
+      expect(Object.keys(state.evaluation.bodies)).toEqual([]);
+    }
   });
 
   it('gearInterference is reported with the mesh in place', () => {

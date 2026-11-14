@@ -4,7 +4,7 @@ import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type E
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, generatedProfile, geometricFor, lineCommands, normalizeAngle, pointCommands, profileKind, rectangleCommands } from '../src/sketch-commands';
+import { type Anchor, GEOMETRIC_KINDS, arcCommands, asConstruction, changeExtrude, circleCommands, deleteCommands, dimensionFor, draftCommand, generatedProfile, geometricFor, lineCommands, normalizeAngle, pointCommands, profileKind, rectangleCommands, rememberedProfile } from '../src/sketch-commands';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -440,6 +440,17 @@ describe('nálezy z revize aplikace', () => {
     expect(changeExtrude(changed, { regions: [{ outerLoop: ['x'] }] }, []).profile).toEqual(changed.profile); // regions belong to the other source
     // back to regions: nothing is picked
     expect(changeExtrude(changed, { source: 'regions' }, []).profile).toEqual({ type: 'regions', sketch: 's', regions: [] });
+    // the form remembers the profile of each kind: regions and back returns the gear with its expressions and references
+    const remembered = { regions: draft.profile, involuteGear: changed.profile };
+    const toRegions = changeExtrude(changed, { source: 'regions' }, [], undefined, remembered);
+    expect(toRegions.profile).toEqual(draft.profile);
+    expect(changeExtrude(toRegions, { source: 'involuteGear' }, [], undefined, remembered).profile).toEqual(changed.profile);
+    // in another sketch the remembered operands and regions mean nothing: the source starts fresh
+    const moved = changeExtrude(toRegions, { sketch: 's9', regions: [] }, [], undefined, remembered);
+    expect(changeExtrude(moved, { source: 'involuteGear', operands: { circle: 'k' } }, [], undefined, remembered).profile).toMatchObject({ sketch: 's9', operands: { circle: 'k' }, params: { teeth: 18 } });
+    expect(rememberedProfile(remembered, 'involuteGear', 's')).toEqual(changed.profile);
+    expect(rememberedProfile(remembered, 'involuteGear', 's9')).toBeUndefined();
+    expect(rememberedProfile({}, 'regions', 's')).toBeUndefined();
     // the engine accepts the draft as a new feature and as a change of an existing one
     const { engine, run } = setup();
     run([{ type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin', construction: true }, radius: 8.1 }, { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'circle', center: 'origin', construction: true }, radius: 9 }]);

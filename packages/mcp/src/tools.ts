@@ -88,6 +88,13 @@ function featureStatus(result: FeatureResult | undefined): Record<string, unknow
   };
 }
 
+function constraintExpressions(feature: SketchFeature, id: Id, c: Constraint): { expressions?: Record<string, string> } {
+  const entries = Object.keys(CONSTRAINTS[c.type].values ?? {})
+    .map((name): [string, string | undefined] => [name, feature.expressions && Object.prototype.hasOwnProperty.call(feature.expressions, constraintPath(id, name)) ? feature.expressions[constraintPath(id, name)] : undefined])
+    .filter((entry): entry is [string, string] => entry[1] !== undefined);
+  return entries.length ? { expressions: Object.fromEntries(entries) } : {};
+}
+
 // Parameters with values and errors, checks with their result.
 function parametersInfo(state: EngineState): { parameters: Record<string, unknown>[]; checks: Record<string, unknown>[] } {
   const { document, evaluation } = state;
@@ -275,8 +282,9 @@ function sketchDetail(engine: Engine, id: string): unknown {
       id: constraint,
       label: constraintLabel(c),
       ...(c as unknown as { [key: string]: Json }),
-      // the document keeps a dimension's expression in the feature's map, not on the constraint
-      ...(feature.expressions && Object.prototype.hasOwnProperty.call(feature.expressions, constraintPath(constraint)) ? { expr: feature.expressions[constraintPath(constraint)] } : {}),
+      // The document keeps expressions in the feature's map, not on the constraint. Here they are
+      // listed by value name (`value` of a dimension), so a constraint with more values stays unambiguous.
+      ...constraintExpressions(feature, constraint, c),
       ...(isDimension(c) && !c.driving && solved?.measurements[constraint] !== undefined ? { measured: round(solved.measurements[constraint]) } : {}),
       ...(diagnosis.conflicting.includes(constraint) ? { conflicting: true } : {}),
       ...(twins.has(constraint) ? { duplicate: true } : {}),

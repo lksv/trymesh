@@ -50,6 +50,14 @@ describe('expressions', () => {
     expect(error('sin(1, 2)')).toEqual(['syntax', 0]);
     expect(error('min()')).toEqual(['syntax', 0]);
     expect(error('1 # 2')).toEqual(['syntax', 2]);
+    // limits that keep the parser off the stack limit
+    expect(error(`${'('.repeat(150)}1${')'.repeat(150)}`)).toEqual(['syntax', 100]);
+    expect(error(`${'-'.repeat(150)}1`)).toEqual(['syntax', 100]);
+    expect(error(Array.from({ length: 600 }, () => '1').join('+'))).toEqual(['syntax', 1000]);
+    expect(value(Array.from({ length: 400 }, () => '1').join('+'))).toBe(400);
+    expect(value(`${'('.repeat(90)}7${')'.repeat(90)}`)).toBe(7);
+    const comma = analyzeExpression('2,5 * a');
+    expect(!comma.ok && comma.error.message).toMatch(/decimal separator is a dot/);
     expect(error('1 < 2')).toEqual(['type', undefined]); // a numeric field does not expect a comparison
     expect(error('1 + (2 < 3)')).toEqual(['type', 4]);
     expect(analyzeExpression('a + b * sin(c)')).toEqual({ ok: true, names: ['a', 'b', 'c'] });
@@ -75,6 +83,23 @@ describe('expressions', () => {
     expect(check('module * (Zs / 2 + 1) < 12.75', { module: '0.9', Zs: '24' })).toBe('ok');
     expect(check('module * (Zs / 2 + 1) < 12.75', { module: '1', Zs: '24' })).toBe('failed');
     expect(check('x > 0')).toBe('error');
+    // the remainder is tolerant like equality: 0.3 / 0.1 is not exactly 3
+    expect(check('r % 3 == 0', { r: '0.3 / 0.1' })).toBe('ok');
+    expect(check('r % 3 == 0', { r: '3.5' })).toBe('failed');
+    expect(value('7.5 % 2')).toBe(1.5);
+    expect(value('-7 % 3')).toBe(-1);
+  });
+
+  it('checks: a non-finite operand and a broken name are errors, whichever side decides', () => {
+    const check = (expr: string, parameters: Record<string, string> = {}) => evaluateCheck(expr, evaluateParameters(Object.entries(parameters).map(([name, e]) => ({ name, expr: e }))));
+    for (const expr of ['1 / gap == 5', '1 / gap <= 5', '1 / gap > 0.5', '0 / gap != 0', 'sqrt(gap - 1) < 5']) {
+      expect(check(expr, { gap: '0' }), expr).toMatchObject({ status: 'error', error: { code: 'notFinite' } });
+    }
+    // no short circuit: the unknown name is reported although the left side decides
+    expect(check('w > 1 || nope > 1', { w: '5' })).toMatchObject({ status: 'error', error: { code: 'unknownName', position: 9 } });
+    expect(check('w < 1 && nope > 1', { w: '5' })).toMatchObject({ status: 'error', error: { code: 'unknownName' } });
+    expect(check('w > 1 || broken > 1', { w: '5', broken: 'missing' })).toMatchObject({ status: 'error', error: { code: 'dependsOnError' } });
+    expect(check('w > 1 || w > 9', { w: '5' }).status).toBe('ok');
     expect(evaluateCheck('1 + 1', {})).toMatchObject({ status: 'error', error: { code: 'type' } });
     expect(analyzeExpression('1 < 2 < 3', { kind: 'check' })).toMatchObject({ ok: false });
     expect(analyzeExpression('a < b && b < c', { kind: 'check' })).toEqual({ ok: true, names: ['a', 'b', 'c'] });
@@ -98,6 +123,18 @@ describe('expressions', () => {
     expect(table.d).toMatchObject({ ok: false, error: { code: 'dependsOnError' } });
     expect(table.e).toMatchObject({ ok: false, error: { code: 'unknownName' } });
     expect(table.f).toMatchObject({ ok: false, error: { code: 'dependsOnError' } });
+    // every parameter on a cycle gets `cycle`, also one reached after the cycle was closed
+    const forked = evaluateParameters([
+      { name: 'a', expr: 'b + c' },
+      { name: 'b', expr: 'a' },
+      { name: 'c', expr: 'a' },
+      { name: 'user', expr: 'c + 1' },
+    ]);
+    for (const name of ['a', 'b', 'c']) expect(forked[name], name).toMatchObject({ ok: false, error: { code: 'cycle' } });
+    expect(forked.user).toMatchObject({ ok: false, error: { code: 'dependsOnError' } });
+    // a long chain of parameters does not exhaust the stack
+    const chain = evaluateParameters(Array.from({ length: 5000 }, (_, i) => ({ name: `p${i}`, expr: i === 4999 ? '1' : `p${i + 1} + 1` })));
+    expect(chain.p0).toEqual({ ok: true, value: 5000 });
     // the name of a property every object has is not a parameter
     expect(value('constructor + 1', { x: '1' })).toBe('unknownName');
   });

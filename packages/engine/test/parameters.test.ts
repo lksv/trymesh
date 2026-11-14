@@ -158,6 +158,25 @@ describe('expression in a numeric field', () => {
     expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { start: 8, distance: 12 }, expressions: { 'extent/distance': 'h', 'extent/start': 'd' } });
   });
 
+  it('a repeated expression that stopped evaluating does not block a change of another field', () => {
+    // both fields have an expression; the parameter of one of them is removed
+    let doc = run(base(), { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 'd', distance: 'h' }) }, { type: 'removeParameter', name: 'h' });
+    const input = featureInput(feature<ExtrudeFeature>(doc, 'E1'));
+    expect(input.extent).toEqual({ type: 'distance', start: 'd', distance: 'h' });
+    // a form sends the whole feature: the broken `h` is repeated, the start is fixed to a number
+    doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { profile: input.profile, extent: { ...input.extent, start: 2 }, operation: 'new' } });
+    expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { start: 2, distance: 12 }, expressions: { 'extent/distance': 'h' } });
+    // repeated with different spacing is still the same expression
+    doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: ' h ' } } });
+    expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { distance: 12 }, expressions: { 'extent/distance': 'h' } });
+    // a different expression that cannot be evaluated is still rejected, and so is the single-field command
+    expect(rejected(doc, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: 'h + 1' } } }).expression).toMatchObject({ path: 'extent/distance', error: { code: 'unknownName' } });
+    expect(rejected(doc, { type: 'setField', feature: 'E1', path: 'extent/distance', value: 'h' }).expression).toMatchObject({ error: { code: 'unknownName' } });
+    // a repeated expression that evaluates keeps its stored number until the recompute
+    doc = run(doc, { type: 'setParameter', name: 'h', expr: '20' }, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: 'h' } } });
+    expect(feature<ExtrudeFeature>(doc, 'E1')).toMatchObject({ extent: { distance: 12 }, expressions: { 'extent/distance': 'h' } });
+  });
+
   it('a form that sends the whole feature starts from the input form', () => {
     const doc = run(base(), { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 0, distance: 'h' }) });
     const stored = feature<ExtrudeFeature>(doc, 'E1');

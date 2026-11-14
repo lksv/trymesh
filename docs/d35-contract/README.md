@@ -122,7 +122,7 @@ Rozhraní portů (`SketchSolver`, `SolidKernel`) se nemění. Solver dostane dv�
 | `execute`, `preview`, `undo`, `redo` | Výsledek navíc hlásí nesplněné kontroly, chyby parametrů a chyby polí. Dnes hlásí jen features mimo stav `ok`, takže po změně parametru by selhaná kontrola nebyla vidět |
 | `export_stl` | Seznam těles a volba „soubor na těleso". Jméno souboru je ID tělesa s jednoznačným zápisem znaků, které do jména nepatří (`planets/1` je `planets%2F1.stl`); před zápisem se ověří, že jména nekolidují ani velikostí písmen a že soubor neexistuje |
 | `get_model` | Navíc parametry, nesplněné kontroly, objem a obálka těles, tělesa vytvořená každou feature a údaje generátoru |
-| `get_sketch` | U vazeb navíc výraz (v dokumentu je v mapě u feature, ne u vazby) |
+| `get_sketch` | A constraint also lists its expressions by value name (`expressions: { value }`, for a fixed point `{ x, y }`); the document keeps them in the feature's map, not on the constraint |
 | `get_body` | Navíc objem a obálka; ID tělesa smí být odvozené (`<pole>/<číslo>`); jména stěn kopií se odliší |
 | `describe_api` | Navíc syntaxe výrazů, katalog číselných polí, generátorů, typů features a nástrojů skici; konvence o výrazech, úhlech a ID těles |
 
@@ -296,6 +296,7 @@ Point 1 is in the code (`docs/decisions.md`, D35, point 1, "Status: done"; `docs
 - MCP: the outcome of `execute` carries `failedChecks` and `parameterErrors` only when they are not empty; `fieldErrors` is part of the feature entry in `problems`. `get_model` lists `parameters` as name → value.
 - Implementation notes that are now done: cache for a feature in error, write-back for all feature types, the `dimension` flag in the constraint catalog and its four call sites.
 - The scenario test uses English names; `scenario9.ts` keeps the names of the draft.
+- After the review of point 1 and a further review of the plan (both in `docs/decisions.md`, D35, point 1): `updateFeature` keeps a repeated expression without evaluating it; both sides of `&&` and `||` are always evaluated; comparing a non-finite number is an error; the remainder is tolerant; expressions are limited to 1000 characters and 100 levels of nesting; `get_sketch` lists the expressions of a constraint by value name instead of a single `expr`.
 
 ## Co kontrakt neřeší
 

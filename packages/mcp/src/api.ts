@@ -65,7 +65,7 @@ const fieldText = (spec: NumberSpec): string => `${spec.title}, ${spec.unit}, ${
 export function expressionSyntax(): { syntax: string; functions: { name: string; signature: string; summary: string }[]; constants: { name: string; summary: string }[] } {
   return {
     syntax: EXPRESSION_SYNTAX,
-    functions: Object.entries(EXPRESSION_FUNCTIONS).map(([name, spec]) => ({ name, signature: `${name}(${spec.variadic ? 'a, b, …' : Array.from({ length: spec.args }, (_, i) => 'abc'[i]).join(', ')})`, summary: spec.summary })),
+    functions: Object.entries(EXPRESSION_FUNCTIONS).map(([name, spec]) => ({ name, signature: spec.signature, summary: spec.summary })),
     constants: Object.entries(EXPRESSION_CONSTANTS).map(([name, spec]) => ({ name, summary: spec.summary })),
   };
 }

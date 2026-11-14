@@ -304,7 +304,7 @@ export declare const GENERATORS: Record<GeneratorName, GeneratorSpec>;
 
 // Parametry ozubení (položka `involuteGear` katalogu), pro čtenáře; v dokumentu jsou to `params`.
 export interface InvoluteGearParams {
-  teeth: number; // celé číslo od 4; modul plyne z průměru roztečné kružnice
+  teeth: number; // celé číslo od 4; modul plyne z průměru roztečné kružnice. An upper bound comes with the catalog entry (a typo must not block the engine)
   pressureAngle: number; // rad, v intervalu (0, π/2), výchozí deg(20)
   backlash: number; // mm po oblouku roztečné kružnice: úbytek tloušťky zubu tohoto kola
   rotation: number; // rad; nepoužije se, když platí odkaz `meshWith`
@@ -593,8 +593,9 @@ export interface McpAdditions {
   };
   // změna: přehled modelu navíc vrací parametry, nesplněné kontroly, u těles objem a obálku, u features vytvořená tělesa a údaje generátoru
   get_model: { input: { at?: Id }; output: { addedFields: ['parameters', 'failedChecks', 'bodies[].volume', 'bodies[].bounds', 'features[].bodies', 'features[].facts'] } };
-  // změna: u vazeb navíc výraz (v dokumentu je v mapě u feature, ne u vazby)
-  get_sketch: { input: { sketch: Id }; output: { addedFields: ['constraints[].expr'] } };
+  // change: a constraint also lists its expressions by value name (`{ value }`, for a fixed point
+  // `{ x, y }`); the document keeps them in the feature's map, not on the constraint
+  get_sketch: { input: { sketch: Id }; output: { addedFields: ['constraints[].expressions'] } };
   // změna: popis API navíc obsahuje syntaxi výrazů, katalog číselných polí, generátorů, typů features a nástrojů skici
   describe_api: { input: Record<string, never>; output: { addedSections: ['expressions', 'numericFields', 'generators', 'featureTypes', 'sketchTools'] } };
 }

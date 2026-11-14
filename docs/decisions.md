@@ -794,11 +794,35 @@ Rozsah, návrh provedení i upřesnění scénáře 9 odsouhlasil vlastník proj
   - **App.** Parameter table and checks in the model panel; text fields that take a number or an expression for the extrusion distance, the plane offset and dimension values (ui.md).
   - **Tests.** Unit tests of the parser and of the commands, a multi-step scenario of the recompute (`packages/scenarios/test/parameters.test.ts`), and the start of scenario 9 as a real test (`scenario9.test.ts`: parts a, i and k as far as point 1 reaches). The scenario uses English parameter names (`module` for `modul`, `backlash`, `centers`).
 
+  **Review of point 1 (2026-11-14).** An independent review (another instance of the model, read-only) ran its own scripts against the commit, including a fuzz of about 1400 commands that checked after every command that the document validates, that its numbers equal the evaluated values, and that reload, undo and redo are exact. Document, recompute, cache and undo held. What it found and what changed:
+
+  | Finding | Fix |
+  |---|---|
+  | A check that compares a non-finite number reported `ok` or `failed` (`1 / gap == 5` with `gap = 0` was `ok`: infinity equals anything within a relative tolerance) | Comparing a non-finite number is an error `notFinite` |
+  | `&&` and `\|\|` short-circuited, so `w > 1 \|\| nope > 1` was `ok` with an unknown name | Both sides are always evaluated |
+  | `r % 3 == 0` failed for `r = 0.3 / 0.1` although `r == 3` held | The remainder is 0 when the quotient is within the equality tolerance of an integer |
+  | Deep nesting and a chain of thousands of parameters ran out of stack and escaped as an exception | Limits of 1000 characters and 100 levels; the parameter table is evaluated without recursion |
+  | Not every parameter on a cycle got `cycle` (`a = b + c; b = a; c = a` gave `c` the error `dependsOnError`) | A parameter is on a cycle when it can be reached from itself |
+  | The hint about a decimal comma was unreachable | Reported where the comma is left over |
+  | App: a broken `extent/start` expression blocked the extrusion form, which has no input for it | See the next table, finding 1 |
+  | App: an expression that is a bare number in an angle field read as radians but would be retyped as degrees | Such an expression is shown as the converted number |
+  | `describe_api` printed `atan2(a, b)` next to a summary about `atan2(y, x)` | Functions carry their signature |
+
+  The owner then supplied a review of the remaining plan from a weaker model. All five findings hold:
+
+  | Finding | Resolution |
+  |---|---|
+  | 1. A form sends the whole feature in the input form, and every expression in a command is evaluated strictly; an unchanged expression that stopped evaluating blocks a change of another field | `updateFeature` treats a string equal to the field's existing expression as unchanged (kept, not evaluated). Single-field commands stay strict |
+  | 2. Scenario 9 does not exercise the reason the tool recipe exists: every pattern goes around Z and every extrusion is along Z, so an implementation that only rotates the finished mesh would pass | Point 4 gets its own test: a pattern axis perpendicular to the extrusion, a target with different sizes along the directions, and material added between the source cut and the pattern |
+  | 3. `get_sketch` returned one `expr` per constraint, but a fixed point will have two expressions | Expressions are listed by value name (`expressions: { value }`, later `{ x, y }`) |
+  | 4. The tooth count has only a lower bound; a typo blocks the synchronous engine before any geometry error appears | Point 3: an upper bound for the tooth count in the catalog and a limit on the number of points of a generated profile (`invalidProfile`) |
+  | 5. Names of reference dimensions in expressions need more than a wider name environment: a cycle can go through geometry | Recorded in backlog.md; D35 is not affected |
+
   What later points have to pick up:
 
   - Point 2: the field `extent/start` is in the catalog and the engine, the app has no input for it yet. A new variant of the extent needs its fields listed with `when`.
-  - Point 3: generator parameters are numeric fields under `profile/params/<name>` with specs from the generator catalog; the reader takes a spec per call, so this needs no change to the reader. Expressions under a replaced variant are dropped by address prefix; a different generator must count as a different variant there.
-  - Point 4: the count of copies is an `integer` field with an upper bound.
+  - Point 3: the tooth count needs an upper bound and the generated profile a limit on its number of points. Generator parameters are numeric fields under `profile/params/<name>` with specs from the generator catalog; the reader takes a spec per call, so this needs no change to the reader. Expressions under a replaced variant are dropped by address prefix; a different generator must count as a different variant there.
+  - Point 4: the count of copies is an `integer` field with an upper bound. A test must cover a pattern whose axis is perpendicular to the extrusion direction (through-all length per copy), with material added between the source feature and the pattern.
   - Point 6: `fixed` has the values `x` and `y`; `constraintPath(id, name)` already takes the value name, the dimension row in the app reads only `value`.
   - Names from the recompute (backlog): the check of a field expression at command time knows only the parameter table.
 

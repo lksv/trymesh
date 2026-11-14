@@ -888,8 +888,18 @@ export function applyCommand(doc: Document, command: Command): Document {
       spec.patch.normalize?.(merged, patch);
       // Expressions of fields the patch overwrites cease to exist: a number removes one, a string sets a new one.
       const replaced = replacedPaths(f, patch);
-      merged.expressions = without(f.expressions ?? {}, (path) => replaced.some((gone) => path === gone || path.startsWith(`${gone}/`)));
-      const checked = validated(spec, doc, undefined, merged, 'updateFeature.patch', 'update');
+      // A string equal to the expression the field already has is not a change: the field keeps its
+      // number and its expression without evaluation. A form sends the whole feature in the input
+      // form, and an expression that stopped evaluating must not block a change of another field
+      // (the same rule as a repeated broken reference).
+      const repeated = replaced.filter((path) => {
+        const given = atPath(merged, path);
+        return typeof given === 'string' && f.expressions !== undefined && has(f.expressions, path) && given.trim() === f.expressions[path];
+      });
+      const input = repeated.reduce((current, path) => withPath(current, path, atPath(f, path)), merged);
+      const gone = replaced.filter((path) => !repeated.includes(path));
+      input.expressions = without(f.expressions ?? {}, (path) => gone.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)));
+      const checked = validated(spec, doc, undefined, input, 'updateFeature.patch', 'update');
       // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
       // jinak skončilo úspěchem bez účinku.
       for (const path of patchPaths(patch)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);

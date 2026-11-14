@@ -7,40 +7,42 @@ import { has } from './util';
 // a function and a function added later does not invalidate an older document. Angles are in
 // radians; `deg` converts degrees to radians.
 interface FunctionSpec {
+  signature: string; // for descriptions: the function with its argument names
   summary: string;
   args: number; // argument count; the minimum when `variadic`
   variadic?: boolean;
   apply: (...args: number[]) => number;
 }
 const FUNCTIONS: Record<string, FunctionSpec> = {
-  deg: { summary: 'Degrees to radians: deg(30) is π / 6. Angle fields are in radians.', args: 1, apply: (x) => (x * Math.PI) / 180 },
-  sin: { summary: 'Sine of an angle in radians.', args: 1, apply: Math.sin },
-  cos: { summary: 'Cosine of an angle in radians.', args: 1, apply: Math.cos },
-  tan: { summary: 'Tangent of an angle in radians.', args: 1, apply: Math.tan },
-  asin: { summary: 'Arc sine, result in radians.', args: 1, apply: Math.asin },
-  acos: { summary: 'Arc cosine, result in radians.', args: 1, apply: Math.acos },
-  atan: { summary: 'Arc tangent, result in radians.', args: 1, apply: Math.atan },
-  atan2: { summary: 'Angle of the point (x, y) from the X axis: atan2(y, x), result in radians.', args: 2, apply: Math.atan2 },
-  sqrt: { summary: 'Square root.', args: 1, apply: Math.sqrt },
-  abs: { summary: 'Absolute value.', args: 1, apply: Math.abs },
-  min: { summary: 'The smallest of the values.', args: 1, variadic: true, apply: Math.min },
-  max: { summary: 'The largest of the values.', args: 1, variadic: true, apply: Math.max },
-  floor: { summary: 'Rounds down to an integer.', args: 1, apply: Math.floor },
-  ceil: { summary: 'Rounds up to an integer.', args: 1, apply: Math.ceil },
-  round: { summary: 'Rounds to the nearest integer.', args: 1, apply: Math.round },
+  deg: { signature: 'deg(x)', summary: 'Degrees to radians: deg(30) is π / 6. Angle fields are in radians.', args: 1, apply: (x) => (x * Math.PI) / 180 },
+  sin: { signature: 'sin(x)', summary: 'Sine of an angle in radians.', args: 1, apply: Math.sin },
+  cos: { signature: 'cos(x)', summary: 'Cosine of an angle in radians.', args: 1, apply: Math.cos },
+  tan: { signature: 'tan(x)', summary: 'Tangent of an angle in radians.', args: 1, apply: Math.tan },
+  asin: { signature: 'asin(x)', summary: 'Arc sine, result in radians.', args: 1, apply: Math.asin },
+  acos: { signature: 'acos(x)', summary: 'Arc cosine, result in radians.', args: 1, apply: Math.acos },
+  atan: { signature: 'atan(x)', summary: 'Arc tangent, result in radians.', args: 1, apply: Math.atan },
+  atan2: { signature: 'atan2(y, x)', summary: 'Angle of the point (x, y) from the X axis: atan2(y, x), result in radians.', args: 2, apply: Math.atan2 },
+  sqrt: { signature: 'sqrt(x)', summary: 'Square root.', args: 1, apply: Math.sqrt },
+  abs: { signature: 'abs(x)', summary: 'Absolute value.', args: 1, apply: Math.abs },
+  min: { signature: 'min(a, b, …)', summary: 'The smallest of the values.', args: 1, variadic: true, apply: Math.min },
+  max: { signature: 'max(a, b, …)', summary: 'The largest of the values.', args: 1, variadic: true, apply: Math.max },
+  floor: { signature: 'floor(x)', summary: 'Rounds down to an integer.', args: 1, apply: Math.floor },
+  ceil: { signature: 'ceil(x)', summary: 'Rounds up to an integer.', args: 1, apply: Math.ceil },
+  round: { signature: 'round(x)', summary: 'Rounds to the nearest integer.', args: 1, apply: Math.round },
 };
 const CONSTANTS: Record<string, { summary: string; value: number }> = {
   pi: { summary: 'The constant π.', value: Math.PI },
 };
 
 // Public description of the syntax: for checking input in the app and for the API description.
-export const EXPRESSION_FUNCTIONS: Record<string, { summary: string; args: number; variadic?: boolean }> = Object.fromEntries(
-  Object.entries(FUNCTIONS).map(([name, { summary, args, variadic }]) => [name, { summary, args, ...(variadic ? { variadic } : {}) }]),
+export const EXPRESSION_FUNCTIONS: Record<string, { signature: string; summary: string; args: number; variadic?: boolean }> = Object.fromEntries(
+  Object.entries(FUNCTIONS).map(([name, { signature, summary, args, variadic }]) => [name, { signature, summary, args, ...(variadic ? { variadic } : {}) }]),
 );
 export const EXPRESSION_CONSTANTS: Record<string, { summary: string; value: number }> = CONSTANTS;
 export const EXPRESSION_SYNTAX =
   'Numbers (1.5, 2e-3), operators + - * / % (remainder) ^ (power), parentheses, parameter names, constants and functions. ' +
-  'Checks also use the comparisons == != < <= > >= and the connectives && || !. Equality is compared with the tolerance 1e-9 · max(1, |a|, |b|). ' +
+  'Checks also use the comparisons == != < <= > >= and the connectives && || !. Equality is compared with the tolerance 1e-9 · max(1, |a|, |b|); ' +
+  'the remainder is 0 when the quotient is within that tolerance of an integer. Both sides of && and || are always evaluated. ' +
   'The decimal separator is a dot; a dot inside a name is reserved.';
 
 // ---------------------------------------------------------------- parsing
@@ -75,7 +77,13 @@ const NUMBER = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/;
 const NAME = /^[\p{L}_][\p{L}\p{N}_]*/u;
 const OPERATORS = ['==', '!=', '<=', '>=', '&&', '||', '+', '-', '*', '/', '%', '^', '(', ')', ',', '<', '>', '!'];
 
+// Limits that keep the recursive parser and evaluator away from the stack limit. An expression
+// typed by a person is far below both.
+const MAX_LENGTH = 1000;
+const MAX_NESTING = 100;
+
 function tokenize(text: string): Token[] {
+  if (text.length > MAX_LENGTH) throw new SyntaxProblem('syntax', `the expression is longer than ${MAX_LENGTH} characters`, MAX_LENGTH);
   const tokens: Token[] = [];
   let at = 0;
   while (at < text.length) {
@@ -101,7 +109,7 @@ function tokenize(text: string): Token[] {
       continue;
     }
     const op = OPERATORS.find((candidate) => rest.startsWith(candidate));
-    if (!op) throw new SyntaxProblem('syntax', rest[0] === ',' ? 'the decimal separator is a dot' : `unexpected character "${rest[0]}"`, at);
+    if (!op) throw new SyntaxProblem('syntax', `unexpected character "${rest[0]}"`, at);
     tokens.push({ type: 'op', text: op, position: at });
     at += op.length;
   }
@@ -117,6 +125,7 @@ interface Parsed {
 
 class Parser {
   private at = 0;
+  private nesting = 0;
   readonly names = new Set<string>();
   constructor(private readonly tokens: Token[]) {}
 
@@ -137,7 +146,8 @@ class Parser {
     if (this.token.type === 'end') throw new SyntaxProblem('syntax', 'the expression is empty', 0);
     const [node, kind] = this.or();
     const last = this.tokens[this.at];
-    if (last.type !== 'end') throw new SyntaxProblem('syntax', `unexpected "${last.text}"`, last.position);
+    // a comma outside a function call is most likely a decimal comma
+    if (last.type !== 'end') throw new SyntaxProblem('syntax', last.text === ',' ? 'unexpected ","; the decimal separator is a dot' : `unexpected "${last.text}"`, last.position);
     return { node, kind, names: [...this.names] };
   }
 
@@ -184,7 +194,17 @@ class Parser {
   private sum = (): [Node, ExprKind] => this.arithmetic(['+', '-'], this.term);
   private term = (): [Node, ExprKind] => this.arithmetic(['*', '/', '%'], this.unary);
 
+  // Every level of nesting (parentheses, function arguments, chains of signs and powers) passes here.
   private unary = (): [Node, ExprKind] => {
+    if (++this.nesting > MAX_NESTING) throw new SyntaxProblem('syntax', `the expression is nested deeper than ${MAX_NESTING} levels`, this.token.position);
+    try {
+      return this.signed();
+    } finally {
+      this.nesting--;
+    }
+  };
+
+  private signed = (): [Node, ExprKind] => {
     const position = this.token.position;
     if (this.take('-')) return [{ kind: 'unary', op: '-', operand: this.typed(this.unary(), 'number', position, 'negation') }, 'number'];
     if (this.take('+')) return [this.typed(this.unary(), 'number', position, 'sign'), 'number'];
@@ -308,6 +328,12 @@ export function renameInExpression(expr: Expr, from: string, to: string): Expr {
 // Equality with a tolerance: absolute near zero, relative for large numbers.
 const same = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
+// Remainder with the same tolerance: when the quotient is an integer up to rounding, the remainder
+// is zero. Without it `(0.3 / 0.1) % 3` is 2.9999999999999996 and `x % 3 == 0` fails.
+const remainder = (a: number, b: number): number => (same(a / b, Math.round(a / b)) ? 0 : a % b);
+
+const NOT_FINITE: ExpressionError = { code: 'notFinite', message: 'the result is not a finite number (division by zero or a value outside the domain of a function)' };
+
 class EvaluationProblem extends Error {
   constructor(readonly problem: ExpressionError) {
     super(problem.message);
@@ -327,9 +353,16 @@ function compute(node: Node, lookup: Lookup): number | boolean {
     case 'unary':
       return node.op === '-' ? -(compute(node.operand, lookup) as number) : !compute(node.operand, lookup);
     case 'binary': {
-      if (node.op === '&&') return (compute(node.left, lookup) as boolean) && (compute(node.right, lookup) as boolean);
-      if (node.op === '||') return (compute(node.left, lookup) as boolean) || (compute(node.right, lookup) as boolean);
+      // Both sides are always evaluated: an unknown name or a parameter in error must show up as an
+      // error of the check, not hide behind a side that happens to decide the result.
+      if (node.op === '&&' || node.op === '||') {
+        const [left, right] = [compute(node.left, lookup) as boolean, compute(node.right, lookup) as boolean];
+        return node.op === '&&' ? left && right : left || right;
+      }
       const [a, b] = [compute(node.left, lookup) as number, compute(node.right, lookup) as number];
+      // A comparison of a non-finite number has no meaningful answer (Infinity equals anything
+      // within a relative tolerance); it is an error like a non-finite result of a field.
+      if (['==', '!=', '<', '<=', '>', '>='].includes(node.op) && !(Number.isFinite(a) && Number.isFinite(b))) throw new EvaluationProblem(NOT_FINITE);
       switch (node.op) {
         case '+':
           return a + b;
@@ -340,7 +373,7 @@ function compute(node: Node, lookup: Lookup): number | boolean {
         case '/':
           return a / b;
         case '%':
-          return a % b;
+          return remainder(a, b);
         case '^':
           return a ** b;
         case '==':
@@ -371,7 +404,7 @@ function run(expr: Expr, kind: ExprKind, lookup: Lookup): Outcome {
   if (analyzed.parsed.kind !== kind) return { ok: false, error: { code: 'type', message: kind === 'number' ? 'a number is expected, the expression is a comparison' : 'a comparison is expected, the expression is a number' } };
   try {
     const value = compute(analyzed.parsed.node, lookup);
-    if (typeof value === 'number' && !Number.isFinite(value)) return { ok: false, error: { code: 'notFinite', message: 'the result is not a finite number (division by zero or a value outside the domain of a function)' } };
+    if (typeof value === 'number' && !Number.isFinite(value)) return { ok: false, error: NOT_FINITE };
     return { ok: true, value };
   } catch (error) {
     if (error instanceof EvaluationProblem) return { ok: false, error: error.problem };
@@ -402,37 +435,63 @@ export function evaluateCheck(expr: Expr, environment: Environment): CheckResult
 
 const environments = new WeakMap<readonly Parameter[], Environment>();
 
-// Parameter values. A parameter may refer to any other one regardless of order; a cycle is an error
-// of every parameter on it, and whatever depends on a parameter in error is in error too.
-// The result is memoised by the identity of the table.
+// Parameter values. A parameter may refer to any other one regardless of order. Every parameter that
+// lies on a cycle gets the error `cycle`; whatever depends on a parameter in error is in error too.
+// The result is memoised by the identity of the table. Nothing here recurses over the chain of
+// parameters, so a long chain cannot run out of stack.
 export function evaluateParameters(parameters: readonly Parameter[]): Environment {
   const cached = environments.get(parameters);
   if (cached) return cached;
   const exprs = new Map(parameters.map((p) => [p.name, p.expr]));
-  const done = new Map<string, ParameterResult>();
-  const stack: string[] = [];
-  const cyclic = new Set<string>();
-  const cycle = (name: string): ExpressionError => ({ code: 'cycle', message: `parameter "${name}" depends on itself` });
-  const valueOf = (name: string): ParameterResult => {
-    const known = done.get(name);
-    if (known) return known;
-    if (stack.includes(name)) {
-      for (const member of stack.slice(stack.indexOf(name))) cyclic.add(member);
-      return { ok: false, error: cycle(name) };
+  // parameters each parameter uses
+  const uses = new Map<string, string[]>();
+  for (const [name, expr] of exprs) {
+    const parsed = parse(expr);
+    uses.set(name, parsed.ok ? parsed.parsed.names.filter((used) => exprs.has(used)) : []);
+  }
+  // A parameter is on a cycle when it can be reached from itself.
+  const onCycle = (start: string): boolean => {
+    const seen = new Set<string>();
+    const queue = [...(uses.get(start) as string[])];
+    while (queue.length > 0) {
+      const name = queue.pop() as string;
+      if (name === start) return true;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      queue.push(...(uses.get(name) as string[]));
     }
-    stack.push(name);
-    const outcome = run(exprs.get(name) as string, 'number', (used, position) => {
-      if (!exprs.has(used)) throw new EvaluationProblem({ code: 'unknownName', message: `unknown name "${used}"`, position });
-      const value = valueOf(used);
-      if (value.ok) return value.value;
-      throw new EvaluationProblem(value.error.code === 'cycle' && cyclic.has(name) ? cycle(name) : { code: 'dependsOnError', message: `parameter "${used}" is in error: ${value.error.message}`, position });
-    });
-    stack.pop();
-    const result: ParameterResult = cyclic.has(name) ? { ok: false, error: cycle(name) } : (outcome as ParameterResult);
-    done.set(name, result);
-    return result;
+    return false;
   };
-  const environment: Environment = Object.fromEntries(parameters.map((p) => [p.name, valueOf(p.name)]));
+  const done = new Map<string, ParameterResult>();
+  for (const name of exprs.keys()) if (onCycle(name)) done.set(name, { ok: false, error: { code: 'cycle', message: `parameter "${name}" depends on itself` } });
+  const evaluate = (name: string): void => {
+    const outcome = run(exprs.get(name) as string, 'number', (used, position) => {
+      const value = done.get(used);
+      if (!value) throw new EvaluationProblem({ code: 'unknownName', message: `unknown name "${used}"`, position });
+      if (value.ok) return value.value;
+      throw new EvaluationProblem({ code: 'dependsOnError', message: `parameter "${used}" is in error: ${value.error.message}`, position });
+    });
+    done.set(name, outcome as ParameterResult);
+  };
+  // Dependencies first: a depth-first walk with its own stack.
+  for (const root of exprs.keys()) {
+    const path: { name: string; next: number }[] = [{ name: root, next: 0 }];
+    while (path.length > 0) {
+      const top = path[path.length - 1];
+      if (done.has(top.name)) {
+        path.pop();
+        continue;
+      }
+      const pending = uses.get(top.name) as string[];
+      while (top.next < pending.length && done.has(pending[top.next])) top.next++;
+      if (top.next < pending.length) path.push({ name: pending[top.next++], next: 0 });
+      else {
+        evaluate(top.name);
+        path.pop();
+      }
+    }
+  }
+  const environment: Environment = Object.fromEntries(parameters.map((p) => [p.name, done.get(p.name) as ParameterResult]));
   environments.set(parameters, environment);
   return environment;
 }

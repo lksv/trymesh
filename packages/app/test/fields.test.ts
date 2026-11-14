@@ -27,6 +27,9 @@ describe('numeric field text', () => {
     expect(fieldText(Math.PI / 6, 'rad')).toBe('30');
     expect(fieldText('pi / 2', 'rad')).toBe('pi / 2');
     expect(fieldNote('pi / 2', Math.PI / 2, 'rad')).toBe('= 90°');
+    // an expression that is a bare number is shown as that number, in degrees, not as typed
+    expect(fieldText('0.5', 'rad')).toBe(plainNumber((0.5 * 180) / Math.PI));
+    expect(fieldText(' 12.5 ', 'mm')).toBe('12.5');
     // a number shown and read back does not drift
     expect(parseField(fieldText(Math.PI / 6, 'rad'), 'rad')).toBeCloseTo(Math.PI / 6, 12);
   });
@@ -87,6 +90,13 @@ describe('drafts keep expressions', () => {
     expect(feature<ExtrudeFeature>('e').expressions).toBeUndefined();
     run(draftCommand(changeExtrude(featureInput(feature<ExtrudeFeature>('e')), { distance: 'h * 2' }, []), true, index('e')));
     expect(feature<ExtrudeFeature>('e')).toMatchObject({ extent: { distance: 24 }, expressions: { 'extent/distance': 'h * 2' } });
+
+    // an expression that stopped evaluating does not block the form: the start has no input in
+    // the form, its broken expression is sent back unchanged
+    run({ type: 'setField', feature: 'e', path: 'extent/start', value: 'h / 4' }, { type: 'setField', feature: 'e', path: 'extent/distance', value: 5 }, { type: 'removeParameter', name: 'h' });
+    run(draftCommand(changeExtrude(featureInput(feature<ExtrudeFeature>('e')), { distance: 9 }, []), true, index('e')));
+    expect(feature<ExtrudeFeature>('e')).toMatchObject({ extent: { start: 3, distance: 9 }, expressions: { 'extent/start': 'h / 4' } });
+    run({ type: 'setParameter', name: 'h', expr: '12' }, { type: 'setField', feature: 'e', path: 'extent/start', value: 0 }, { type: 'setField', feature: 'e', path: 'extent/distance', value: 'h * 2' });
 
     // the preview of a draft reports the value of the expression being typed
     const preview = engine.preview(draftCommand(changeExtrude(featureInput(feature<ExtrudeFeature>('e')), { distance: 'h + 1' }, []), true, index('e')), 'e');

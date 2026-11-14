@@ -299,8 +299,9 @@ describe('model, tělesa a příkazy', () => {
       checks: [{ name: 'wider than tall', expr: 'width > height', status: 'ok' }],
     });
     // the dimension's expression shows on the constraint and on the feature
-    expect(ok(engine, 'get_sketch', { sketch: 's' }).constraints.find((c: { id: string }) => c.id === 'w')).toMatchObject({ value: 40, expr: 'width' });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).constraints.find((c: { id: string }) => c.id === 'w')).toMatchObject({ value: 40, expressions: { value: 'width' } });
     expect(ok(engine, 'get_model').features[0].expressions).toEqual({ 'constraints/w/value': 'width' });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).constraints.find((c: { id: string }) => c.id === 'h')).not.toHaveProperty('expressions');
     expect(ok(engine, 'get_model').parameters).toEqual({ width: 40, height: 20 });
 
     // a failed check and a parameter in error are not a feature state: execute reports them separately
@@ -325,8 +326,8 @@ describe('model, tělesa a příkazy', () => {
   it('the API description contains the expression syntax and numeric fields from the engine catalogs', () => {
     const description = apiText();
     expect(description).toContain('# Expressions');
-    expect(description).toContain('- deg(a): Degrees to radians');
-    expect(description).toContain('- atan2(a, b): ');
+    expect(description).toContain('- deg(x): Degrees to radians');
+    expect(description).toContain('- atan2(y, x): ');
     expect(description).toContain('- min(a, b, …): ');
     expect(description).toContain('- pi: ');
     expect(description).toContain('- extrude: extent/distance (Distance, mm, non-zero (only when extent/type is distance))');

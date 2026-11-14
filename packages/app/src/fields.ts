@@ -20,8 +20,14 @@ export function parseField(text: string, unit: Unit): number | Expr | undefined 
   return unit === 'rad' ? value / DEGREES : value;
 }
 
-// What the field shows: an expression unchanged, a number in units for a human.
-export const fieldText = (value: number | Expr, unit: Unit): string => (typeof value === 'string' ? value : Number.isFinite(value) ? plainNumber(unit === 'rad' ? value * DEGREES : value) : '');
+// What the field shows: an expression unchanged, a number in units for a human. An expression that
+// is just a number (set elsewhere as `"0.5"`) is shown as that number, converted like any other:
+// shown as typed it would read as radians here but as degrees once the user retyped it.
+export function fieldText(value: number | Expr, unit: Unit): string {
+  const shown = typeof value === 'string' && NUMBER.test(value.trim()) ? Number(value.trim().replace(',', '.')) : value;
+  if (typeof shown === 'string') return shown;
+  return Number.isFinite(shown) ? plainNumber(unit === 'rad' ? shown * DEGREES : shown) : '';
+}
 
 const UNIT_LABEL: Record<Unit, string> = { mm: ' mm', rad: '°', count: '', none: '' };
 

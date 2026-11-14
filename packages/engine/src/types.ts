@@ -374,7 +374,8 @@ export type Command =
   // - only references the feature did not have before are verified (a repeated broken reference passes);
   // - a number in a field with an expression removes the expression, a string sets one; fields the
   //   patch does not mention keep theirs. Whoever sends the whole feature starts from its input form
-  //   (featureInput).
+  //   (featureInput): a string equal to the expression the field already has counts as unchanged
+  //   and is kept even if it can no longer be evaluated.
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // One numeric field by its address (see fieldsOf); a number removes the expression, a string sets it.
   | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }

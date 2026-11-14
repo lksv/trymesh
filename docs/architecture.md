@@ -1,10 +1,10 @@
 # Architektura
 
-Stav: odsouhlaseno 2026-11-13 (D10–D27), předpoklady ověřeny spiky. Úpravy ze čtvrté revize (D28) jsou zapracované a čekají na potvrzení.
+Stav: odsouhlaseno 2026-11-13 (D10–D28), předpoklady ověřeny spiky. Změny z implementace (D29–D31) čekají na potvrzení.
 
 Vychází z [requirements.md](requirements.md) a [decisions.md](decisions.md). Návrh UI je v [ui.md](ui.md).
 
-Poslední úprava: 2026-11-13
+Poslední úprava: 2026-11-14
 
 ## Přehled
 
@@ -16,12 +16,11 @@ Poslední úprava: 2026-11-13
 ┌───────────┴──────────────────────────────────────────┐
 │ Engine (TypeScript, bez runtime závislostí)          │
 │                                                      │
-│  api        fasáda: příkazy, undo/redo, náhled       │
+│  engine     fasáda: příkazy, undo/redo, náhled       │
 │  document   datový model, příkazy, serializace       │
 │  sketch     model skici, detekce profilů             │
-│  solid      síť tělesa, stavba extrude, jména        │
-│  regen      přehrání logu, cache, chybové stavy      │
-│  export     STL (3MF později)                        │
+│  solid      síť tělesa, stavba extrude, jména, STL   │
+│  evaluate   přehrání logu, cache, chybové stavy      │
 │                                                      │
 │  porty:  SketchSolver          SolidKernel           │
 └────────────┬──────────────────────┬──────────────────┘
@@ -35,17 +34,24 @@ Pravidlo závislostí: engine nezná adaptéry ani renderer. Adaptéry a rendere
 
 ## Struktura repozitáře
 
-pnpm workspace, čtyři balíčky. Hranice jsou tím vynucené fyzicky: `engine` nemá v `package.json` žádnou runtime závislost.
+pnpm workspace. Hranice jsou tím vynucené fyzicky: `engine` nemá v `package.json` žádnou závislost.
 
 ```
 packages/
   engine/            jádro, čistý TS
   solver-planegcs/   adaptér SketchSolver
   kernel-manifold/   adaptér SolidKernel
+  scenarios/         validační scénáře proti skutečným adaptérům (jen testy)
   app/               ukázkové UI + renderer (three.js)
 ```
 
-Testy: Vitest. Validační scénáře běží v Node proti skutečným adaptérům.
+Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
+
+Moduly enginu (`packages/engine/src`): `document.ts` (validace a provedení příkazů, načtení), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda).
+
+Testy: Vitest (`pnpm test`), typová kontrola `pnpm typecheck`. Validační scénáře běží v Node proti skutečným adaptérům. Balíčky se neskládají: každý vystavuje přímo zdrojový TypeScript.
+
+Stav 2026-11-14: oba adaptéry a engine jsou hotové včetně testů; všech šest validačních scénářů prochází v Node proti skutečným adaptérům. Ukázková aplikace pokrývá funkce z [ui.md](ui.md) potřebné k jejich projití v prohlížeči (D31).
 
 ## Dvě různé historie
 
@@ -284,7 +290,7 @@ Důsledek: kladná `distance` u extrude ze skici na stěně vždy znamená ven z
 
 **Spojování bodů.** Dva body skici se pro účely profilu považují za jeden, když je to tentýž bod, nebo když je spojuje vazba `coincident`, která je v použitých polohách skutečně splněná (vzdálenost do délkové tolerance enginu). Samotná existence vazby nestačí: konfliktní `coincident` mezi dvěma rohy obdélníku, která se nesplnila, profil nezmění. Spojování je tranzitivní a jde i přes počátek a promítnuté body: dva konce přichycené vazbou ke stejnému promítnutému bodu jsou jeden vrchol grafu.
 
-**Graf.** Křivky skici (bez konstrukčních a promítnutých) tvoří rovinný graf. Křivky se smějí dotýkat jen ve spojených bodech. Když se dvě křivky kříží nebo se k sobě jinde přiblíží pod délkovou toleranci, třeba proto, že se profil po vyřešení sám protnul, je profil neplatný a extrude nad touto skicou skončí v chybě `invalidProfile`. Engine tak jádru nikdy nepředá síť, která není uzavřeným tělesem. Platí to i pro tečný dotyk: kružnice tečná k hraně obdélníku, pokud nejsou jedna z nich konstrukční, zneplatní profil celé skici. Je to záměrně přísné a jednoduché; těleso s nulovou tloušťkou stěny by stejně vzniknout nemohlo.
+**Graf.** Křivky skici (bez konstrukčních a promítnutých) tvoří rovinný graf. Křivky se smějí dotýkat jen ve spojených bodech. Když se dvě křivky kříží nebo se k sobě jinde přiblíží pod délkovou toleranci, třeba proto, že se profil po vyřešení sám protnul, je profil neplatný a extrude nad touto skicou skončí v chybě `invalidProfile`. Totéž se ověřuje ještě jednou po rozdělení oblouků na úsečky, protože těleso vzniká z lomených čar a ty se od oblouku liší až o `chordTolerance`: když se hranice oblastí po rozdělení kříží (křivka míjí oblouk těsněji, než dělení rozliší) nebo oblast splaskne do dvou bodů (je tenčí než tolerance), je profil také neplatný. Engine tak jádru nikdy nepředá síť, která není uzavřeným tělesem. Platí to i pro tečný dotyk: kružnice tečná k hraně obdélníku, pokud nejsou jedna z nich konstrukční, zneplatní profil celé skici. Je to záměrně přísné a jednoduché; těleso s nulovou tloušťkou stěny by stejně vzniknout nemohlo.
 
 **Oblast** je omezená stěna tohoto grafu, tedy nejmenší uzavřená plocha, kterou křivky ohraničují. Obdélník rozdělený příčkou má dvě oblasti, ne tři. Křivky, které žádnou plochu neuzavírají, se ignorují. Oblast může mít díry: jsou to hranice dalších, do ní vnořených souvislých částí grafu.
 
@@ -303,7 +309,7 @@ Omezení PoC: oblasti vzniklé křížením křivek se nedetekují, křížení 
 ## Extrude
 
 1. Vyhodnotí se rovina skici a oblasti (`regions`). Neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`.
-2. Oblouky a kružnice se rozdělí na segmenty podle `chordTolerance`.
+2. Oblouky a kružnice se rozdělí na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
 3. Engine postaví uzavřenou síť: dvě víka (triangulace přes jádro) a boční stěny. Každý trojúhelník dostane číslo stěny podle jména.
 4. Pro `add` a `cut` se zavolá boolean s cílovým tělesem.
 
@@ -311,7 +317,8 @@ Výsledky, které nejsou běžné:
 
 | Situace | Chování |
 |---|---|
-| `cut` těleso mine, `add` nic nepřidá | Těleso zůstane beze změny, feature má varování `noEffect`. |
+| `cut` těleso mine, `add` nic nepřidá | Těleso zůstane beze změny, feature má varování `noEffect`. Změna objemu se měří proti menšímu z obou těles (těleso, nástroj), takže drobný výstupek na velké desce účinek má. |
+| `add` kusu, který se tělesa nedotýká | Těleso má dvě nesouvislé části; stav je `ok`. |
 | `cut` odebere celé těleso | Chyba `emptyResult`, feature se chová jako prázdná operace a těleso zůstane. |
 | Jádro selže | Chyba `kernelFailure`. |
 
@@ -354,7 +361,14 @@ Záruky implementace:
 
 planegcs navíc vrací splněný vstup bitově beze změny (ověřeno spikem), ale návrh se o to neopírá.
 
-Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
+Když solver najde stav, který není použitelná geometrie (nekonečná hodnota, nekladný poloměr, oblouk s konci na různých poloměrech), vrací adaptér `failed`.
+
+Jak adaptér planegcs řeší:
+1. Při tažení nejdřív vyřeší skicu bez tažení a zjistí nadbytečné vazby. S dočasným cílem tažení by je knihovna ohlásila jako konflikt, proto se při tažení vynechají.
+2. Vyřeší skicu. Když výchozí algoritmus (DogLeg) nedoběhne a konflikt nehlásí, zkusí Levenberg–Marquardt; stejně postupuje FreeCAD.
+3. Řeší znovu z nalezeného stavu, dokud není ustálený. Knihovna totiž stupně volnosti a nadbytečné vazby hlásí podle výchozího odhadu, ne podle výsledku, a ve stavu `Converged` může nechat nadbytečnou vazbu nesplněnou. Vrácená diagnostika tak popisuje vrácenou geometrii a opakované řešení z výsledku dá totéž; o to se opírá krok 2 řešení skici (jen diagnostika z uložených proměnných).
+
+Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Neznámý druh křivky nebo ID ve `fixed`, které není bod ani kružnice, je výjimka. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
 
 Referenční kóty (`driving: false`) se solveru neposílají. Engine je před voláním odfiltruje a jejich hodnotu spočítá z vyřešených poloh. planegcs s nimi podle spiku nepracuje spolehlivě.
 
@@ -369,7 +383,7 @@ interface Solid {
 
 interface SolidKernel {
   boolean(op: 'union' | 'difference' | 'intersection', a: Solid, b: Solid): Solid;
-  triangulate(loops: Float64Array[]): Uint32Array;   // 2D polygon s dírami
+  triangulate(loops: Float64Array[]): Uint32Array;   // 2D polygon s dírami: vnější smyčka proti směru hodin, díry po směru
 }
 ```
 
@@ -378,8 +392,10 @@ Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné
 Záruky implementace:
 1. Výstup `boolean` je uzavřené těleso.
 2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.
-3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout.
+3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl; průnik engine v PoC nepoužívá a adaptér Manifoldu u něj záruku neplní.
 4. Stejný vstup dá vždy stejný výstup.
+
+Když adaptér výsledek zaručit nedokáže, skončí výjimkou a engine ji ohlásí jako `kernelFailure`. Potichu vadné těleso vrátit nesmí. Výjimkou končí i vadný vstup: neuzavřená nebo dovnitř orientovaná síť, nesedící počet čísel stěn.
 
 **Jak záruku č. 3 plní adaptér Manifoldu.** Manifold sám toleranci ke skoro-koplanárním plochám nemá a na šikmých stěnách kvůli float32 selhává. Adaptér se proto řídí jedním pravidlem: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Každý takový styk změní před booleanem na skutečný průnik a po booleanu posunuté stěny vrátí.
 
@@ -390,30 +406,59 @@ Před booleanem:
 4. Vrcholy posouvá podél průsečnic sousedních stěn, aby se sousední stěny nenaklonily.
 
 Po booleanu:
-5. Vrátí do původní roviny vše, co po posunu ve výsledku zůstalo. Je to zbytek samotné posunuté stěny (lícovala jen zčásti) a také hranice sousedních stěn nástroje, která s ní odjela, i když posunutá stěna sama zanikla: bok nálitku lícující s bokem tělesa sahá o přesah pod dosedací rovinu. Druhý případ se pozná podle polohy, vrchol leží v posunuté rovině a dotýká se stěny nástroje.
-6. Vyčistí síť. Pás, o který byla stěna posunutá, má po návratu nulovou šířku. Adaptér sloučí splynulé vrcholy, zahodí blány nulové tloušťky a trojúhelník s vrcholy v přímce zruší tak, že jeho souseda rozdělí v prostředním vrcholu. Bez toho by nulové trojúhelníky dál nesly číslo zaniklé stěny a reference na ni by se nerozbila.
+5. Vrátí zpět vše, co po posunu ve výsledku zůstalo. Polohy se neodhadují z okolí, dopočítají se přesně z původní, neposunuté geometrie. Každý vrchol výsledku je totiž buď vrchol jednoho z těles, nebo průsečík hrany jednoho tělesa se stěnou druhého:
+   - posunutý vrchol nástroje se vrátí na původní vrchol,
+   - průsečík hrany nástroje, jejíž konec se posunul (včetně úhlopříček triangulace), se stěnou tělesa se přesune do průsečíku původní hrany s rovinou té stěny,
+   - průsečík hrany tělesa s posunutou stěnou nástroje, a každý jiný vrchol v pásu mezi původní a posunutou rovinou, se přesune po té hraně tělesa do původní roviny,
+   - průsečík, který by na původní hraně ležel mimo její konce, v přesné geometrii neexistuje; stáhne se do bližšího konce.
+6. Vyčistí síť, a to vždy, i když se nic neposouvalo:
+   - sloučí vrcholy na stejném místě,
+   - zahodí trojúhelníky s vrcholy v přímce a blány nulové tloušťky,
+   - hrany, které tím zůstaly bez protějšku, dorovná: trojúhelník s takovou hranou rozdělí ve vrcholu, který na ní leží a ve kterém protější strana navazuje (T-spoj),
+   - kde se těleso samo sebe dotýká jen hranou, rozdělí povrch po klínech materiálu.
+7. Ověří výsledek a jinak skončí chybou (`kernelFailure`):
+   - síť je uzavřená plocha (každá hrana právě ve dvou trojúhelnících, jednou v každém směru),
+   - žádná rovinná stěna nemá trojúhelník otočený proti své normále.
 
-Kroky 5 a 6 jsou nutné. Bez nich leží zbylá stěna o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selže: nálitek zavěšený na takové stěně skončil ve spiku jako samostatná komponenta s mezerou 0,002 mm. Výstup adaptéru tedy musí být konzistentní s analytickou geometrií v rámci přesnosti float32, ne v rámci přesahu.
+Proč jsou kroky 5 až 7 nutné:
+- Bez návratu leží zbylá stěna o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selže: nálitek zavěšený na takové stěně skončil ve spiku jako samostatná komponenta s mezerou 0,002 mm. Výstup adaptéru tedy musí být konzistentní s analytickou geometrií v rámci přesnosti float32, ne v rámci přesahu.
+- Bez čištění zůstanou po pásu nulové šířky trojúhelníky, které dál nesou číslo zaniklé stěny, a reference na ni by se nerozbila. Totéž nechává jádro samo tam, kde se nástroj tělesa jen dotkne hranou; proto se čistí vždy.
+- Bez kontroly by chyba prošla potichu. Manifold síť, která není uzavřenou plochou, při dalším booleanu načte bez chyby, část trojúhelníků zahodí a změní objem (ve spiku o stovky mm³).
 
-Dvě věci, na kterých to numericky stojí; obě se projevily až v obecně natočené poloze:
-- Roviny pro posun vrcholu se berou proložené přes celou stěnu, u posunuté stěny přímo z nástroje. Normály jednotlivých trojúhelníků výsledku použít nejde: úzké trojúhelníky je mají vychýlené o desítky stupňů a strop výřezu pak vyšel mimo rovinu o 2e-4 mm.
-- Posun vrcholu se počítá v ortonormální bázi normál. Výpočet přes regularizovanou soustavu 3×3 byl pro vrchol držený jedinou šikmou rovinou nestabilní a vrchol posunul i do strany.
+Co se ukázalo až v obecně natočené poloze a v náhodných testech:
+- Roviny stěn se prokládají přes celou stěnu. Normály jednotlivých trojúhelníků výsledku použít nejde: úzké trojúhelníky je mají vychýlené o desítky stupňů.
+- Návrat jen „do roviny" nestačí. Průsečík hrany, která se posunem natočila, zůstane ve správných rovinách, ale o zlomek přesahu vedle. Sám nevadí, dokud pozdější nástroj nemá stěnu přesně v tom místě; pak se síť přeloží. Proto se polohy dopočítávají z původních hran.
+- Svislá hrana válce může ležet celá v rovině boku tělesa. Průsečík s takovou rovinou není určený; bere se nejpříčnější ze stěn tělesa, kterých se vrchol dotýká.
+- Posun vrcholů nástroje před booleanem se počítá v ortonormální bázi normál. Výpočet přes regularizovanou soustavu 3×3 byl pro vrchol držený jedinou šikmou rovinou nestabilní.
+- Tenký trojúhelník není totéž co trojúhelník s vrcholy v přímce. Jádro běžně vrací jehly: dva vrcholy pár desetitisícin od sebe a třetí daleko. Jehla má plochu a do sítě patří. Za nulový se proto bere trojúhelník užší než čtvrtina tolerance slučování (přesnost float32), širší jen tehdy, když jeho prostřední vrchol leží zřetelně uvnitř nejdelší strany.
+- Dělit se smějí jen hrany bez protějšku. První verze dělila každou hranu, u které ležel cizí vrchol dost blízko její přímky. U zdravé hrany vycházející pod malým úhlem to vedlo ke střídání dvou stavů, z nichž ani jeden nebyl uzavřený.
+- Po dotyku hranou se zdvojené vrcholy při dalším booleanu zase sloučí a dělí znovu. Dělení přes nový vrchol uprostřed hrany tak při každé další operaci zdvojnásobilo počet trojúhelníků v místě dotyku. Kde to jde, zdvojí se proto existující vrchol.
+- Přesnost float32 klesá se vzdáleností od počátku. Tolerance odvozené jen z rozměru modelu selhávaly u modelu 60 mm velkého a 450 mm vzdáleného od počátku.
+- Zmenšený nástroj mohl přeskočit stěnu tělesa ležící těsně za jeho stěnou; materiál mezi nimi zůstal jako blána. Posouvá se proto nejvýš do poloviny mezery.
 
 Důsledek pro jména: kde stěna nástroje lícuje se stěnou tělesa a překrývají se plochou, nese překrytou část ve výsledku jméno stěny nástroje. Obě stěny dál existují a dělí je hrana druhu `coplanar`.
 
-Všechny tolerance odvozuje adaptér z rozměru modelu (úhlopříčka D obou těles): stejná rovina 1e-5 D, přesah 4e-5 D, slučování vrcholů 1e-6 D. V dokumentu ani v core se nenastavují.
+Všechny tolerance odvozuje adaptér z rozměru D: úhlopříčka obálky obou těles, nejméně však dvojnásobek největší souřadnice (model daleko od počátku má horší přesnost float32). Stejná rovina 1e-5 D, přesah 4e-5 D, slučování vrcholů 1e-6 D. V dokumentu ani v core se nenastavují.
 
 Omezení:
-- Řeší se jen rovinné stěny. Válcová stěna nástroje shodná s válcovou stěnou tělesa (rozšíření díry na stejný poloměr) ne.
+- **Rozlišení.** Detail menší než asi 1e-4 D (u modelu 70 mm kolem 0,01 mm) těsně u lícujících stěn adaptér nezvládá spolehlivě: schod nebo mezera této velikosti, o kterou se nástroj posouvá. Výsledek je pak buď správný, nebo chyba `kernelFailure`; testy z revize potvrzují, že potichu vadný není. Od 0,05 mm výš prošly všechny zkoušené polohy.
+- Řeší se jen rovinné stěny. Válcová stěna nástroje shodná s válcovou stěnou tělesa (rozšíření díry na stejný poloměr, výřez přesně podle válcového nálitku) ne; povrch pak vyjde špatně a chyba se neohlásí.
+- Stěna nástroje užší než 8e-5 D (kapsa hluboká pár tisícin) se pro určení roviny nepoužije a lícování na ní se nepozná.
+- Průnik se neupravuje (viz záruka č. 3).
+- Návrat posunutých stěn porovnává každý vrchol výsledku se všemi posunutými hranami nástroje a hranami tělesa. U těles do několika tisíc trojúhelníků to nevadí; u desky se 192 kruhovými otvory (19 tisíc trojúhelníků) trval jeden boolean 7,6 s, samotné jádro 0,07 s. Prostorové vyhledávání je možná pozdější optimalizace.
 - Vyčištění průchodem přes Manifold nejde použít: nulové trojúhelníky sbalil špatným směrem a poškodil těleso. Síť si adaptér čistí sám.
-- Zkoušené byly hranoly a válce, včetně vrcholu, kde se stýkají čtyři roviny. Jiné nástroje v PoC nevznikají, nástroj je vždy extrude.
+- Těleso, které se samo sebe dotýká jen hranou, adaptér zpracuje (v síti jsou v místě dotyku zdvojené vrcholy). Geometricky je to ale mezní stav a další operace přesně v místě dotyku zkoušené nejsou.
+- Zkoušené nástroje jsou hranoly (kvádry, trojboké hranoly se šikmou stěnou) a válce. Jiné v PoC nevznikají, nástroj je vždy extrude.
 - Výřez, jehož víko zároveň lícuje se spodkem převisu a leží na opačně orientované stěně v téže rovině, přejmenuje dotčenou část té stěny na víko nástroje. Geometrie je správná.
+- Obalová funkce `triangulate` v knihovně neuvolňuje paměť WASM (u smyčky s 256 body 8 kB na volání). Adaptér proto volá funkci pod ní a paměť uvolňuje sám; je to vnitřní rozhraní knihovny a při její aktualizaci se musí ověřit.
 
 **Přesnost (D20).** Manifold přijímá i vrací souřadnice jen ve `Float32Array`, proto je má `Solid` také v tomto typu. Engine geometrii nikdy neodvozuje ze sítě, pokud ji umí spočítat analyticky; analytické výpočty běží ve float64. Naměřená odchylka vrcholů od roviny po 12 booleanech za sebou na šikmé stěně byla 2e-6.
 
 `Solid` jsou čistá data. Přechod na B-rep by znamenal jiný typ tělesa a jiný adaptér; jména, reference a přepočet zůstanou.
 
 ## Přepočet
+
+V kódu je přepočet metodou třídy `Evaluator` (`evaluate.ts`), která drží cache; adaptéry dostane při vytvoření. Signatura popisuje vstupy a výstup:
 
 ```ts
 function evaluate(doc: Document, deps: { solver; kernel }, opts?: {
@@ -534,15 +579,23 @@ type Command =
 
 **Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Validace pracuje jen se strukturou dokumentu, přepočet k ní není potřeba. Ověřuje se:
 
-- **ID** nových entit jsou jedinečná a splňují konvence (bez `/`, ne `origin`).
+- **ID** nových entit jsou jedinečná a splňují konvence: bez `/`, ne `origin`, ne prázdné a ne jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…), protože ID jsou klíče záznamů.
 - **Odkazy uvnitř skici** musí vést na existující entity správného typu (vazba `parallel` dostala dvě úsečky). Křivka odkazuje na vlastní body nebo `origin`. Vazba smí odkazovat i na promítnutou geometrii; její odvozené entity plynou z `kind` (`<id>`, `<id>/a`, `<id>/b` u úsečky, `<id>`, `<id>/center` u kružnice). Protože mazání ve skici kaskáduje, platí toto pravidlo v každém dokumentu.
-- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updatePlane`, `setSketchPlane`, `updateExtrude`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
+- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updatePlane`, `setSketchPlane`, `updateExtrude`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. U stěny a hrany se takto ověřuje těleso i extrude, které stěnu pojmenovalo (stěna existuje až po něm). `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
 - **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
 - **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
-- **Hodnoty.** Čísla jsou konečná. `distance` u extrude není nula a `regions` není prázdné. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
+- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `distance` u extrude není nula a `regions` není prázdné (tatáž oblast dvakrát je jedna oblast). Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 
 Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
+
+**Chování fasády:**
+
+- **Krok undo vzniká jen změnou obsahu dokumentu.** Přejmenování na stejné jméno nebo tažení plně určeného bodu historii nezaplní.
+- **Tažení, které solver nevyřeší,** dokument ani stav enginu nezmění; konflikt z neúspěšného pokusu ukáže jen `preview`.
+- **`getState(at)` s neznámou feature vyhodí výjimku; `preview(cmd, at)`** vrátí `invalidCommand`, když `at` v dokumentu po příkazu není. Tichý přepočet celé osy by zakryl chybu volajícího.
+- **Posluchači (`subscribe`)** dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine: vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní o zprávu nepřipraví a vyhodí se až nakonec; stav je v té chvíli už zapsaný.
+- **Nový bod a nová křivka ruší razítko řešení skici,** protože zapisují řešené proměnné přímo. Skica se pak při přepočtu vyřeší znovu, i kdyby se otisk vstupů solveru shodoval.
 
 **Pravidla mazání:**
 
@@ -551,7 +604,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateExtrude` umí změnit i zdrojovou skicu (spolu s novým výběrem oblastí), `setSketchPlane` rovinu, `updatePlane` základ.
 
-**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`.
+**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
 
 ### Co z API vzešlo z návrhu UI (D24)
 
@@ -579,7 +632,7 @@ Výběr myší: renderer zjistí index trojúhelníku, přes `faceIds` číslo s
 
 ## Výsledky spiků
 
-Provedeno 2026-11-13 v Node 25. Skripty jsou ve složce `spikes/` a jdou spustit znovu (`npm install`, pak `node <skript>`).
+Provedeno 2026-11-13 v Node 25. Skripty ověřující samotné knihovny jsou ve složce `spikes/` a jdou spustit znovu (`npm install`, pak `node <skript>`). Adaptéry, které ze spiků vzešly, jsou od 2026-11-14 v balíčcích `kernel-manifold` a `solver-planegcs` a jejich případy běží jako testy.
 
 ### Manifold (`manifold-3d` 3.5.5)
 
@@ -603,7 +656,7 @@ Skripty: `manifold-spike.mjs`, `manifold-ghost.mjs`, `manifold-determinism.mjs`.
 
 ### Koplanární stěny v adaptéru
 
-Skript: `manifold-adapter-spike.mjs`. Ověřuje, že záruku č. 3 jde splnit uvnitř adaptéru jen ze sítě a čísel stěn, bez znalosti jmen a bez zásahu do core. Nástroje jsou postavené přesně, bez ručního přesahu.
+Adaptér: `packages/kernel-manifold/src` (`coplanar.ts` posun a návrat stěn, `clean.ts` čištění sítě, `geometry.ts` roviny a tolerance). Testy: `test/coplanar.test.ts` (jednotlivé případy), `test/fuzz.test.ts` (náhodné) a `test/review.test.ts` (případy z revize). Ověřují, že záruku č. 3 jde splnit uvnitř adaptéru jen ze sítě a čísel stěn, bez znalosti jmen a bez zásahu do core. Nástroje jsou postavené přesně, bez ručního přesahu.
 
 Jednotlivé případy, každý osově i šikmo: nálitek a kapsa přesně na stěně, kapsa s bokem v rovině boku tělesa, výřez přesně na tloušťku, válcová díra a válcový čep, bok kapsy vychýlený o ±3e-6 (napodobuje přichycení na bod s přesností float32), bok 0,05 od roviny (posunout se nesmí), nástroj dosedající zvenku, lícující sjednocení, stupňovité těleso, částečný překryv, stejná rovina bez překryvu.
 
@@ -620,12 +673,33 @@ Každý případ kontroluje čísla stěn, objem, uzavřenost sítě a to, že �
 
 | Varianta adaptéru | Prošlo |
 |---|---|
-| Posun před booleanem, návrat a vyčištění sítě po něm | 46 z 46 |
+| Posun před booleanem, přesný návrat a vyčištění sítě po něm | 46 z 46 |
 | Verze po třetí revizi (vracel se jen zbytek posunuté stěny, lícující stěny u sjednocení se neposouvaly) | případy ze čtvrté revize selhaly: po odříznutém schodu zůstaly proužky jeho boků, lícující nálitek šikmo zneplatnil rovinnost horní stěny a další kapsa nechala blánu, strop válcového výřezu ležel 9,999988 až 10,000244 |
 | Jen posun, bez návratu (první verze) | řetězené případy selhaly: nálitek na stropě tunelu byl samostatná komponenta |
 | Bez úprav | selhává většina šikmých případů |
 
-S návratem do roviny leží strop tunelu přesně na zadané výšce (bez něj o 0,002 až 0,003 výš). Úprava má asi 300 řádků; zhruba polovinu tvoří čištění sítě a prokládání rovin.
+S návratem leží strop tunelu přesně na zadané výšce (bez něj o 0,002 až 0,003 výš).
+
+**Náhodné testy.** Generátor skládá na kvádr 40 × 30 × 10 jednu až čtyři operace (sjednocení nebo rozdíl) s kvádry, trojbokými hranoly a válci. Rozměry bere z hrubé mřížky, takže stěny často lícují, dosedají nebo se překrývají zčásti; 80 % případů běží v náhodně natočené a posunuté soustavě a 30 % kvádrů má bok vychýlený: o ±3e-6 (napodobuje přichycení na bod s přesností float32), nebo o ±3e-5 (pásmo mezi přesností float32 a tolerancí, mimo návrhový rozsah). Výsledek se porovnává se dvěma orákuly nezávislými na adaptéru:
+- mřížkový model (případy jen z kvádrů): přesný objem a pro každé číslo stěny rozsah plochy, kterou smí mít,
+- řezy po vrstvách přes 2D booleany: objem a povrch (všechny případy),
+- u případů s válci a šikmými stěnami navíc shoda čísel stěn s během téhož případu v osové poloze.
+
+Každý výsledek musí být uzavřený, bez přeloženého trojúhelníku a jádro ho musí načíst se stejným objemem. Adaptér smí případ odmítnout vlastní chybou (neuzavřená nebo přeložená síť); odmítnutí se počítají zvlášť a test hlídá, že jsou vzácná.
+
+Poslední běh (2026-11-14, po opravách z revize): 30 000 případů, žádný vadný výsledek. Tři případy adaptér odmítl chybou: jeden v návrhovém rozsahu (válec, kvádry s odchylkou 3e-6) a dva s odchylkou boku 3e-5. Tisíc případů běží při každém `pnpm test`; rozsah jde změnit proměnnými `FUZZ_COUNT` a `FUZZ_FIRST`.
+
+Vedle toho běží případy z revize (`test/review.test.ts`), každý v desítkách náhodných poloh: mezera a průnik pod rozlišením adaptéru, dotyk hranou následovaný dalšími operacemi, model 450 a 1300 mm od počátku.
+
+Co náhodné testy našly a pevné případy ne:
+- Jádro síť, která není uzavřenou plochou, načte bez chyby, část trojúhelníků zahodí a změní objem. Stav knihovny zůstane `NoError`. Proto adaptér uzavřenost kontroluje sám.
+- Vrácení posunutých vrcholů „do roviny" nechávalo průsečíky natočených hran o zlomek přesahu vedle; pozdější nástroj se stěnou přesně v tom místě síť přeložil. Návrat se proto počítá z původní geometrie.
+- Kde se nástroj tělesa dotkne jen hranou a nic se neposouvá, nechává jádro nulové trojúhelníky s číslem stěny nástroje. Čistí se proto vždy.
+- Sloučení vrcholů podle polohy vytvoří v místě, kde se těleso samo sebe dotýká hranou, hranu se čtyřmi trojúhelníky; dělit jen koncové vrcholy nestačilo.
+- Průsečík hrany, která rovinu protíná pod malým úhlem, vyšel 1e-4 vedle skutečného vrcholu a vznikl přeložený trojúhelník. Bod blízko konce hrany se bere jako ten konec.
+- Jehlové trojúhelníky se při čištění zahazovaly jako nulové (14 případů z 30 000, všechny v natočené poloze s válci). Opraveno přísnějším určením nulového trojúhelníku; po revizi se navíc dělí jen hrany bez protějšku.
+
+Adaptér má asi 900 řádků TypeScriptu; zhruba třetinu tvoří čištění sítě.
 
 ### planegcs (`@salusoft89/planegcs` 1.3.0)
 
@@ -634,22 +708,30 @@ Skript: `planegcs-spike.mjs`. Prošlo 36 z 37 kontrol; neprošlá je kontrola re
 | Předpoklad | Výsledek |
 |---|---|
 | Stupně volnosti | Platí (`dof()`). |
-| Konfliktní vazby | Platí. Vrací celou skupinu vazeb v konfliktu, ne jen tu naposled přidanou. Stav řešení je pak `Failed`. |
+| Konfliktní vazby | Platí. Vrací celou skupinu vazeb v konfliktu, ne jen tu naposled přidanou. Stav řešení je pak většinou `Failed`, ale ne vždy: konflikt se objevil i se stavem `Success`. Adaptér proto rozhoduje podle seznamu konfliktních vazeb. |
 | Nadbytečné vazby | Platí. |
 | Pevné body | Platí (`fixed: true`), nepohnou se ani o bit. |
 | Pevný poloměr promítnuté kružnice | Platí přes vazbu `circle_radius`; soustředná díra i tečna k pevné kružnici fungují. |
 | Podmínky oblouku | Platí přes `arc_rules`. Adaptér musí dopočítat poloměr a úhly z bodů, planegcs je chce na vstupu. |
-| Mapování variant vazeb | Všech 17 zkoušených variant má protějšek. `horizontalDistance` a `verticalDistance` se mapují na vazbu `difference` nad souřadnicemi bodů. |
+| Mapování variant vazeb | Všechny varianty mají protějšek (24 kombinací vazby a druhu křivky v testech adaptéru). `horizontalDistance` a `verticalDistance` se mapují na vazbu `difference` nad souřadnicemi bodů. |
+| Znaménka | Ověřeno testy adaptéru: `difference` dává b − a včetně záporných hodnot, `l2l_angle_ll` měří od první úsečky ke druhé proti směru hodin. |
 | Splněný vstup se vrátí beze změny | Platí bitově, pro plně určenou i podurčenou skicu. |
 | Determinismus | Platí bitově. |
 | Tažení přes dočasné vazby | Platí. 30 kroků, vazby drží, bod sleduje cíl ve volném směru, žádné skoky. Ověřeno navazujícími kroky i bezstavově, kdy každý krok začíná z uložených poloh a cíl se vzdaluje (tak to volá `preview`). |
 | Referenční kóty | **Neplatí.** Neřídicí kóta přidala stupeň volnosti a vrátila nesmyslnou hodnotu. Engine je proto solveru neposílá. |
 | Vazba jen mezi pevnými entitami | **Solver ji tiše ignoruje.** Šikmá pevná úsečka s vazbou `horizontal` skončí úspěchem bez konfliktu. Takovou vazbu proto odmítá validace příkazů. |
-| Diagnostika konfliktu | Mezi konfliktními vazbami se vracejí i pomocné vazby adaptéru a `dof()` dá −1. Adaptér je odfiltruje. |
+| Diagnostika konfliktu | Mezi konfliktními vazbami se vracejí i pomocné vazby adaptéru; `dof()` při konfliktu nemá význam (pozorováno −1 i 0 až 2). Adaptér pomocné vazby odfiltruje a vrací 0. |
 | Běh v Node | Platí. |
 
 Poznámky pro adaptér:
 - Solver při hledání nadbytečných vazeb vypisuje ladicí text na standardní výstup. Vypíná se nastavením `debug_mode` na `DebugMode.NoDebug` (ověřeno).
-- Úspěšné řešení hlásí knihovna stavem `Success` nebo `Converged`; obojí se mapuje na `solved`.
+- Úspěšné řešení hlásí knihovna stavem `Success` nebo `Converged`. `Converged` ale znamená jen to, že vazba, kterou knihovna vyhodnotila jako nadbytečnou, nebyla ve výchozím odhadu splněná; nikdo neověří, že je splněná ve výsledku. Adaptér proto řeší znovu z výsledku, dokud nedostane `Success`.
 - Paměť WASM se uvolňuje ručně (`destroy_gcs_module`).
-- Nezkoušeno: tečnost s obloukem (`tangent_la`, `tangent_ca`, `tangent_aa`) a bod na oblouku (`point_on_arc`). Vazby v knihovně existují.
+- Tečnost s obloukem (`tangent_la`, `tangent_ca`, `tangent_aa`), bod na oblouku (`point_on_arc`) a kóty oblouku jsou ověřené až testy adaptéru (`packages/solver-planegcs/test`), ve spiku nebyly.
+
+Známá omezení solveru, která adaptér neřeší (z revize 2026-11-14, náhodné skici proti nezávislé kontrole zbytků vazeb):
+- Nadbytečná vazba, která ve výchozím odhadu není splněná, může skončit konfliktem, i když řešení existuje (nepřesně nakreslený obdélník a k němu rovnoběžnost protějších stran). Z přesnějšího odhadu projde. Není to obecné: kolmost nebo druhá kóta ze stejného odhadu projdou.
+- Kóta vzdálenosti mezi dvěma body, které ve výchozím odhadu leží na sobě, skončí konfliktem.
+- Oblouk se může překlopit na svůj doplněk (konce si vymění strany) a výsledek je přesto řešením vazeb. Port o rozsahu oblouku nic neříká; engine to zatím nekontroluje.
+- U tečnosti dvou kružnic drží knihovna vnější nebo vnitřní dotyk podle výchozího odhadu. Kde druhá varianta vede k zápornému poloměru, vrací adaptér `failed`.
+- Výchozí algoritmus selhal (`failed`, bez seznamu vazeb) asi u 4 % náhodných skic. Záložní Levenberg–Marquardt z nich vyřeší asi desetinu; zbytek zůstává `failed`.

@@ -1,8 +1,8 @@
 # Funkce UI a potřebné API
 
-Stav: **návrh**. UI není těžištěm PoC. Dokument vyjmenovává funkce, které UI nabídne, a ke každé uvádí, co k ní potřebuje od enginu. Slouží k ověření, že API v [architecture.md](architecture.md) je úplné. Rozložení obrazovky se zatím neřeší.
+Stav: **implementováno v `packages/app`** v rozsahu popsaném na konci dokumentu. UI není těžištěm PoC. Dokument vyjmenovává funkce, které UI nabídne, a ke každé uvádí, co k ní potřebuje od enginu. Slouží k ověření, že API v [architecture.md](architecture.md) je úplné. Rozložení obrazovky se zatím neřeší.
 
-Poslední úprava: 2026-11-13
+Poslední úprava: 2026-11-14
 
 ## Jak číst tabulky
 
@@ -167,3 +167,14 @@ Tyto požadavky v původním návrhu API chyběly a jsou do architektury doplně
 - Manipulátory ve 3D (tažení šipky u extrude).
 - Ořez a prodloužení křivek, zrcadlení, pole.
 - Viditelnost uložená v dokumentu.
+
+## Stav implementace
+
+Ukázková aplikace (`packages/app`, rozhodnutí v D31) nabízí všechny funkce z tabulek výše s těmito rozdíly:
+
+- **Přichycení a odvozené vazby**: přichycení na bod a na křivku je hotové; z odvozených vazeb jen vodorovná a svislá u volného konce úsečky.
+- **Kóta mezi dvěma body** je vždy `distance`; vodorovná a svislá mají vlastní tlačítko, podle umístění myší se nerozlišují.
+- **Vazby se zobrazují v seznamu** v panelu skici (s hodnotou, přepínačem řídicí/referenční a zvýrazněním konfliktních a nadbytečných); v pohledu jsou jen popisky kót.
+- **Oprava referencí**: rovina skici se mění tlačítkem u vybrané skici, základ roviny a skica, oblasti a cíl vysunutí v jejich panelu. Promítnutá geometrie má v panelu skici seznam se stavem; odtud jde promítnutí zrušit nebo promítnout znovu na jinou hranu (i když ho přepočet nedokázal vyhodnotit a v pohledu není).
+- **Viditelnost** se přepíná na časové ose a platí pro feature i těleso, které založila.
+

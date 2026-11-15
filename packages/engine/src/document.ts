@@ -8,19 +8,15 @@ import type {
   Document,
   Expr,
   ExternalRef,
-  ExtrudeFeature,
   Feature,
   FieldPath,
-  GeneratorName,
   Id,
   Input,
   Parameter,
-  ProfileSource,
   Projected,
-  RegionRef,
   SketchFeature,
 } from './types';
-import { CONSTRAINTS, type EntityKind, type FieldSpec, type NumberSpec } from './catalog';
+import { CONSTRAINTS, type EntityKind } from './catalog';
 import { GENERATORS, isFlag } from './generators';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
 import { bodyOwner, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptySketch, entityOf, isDimension, isDriving } from './sketch-content';
@@ -35,7 +31,6 @@ import {
   REF_LABEL,
   type RefContext,
   type ValidationContext,
-  base,
   boolean,
   edgeName,
   faceRefs,
@@ -52,6 +47,7 @@ import {
   string,
 } from './validation';
 import type { FeatureTypeInfo } from './features/module';
+import { extrude } from './features/extrude';
 import { pattern } from './features/pattern';
 import { plane } from './features/plane';
 
@@ -87,9 +83,6 @@ const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
   o.expressions === undefined ? {} : Object.fromEntries(Object.entries(object(o.expressions, `${what}.expressions`)).map(([path, expr]) => [path, string(expr, `${what}.expressions.${path}`)]));
 
 const NO_ENVIRONMENT = (): Environment => ({});
-
-const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
-const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
 
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
@@ -134,21 +127,6 @@ function externalRef(context: RefContext, v: unknown, what: string): ExternalRef
   const edge = edgeName(o.edge, `${what}.edge`);
   for (const face of [edge.a, edge.b]) requireFace(context, face, `${what}.edge`);
   return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
-}
-
-function regions(v: unknown, what: string): RegionRef[] {
-  if (!Array.isArray(v) || v.length === 0) fail(`${what}: čeká se neprázdný seznam oblastí`);
-  const seen = new Set<string>();
-  const out: RegionRef[] = [];
-  (v as unknown[]).forEach((r, i) => {
-    const loop = object(r, `${what}[${i}]`).outerLoop;
-    if (!Array.isArray(loop) || loop.length === 0) fail(`${what}[${i}].outerLoop: čeká se neprázdný seznam ID křivek`);
-    const ids = [...new Set((loop as unknown[]).map((id, k) => string(id, `${what}[${i}].outerLoop[${k}]`)))].sort();
-    const key = JSON.stringify(ids);
-    if (!seen.has(key)) out.push({ outerLoop: ids }); // tatáž oblast dvakrát je jedna oblast
-    seen.add(key);
-  });
-  return out;
 }
 
 // ---------------------------------------------------------------- entity skici
@@ -244,116 +222,6 @@ function projected(v: unknown, what: string): Projected {
 
 // ---------------------------------------------------------------- features
 
-const PROFILE_FIELDS: Record<ProfileSource['type'], readonly string[]> = { regions: ['type', 'sketch', 'regions'], generated: ['type', 'generator', 'sketch', 'operands', 'params', 'refs'] };
-
-// What `null` in a patch may remove from a profile that does not have it: an entry of a dictionary
-// the generator catalog knows (a parameter returns to its default, a reference is not set) and the
-// dictionary of references itself. Anything else that is not there is a typo.
-function removableFromProfile(profile: ProfileSource, path: string[]): boolean {
-  if (profile.type !== 'generated') return false;
-  const spec = GENERATORS[profile.generator];
-  const [dictionary, name, ...rest] = path;
-  if (rest.length) return false;
-  if (name === undefined) return dictionary === 'refs';
-  if (dictionary === 'params') return has(spec.params, name);
-  if (dictionary === 'refs') return has(spec.refs, name);
-  return dictionary === 'operands' && spec.operands.some((operand) => operand.field === name);
-}
-
-// The profile source of an extrusion. A generated profile follows the generator catalog: operands
-// and references by its names, parameters with its ranges and defaults, in the order of the catalog.
-function profileSource(context: ValidationContext, v: unknown, what: string): ProfileSource {
-  const { fields } = context;
-  const profile = object(v, what);
-  const type = oneOf(profile.type, ['regions', 'generated'] as const, `${what}.type`);
-  // A field of the other variant is a mistake: a profile of regions with generator parameters would
-  // otherwise be accepted as plain regions.
-  for (const key of Object.keys(profile)) if (!PROFILE_FIELDS[type].includes(key)) fail(`${what}.${key}: a profile of the type ${type} has no such field`);
-  const sketch = string(profile.sketch, `${what}.sketch`);
-  context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
-  if (type === 'regions') return { type, sketch, regions: regions(profile.regions, `${what}.regions`) };
-  const generator = oneOf(profile.generator, Object.keys(GENERATORS) as GeneratorName[], `${what}.generator`);
-  const spec = GENERATORS[generator];
-  // a dictionary of the profile: only the names the catalog knows
-  const dictionary = (name: string, known: object, optional = false): Dict => {
-    if (optional && profile[name] === undefined) return {};
-    const given = object(profile[name], `${what}.${name}`);
-    for (const key of Object.keys(given)) if (!has(known, key)) fail(`${what}.${name}.${key}: the generator ${generator} has no such entry`);
-    return given;
-  };
-  const givenOperands = dictionary('operands', Object.fromEntries(spec.operands.map((operand) => [operand.field, true])));
-  const operands: Record<string, Id> = {};
-  for (const { field, kinds } of spec.operands) {
-    operands[field] = string(givenOperands[field], `${what}.operands.${field}`);
-    context.requireRef({ id: operands[field], kind: 'entity', sketch, accepts: kinds }, `${what}.operands.${field}`);
-  }
-  const givenParams = dictionary('params', spec.params);
-  const params: Record<string, number | boolean | string> = {};
-  for (const [name, param] of Object.entries(spec.params)) {
-    const value = givenParams[name];
-    const at = `${what}.params.${name}`;
-    if (isFlag(param)) params[name] = value === undefined ? param.default : boolean(value, at);
-    else if (value === undefined && param.default === undefined) fail(`${at}: the parameter is required`);
-    else params[name] = fields.number(value === undefined ? param.default : value, `profile/params/${name}`, param, at);
-  }
-  const givenRefs = dictionary('refs', spec.refs, true);
-  const refs: Record<string, Id> = {};
-  for (const [name, ref] of Object.entries(spec.refs)) {
-    if (givenRefs[name] === undefined) continue;
-    refs[name] = string(givenRefs[name], `${what}.refs.${name}`);
-    context.requireRef({ id: refs[name], kind: 'generated', accepts: ref.generators }, `${what}.refs.${name}`);
-  }
-  return { type, generator, sketch, operands, params, ...(Object.keys(refs).length ? { refs } : {}) };
-}
-
-// References of a profile source to other features and to entities of its sketch.
-function profileRefs(profile: ProfileSource): FeatureRef[] {
-  const sketch: FeatureRef = { path: 'profile/sketch', id: profile.sketch, kind: 'sketch' };
-  if (profile.type === 'regions') return [sketch];
-  const spec = GENERATORS[profile.generator];
-  return [
-    sketch,
-    ...spec.operands.map((operand): FeatureRef => ({ path: `profile/operands/${operand.field}`, id: profile.operands[operand.field], kind: 'entity', sketch: profile.sketch, accepts: operand.kinds })),
-    ...Object.entries(profile.refs ?? {}).map(([name, id]): FeatureRef => ({ path: `profile/refs/${name}`, id, kind: 'generated', accepts: spec.refs[name].generators })),
-  ];
-}
-
-function extrudeFeature(o: Dict, what: string, context: ValidationContext): ExtrudeFeature {
-  const { fields } = context;
-  const profile = profileSource(context, o.profile, `${what}.profile`);
-  const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
-  const given = object(o.extent, `${what}.extent`);
-  let extent: ExtrudeFeature['extent'];
-  if (oneOf(given.type, ['distance', 'throughAll'] as const, `${what}.extent.type`) === 'distance') {
-    const start = fields.number(given.start, 'extent/start', EXTENT_START, `${what}.extent.start`);
-    extent = { type: 'distance', start, distance: fields.number(given.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.extent.distance`) };
-  } else {
-    // The length comes from the targets, so there must be some: only a cut goes through all.
-    if (operation !== 'cut') fail(`${what}.extent.type: throughAll is only for the operation cut`);
-    extent = { type: 'throughAll', side: oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.extent.side`) };
-  }
-  const feature: ExtrudeFeature = {
-    ...base(o, what),
-    type: 'extrude',
-    profile,
-    extent,
-    operation,
-  };
-  if (operation === 'new') {
-    if (o.targets !== undefined) fail(`${what}.targets: nové těleso nemá cíl`);
-    return feature;
-  }
-  // Adding to several bodies would merge them; a cut may go through several (a screw hole through
-  // two bolted parts).
-  if (!Array.isArray(o.targets) || o.targets.length === 0 || (operation === 'add' && o.targets.length !== 1)) {
-    return fail(`${what}.targets: operation ${operation} needs ${operation === 'add' ? 'exactly one target body' : 'at least one target body'}`);
-  }
-  const targets = (o.targets as unknown[]).map((target, i) => string(target, `${what}.targets[${i}]`));
-  if (new Set(targets).size < targets.length) fail(`${what}.targets: a target body is listed twice`);
-  for (const target of targets) context.requireRef({ id: target, kind: 'body' }, `${what}.targets`);
-  return { ...feature, targets };
-}
-
 function sketchFeature(o: Dict, what: string, context: ValidationContext): SketchFeature {
   const { fields } = context;
   const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(context, o.plane, `${what}.plane`));
@@ -412,6 +280,7 @@ interface FeatureTypeSpec<F extends Feature> {
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane,
+  extrude,
   pattern,
   sketch: {
     info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
@@ -426,34 +295,6 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
     ],
     createsBody: () => false,
     namesFaces: false,
-  },
-  extrude: {
-    info: {
-      title: 'Vysunutí',
-      summary:
-        'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
-        'The profile is a set of regions of a sketch, or comes from a profile generator (see Profile generators).',
-      fields: [
-        ...Object.entries(GENERATORS).flatMap(([generator, spec]) =>
-          Object.entries(spec.params).flatMap(([name, param]): FieldSpec[] => (isFlag(param) ? [] : [{ path: `profile/params/${name}`, spec: param, when: { path: 'profile/generator', equals: generator } }])),
-        ),
-        { path: 'extent/start', spec: EXTENT_START, when: { path: 'extent/type', equals: 'distance' } },
-        { path: 'extent/distance', spec: EXTENT_DISTANCE, when: { path: 'extent/type', equals: 'distance' } },
-      ],
-      bodies: 'self',
-    },
-    validate: extrudeFeature,
-    refs: (f) => [...profileRefs(f.profile), ...(f.targets ?? []).map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' }))],
-    createsBody: (f, local) => local === undefined && f.operation === 'new',
-    namesFaces: true,
-    patch: {
-      fields: ['profile', 'extent', 'operation', 'targets'],
-      // změna na nové těleso ruší cíle, pokud je změna sama neuvádí
-      normalize: (merged, patch) => {
-        if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
-      },
-      removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'profile' && removableFromProfile(f.profile, rest)),
-    },
   },
 };
 

@@ -46,7 +46,23 @@ packages/
   mcp/               rozhraní pro AI: MCP server a most do běžící aplikace
 ```
 
-Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
+Modules of the app (`packages/app/src`), run by `pnpm dev`:
+
+| File | What it holds |
+|---|---|
+| `app.ts` | The class `App`: the state of the UI (the mode, the selection, the marker, what is hidden), `refresh`, the toolbar, the timeline, the pointer and key events and their dispatch, the pick in the view, the bridge to MCP. It implements the hosts below |
+| `host.ts` | `PanelHost`: what a panel or a form may use of the app. A module of a panel imports this interface and never `app.ts` |
+| `features/index.ts` | `FEATURE_UI`: one entry per feature type of the engine, complete by the compiler (how the type starts, how it is edited, its lines in the model panel, its faces, its eye on the timeline, its form), and `TOOLBAR`, the order of the buttons |
+| `features/draft.ts` | What the forms share: the mode of a draft (`DraftMode`, which carries its form), the preview and the pause of a slow one, numeric fields, the buttons |
+| `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, what a move and a click mean, what it draws) |
+| `panels/model.ts`, `parameters.ts`, `collisions.ts`, `sketch.ts` | The panels, as functions over the host; a panel that keeps state (the collisions) has it in an object the app holds |
+| `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
+| `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`) |
+| `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. `View` is its interface; a test passes its own |
+| `sketch-view.ts`, `sketch-commands.ts`, `sketch-diagnosis.ts` | The geometry of a sketch for drawing, hit tests and measuring; the commands of the drawing tools, constraints and dimensions from a selection; the texts of the diagnosis |
+| `draw.ts`, `labels.ts`, `fields.ts`, `issue-text.ts`, `dom.ts` | Shared helpers: drawing into a scene, texts, numeric fields with units, issues named for a human, the DOM |
+
+A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`).
 
 Modules of the engine (`packages/engine/src`), after the preparatory step of D36 (D37):
 

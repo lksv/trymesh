@@ -9,6 +9,10 @@ export type ViewPick =
   | { kind: 'edge'; body: Id; index: number; name: EdgeName; edgeKind: EdgeKind }
   | { kind: 'plane'; key: string; ref: PlaneRef; frame: Frame };
 
+// The same thing picked twice has the same key.
+export const pickKey = (pick: ViewPick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
+export const PICK_REACH = 7; // px: how near the pointer has to be to an edge, a point or a curve
+
 // What the status line shows. A panel that keeps the note of its answer compares it by identity.
 export interface Note {
   text: string;

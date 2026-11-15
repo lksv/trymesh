@@ -2,7 +2,7 @@
 
 The working plan for [D36](../decisions/D36-order-after-d35.md), the order of work after D35. D36 decides the order of seven steps; this file cuts them into work packages and says which package needs which, where they write to the same places, and what can run at the same time.
 
-Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type) and 1 with 4 (the registries and the shared vocabulary) are implemented, parts 3, 5 and 6 are ahead; the designs of tracks A, B and E are being written from the [briefs](briefs/README.md) on the branches `d36/design-a`, `d36/design-b` and `d36/design-e`.
+Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, parts 5 and 6 are ahead; the designs of tracks A, B and E are being written from the [briefs](briefs/README.md) on the branches `d36/design-a`, `d36/design-b` and `d36/design-e`.
 
 ## How the work goes
 

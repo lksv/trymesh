@@ -2,13 +2,9 @@
 // Drží jen stav UI (režim, výběr, značku pozice, viditelnost); vše ostatní čte z EngineState.
 import {
   type Command,
-  type CommandResult,
-  type Constraint,
-  type ConstraintExplanation,
   type EdgeKind,
   type Engine,
   type EngineState,
-  type Expr,
   type FaceName,
   type Feature,
   type FeatureResult,
@@ -16,87 +12,29 @@ import {
   type Id,
   type Issue,
   type PlaneRef,
-  type SketchDiagnosis,
-  type SketchFeature,
-  type SketchResult,
-  type Solid,
-  type Unit,
   type Vec2,
   type Vec3,
-  CONSTRAINTS,
-  MAX_POLYGON_SIDES,
   bodyOwner,
-  constraintKey,
-  constraintPath,
-  duplicateOf,
   emptyDocument,
   faceKey,
-  isDimension,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
-import { byId, download, fmt, h, markProblem } from './dom';
-import { COLOR, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
+import { byId, download, h } from './dom';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
-import type { Note, PanelHost, ViewPick } from './host';
-import { type Collisions, checkCollisions, followCollisions, pickedPair, shownCollisions } from './panels/collisions';
+import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
+import { type Collisions, checkCollisions, followCollisions, shownCollisions } from './panels/collisions';
 import { modelPanel } from './panels/model';
-import { expressionProblem, fieldText, parseField, valueText } from './fields';
-import {
-  type Anchor,
-  type DimensionVariant,
-  GEOMETRIC_KINDS,
-  arcCommands,
-  asConstruction,
-  circleCommands,
-  deleteCommands,
-  dimensionFor,
-  geometricFor,
-  lineCommands,
-  normalizeAngle,
-  pointCommands,
-  positionOf,
-  rectangleCommands,
-  DEFAULT_POLYGON,
-  type PolygonOptions,
-  polygonCommands,
-  polygonSizeKind,
-} from './sketch-commands';
-import { duplicateTwins, explanationText, freeEntities, freeSummary, markOf } from './sketch-diagnosis';
-import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
-import { type SceneModel, type View, Viewport } from './viewport';
+import { sketchPanel, updateSketchStatus } from './panels/sketch';
+import { type SceneHost, modelBounds, modelScene } from './scene';
+import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
+import { DEFAULT_POLYGON } from './sketch-commands';
+import { type View, Viewport } from './viewport';
 import { bodyName, faceLabel, featureName, issueText } from './issue-text';
 
-type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
-
 type Pick = ViewPick;
-
-interface SketchMode {
-  kind: 'sketch';
-  id: Id;
-  tool: Tool;
-  clicks: Anchor[]; // dosud zadané body rozpracovaného tvaru
-  cursor?: Anchor;
-  infer?: 'horizontal' | 'vertical';
-  selection: Id[];
-  hover?: Id;
-  hoverConstraint?: Id;
-  focus?: Id; // vazba označená v seznamu: pohled ukáže ji a vazby, ze kterých plyne
-  construction?: boolean; // kreslicí nástroje zakládají konstrukční křivky
-  hoverEdge?: Pick;
-  drag?: { point: Id; moved: boolean };
-  preview?: EngineState; // stav při tažení bodu
-  repair?: Id; // promítnutí, které další kliknutí nástrojem Promítnout opraví
-}
 type Mode = { kind: 'model' } | SketchMode | AnyDraft;
 const isDraft = (m: Mode): m is AnyDraft => m.kind === 'draft';
-
-interface SketchContext {
-  feature: SketchFeature;
-  result: SketchResult;
-  frame: Frame;
-  view: SketchView;
-}
 
 // Stejné soustavy základních rovin jako v enginu (ten je mimo výsledek přepočtu nevystavuje).
 const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
@@ -105,30 +43,15 @@ const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
   YZ: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1], normal: [1, 0, 0] },
 };
 
-// Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
-const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
-const TOOLS: [Tool, string, string][] = [
-  ['select', 'Výběr', 'Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.'],
-  ['point', 'Bod', 'Klikněte na místo bodu.'],
-  ['line', 'Úsečka', 'Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.'],
-  ['rect', 'Obdélník', 'Klikněte na dva protilehlé rohy.'],
-  ['polygon', 'Polygon', 'Click the centre and then a vertex; the number of sides is set in the panel.'],
-  ['circle', 'Kružnice', 'Klikněte na střed a pak na bod obvodu.'],
-  ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
-  ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
-];
-const PICK_REACH = 7; // px
-const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
-
-export class App implements PanelHost {
+export class App implements SketchHost, SceneHost {
   private readonly viewport: View;
   private mode: Mode = { kind: 'model' };
   selected?: Pick; // výběr v pohledu (režim modelu)
-  private hover?: Pick;
+  hover?: Pick;
   selectedFeature?: Id; // výběr na časové ose
   marker: Id | null = null; // feature, za kterou se vkládá; null = konec osy
   private markerIndex = 0; // kde značka naposledy ležela, pro případ, že její feature zmizí
-  private readonly hidden = new Set<Id>();
+  readonly hidden = new Set<Id>();
   private showBasePlanes = true;
   pending?: Feature['type']; // a new feature of this type waits for its plane to be picked
   private readonly collisions: Collisions = {};
@@ -136,10 +59,9 @@ export class App implements PanelHost {
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   readonly drafting: DraftState = { cost: 0, confirming: false };
-  private polygon: PolygonOptions = DEFAULT_POLYGON; // what the polygon tool draws; remembered between sketches
+  readonly sketching: SketchState = { polygon: DEFAULT_POLYGON }; // remembered between sketches
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
-  private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
 
   // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
   constructor(readonly engine: Engine, view?: View) {
@@ -177,7 +99,7 @@ export class App implements PanelHost {
     return bodyName(body, this.featureNames);
   }
   // A body is hidden at the feature that created it; the copies of a pattern all at once.
-  private bodyHidden(body: Id): boolean {
+  bodyHidden(body: Id): boolean {
     return this.hidden.has(bodyOwner(body).feature);
   }
 
@@ -307,17 +229,7 @@ export class App implements PanelHost {
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
     if (isDraft(this.mode) && !this.drafting.confirming) updatePreview(this);
-    if (this.mode.kind === 'sketch') {
-      const context = this.sketchContext();
-      const view = context?.view;
-      this.mode.selection = this.mode.selection.filter((id) => view && kindOf(view, id));
-      this.mode.clicks = this.mode.clicks.filter((a) => !a.snap || (view && kindOf(view, a.snap.id)));
-      if (this.mode.repair && !context?.feature.external[this.mode.repair]) this.mode.repair = undefined;
-      // místo pod kurzorem se po změně skici počítá znovu: přichycení mohlo vzniknout nebo zaniknout
-      this.mode.cursor = undefined;
-      this.mode.infer = undefined;
-      this.mode.hover = undefined;
-    }
+    if (this.mode.kind === 'sketch') settleSketch(this.mode, this.sketchContext());
     // Výběr v pohledu platí jen pro to, co je právě vidět (jiný stav modelu, skrytí, undo).
     this.hover = undefined;
     if (this.selected && !this.stillThere(this.selected)) this.selected = undefined;
@@ -410,7 +322,7 @@ export class App implements PanelHost {
       );
     } else if (m.kind === 'sketch') {
       groups.push(
-        group(...TOOLS.map(([tool, label, hint]) => button(label, () => this.setTool(tool), { title: hint, active: m.tool === tool }))),
+        group(...TOOLS.map(([tool, label, hint]) => button(label, () => setTool(this, tool), { title: hint, active: m.tool === tool }))),
         group(
           button('Konstrukčně', () => ((m.construction = !m.construction), this.say(m.construction ? 'Nové křivky budou konstrukční: pomáhají s vazbami, ale netvoří profil.' : 'Nové křivky budou běžné.'), this.refresh()), {
             title: 'Kreslicí nástroje zakládají konstrukční (pomocné) křivky',
@@ -547,7 +459,7 @@ export class App implements PanelHost {
   renderPanel(): void {
     const m = this.mode;
     const panel = byId('panel');
-    if (m.kind === 'sketch') panel.replaceChildren(...this.sketchPanel(m));
+    if (m.kind === 'sketch') panel.replaceChildren(...sketchPanel(this, m));
     else if (isDraft(m)) panel.replaceChildren(...m.form.panel(m, this));
     else panel.replaceChildren(...modelPanel(this, this.collisions));
   }
@@ -583,53 +495,18 @@ export class App implements PanelHost {
 
   // ---------------------------------------------------------------- výběr v pohledu
 
-  private modelSize(state: EngineState): { min: Vec3; max: Vec3 } {
-    const min: Vec3 = [Infinity, Infinity, Infinity];
-    const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-    const grow = (p: ArrayLike<number>, offset = 0) => {
-      for (let axis = 0; axis < 3; axis++) {
-        min[axis] = Math.min(min[axis], p[offset + axis]);
-        max[axis] = Math.max(max[axis], p[offset + axis]);
-      }
-    };
-    for (const body of Object.values(state.evaluation.bodies)) {
-      let box = this.boxes.get(body.solid);
-      if (!box) {
-        const [lo, hi]: [Vec3, Vec3] = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
-        for (let i = 0; i < body.solid.positions.length; i++) {
-          lo[i % 3] = Math.min(lo[i % 3], body.solid.positions[i]);
-          hi[i % 3] = Math.max(hi[i % 3], body.solid.positions[i]);
-        }
-        box = { min: lo, max: hi };
-        this.boxes.set(body.solid, box);
-      }
-      grow(box.min);
-      grow(box.max);
-    }
-    for (const f of state.document.features) {
-      const result = state.evaluation.features[f.id];
-      if (!result?.plane || !result.sketch) continue;
-      for (const p of Object.values(result.sketch.points)) grow(toWorld(result.plane, p.x, p.y));
-    }
-    if (min[0] > max[0]) return { min: [-20, -20, -20], max: [20, 20, 20] };
-    // prázdná skica nebo drobný model: pohled se nepřibližuje víc než na 40 mm
-    const pad = (40 - Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2])) / 2;
-    if (pad > 0) return { min: [min[0] - pad, min[1] - pad, min[2] - pad], max: [max[0] + pad, max[1] + pad, max[2] + pad] };
-    return { min, max };
-  }
-
   planeSize(state: EngineState): number {
-    const { min, max } = this.modelSize(state);
+    const { min, max } = modelBounds(state);
     return Math.max(20, 0.7 * Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]));
   }
 
   private fit(): void {
-    const { min, max } = this.modelSize(this.view());
+    const { min, max } = modelBounds(this.view());
     this.viewport.fit(min, max);
   }
 
   // Roviny, které jsou vidět a dají se vybrat.
-  private planes(state: EngineState): Extract<Pick, { kind: 'plane' }>[] {
+  planes(state: EngineState): Extract<Pick, { kind: 'plane' }>[] {
     const out: Extract<Pick, { kind: 'plane' }>[] = [];
     if (this.showBasePlanes) for (const plane of ['XY', 'XZ', 'YZ'] as const) out.push({ kind: 'plane', key: plane, ref: { kind: 'base', plane }, frame: BASE[plane] });
     for (const f of state.document.features) {
@@ -641,7 +518,7 @@ export class App implements PanelHost {
   }
 
   // Co je pod kurzorem: hrana má přednost před stěnou, stěna před rovinou.
-  private pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
+  pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
     const state = this.view();
     const hit = this.viewport.pickBody(event.clientX, event.clientY);
     if (want.edges) {
@@ -710,20 +587,19 @@ export class App implements PanelHost {
     // Alt/Option + tažení patří pohledu (otáčení bez myši), ne výběru ani kreslení.
     this.down = { x: event.clientX, y: event.clientY, button: event.altKey ? -1 : event.button };
     const m = this.mode;
-    if (this.down.button !== 0 || m.kind !== 'sketch' || m.tool !== 'select') return;
-    const context = this.sketchContext();
-    const anchor = context && this.anchorAt(event, context);
-    const id = anchor?.snap?.kind === 'point' ? anchor.snap.id : undefined;
-    if (id && context?.view.points.get(id)?.own) {
-      m.drag = { point: id, moved: false };
-      this.viewport.element.setPointerCapture(event.pointerId);
-    }
+    if (this.down.button !== 0 || m.kind !== 'sketch') return;
+    if (sketchDown(this, m, event)) this.viewport.element.setPointerCapture(event.pointerId);
   }
 
   private onMove(event: PointerEvent): void {
     const m = this.mode;
     if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // otáčení a posun pohledu
-    if (m.kind === 'sketch') return this.sketchMove(event, m);
+    if (m.kind === 'sketch') {
+      const moved = sketchMove(this, m, event, this.down);
+      // při tažení se panel nepřestavuje, jen stav určenosti
+      if (moved === 'drag') updateSketchStatus(this, m);
+      return moved ? this.renderScene() : undefined;
+    }
     // a form that asks for no pick of the view gets the bare event
     if (isDraft(m) && !m.form.picks) return m.form.hover?.(m, event, undefined, this) ? this.renderScene() : undefined;
     const hover = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
@@ -740,16 +616,10 @@ export class App implements PanelHost {
       const drag = m.drag;
       m.drag = undefined;
       this.viewport.element.releasePointerCapture(event.pointerId);
-      if (drag.moved) {
-        const p = this.sketchPlanePoint(event);
-        m.preview = undefined;
-        this.invalidate();
-        if (!p || !this.run({ type: 'dragPoint', sketch: m.id, point: drag.point, x: p[0], y: p[1] })) this.refresh();
-        return;
-      }
+      if (drag.moved) return dropPoint(this, m, drag.point, event);
     }
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
-    if (m.kind === 'sketch') return this.sketchClick(event, m);
+    if (m.kind === 'sketch') return sketchClick(this, m, event);
     // a form gets its clicks from the app: the bare event, or what it asked to be picked
     if (isDraft(m) && !m.form.picks) return m.form.click?.(m, event, undefined, this);
     const pick = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
@@ -785,11 +655,7 @@ export class App implements PanelHost {
     } else if (event.key === 'Escape') {
       if (this.cancelDrag()) this.refresh();
       else if (m.kind === 'sketch') {
-        if (m.clicks.length > 0) m.clicks = [];
-        else if (m.repair) m.repair = undefined;
-        else if (m.tool !== 'select') m.tool = 'select';
-        else if (m.selection.length > 0) m.selection = [];
-        else m.focus = undefined;
+        sketchEscape(m);
         this.refresh();
       } else if (m.kind === 'model') {
         this.pending = undefined;
@@ -798,7 +664,7 @@ export class App implements PanelHost {
       } else this.setMode({ kind: 'model' });
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && m.kind === 'sketch') {
       event.preventDefault();
-      this.deleteSelection(m);
+      deleteSelection(this, m);
     }
   }
 
@@ -839,7 +705,7 @@ export class App implements PanelHost {
 
   enterSketch(id: Id): void {
     this.selectedFeature = id;
-    this.setMode({ kind: 'sketch', id, tool: 'select', clicks: [], selection: [] });
+    this.setMode(sketchMode(id));
     const frame = this.sketchContext()?.frame;
     if (frame) {
       this.viewport.lookAt(frame);
@@ -853,618 +719,30 @@ export class App implements PanelHost {
     this.say('Skica dokončena.');
   }
 
-  private setTool(tool: Tool): void {
-    if (this.mode.kind !== 'sketch') return;
-    Object.assign(this.mode, { tool, clicks: [], cursor: undefined, infer: undefined, hover: undefined, hoverEdge: undefined, repair: undefined });
-    this.say(TOOLS.find(([name]) => name === tool)?.[2] ?? '');
-    this.refresh();
+  // ----- what the sketch mode uses of the app (SketchHost)
+  get sketch(): SketchMode | undefined {
+    return this.mode.kind === 'sketch' ? this.mode : undefined;
   }
-
-  private sketchContext(): SketchContext | undefined {
+  sketchContext(): SketchContext | undefined {
     if (this.contextCache !== undefined) return this.contextCache ?? undefined;
     this.contextCache = null;
     const m = this.mode;
     if (m.kind !== 'sketch') return undefined;
-    const state = this.view();
-    const feature = state.document.features.find((f) => f.id === m.id);
-    const result = state.evaluation.features[m.id];
-    if (feature?.type !== 'sketch' || !result?.sketch || !result.plane) return undefined;
-    this.contextCache = { feature, result: result.sketch, frame: result.plane, view: sketchView(feature, result.sketch) };
-    return this.contextCache;
+    this.contextCache = sketchContextOf(this.view(), m.id) ?? null;
+    return this.contextCache ?? undefined;
   }
-
-  private sketchPlanePoint(event: { clientX: number; clientY: number }): Vec2 | undefined {
-    const frame = this.sketchContext()?.frame;
-    return frame && this.planePoint(event, frame)?.at;
-  }
-
-  // Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou.
-  private anchorAt(event: { clientX: number; clientY: number }, context: SketchContext): Anchor | undefined {
-    const p = this.planePoint(event, context.frame)?.at;
-    if (!p) return undefined;
-    const reach = PICK_REACH * this.viewport.pixelSize();
-    const point = hitPoint(context.view, p, reach);
-    if (point) return { at: point.at, snap: { kind: 'point', id: point.id } };
-    const curve = hitCurve(context.view, p, reach);
-    if (curve) return { at: closestOn(curve.shape, p), snap: { kind: 'curve', id: curve.id } };
-    return { at: p };
-  }
-
-  private sketchMove(event: PointerEvent, m: SketchMode): void {
-    const context = this.sketchContext();
-    if (!context) return;
-    if (m.drag) {
-      const p = this.planePoint(event, context.frame)?.at;
-      const down = this.down;
-      if (!p || !down) return;
-      if (!m.drag.moved && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= 4) return;
-      m.drag.moved = true;
-      // náhled počítá jen po upravovanou skicu a dokument nemění
-      const result = this.engine.preview({ type: 'dragPoint', sketch: m.id, point: m.drag.point, x: p[0], y: p[1] }, m.id);
-      if (!result.ok) return;
-      m.preview = result.state;
-      this.invalidate();
-      this.updateSketchStatus();
-      return this.renderScene();
-    }
-    if (m.tool === 'project') {
-      const edge = this.pick(event, { edges: true });
-      if (pickKey(edge) === pickKey(m.hoverEdge)) return;
-      m.hoverEdge = edge;
-      return this.renderScene();
-    }
-    const anchor = this.anchorAt(event, context);
-    m.hover = m.tool === 'select' ? anchor?.snap?.id : undefined;
-    m.infer = undefined;
-    // odvozená vazba: volný konec úsečky skoro vodorovně nebo svisle od začátku
-    if (anchor && !anchor.snap && m.tool === 'line' && m.clicks.length === 1) {
-      const from = positionOf(context.view, m.clicks[0]);
-      const reach = PICK_REACH * this.viewport.pixelSize();
-      const [dx, dy] = [Math.abs(anchor.at[0] - from[0]), Math.abs(anchor.at[1] - from[1])];
-      if (dy <= reach && dx > reach) [anchor.at, m.infer] = [[anchor.at[0], from[1]], 'horizontal'];
-      else if (dx <= reach && dy > reach) [anchor.at, m.infer] = [[from[0], anchor.at[1]], 'vertical'];
-    }
-    m.cursor = anchor;
-    this.renderScene();
-  }
-
-  private sketchClick(event: PointerEvent, m: SketchMode): void {
-    const context = this.sketchContext();
-    if (!context) return;
-    if (m.tool === 'project') return this.projectEdge(event, m, context);
-    // místo kliknutí včetně odvozené vazby spočítal poslední pohyb myši; bez něj se dopočítá
-    const anchor = m.cursor && m.tool !== 'select' ? m.cursor : this.anchorAt(event, context);
-    if (!anchor) return;
-    const { view } = context;
-    const batch = (commands: Command[] | undefined): boolean => commands !== undefined && commands.length > 0 && this.run({ type: 'batch', commands: m.construction ? asConstruction(commands) : commands });
-
-    if (m.tool === 'select') {
-      const id = anchor.snap?.id;
-      if (!id) m.selection = event.shiftKey ? m.selection : [];
-      else if (!event.shiftKey) m.selection = [id];
-      else m.selection = m.selection.includes(id) ? m.selection.filter((other) => other !== id) : [...m.selection, id];
-      this.renderPanel();
-      return this.renderScene();
-    }
-    if (m.tool === 'point') {
-      batch(pointCommands(m.id, view, anchor, this.newId));
-      return;
-    }
-    const needed = m.tool === 'arc' ? 3 : 2;
-    if (m.clicks.length + 1 < needed) {
-      m.clicks = [...m.clicks, anchor];
-      return this.renderScene();
-    }
-    const clicks = m.clicks;
-    m.clicks = [];
-    if (m.tool === 'line') {
-      const line = lineCommands(m.id, view, clicks[0], anchor, this.newId, m.infer);
-      // řetěz pokračuje z konce, dokud se nenapojí na existující bod
-      if (line && batch(line.commands) && anchor.snap?.kind !== 'point' && this.mode === m) m.clicks = [{ at: anchor.at, snap: { kind: 'point', id: line.end } }];
-    } else if (m.tool === 'rect') batch(rectangleCommands(m.id, view, clicks[0], anchor, this.newId));
-    else if (m.tool === 'polygon') batch(polygonCommands(m.id, view, clicks[0], anchor, this.polygon, this.newId));
-    else if (m.tool === 'circle') batch(circleCommands(m.id, view, clicks[0], anchor, this.newId));
-    else batch(arcCommands(m.id, view, clicks[0], clicks[1], anchor, this.newId));
-    m.infer = undefined;
-    this.renderScene();
-  }
-
-  // Promítne hranu tělesa; je-li vybrané jedno promítnutí, opraví ho (ID zůstane, vazby drží).
-  private projectEdge(event: PointerEvent, m: SketchMode, context: SketchContext): void {
-    const edge = this.pick(event, { edges: true });
-    if (edge?.kind !== 'edge') return;
-    if (edge.edgeKind !== 'line' && edge.edgeKind !== 'circle') return this.say('Promítnout jde jen hrana, která je úsečka nebo kružnice.', true);
-    const ref = { type: 'edge' as const, body: edge.body, edge: edge.name, kind: edge.edgeKind };
-    const repaired = m.repair ?? (m.selection.length === 1 && context.feature.external[m.selection[0]] ? m.selection[0] : undefined);
-    if (repaired) {
-      if (this.run({ type: 'updateExternal', sketch: m.id, id: repaired, ref }, 'Promítnutí opraveno.')) m.repair = undefined;
-    } else this.run({ type: 'addExternal', sketch: m.id, id: this.newId('x'), ref }, 'Hrana promítnuta.');
-  }
-
-  private addConstraints(m: SketchMode, constraints: Constraint[] | undefined): void {
-    if (!constraints) return;
-    // Vazbu, kterou skica už má, engine odmítne; ze sady se přidá jen to, co chybí.
-    const feature = this.sketchContext()?.feature;
-    const fresh = feature ? constraints.filter((c) => duplicateOf(feature, c) === undefined) : constraints;
-    if (fresh.length === 0) return this.say(constraints.some(isDimension) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
-    constraints = fresh;
-    const commands = (list: Constraint[]): Command => ({ type: 'batch', commands: list.map((constraint): Command => ({ type: 'addConstraint', sketch: m.id, id: this.newId('k'), constraint })) });
-    const result: CommandResult = this.engine.execute(commands(constraints));
-    if (result.ok) return this.say('Vazba přidána.');
-    // kótu jen mezi pevnými entitami engine odmítne jako řídicí; nabídne se jako referenční
-    const reference = constraints.map((c) => (isDimension(c) ? { ...c, driving: false } : c));
-    // stejná referenční kóta už ve skice je: engine duplicity hlídá jen u řídicích vazeb
-    const keys = new Set(Object.values(feature?.constraints ?? {}).map(constraintKey));
-    if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return this.say('Tuhle kótu už skica má.', true);
-    if (constraints.some(isDimension) && this.engine.execute(commands(reference)).ok) return this.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
-    this.say(result.error.message, true);
-  }
-
-  // The options of the polygon tool, shown while the tool is active: the number of sides and
-  // whether the drawn size gets a dimension (rounded to 0.01 mm, like a dimension added by hand).
-  private polygonOptions(): HTMLElement[] {
-    const set = (change: Partial<PolygonOptions>) => {
-      this.polygon = { ...this.polygon, ...change };
-      this.renderPanel();
-      this.renderScene();
-    };
-    const sides = h('input', {
-      type: 'number',
-      min: '3',
-      max: String(MAX_POLYGON_SIDES),
-      step: '1',
-      value: String(this.polygon.sides),
-      onchange: () => {
-        const count = Number(sides.value);
-        // a number outside the range of the tool leaves the count as it was
-        set(Number.isInteger(count) && count >= 3 && count <= MAX_POLYGON_SIDES ? { sides: count } : {});
-      },
-    });
-    const kind = polygonSizeKind(this.polygon);
-    const option = (value: PolygonOptions['sizeKind'], label: string, disabled = false) => h('option', { value, textContent: label, selected: kind === value, disabled });
-    const size = h(
-      'select',
-      { onchange: () => set({ sizeKind: size.value as PolygonOptions['sizeKind'] }) },
-      option('none', 'No dimension'),
-      option('circumscribed', 'Diameter of the circumscribed circle'),
-      option('acrossFlats', 'Size across flats (even number of sides)', this.polygon.sides % 2 === 1),
-    );
-    return [
-      h('h2', {}, 'Polygon'),
-      h('label', {}, `Sides (3 to ${MAX_POLYGON_SIDES})`, sides),
-      h('label', {}, 'Dimension of the size', size),
-      h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded.'),
-    ];
-  }
-
-  // Smaže vybrané entity; s křivkou zmizí i její body, které už nic dalšího nepoužívá.
-  private deleteSelection(m: SketchMode): void {
-    const context = this.sketchContext();
-    if (!context || m.selection.length === 0) return;
-    const commands = deleteCommands(m.id, context.feature, context.view, m.selection);
-    if (commands.length === 0) return this.say('Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
-    m.selection = [];
-    this.run({ type: 'batch', commands }, 'Smazáno.');
-  }
-
-  private sketchStatus(m: SketchMode): HTMLElement[] {
-    const context = this.sketchContext();
-    const result = this.view().evaluation.features[m.id];
-    if (!context) return [h('p', { className: 'issue error' }, result?.status === 'suppressed' ? 'Skica je potlačená.' : 'Skicu nelze zobrazit: její rovina není k dispozici.'), ...this.issues(result)];
-    const r = context.result;
-    const unsolved = result?.warnings.some((w) => w.code === 'sketchConflict') === true; // stupně volnosti pak nic neříkají
-    const empty = Object.keys(context.feature.points).length + Object.keys(context.feature.curves).length === 0;
-    const state =
-      r.conflicting.length > 0
-        ? ['Vazby jsou v konfliktu', 'error']
-        : unsolved
-          ? ['Skicu se nepodařilo vyřešit', 'error']
-          : empty
-            ? ['Prázdná skica', 'open']
-            : r.degreesOfFreedom === 0
-              ? ['Plně určená', 'ok']
-              : [`Stupně volnosti: ${r.degreesOfFreedom}`, 'open'];
-    return [
-      h('p', { className: `badge ${state[1]}` }, state[0]),
-      r.valid ? h('p', { className: 'hint' }, `Uzavřených oblastí: ${r.regions.length}`) : h('p', { className: 'issue error' }, 'Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků.'),
-      ...this.issues(result).filter((element) => !element.classList.contains('error') || r.valid),
-    ];
-  }
-
-  // Při tažení se panel nepřestavuje, jen stav určenosti.
-  private updateSketchStatus(): void {
-    if (this.mode.kind !== 'sketch') return;
-    document.getElementById('sketch-status')?.replaceChildren(...this.sketchStatus(this.mode));
-  }
-
-  // Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
-  // pohledu nepočítalo znovu.
-  private explained?: { diagnosis: SketchDiagnosis; id: Id; value: ConstraintExplanation };
-  private explain(sketch: Id, id: Id, diagnosis: SketchDiagnosis): ConstraintExplanation {
-    if (this.explained?.diagnosis !== diagnosis || this.explained.id !== id) this.explained = { diagnosis, id, value: this.engine.explainConstraint(sketch, id) };
-    return this.explained.value;
-  }
-
-  // Souhrn diagnostiky pod stavem skici: vazby navíc a co se ještě může hýbat.
-  private diagnosisSummary(m: SketchMode, d: SketchDiagnosis): HTMLElement[] {
-    const out: HTMLElement[] = [];
-    const twins = duplicateTwins(d);
-    const removeTwins = (): HTMLElement => {
-      const commands = twins.map((id): Command => ({ type: 'removeConstraint', sketch: m.id, id }));
-      return h('div', { className: 'buttons' }, h('button', { textContent: `Smazat duplicity (${twins.length})`, onclick: () => this.run({ type: 'batch', commands }, twins.length === 1 ? 'Duplicitní vazba smazána.' : 'Duplicitní vazby smazány.') }));
-    };
-    if (d.status !== 'solved') {
-      // duplicity engine hlásí i u nevyřešené skici; jejich smazání může konflikt odstranit
-      if (twins.length > 0) out.push(h('p', { className: 'issue warning' }, `Duplicitní vazby: ${twins.length}. V seznamu jsou označené.`), removeTwins());
-      return out;
-    }
-    if (d.removable.length > 0) {
-      out.push(
-        h('p', { className: 'issue warning' }, `Vazby navíc: ${d.removable.length}${twins.length > 0 ? `, z toho duplicity: ${twins.length}` : ''}. V seznamu jsou označené; kliknutím na vazbu se ukáže, z čeho plyne.`),
-      );
-      if (twins.length > 0) out.push(removeTwins());
-    }
-    const free = freeSummary(d);
-    if (free !== undefined) {
-      const select = d.free.map((entity) => entity.id);
-      out.push(
-        h('p', { className: 'hint' }, free),
-        h('div', { className: 'buttons' }, h('button', { textContent: 'Vybrat volné', title: 'Vybere volné body a kružnice s volným poloměrem', onclick: () => ((m.selection = select), this.refresh()) })),
-      );
-    }
-    return out;
-  }
-
-  private sketchPanel(m: SketchMode): HTMLElement[] {
-    const context = this.sketchContext();
-    const out: HTMLElement[] = [h('h2', {}, `Skica: ${this.nameOf(m.id)}`), h('div', { id: 'sketch-status' }, ...this.sketchStatus(m))];
-    if (!context) return out;
-    const { feature, view, result } = context;
-    const action = (label: string, enabled: boolean, run: () => void, title = '') => h('button', { textContent: label, disabled: !enabled, title, onclick: run });
-    const diagnosis = this.engine.diagnoseSketch(m.id);
-    if (m.focus && !feature.constraints[m.focus]) m.focus = undefined;
-    const explanation = m.focus ? this.explain(m.id, m.focus, diagnosis) : undefined;
-    const label = (id: Id): string => (feature.constraints[id] ? `${constraintName(feature.constraints[id].type)} (${operandsOf(feature.constraints[id]).join(', ')})` : id);
-    const parameterNames = this.doc.parameters.map((p) => p.name);
-    out.push(...this.issues(this.view().evaluation.features[m.id]).filter((element) => element.textContent?.startsWith('Field ')));
-    out.push(...this.diagnosisSummary(m, diagnosis));
-    if (m.tool === 'polygon') out.push(...this.polygonOptions());
-
-    const dimension = (label: string, variant: DimensionVariant, title: string) => {
-      const d = dimensionFor(variant, view, m.selection);
-      return action(label, d !== undefined, () => this.addConstraints(m, d && [d]), title);
-    };
-    const ownCurves = m.selection.filter((id) => feature.curves[id]);
-    const construction = ownCurves.length > 0 && ownCurves.every((id) => feature.curves[id].construction);
-    out.push(
-      h('h2', {}, `Výběr (${m.selection.length})`),
-      h(
-        'div',
-        { className: 'buttons' },
-        // tlačítko pro každou geometrickou vazbu z katalogu enginu; nápověda je její popis
-        ...GEOMETRIC_KINDS.map((kind) => {
-          const constraints = geometricFor(kind, view, m.selection);
-          return action(constraintName(kind), constraints !== undefined, () => this.addConstraints(m, constraints), CONSTRAINTS[kind].summary);
-        }),
-      ),
-      h(
-        'div',
-        { className: 'buttons' },
-        dimension('Kóta', 'auto', 'Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr'),
-        dimension('Kóta ↔', 'horizontal', 'Vodorovná vzdálenost dvou bodů nebo konců úsečky'),
-        dimension('Kóta ↕', 'vertical', 'Svislá vzdálenost dvou bodů nebo konců úsečky'),
-      ),
-      h(
-        'div',
-        { className: 'buttons' },
-        action(construction ? 'Běžná křivka' : 'Konstrukční', ownCurves.length > 0, () =>
-          this.run({ type: 'batch', commands: ownCurves.map((id): Command => ({ type: 'setConstruction', sketch: m.id, id, construction: !construction })) }),
-        ),
-        action('Smazat', m.selection.length > 0, () => this.deleteSelection(m), 'Delete'),
-      ),
-    );
-
-    // vazby, které solver nedostal, protože odkazují na geometrii, kterou nešlo promítnout
-    const skipped = new Set((this.view().evaluation.features[m.id]?.warnings ?? []).flatMap((w) => (w.code !== 'sketchConflict' && Array.isArray(w.refs) ? w.refs.slice(1) : [])));
-    const rows = Object.entries(feature.constraints).flatMap(([id, c]) => {
-      const mark = markOf(diagnosis, id);
-      const tone = result.conflicting.includes(id) ? 'conflict' : mark ? 'redundant' : '';
-      const row = h('div', {
-        className: `constraint clickable ${tone} ${m.focus === id ? 'focus' : ''} ${explanation?.impliedBy.includes(id) ? 'implies' : ''}`,
-        title:
-          tone === 'conflict'
-            ? 'V konfliktu s jinou vazbou'
-            : mark === 'duplicate'
-              ? 'Duplicita: stejnou vazbu už skica má'
-              : mark === 'surplus'
-                ? 'Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých.'
-                : 'Kliknutím se ukáže, jestli vazba plyne z jiných',
-        onmouseenter: () => ((m.hoverConstraint = id), this.renderScene()),
-        onmouseleave: () => ((m.hoverConstraint = undefined), this.renderScene()),
-        // klik na řádek (ne na jeho pole a tlačítka) vazbu označí nebo označení zruší
-        onclick: (event: Event) => {
-          if ((event.target as HTMLElement).closest('input, button, label')) return;
-          m.focus = m.focus === id ? undefined : id;
-          this.renderPanel();
-          this.renderScene();
-        },
-      });
-      const tag = mark === 'duplicate' ? ' · duplicita' : mark === 'surplus' ? ' · navíc' : '';
-      row.append(h('span', { className: 'name' }, `${constraintName(c.type)} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
-      if (isDimension(c)) {
-        const unit: Unit = CONSTRAINTS[c.type].values?.value.unit ?? 'mm';
-        const shown = c.driving ? c.value : (result.measurements[id] ?? measure(c, view) ?? c.value);
-        const expression: Expr | undefined = c.driving ? feature.expressions?.[constraintPath(id)] : undefined;
-        const input = h('input', {
-          className: 'value',
-          value: fieldText(expression ?? shown, unit),
-          disabled: !c.driving,
-          title: expression ? `= ${valueText(shown, unit)}` : unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : 'mm, or an expression',
-          oninput: () => {
-            const parsed = parseField(input.value, unit);
-            markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
-          },
-          onchange: () => {
-            // an empty field does not change the value; an angle number is wrapped into the range the engine accepts
-            const parsed = parseField(input.value, unit);
-            const value = typeof parsed === 'number' && c.type === 'angle' ? normalizeAngle(parsed) : parsed;
-            if (value === undefined || !this.run({ type: 'setConstraintValue', sketch: m.id, id, value }, 'Hodnota kóty změněna.')) this.refresh();
-          },
-        });
-        row.append(
-          input,
-          h(
-            'label',
-            { className: 'check', title: 'Řídicí kóta geometrii určuje, referenční ji jen měří' },
-            h('input', {
-              type: 'checkbox',
-              checked: c.driving,
-              // referenční kóta se při přepnutí stane řídicí s právě naměřenou hodnotou
-              onchange: () => !this.run({ type: 'setConstraintValue', sketch: m.id, id, driving: !c.driving, ...(c.driving ? {} : { value: shown }) }) && this.refresh(),
-            }),
-            'řídicí',
-          ),
-        );
-      } else {
-        // Named values of a constraint that is not a dimension (the coordinates of a fixed point):
-        // numeric fields of the sketch, changed one at a time by setField.
-        for (const [name, spec] of Object.entries(CONSTRAINTS[c.type].values ?? {})) {
-          const path = constraintPath(id, name);
-          const current = (c as unknown as Record<string, number>)[name];
-          const expression: Expr | undefined = feature.expressions?.[path];
-          const input = h('input', {
-            className: 'value',
-            value: fieldText(expression ?? current, spec.unit),
-            title: expression ? `= ${valueText(current, spec.unit)}` : `${spec.unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : `${spec.unit}, or an expression`}`,
-            oninput: () => {
-              const parsed = parseField(input.value, spec.unit);
-              markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
-            },
-            onchange: () => {
-              // an empty field does not change the value
-              const value = parseField(input.value, spec.unit);
-              if (value === undefined || !this.run({ type: 'setField', feature: m.id, path, value }, `${constraintName(c.type)}: ${spec.title} changed.`)) this.refresh();
-            },
-          });
-          row.append(h('label', { className: 'named' }, spec.title, input));
-        }
-      }
-      row.append(h('button', { className: 'icon', textContent: '✕', title: 'Smazat vazbu', onclick: () => this.run({ type: 'removeConstraint', sketch: m.id, id }) }));
-      // Vysvětlení je hned pod označeným řádkem: řádky nad ním se nehnou a druhé kliknutí
-      // na stejném místě označení zruší.
-      return m.focus === id && explanation ? [row, h('p', { className: 'explain' }, explanationText(c, id, explanation, diagnosis, label, skipped.has(id)))] : [row];
-    });
-    out.push(h('h2', {}, `Vazby a kóty (${Object.keys(feature.constraints).length})`));
-    out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
-
-    // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
-    const warnings = this.view().evaluation.features[m.id]?.warnings ?? [];
-    const projections = Object.entries(feature.external).map(([id, ref]) => {
-      const problem = warnings.find((w) => w.code !== 'sketchConflict' && Array.isArray(w.refs) && w.refs[0] === id);
-      return h(
-        'div',
-        {
-          className: `constraint ${problem ? 'conflict' : ''} ${m.repair === id ? 'repair' : ''}`,
-          title: problem?.message ?? '',
-          onmouseenter: () => ((m.hover = id), this.renderScene()),
-          onmouseleave: () => ((m.hover = undefined), this.renderScene()),
-        },
-        h('span', { className: 'name' }, `${ref.kind === 'line' ? 'Úsečka' : 'Kružnice'} `, h('small', {}, `${id} · ${this.bodyName(ref.body)}${view.curves.has(id) ? '' : ' · bez geometrie'}`)),
-        h('button', {
-          className: 'icon',
-          textContent: '↻',
-          title: 'Promítnout znovu: klikněte potom na novou hranu tělesa',
-          onclick: () => {
-            this.setTool('project');
-            m.repair = id;
-            this.say('Klikněte na hranu, která má promítnutí nahradit (Esc ruší).');
-            this.renderPanel();
-          },
-        }),
-        h('button', { className: 'icon', textContent: '✕', title: 'Zrušit promítnutí', onclick: () => this.run({ type: 'removeExternal', sketch: m.id, id }, 'Promítnutí zrušeno.') }),
-      );
-    });
-    if (projections.length > 0) out.push(h('h2', {}, `Promítnutá geometrie (${projections.length})`), ...projections);
-    return out;
+  pixelSize(): number {
+    return this.viewport.pixelSize();
   }
 
   // ---------------------------------------------------------------- scéna
 
+  // The scene of the model, then what the open sketch or the open form adds to it.
   renderScene(): void {
-    const state = this.view();
-    const { evaluation, document: doc } = state;
     const m = this.mode;
-    const model: SceneModel = { bodies: [], lines: [], points: [], fills: [], faces: [], labels: [] };
-    const highlighted = this.feature(this.selectedFeature);
-
-    // tělesa a jejich obrysy
-    const outline: number[] = [];
-    for (const [id, body] of Object.entries(evaluation.bodies)) {
-      if (this.bodyHidden(id)) continue;
-      model.bodies.push({ id, solid: body.solid });
-      for (const edge of body.edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) outline.push(edge.segments[i]);
-      // the faces of the selected extrusion, or of the copies the selected pattern made
-      const owns = highlighted && m.kind === 'model' ? uiOf(highlighted.type).ownsFace : undefined;
-      if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
-    }
-    model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
-    // the two bodies of the picked collision
-    const clash = m.kind === 'model' ? pickedPair(this.collisions, this) : undefined;
-    for (const [id, color] of clash ? ([[clash.a, COLOR.select], [clash.b, COLOR.clash]] as [Id, number][]) : []) {
-      const body = evaluation.bodies[id];
-      if (body && !this.bodyHidden(id)) for (const face of body.faces) model.faces.push({ solid: body.solid, faceId: face.id, color, opacity: 0.45 });
-    }
-
-    // roviny
-    const square = planeSquare(this.planeSize(state));
-    for (const plane of this.planes(state)) {
-      const active = pickKey(plane) === pickKey(this.selected) || (plane.ref.kind === 'plane' && plane.ref.feature === this.selectedFeature);
-      const hovered = pickKey(plane) === pickKey(this.hover);
-      model.fills.push({ frame: plane.frame, loops: [square], color: active ? COLOR.select : hovered ? COLOR.hover : COLOR.plane, opacity: active || hovered ? 0.25 : 0.08 });
-      model.lines.push({ segments: loopSegments(plane.frame, square), color: active ? COLOR.select : hovered ? COLOR.hover : COLOR.plane, width: 1 });
-    }
-
-    // skici mimo tu, která se právě upravuje
-    for (const f of doc.features) {
-      const result = evaluation.features[f.id];
-      if (f.type !== 'sketch' || this.hidden.has(f.id) || !result?.sketch || !result.plane || (m.kind === 'sketch' && m.id === f.id)) continue;
-      const frame = result.plane;
-      const [solid, dashed]: number[][] = [[], []];
-      for (const curve of sketchView(f, result.sketch).curves.values()) if (curve.own) pushPolyline(curve.construction ? dashed : solid, frame, polyline(curve.shape));
-      const color = f.id === this.selectedFeature ? COLOR.select : COLOR.idle;
-      model.lines.push({ segments: solid, color, width: f.id === this.selectedFeature ? 2.5 : 1.5 }, { segments: dashed, color, width: 1, dashed: true });
-    }
-
-    // výběr a zvýraznění v modelu
-    for (const [pick, color, opacity] of [[this.hover, COLOR.hover, 0.3], [m.kind === 'sketch' ? m.hoverEdge : undefined, COLOR.hover, 0.3], [this.selected, COLOR.select, 0.5]] as [Pick | undefined, number, number][]) {
-      const body = pick && pick.kind !== 'plane' ? evaluation.bodies[pick.body] : undefined;
-      if (!pick || !body) continue;
-      if (pick.kind === 'face') model.faces.push({ solid: body.solid, faceId: pick.faceId, color, opacity });
-      else if (pick.kind === 'edge' && body.edges[pick.index]) model.lines.push({ segments: body.edges[pick.index].segments, color, width: 4, onTop: true });
-    }
-
-    if (m.kind === 'sketch') this.sketchScene(model, m);
+    const model = modelScene(this, this.collisions, m.kind === 'sketch' ? m : undefined);
+    if (m.kind === 'sketch') sketchScene(this, m, model);
     if (isDraft(m)) m.form.overlay?.(m, model, this);
     this.viewport.setScene(model);
-  }
-
-  private sketchScene(model: SceneModel, m: SketchMode): void {
-    const context = this.sketchContext();
-    if (!context) return;
-    const { feature, view, result, frame } = context;
-    const selected = new Set(m.selection);
-    const hovered = new Set(m.hoverConstraint && feature.constraints[m.hoverConstraint] ? operandsOf(feature.constraints[m.hoverConstraint]) : m.hover ? [m.hover] : []);
-    // Diagnostika: volné entity modře, určené tmavě; označená vazba a vazby, ze kterých plyne.
-    const diagnosis = this.engine.diagnoseSketch(m.id);
-    const free = freeEntities(diagnosis, view);
-    const focus = m.focus && feature.constraints[m.focus] ? m.focus : undefined;
-    const focused = new Set(focus ? operandsOf(feature.constraints[focus]) : []);
-    const implying = new Set(focus ? this.explain(m.id, focus, diagnosis).impliedBy.flatMap((id) => operandsOf(feature.constraints[id])) : []);
-
-    if (result.valid) for (const region of result.regions) model.fills.push({ frame, loops: region.loops, color: COLOR.region, opacity: 0.1 });
-
-    // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
-    const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };
-    for (const curve of view.curves.values()) {
-      const bucket = selected.has(curve.id)
-        ? 'selected'
-        : hovered.has(curve.id)
-          ? 'hover'
-          : focused.has(curve.id)
-            ? 'focus'
-            : implying.has(curve.id)
-              ? 'implying'
-              : !curve.own
-                ? 'external'
-                : curve.construction
-                  ? 'construction'
-                  : !free
-                    ? 'unknown'
-                    : free.curves.has(curve.id)
-                      ? 'own'
-                      : 'determined';
-      pushPolyline(lines[bucket], frame, polyline(curve.shape));
-    }
-    model.lines.push(
-      { segments: lines.determined, color: COLOR.determined, width: 2, onTop: true },
-      { segments: lines.own, color: COLOR.sketch, width: 2, onTop: true },
-      { segments: lines.unknown, color: COLOR.idle, width: 2, onTop: true },
-      { segments: lines.construction, color: COLOR.construction, width: 1.5, dashed: true, onTop: true },
-      { segments: lines.external, color: COLOR.external, width: 2, onTop: true },
-      { segments: lines.implying, color: COLOR.implied, width: 3, onTop: true },
-      { segments: lines.focus, color: COLOR.hover, width: 4, onTop: true },
-      { segments: lines.hover, color: COLOR.hover, width: 3, onTop: true },
-      { segments: lines.selected, color: COLOR.select, width: 3, onTop: true },
-    );
-
-    const points: Record<'own' | 'determined' | 'unknown' | 'fixed' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], fixed: [], selected: [], hover: [], focus: [], implying: [] };
-    for (const point of view.points.values()) {
-      const bucket = selected.has(point.id)
-        ? 'selected'
-        : hovered.has(point.id)
-          ? 'hover'
-          : focused.has(point.id)
-            ? 'focus'
-            : implying.has(point.id)
-              ? 'implying'
-              : !point.own
-                ? 'fixed'
-                : !free
-                  ? 'unknown'
-                  : free.points.has(point.id)
-                    ? 'own'
-                    : 'determined';
-      points[bucket].push(...toWorld(frame, point.at[0], point.at[1]));
-    }
-    model.points.push(
-      { positions: points.determined, color: COLOR.determined, size: 7 },
-      { positions: points.unknown, color: COLOR.idle, size: 7 },
-      { positions: points.own, color: COLOR.sketch, size: 7 },
-      { positions: points.fixed, color: COLOR.external, size: 7 },
-      { positions: points.implying, color: COLOR.implied, size: 10 },
-      { positions: points.focus, color: COLOR.hover, size: 11 },
-      { positions: points.hover, color: COLOR.hover, size: 10 },
-      { positions: points.selected, color: COLOR.select, size: 10 },
-    );
-
-    // kóty jako popisky u svých operandů
-    for (const [id, c] of Object.entries(feature.constraints)) {
-      if (!isDimension(c)) continue;
-      const at = anchorOf(c, view);
-      if (!at) continue;
-      const value = c.driving ? c.value : (result.measurements[id] ?? c.value);
-      const text = c.type === 'angle' ? `${fmt((value * 180) / Math.PI)}°` : `${c.type === 'radius' ? 'R' : c.type === 'diameter' ? '⌀' : ''}${fmt(value)}`;
-      model.labels.push({ at: toWorld(frame, at[0], at[1]), text: c.driving ? text : `(${text})`, tone: result.conflicting.includes(id) ? 'problem' : c.driving ? 'driving' : 'reference' });
-    }
-
-    // rozpracovaný tvar
-    const cursor = m.cursor;
-    if (cursor && m.tool !== 'select' && m.tool !== 'project') {
-      const rubber: number[] = [];
-      const at = cursor.at;
-      const first = m.clicks[0] && positionOf(view, m.clicks[0]);
-      const shape = (s: Shape) => pushPolyline(rubber, frame, polyline(s));
-      if (first && m.tool === 'line') shape({ type: 'line', a: first, b: at });
-      if (first && m.tool === 'rect') pushPolyline(rubber, frame, [first, [at[0], first[1]], at, [first[0], at[1]], first]);
-      if (first && m.tool === 'circle') shape({ type: 'circle', center: first, radius: Math.hypot(at[0] - first[0], at[1] - first[1]) });
-      if (first && m.tool === 'polygon') {
-        // the circumscribed circle and the polygon with its first vertex at the cursor
-        const [radius, direction, sides] = [Math.hypot(at[0] - first[0], at[1] - first[1]), Math.atan2(at[1] - first[1], at[0] - first[0]), this.polygon.sides];
-        shape({ type: 'circle', center: first, radius });
-        pushPolyline(rubber, frame, Array.from({ length: sides + 1 }, (_, i): Vec2 => [first[0] + radius * Math.cos(direction + (2 * Math.PI * i) / sides), first[1] + radius * Math.sin(direction + (2 * Math.PI * i) / sides)]));
-      }
-      if (first && m.tool === 'arc') {
-        const start = m.clicks[1] ? positionOf(view, m.clicks[1]) : at;
-        shape({ type: 'line', a: first, b: start });
-        if (m.clicks[1]) {
-          const from = Math.atan2(start[1] - first[1], start[0] - first[0]);
-          const sweep = (Math.atan2(at[1] - first[1], at[0] - first[0]) - from + 4 * Math.PI) % (2 * Math.PI);
-          shape({ type: 'arc', center: first, radius: Math.hypot(start[0] - first[0], start[1] - first[1]), from, sweep: sweep || 2 * Math.PI });
-        }
-      }
-      model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
-      if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
-      if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : 'svisle', tone: 'reference' });
-    }
   }
 }

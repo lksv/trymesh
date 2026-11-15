@@ -225,3 +225,29 @@ Part 3 needs nothing of part 1 and only two functions of part 2 (`producesTool`,
 - **The bridge.** The app connects to a fixed address; the test replaces `connectBridge` of the bridge client with one that adds the address of a bridge the test started.
 - **Not driven by the test:** opening a file (the button *Otevřít*), deleting duplicate constraints, and a sketch refused by the engine after a valid pick. They are small and are read in the diff of the commits that move them.
 - **No review of this commit**, by the rule the owner set on 2026-11-15 (`CLAUDE.md`, "Depth of the review"): it adds a test and one optional argument and changes no behaviour.
+
+**Commits 1 and 2 (`647c374`): the host and the panels that are not forms.** `host.ts` has `PanelHost`, `ViewPick` and `Note`; `panels/parameters.ts`, `panels/collisions.ts` (with the state `Collisions` the app holds) and `panels/model.ts` are functions over the host; `labels.ts` has the texts the panels and the forms share. What differs:
+
+- **One commit instead of two, and no `this: PanelHost` annotations.** The annotation was the check for a class without a test. With the test of the class in place, a moved function takes `host: PanelHost` and the compiler lists what the interface lacks at the move itself.
+- **The note of an answer** is the member `note` of the host, which a panel reads after `say` and compares by identity; `say` returns nothing.
+
+**Commits 3 and 4 (`9150444`): one draft mode, the registry, a file per type.** `features/draft.ts`, `features/index.ts` (`FEATURE_UI`, `uiOf`, `TOOLBAR`) and the four files of the types, as designed. What differs:
+
+- **One commit instead of five.** The intermediate state (one mode as a union of three, entries calling methods of the class) existed only to keep each commit checkable by reading; the test of the class checks the whole move at once.
+- **A mode carries its form.** `DraftMode<F, Extra>` has the member `form` (the `FeatureForm` of its entry) and no `type`; the shared draft code and the app call `mode.form`, so there is no lookup of the entry of an open draft and no cast. `uiOf(type)` remains for a feature of the document (its summary, its eye, its faces).
+- **`FeatureForm` is an interface of its own**, with `draft`, `command`, `incomplete`, `panel`, `live`, `picks`, `hover`, `click` and `overlay` as designed. `picks` may ask for faces and planes; a form without it gets the bare pointer event.
+- **`draw.ts`** has what the scene and the overlays of the forms share: the colours, a point of a plane in the world, a polyline and a loop as segments, the square of a plane.
+
+**Commit 5: the scene, the sketch mode and its panel.**
+
+- **`scene.ts`**: `modelScene(host, collisions, sketch)` builds the scene of the model and returns it; the app lets the open sketch (`sketchScene`) or the open form (`overlay`) add theirs and hands the result to the view. `modelBounds(state)` is the box the view is fitted to. `SceneHost` extends `PanelHost` by the hidden features, `bodyHidden`, the planes that are shown and the pick under the pointer.
+- **`sketch-mode.ts`**: the mode (`SketchMode`, `sketchMode(id)`), the tools (`TOOLS`, `setTool`), the open sketch as it is shown (`SketchContext`, `sketchContextOf`), and what the events mean: `sketchDown` (starts the drag of a point), `sketchMove`, `sketchClick`, `dropPoint`, `sketchEscape`, `deleteSelection`, `addConstraints`, `settleSketch` after a change of the document, and `sketchScene`. `SketchHost` extends `PanelHost` by the open mode, the state `SketchState` (the options of the polygon tool and the explanation asked last, held by the app), the cached context, the pick in the model and the size of a pixel.
+- **`panels/sketch.ts`**: `sketchPanel` and `updateSketchStatus`.
+- **The app keeps** the pointer and key handlers, the capture of the pointer, the pick in the view, the planes and the cache of the context of the sketch (it goes with the cache of the shown state). `sketchMove` answers what is to be redrawn (`'drag'`: the status of the sketch and the scene; `'scene'`), so `sketch-mode.ts` does not import its panel and the two do not import each other.
+- `pickKey` and `PICK_REACH` are in `host.ts`, next to `ViewPick`: the app, the scene and the sketch mode use them.
+
+`app.ts` has 747 lines after the step (2321 before it): the state of the app, the modes, `refresh`, the toolbar, the timeline, the events and the bridge.
+
+**The check.** Every commit after the first left the four snapshot files untouched. No review, by the rule of 2026-11-15 (code moved without a change of behaviour, the existing tests pass unchanged; the types that became public are internal to the app).
+
+**Not done: the comparison in a browser.** The design asked for three tours of the real app with screenshots. The browser of the development setup was held by another session each time it was tried, so none was made. What stands in for it: the test of the class compares every scene handed to the view, and `viewport.ts`, which turns a scene into pixels, is not touched by this part. What it cannot show is a mistake that only the real camera or the real pick would reveal; the first use of the app after the step is its check.

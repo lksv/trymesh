@@ -16,7 +16,6 @@ import type {
   Input,
   Parameter,
   PatternFeature,
-  PlaneFeature,
   ProfileSource,
   Projected,
   RegionRef,
@@ -56,6 +55,8 @@ import {
   requireFace,
   string,
 } from './validation';
+import type { FeatureTypeInfo } from './features/module';
+import { plane } from './features/plane';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -76,6 +77,7 @@ export {
   isDriving,
 } from './sketch-content';
 export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
+export type { FeatureTypeInfo } from './features/module';
 
 export const SCHEMA_VERSION = 2;
 
@@ -88,7 +90,6 @@ const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
 
 const NO_ENVIRONMENT = (): Environment => ({});
 
-const OFFSET: NumberSpec = { title: 'Offset', unit: 'mm' };
 const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
 const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
 // The count of a pattern includes the original. The upper bound keeps a typo in an expression from
@@ -249,10 +250,6 @@ function projected(v: unknown, what: string): Projected {
 }
 
 // ---------------------------------------------------------------- features
-
-function planeFeature(o: Dict, what: string, context: ValidationContext): PlaneFeature {
-  return { ...base(o, what), type: 'plane', base: planeRef(context, o.base, `${what}.base`), offset: context.fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
-}
 
 const PROFILE_FIELDS: Record<ProfileSource['type'], readonly string[]> = { regions: ['type', 'sketch', 'regions'], generated: ['type', 'generator', 'sketch', 'operands', 'params', 'refs'] };
 
@@ -434,21 +431,6 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
 
 // ---------------------------------------------------------------- registr typů features
 
-// Veřejný popis typu feature (pro UI a popis API).
-export interface FeatureTypeInfo {
-  title: string;
-  summary: string;
-  // Numeric fields of the type (unit, range) that accept an expression. Sketch constraint values are
-  // not listed here: the constraint catalog describes them (`values`), the address is
-  // `constraints/<id>/<value name>`.
-  fields: readonly FieldSpec[];
-  // Which bodies the type can create: `self` a body with the feature's ID, `derived` bodies
-  // `<feature>/<local name>`. Whether a particular feature does is up to the registry (an extrusion
-  // only with the operation new, a pattern only with a body as its source).
-  bodies: 'none' | 'self' | 'derived';
-  updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
-}
-
 // Typ feature jako položka registru: vše, co o něm dokument potřebuje vědět. Krok přepočtu typu
 // je v evaluate.ts; úplnost obou míst hlídá překladač (záznam podle `Feature['type']`).
 interface FeatureTypeSpec<F extends Feature> {
@@ -469,14 +451,7 @@ interface FeatureTypeSpec<F extends Feature> {
 }
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
-  plane: {
-    info: { title: 'Rovina', summary: 'Vlastní rovina posunutá od základní roviny, jiné vlastní roviny nebo rovinné stěny tělesa.', fields: [{ path: 'offset', spec: OFFSET }], bodies: 'none' },
-    validate: planeFeature,
-    refs: (f) => planeRefs(f.base, 'base'),
-    createsBody: () => false,
-    namesFaces: false,
-    patch: { fields: ['base', 'offset'] },
-  },
+  plane,
   sketch: {
     info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
     validate: sketchFeature,

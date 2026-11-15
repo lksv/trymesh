@@ -3,12 +3,13 @@ import { SketchAnalysis } from './analysis';
 import { checkNumber } from './catalog';
 import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
+import { plane } from './features/plane';
 import { toolSpan } from './recompute/extent';
 import { profile as resolveProfile } from './recompute/profile';
 import { applyTool, axis, frame as frameOf, issue, lookup, withFaces } from './recompute/services';
-import type { Deps, Done, DragTarget, Failed, Model, Placement, SketchState, SolvedSketch, State, Step, ToolRecipe, WriteBack } from './recompute/state';
+import type { Deps, Done, DragTarget, Failed, Model, Placement, SketchState, SolvedSketch, State, Step, StepContext, ToolRecipe, WriteBack } from './recompute/state';
 import { type Region, type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from './sketch';
-import { type Prism, type RigidTransform, analyzeBody, buildPrism, projectEdge, rotation, toWorld, transformFace, transformFrame, transformSolid } from './solid';
+import { type Prism, type RigidTransform, analyzeBody, buildPrism, projectEdge, rotation, transformFace, transformFrame, transformSolid } from './solid';
 import type {
   Document,
   Evaluation,
@@ -18,12 +19,10 @@ import type {
   Feature,
   FeatureResult,
   FieldPath,
-  Frame,
   Id,
   Issue,
   IssueCode,
   PatternFeature,
-  PlaneFeature,
   Projected,
   SketchFeature,
   SolveInput,
@@ -124,7 +123,7 @@ export class Evaluator {
       const resolution = this.resolve(feature, environment);
       let step: Step | undefined = dragged ? undefined : this.memo.get(resolution)?.get(state);
       if (!step) {
-        step = this.step(resolution, state, doc.settings.chordTolerance, dragged);
+        step = this.step(resolution, state, doc.settings, dragged);
         if (!dragged) this.remember(resolution, state, step);
       }
       if (step.writeBack || resolution.feature !== feature) {
@@ -154,7 +153,7 @@ export class Evaluator {
     map.set(before, step);
   }
 
-  private step(resolution: Resolution, state: State, chordTolerance: number, drag?: DragTarget): Step {
+  private step(resolution: Resolution, state: State, settings: Document['settings'], drag?: DragTarget): Step {
     const { feature, errors } = resolution;
     // Expression values and errors belong to the feature result in every state, suppressed included.
     const fields = { ...(resolution.values && Object.keys(resolution.values).length ? { values: resolution.values } : {}), ...(errors ? { fieldErrors: errors } : {}) };
@@ -166,10 +165,12 @@ export class Evaluator {
     // last valid value and reports a warning, so that it stays visible, can be fixed and everything
     // built on it does not fail.
     if (errors && feature.type !== 'sketch') return failed('invalidExpression', Object.keys(errors));
+    const { chordTolerance } = settings;
+    const context: StepContext = { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [] };
     // Krok podle typu feature; úplnost hlídá překladač (viz registr typů v document.ts).
     switch (feature.type) {
       case 'plane':
-        return this.plane(feature, state, done, failed);
+        return plane.step(feature, context);
       case 'sketch':
         return this.sketch(feature, state, chordTolerance, drag, done, failed, errors ? Object.keys(errors) : []);
       case 'extrude':
@@ -181,13 +182,6 @@ export class Evaluator {
         throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
       }
     }
-  }
-
-  private plane(feature: PlaneFeature, state: State, done: Done, failed: Failed): Step {
-    const base = frameOf(feature.base, state);
-    if (typeof base === 'string') return failed(base, [feature.base]);
-    const frame: Frame = { ...base, origin: toWorld(base, 0, 0, feature.offset) };
-    return { state: done({ status: 'ok', warnings: [], plane: frame }, { planes: { ...state.planes, [feature.id]: frame } }) };
   }
 
   private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed, badFields: FieldPath[]): Step {

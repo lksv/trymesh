@@ -2,7 +2,7 @@
 import type { SketchAnalysis } from '../analysis';
 import type { Profile, Region, SketchGeometry } from '../sketch';
 import type { FaceInfo, Prism, RigidTransform, SideCurve } from '../solid';
-import type { CopyTag, FaceName, Facts, Feature, FeatureResult, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult } from '../types';
+import type { CopyTag, Document, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult } from '../types';
 
 export interface Deps {
   solver: SketchSolver;
@@ -89,3 +89,15 @@ export interface Step {
 // `bodies` of a result may be left out: most steps create none.
 export type Done = (result: Omit<FeatureResult, 'bodies'> & { bodies?: Id[] }, change?: Partial<State>) => State;
 export type Failed = (code: IssueCode, refs?: unknown[], detail?: string) => Step;
+
+// What the step of a feature gets besides the feature itself.
+export interface StepContext {
+  state: State; // before the feature
+  settings: Document['settings'];
+  deps: Deps;
+  // The state after the feature with its result (`done`), or with its error and nothing else changed (`failed`).
+  done: Done;
+  failed: Failed;
+  drag?: DragTarget; // read by the sketch only
+  badFields: FieldPath[]; // fields whose expression failed; read by a type that keeps the last valid values
+}

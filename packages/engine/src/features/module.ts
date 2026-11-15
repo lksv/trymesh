@@ -1,0 +1,49 @@
+// A feature type as a module: the entry of the registry of feature types (what the document needs to
+// know about the type) and the step of the recompute. The registry is in features/index.ts; a module
+// imports neither the registry, nor document.ts, nor evaluate.ts.
+import type { FieldSpec } from '../catalog';
+import type { Step, StepContext } from '../recompute/state';
+import type { Feature } from '../types';
+import type { Dict, FeatureRef, ValidationContext } from '../validation';
+
+// Veřejný popis typu feature (pro UI a popis API).
+export interface FeatureTypeInfo {
+  title: string;
+  summary: string;
+  // Numeric fields of the type (unit, range) that accept an expression. Sketch constraint values are
+  // not listed here: the constraint catalog describes them (`values`), the address is
+  // `constraints/<id>/<value name>`.
+  fields: readonly FieldSpec[];
+  // Which bodies the type can create: `self` a body with the feature's ID, `derived` bodies
+  // `<feature>/<local name>`. Whether a particular feature does is up to the registry (an extrusion
+  // only with the operation new, a pattern only with a body as its source).
+  bodies: 'none' | 'self' | 'derived';
+  updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
+}
+
+export interface FeatureModule<F extends Feature> {
+  info: Omit<FeatureTypeInfo, 'updatable'>;
+  // Validates the feature and returns its canonical copy. What needs the registry (is the target of
+  // a reference there, of the right kind and before this feature) and the reader of numeric fields
+  // come in the context.
+  validate(o: Dict, what: string, context: ValidationContext): F;
+  // References to other features, with the place inside the feature where each lies.
+  refs(f: F): FeatureRef[];
+  // Does the feature create a body with this ID? `local` is the part of the ID after the slash
+  // (absent without one).
+  createsBody(f: F, local: string | undefined): boolean;
+  namesFaces: boolean; // does the feature name faces of bodies?
+  // Does the feature leave a tool recipe that a pattern can repeat?
+  producesTool(f: F): boolean;
+  // The generator of its profile, when it has a profile and the profile comes from one.
+  generator?(f: F): string | undefined;
+  // A failed expression of a field is a warning and the step runs with the last valid value, instead
+  // of an error of the feature (the sketch: it stays visible and what is built on it does not fail).
+  keepsLastValidValues?: true;
+  // The fields `updateFeature` may change; without them the feature cannot be changed by that command.
+  // `removable`: may `null` in a patch name this path although the feature did not have it? (An
+  // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
+  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
+  // The step of the recompute: the state after the feature.
+  step(feature: F, context: StepContext): Step;
+}

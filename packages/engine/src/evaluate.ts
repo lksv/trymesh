@@ -8,9 +8,8 @@ import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, WriteBac
 import { analyzeBody } from './solid';
 import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id } from './types';
 
-// The types of the state moved to recompute/state.ts; what the engine and the contracts import from
-// here keeps its path.
-export type { Deps, DragTarget, SketchState, WriteBack } from './recompute/state';
+// The types of the state moved to recompute/state.ts; what this module exported keeps its path.
+export type { Deps, DragTarget, Placement, SketchState, ToolRecipe, WriteBack } from './recompute/state';
 
 export interface EvaluateOptions {
   upTo?: Id; // skončit u této feature

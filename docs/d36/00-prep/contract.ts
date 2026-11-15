@@ -151,7 +151,7 @@ export type CommandResultAfter = { ok: true; state: StateAfter } | Extract<Comma
 
 // A face is named by the feature that made it and its role there. The roles are a closed union in
 // types.ts (`side` with the curve it came from, `startCap`, `endCap`), and five more places spell
-// them out: the validator `faceName` (document.ts), `faceKey` (util.ts, and a copy of it in the
+// them out: the validator `faceName` (validation.ts), `faceKey` (util.ts, and a copy of it in the
 // app), `faceLabel` of the MCP tools and the texts `ROLES` of the app. A hole, a revolve,
 // a chamfer, a fillet and a split all name faces in new roles.
 // - The union stays in types.ts, one member per role, because it is what an AI reads.
@@ -162,7 +162,7 @@ export type CommandResultAfter = { ok: true; state: StateAfter } | Extract<Comma
 // - A field that tells faces apart is a text (an ID) or a whole number, and is always there:
 //   a key cannot be built from an object, and a field that may be missing would give two faces
 //   one key. The entry says which of the two a field is, so the validator of a face name can
-//   check it; it is what `faceName` in document.ts checks by hand today.
+//   check it; it is what `faceName` in validation.ts checks by hand today.
 // - The compiler ties the union and the catalog: a role without an entry does not compile, nor
 //   an entry that leaves out a field of the name or gives it the other kind. A role whose name
 //   has a field of another type, or an optional one, stops the type check here; the message
@@ -200,7 +200,7 @@ export type EntityRef =
 // package that needs a placement first (3b, import of a mesh, or 5a if the links of a mechanism
 // need one) designs it, with these requirements: any orientation relative to a directed frame
 // (three rotations in a stated order, or an equivalent), every number a numeric field with an
-// expression, and a result that is a `RigidTransform`. `Placement` in evaluate.ts is the name
+// expression, and a result that is a `RigidTransform`. `Placement` in recompute/state.ts is the name
 // of something else already.
 
 // ---------------------------------------------------------------- data catalogs

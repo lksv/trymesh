@@ -13,7 +13,7 @@ Four packages of step 2 that change the same code (the profile, the extent and t
 
 Validation scenario 12, shared by the four: a box with a lid and screw posts. The cavity is the outline offset by the wall; the lid has a lip from the same outline; the posts end at the floor of the lid (up to a face); the screws are countersunk (taper, hole feature) and the posts take heat-set inserts (hole feature from the catalog); a rib from a line stiffens a wall.
 
-Code to read: `packages/engine/src/evaluate.ts` (`extrude`, `profile`, `generated`, `applyTool`, `toolSpan`), `solid.ts` (`buildPrism`, `FaceInfo`, `edgeKind`, `projectEdge`), `sketch.ts` (regions), `document.ts` (`extrudeFeature`, the registry), `generators.ts`, `catalog.ts`; `packages/app/src/app.ts` (`extrudePanel`) and `sketch-commands.ts` (`changeExtrude`); `docs/d36/00-prep/part2-feature-modules.md`.
+Code to read, in `packages/engine/src/` (where it is since part 2 of the preparatory step; in a tree that starts before commit `9f3eeb5` the same code is in `evaluate.ts` and `document.ts`): `features/extrude.ts` (the validator `extrudeFeature`, the entry and the step), `features/profile.ts` and `recompute/profile.ts` (the two halves of a profile source), `recompute/services.ts` (`applyTool`), `recompute/extent.ts` (`toolSpan`), `features/index.ts` (the registry), `solid.ts` (`buildPrism`, `FaceInfo`, `edgeKind`, `projectEdge`), `sketch.ts` (regions), `generators.ts`, `catalog.ts`; `packages/app/src/app.ts` (`extrudePanel`) and `sketch-commands.ts` (`changeExtrude`); `docs/d36/00-prep/part2-feature-modules.md`.
 
 Every field is a numeric field of the catalog, so it takes an expression and shows up in MCP without work there; say for each package what the form in the app gets.
 

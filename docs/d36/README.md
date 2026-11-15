@@ -70,9 +70,9 @@ Where packages collide although they do not depend on each other. The preparator
 | Place | Who writes there | Today | After the preparatory step |
 |---|---|---|---|
 | `Engine` in `types.ts`, `engine.ts`, tools in `mcp/tools.ts` | every query (track A, 3e, 5a) | a method, a hand-written tool and its own argument checks per query | a query is one module with an entry in a catalog; one general tool `query` reaches all of them |
-| `document.ts` (1370 lines) and the step methods of `Evaluator` in `evaluate.ts` | every new feature type (2c, 3b, 3c, 3d, 4a, 4b) | validators of all types in one file, a private method per type in one class | a module per feature type; the registry gets one line and is the one guard, the switch goes |
+| The feature types: until part 2 of the preparatory step `document.ts` (1370 lines) and the step methods of `Evaluator` in `evaluate.ts` | every new feature type (2c, 3b, 3c, 3d, 4a, 4b) | were: validators of all types in one file, a private method per type in one class | a module per feature type; the registry gets one line and is the one guard, the switch goes |
 | `app.ts` (2321 lines, one class) | everything with a form or a panel | all panels and forms are methods of one class | a file per panel and per feature form |
-| Extrusion: `ProfileSource`, `Extent`, the extrude validator, `profile` and `toolSpan` in `evaluate.ts`, `buildPrism` in `solid.ts`, the extrusion form | 2a, 2b, 2f, 4a | one feature, one step | stays shared: track B is sequential and 4a follows 2b |
+| Extrusion: `ProfileSource`, `Extent`, `features/extrude.ts`, the two halves of a profile (`features/profile.ts`, `recompute/profile.ts`), `toolSpan` in `recompute/extent.ts`, `buildPrism` in `solid.ts`, the extrusion form | 2a, 2b, 2f, 4a | one feature, one step | stays shared: track B is sequential and 4a follows 2b |
 | `FaceInfo` and `EdgeKind` in `solid.ts`, `edgeKind`, `projectEdge` | 2b (cone), 4a (cone, general), 4b, 3d (face of a split) | plane, cylinder, swept | the kinds are agreed once in the shared vocabulary |
 | Kernel port (`SolidKernel` in `types.ts`, `kernel-manifold`) | 1c (gap), 3d (split, offset) | `boolean`, `triangulate` | stays shared; small additions, the guarantee text needs care |
 | Pattern: transform kinds, the `pattern` step | 2e | one kind | one package, no collision |

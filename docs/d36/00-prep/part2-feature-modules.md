@@ -175,7 +175,7 @@ This is the most delicate file of the engine, so the part gets its own independe
 
 The six steps were done in the order above, one commit each and four for step 4. Every commit passed all the tests untouched, both type checks, the spikes and the MCP build. What differs from the text above:
 
-- **The test of commit 1 checks more.** Besides loading every module as the first one, `packages/engine/test/modules.test.ts` reads the imports that exist at run time and fails on any cycle among them. Loading alone would not show a cycle whose modules read each other only inside functions.
+- **The test of commit 1 checks more.** Besides loading every module as the first one, `packages/engine/test/modules.test.ts` reads the imports of every module with the TypeScript parser and fails on any cycle among those that load a module at run time. Loading alone would not show a cycle whose modules read each other only inside functions: the test runner hands over a binding that is not set yet as `undefined` instead of failing.
 - **No field description is shared by types**, so `validation.ts` holds none: `OFFSET`, the two of the extent and the two of the pattern live with their types.
 - **`refContext(doc, before)`** (the `RefContext` over `requireRef`) is exported by `features/index.ts` next to `requireRef`; `document.ts` uses it for `validated`, `fieldsOf` and the three commands.
 - **`frame` of the services** is imported by the modules under another name (`frameOf`), because the steps call their result `frame`.
@@ -183,6 +183,23 @@ The six steps were done in the order above, one commit each and four for step 4.
 - **`featureSummary` lost its three branches**, not only gained a default: the fields `updatable` lists, in their order, plus the facts are exactly what the branches of the plane, the pattern and the extrusion returned.
 - **`StepContext` came with the first module** (commit 4a), not with commit 3.
 - **An unknown feature type in the recompute** used to throw from the `default` of the `switch`; now `specOf` gives no module and the call fails. Neither can be reached: a document is validated before it is replayed.
+
+## Review of the implementation
+
+Two reviewers, read-only, over the range `0dc424b..a1c35b3`: `codex` and an internal subagent (`agy` is out of quota). Neither found a change of behaviour. The internal one ran the engine of before and the engine of after side by side over the existing tests (about 8,300 engine calls and 2,800 commands, with the same results, errors, key order and counts of solver and kernel calls) and over 16,740 commands built to cover every kind of reference to every feature type.
+
+| Finding | Who | Held | What changed |
+|---|---|---|---|
+| The guard of the module graph left out imports that load a module: a statement whose names are each marked `type` (kept at run time under `verbatimModuleSyntax`), double quotes, an import for its side effect, a dynamic import, and a relative specifier that resolves to nothing | both | Yes (a cycle built that way passed) | The test reads imports with the TypeScript parser, leaves out only statements that are type-only as a whole, fails on a relative specifier that names no module, and tests its own reader on each form |
+| `evaluate.ts` no longer exported `ToolRecipe` and `Placement` | both | Yes | Re-exported; a test imports every name that `document.ts` and `evaluate.ts` exported before from its old path |
+| Pointers to the old places of the moved code in the briefs of tracks B and E, the plan, the contract, the design and the backlog | internal | Yes | Updated; the briefs say where the code is in a tree that starts before the move, because the three design sessions do |
+| The table of modules in architecture.md was not in the order of the imports that the next sentence claims | internal | Yes | The row of `features/profile.ts` moved above the modules of the types |
+| Moved code that no test would catch if it were wrong: the reference check of `updateExternal`, `producesTool` of the plane and the pattern, the exported `producesTool` and `generatorOf`, the order of the registry and of the fields of the extrusion, the chord tolerance reaching the steps, the references of a failed generator, the key order of a feature summary in MCP | both | Yes (each mutation passed all tests) | A regression for each in `review.test.ts` of the engine, `gear.test.ts` of the scenarios and `tools.test.ts` of MCP |
+
+Not acted on:
+
+- `accepts` of a reference of the kind `generated` cannot be tested while there is one generator (internal).
+- The time limit of one gear scenario (5 s) failed on the reviewer's loaded machine; it is outside the range and passes in a plain run. Noted for the owner.
 
 ## Open
 

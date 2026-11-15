@@ -305,6 +305,7 @@ describe('a gear in error', () => {
     state = run(engine, { type: 'updateFeature', id: 'sun', patch: { profile: { params: { backlash: 1.5 } } } });
     expect(status(state)).toMatchObject({ sun: 'error:invalidProfile', planet: 'warning:gearMesh' });
     expect(state.evaluation.features.sun.error?.message).toMatch(/cannot build the profile: the tooth is pointed/);
+    expect(state.evaluation.features.sun.error?.refs).toEqual(['sun']); // the feature, not its sketch
     expect(Object.keys(state.evaluation.bodies)).toEqual(['planet', 'housing']);
     engine.undo();
     // the pitch circle is removed from the sketch
@@ -315,6 +316,23 @@ describe('a gear in error', () => {
     state = run(engine, { type: 'updateFeature', id: 'sun', patch: { profile: { operands: { circle: 'p' }, params: { teeth: 'Zp' } } } });
     expect(status(state).sun).toBe('ok');
     expect(factsOf(state, 'sun')).toMatchObject({ teeth: 27, module: expect.closeTo(0.9, 9) });
+  });
+
+  it('the chord tolerance of the document reaches the sketch and the generated profile', () => {
+    const engine = gearSketch();
+    run(engine, extrude('sun', gearProfile('s', { teeth: 'Zs' }), 0, 8));
+    const loopOf = (state: EngineState): number => (state.evaluation.features.S1.sketch?.regions.find((region) => region.ref.outerLoop.join() === 'o')?.loops[0].length ?? 0) / 2;
+    const fine = engine.getState();
+    const saved = JSON.parse(engine.save());
+    saved.settings.chordTolerance = 0.2;
+    const other = newEngine();
+    expect(other.load(JSON.stringify(saved)).ok).toBe(true);
+    const coarse = other.getState();
+    expectAllOk(coarse);
+    // the circle of the sketch and the flanks of the teeth are both divided by the tolerance
+    expect(loopOf(fine)).toBeGreaterThan(2 * loopOf(coarse));
+    expect(loopOf(coarse)).toBeGreaterThan(8);
+    expect(solidOf(fine, 'sun').triangles.length).toBeGreaterThan(1.5 * solidOf(coarse, 'sun').triangles.length);
   });
 
   it('a preview returns the facts and the values without writing to the document', () => {

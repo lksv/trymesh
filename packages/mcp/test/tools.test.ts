@@ -517,6 +517,28 @@ describe('hrany tělesa', () => {
 });
 
 describe('model, tělesa a příkazy', () => {
+  it('get_model summarises a feature by its type, with the keys in the order the tools always printed', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, { type: 'addCurve', sketch: 's', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 5 });
+    const profile = { type: 'regions' as const, sketch: 's', regions: [{ outerLoop: ['c'] }] };
+    const common = { suppressed: false, extent: { type: 'distance' as const, start: 0, distance: 10 } };
+    execute(engine, { type: 'addFeature', feature: { ...common, id: 'a', name: 'a', type: 'extrude', profile, operation: 'new' } });
+    execute(engine, { type: 'addFeature', feature: { ...common, id: 'h', name: 'h', type: 'extrude', profile, extent: { type: 'distance', start: 5, distance: 10 }, operation: 'cut', targets: ['a'] } });
+    execute(engine, { type: 'addFeature', feature: { id: 'pl', name: 'pl', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 5 } });
+    execute(engine, { type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'pattern', source: { type: 'body', body: 'a' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } });
+    execute(engine, { type: 'addFeature', feature: { ...common, id: 'g', name: 'g', type: 'extrude', profile: { type: 'generated', generator: 'involuteGear', sketch: 's', operands: { circle: 'c' }, params: { teeth: 10 } }, operation: 'new' } });
+    const keys = Object.fromEntries((ok(engine, 'get_model').features as { id: string }[]).map((feature) => [feature.id, Object.keys(feature).join(' ')]));
+    expect(keys).toEqual({
+      s: 'id name type status plane points curves constraints solved degreesOfFreedom profileValid regions',
+      a: 'id name type status bodies profile extent operation',
+      h: 'id name type status profile extent operation targets',
+      pl: 'id name type status base offset',
+      p: 'id name type status bodies source transform',
+      g: 'id name type status bodies profile extent operation facts',
+    });
+  });
+
   it('gears: the generator catalog is in the description, its example is accepted, get_model returns the facts', () => {
     const description = apiDescription();
     expect(description.generators.map((entry) => entry.generator)).toEqual(Object.keys(GENERATORS));

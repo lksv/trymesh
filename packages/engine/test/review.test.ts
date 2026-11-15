@@ -2,8 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { CommandError, applyCommand, emptyDocument, emptySketch, validateDocument } from '../src/document';
 import { createEngine } from '../src/engine';
+import { type Deps, type DragTarget, type EvaluateOptions, Evaluator, type Placement, type SketchState, type ToolRecipe, type Trace, type WriteBack } from '../src/evaluate';
+import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
+import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
+import { generatorOf, producesTool } from '../src/index';
 import { type SketchGeometry, detectProfile } from '../src/sketch';
-import type { Command, Curve, Document, EngineState, ExtrudeFeature, SketchFeature, SketchSolver, SolidKernel } from '../src/types';
+import type { Command, Curve, Document, EngineState, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, SolidKernel } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -238,5 +242,80 @@ describe('fasáda enginu', () => {
     expect(engine.load(JSON.stringify(doc))).toMatchObject({ ok: true });
     const features = engine.getState().evaluation.features;
     expect([features.E.error?.code, features.Q.error?.code, features.T.error?.code]).toEqual(['brokenReference', 'brokenReference', 'brokenReference']);
+  });
+});
+
+// The review of the move of the feature types into modules (D37, part 2) found no change of
+// behaviour, and named what no test would have caught had there been one.
+describe('a module per feature type (D37): what the move could have changed unseen', () => {
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const extrusion = (id: string, extra: Partial<Input<ExtrudeFeature>> = {}): Input<ExtrudeFeature> => ({
+    id,
+    name: id,
+    suppressed: false,
+    type: 'extrude',
+    profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['c'] }] },
+    extent: { type: 'distance', start: 0, distance: 10 },
+    operation: 'new',
+    ...extra,
+  });
+  const planeFeature: PlaneFeature = { id: 'PL', name: 'PL', suppressed: false, type: 'plane', base: XY, offset: 5 };
+  const pattern = (id: string, features: string[]): Input<PatternFeature> => ({ id, name: id, suppressed: false, type: 'pattern', source: { type: 'features', features }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'full' } } });
+  const rim = (feature: string) => ({ a: { feature, role: 'side', curve: 'c' }, b: { feature, role: 'endCap' } }) as const;
+  // S1 with a circle; the body A, a cut H into it, a plane, a pattern of the cut, a gear G; then
+  // the sketch S2 with the rim of A projected, and a body Z after it.
+  const model = (): Document =>
+    apply([
+      { type: 'addFeature', feature: emptySketch('S1', 'S1', XY) },
+      { type: 'addCurve', sketch: 'S1', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+      { type: 'addFeature', feature: extrusion('A') },
+      { type: 'addFeature', feature: extrusion('H', { operation: 'cut', targets: ['A'] }) },
+      { type: 'addFeature', feature: planeFeature },
+      { type: 'addFeature', feature: pattern('P', ['H']) },
+      { type: 'addFeature', feature: extrusion('G', { profile: { type: 'generated', generator: 'involuteGear', sketch: 'S1', operands: { circle: 'c' }, params: { teeth: 10 } } }) },
+      { type: 'addFeature', feature: emptySketch('S2', 'S2', XY) },
+      { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'A', edge: rim('A'), kind: 'circle' } },
+      { type: 'addFeature', feature: extrusion('Z') },
+    ]);
+  const refused = (doc: Document, command: Command, message: RegExp) => expect(() => applyCommand(doc, command)).toThrow(message);
+  const feature = (doc: Document, id: string): Feature => doc.features.find((f) => f.id === id) as Feature;
+
+  it('updateExternal checks the reference against the place of its sketch', () => {
+    const doc = model();
+    const to = (body: string, source = body): Command => ({ type: 'updateExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body, edge: rim(source), kind: 'circle' } });
+    refused(doc, to('Z'), /feature "Z" musí ležet před odkazující feature/);
+    refused(doc, to('nope'), /feature "nope" neexistuje/);
+    refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
+    refused(doc, to('A', 'PL'), /feature "PL" není extrude/);
+    expect((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x.edge.a.feature).toBe('H');
+  });
+
+  it('only an extrusion that adds or cuts is a source of a pattern or says so', () => {
+    const doc = model();
+    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not an extrusion with the operation add or cut`));
+    expect(doc.features.filter(producesTool).map((f) => f.id)).toEqual(['H']);
+    expect(doc.features.map((f) => [f.id, generatorOf(f)]).filter(([, generator]) => generator !== undefined)).toEqual([['G', 'involuteGear']]);
+  });
+
+  it('the order of the registry and of the fields of a type is what clients were told', () => {
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern']);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern/);
+    const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
+    expect(paths.slice(-2)).toEqual(['extent/start', 'extent/distance']);
+    expect(paths.slice(0, -2).every((path) => path.startsWith('profile/params/'))).toBe(true);
+    expect(paths.length).toBeGreaterThan(2);
+    expect(FEATURE_TYPE_INFO.extrude.updatable).toEqual(['profile', 'extent', 'operation', 'targets']);
+    expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset']);
+    expect(FEATURE_TYPE_INFO.pattern.updatable).toEqual(['source', 'transform']);
+    expect(FEATURE_TYPE_INFO.sketch.updatable).toEqual([]);
+  });
+
+  it('what document.ts and evaluate.ts exported before the move is still exported there', () => {
+    // the types are checked by the compiler: this file imports each of them from its old path
+    type Kept = [Deps, DragTarget, EvaluateOptions, Placement, SketchState, ToolRecipe, Trace, WriteBack, Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind];
+    const kept: Kept | undefined = undefined;
+    expect(kept).toBeUndefined();
+    const values = { Evaluator, FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, SCHEMA_VERSION, CommandError, applyCommand, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptyDocument, emptySketch, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, validateDocument, withPath };
+    for (const [name, value] of Object.entries(values)) expect(value, name).toBeDefined();
   });
 });

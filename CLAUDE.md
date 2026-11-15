@@ -88,11 +88,22 @@ Work on an approved list of points (such as the points of D35 or the steps of D3
 1. **Implement.**
 2. **Test.** For engine features consider a multi-step validation scenario in `packages/scenarios` as well.
 3. **Docs**: `docs/ui.md`, `docs/architecture.md` and the decision in `docs/decisions.md`.
-4. **Independent review** by a subagent that did not write the code, read-only. Keep the working tree unchanged while it runs.
+4. **Independent review** by a subagent that did not write the code, read-only. Keep the working tree unchanged while it runs. How deep it goes depends on the change, see below.
 5. **Fix** the findings.
 6. **Separate commits**: one for the point, one for the fixes of the review. Run the checks from Commands before each.
 
-**Second round.** Consider one more round of independent review and fix when the review found more than 6 issues of which at least 3 are serious, or when the fix turned out large or complex. The second review looks mainly at what the fix changed; its fixes get a commit of their own.
+**Depth of the review** (owner, 2026-11-15: the reviews are expensive, so they follow the risk of the change).
+
+| Change | Review |
+|---|---|
+| Code moved without a change of behaviour (such as the preparatory step of D36) | None when the existing tests pass unchanged and no public type changes; otherwise light |
+| New geometry and heuristics (interference, the kernel, the solver) | Full |
+| Catalog entries, forms, UI | Light |
+| Anything else | Full |
+
+A light review reads only the diff, with a cheaper model or a lower effort. A point that mixes kinds gets the deepest of them.
+
+**Further rounds.** Consider another round of independent review and fix when the last review found more than 6 issues of which at least 3 are serious, or when its fix turned out large or complex. There are at most three rounds. The second looks mainly at what the fix changed; the third reads only the diff of the fix. What is still open after the last round is recorded as a known limit in the decision. The fixes of each round get a commit of their own.
 
 ## Rules of the project
 

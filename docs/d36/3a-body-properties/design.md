@@ -1,6 +1,6 @@
 # 3a Body properties and the catalog of materials (D48)
 
-**State: design, second version, after one round of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Not implemented. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
+**State: design, third version, after two rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Not implemented. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
 
 The package adds a section to the document. What is expensive to change later is the shape of that section, its upgrade step and what a build without the package does with it, so those parts are decided in full here; the app and the wording of the MCP answers are described and left to the implementation.
 
@@ -55,9 +55,11 @@ bodyProperties: Record<Id, BodyProperties>   // in Document, always present, {} 
 
   Such entries are listed by `bodyPropertiesWithoutBody` (the keys of the section that are not bodies of the state), shown by `get_model` and by the app, and removed by `removeBodyProperties`. They are not an error.
 - **An entry is taken over by a body that appears under its ID.** That is what is wanted when a feature is removed and made again under the same ID, and a trap when the ID is reused for something else: the new printed part would be a reference part with the mass of a motor, and left out of the print export. Three things keep the trap visible:
-  - the generators of IDs (`newId` of the app, `freshIds` of the engine) count the feature part of every key of the section as used, so an ID is reused only by a caller that names it;
-  - the answer of `execute` over MCP, and the status line of the app, name the bodies that took an entry over (a key of the section that had no body before the command and has one after it);
+  - the generators of IDs (`newId` of the app, `freshIds` of the engine) count every ID a section names as used (`namedBySections`: here the feature part of every key), as `freshIds` counts every text of the features today for the same reason; an ID is then reused only by a caller that names it;
+  - the answer of `execute` over MCP, and the status line of the app, name what a command took over (`takenOver`): the features and sketch entities the command adds whose ID a section named before the command. It is read from the document and the command, not from the model: a feature removed and added again inside one batch has its body before and after, and is found all the same; a body made and given properties in one batch is not reported;
   - the list of entries without a body is in every `get_model`, so a caller sees them before it reuses an ID.
+
+  The rule is one of the registry of sections, not of this section: 5a names bodies in its links and sketches and points in its axes, and gets both functions with its entry.
 
   Considered: `addFeature` refuses an ID that an entry still names. Rejected: making a feature again under its ID is the more common case with an AI as the author, and it would then need the properties removed and set again around it.
 - **Strict entries.** The validator of an entry lists the fields it allows (`onlyFields`, as the pattern does for its source) and refuses any other, on a command and on a load. This is what lets later packages add fields without an upgrade step: a build that does not know a field refuses the document instead of dropping the field.
@@ -68,7 +70,7 @@ bodyProperties: Record<Id, BodyProperties>   // in Document, always present, {} 
 `density` and `mass` are numeric fields in the sense of the engine: a number or an expression in a command, the last valid number in the document, the expression in `expressions` of the entry under the name of the field. One rule for a number of the document, wherever it is, and one reader (`Fields.number`).
 
 - **Validation** uses `Fields` as it is: `load` checks the syntax of an expression, a command evaluates it at once against the parameters and refuses what does not evaluate or is out of range; fields a command does not name keep their expression without evaluation. `setBodyProperties` follows the recipe of `setField`.
-- **The recompute** evaluates the expressions with the environment of the parameters, checks the range, and puts the numbers used into the result. A field whose expression is in error is reported in `fieldErrors` and left out of the result, and nothing takes its place: not its last number, not an inherited value, and for a mass not the density. (A feature other than a sketch is in error in that case; a body without a known mass is the counterpart.)
+- **The recompute** evaluates the expressions with the environment of the parameters, checks the range, and puts the numbers used into the result. A field whose expression is in error is reported in `fieldErrors` and left out of the result, and nothing takes its place: not its last number, not an inherited value, and for a mass not the density. A copy that inherits the density and the mass carries the errors of its source, so "in error" and "not stated" can be told apart for it as well. (A feature other than a sketch is in error in that case; a body without a known mass is the counterpart.)
 - **Write-back.** After `execute` and `load` the engine writes the numbers into the entries, in the same undo step, as it does for features. `Evaluator.evaluate` returns, next to the write-backs of features, the sections whose numbers changed, and `settle` puts them into the document. A preview writes nothing; its evaluation has the numbers.
 - **`renameParameter`** rewrites the name in the expressions of the entries as well.
 - **An error of a command** names the field in `error.expression.path` by its address inside the section: the key of the entry, a slash, the field (`motor/density`). The field is the last part; a body ID may itself hold a slash.
@@ -107,7 +109,7 @@ One rule for every reader: a body the caller lists is taken as listed; the use d
 | Reader | What it reads | Rule |
 |---|---|---|
 | Mass properties (1d) | `mass`, `use` of the result | The mass of a body is its `mass`. A body without one takes the density given as an argument of the query; without that the query fails and names the body, and it fails as well for a body whose mass or density is in error. An auxiliary body adds nothing and is listed. With a stated mass the inertia is that of the shape at uniform density, scaled to the mass. This is how "the density comes as an argument until 3a" and the properties meet: the argument stays, as the density of the bodies that state none |
-| Print exports (STL of the preparatory step, 3MF of 2g), without a list of bodies | `use` | Only the bodies with the use `part` (`printedBodies`). `exportMesh` follows through the shared `run` of the format. The tool `export_stl` and the export of the app make their own list of all bodies today and have to be changed by hand to make the list of the printed ones. A document without properties exports what it exports today |
+| Print exports (STL of the preparatory step, 3MF of 2g), without a list of bodies | `use` | Only the bodies with the use `part` (`printedBodies`). `exportMesh` follows through the shared `run` of the format, and with it the export of the whole model in the app, which passes no list. The tool `export_stl` makes its own list of all bodies today and has to be changed by hand to make the list of the printed ones. A document without properties exports what it exports today |
 | 3MF (2g) | `name`, `color` | The name and the colour of an object |
 | Print queries (1e), without a list of bodies | `use` | As the print exports |
 | Interference and smallest gap | nothing | Every body takes part; a reference or auxiliary body is there to be checked against |
@@ -159,6 +161,7 @@ interface SectionSpec<S, R> {
   validate(value: unknown, what: string): S;       // load: shape and the rules of the section alone, strict
   commands: Record<string, (doc: Document, command: Dict, context: ValidationContext) => S>;
   renameParameter(section: S, from: string, to: string): S;
+  names(section: S): Id[];                         // the IDs of features and sketch entities the section names
   // after the timeline: the result, and the section with the numbers written back when they changed
   evaluate(section: S, doc: Document, model: State, environment: Environment): { result: R; written?: S };
 }
@@ -178,11 +181,11 @@ The places that name the sections today, each changed once to ask the registry:
 
 The registry is typed by the fields of `Document` that are sections, so a section added to the type without an entry does not compile, as with `FEATURE_TYPES`. `parameters` and `checks` stay as they are: the parameters are the environment everything else is evaluated in, the checks read nothing but them, and neither has entries with numeric fields; nothing would be gained by moving them. `changesDocument` of MCP compares everything of a document but its features as JSON already, so it needs no edit.
 
-Places this package touches beyond the registry: `bodySource` in the registry of feature types (one line in the module of the pattern); the default list of bodies of the `stl` format; `_export_stl` in `packages/mcp/src/tools.ts` and the export of the model in the app, which make their own lists; the two generators of IDs; `stateBefore(0)` in the app, which builds an evaluation by hand and has to empty `bodyProperties` with the bodies; `modelSummary`, `documentProblems` and `outcome` in `packages/mcp/src/tools.ts`; `bodyName` and `refName` in the app; the colour of a body in `viewport.ts` and the scene.
+Places this package touches beyond the registry: `bodySource` in the registry of feature types (one line in the module of the pattern); the default list of bodies of the `stl` format; `_export_stl` in `packages/mcp/src/tools.ts`, which makes its own list; the button of the export of the model in the app, which is enabled by the number of all bodies; the two generators of IDs; `stateBefore(0)` in the app, which builds an evaluation by hand and has to empty `bodyProperties` with the bodies; `modelSummary`, `documentProblems` and `outcome` in `packages/mcp/src/tools.ts`; `bodyName` and `refName` in the app; the colour of a body in `viewport.ts` and the scene.
 
 ## The schema: the upgrade step and the life of a document
 
-The step is `3a-body-properties` (`BODY_PROPERTIES_STEP` in `contract.ts`). It reads and changes only `bodyProperties`: a document without the field gets `{}`; a field that is there, whatever it holds, is left for the validation, as the step from version 1 leaves `parameters`. It commutes with every other step, so the test of the preparatory step (pending steps run before and after the ones merged meanwhile) holds trivially.
+The step is `3a-body-properties` (`BODY_PROPERTIES_STEP` in `contract.ts`). It reads and changes only `bodyProperties`: a document without the field gets `{}`; a field that is there, whatever it holds, is left for the validation (the step from version 1 is looser: it takes a `parameters` that is `null` for one that is missing). It commutes with every other step, so the test of the preparatory step (pending steps run before and after the ones merged meanwhile) holds trivially.
 
 `save` always writes the section, also when it is empty.
 
@@ -208,7 +211,7 @@ What happens to a document, by what the build that loads it knows. V is the vers
 **By hand**, one edit each, with tests:
 
 - `get_model`: every body in `bodies` gets what its result states beyond the defaults (`name` when it has one of its own, `color`, `material`, `use` when it is not `part`, `density`, `mass` in grams, `from`). The answer gets `bodyPropertyErrors` (body, field, message) and, without `at`, `bodyPropertiesWithoutBody`, next to `failedChecks` and `parameterErrors`; `execute` and `preview` return the same lists (`documentProblems` serves all three today).
-- `execute` also names the bodies that took an entry over (`bodyPropertiesAdopted`).
+- `execute` also lists what the command took over (`takenOver`).
 - `export_stl`: without a list it takes the printed bodies. The tool builds the list itself today, so this is a change of `_export_stl`, not only of its description; a test covers no list, a list with a reference body, and `perBody`.
 - One line of the conventions in `describe_api`: what the three uses mean, that a copy inherits, and that the mass of a bought part belongs in `mass`.
 
@@ -235,6 +238,7 @@ What happens to a document, by what the build that loads it knows. V is the vers
 | `SectionInfo`, `SECTION_INFO`, the registry of sections, numeric fields of an entry | engine | 5a |
 | `bodySource` in the registry of feature types | engine | 2e (a mirror and a linear pattern of a body), 3d (a split, a boolean of bodies) set it for the bodies they derive |
 | `printedBodies`, `bodyPropertiesWithoutBody` | engine | 2g, 1e, MCP, the app |
+| `namedBySections`, `takenOver` | engine, over the registry of sections | the generators of IDs, MCP, the app; 5a |
 
 ## Needs from the preparatory step
 
@@ -313,3 +317,16 @@ Checked by the reviewers and found sound: the statements about the code not name
 Not acted on:
 
 - A way for a copy to state "none" for an inherited colour or material (internal, part of the first finding). Named as deferred: it needs a value for "none" in the entry, which a later optional field can bring.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1 and what they introduced
+
+The same two reviewers, read-only, at commit `5cf6f5b`; the internal one was a fresh subagent that had not seen the first round. `agy` is still out of quota. They were asked for blockers, majors and factual errors only. Neither found a blocker; both found the fixes of round 1 holding, with the remainders below. `codex` returned four findings over the two packages, the internal reviewer five, with a probe of `freshIds` against the engine.
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The report of a taken-over entry compares the model before and after a command, so a feature removed and added again inside one batch is not reported; and as worded it would report every body made and given properties in one batch | codex (major), internal (as a caveat) | Yes (`applyCommand` runs a batch through; `execute` recomputes once) | `takenOver` reads the document before the command and the command itself; `calls.ts` has both cases |
+| A copy that inherits a mass in error has no `fieldErrors` of its own by the rewritten rule, so the mass query takes it for a body that states nothing and weighs it by the density given as an argument | internal, major | Yes | `fieldErrors` holds the errors of the pair that is used, own or inherited; `calls.ts` has the copy |
+| The guard against a reused ID covers the keys of this section only; the mechanism names bodies, sketches and points the same way | internal, major | Yes (probe: `freshIds` hands out the ID of a removed point that only a section names) | The rule belongs to the registry of sections (`names`, `namedBySections`, `takenOver`); see also 5a |
+| The app does not make its own list for the export of the whole model: it calls `exportMesh('stl')` without one | codex, factual | Yes (`app.ts`, the button "Export STL") | Said as it is; only `_export_stl` makes a list, and the button of the app counts all bodies to enable itself |
+| "As the step from version 1 does with `parameters`": that step takes `null` for missing | codex, factual | Yes (`upgrade` uses `??`) | The comparison says so |
+| The model `build` makes is not the one the calls of 5a describe: the screws reach into the motor, there is no pin and no hole, nothing depends on the pose | internal, factual | Yes (computed by the reviewer) | `build` makes plates with pins in holes of the same diameter at both joints, screws clear of the motor, and a forearm that runs into the screws and the motor beyond about a quarter turn; the numbers are computed by hand, not run through the kernel |

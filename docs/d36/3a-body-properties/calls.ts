@@ -9,7 +9,7 @@ import type { Id } from '../../../packages/engine/src/index';
 import type { CommandAfter, DocumentAfter, EngineAfter, ExportFile, QueryContext, QueryOutcome, QueryToolInput, StateAfter } from '../00-prep/contract';
 import { DATA_CATALOGS, QueryFailure, SCHEMA_PENDING, UPGRADES } from '../00-prep/contract';
 import type { BodyProperties, BodyPropertiesResult, SectionInfo } from './contract';
-import { BODY_PROPERTIES_STEP, SECTION_INFO, bodyPropertiesWithoutBody, printedBodies } from './contract';
+import { BODY_PROPERTIES_STEP, SECTION_INFO, bodyPropertiesWithoutBody, namedBySections, printedBodies, takenOver } from './contract';
 
 declare const engine: EngineAfter;
 declare function fail(message: string): never;
@@ -21,11 +21,23 @@ function run(...commands: CommandAfter[]): StateAfter {
 
 // ---------------------------------------------------------------- the model of the scenario
 
-// Built with the commands of today; the shapes are simplified to discs, because the scenario is
-// about what the bodies are, not about their form. `layout` holds the two points the joints of
-// 5a turn about. The bodies: `base`, `upper` (the link of the arm), `forearm`, `motor` (a block
-// where the motor sits) and four screws, the body `screw` and the pattern `screws` that copies
-// it three times (`screws/1` to `screws/3`).
+// Built with the commands of today; every shape is a cylinder along Z from a circle in a sketch
+// on the base plane XY, because the scenario is about what the bodies are and how they move,
+// not about their form. Lengths in millimetres.
+// - `layout` holds the two points the joints of 5a turn about: `shoulder` at (0, 0) and `elbow`
+//   at (120, 0).
+// - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder, up to z = 8.
+// - `upper`, the link of the arm: a plate from z = 0 to 8 that reaches both axes, with a hole of
+//   radius 4 at each. The pin of the base sits in one; both are fits of the same diameter.
+// - `forearm`: a plate from z = 8 to 16 beyond the elbow, with a pin of radius 4 down into the
+//   other hole of `upper`.
+// - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
+// - four screws on top of `upper` around the motor, clear of it by 4.5: the body `screw` and the
+//   pattern `screws` that copies it three times about the centre of the motor (`screws/1` to
+//   `screws/3`).
+// As modelled nothing collides: the plates touch, the pins are fits. Turning the elbow, the
+// forearm passes over `upper` and runs into the screws and the motor beyond about a quarter turn
+// either way (the distance of its centre from the motor falls below the sum of the two radii).
 const sketch = (id: Id): CommandAfter => ({
   type: 'addFeature',
   feature: { id, name: id, suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } },
@@ -34,29 +46,40 @@ const fixedPoint = (sketchId: Id, point: Id, x: number, y: number): CommandAfter
   { type: 'addPoint', sketch: sketchId, id: point, x, y },
   { type: 'addConstraint', sketch: sketchId, id: `${point}Fix`, constraint: { type: 'fixed', point, x, y } },
 ];
-function disc(body: Id, x: number, y: number, radius: number, start: number, height: number): CommandAfter[] {
-  const [sketchId, circle] = [`${body}Sketch`, `${body}Circle`];
+// A cylinder: the feature `id` from the circle of its own sketch `<id>Sketch`, whose centre is
+// the point `<id>Centre`. With a target it is added to that body or cut from it.
+function cylinder(id: Id, x: number, y: number, radius: number, from: number, to: number, operation: 'new' | 'add' | 'cut' = 'new', target?: Id): CommandAfter[] {
+  const [sketchId, circle] = [`${id}Sketch`, `${id}Circle`];
   return [
     sketch(sketchId),
-    ...fixedPoint(sketchId, `${body}Centre`, x, y),
-    { type: 'addCurve', sketch: sketchId, id: circle, curve: { type: 'circle', center: `${body}Centre` }, radius },
-    { type: 'addConstraint', sketch: sketchId, id: `${body}Radius`, constraint: { type: 'radius', curve: circle, value: radius, driving: true } },
-    { type: 'addFeature', feature: { id: body, name: body, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: [circle] }] }, extent: { type: 'distance', start, distance: height }, operation: 'new' } },
+    ...fixedPoint(sketchId, `${id}Centre`, x, y),
+    { type: 'addCurve', sketch: sketchId, id: circle, curve: { type: 'circle', center: `${id}Centre` }, radius },
+    { type: 'addConstraint', sketch: sketchId, id: `${id}Radius`, constraint: { type: 'radius', curve: circle, value: radius, driving: true } },
+    {
+      type: 'addFeature',
+      feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: [circle] }] }, extent: { type: 'distance', start: from, distance: to - from }, operation, ...(target === undefined ? {} : { targets: [target] }) },
+    },
   ];
 }
 export function build(): Id[] {
   const state = run(
+    ...cylinder('base', 0, 0, 30, -10, 0),
+    ...cylinder('shoulderPin', 0, 0, 4, -10, 8, 'add', 'base'),
+    ...cylinder('upper', 60, 0, 70, 0, 8),
+    ...cylinder('shoulderHole', 0, 0, 4, -1, 9, 'cut', 'upper'),
+    ...cylinder('elbowHole', 120, 0, 4, -1, 9, 'cut', 'upper'),
+    ...cylinder('forearm', 180, 0, 70, 8, 16),
+    ...cylinder('elbowPin', 120, 0, 4, 0, 16, 'add', 'forearm'),
+    // the sketch of the two axes comes after the three bodies of the arm, so that the timeline
+    // has a point with those bodies and without the axes (5a asks about it)
     sketch('layout'),
     ...fixedPoint('layout', 'shoulder', 0, 0),
     ...fixedPoint('layout', 'elbow', 120, 0),
-    ...disc('base', 0, 0, 30, -10, 10),
-    ...disc('upper', 60, 0, 12, 0, 8),
-    ...disc('motor', 0, 0, 14, 8, 30),
-    ...disc('forearm', 180, 0, 10, 8, 8),
-    ...disc('screw', 15, 0, 1.5, 8, 6),
-    { type: 'addFeature', feature: { id: 'screws', name: 'Screws', suppressed: false, type: 'pattern', source: { type: 'body', body: 'screw' }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'layout', point: 'shoulder' }, count: 4, span: { type: 'full' } } } },
+    ...cylinder('motor', 60, 0, 14, 8, 38),
+    ...cylinder('screw', 80, 0, 1.5, 8, 14),
+    { type: 'addFeature', feature: { id: 'screws', name: 'Screws', suppressed: false, type: 'pattern', source: { type: 'body', body: 'screw' }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' }, count: 4, span: { type: 'full' } } } },
   );
-  return Object.keys(state.evaluation.bodies); // base, upper, motor, forearm, screw, screws/1, screws/2, screws/3
+  return Object.keys(state.evaluation.bodies); // base, upper, forearm, motor, screw, screws/1, screws/2, screws/3
 }
 
 // ---------------------------------------------------------------- a. the catalog fills the fields
@@ -136,6 +159,14 @@ export function brokenMass(): { mass: number | undefined; why: string | undefine
   const state = run({ type: 'removeParameter', name: 'scale' });
   const result = state.evaluation.bodyProperties['upper'];
   return { mass: result.mass, why: result.fieldErrors?.mass?.message, stillInDocument: state.document.bodyProperties['upper'].mass }; // undefined, 'unknown name "scale"', 41.5
+}
+// The same for a copy that inherits the pair: the mass of the source cannot be read, so the copy
+// has none, and it carries the error of its source. A reader therefore does not take the copy for
+// a body that states nothing and weigh it by a density given as an argument.
+export function brokenMassOfSource(): { mass: number | undefined; why: string | undefined } {
+  run({ type: 'setParameter', name: 'perScrew', expr: '0.9' }, { type: 'setBodyProperties', body: 'screw', patch: { mass: 'perScrew' } });
+  const copy = run({ type: 'removeParameter', name: 'perScrew' }).evaluation.bodyProperties['screws/1'];
+  return { mass: copy.mass, why: copy.fieldErrors?.mass?.message }; // undefined, 'unknown name "perScrew"'
 }
 
 // What the commands refuse (each compiles: the engine validates them).
@@ -226,12 +257,30 @@ export function orphan(): { listed: Id[]; after: Id[] } {
 // A feature added under an ID that an entry still names takes the entry over: the new body
 // `motor` is a reference part of 280 g at once. That is wanted when a feature is made again and
 // a trap when the ID is reused for something else, so a caller that sees the entry listed
-// removes it first, and the answer of `execute` over MCP names the bodies that took entries over.
-export function adopted(): string {
-  run({ type: 'removeFeature', id: 'motor' });
-  const state = run(...disc('motor', 0, 0, 20, 8, 5).slice(-1));
-  return state.evaluation.bodyProperties['motor'].use; // 'reference'
+// removes it first, and the answer of `execute` over MCP names what a command took over.
+const motorAgain: CommandAfter = cylinder('motor', 60, 0, 20, 8, 13).slice(-1)[0];
+export function adopted(): { use: string; told: Id[] } {
+  const before = run({ type: 'removeFeature', id: 'motor' }).document;
+  const state = run(motorAgain);
+  return { use: state.evaluation.bodyProperties['motor'].use, told: takenOver(before, motorAgain) }; // 'reference', ['motor']
 }
+// Removed and made again inside one batch: the body `motor` is there before and after, so the
+// model does not show the change of hands. The command does, read against the document it is
+// applied to.
+export function adoptedInOneBatch(): Id[] {
+  const replace: CommandAfter = { type: 'batch', commands: [{ type: 'removeFeature', id: 'motor' }, motorAgain] };
+  const before = engine.getState().document;
+  run(replace);
+  return takenOver(before, replace); // ['motor']
+}
+// A body made and given its properties in one batch (as the import of 3b will do) takes nothing
+// over: no section named it before the command.
+export const madeWithProperties = (): Id[] => {
+  const command: CommandAfter = { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] };
+  return takenOver(engine.getState().document, command); // []
+};
+// The generators of IDs do not hand out an ID a section still names.
+export const stillTaken = (): boolean => namedBySections(run({ type: 'removeFeature', id: 'motor' }).document).includes('motor'); // true
 
 // ---------------------------------------------------------------- e. save, load and the version of the schema
 

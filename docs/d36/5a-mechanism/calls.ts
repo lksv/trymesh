@@ -6,9 +6,12 @@
 //
 // The model is built and given its properties in 3a-body-properties/calls.ts (`build`): the
 // bodies `base`, `upper` (the link of the arm), `forearm`, `motor` (a reference part of 280 g
-// that sits in `upper`) and the screws `screw`, `screws/1` to `screws/3`. The sketch `layout` on
-// the base plane XY has the points `shoulder` and `elbow`; the two axes are the normal of that
-// sketch through them. The arm is modelled stretched out: that is the zero of both joints.
+// that sits on `upper`) and the screws `screw`, `screws/1` to `screws/3` around it. The sketch
+// `layout` on the base plane XY has the points `shoulder` and `elbow`; the two axes are the
+// normal of that sketch through them. The base has a pin in a hole of `upper` at the shoulder,
+// the forearm a pin in a hole of `upper` at the elbow, each of the diameter of its hole. The arm
+// is modelled stretched out: that is the zero of both joints. Turning the elbow, the forearm
+// passes over `upper` and runs into the screws and the motor beyond about a quarter turn.
 
 import type { Id, InterferenceReport, Vec3 } from '../../../packages/engine/src/index';
 import type { RigidTransform } from '../../../packages/engine/src/solid';
@@ -94,7 +97,10 @@ engine.execute({ type: 'setPose', values: { elbow: true } });
 // - The last value may round to a hair above the upper limit; it is within the tolerance of the
 //   limits and is taken as the limit.
 // - A step is clear only when it has no colliding pair and no pair the kernel failed on, so
-//   `failed` is kept. The pin of the elbow in its hole is expected among the fits at every step.
+//   `failed` is kept. The two pins in their holes are expected among the fits at every step
+//   (the pin of the shoulder as modelled, the pin of the elbow turned in its hole), and the
+//   forearm against the motor and the screws among the pairs beyond about a quarter turn. That
+//   is how the test tells a posed answer from one for the model as modelled, which has no pair.
 interface Step {
   value: number;
   pairs: [Id, Id][];
@@ -124,12 +130,14 @@ export const clearSteps = (sweep: Step[]): number[] => sweep.filter((step) => st
 export const stepOverMcp: QueryToolInput = { query: 'interference', after: { type: 'setPose', values: { elbow: 1.2 } } };
 export const twoJointsOverMcp: QueryToolInput = { query: 'interference', args: { bodies: ['base', 'forearm'] }, after: { type: 'setPose', values: { shoulder: 0.5, elbow: -1.2 } } };
 
-// The smallest gap in a pose (1c, here its stand-in): how near the forearm comes to the base
-// when the elbow is folded.
-export function clearanceFolded(): number | null {
-  const preview = engine.preview({ type: 'setPose', values: { elbow: 2.2 } });
+// The smallest gap in a pose (1c, here its stand-in): how near the forearm has come to the
+// motor with the elbow at 1.2, before it reaches it. As modelled the two are farther apart
+// than the search distance.
+export function clearanceBent(): { modelled: number | null; bent: number | null } {
+  const preview = engine.preview({ type: 'setPose', values: { elbow: 1.2 } });
   if (!preview.ok) return fail(preview.error.message);
-  return unwrap(engine.query('standInGap', { a: 'forearm', b: 'base', within: 50 }, { state: preview.state })).distance;
+  const args = { a: 'forearm', b: 'motor', within: 30 };
+  return { modelled: unwrap(engine.query('standInGap', args)).distance, bent: unwrap(engine.query('standInGap', args, { state: preview.state })).distance }; // null, about 15
 }
 
 // A pose that is written: one command, one undo step; undo brings the arm back.
@@ -202,9 +210,27 @@ export function whereTheForearmIs(): { modelled: Vec3; moved: boolean } {
 }
 // A query reads the posed body: its description has the bounds in the pose.
 export const posedBounds = (): Vec3 => unwrap(engine.query('body', { body: 'forearm' })).bounds.min;
-// A state asked for with `at` is a point of the construction of the model and is not posed: the
-// collisions after the feature `forearm` are those of the model as modelled, as they are today.
-export const duringConstruction = (): InterferenceReport => unwrap(engine.query('interference', {}, { at: 'forearm' }));
+// A state asked for with `at` is posed by the mechanism as it resolves against that state. With
+// the pose at zero that is the model as modelled, at every point of the timeline, as today.
+export function duringConstruction(): InterferenceReport {
+  run({ type: 'setPose', values: { shoulder: 0, elbow: 0 } });
+  return unwrap(engine.query('interference', {}, { at: 'elbowPin' }));
+}
+// With the elbow bent, the state after `layout` (the three bodies of the arm and the sketch of
+// both axes, before the motor and the screws) is posed like the finished model; a sweep with
+// `at` and `after` together steps the pose of that state.
+export const bentAtLayout: QueryToolInput = { query: 'interference', at: 'layout', after: { type: 'setPose', values: { elbow: 1.2 } } };
+// Asked for the point just before the sketch of the axes, the same query fails and names the
+// joint: the forearm is in the query by default, its bent pose cannot be computed there, and no
+// answer is given for another pose. A query about bodies that do not move still answers.
+export function bentBeforeTheAxes(): { all: string; still: Vec3 } {
+  run({ type: 'setPose', values: { shoulder: 0, elbow: 1.2 } });
+  const outcome = engine.query('interference', {}, { at: 'elbowPin' });
+  const all = outcome.ok ? fail('expected an error') : outcome.error.code; // 'failed'
+  // `base` is a root and `upper` hangs on the shoulder, which is at zero: neither is blocked
+  const still = unwrap(engine.query('body', { body: 'upper' }, { at: 'elbowPin' })).bounds.min;
+  return { all, still };
+}
 
 // The entry of the query `mechanism`: the result of the recompute for the state asked about,
 // and on request what hangs on one joint. A joint the section does not have is the caller's to
@@ -242,7 +268,9 @@ export function gapInPose(context: QueryContext, a: Id, b: Id, within: number): 
   const [first, second] = [context.bodies[a], context.bodies[b]];
   const pair = pairInFrame(first, second);
   if (!pair) return gapOf(first, second, within);
-  const found = context.memo([pair.a.solid, pair.b.solid], `within:${within}`, () => gapOf(pair.a, pair.b, within));
+  // The answer names a point on each body, so it belongs to this order of the two; the owners of
+  // `memo` have no order, and the key carries it.
+  const found = context.memo([pair.a.solid, pair.b.solid], `first:${a}:within:${within}`, () => gapOf(pair.a, pair.b, within));
   return found.between ? { distance: found.distance, between: { a: move(pair.back, found.between.a), b: move(pair.back, found.between.b) } } : found;
 }
 

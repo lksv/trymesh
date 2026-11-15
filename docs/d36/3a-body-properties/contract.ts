@@ -4,7 +4,7 @@
 // types of the preparatory step and states what the package adds. The design is design.md; the
 // scenario written as calls is calls.ts.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after two rounds of reviews (design.md, "Reviews").
 //
 // Where the types will live: everything a caller of the engine or an AI reads goes to `types.ts`
 // (the section, its entry, the patch, the three commands, the result in the evaluation), into the
@@ -14,7 +14,7 @@
 // exported from its index.
 
 import type { Expr, ExpressionError, Id, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, QuantitySpec, UpgradeStep } from '../00-prep/contract';
+import type { ArgSpecs, CommandAfter, DocumentAfter, QuantitySpec, UpgradeStep } from '../00-prep/contract';
 
 // ================================================================ the section of the document
 
@@ -121,7 +121,9 @@ export interface BodyPropertiesCommands {
 // 4. Else with a `density`: density · volume / 1000, `massFrom: 'density'`; none if it is in error.
 // 5. Else none.
 // A field in error is reported in `fieldErrors` and is left out of the result. Nothing takes its
-// place: not its last number, not the inherited value.
+// place: not its last number, not the inherited value. `fieldErrors` holds the errors of the pair
+// that is used, the own one or the inherited one: a copy of a body whose mass cannot be read has
+// the error of its source, so that a reader can tell "in error" from "not stated" for it too.
 export interface BodyPropertiesResult {
   name: string; // the own name, else that of the creating feature; a copy adds ` / <number>`, as the app names it today
   color?: string;
@@ -178,13 +180,27 @@ export interface SectionInfo {
   fields: readonly SectionFieldSpec[];
 }
 
+// A section names things of the document that may be gone: `bodyProperties` the feature of every
+// key; the mechanism of 5a the features of the bodies of its links and the sketch and the point
+// of every axis. A feature or a sketch entity added under such an ID takes the reference over,
+// which is wanted when the thing is made again and a trap when the ID is reused for something
+// else. Two functions of the engine keep that visible, for every section of the registry:
+// - `namedBySections`: every such ID. The generators of IDs (`freshIds` of the engine, `newId` of
+//   the app) count them as used, as `freshIds` counts every text of the features today.
+// - `takenOver`: the IDs of the features and sketch entities a command adds (at any depth of
+//   a batch) that a section of the document named before the command. It reads the document and
+//   the command, not the model, so a feature removed and added again inside one batch is found.
+//   The answer of `execute` over MCP and the status line of the app list them.
+export declare function namedBySections(document: DocumentAfter): Id[];
+export declare function takenOver(before: DocumentAfter, command: CommandAfter): Id[];
+
 // ================================================================ the upgrade step
 
 // The section is new, so a build without the package would drop it on load without a word; the
 // step makes such a build refuse the document instead. It has nothing to convert: it gives
 // a document that has no such field the empty section. A field that is there, whatever it holds
-// (`null` included), is left for the validation to judge, as the step from version 1 does with
-// `parameters`.
+// (`null` included), is left for the validation to judge. (The step from version 1 is looser:
+// it takes a `parameters` that is `null` for one that is missing.)
 export const BODY_PROPERTIES_STEP: UpgradeStep = {
   name: '3a-body-properties',
   run: (document) => ('bodyProperties' in document ? document : { ...document, bodyProperties: {} }),

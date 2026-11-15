@@ -1,6 +1,6 @@
 # 5a Mechanism description and the posed queries (D49)
 
-**State: design, second version, after one round of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`) and against [3a](../3a-body-properties/design.md).** Not implemented; the plan puts the implementation after 1c and 3a. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with 3a; this package writes the part "two revolute joints; the pose stepped through the range of one joint with the collisions asked at each step; the mass of what hangs beyond the first joint".
+**State: design, third version, after two rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`) and against [3a](../3a-body-properties/design.md).** Not implemented; the plan puts the implementation after 1c and 3a. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with 3a; this package writes the part "two revolute joints; the pose stepped through the range of one joint with the collisions asked at each step; the mass of what hangs beyond the first joint".
 
 The package adds a section to the document. The shape of the section, its commands, its upgrade step and the way a pose reaches a query are decided in full; the app, the wording of the MCP answers and what the export of 5b builds on it are described.
 
@@ -69,6 +69,7 @@ What a command checks only when it sets it, and what can break later:
 
 - **A body named by a link** has to be one a feature of the document can create, as in 3a; only the bodies the link did not have before are checked. Later the feature may be removed or suppressed: the link then poses its other bodies and lists the body in `missing`.
 - **The sketch and the point of an axis** are checked by `axisRef` as for a pattern; only an axis the joint did not have before. Later they may go: the joint is then in error (`brokenReference`).
+- **An ID the section names may be taken over.** A link whose body is gone and a joint whose sketch or point is gone keep the ID. A feature or a point added later under that ID enters the link, or becomes the axis, without a command about the mechanism. That is wanted when the thing is made again and a trap when the ID is reused for something else (the generator of the app starts at 1 in every session; `freshIds` hands out the ID of a removed point that only a section names). The guards are those of 3a, which belong to the registry of sections: the entry of this section gives `names` (the feature of every body of every link, the sketch and the point of every axis), so the generators of IDs count them as used (`namedBySections`), and `execute` and the status line of the app name what a command took over (`takenOver`).
 - **`lower` not above `upper`, and `value` within them.**
   - A command refuses a pose outside the limits; that is what tells an AI at once that a step of its sweep is beyond the range.
   - It compares the numbers as they are for the document it is applied to. A field with an expression is evaluated against the parameters of that document, also when the command does not name the field: the stored number may be that of before the batch. (A command that widens a limit through a parameter and then poses within the new limit, in one batch, is in `calls.ts`.) Nothing of the timeline is computed for it.
@@ -88,7 +89,7 @@ What a command checks only when it sets it, and what can break later:
 
 ## The result of the recompute
 
-`evaluation.mechanism` (`MechanismResult` in `contract.ts`), computed after the timeline with the results of the other sections, from the section, the environment of the parameters and the final state of the timeline (the frames and points of the sketches, for the axes).
+`evaluation.mechanism` (`MechanismResult` in `contract.ts`), computed after the timeline with the results of the other sections, from the section, the environment of the parameters and the state of the timeline the evaluation is of: the final one, or the one after the feature asked for with `at` (the frames and points of the sketches, for the axes; the bodies, for `missing`).
 
 - **The transform of a link.** A root has the identity. For a joint with the motion M (a rotation about its modelled axis by its value, a translation along it, or the identity for a fixed joint), `T(child) = T(parent) ∘ M`: the child is first moved about the axis where it is modelled, then carried with the parent. The transforms are computed in double precision from the modelled configuration every time; nothing accumulates.
 - **A joint in error** has no motion: its axis does not resolve, a field is in error, its limits are crossed or its value is outside them. Its child link and everything beyond it are *blocked*: `blockedBy` names the joint. Their transforms are still there, with the joint counted as standing at zero, so that the app has something to draw; no query reads them (below).
@@ -108,7 +109,11 @@ The context of a query (`QueryContext` of the preparatory step) is built by the 
 - `surface(body, face)` and the frame of a face (`frame` with a face, an entity that is a face or an edge): moved the same way.
 - A plane feature, a base plane, a sketch and its points, an axis: as modelled, by the rule of the preparatory step.
 
-**Only the finished model is posed.** A state asked for with `at` (of `query`, of a tool, of a preview) is a point of the construction of the model: links list bodies that are not made yet and axes stand on sketches that come later. Such a state is answered as modelled, as it is today, and `check_interference` with `at` and the marker of the app keep their answers. Its `evaluation.mechanism` is still resolved, so that what is missing at that point can be seen.
+**A state after a feature is posed like any other.** A state asked for with `at` (of `query`, of a tool, of a preview) is a point of the construction of the model. Its `evaluation.mechanism` is the section resolved against that state, and the context poses by it: a body that is not made yet is in `missing`, and a joint whose axis stands on a sketch that comes later is in error at that point.
+
+- With the exception of a joint at zero (above), **a document whose pose is zero answers at every point of its timeline as it does today**. That is every document of today, and a model during its construction; `check_interference` with `at` and the marker of the app keep their answers.
+- A document whose pose is not zero answers in that pose wherever the axes of the joints that moved exist. A sweep with `at` and `after` together steps the pose of that state.
+- Before the sketch of such an axis the bodies beyond the joint are blocked, and a query that reads them fails and names the joint; a query about the other bodies answers. It does not answer for the model as modelled instead: the caller asked about a document with a pose, and would not be told that the pose was dropped (`calls.ts`, `bentAtLayout` and `bentBeforeTheAxes`).
 
 **Lazily, and remembered.** A body is posed when a query reads it, so a query about one body moves one body. A posed body is remembered by the modelled solid and the transform (a few poses per solid), so a body that did not move between two steps of a sweep is the same object in both.
 
@@ -118,6 +123,8 @@ The context of a query (`QueryContext` of the preparatory step) is built by the 
 - In a sweep of one joint, only the pairs with one body on each side of that joint are computed at every step. The pairs beyond the joint keep their relation and are found in the memory, as are the pairs before it.
 - The motion between two links is composed from the motions of the joints on the way from one to the other, not from their two transforms to the pose. It is therefore the same numbers whenever those joints have the same values, and the moved second body is the same object.
 - The answer no longer depends on which pose asked first: the boxes that reject a pair and the allowance for precision are those of the two bodies in the frame of the first.
+- **The pair is ordered.** `pairInFrame(a, b)` and `pairInFrame(b, a)` hand out different objects (the frame is that of the first), and an answer in coordinates is in that frame until it is moved back. A query that remembers an answer about a pair through `context.memo`, whose owners have no order, puts the order into its key (`calls.ts`, `gapInPose`), or orders the pair itself before it asks.
+- The function gets two bodies of the context and finds their links by itself: the engine keeps, for every posed body it hands out, the modelled body and the link it came from.
 
 **A blocked body cannot be read.** Reading `bodies[id]`, a surface or a frame of a body whose link is blocked throws `QueryFailure('failed', …)` naming the joint. So a query answers for the pose that was asked, or says why it cannot; it never answers for a pose in which a joint silently stood still. A query that does not touch the blocked bodies answers as usual. (`Object.keys(bodies)` reads nothing; the checks before `run` look names up in the evaluation, where they do not depend on the pose.)
 
@@ -166,14 +173,14 @@ packages/mcp/src/tools.ts  modelSummary, documentProblems; get_body, check_inter
 packages/app/src/panels/mechanism.ts, panels/collisions.ts; the scene and viewport.ts
 ```
 
-The registry of sections of 3a takes the entry; `validateDocument`, `applyCommand`, `renameParameter`, `Evaluator.evaluate`, `settle` and `differs` are not edited again. The upgrade step is `5a-mechanism` (`MECHANISM_STEP`): it gives a document without the field an empty mechanism, leaves a field that is there to the validation and reads nothing else.
+The registry of sections of 3a takes the entry, with `names` for the IDs the section names; `validateDocument`, `applyCommand`, `renameParameter`, `Evaluator.evaluate`, `settle` and `differs` are not edited again. The upgrade step is `5a-mechanism` (`MECHANISM_STEP`): it gives a document without the field an empty mechanism, leaves a field that is there to the validation and reads nothing else.
 
 **The life of a document** follows the table of 3a, with `5a-mechanism` for the name and W, the version of the `master` this branch starts from, for V. That `master` has 3a, so W is at least 3.
 
 - A build that knows the step loads a document of the branch; one with the preparatory step that does not know it refuses it by the name; a build without this package refuses a document of the merged `master` by its version.
 - A document saved by a build with 3a and without this package loads in a build with it and gets the empty mechanism. The other way it is refused.
 - A field of a link or a joint that a build does not know (the effort limit of 5b) is refused, not dropped.
-- **The hole of 3a's table is not here.** A build from before the preparatory step accepts version 2 only (`validateDocument`), and a document of this branch has version W. It refuses it.
+- **The hole of 3a's table is not here.** A build from before the preparatory step accepts the versions 1 and 2 only (`upgrade` and `validateDocument`), and a document of this branch has version W. It refuses it.
 
 ## MCP and the app
 
@@ -184,7 +191,7 @@ The registry of sections of 3a takes the entry; `validateDocument`, `applyComman
 - `get_model` gets `mechanism` when there is a link: the links with their bodies, the joints with kind, parent, child, the numbers and the expressions, the roots when there are several. The numbers are printed so that a limit read here is accepted as a value (the tolerance of the limits is wider than the rounding). The bodies it lists stay as modelled, and the description of the tool says so. The problems go next to `failedChecks`: joints in error with their code and message, links with missing bodies, bodies in no link. `execute` and `preview` return the same lists.
 - `get_body` prints the volume and the bounds of `query('body')`, not of the state (see "Needs").
 - `check_interference` and `get_body` answer a blocked body with the reason, as an error of the call, and add a note to their answer when the pose moves any link, so that an answer for a bent arm is not read as one for the model as modelled.
-- A paragraph of the conventions in `describe_api`: the model as modelled is the zero of every joint; the sign of a turn; a pose is stepped with `after: { type: 'setPose', … }`; a query answers in the pose of the document, except with `at`; an axis, a sketch point or a plane feature given to a query is as modelled while the bodies are posed; exports are always as modelled.
+- A paragraph of the conventions in `describe_api`: the model as modelled is the zero of every joint; the sign of a turn; a pose is stepped with `after: { type: 'setPose', … }`; a query answers in the pose of the document, also with `at`, where it fails for a body beyond a joint that moved and whose axis is not made yet; an axis, a sketch point or a plane feature given to a query is as modelled while the bodies are posed; exports are always as modelled.
 
 **The app**:
 
@@ -192,12 +199,12 @@ The registry of sections of 3a takes the entry; `validateDocument`, `applyComman
 - A joint has a numeric field that takes an expression, and a slider between its limits. Dragging the slider previews `setPose`; releasing it executes it. The slider of a value with an expression is disabled: moving it would replace the expression, and with it a coupling, by a number.
 - *Reset pose* sets every value without an expression to the value nearest to zero that its limits allow (zero itself wherever the limits contain it).
 - Links and joints are made, changed and removed in forms of the panel: a link by a name and a pick of bodies, a joint by its kind, its two links, its axis (the picker of an axis that the form of the pattern has) and its numbers. Every confirmation is one command; removing a link that a joint names is refused with the reason.
-- **The view shows the pose** in the model mode: the app applies the transform of the link to the mesh of each body, without new geometry. In a sketch, in the form of a feature and at the marker of the timeline the view shows the model as modelled, because that is where sketches, planes and the references of features are, and because a state of the construction is not posed; the status line says which of the two is shown.
+- **The view shows the pose** in the model mode: the app applies the transform of the link to the mesh of each body, without new geometry. That holds at the marker of the timeline too: the view shows the state at the marker by its own `evaluation.mechanism`, and a blocked link is drawn where it is modelled and marked, with the joint named in the status line. In a sketch and in the form of a feature the view shows the model as modelled, because that is where sketches, planes and the references of features are; the status line says which of the two is shown.
 - The collisions are asked for the state shown, so in the pose; the highlight of a pair follows. A blocked body is reported as the reason the collisions cannot be asked.
 
 ## Shared vocabulary
 
-**Taken**: from the preparatory step the additions to the unions, `QueryContext` and its rule of the pose, `QuerySpec`, `IssueAfter`, `UpgradeStep`, the tool `query` with `after`; from 3a the registry of sections with its numeric fields, `SECTION_INFO`, the check of a body ID, `standInMass` and the properties behind it; from the engine `AxisRef`, `RigidTransform`.
+**Taken**: from the preparatory step the additions to the unions, `QueryContext` and its rule of the pose, `QuerySpec`, `IssueAfter`, `UpgradeStep`, the tool `query` with `after`; from 3a the registry of sections with its numeric fields, `SECTION_INFO`, the check of a body ID, `namedBySections` and `takenOver` for the IDs the section names, `standInMass` and the properties behind it; from the engine `AxisRef`, `RigidTransform`.
 
 **Added**:
 
@@ -219,7 +226,7 @@ The registry of sections of 3a takes the entry; `validateDocument`, `applyComman
    - The case of an entry: a print query of 1e with an orientation given as a direction (`up: [0, 0, 1]`), asked about `forearm` in a document whose stored pose has the elbow at 1.2. The context hands out the forearm turned by 1.2, and the bounds against the bed and the overhangs are those of the turned body, which is not how it is printed.
    - The case of a caller: the elbow is bent and its axis sketch is broken, so the forearm is blocked. The AI wants `query('body', { body: 'forearm' })` to find the face a new axis can stand on. It cannot ask for the forearm as modelled. Setting the pose to zero first is not a way around: it changes the document, it is refused for a joint whose limits do not contain zero, and for a preview it needs the same thing asked of the tool.
    - Asked for: `QuerySpec.geometry: 'modelled'` (or the like) for an entry, and an option of the caller in `QueryOptions` and `QueryToolInput`, both giving the query the context an export gets. This package cannot add either: both types are the shared contract.
-   - Until then: a state asked for with `at` is not posed (above), which gives a caller the model as modelled at the last feature; the description for the AI would have to say so, and a print query by a direction stays wrong in a pose.
+   - Until then neither case has a way around that always works. A print query by a direction is wrong in a pose, and the description for the AI has to say so; a blocked body can be read only after the pose is set to zero, with the three faults named above. (The second version of this design answered a state asked for with `at` as modelled, which gave a caller a back door; it is gone, see "Rejected".)
 2. **The tool `query` does not say which pose it answered for.** Its answer is the result of the query alone.
    - The case: `query` with `interference` on a saved document whose pose is not zero. The report is for the bent arm, and nothing in the answer says so; `check_interference` gets a note by hand with this package, the general tool cannot.
    - Asked for: a place beside the result in the answer of the tool for a note of the engine about the state it answered for.
@@ -254,7 +261,7 @@ None of this was tried in code.
 - **Copies of a pattern follow their source into its link**, as they inherit its properties in 3a. The planets of scenario 9 are copies of one body and each turns on its own pin; the rule would be wrong there, and the list of a link would no longer say what moves. The properties are different: a copy that is not told otherwise should be made of what its source is made of.
 - **The value in a record of the section, apart from the joints** (`pose: Record<Id, number>`). Named poses could be added either way; the expression of a value has its place in the joint with the other numeric fields.
 - **Bodies that moved by the same transform answered as modelled, and nothing more** (the first version, `movedTogether`). It covered one link and missed the pairs beyond a swept joint, and it handed over solids where the collisions also read boxes. The pair in the frame of its first body covers both.
-- **Every state posed, also one asked for with `at`.** Any point of the timeline before the sketch of an axis would have its joints in error and its bodies blocked, and `check_interference` with `at` would stop answering what it answers today.
+- **A state asked for with `at` never posed** (the second version). It kept `check_interference` with `at` answering before the sketch of an axis. But it dropped a pose without a word: a sweep with `at` and `after: setPose` would return the same answer at every step, and a saved document with a bent arm would be answered as modelled at its last feature and posed without `at`. A joint at zero that blocks nothing keeps today's answers for every document whose pose is zero, which is what the rule was for; a bent document fails loudly where its pose cannot be computed.
 
 ## Open
 
@@ -307,3 +314,18 @@ Not acted on:
 
 - A policy of the mass in place of the pair rule of 3a (codex, as one of two remedies): see 3a.
 - A limit on the answer of `mechanism` beyond `beyond` (codex): the answer is linear in what the caller wrote.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1 and what they introduced
+
+The same two reviewers, read-only, at commit `5cf6f5b`; the internal one was a fresh subagent that had not seen the first round. `agy` is still out of quota. They were asked for blockers, majors and factual errors only. Neither found a blocker. `codex` returned four findings over the two packages, the internal reviewer five; the ones about 3a are in its design, the ones about this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| "A state asked for with `at` is not posed" drops a pose without a word: a sweep with `at` and `after: setPose` returns one answer at every step, and a saved document with a bent arm is answered as modelled with `at` at its last feature and posed without it | internal, major | Yes (the tool `query` takes `at` and `after` together; `stateAt` of the last feature is the whole model) | The reviewer proposed to refuse `at` with an `after` that poses and to give the two hand-made tools a note both ways; that leaves the general tool `query` on a document saved bent, which has no place for a note (need 2). Instead the rule is gone. A state after a feature is posed by the section resolved against that state; with the joint at zero that blocks nothing, a document whose pose is zero answers as today at every point; a bent one fails before the sketch of the axis of a joint that moved. Need 1 lost its "until then"; the conventions for the AI, the view at the marker and "Rejected" follow; `calls.ts` has the three cases, and `build` of 3a puts the sketch of the axes after the bodies of the arm so that they can be written |
+| The mechanism names bodies, sketches and points that may be gone, and an unrelated feature or point that reuses the ID enters a link or becomes an axis; the guard of 3a covered the keys of its own section | internal, major | Yes (probe: `freshIds` hands out the ID of a removed point that only a section names) | "An ID the section names may be taken over": the entry gives `names` to the registry, and gets `namedBySections` and `takenOver` |
+| `gapInPose` remembers its answer under a key without the order of the pair, while `memo` has unordered owners and `pairInFrame` an ordered pair: asked the other way round, the nearest points come back swapped and in the frame of the other body | codex, major | Yes (`QueryContext.memo` in `00-prep/contract.ts`) | The key carries the order; the rule is stated under "A pair is computed in the frame of its first body" and in the contract |
+| `pairInFrame` takes two posed bodies and has to know their links | internal, as a caveat | Yes | Stated: the engine keeps the modelled body and the link of every posed body it hands out |
+| "A build from before the preparatory step accepts version 2 only": it accepts 1 and 2 | internal, factual | Yes (`upgrade` in `document.ts`) | Said as it is; the conclusion (a version of 3 or more is refused) stands |
+| The model `build` of 3a makes is not the one the calls here describe | internal, factual | Yes | See 3a |
+
+Checked and found holding by both: the limits evaluated against the document a command is applied to; the tolerance of the limits (equal to the tolerances of the engine and wider than the rounding of the tools); the joint at zero (a turn by zero is exactly the identity, by a probe); the rules of the write-back; `carriedBy` with `missing`; `failed` kept by the sweep; the statements about the callers that do not catch; the frame of the child of a fixed joint; the torque; the upgrade step; the departures from the brief listed under "Open"; the pair in the frame of its first body against `interference.ts`. `codex` also counted "the states of the construction stay unposed" among the fixes that hold; the internal reviewer found the hole in it (the first row).

@@ -4,7 +4,7 @@
 // types of the preparatory step and what package 3a put into the shared vocabulary, and states
 // what the package adds. The design is design.md; the scenario written as calls is calls.ts.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after two rounds of reviews (design.md, "Reviews").
 //
 // Where the types will live: the section, its commands and its result in the evaluation go to
 // `types.ts`, into the parts that `describe_api` prints (the document before the marker
@@ -196,7 +196,10 @@ export declare function carriedBy(section: Mechanism, mechanism: MechanismResult
 // `QueryFailure('failed', …)` with the joint in the message. Posed bodies are remembered by the
 // modelled solid and the transform, so a body that did not move between two poses is the same
 // object in both and what `memo` keeps for it is found again.
-// A state asked for with `at` (a point of the construction of the model) is never posed.
+// A state asked for with `at` is posed by the mechanism as it resolves against that state: an
+// axis whose sketch comes later is not there yet, so its joint has no motion and blocks, unless
+// its value is 0. A document whose pose is zero answers at every point of its timeline as it
+// answers today.
 export declare function poseOfBody(mechanism: MechanismResult, body: Id): RigidTransform | { blockedBy: Id } | undefined;
 
 // For a query of the engine that answers about a pair of bodies (the collisions, the gap): the
@@ -214,6 +217,13 @@ export declare function poseOfBody(mechanism: MechanismResult, body: Id): RigidT
 //   the motion).
 // - Both arguments are bodies a context handed out. Nothing is returned when neither was moved:
 //   they are the modelled bodies already.
+// - The pair is ordered: the frame is that of the first body. An answer that tells the two bodies
+//   apart (the nearest point on each) is the answer for that order only. The owners of `memo`
+//   have no order, so a query that remembers such an answer by the two solids puts the order
+//   into its key, or computes in one fixed order and swaps the sides of what it returns, as the
+//   collisions sort the two IDs before they compute.
+// - The engine keeps, for every body a context handed out, the modelled body and the link it
+//   came from (a `BodyResult` carries no ID); that is what this function looks up.
 export declare function pairInFrame(a: BodyResultAfter, b: BodyResultAfter): { a: BodyResultAfter; b: BodyResultAfter; back: RigidTransform } | undefined;
 
 // ================================================================ the query

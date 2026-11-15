@@ -15,7 +15,6 @@ import type {
   Id,
   Input,
   Parameter,
-  PatternFeature,
   ProfileSource,
   Projected,
   RegionRef,
@@ -36,8 +35,6 @@ import {
   REF_LABEL,
   type RefContext,
   type ValidationContext,
-  axisRef,
-  axisRefs,
   base,
   boolean,
   edgeName,
@@ -48,7 +45,6 @@ import {
   newId,
   object,
   oneOf,
-  onlyFields,
   plain,
   planeRef,
   planeRefs,
@@ -56,6 +52,7 @@ import {
   string,
 } from './validation';
 import type { FeatureTypeInfo } from './features/module';
+import { pattern } from './features/pattern';
 import { plane } from './features/plane';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
@@ -78,6 +75,7 @@ export {
 } from './sketch-content';
 export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
 export type { FeatureTypeInfo } from './features/module';
+export { MAX_PATTERN_COUNT } from './features/pattern';
 
 export const SCHEMA_VERSION = 2;
 
@@ -92,11 +90,6 @@ const NO_ENVIRONMENT = (): Environment => ({});
 
 const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
 const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
-// The count of a pattern includes the original. The upper bound keeps a typo in an expression from
-// starting thousands of booleans.
-export const MAX_PATTERN_COUNT = 200;
-const PATTERN_COUNT: NumberSpec = { title: 'Count', unit: 'count', integer: true, min: { value: 1 }, max: { value: MAX_PATTERN_COUNT } };
-const PATTERN_ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
 
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
@@ -361,39 +354,6 @@ function extrudeFeature(o: Dict, what: string, context: ValidationContext): Extr
   return { ...feature, targets };
 }
 
-function patternFeature(o: Dict, what: string, context: ValidationContext): PatternFeature {
-  const { fields } = context;
-  const given = object(o.source, `${what}.source`);
-  let source: PatternFeature['source'];
-  const sourceType = oneOf(given.type, ['features', 'body'] as const, `${what}.source.type`);
-  onlyFields(given, ['type', sourceType === 'features' ? 'features' : 'body'], `${what}.source`, `a source of the type ${sourceType}`);
-  if (sourceType === 'features') {
-    if (!Array.isArray(given.features) || given.features.length === 0) return fail(`${what}.source.features: a non-empty list of feature IDs is expected`);
-    const features = (given.features as unknown[]).map((id, i) => string(id, `${what}.source.features[${i}]`));
-    if (new Set(features).size < features.length) fail(`${what}.source.features: a feature is listed twice`);
-    for (const id of features) context.requireRef({ id, kind: 'tool' }, `${what}.source.features`);
-    source = { type: 'features', features };
-  } else {
-    const body = string(given.body, `${what}.source.body`);
-    context.requireRef({ id: body, kind: 'body' }, `${what}.source.body`);
-    source = { type: 'body', body };
-  }
-  const transform = object(o.transform, `${what}.transform`);
-  const type = oneOf(transform.type, ['circular'] as const, `${what}.transform.type`);
-  onlyFields(transform, ['type', 'axis', 'count', 'span'], `${what}.transform`, `a transform of the type ${type}`);
-  const axis = axisRef(context, transform.axis, `${what}.transform.axis`);
-  const count = fields.number(transform.count, 'transform/count', PATTERN_COUNT, `${what}.transform.count`);
-  const span = object(transform.span, `${what}.transform.span`);
-  const full = oneOf(span.type, ['full', 'angle'] as const, `${what}.transform.span.type`) === 'full';
-  onlyFields(span, full ? ['type'] : ['type', 'angle'], `${what}.transform.span`, `a span of the type ${full ? 'full' : 'angle'}`);
-  return {
-    ...base(o, what),
-    type: 'pattern',
-    source,
-    transform: { type, axis, count, span: full ? { type: 'full' } : { type: 'angle', angle: fields.number(span.angle, 'transform/span/angle', PATTERN_ANGLE, `${what}.transform.span.angle`) } },
-  };
-}
-
 function sketchFeature(o: Dict, what: string, context: ValidationContext): SketchFeature {
   const { fields } = context;
   const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(context, o.plane, `${what}.plane`));
@@ -452,6 +412,7 @@ interface FeatureTypeSpec<F extends Feature> {
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane,
+  pattern,
   sketch: {
     info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
     validate: sketchFeature,
@@ -493,29 +454,6 @@ const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, 
       },
       removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'profile' && removableFromProfile(f.profile, rest)),
     },
-  },
-  pattern: {
-    info: {
-      title: 'Pattern',
-      summary:
-        'Repeats its source around an axis: a list of extrusions with the operation add or cut (each copy of their tools is applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
-        'The count includes the original. The copies go around the full circle (`span: { type: "full" }`) or within an angle between the first and the last copy.',
-      fields: [
-        { path: 'transform/count', spec: PATTERN_COUNT },
-        { path: 'transform/span/angle', spec: PATTERN_ANGLE, when: { path: 'transform/span/type', equals: 'angle' } },
-      ],
-      bodies: 'derived',
-    },
-    validate: patternFeature,
-    refs: (f) => [
-      ...(f.source.type === 'features' ? f.source.features.map((id): FeatureRef => ({ path: 'source/features', id, kind: 'tool' })) : [{ path: 'source/body', id: f.source.body, kind: 'body' } as FeatureRef]),
-      ...axisRefs(f.transform.axis, 'transform/axis'),
-    ],
-    // Copies are numbered from 1. Whether the copy with that number exists shows in the recompute:
-    // the count may be an expression.
-    createsBody: (f, local) => f.source.type === 'body' && local !== undefined && /^[1-9][0-9]*$/.test(local),
-    namesFaces: false,
-    patch: { fields: ['source', 'transform'] },
   },
 };
 

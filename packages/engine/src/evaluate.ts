@@ -3,32 +3,30 @@ import { SketchAnalysis } from './analysis';
 import { checkNumber } from './catalog';
 import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
+import { pattern } from './features/pattern';
 import { plane } from './features/plane';
 import { toolSpan } from './recompute/extent';
 import { profile as resolveProfile } from './recompute/profile';
-import { applyTool, axis, frame as frameOf, issue, lookup, withFaces } from './recompute/services';
-import type { Deps, Done, DragTarget, Failed, Model, Placement, SketchState, SolvedSketch, State, Step, StepContext, ToolRecipe, WriteBack } from './recompute/state';
+import { applyTool, frame as frameOf, issue, lookup, withFaces } from './recompute/services';
+import type { Deps, Done, DragTarget, Failed, SketchState, SolvedSketch, State, Step, StepContext, ToolRecipe, WriteBack } from './recompute/state';
 import { type Region, type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from './sketch';
-import { type Prism, type RigidTransform, analyzeBody, buildPrism, projectEdge, rotation, transformFace, transformFrame, transformSolid } from './solid';
+import { type Prism, analyzeBody, buildPrism, projectEdge, transformFrame } from './solid';
 import type {
   Document,
   Evaluation,
   ExpressionError,
   ExtrudeFeature,
-  FaceName,
   Feature,
   FeatureResult,
   FieldPath,
   Id,
   Issue,
   IssueCode,
-  PatternFeature,
   Projected,
   SketchFeature,
   SolveInput,
   SolveResult,
 } from './types';
-import { faceKey } from './util';
 
 // The types of the state moved to recompute/state.ts; what the engine and the contracts import from
 // here keeps its path.
@@ -176,7 +174,7 @@ export class Evaluator {
       case 'extrude':
         return this.extrude(feature, state, chordTolerance, done, failed);
       case 'pattern':
-        return this.pattern(feature, state, done, failed);
+        return pattern.step(feature, context);
       default: {
         const unknown: never = feature;
         throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
@@ -297,69 +295,5 @@ export class Evaluator {
     return { state: done({ status: 'ok', warnings: [], bodies: [feature.id] }, { ...withFaces(state, tool, first), bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
   }
 
-  // A pattern: the transforms of its copies, then either the tools of the source features applied
-  // in each of them, or the source body copied into each of them. The rest of the step does not
-  // know what kind of transform it is.
-  private pattern(feature: PatternFeature, state: State, done: Done, failed: Failed): Step {
-    const transforms = this.transforms(feature.transform, state);
-    if ('code' in transforms) return failed(transforms.code, transforms.refs);
-    const placements = transforms.map((transform, i): Placement => ({ transform, copy: { pattern: feature.id, index: i + 1 } }));
-    const { source } = feature;
-
-    if (source.type === 'body') {
-      const solid = lookup(state.bodies, source.body);
-      if (!solid) return failed('brokenReference', [source.body]);
-      // Every face the body has at this moment (faces of several features, of earlier patterns too)
-      // gets a new number for each copy, with the copy tag appended to its name and its description
-      // moved with the copy.
-      const faces = [...new Set(solid.faceIds)].sort((a, b) => a - b);
-      const model: Model = { bodies: { ...state.bodies }, faceNames: [...state.faceNames], faceInfos: [...state.faceInfos], faceIds: new Map(state.faceIds) };
-      const created: Id[] = [];
-      for (const { transform, copy } of placements) {
-        const renumbered = new Map<number, number>();
-        for (const face of faces) {
-          const name: FaceName = { ...state.faceNames[face], copy: [...(state.faceNames[face].copy ?? []), copy] };
-          renumbered.set(face, model.faceNames.length);
-          model.faceIds.set(faceKey(name), model.faceNames.length);
-          model.faceNames.push(name);
-          model.faceInfos.push(transformFace(transform, state.faceInfos[face]));
-        }
-        const id = `${feature.id}/${copy.index}`;
-        model.bodies[id] = transformSolid(transform, solid, (face) => renumbered.get(face) as number);
-        created.push(id);
-      }
-      return { state: done({ status: 'ok', warnings: [], bodies: created }, model) };
-    }
-
-    // Features: a source that is missing, suppressed or in error has no recipe. A source that ended
-    // with `noEffect` has one, because a turned copy can hit what the original missed.
-    const missing = source.features.filter((id) => !lookup(state.tools, id));
-    if (missing.length) return failed('brokenReference', missing);
-    let model: Model = state;
-    const idle: { copy: number; feature: Id; targets: Id[] }[] = [];
-    for (const placement of placements) {
-      for (const id of source.features) {
-        const applied = applyTool(state.tools[id], model, this.deps.kernel, placement);
-        // The pattern is atomic: one failed copy and the model stays as it was before the pattern.
-        // The copy is named by the first of `refs`, not in the text: a client names it its own way.
-        if (!applied.ok) return failed(applied.code, [{ copy: placement.copy.index, feature: id }, ...(applied.refs ?? [])], applied.detail);
-        if (applied.unchanged.length) idle.push({ copy: placement.copy.index, feature: id, targets: applied.unchanged });
-        model = applied.model;
-      }
-    }
-    const warnings = idle.length ? [issue('noEffect', idle, 'some copies changed none or only some of their targets')] : [];
-    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, model) };
-  }
-
-  // The transforms of the copies of a pattern, the original excluded: copy 1 first.
-  private transforms(transform: PatternFeature['transform'], state: State): RigidTransform[] | { code: IssueCode; refs: unknown[] } {
-    const { count, span } = transform;
-    const line = axis(transform.axis, state);
-    if ('code' in line) return line;
-    const { point, direction } = line;
-    // full circle: the copies divide it evenly; an angle: it lies between the first and the last copy
-    const step = span.type === 'full' ? (2 * Math.PI) / count : count > 1 ? span.angle / (count - 1) : 0;
-    return Array.from({ length: count - 1 }, (_, i) => rotation(point, direction, step * (i + 1)));
-  }
 }
 

@@ -715,6 +715,21 @@ describe('the app, driven as a user drives it', () => {
     h.record('seen from the other side: the other half is cut away');
     h.press('panel', 'Close');
     h.record('the section closed: the model is whole again');
+    // ----- the gap view: the pairs as rows, and where a gap is
+    h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'gap', true);
+    h.type(h.field('Search distance (optional)'), '100', true);
+    h.press('panel', 'Ask');
+    h.record('the query Smallest gap within 100 mm: a row per pair, the closest first, a pair at zero with its contact');
+    const gapRows = (): HTMLElement[] => Array.from(h.document.querySelectorAll('#panel .row')) as HTMLElement[];
+    gapRows()[0].click();
+    h.record('a pair at zero picked: its two bodies are highlighted');
+    gapRows()[gapRows().length - 1].click();
+    h.record('a pair with a gap picked: the two faces named and highlighted, the two points joined by a line with its length');
+    h.type(h.field('Most pairs (optional)'), '1', true);
+    h.press('panel', 'Ask again');
+    h.record('at most one pair listed: the panel says how many there are');
+    h.press('panel', 'Close');
+    h.record('the gaps closed');
     h.press('toolbar', 'Collisions');
     outside(h, { type: 'renameFeature', id: 'e2', name: 'Kolík' });
     h.record('a change of the document throws the answer away');

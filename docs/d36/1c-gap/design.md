@@ -1,6 +1,6 @@
 # 1c Smallest gap between bodies
 
-**Decision D40. State: the engine side (the query `gap`) is implemented on the branch `d36/1c`; the view of the app follows. The kernel port did not get a method: the owner decided so and the measurement confirmed it; see "The measurement" and "As implemented" at the end, which say where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D40. State: implemented on the branch `d36/1c`: the query `gap` and the gap view of the app. The kernel port did not get a method: the owner decided so and the measurement confirmed it; see "The measurement" and "As implemented" at the end, which say where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the gap between a planet and the carrier.
 
@@ -267,3 +267,18 @@ One full review by a subagent that did not write the code, read-only, with probe
 Not acted on, and why:
 
 - **A failure of the kernel is remembered for as long as the two meshes live**, as a contact `unknown` or a pair that could not be measured. It is how `interference` keeps its failures; it matters only if the kernel fails on one call and not on the next for the same input, which it does not.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/gap.ts`, one line in `QUERY_VIEWS`. The view is the one of "What the app shows" and of `calls.ts`, with these differences:
+
+- **A picked gap also highlights its two faces and names them under its row.** The design drew the two bodies and the line. A gap of a tenth of a millimetre is not seen at the size of a model, and the faces are what the answer is for.
+- **The numbers are rounded to a thousandth of a millimetre**, as the view of `measure` does; the accuracy is left out when it rounds to nothing, and a gap that rounds to nothing reads "under 0.001 mm" so that it is not taken for a contact.
+- **A contact is worded** (`unknown` reads "touching or colliding"), with what it means in the tooltip of the row.
+- **The note** starts with "Gaps:" and says "No two bodies within …" when there is none.
+- **The colours** are those of the app (`COLOR.select`, `COLOR.clash`, and `COLOR.hover` for the faces, the line and the points), not the three numbers of `calls.ts`.
+- **Not asked when the form opens** (the collisions are): the search distance is an argument a user sets first, and the query may take a second.
+
+Tested by five recorded steps of the model case of `packages/app/test/app.test.ts` (the rows, a pair at zero picked, a gap picked, the list cut, closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").
+
+**Not done:** a zoom to the picked gap; the view over a preview or while a form of a feature is open (the generic form is not shown then).

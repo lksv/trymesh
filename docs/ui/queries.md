@@ -1,6 +1,6 @@
 # UI: queries
 
-Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38).
+Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38); the gap view (D40).
 
 ## Queries (D39)
 
@@ -34,10 +34,11 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **Asking** is the button *Ask* (*Ask again* once there is an answer), not a side effect of typing: a query may take seconds. The engine checks the arguments. An error is written under the form and in the status bar, and the row of the argument it names is marked. A number out of its range, or a text that is not a number, is marked while it is typed and still sent as typed, so the form never asks with a value other than the one it shows. Nothing is armed after a question; *Pick in the view* arms an argument again.
 - **The answer** belongs to the document and the place on the timeline it was asked at: it is shown while the insertion marker is there, hidden while it is elsewhere, and dropped when the document changes. The arguments in the form stay. A note in the status bar goes with the answer.
 - **Without a view** the answer is a tree of names and values, each level set in from the one it belongs to: numbers rounded as the MCP tool `query` rounds them, with the unit the query gives for their key (an angle in degrees, rounded after it was converted), a face by its label and its key (the sides of a body share a label), a body by its name. A long list shows its first thirty items.
-- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. Three exist:
+- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. Four exist:
   - **Measure**: the exact distance (labelled *Thickness* for two faces that look away from each other, *Gap* for two that look at each other) and the exact angle, when the pair has them; the smallest distance on the mesh with its accuracy, to a thousandth of a millimetre; the faces asked about highlighted; the two points of the smallest distance joined by a line with its length.
   - **Interference** (the collisions, [bodies.md](bodies.md)): asked as soon as it opens; a row per colliding pair and per fit, a click on a row highlights its two bodies.
   - **Section**: the model cut by the plane, below.
+  - **Smallest gap**: the pairs of bodies that are close, below.
 
 ## The section view (D38)
 
@@ -54,10 +55,23 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **An answer too large to draw** (one that was truncated) cuts the model and fills nothing, and the panel says so: a region filled without one of its holes would show material across a cavity.
 - The cut ends when the answer goes: on *Close*, when the marker moves elsewhere, on a change of the document.
 
+## The gap view (D40)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| List the pairs of bodies that are close | `engine.query('gap', { bodies, within, maxPairs }, { at })` | `pairs` (the distance and accuracy, or the contact; the two points and faces), `failed`, `close`, `apart`, `refused`, `checked`, `truncated` |
+
+- **The form** is the generic one: the bodies (all of them when the list is empty), the search distance and the most pairs to list. The query is asked by *Ask*, not when the form opens: it may take a second on a model of many bodies.
+- **The panel** has a row per pair, the closest first: the names of the two bodies and the gap with its accuracy, to a thousandth of a millimetre (`0.49 mm ± 0.02 mm`). The accuracy is left out when it rounds to nothing (two bodies of planar faces), and a gap that rounds to nothing reads *under 0.001 mm*. A pair at zero says its contact instead: *touching*, *fit*, *collision*, or *touching or colliding* when the kernel could not tell. The pairs that could not be measured follow with the reason, and a line says when a list was cut and how many pairs there are.
+- **A picked row** draws its two bodies in the two colours of a picked collision. For a gap it also highlights the two faces the gap lies between, names them under the row (the features to change), and joins the two points of the gap by a line with its length. A click on the picked row drops the pick.
+- **The note** in the status bar counts the pairs within the search distance, those further apart and those that could not be measured.
+
 ## Implementation status
 
+- The gap view was run in a browser on 2026-11-15 on a plate with a pin in a larger hole, a bar 2 mm beside it, a block flush with the bar and a block that reaches into the plate: the rows, the three kinds of a picked row, the limit of the list. What it showed: `± 0 mm` after the gap of two bodies of planar faces, which is now left out. A gap of half a millimetre is not seen at the size of the model; its label and the two highlighted faces show where it is.
 - Run in a browser on 2026-11-15 (the form of `measure`, of `interference` and of `section`, the lists, the picks in the view, a number out of its range, the marker moved). What it showed and the tests of the app could not: the tree was laid out as a row, the unit of a number wrapped under its field, an angle was rounded in radians before it was converted, and the sides of a body were listed under one label. All four are fixed.
 
 - Not offered: asking over a preview or while a form of a feature is open (the model panel is not shown then), several answers at once, a question saved with the document.
 - The section view, not offered: a section by more than one plane, hatching and a colour per body, measuring inside the section, a click on the filled cut that selects its body, a step other than 1 mm, dragging the plane.
+- The gap view, not offered: a zoom to the picked gap, the gap of two groups of bodies, a sweep of a parameter.
 - The labels of the tree are the keys of the result, in English.

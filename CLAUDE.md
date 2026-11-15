@@ -70,7 +70,7 @@ The docs are living documents kept good enough to repeat the implementation from
 |---|---|
 | `docs/requirements.md` | What the PoC must do, validation scenarios |
 | `docs/decisions.md` | Overview table of decisions D1 to D36 and the short ones in full, with reasons and alternatives |
-| `docs/decisions/` | Decisions too long for the overview; `D36-order-after-d35.md` is the order of work ahead |
+| `docs/decisions/` | Decisions too long for the overview: `D35-robot-joint.md`, and `D36-order-after-d35.md`, the order of work ahead |
 | `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, and the design of each package |
 | `docs/architecture.md` | The design as implemented |
 | `docs/ui.md` | UI functions as tables of commands and state read; implementation status of the app |
@@ -95,6 +95,6 @@ Work on an approved list of points (such as the points of D35 or the steps of D3
 ## Rules of the project
 
 - **New text is English**: identifiers, comments, test names, docs, commit messages and runtime strings (engine messages, MCP descriptions, UI labels). Existing Czech text stays unless the line changes anyway, so the code, the UI and the docs are mixed-language.
-- **Every third-party library needs the owner's explicit approval** and has to sit behind its own interface (D2 in `docs/decisions.md` keeps the list). Approved: `@salusoft89/planegcs`, `manifold-3d`, `@modelcontextprotocol/sdk`. `three` is the renderer of the app by design; Vite is a development tool the owner did not approve explicitly (D31). Record a library as approved only after the owner says so.
+- **Every third-party library needs the owner's explicit approval** and has to sit behind its own interface (D2 in `docs/decisions.md` keeps the list). Approved: `@salusoft89/planegcs`, `manifold-3d`, `@modelcontextprotocol/sdk`, and a DOM for the tests of the app (`happy-dom` or `jsdom`, development only; not installed yet). `three` is the renderer of the app by design; Vite is a development tool the owner did not approve explicitly (D31). Record a library as approved only after the owner says so.
 - Tests named `review.test.ts` hold regressions from reviews; previously failing fuzz seeds are pinned in `fuzz.test.ts`. Add a finding there with its fix.
 - The branch is `master`. `robot-joint-parts-schemas/` (source material for scenario 9) and `.playwright-mcp/` are gitignored.

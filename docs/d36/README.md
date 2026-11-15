@@ -2,11 +2,11 @@
 
 The working plan for [D36](../decisions/D36-order-after-d35.md), the order of work after D35. D36 decides the order of seven steps; this file cuts them into work packages and says which package needs which, where they write to the same places, and what can run at the same time.
 
-Last change: 2026-11-14. State: a first map from reading the code; no package has a design yet; the scope of the preparatory step is approved.
+Last change: 2026-11-15. State: the preparatory step is designed and reviewed and D35 is closed, so its implementation can start; the designs of tracks A, B and E are being written from the [briefs](briefs/README.md).
 
 ## How the work goes
 
-1. **The preparatory step** ([00-prep/design.md](00-prep/design.md)) is done first, by one session, after D35 point 7 is closed. It does not change behaviour.
+1. **The preparatory step** ([00-prep/design.md](00-prep/design.md)) is done first, by one session, after D35 point 7 is closed (it was, on 2026-11-15). It does not change behaviour.
 2. **Design of the packages.** Each package gets its design before any code (see "A package" below). Designs do not touch the code, so all of them can be written at the same time.
 3. **Review of the designs.** Each design by an independent reviewer, then one review over the whole set against the maps of this file.
 4. **Implementation** by the procedure of CLAUDE.md (implement, test, docs, independent review, fix, separate commits), each package on its own branch, merged in the order of the dependencies.
@@ -17,7 +17,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed five times), part 2 a design (four times), part 3 a design (twice) |
+| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed five times), part 2 a design (four times), part 3 a design (twice; its check then became a test of the class) |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
 | 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them. Also the generic form of a query in the app, which the app side of 1a, 1c, 1d and 1e builds on | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |

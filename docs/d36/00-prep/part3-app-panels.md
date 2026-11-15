@@ -1,6 +1,6 @@
 # 00 Preparatory step, part 3: panels and forms of the app as modules
 
-**State: third version, after two rounds of reviews.** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the reviews that led to this version are recorded there under "Reviews", rounds 4 and 5.
+**State: fourth version: the third, after two rounds of reviews, with the check changed from a script of clicks in a browser to a test of the class once the owner approved a DOM for the tests (2026-11-15). The changed check has not been reviewed; it is reviewed with its first commit.** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the reviews that led to this version are recorded there under "Reviews", rounds 4 and 5.
 
 ## What is there today
 
@@ -135,7 +135,7 @@ Decisions inside the proposal:
   - **Nothing on it can leave the cached view stale.** The marker is read-only; a feature inserted at it is reported by one method that the app follows with its refresh. A form does not write the preview of its mode: it reports a changed draft, and the code of `features/draft.ts` replaces the preview and invalidates the cache.
   - **The note of an answer.** `say` returns the note it left, so that the panel of the collisions can keep it and the app can tell whether it is still the one shown.
   - The sketch mode and the scene get interfaces of their own that extend it (the viewport, the pick, the pointer state), written and checked the same way in their commit.
-- **What a user sees and what is saved stay the same**: the prefixes of generated IDs (`e`, `r`, `n` and the others), the default names of new features and the texts are those of today. The click script compares documents, so a changed prefix would show.
+- **What a user sees and what is saved stay the same**: the prefixes of generated IDs (`e`, `r`, `n` and the others), the default names of new features and the texts are those of today. The test of the class compares documents, so a changed prefix would show.
 - **What the engine knows is asked of the engine**: the sources a pattern accepts and the earlier features with a profile from a generator (`producesTool` and `generatorOf` of part 2). Whether the eye of a feature is enabled is not the engine's question (a sketch has no body and can be hidden) and belongs to the entry.
 
 ### Queries in the app
@@ -161,9 +161,11 @@ A new field of an existing form (offset, taper) is an edit of that form's file o
 
 The class has no test, and the split moves event handling and DOM building, which the type check does not cover. So the check is written first.
 
-**A click script, run before and after every commit.** A fixed sequence of actions in the running app, driven through the browser (the Playwright MCP server of the development setup; no dependency of the project). Every run starts a fresh instance of the app in a window of a fixed size: IDs come from counters per prefix that are not reset within an instance and that a cancelled draft also advances, and coordinates of a sketch come through the camera.
+**A test of the class, written before anything moves.** A fixed sequence of actions on an instance of `App` in Vitest, with a DOM from the library the owner approved on 2026-11-15 (D2: `happy-dom` or `jsdom`; the first commit takes the one in which the pointer events with capture and the form controls of the app work, and records the choice in D2). The engine is the real one with the real adapters, as in `packages/scenarios`.
 
-What the script does:
+The view is the one thing a DOM without layout and without WebGL cannot run. `App` creates its `Viewport` itself today; the first commit gives the constructor a second, optional argument typed by an interface with the public methods of `Viewport` (`setScene`, `requestRender`, `ray`, `pickBody`, `projector`, `pixelSize`, `lookAt`, `fit`), and the test passes a stub. The stub keeps the scenes it is given, has one fixed camera for `ray` and `projector`, and answers `pickBody` with what the step of the test names. Every case starts a fresh instance: IDs come from counters per prefix that are not reset within an instance and that a cancelled draft also advances.
+
+What the test does:
 
 - a sketch with a rectangle, a chain of lines with an inferred constraint, a circle, an arc, a polygon with its options, a construction curve, two dimensions and a reference one; a selection with Shift; the drag of a point; a projected edge and the repair of one; the focus and the explanation of a constraint;
 - an extrusion; a sketch on a face and a cut through all; a plane; a pattern of the cut; a gear from the generator; each opened again and changed, one cancelled, one confirm refused by the engine;
@@ -177,32 +179,36 @@ What the script does:
 - a confirmation while a delayed preview is pending;
 - over the bridge to MCP while a draft is open: a command, a command the engine refuses, a load, and a load that fails.
 
-Whether a typed change is previewed at once depends on how long the last preview took, so two runs of the same code could differ. The script pins the time: it replaces `performance.now` in the page with a clock it steps itself, and takes both branches on purpose.
+Whether a typed change is previewed at once depends on how long the last preview took, so two runs of the same code could differ. The test pins the time: it replaces `performance.now` with a clock it steps itself, and takes both branches on purpose.
 
-What is compared between the two runs:
+What is recorded after every step and kept as a snapshot file next to the test:
 
-- the calls the app makes on the engine, in order, with their arguments (`execute`, `preview`, `getState`, the queries). The app instance is on `window.trymesh`; the script wraps the engine there. This is what catches a preview computed twice or a command sent in another order, which leave the document the same;
-- the document after every step, read from the engine (saving is a download);
-- after every step, the toolbar, the timeline, the panel and the status line, each written out with what a user sees and can do: the text, the value of every control, whether it is disabled, its class and its title. That covers the order of the buttons, the eye of a feature, the OK of an incomplete draft and the marks of a warning, an error or a selected row;
-- a screenshot of the view at fixed steps.
+- the calls the app makes on the engine, in order, with their arguments (`execute`, `preview`, `getState`, the queries); the test hands the app an engine wrapped to write them down. This is what catches a preview computed twice or a command sent in another order, which leave the document the same;
+- the document, read from the engine (saving is a download);
+- the toolbar, the timeline, the panel and the status line, each written out with what a user sees and can do: the text, the value of every control, whether it is disabled, its class and its title. That covers the order of the buttons, the eye of a feature, the OK of an incomplete draft and the marks of a warning, an error or a selected row;
+- what the app asked of the view: the scenes given to `setScene`, reduced to the bodies, their colours and visibility, the overlays and the highlighted names, and the calls of `lookAt` and `fit`.
 
-The script is kept in `packages/app/test/smoke/` as a list of steps that a session replays; it is not part of `npx vitest run`.
+The snapshot is written once, by the commit that adds the test, against the class as it is. Every later commit of this part must leave the snapshot file untouched; a commit that has to change it has changed behaviour and says in its message what and why. The test lives in `packages/app/test/app.test.ts` and runs with `npx vitest run`, so it stays as the regression test of the app after the step.
+
+**What the stub cannot see** is the rendering itself, the real camera and the picking through three.js. `viewport.ts` is not touched by this part; `scene.ts` (commit 5) is where a mistake could show only on the screen. So the real app is opened in a browser three times (before the first commit, after commit 4 and after commit 5), a short fixed tour is clicked through (a sketch, an extrusion, a cut on a face, a pattern, the collisions, the timeline marker) and the screenshots at its fixed steps are compared. This uses the Playwright MCP server of the development setup and is not a dependency of the project.
+
+A panel can also be tested alone, with a `PanelHost` written by hand; the packages that add a panel or a form do that in their own tests.
 
 Order, one commit each:
 
+0. The DOM library as a development dependency of `packages/app`, the interface of the view with the optional argument of the constructor, the test and its snapshot. No other change of the class.
 1. `host.ts`: the interface; the members of `App` it names made public; every method that will move annotated with `this: PanelHost`. No code moves.
 2. `panels/parameters.ts`, `panels/collisions.ts` with its state, `panels/model.ts`: the panels that are not forms.
 3. `features/draft.ts` and the registry. The three mode interfaces become one `DraftMode` with `extra`; while the forms still live in the class, the mode is the union of its three instantiations, so the code there narrows it by `type` as before. `FEATURE_UI` exists from this commit, complete, with entries whose members call the methods still in the class; the shared draft code asks the entries. This is the commit with real edits, not moves.
 4. `features/plane.ts`, `features/pattern.ts`, `features/extrude.ts`, `features/sketch.ts`, one commit each: the bodies move into the entries, and the chains of conditions over the type go.
 5. `scene.ts` and `sketch-mode.ts` with `panels/sketch.ts`, behind interfaces of their own.
 
-Checks after each: the type check, the four test files of the app, the click script, and `git diff --color-moved=dimmed-zebra --color-moved-ws=allow-indentation-change` read for what is not a move.
+Checks after each: the type check, the tests of the app with the snapshot untouched, and `git diff --color-moved=dimmed-zebra --color-moved-ws=allow-indentation-change` read for what is not a move.
 
 Part 3 needs nothing of part 1 and only two functions of part 2 (`producesTool`, `generatorOf`); until those exist the two conditions stay as they are in the entries of the pattern and the extrusion.
 
 ## Open
 
-- **A test of the class in the test suite.** A DOM in Vitest (`happy-dom` or `jsdom`) would let the click script run as a test, with the viewport replaced by a stub, and would let a panel be tested alone with a host written by hand (a panel builds DOM, so that needs a DOM as well). It is a new development dependency and needs the owner's approval (D2); the proposal above does without it.
 - **The sketch mode** is about 600 lines and is moved as one piece. Splitting it by drawing tool is not needed for D36 (step 6 adds the fillet of a corner as a sketch tool of the engine catalog, which the app runs already).
 - **The toolbar** grows by a button per feature type. A menu by group (create, modify, bodies) is a question of step 2, when the count is known.
 - **Czech texts.** The moved code keeps its texts; a line that changes anyway is written in English, as the rule of the project says.

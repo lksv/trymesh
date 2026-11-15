@@ -7,7 +7,7 @@
 | 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); reviewed five times, see "Reviews" |
 | 4 Shared vocabulary | same |
 | 2 A module per feature type | designed in [part2-feature-modules.md](part2-feature-modules.md); reviewed four times |
-| 3 Panels and forms of the app | designed in [part3-app-panels.md](part3-app-panels.md); reviewed twice |
+| 3 Panels and forms of the app | designed in [part3-app-panels.md](part3-app-panels.md); reviewed twice; afterwards its check became a test of the class, see below |
 | 5, 6 Documents by area, several trees | proposal below; no code |
 
 The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type (part 2 adds two functions to the index of the engine), so they get a design and no contract.
@@ -114,9 +114,7 @@ Designed in full in [part3-app-panels.md](part3-app-panels.md); this is the summ
 - Panels are functions over an interface of the app (`PanelHost`), in files of their own; no framework and no library.
 - A query is reachable from the app without work there: a form is built from the description of its arguments, and a query may add a view of its own, as the collisions have. An answer belongs to the document and the place on the timeline it was asked at, as the collisions do today. The generic form is not part of this step: package 1b designs and builds it, and the app side of the other queries of step 1 builds on it.
 - State that belongs to one panel (the collisions, the options of the polygon tool) moves with it.
-- The class has no test. The split is checked by a fixed script of clicks in a fresh instance of the running app, run before and after each commit; the calls the app makes on the engine and the document after every step are compared.
-
-**Open.** A DOM in the test suite (`happy-dom` or `jsdom`) would let that script run as a test. It is a new development dependency and needs the owner's approval (D2); the design does without it.
+- The class has no test, so one is written before anything moves: a fixed sequence of actions on an instance of `App` in Vitest, with a DOM (`happy-dom` or `jsdom`, approved by the owner on 2026-11-15, D2) and the view replaced by a stub. The calls the app makes on the engine, the document, the controls and what the app asks of the view are recorded after every step as a snapshot, which every commit of the part must leave untouched. The rendering itself is compared in a browser at three points.
 
 ## 4. Shared vocabulary
 
@@ -169,7 +167,7 @@ A short description of how a package gets its tree: a branch `d36/<id>`, a git w
 4. Panels and forms (part 3).
 5. Documents by area (part 5) and the trees (part 6).
 
-Each part is a point of work of its own, with the procedure of CLAUDE.md. Parts 2 and 3 fix their own order of commits in their designs (six and eight), and part 2 also touches `packages/mcp` and `packages/app` in its last one.
+Each part is a point of work of its own, with the procedure of CLAUDE.md. Parts 2 and 3 fix their own order of commits in their designs (six and nine), and part 2 also touches `packages/mcp` and `packages/app` in its last one.
 
 ## Reviews
 
@@ -315,3 +313,8 @@ Not acted on:
 
 - The result of a section in the evaluation has no map of its own (internal, as a note): a contract merges it into `EvaluationAfter`, which is an interface; said in the contract.
 
+### After round 5 (2026-11-15): decisions of the owner
+
+- **A DOM for the tests of the app is approved** (D2: `happy-dom` or `jsdom`). Part 3 no longer checks itself by a script of clicks that a session replays in a browser: the same sequence is a test of the class with a recorded snapshot, the view is a stub, and the browser is kept for comparing the rendering at three points. This change of part 3 was made after the reviews and is reviewed with the commit that adds the test.
+- **D35 is closed**; its text moved to `docs/decisions/D35-robot-joint.md`. The step can be implemented.
+- **The three design sessions of the briefs run as subagents** of the session that owns this step, each in a worktree of its own.

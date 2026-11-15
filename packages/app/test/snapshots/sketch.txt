@@ -462,12 +462,12 @@
   panel:
     +   input type=number value="8"
     -   input type=number value="6"
-    +   select value="circumscribed"
+    +   select value="acrossFlats"
     +     option value="none": "No dimension"
-    +     option selected value="circumscribed": "Diameter of the circumscribed circle"
     -   select value="none"
     -     option selected value="none": "No dimension"
-    -     option value="circumscribed": "Diameter of the circumscribed circle"
+    +     option selected value="acrossFlats": "Size across flats (even number of sides)"
+    -     option value="acrossFlats": "Size across flats (even number of sides)"
   view: 3 scene(s) set
 
 === 14. polygon
@@ -661,10 +661,10 @@
     -   input type=number value="8"
     - label
     -   "Dimension of the size"
-    -   select value="circumscribed"
+    -   select value="acrossFlats"
     -     option value="none": "No dimension"
-    -     option selected value="circumscribed": "Diameter of the circumscribed circle"
-    -     option value="acrossFlats": "Size across flats (even number of sides)"
+    -     option value="circumscribed": "Diameter of the circumscribed circle"
+    -     option selected value="acrossFlats": "Size across flats (even number of sides)"
     - p.hint: "Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded."
     + h2: "Vazby a kóty (23)"
     - h2: "Vazby a kóty (22)"

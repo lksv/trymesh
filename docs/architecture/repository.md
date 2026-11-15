@@ -35,7 +35,7 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `sketch-view.ts`, `sketch-commands.ts`, `sketch-diagnosis.ts` | The geometry of a sketch for drawing, hit tests and measuring; the commands of the drawing tools, constraints and dimensions from a selection; the texts of the diagnosis |
 | `draw.ts`, `labels.ts`, `fields.ts`, `issue-text.ts`, `dom.ts` | Shared helpers: drawing into a scene, texts, numeric fields with units, issues named for a human, the DOM |
 
-A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`).
+A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`). `packages/app/test/query-controls.test.ts` drives the controls of the form of a query that no query of the catalog reaches yet.
 
 Modules of the engine (`packages/engine/src`), after the preparatory step of D36 (D37):
 

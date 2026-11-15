@@ -309,3 +309,19 @@ Left as known limits:
 - **Not done:** a control that is armed is not disarmed by Escape (the button toggles it); the draft is not highlighted in the view before the query is asked.
 
 **What the recorded test of the app sees**, as the design listed: `engine.query('interference', …)` where `engine.interference` was called; the menu of queries in the toolbar at every step of the model mode; the heading *Interference* with the two optional arguments of the query in place of "Collisions (N)"; the buttons *Ask again* and *Close*. The rows, the hints, the highlight of a picked pair and the note are unchanged. The case of the model got nine steps for the form (opening `measure` from the menu, a face and an edge taken from clicks, asking, an entity chosen from the lists, asking with nothing given, a query without a view, closing).
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diff only, a cheaper model). Three defects of the form, none serious; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The control of a vector: each of its three fields wrote the vector with only its own number, because the panel is not built again after a typed number | Yes (no query has a vector yet, so no step of the app reached it) | The three fields share what was typed; `packages/app/test/query-controls.test.ts` drives the control directly |
+| A number marked as wrong (below its range, or not a number) was not written to the draft, so *Ask* asked with the value from before while the field showed the new one | Yes | What was typed always reaches the draft, a text that is not a number as that text; the engine refuses it at its argument and the row is marked. A step of the model case (a threshold of −1) and the test of the control |
+| The note of an error stayed in the status bar after a later answer that has no note of its own (a failed `measure`, then a good one) | Yes | The note of the answer before goes when a new answer comes without one; a step of the model case |
+
+Found while the fixes were tested, outside the diff reviewed:
+
+- **The recorded test wrote down the wrong row of a list.** The app marks the row of a list as `selected` before the row is in the list. A browser keeps the mark; the DOM of the tests (happy-dom) loses it and shows the second row instead, so the records of every form with a list whose third or later row was chosen were wrong (the polygon by its size across flats recorded as "circumscribed", a cut recorded as "add", the axis Z as Y, the entities of a query). `h` of `packages/app/src/dom.ts` now tells a list its value once its rows are in it, which changes nothing in a browser. The three records changed in rows of lists only.
+
+Known limits: the form was not run in a browser (the browser of the Playwright server was held by another session); what a browser shows is covered by the record of the test only as far as happy-dom behaves as one.

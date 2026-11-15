@@ -69,8 +69,11 @@ function pick(path: ArgPath, form: Form, what: string): HTMLElement {
 }
 
 // A number typed into a form of a query: a number in the unit of the field (an angle in degrees),
-// never an expression, because a query does not live in the document.
-function numberField(unit: Unit, value: unknown, placeholder: number | undefined, check: (value: number) => string | undefined, change: (value: number | undefined) => void): HTMLInputElement {
+// never an expression, because a query does not live in the document. What was typed always
+// reaches the draft, also when it is marked as wrong: a number out of its range as that number,
+// anything that is not a number as its text, so that the engine refuses it at this argument
+// instead of the form asking with the value from before.
+function numberField(unit: Unit, value: unknown, placeholder: number | undefined, check: (value: number) => string | undefined, change: (value: number | string | undefined) => void): HTMLInputElement {
   const read = (): { value?: number; problem?: string } => {
     const parsed = parseField(input.value, unit);
     if (parsed === undefined) return {};
@@ -79,13 +82,13 @@ function numberField(unit: Unit, value: unknown, placeholder: number | undefined
   };
   const input: HTMLInputElement = h('input', {
     className: 'value',
-    value: typeof value === 'number' ? fieldText(value, unit) : '',
+    value: typeof value === 'number' ? fieldText(value, unit) : typeof value === 'string' ? value : '',
     placeholder: placeholder === undefined ? '' : fieldText(placeholder, unit),
     oninput: () => markProblem(input, read().problem),
     onchange: () => {
       const { value: number, problem } = read();
       markProblem(input, problem);
-      if (problem === undefined) change(number);
+      change(number === undefined && problem !== undefined ? input.value.trim() : number);
     },
   });
   return input;
@@ -178,12 +181,13 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
   },
   vector: (_spec, value, path, form) => {
     const current: unknown[] = Array.isArray(value) ? value : [];
-    // the vector is given once all three numbers are; until then the draft keeps what was typed
+    // The three fields share what was typed so far: the panel is not built again after a number,
+    // so each of them has to see the numbers of the other two.
+    const parts: unknown[] = [current[0], current[1], current[2]];
     return [0, 1, 2].map((axis) =>
-      numberField('none', current[axis], undefined, () => undefined, (number) => {
-        const next = [current[0], current[1], current[2]];
-        next[axis] = number;
-        form.set(path, next.every((part) => part === undefined) ? undefined : next);
+      numberField('none', parts[axis], undefined, () => undefined, (number) => {
+        parts[axis] = number;
+        form.set(path, parts.every((part) => part === undefined) ? undefined : [...parts]);
       }),
     );
   },

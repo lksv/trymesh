@@ -672,6 +672,17 @@ describe('the app, driven as a user drives it', () => {
     h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'measure', true);
     h.press('panel', 'Ask');
     h.record('asked with nothing given: the engine names the argument, and its row is marked');
+    h.press('panel', 'Pick in the view'); // nothing is armed after a question
+    h.click(at(10, 15, 10));
+    h.click(at(90, 15, 10));
+    h.press('panel', 'Ask again');
+    h.record('the arguments given and asked again: the note of the error goes with it');
+    // a number out of its range reaches the engine, which refuses it at its argument
+    h.press('toolbar', 'Collisions');
+    h.type(h.field('Threshold (optional)'), '5', true);
+    h.type(h.field('Threshold (optional)'), '-1', true);
+    h.press('panel', 'Ask again');
+    h.record('a threshold below zero: marked while typed, sent as typed, refused by the engine at the threshold');
     h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'body', true);
     h.type(h.field('Body'), (h.field('Body') as HTMLSelectElement).options[1].value, true);
     h.press('panel', 'Ask');

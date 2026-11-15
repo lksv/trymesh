@@ -157,6 +157,10 @@ export function askQuery(panel: QueryPanel, host: PanelHost): void {
   if (note) {
     host.say(note.text, note.error);
     panel.note = host.note; // the note states a fact about the model: it goes when the answer goes
+  } else if (panel.note) {
+    // an answer without a note of its own: the note of the answer before it no longer holds
+    if (host.note === panel.note) host.say('');
+    panel.note = undefined;
   }
   host.refresh();
 }

@@ -26,6 +26,7 @@ import {
   bodyFileName,
   constraintOperands,
   constraintPath,
+  faceParts,
   freshIds,
   isDimension,
   sketchTool,
@@ -69,7 +70,7 @@ function sketchOf(engine: Engine, id: string): SketchFeature {
 // ---------------------------------------------------------------- popis modelu
 
 // A short text for a face name; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
-const faceLabel = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join('');
+const faceLabel = (name: FaceName): string => [name.feature, name.role, ...faceParts(name)].join('/') + (name.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join('');
 
 // Volume and bounding box of a body, as the engine computed them.
 const solidInfo = (body: BodyResult): { volume: number; min: number[]; max: number[] } => ({ volume: round(body.volume), min: body.bounds.min.map(round), max: body.bounds.max.map(round) });

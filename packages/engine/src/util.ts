@@ -1,5 +1,6 @@
 // Společné pomůcky: vektory, tolerance, kanonický zápis a otisk.
-import type { EdgeName, FaceName, Vec2, Vec3 } from './types';
+import { faceKey } from './face-roles';
+import type { EdgeName, Vec2, Vec3 } from './types';
 
 // Tolerance enginu (docs/architecture.md, Konvence). Tolerance booleanů jsou věcí jádra.
 export const LENGTH_TOLERANCE = 1e-6; // mm
@@ -29,8 +30,7 @@ export const dist2 = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] 
 // its copies appended (`@pattern:index`), so it differs from the face of the original and sorts
 // right after it. Neither `@` nor `:` needs escaping: the key is only compared with other keys built
 // here, and an ID cannot contain `/`, which separates the parts before the tags.
-export const faceKey = (name: FaceName): string =>
-  (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
+export { faceKey };
 
 // Jméno hrany v kanonickém pořadí stěn.
 export function canonicalEdge(edge: EdgeName): EdgeName {

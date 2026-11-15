@@ -3,6 +3,7 @@
 // registry of feature types; what needs it reaches a validator through its context (`RefContext`).
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { type Environment, analyzeExpression, evaluateNumber } from './expression';
+import { FACE_ROLES, type RoleCatalog } from './face-roles';
 import type { AxisRef, CommandResult, CopyTag, Document, EdgeName, Expr, FaceName, FieldPath, Id, PlaneRef } from './types';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
@@ -136,11 +137,20 @@ export function plain(value: number, spec: NumberSpec, what: string): number {
 
 // A face name in its canonical form. An empty `copy` is the same as none, so that one face has one
 // spelling.
-export function faceName(v: unknown, what: string): FaceName {
+export function faceName(v: unknown, what: string, roles: RoleCatalog = FACE_ROLES): FaceName {
   const o = object(v, what);
   const feature = string(o.feature, `${what}.feature`);
-  const role = oneOf(o.role, ['side', 'startCap', 'endCap'] as const, `${what}.role`);
-  const name: FaceName = role === 'side' ? { feature, role, curve: string(o.curve, `${what}.curve`) } : { feature, role };
+  const role = oneOf(o.role, Object.keys(roles), `${what}.role`);
+  // the fields that tell apart the faces of the role, as its entry of the catalog describes them
+  const parts: Record<string, string | number> = {};
+  for (const [part, spec] of Object.entries(roles[role].parts)) {
+    if (spec.kind === 'text') parts[part] = string(o[part], `${what}.${part}`);
+    else {
+      parts[part] = finite(o[part], `${what}.${part}`);
+      if (!Number.isInteger(parts[part])) fail(`${what}.${part}: a whole number is expected`);
+    }
+  }
+  const name = { feature, role, ...parts } as FaceName;
   if (o.copy === undefined) return name;
   if (!Array.isArray(o.copy)) return fail(`${what}.copy: a list of { pattern, index } is expected`);
   const copy = (o.copy as unknown[]).map((item, i): CopyTag => {

@@ -42,6 +42,7 @@ import {
   duplicateOf,
   emptyDocument,
   emptySketch,
+  faceKey,
   featureInput,
   generatorOf,
   isDimension,
@@ -209,7 +210,6 @@ const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
   frame.origin[1] + u * frame.x[1] + v * frame.y[1],
   frame.origin[2] + u * frame.x[2] + v * frame.y[2],
 ];
-const faceKey = (name: FaceName): string => (name.role === 'side' ? `${name.feature}/side/${name.curve}` : `${name.feature}/${name.role}`) + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
 const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
 

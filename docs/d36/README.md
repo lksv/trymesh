@@ -17,9 +17,9 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract and part 2 a design, both reviewed twice; part 3 is next |
+| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract and part 2 a design, both reviewed three times; part 3 has a first design |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
-| 1b | Measuring between two named entities; takes over the description of faces and edges that `tools.ts` computes today | 1 | A | 00 | full |
+| 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |
 | 1d | Mass properties | 1 | A | 00; the density comes as an argument until 3a | full |
 | 1e | Print queries | 1 | A | 00 | full |
@@ -30,7 +30,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 2f | Extent up to a planar face | 2 | B | 00; same code as 2a and 2b | full |
 | 2d | Command that re-points an end of a curve, fillet of a sketch corner | 2 | C | D35 point 7 | full |
 | 2e | Linear pattern and mirror of features and bodies | 2 | D | 00 | full |
-| 2g | Export: formats as a registry, 3MF, outline as DXF and SVG | 2 | F | 00; the outline needs 1a | full |
+| 2g | Export: 3MF, outline as DXF and SVG, as entries of the registry of formats of the preparatory step | 2 | F | 00; the outline needs 1a | full |
 | 3a | Body properties and the catalog of materials | 3 | E | 00 | full: adds a section to the document |
 | 3b | Import of a mesh as a reference body | 3 | E | 3a | outline |
 | 3c | Inserting another document as a part | 3 | E | 3b | outline |
@@ -71,7 +71,7 @@ Where packages collide although they do not depend on each other. The preparator
 |---|---|---|---|
 | `Engine` in `types.ts`, `engine.ts`, tools in `mcp/tools.ts` | every query (track A, 3e, 5a) | a method, a hand-written tool and its own argument checks per query | a query is one module with an entry in a catalog; one general tool `query` reaches all of them |
 | `document.ts` (1370 lines) and the step methods of `Evaluator` in `evaluate.ts` | every new feature type (2c, 3b, 3c, 3d, 4a, 4b) | validators of all types in one file, a private method per type in one class | a module per feature type; the registry gets one line and is the one guard, the switch goes |
-| `app.ts` (2271 lines, one class) | everything with a form or a panel | all panels and forms are methods of one class | a file per panel and per feature form |
+| `app.ts` (2321 lines, one class) | everything with a form or a panel | all panels and forms are methods of one class | a file per panel and per feature form |
 | Extrusion: `ProfileSource`, `Extent`, the extrude validator, `profile` and `toolSpan` in `evaluate.ts`, `buildPrism` in `solid.ts`, the extrusion form | 2a, 2b, 2f, 4a | one feature, one step | stays shared: track B is sequential and 4a follows 2b |
 | `FaceInfo` and `EdgeKind` in `solid.ts`, `edgeKind`, `projectEdge` | 2b (cone), 4a (cone, general), 4b, 3d (face of a split) | plane, cylinder, swept | the kinds are agreed once in the shared vocabulary |
 | Kernel port (`SolidKernel` in `types.ts`, `kernel-manifold`) | 1c (gap), 3d (split, offset) | `boolean`, `triangulate` | stays shared; small additions, the guarantee text needs care |

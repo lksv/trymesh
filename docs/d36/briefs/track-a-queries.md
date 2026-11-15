@@ -17,4 +17,4 @@ Validation scenario 11, shared by the six: the queries asked about the robot joi
 
 Code to read: `packages/engine/src/solid.ts`, `interference.ts`, `engine.ts`, `types.ts`; `packages/kernel-manifold/src/index.ts` and the types of `manifold-3d` (`minGap`, `slice`); `packages/mcp/src/tools.ts` (`bodyDetail`, `edgeShape`), `bridge.ts`, `server.ts`; `packages/app/src/viewport.ts`.
 
-Every query is reachable through MCP by construction: the general tool `query` reaches every entry of the registry, with `at` and `after`. A query reads bodies from `context.bodies`, so that it answers for a pose later (5a). Say for each what the app shows.
+Every query is reachable through MCP by construction: the general tool `query` reaches every entry of the registry, with `at` and `after`. A query reads geometry only from its context (`bodies`, `surface(body, face)`, `frame`), so that it answers for a pose later (5a). Say for each what the app shows.

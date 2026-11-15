@@ -7,9 +7,9 @@
 // the contract of a real package (which is type-checked together with this file) can use the
 // real names.
 
-import type { Command, EngineState, Id, InterferenceReport, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, ArgsOf, BodyDescription, EngineAfter, ExportFile, ExportToolInput, Exported, HostOperation, QuantitySpec, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, QuerySpec, QueryToolInput, RunArgsOf, Queries, Truncated } from './contract';
-import { DATA_CATALOGS, EXPORT_FORMATS, FACE_ROLES, QUERIES, QueryFailure, UPGRADES, describedQueries } from './contract';
+import type { Id, InterferenceReport, PlaneRef, Vec3 } from '../../../packages/engine/src/index';
+import type { ArgSpecs, ArgsOf, BodyDescription, CatalogTable, CommandAfter, DataCatalog, EngineAfter, ExportFile, ExportToolInput, Exported, FaceNameAfter, HostOperation, QuantitySpec, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, QuerySpec, QueryToolInput, RunArgsOf, Queries, StateAfter, Surface, Truncated } from './contract';
+import { CONSTRAINT_ARGS, DATA_CATALOGS, EXPORT_FORMATS, FACE_ROLES, INTERFERENCE_ARGS, QUERIES, QueryFailure, SCHEMA_PENDING, SKETCH_ARGS, UPGRADES, describedQueries } from './contract';
 // Internal modules of the engine, as a query module inside the engine imports them.
 import { UNAVAILABLE, diagnose, explain } from '../../../packages/engine/src/diagnose';
 
@@ -57,7 +57,7 @@ engine.query('interference', { bodies: true });
 
 // The entries of the registry can be called, and the engine's own `query` needs no cast to
 // dispatch by name.
-export const direct: InterferenceReport = QUERIES.interference.run(context, { bodies: ['a', 'b'] });
+export const direct: InterferenceReport = QUERIES.interference.run(context, { bodies: ['a', 'b'], threshold: 0.001 }); // `run` gets the default filled in
 export const directExport: Exported = EXPORT_FORMATS.stl.run(context, {});
 export function dispatch<N extends QueryName>(name: N, args: RunArgsOf<Queries[N]['spec']>): QueryResult<N> {
   return QUERIES[name].run(context, args);
@@ -69,7 +69,7 @@ export const sketchDiagnosis: (typeof QUERIES)['sketchDiagnosis'] = {
   title: 'Sketch diagnosis',
   summary: 'Redundant and conflicting constraints of a sketch and what is still free in it.',
   returns: 'status, degreesOfFreedom and lists of constraint and entity IDs; status `unavailable` when the sketch did not evaluate.',
-  args: { sketch: { kind: 'sketch', title: 'Sketch' } },
+  args: SKETCH_ARGS,
   run(context, args) {
     const sketch = context.sketch(args.sketch);
     return sketch ? context.memo([sketch], 'diagnosis', () => diagnose(sketch)) : UNAVAILABLE;
@@ -79,12 +79,24 @@ export const constraintExplanation: (typeof QUERIES)['constraintExplanation'] = 
   title: 'Explanation of a constraint',
   summary: 'The constraints a redundant constraint follows from.',
   returns: 'redundant and impliedBy, a list of constraint IDs.',
-  args: { sketch: { kind: 'sketch', title: 'Sketch' }, constraint: { kind: 'constraint', of: 'sketch', title: 'Constraint' } },
+  args: CONSTRAINT_ARGS,
   run(context, args) {
     // That the constraint is in the sketch was checked before `run`.
     const sketch = context.sketch(args.sketch);
     return sketch ? explain(sketch, args.constraint) : { redundant: false, impliedBy: [] };
   },
+};
+
+// The collisions as an entry: volumes and depths may be small on purpose, so a tool prints them
+// to significant digits, as `check_interference` does today.
+declare function report(context: QueryContext, bodies: Id[] | undefined, threshold: number): InterferenceReport;
+export const interference: (typeof QUERIES)['interference'] = {
+  title: 'Collisions',
+  summary: 'Which bodies share a volume.',
+  returns: 'pairs, fits and failed pairs with volume in mm3 and depth in mm, and the number of pairs checked.',
+  args: INTERFERENCE_ARGS,
+  significant: { volume: 6, depth: 4 },
+  run: (context, args) => report(context, args.bodies, args.threshold),
 };
 
 // ---------------------------------------------------------------- b. a body, described by the engine
@@ -112,17 +124,31 @@ export function countersinkRims(body: Id): { radius: number; center: Vec3 }[] {
   return rims;
 }
 
-// The catalog of face roles knows which field of a name tells the faces of a role apart.
-export const sidePart: 'curve' = FACE_ROLES.side.part;
-export const capPart: undefined = FACE_ROLES.startCap.part;
-export const faceKeyOf = (name: { feature: Id; role: keyof typeof FACE_ROLES } & Record<string, unknown>): string => {
-  const part = FACE_ROLES[name.role].part;
-  return part === undefined ? `${name.feature}/${name.role}` : `${name.feature}/${name.role}/${String(name[part])}`;
-};
+// The key of a face, built from the catalog of roles: the feature, the role, the fields that
+// tell the faces of the role apart in the alphabetical order of their names, and the copy tags.
+export const sideParts: { readonly curve: string } = FACE_ROLES.side.parts;
+export function faceKeyOf(name: FaceNameAfter): string {
+  const fields = name as unknown as Record<string, string | number>;
+  const parts = Object.keys(FACE_ROLES[name.role].parts).sort().map((part) => String(fields[part]));
+  return [name.feature, name.role, ...parts].join('/') + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
+}
+
+// A query reads the surface of a face from its context, by body, so that it answers for a pose;
+// and it learns from the context why a plane does not resolve.
+export function axisOfHole(context: QueryContext, body: Id, face: FaceNameAfter): Vec3 {
+  const surface: Surface | undefined = context.surface(body, face);
+  if (surface?.kind !== 'cylinder') throw new QueryFailure('failed', 'the face is not a cylinder', 'face');
+  return surface.axis;
+}
+export function normalOf(context: QueryContext, plane: PlaneRef): Vec3 {
+  const frame = context.frame(plane);
+  if ('problem' in frame) throw new QueryFailure(frame.problem === 'nonPlanarFace' ? 'failed' : 'notAvailable', frame.problem === 'nonPlanarFace' ? 'the face is not planar' : 'the plane is not in this state', 'plane');
+  return frame.normal;
+}
 
 // The surfaces are in every state the engine returns, next to the names of the faces.
 export const fromState = (): string[] => engine.getState().evaluation.faceSurfaces.map((surface) => surface.kind);
-export function fromPreview(command: Command): number {
+export function fromPreview(command: CommandAfter): number {
   const preview = engine.preview(command);
   return preview.ok ? preview.state.evaluation.faceSurfaces.length : 0;
 }
@@ -135,7 +161,7 @@ export const fromSubscription = engine.subscribe((state) => void state.evaluatio
 export function sweep(parameter: string, values: number[]): { value: number; collisions: number }[] {
   const out: { value: number; collisions: number }[] = [];
   for (const value of values) {
-    const command: Command = { type: 'setParameter', name: parameter, expr: String(value) };
+    const command: CommandAfter = { type: 'setParameter', name: parameter, expr: String(value) };
     const preview = engine.preview(command);
     if (!preview.ok) return fail(preview.error.message);
     const report = unwrap(engine.query('interference', {}, { state: preview.state }));
@@ -144,7 +170,7 @@ export function sweep(parameter: string, values: number[]): { value: number; col
   return out;
 }
 
-declare const somePreview: { state: EngineState };
+declare const somePreview: { state: StateAfter };
 // @ts-expect-error either a previewed state or a place on the timeline, not both
 engine.query('interference', {}, { state: somePreview.state, at: 'housing' });
 
@@ -253,15 +279,20 @@ export const printExample: PrintArgs = {
   orientations: [{ by: { up: [0, 0, 1] } }, { by: { onBed: { kind: 'face', body: 'housing', face: { feature: 'housing', role: 'startCap' } } }, turn: 0.5 }],
   bed: [220, 220, 250],
 };
+// What `run` gets has the defaults filled in at every depth.
+declare const printRun: RunArgsOf<typeof printArgs>;
+export const turnInRun: number = printRun.orientations[0].turn;
+export const overhangInRun: number = printRun.overhang;
 export const twoAtOnce: PrintArgs = {
   // @ts-expect-error one of the alternatives, not both
   orientations: [{ by: { up: [0, 0, 1], onBed: { kind: 'face', body: 'housing', face: { feature: 'housing', role: 'startCap' } } } }],
   bed: [220, 220, 250],
 };
 
-// A pose (5a, shortened): joint values by joint name.
-const poseArgs = { joints: { kind: 'record', of: { kind: 'number', spec: { title: 'Joint value', unit: 'rad' } }, title: 'Joint values' } } as const satisfies ArgSpecs;
-export const poseExample: ArgsOf<typeof poseArgs> = { joints: { shoulder: 0.5, elbow: -1.2 } };
+// Values by ID (mass properties with a density per body, shortened). A pose is not asked this
+// way: it is a state of the document, asked with `after` (section j).
+const densityArgs = { densities: { kind: 'record', of: { kind: 'number', spec: { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true } } }, title: 'Density by body' } } as const satisfies ArgSpecs;
+export const densityExample: ArgsOf<typeof densityArgs> = { densities: { carrier: 1.27, 'pins/1': 7.85 } };
 
 // Mass properties (1d, shortened): a density, in a unit the numeric fields did not have.
 const massArgs = {
@@ -310,6 +341,12 @@ export const clearanceHole = (size: string): number => DATA_CATALOGS.exampleScre
 // @ts-expect-error a column the catalog does not have
 export const typo = (size: string): number => DATA_CATALOGS.exampleScrews.rows[size].clearenceHole;
 export const catalogForAi = (size: string) => unwrap(engine.query('catalog', { name: 'exampleScrews', key: size })).rows[size];
+// The entry of the query hands out any catalog without its row type; the rows are copied.
+export function tableOf<Row extends { [K in keyof Row]: number | string }>(catalog: DataCatalog<Row>, key?: string): CatalogTable {
+  const rows = Object.entries(catalog.rows).filter(([name]) => key === undefined || name === key);
+  return { title: catalog.title, summary: catalog.summary, source: catalog.source, columns: { ...catalog.columns }, rows: Object.fromEntries(rows.map(([name, row]) => [name, { ...row }])) };
+}
+export const screwsTable: CatalogTable = tableOf(DATA_CATALOGS.exampleScrews, 'M3');
 
 // ---------------------------------------------------------------- h. an operation of the app
 
@@ -364,5 +401,60 @@ export const FIXTURES: { [N in Shown]: { args: QueryArgs<N> } } = {
 // The description for the AI lists the queries from the catalog.
 export const describedForAi: string[] = describedQueries().map((query) => `${query.name}: ${query.summary} Returns: ${query.returns}`);
 
-// The version of the schema follows from the list of upgrade steps.
+// The version of the schema follows from the list of upgrade steps. A build of a branch saves
+// the version of the `master` it started from and the names of its pending steps.
 export const SCHEMA_VERSION: number = UPGRADES.length + 1;
+export const savedByThisBuild = { schemaVersion: SCHEMA_VERSION - SCHEMA_PENDING, schemaSteps: UPGRADES.slice(UPGRADES.length - SCHEMA_PENDING).map((step) => step.name) };
+
+// ---------------------------------------------------------------- j. what a package adds to the unions
+
+// A feature type with faces in a role of its own (the hole of 2c, shortened): a wall per point
+// of the sketch and per step of a counterbore, so two fields tell its faces apart.
+interface ExampleHole {
+  id: Id;
+  name: string;
+  suppressed: boolean;
+  type: 'exampleHole';
+  sketch: Id;
+  points: Id[];
+  diameter: number;
+  targets: Id[];
+}
+declare module './contract' {
+  interface FeatureTypes {
+    exampleHole: ExampleHole;
+  }
+  interface FaceRoles {
+    exampleWall: { point: Id; step: number };
+  }
+  // a command and a section of the document (the body properties of 3a, shortened)
+  interface Commands {
+    exampleSetDensity: { type: 'exampleSetDensity'; body: Id; density: number | string };
+  }
+  interface DocumentSections {
+    exampleDensities?: Record<Id, number>;
+  }
+}
+export const wallParts: { readonly point: string; readonly step: string } = FACE_ROLES.exampleWall.parts;
+export const wallKey = faceKeyOf({ feature: 'h1', role: 'exampleWall', point: 'p3', step: 2 }); // h1/exampleWall/p3/2
+// @ts-expect-error an entry that leaves out a field of the name
+export const halfWall: (typeof FACE_ROLES)['exampleWall'] = { title: 'Wall of a hole', parts: { point: 'point' } };
+
+export function addHole(): boolean {
+  const added = engine.execute({ type: 'addFeature', feature: { id: 'h1', name: 'Holes', suppressed: false, type: 'exampleHole', sketch: 's', points: ['p1', 'p2'], diameter: 'clearance', targets: ['lid'] } });
+  return added.ok && added.state.document.features.some((feature) => feature.type === 'exampleHole');
+}
+export const densityOf = (body: Id): number | undefined => engine.getState().document.exampleDensities?.[body];
+
+// A pose is a state of the document, so stepping it is a preview of the command that sets it
+// and a query over the previewed state; over MCP the same command goes into `after`.
+export function sweepDensity(body: Id, values: number[]): number[] {
+  return values.map((density) => {
+    const preview = engine.preview({ type: 'exampleSetDensity', body, density });
+    if (!preview.ok) return fail(preview.error.message);
+    return unwrap(engine.query('interference', {}, { state: preview.state })).pairs.length;
+  });
+}
+export const steppedOverMcp: QueryToolInput = { query: 'interference', after: { type: 'exampleSetDensity', body: 'carrier', density: 1.27 } };
+// @ts-expect-error a command no package added
+engine.execute({ type: 'exampleNope' });

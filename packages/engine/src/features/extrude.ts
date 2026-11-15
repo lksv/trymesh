@@ -86,7 +86,7 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
     title: 'Vysunutí',
     summary:
       'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
-      'The profile is a set of regions of a sketch, or comes from a profile generator (see Profile generators).',
+      'The profile is a set of regions of a sketch (optionally moved by an offset), a wall along curves of a sketch that close no region (a rib, a ring), or comes from a profile generator (see Profile generators).',
     fields: [
       ...PROFILE_FIELD_SPECS,
       ...EXTENT_FIELD_SPECS,

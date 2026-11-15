@@ -184,10 +184,17 @@ export function selectionOutline(regions: Region[]): Outline | ProfileProblem {
 // - A line and a circle, two circles: of the two intersections of the moved carriers the one on the
 //   branch of the old corner (the same one in the order along the line; the one on the same side of
 //   the line of centres). It is the corner that moves continuously with the distance.
+// - A cusp (the neighbours touch and the loop turns back at the corner): the old corner is the
+//   point of contact, which lies on the axis the two intersections mirror about, so it is on no
+//   branch and its side would be read from noise. The wedge of material between the two curves
+//   lies where the loop goes on, so the corner is the intersection in the direction of travel of
+//   the curve that starts there.
 function corner(before: Open, after: Open, d: number, radii: [number, number]): Vec2 | undefined {
   const [tb, ta] = [tangent(before, true), tangent(after, false)];
   const old = after.from;
-  if (Math.abs(cross2(tb, ta)) <= Math.sin(ANGLE_TOLERANCE) && dot2(tb, ta) > 0) {
+  const touching = Math.abs(cross2(tb, ta)) <= Math.sin(ANGLE_TOLERANCE);
+  const cusp = touching && dot2(tb, ta) < 0;
+  if (touching && !cusp) {
     // the normal of a line where there is one: the moved line then passes through the corner exactly
     const normal = before.type === 'line' ? rightOf(tb) : after.type === 'line' ? rightOf(ta) : rightOf([(tb[0] + ta[0]) / 2, (tb[1] + ta[1]) / 2]);
     return along(old, normal, d / len2(normal));
@@ -205,7 +212,7 @@ function corner(before: Open, after: Open, d: number, radii: [number, number]): 
     const half = radius * radius - dist2(foot, round.center) ** 2;
     if (half < 0) return undefined;
     const oldFoot = along(line.from, direction, dot2(sub2(round.center, line.from), direction));
-    return along(foot, direction, Math.sign(dot2(sub2(old, oldFoot), direction)) * Math.sqrt(half));
+    return along(foot, direction, Math.sign(cusp ? dot2(direction, ta) : dot2(sub2(old, oldFoot), direction)) * Math.sqrt(half));
   }
   const [p, q] = [before as Extract<Open, { type: 'arc' }>, after as Extract<Open, { type: 'arc' }>];
   const delta = sub2(q.center, p.center);
@@ -215,9 +222,10 @@ function corner(before: Open, after: Open, d: number, radii: [number, number]): 
   const reach = (distance * distance + radii[0] * radii[0] - radii[1] * radii[1]) / (2 * distance);
   const half = radii[0] * radii[0] - reach * reach;
   if (half < 0) return undefined;
-  const side = Math.sign(cross2(u, sub2(old, p.center)));
+  const across: Vec2 = [-u[1], u[0]];
+  const side = Math.sign(cusp ? dot2(across, ta) : dot2(across, sub2(old, p.center)));
   const foot = along(p.center, u, reach);
-  return along(foot, [-u[1], u[0]], side * Math.sqrt(half));
+  return along(foot, across, side * Math.sqrt(half));
 }
 
 // A chain of curves moved to the right of its travel by `d` (a negative `d` moves it to the left).
@@ -329,9 +337,17 @@ function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number): 
 // - clearance, area and nesting of the polylines (`polygonProblem`, `polygonNesting` of sketch.ts).
 // What passes is simple polygons, none without area, none touching another, every hole inside its
 // outer loop.
-export function outlineRegions(outline: Outline, nesting: boolean[][], chordTolerance: number, move: Move): Region[] | ProfileProblem {
+// `curveOf`: the sketch curve a key of the outline stands for, for the texts and the references of
+// a refusal. The keys of regions are the curves themselves; a wall has keys of its own.
+export function outlineRegions(outline: Outline, nesting: boolean[][], chordTolerance: number, move: Move, curveOf: (key: string) => Id = (key) => key): Region[] | ProfileProblem {
+  const named = (keys: string[]): Id[] => [...new Set(keys.map(curveOf))];
   const touching = touchingCurves(loopsOf(outline));
-  if (touching) return refusal(touching.map((curve) => curve.key), `${move.subject} makes the curves ${quoted(touching.map((curve) => curve.key))} touch or cross where they are not joined. ${move.cure}`);
+  if (touching) {
+    const curves = named(touching.map((curve) => curve.key));
+    // both sides of one curve of a wall: the wall is too thin, or folds onto itself along the curve
+    const what = curves.length === 1 ? `the two sides of the curve ${quoted(curves)}` : `the curves ${quoted(curves)}`;
+    return refusal(curves, `${move.subject} makes ${what} touch or cross where they are not joined. ${move.cure}`);
+  }
   const regions = outline.regions.map((region, r): Region => ({
     ref: { outerLoop: [...new Set(region.outer.map((curve) => curve.key))].sort() },
     outer: polyline(region.outer, `o:${r}`, chordTolerance),
@@ -340,14 +356,15 @@ export function outlineRegions(outline: Outline, nesting: boolean[][], chordTole
   const loops = regions.flatMap((region) => [region.outer, ...region.holes]);
   const bad = polygonProblem(loops, regions.flatMap((region) => [1, ...region.holes.map(() => -1)]));
   if (bad) {
-    const where = `${bad.curves.length === 1 ? 'the curve' : 'the curves'} ${quoted(bad.curves)}`;
+    const curves = named(bad.curves);
+    const where = `${curves.length === 1 ? 'the curve' : 'the curves'} ${quoted(curves)}`;
     const text = bad.what === 'clearance' ? `brings the outline onto itself at ${where} (two stretches of it touch, cross or fold back)` : `leaves no area inside the loop of ${where}`;
-    return refusal(bad.curves, `${move.subject} ${text}. ${move.cure}`);
+    return refusal(curves, `${move.subject} ${text}. ${move.cure}`);
   }
   if (!soundTessellation(regions)) return refusal([], `${move.subject} makes the outline cross itself. ${move.cure}`);
   const after = polygonNesting(loops);
   const changed = after.findIndex((row, i) => row.some((value, j) => value !== nesting[i][j]));
-  if (changed >= 0) return refusal([...new Set(loops[changed].curves)], `${move.subject} moves the loop of ${quoted([...new Set(loops[changed].curves)])} out of the loop it lay in, or into another. ${move.cure}`);
+  if (changed >= 0) return refusal(named(loops[changed].curves), `${move.subject} moves the loop of ${quoted(named(loops[changed].curves))} out of the loop it lay in, or into another. ${move.cure}`);
   return regions;
 }
 
@@ -366,6 +383,8 @@ export interface WallOutline {
   outline: Outline;
   nesting: boolean[][];
   sides: Map<string, { name: SideName; shape: SideCurve }>; // by the key of a curve of the outline
+  // The sketch curve a key of the outline stands for: the curve of a side, the end curve of an end.
+  curveOf: (key: string) => Id;
 }
 
 // The outline of a wall: own curves of a sketch that form one chain, moved by half the thickness to
@@ -453,15 +472,18 @@ export function wallOutline(sketch: SketchFeature, geometry: SketchGeometry, ids
   if (isProblem(left)) return left;
   // the keys of the faces: the side of a curve in its own direction, and the point of an end
   const sides: WallOutline['sides'] = new Map();
+  const curves = new Map<string, Id>();
+  const curveOf = (key: string): Id => curves.get(key) ?? key;
   const side = (curve: OutlineCurve, travelRight: boolean): OutlineCurve => {
     const name: SideName = { role: 'wallSide', curve: curve.key, side: travelRight === curve.forward ? 'right' : 'left' };
     const keyed = { ...curve, key: `${name.side === 'right' ? 'R' : 'L'}|${curve.key}` };
     sides.set(keyed.key, { name, shape: sideShape(keyed) });
+    curves.set(keyed.key, curve.key);
     return keyed;
   };
   const outer = right.map((curve) => side(curve, true));
   const inner = left.map((curve) => side(curve, false));
-  if (closed) return { outline: { regions: [{ outer, holes: [numbered(inner.map(reversed).reverse())] }] }, nesting: [[false, false], [true, false]], sides };
+  if (closed) return { outline: { regions: [{ outer, holes: [numbered(inner.map(reversed).reverse())] }] }, nesting: [[false, false], [true, false]], sides, curveOf };
   // A straight end, from the side of the travel it starts on to the other one. Its face is given
   // from the left of the end curve to its right in the curve's own direction, whichever way the
   // chain is walked.
@@ -470,10 +492,11 @@ export function wallOutline(sketch: SketchFeature, geometry: SketchGeometry, ids
     const [leftCorner, rightCorner] = atEnd === curve.forward ? [to, from] : [from, to];
     const key = `E|${point}`;
     sides.set(key, { name: { role: 'wallEnd', point }, shape: { type: 'line', a: leftCorner, b: rightCorner } });
+    curves.set(key, curve.key);
     return { key, forward: true, type: 'line', from, to, ends: ['', ''] };
   };
   const [firstRight, lastRight, firstLeft, lastLeft] = [outer[0] as Open, outer[outer.length - 1] as Open, inner[0] as Open, inner[inner.length - 1] as Open];
   const walk = chain as Open[];
   const loop = [...outer, end(walk[walk.length - 1], true, lastRight.to, lastLeft.to), ...inner.map(reversed).reverse(), end(walk[0], false, firstLeft.from, firstRight.from)];
-  return { outline: { regions: [{ outer: numbered(loop), holes: [] }] }, nesting: [[false]], sides };
+  return { outline: { regions: [{ outer: numbered(loop), holes: [] }] }, nesting: [[false]], sides, curveOf };
 }

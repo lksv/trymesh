@@ -52,7 +52,7 @@ function wall(source: Extract<ProfileSource, { type: 'wall' }>, sketch: SketchSt
   const move: Move = { subject: `The wall ${shown(source.thickness)} mm thick`, cure: 'Make the wall thinner or its bends wider, or draw its outline in the sketch and extrude that.' };
   const found = wallOutline(sketch.feature, sketch.geometry, source.curves, source.thickness, move);
   if ('code' in found) return found;
-  const built = outlineRegions(found.outline, found.nesting, chordTolerance, move);
+  const built = outlineRegions(found.outline, found.nesting, chordTolerance, move, found.curveOf);
   if ('code' in built) return built;
   return { regions: built, frame: sketch.frame, sideOf: (key) => found.sides.get(key) as { name: ReturnType<ResolvedProfile['sideOf']>['name']; shape: SideCurve }, outline: () => found.outline };
 }

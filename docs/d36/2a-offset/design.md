@@ -342,3 +342,19 @@ Known limits, besides those of the design:
 - A mitre has no limit: a sharp corner moves by `offset / sin(half the corner angle)`.
 - Regions that meet in a point can be moved inwards (they come apart) and not outwards (they run into each other); a selection where the common outline cannot be followed through such a point is refused.
 - The app offers only own curves for a wall and draws all of them while the form is open, also over the bodies; there is no pick of a chain as a whole.
+
+### Review (2026-11-15)
+
+One full review of the commit of the package by a subagent that did not write it, read-only, with probes against the real adapters and its own fuzz (the numbers are in [architecture/verification.md](../../architecture/verification.md)). No serious finding; one round was enough.
+
+| Finding | Severity | Holds? | What changed |
+|---|---|---|---|
+| A wall refused by the tests of its polylines names the keys of its outline (`R|ab`, `E|e`) in the message and in `refs`, not curves of the sketch | moderate (run) | Yes | `outlineRegions` takes what a key stands for; a wall answers with the curve of a side and the end curve of an end. Both sides of one curve are worded as such |
+| A cusp (a line or an arc that meets an arc tangentially, the loop turning back): the side of the new corner is read from the sign of a number that is zero, so a valid inward offset is refused or built on 1e-9 of noise. Nothing wrong was built | minor (run) | Yes | At a cusp the corner is the intersection in the direction of travel of the curve that starts there |
+| An offset that leaves a strip thinner than float32 resolves but above the tolerance gives a body without volume there. The same holds for a sketch drawn that thin | minor (run), not a regression | Yes | Recorded as a limit in the architecture |
+| `side` of a `wallSide` accepts any text | minor | By design ("Faces of a wall": a well-formed name of a face that does not exist is a broken reference, like a curve the feature never had) | Nothing |
+| The summary of the extrusion in `describe_api` did not mention the offset and the wall | minor | Yes | The summary says it |
+| No test of the two findings above | | Yes | `packages/engine/test/review.test.ts` |
+
+Checked by the reviewer and found sound: the geometry of the offset and of the wall on the fuzz and on hand cases with exact areas (both branches of a D, a lens, a keyhole, holes and islands, loops that share a vertex, extremes of the offset); the document level (`setField` on the absent field, patches, load, undo, references, no upgrade step); the claim that a document without an offset is unchanged (the hash test run against the commit before the package); the app by reading. Not checked by it: the app in a browser (done by the author, above), the MCP build, the spikes.
+

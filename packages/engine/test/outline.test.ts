@@ -547,7 +547,7 @@ describe('the outline of a wall', () => {
     const found = wall(cross, ['ab', 'bc', 'cd', 'de'], 1);
     expect('code' in found).toBe(false);
     if ('code' in found) return;
-    expect(outlineRegions(found.outline, found.nesting, TOLERANCE, MOVE)).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/touch or cross where they are not joined/) });
+    expect(outlineRegions(found.outline, found.nesting, TOLERANCE, MOVE, found.curveOf)).toMatchObject({ code: 'invalidProfile', refs: ['ab', 'de'], message: expect.stringMatching(/makes the curves "ab", "de" touch or cross where they are not joined/) });
   });
 
   it('an open chain moved to one side: the free ends move along their own normals', () => {

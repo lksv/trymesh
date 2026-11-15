@@ -24,7 +24,9 @@ Part of [architecture.md](../architecture.md), the design as implemented. The de
 - `packages/scenarios/test/offset.test.ts`, against the real adapters: volumes, face names, surfaces and boxes of faces of moved profiles and of walls; a sketch on a moved side face, on a side and on an end of a wall; a wall added to a body and repeated by a pattern; the errors as the engine reports them; 24 random rounded rectangles with a hole, each either refused for a reason the test names or built with the volume of the moved outline and then cut by the kernel.
 - `packages/scenarios/test/review.test.ts`: the meshes, the face numbers and the face names of a model without an offset are, by a hash, what the code before D44 built (computed with both and equal).
 - `packages/scenarios/test/scenario12.test.ts`: validation scenario 12, the part of 2a.
-- Not measured: an outline near the length tolerance in floating point beyond the cases above (the tests of the polylines were fuzzed on integer grids by a reviewer of the design, not on real moved outlines).
+- `packages/engine/test/review.test.ts`, the findings of the review of the package: a cusp between a line and an arc and between two arcs, with the end point on the line and 1e-9 to either side of it; a wall refused for its polylines names curves of the sketch.
+- Run by the reviewer of the package and not kept in the suite: 25 000 random star polygons against an independent mitre, about 16 000 random outlines of lines and arcs (both directions, sweeps above half a turn, loops of two arcs) checked for a simple polygon, the area of the exact curves and the distance of every boundary point from the original outline, 7 100 filleted polygons, 4 000 random chains of a wall, and 400 random outlines with arcs through the real adapters. Nothing wrong was accepted and nothing right refused; what they found is in the tests above.
+- Not measured: an outline thinner than float32 resolves and thicker than the length tolerance (a limit, see [extrude.md](extrude.md)).
 
 ## Výsledky spiků
 

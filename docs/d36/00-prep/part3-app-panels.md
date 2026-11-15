@@ -1,6 +1,6 @@
 # 00 Preparatory step, part 3: panels and forms of the app as modules
 
-**State: fourth version: the third, after two rounds of reviews, with the check changed from a script of clicks in a browser to a test of the class once the owner approved a DOM for the tests (2026-11-15). The changed check has not been reviewed; it is reviewed with its first commit.** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the reviews that led to this version are recorded there under "Reviews", rounds 4 and 5.
+**State: commit 0 is done (the test of the class and its snapshots); commits 1 to 5 are ahead. The design is in its fourth version: the third, after two rounds of reviews, with the check changed from a script of clicks in a browser to a test of the class once the owner approved a DOM for the tests (2026-11-15). What commit 0 does differently from the text below is under "As implemented".** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the reviews that led to this version are recorded there under "Reviews", rounds 4 and 5.
 
 ## What is there today
 
@@ -212,3 +212,16 @@ Part 3 needs nothing of part 1 and only two functions of part 2 (`producesTool`,
 - **The sketch mode** is about 600 lines and is moved as one piece. Splitting it by drawing tool is not needed for D36 (step 6 adds the fillet of a corner as a sketch tool of the engine catalog, which the app runs already).
 - **The toolbar** grows by a button per feature type. A menu by group (create, modify, bodies) is a question of step 2, when the count is known.
 - **Czech texts.** The moved code keeps its texts; a line that changes anyway is written in English, as the rule of the project says.
+
+## As implemented
+
+**Commit 0: the test of the class.** `packages/app/test/app-kit.ts` is the harness and `packages/app/test/app.test.ts` the four cases (a sketch, the features and their forms, the model with the timeline, the parameters and the collisions, the bridge); the record of each is a file in `packages/app/test/snapshots/`. `App` takes the view as an optional second argument typed by `View` (`viewport.ts`). What differs from the design above:
+
+- **The DOM is `happy-dom`** (D2). The test runs in the Node environment and makes the window itself, because the WASM adapters have to load as in Node before a `window` exists; it sets the globals `window` and `document` afterwards.
+- **The stand-in for the view picks for real.** It has one fixed parallel camera that looks down at a slant, and `pickBody` casts the ray against the bodies of the last scene, so a step of the test names a point of the model, not the answer of the pick. A point of the window is where its ray pierces the plane z = 0, and a pixel is a millimetre.
+- **Reading the current state is not recorded.** The class reads `engine.getState()` without a feature dozens of times per refresh (the getter `doc`), and the number says nothing about behaviour. Every other call on the engine is recorded with its arguments and, for a command, its outcome; a state after a feature is computed and is recorded.
+- **The record holds changes.** The document, the toolbar, the timeline, the panel and the scene are written whole the first time and afterwards as the lines that went and the lines that came; a sketch is written with a line per point, curve and constraint, without the solution the engine keeps in it. A list of coordinates of the scene is written as its length and an order-dependent sum. The four files are about 490 kB together.
+- **The clock and the timers.** `performance.now` advances by a step the test sets on every reading, so a preview takes exactly that long; `window.setTimeout` of the app is run by the test.
+- **The bridge.** The app connects to a fixed address; the test replaces `connectBridge` of the bridge client with one that adds the address of a bridge the test started.
+- **Not driven by the test:** opening a file (the button *Otevřít*), deleting duplicate constraints, and a sketch refused by the engine after a valid pick. They are small and are read in the diff of the commits that move them.
+- **No review of this commit**, by the rule the owner set on 2026-11-15 (`CLAUDE.md`, "Depth of the review"): it adds a test and one optional argument and changes no behaviour.

@@ -1,0 +1,631 @@
+
+=== 1. a model of three bodies
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":90,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":5}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x9)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x6)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: getState("s1")
+  engine: getState("e1")  (x2)
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")  (x4)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":3}]}) -> ok
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x5)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s2","id":"p5","x":30,"y":10},{"type":"addPoint","sketch":"s2","id":"p6","x":60,"y":25},{"type":"addPoint","sketch":"s2","id":"p7","x":60,"y":10},{"type":"addPoint","sketch":"s2","id":"p8","x":30,"y":25},{"type":"addCurve","sketch":"s2","id":"c6","curve":{"type":"line","a":"p5","b":"p7"}},{"type":"addConstraint","sketch":"s2","id":"k5","constraint":{"type":"horizontal","line":"c6"}},{"type":"addCurve","sketch":"s2","id":"c7","curve":{"type":"line","a":"p7","b":"p6"}},{"type":"addConstraint","sketch":"s2","id":"k6","constraint":{"type":"vertical","line":"c7"}},{"type":"addCurve","sketch":"s2","id":"c8","curve":{"type":"line","a":"p6","b":"p8"}},{"type":"addConstraint","sketch":"s2","id":"k7","constraint":{"type":"horizontal","line":"c8"}},{"type":"addCurve","sketch":"s2","id":"c9","curve":{"type":"line","a":"p8","b":"p5"}},{"type":"addConstraint","sketch":"s2","id":"k8","constraint":{"type":"vertical","line":"c9"}}]}) -> ok
+  engine: diagnoseSketch("s2")
+  engine: getState("s2")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: getState("s2")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: getState("s2")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}) -> ok
+  features: s1, e1, e2, s2, e3
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":90,"y":15}
+      radius c5: 5
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature e2:
+      {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature s2:
+      {"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p5: {"x":30,"y":10}
+      point p6: {"x":60,"y":25}
+      point p7: {"x":60,"y":10}
+      point p8: {"x":30,"y":25}
+      curve c6: {"type":"line","a":"p5","b":"p7"}
+      curve c7: {"type":"line","a":"p7","b":"p6"}
+      curve c8: {"type":"line","a":"p6","b":"p8"}
+      curve c9: {"type":"line","a":"p8","b":"p5"}
+      constraint k5: {"type":"horizontal","line":"c6"}
+      constraint k6: {"type":"vertical","line":"c7"}
+      constraint k7: {"type":"horizontal","line":"c8"}
+      constraint k8: {"type":"vertical","line":"c9"}
+  feature e3:
+      {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+      div.group
+        button title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 1"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 2"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 2"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 3"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+  status: Vysunutí přidáno.
+  view: 41 scene(s) set
+  scene:
+      bodies: e1, e2, e3
+      line #26303c width 1.5: 744 numbers, sum 98605.758
+      line #8b9bb4 width 1: 24 numbers, sum 735.918
+      line #8b9bb4 width 1: 24 numbers, sum 490.612
+      line #8b9bb4 width 1: 24 numbers, sum 245.306
+      line #5b7aa8 width 1.5: 600 numbers, sum 82201.018
+      line #5b7aa8 width 1.5: 24 numbers, sum 2070
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.044
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [95, 30, 10]
+
+=== 2. the app is connected to the bridge
+  toolbar:
+    +   button.active title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI: připojeno"
+    -   button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+  status: Propojeno s MCP serverem: AI vidí a mění tento dokument.
+  view: 0 scene(s) set
+
+=== 3. a form is open
+  engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Rovina 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":10},"index":5}, "r1") -> ok
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   button title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Nová rovina"
+    + p: "Základ: rovina XY"
+    + p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    + label
+    +   "Offset along the normal (mm or an expression)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="offset" data-unit="mm"
+    + p#draft-problem.issue.warning
+    + div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: Zadejte posun; kliknutím v pohledu lze změnit základ.
+  view: 2 scene(s) set
+  scene:
+    + line #f97316 width 2: 24 numbers, sum 1045.918
+    + fill #f97316 opacity 0.3 at [0, 0, 10] normal [0, 0, 1]: 8 numbers, sum 35.044
+
+=== 4. a question of the AI leaves the form alone
+  view: 0 scene(s) set
+
+=== 5. a command that changes nothing leaves the form alone
+  engine: preview({"type":"renameFeature","id":"e1","name":"Vysunutí 1"}) -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Rovina 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":10},"index":5}, "r1") -> ok
+  engine: execute({"type":"renameFeature","id":"e1","name":"Vysunutí 1"}) -> ok
+  status: AI: execute
+  view: 1 scene(s) set
+
+=== 6. a command the engine refuses leaves the form alone and is reported
+  engine: preview({"type":"removeFeature","id":"nope"}) -> invalidCommand: removeFeature: feature "nope" neexistuje
+  engine: execute({"type":"removeFeature","id":"nope"}) -> invalidCommand: removeFeature: feature "nope" neexistuje
+  status: AI: execute selhalo: invalidCommand: removeFeature: feature "nope" neexistuje  [error]
+  view: 0 scene(s) set
+
+=== 7. a command that changes the document closes the form first
+  engine: preview({"type":"renameFeature","id":"e1","name":"Deska"}) -> ok
+  engine: execute({"type":"renameFeature","id":"e1","name":"Deska"}) -> ok
+  feature e1:
+    + {"id":"e1","name":"Deska","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   span.name: "Deska"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   span.name: "Vysunutí 1"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Nová rovina"
+    - p: "Základ: rovina XY"
+    - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    - label
+    -   "Offset along the normal (mm or an expression)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="offset" data-unit="mm"
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: AI: execute
+  view: 2 scene(s) set
+  scene:
+    - line #f97316 width 2: 24 numbers, sum 1045.918
+    - fill #f97316 opacity 0.3 at [0, 0, 10] normal [0, 0, 1]: 8 numbers, sum 35.044
+
+=== 8. a load that fails: the form and the rest of the app are as they were
+  engine: getState("s2")
+  engine: getState("e3")
+  engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
+  engine: getState("e3")
+  engine: getState("s2")  (x2)
+  engine: load("{\"schemaVersion\": 99}") -> invalidDocument: document: the schema version 99 is newer than this build reads (it saves 3); open the document with a newer build
+  engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
+  engine: getState("e3")
+  engine: getState("s2")  (x2)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   button title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Nové vysunutí"
+    + label
+    +   "Profile"
+    +   select value="regions"
+    +     option selected value="regions": "Sketch regions"
+    +     option value="involuteGear": "Involute gear"
+    + label
+    +   "Skica"
+    +   select value="s2"
+    +     option value="s1": "Skica 1"
+    +     option selected value="s2": "Skica 2"
+    + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    + div.buttons
+    +   button: "Zrušit výběr oblastí"
+    + label
+    +   "Operace"
+    +   select value="new"
+    +     option selected value="new": "Nové těleso"
+    +     option value="add": "Přidat k tělesu"
+    +     option value="cut": "Odebrat z tělesa"
+    + label
+    +   "Extent"
+    +   select value="distance"
+    +     option selected value="distance": "Distance"
+    +     option value="throughAll" disabled: "Through all (a cut only)"
+    + label
+    +   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Distance (mm or an expression; negative = against the normal)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    + p#draft-problem.issue.warning
+    + div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: AI: otevření dokumentu selhalo: document: the schema version 99 is newer than this build reads (it saves 3); open the document with a newer build  [error]
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, e2, e3, e4
+    + line #26303c width 1.5: 816 numbers, sum 105200.758
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+    + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+
+=== 9. a load: the app starts over with the new document
+  engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
+  features: (none)
+  toolbar:
+    +   button disabled: "Export STL"
+    -   button: "Export STL"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    + p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Skica 1"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Deska"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Vysunutí 2"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Skica 2"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Vysunutí 3"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Nové vysunutí"
+    - label
+    -   "Profile"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="involuteGear": "Involute gear"
+    - label
+    -   "Skica"
+    -   select value="s2"
+    -     option value="s1": "Skica 1"
+    -     option selected value="s2": "Skica 2"
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Operace"
+    -   select value="new"
+    -     option selected value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    - label
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: AI: otevřen dokument
+  view: 2 scene(s) set
+  scene:
+    + bodies: (none)
+    + line #8b9bb4 width 1: 24 numbers, sum 509.223
+    + line #8b9bb4 width 1: 24 numbers, sum 339.482
+    + line #8b9bb4 width 1: 24 numbers, sum 169.741
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+    - bodies: e1, e2, e3, e4
+    - line #26303c width 1.5: 816 numbers, sum 105200.758
+    - line #8b9bb4 width 1: 24 numbers, sum 735.918
+    - line #8b9bb4 width 1: 24 numbers, sum 490.612
+    - line #8b9bb4 width 1: 24 numbers, sum 245.306
+    - line #5b7aa8 width 1.5: 600 numbers, sum 82201.018
+    - line #5b7aa8 width 1.5: 24 numbers, sum 2070
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.044
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+
+=== 10. undo by the AI after a load has nothing to undo, and says so
+  status: AI: undo selhalo: není co vracet  [error]
+  view: 0 scene(s) set
+
+=== 11. a command of the AI and its undo: the app follows both
+  engine: execute({"type":"setParameter","name":"a","expr":"1"}) -> ok
+  engine: undo()
+  toolbar:
+    +   button title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+  status: AI: undo
+  view: 2 scene(s) set
+
+=== 12. the connection is switched off
+  toolbar:
+    +   button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+    -   button.active title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI: připojeno"
+  status: Propojení s AI vypnuto.
+  view: 0 scene(s) set

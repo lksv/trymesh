@@ -61,6 +61,8 @@ Schválené: planegcs (D6), Manifold (D8), `@modelcontextprotocol/sdk` pro MCP s
 
 Approved on 2026-11-15: a DOM for the tests of the app in Vitest, `happy-dom` or `jsdom`, one of the two, as a development dependency of `packages/app`. It lets the class `App` and its panels be tested without a browser (part 3 of the preparatory step of D36, [d36/00-prep/part3-app-panels.md](d36/00-prep/part3-app-panels.md)). Which of the two is taken is decided by the first test written with it and recorded here. Only tests import it and nothing of it is shipped, so it has no interface of its own.
 
+Taken on 2026-11-15: `happy-dom` 21.0.4. The first test (`packages/app/test/app.test.ts`) needs pointer events with capture, keyboard events, handlers set as properties (`onclick`, `oninput`, `onchange`) and the form controls of the app; all of them work in it, so `jsdom` was not tried. The test makes the window itself (`new Window()`) and does not use the test environment of Vitest, because the WASM adapters have to load as in Node before a `window` exists.
+
 ## D3 Model dokumentu: log operací
 
 Rozhodnuto 2026-11-10. Dokument je uspořádaný seznam operací. Operace ukládá záměr: typ, parametry a reference na entity vytvořené dřívějšími operacemi. Výsledná geometrie se neukládá, vzniká přehráním logu.

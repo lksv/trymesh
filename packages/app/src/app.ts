@@ -95,7 +95,7 @@ import {
 } from './sketch-commands';
 import { duplicateTwins, explanationText, freeEntities, freeSummary, markOf } from './sketch-diagnosis';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
-import { type SceneModel, Viewport } from './viewport';
+import { type SceneModel, type View, Viewport } from './viewport';
 import { angleProblem, bodyName, faceLabel, featureName, issueText } from './issue-text';
 
 type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
@@ -214,7 +214,7 @@ const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length =
 const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
 
 export class App {
-  private readonly viewport: Viewport;
+  private readonly viewport: View;
   private mode: Mode = { kind: 'model' };
   private selected?: Pick; // výběr v pohledu (režim modelu)
   private hover?: Pick;
@@ -239,8 +239,9 @@ export class App {
   private down?: { x: number; y: number; button: number };
   private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
 
-  constructor(private readonly engine: Engine) {
-    this.viewport = new Viewport(byId('viewport'));
+  // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
+  constructor(private readonly engine: Engine, view?: View) {
+    this.viewport = view ?? new Viewport(byId('viewport'));
     engine.subscribe(() => {
       this.collisions = undefined; // the answer belonged to the document as it was
       this.refresh();

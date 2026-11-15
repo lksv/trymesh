@@ -29,9 +29,22 @@ export interface BodyHit {
   depth: number; // vzdálenost od roviny kamery ve směru pohledu
 }
 
+// What the app uses of the view. `Viewport` below is the one that draws; a test of the app hands
+// the app another, because a DOM without layout and without WebGL cannot run this one.
+export interface View {
+  readonly element: HTMLElement; // where the pointer events of the view arrive
+  setScene(model: SceneModel): void;
+  ray(clientX: number, clientY: number): { origin: Vec3; direction: Vec3 };
+  pickBody(clientX: number, clientY: number): BodyHit | undefined;
+  projector(): (x: number, y: number, z: number) => { x: number; y: number; depth: number };
+  pixelSize(): number;
+  lookAt(frame: Frame): void;
+  fit(min: Vec3, max: Vec3): void;
+}
+
 const DISTANCE = 5000; // kamera stojí daleko, aby žádná část modelu nebyla za ní
 
-export class Viewport {
+export class Viewport implements View {
   private readonly renderer = new THREE.WebGLRenderer({ antialias: true });
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2 * DISTANCE);

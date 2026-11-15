@@ -1,0 +1,1630 @@
+
+=== 1. the app starts empty
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button disabled title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+      div.group
+        button disabled title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+  status: Začněte skicou: tlačítko Skica a výběr roviny.
+  view: 1 scene(s) set
+  scene:
+      bodies: (none)
+      line #8b9bb4 width 1: 24 numbers, sum 509.223
+      line #8b9bb4 width 1: 24 numbers, sum 339.482
+      line #8b9bb4 width 1: 24 numbers, sum 169.741
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. Skica: the app waits for a plane
+  toolbar:
+    +   button.active title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+  panel:
+    + h2: "Nová skica"
+    + p.hint: "Klikněte v pohledu na rovinu nebo rovinnou stěnu, nebo zvolte základní rovinu:"
+    + div.buttons
+    +   button: "XY"
+    +   button: "XZ"
+    +   button: "YZ"
+    + div.buttons
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: Vyberte rovinu nebo rovinnou stěnu.
+  view: 1 scene(s) set
+
+=== 3. the plane XY: a sketch is created and entered
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  features: s1
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button title="Klikněte na místo bodu.": "Bod"
+    +   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    +   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    + div.group
+    +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
+    -   button.active title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    +   button.primary: "Dokončit skicu"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.row.ok.selected.editing
+    +   span.dot: "●"
+    +   span.name: "Skica 1"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+    + h2: "Skica: Skica 1"
+    + div#sketch-status
+    +   p.badge.open: "Prázdná skica"
+    +   p.hint: "Uzavřených oblastí: 0"
+    + h2: "Výběr (0)"
+    + div.buttons
+    +   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    +   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    +   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    +   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    +   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    +   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    +   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    +   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    +   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    - h2: "Nová skica"
+    - p.hint: "Klikněte v pohledu na rovinu nebo rovinnou stěnu, nebo zvolte základní rovinu:"
+    +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button: "XY"
+    -   button: "XZ"
+    -   button: "YZ"
+    +   button disabled: "Konstrukční"
+    +   button disabled title="Delete": "Smazat"
+    + h2: "Vazby a kóty (0)"
+    + p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
+    -   button: "Zrušit"
+  status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
+  view: 2 scene(s) set
+  scene:
+    + points #a21caf size 7: 3 numbers, sum 0
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 4. rectangle: first corner on the origin, the rubber band follows
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  toolbar:
+    +   button title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button.active title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    -   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+  status: Klikněte na dva protilehlé rohy.
+  view: 4 scene(s) set
+  scene:
+    + line #64748b width 1.5 dashed onTop: 24 numbers, sum 900
+
+=== 5. rectangle: second corner
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  feature s1:
+    + point p1: {"x":40,"y":30}
+    + point p2: {"x":40,"y":0}
+    + point p3: {"x":0,"y":30}
+    + curve c1: {"type":"line","a":"origin","b":"p2"}
+    + curve c2: {"type":"line","a":"p2","b":"p1"}
+    + curve c3: {"type":"line","a":"p1","b":"p3"}
+    + curve c4: {"type":"line","a":"p3","b":"origin"}
+    + constraint k1: {"type":"horizontal","line":"c1"}
+    + constraint k2: {"type":"vertical","line":"c2"}
+    + constraint k3: {"type":"horizontal","line":"c3"}
+    + constraint k4: {"type":"vertical","line":"c4"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 2"
+    +   p.hint: "Uzavřených oblastí: 1"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p1: například dvěma kótami od počátku."
+    + div.buttons
+    +   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    -   p.badge.open: "Prázdná skica"
+    -   p.hint: "Uzavřených oblastí: 0"
+    + h2: "Vazby a kóty (4)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c1"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c2"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c3"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c4"
+    +   button.icon title="Smazat vazbu": "✕"
+    - h2: "Vazby a kóty (0)"
+    - p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
+  view: 3 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 367.5
+    + line #8b9bb4 width 1: 24 numbers, sum 245
+    + line #8b9bb4 width 1: 24 numbers, sum 122.5
+    + line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
+    + points #1d4ed8 size 7: 9 numbers, sum 290
+    - line #8b9bb4 width 1: 24 numbers, sum 509.223
+    - line #8b9bb4 width 1: 24 numbers, sum 339.482
+    - line #8b9bb4 width 1: 24 numbers, sum 169.741
+    - line #64748b width 1.5 dashed onTop: 24 numbers, sum 900
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+
+=== 6. line: a nearly horizontal end is inferred
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  toolbar:
+    +   button.active title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    +   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    -   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button.active title="Klikněte na dva protilehlé rohy.": "Obdélník"
+  status: Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.
+  view: 4 scene(s) set
+  scene:
+    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 380
+    + label "vodorovně" reference at [80, 0, 0]
+
+=== 7. line: the chain goes on from the end, a nearly vertical end is inferred
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":60,"y":0},{"type":"addPoint","sketch":"s1","id":"p5","x":80,"y":0},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"line","a":"p4","b":"p5"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"horizontal","line":"c5"}}]}) -> ok
+  engine: diagnoseSketch("s1")  (x2)
+  feature s1:
+    + point p4: {"x":60,"y":0}
+    + point p5: {"x":80,"y":0}
+    + curve c5: {"type":"line","a":"p4","b":"p5"}
+    + constraint k5: {"type":"horizontal","line":"c5"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 5"
+    -   p.badge.open: "Stupně volnosti: 2"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p1: například dvěma kótami od počátku."
+    + h2: "Vazby a kóty (5)"
+    - h2: "Vazby a kóty (4)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c5"
+    +   button.icon title="Smazat vazbu": "✕"
+  view: 4 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 627.984
+    + line #8b9bb4 width 1: 24 numbers, sum 418.656
+    + line #8b9bb4 width 1: 24 numbers, sum 209.328
+    + line #1d4ed8 width 2 onTop: 30 numbers, sum 2200
+    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 525
+    + points #1d4ed8 size 7: 15 numbers, sum 950
+    - line #8b9bb4 width 1: 24 numbers, sum 367.5
+    - line #8b9bb4 width 1: 24 numbers, sum 245
+    - line #8b9bb4 width 1: 24 numbers, sum 122.5
+    - line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
+    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 380
+    - points #1d4ed8 size 7: 9 numbers, sum 290
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    + label "svisle" reference at [80, 25, 0]
+    - label "vodorovně" reference at [80, 0, 0]
+
+=== 8. line: joining an existing point ends the chain
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p6","x":80,"y":25},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"vertical","line":"c6"}}]}) -> ok
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  feature s1:
+    + point p6: {"x":80,"y":25}
+    + curve c6: {"type":"line","a":"p5","b":"p6"}
+    + curve c7: {"type":"line","a":"p6","b":"p4"}
+    + constraint k6: {"type":"vertical","line":"c6"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 6"
+    +   p.hint: "Uzavřených oblastí: 2"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
+    -   p.badge.open: "Stupně volnosti: 5"
+    -   p.hint: "Uzavřených oblastí: 1"
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5."
+    + h2: "Vazby a kóty (6)"
+    - h2: "Vazby a kóty (5)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c6"
+    +   button.icon title="Smazat vazbu": "✕"
+  view: 6 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 42 numbers, sum 3630
+    + points #1d4ed8 size 7: 18 numbers, sum 1185
+    - line #1d4ed8 width 2 onTop: 30 numbers, sum 2200
+    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 525
+    - points #1d4ed8 size 7: 15 numbers, sum 950
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 850
+    - label "svisle" reference at [80, 25, 0]
+
+=== 9. circle
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p7","x":20,"y":15},{"type":"addCurve","sketch":"s1","id":"c8","curve":{"type":"circle","center":"p7"},"radius":6}]}) -> ok
+  engine: diagnoseSketch("s1")
+  feature s1:
+    + point p7: {"x":20,"y":15}
+    + radius c8: 6
+    + curve c8: {"type":"circle","center":"p7"}
+  toolbar:
+    +   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button.active title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    +   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 9"
+    +   p.hint: "Uzavřených oblastí: 3"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7; poloměr c8."
+    -   p.badge.open: "Stupně volnosti: 6"
+    -   p.hint: "Uzavřených oblastí: 2"
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
+  status: Klikněte na střed a pak na bod obvodu.
+  view: 6 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 618 numbers, sum 30449.212
+    + points #1d4ed8 size 7: 21 numbers, sum 1375
+    - line #1d4ed8 width 2 onTop: 42 numbers, sum 3630
+    - points #1d4ed8 size 7: 18 numbers, sum 1185
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
+
+=== 10. arc: centre and start, the rubber band shows the sweep
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x7)
+  toolbar:
+    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    +   button.active title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+  status: Klikněte na střed, začátek a konec (proti směru hodin).
+  view: 6 scene(s) set
+  scene:
+    + line #64748b width 1.5 dashed onTop: 150 numbers, sum 24726.147
+
+=== 11. arc
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p8","x":60,"y":50},{"type":"addPoint","sketch":"s1","id":"p9","x":72,"y":50},{"type":"addPoint","sketch":"s1","id":"p10","x":60,"y":62},{"type":"addCurve","sketch":"s1","id":"c9","curve":{"type":"arc","center":"p8","start":"p9","end":"p10"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  feature s1:
+    + point p8: {"x":60,"y":50}
+    + point p9: {"x":72,"y":50}
+    + point p10: {"x":60,"y":62}
+    + curve c9: {"type":"arc","center":"p8","start":"p9","end":"p10"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 14"
+    -   p.badge.open: "Stupně volnosti: 9"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a další 2; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7; poloměr c8."
+  view: 3 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 743.913
+    + line #8b9bb4 width 1: 24 numbers, sum 495.942
+    + line #8b9bb4 width 1: 24 numbers, sum 247.971
+    + line #1d4ed8 width 2 onTop: 762 numbers, sum 54471.708
+    + points #1d4ed8 size 7: 30 numbers, sum 2555
+    - line #8b9bb4 width 1: 24 numbers, sum 627.984
+    - line #8b9bb4 width 1: 24 numbers, sum 418.656
+    - line #8b9bb4 width 1: 24 numbers, sum 209.328
+    - line #1d4ed8 width 2 onTop: 618 numbers, sum 30449.212
+    - line #64748b width 1.5 dashed onTop: 150 numbers, sum 24726.147
+    - points #1d4ed8 size 7: 21 numbers, sum 1375
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.424
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.424
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.424
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
+
+=== 12. polygon: its options are in the panel
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  toolbar:
+    +   button.active title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button.active title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+  panel:
+    + h2: "Polygon"
+    + label
+    +   "Sides (3 to 64)"
+    +   input type=number value="6"
+    + label
+    +   "Dimension of the size"
+    +   select value="none"
+    +     option selected value="none": "No dimension"
+    +     option value="circumscribed": "Diameter of the circumscribed circle"
+    +     option value="acrossFlats": "Size across flats (even number of sides)"
+    + p.hint: "Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded."
+  status: Click the centre and then a vertex; the number of sides is set in the panel.
+  view: 1 scene(s) set
+
+=== 13. polygon: eight sides with the size across flats; a count out of range is not taken
+  engine: diagnoseSketch("s1")  (x6)
+  panel:
+    +   input type=number value="8"
+    -   input type=number value="6"
+    +   select value="circumscribed"
+    +     option value="none": "No dimension"
+    +     option selected value="circumscribed": "Diameter of the circumscribed circle"
+    -   select value="none"
+    -     option selected value="none": "No dimension"
+    -     option value="circumscribed": "Diameter of the circumscribed circle"
+  view: 3 scene(s) set
+
+=== 14. polygon
+  engine: diagnoseSketch("s1")  (x3)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p11","x":110,"y":20},{"type":"addPoint","sketch":"s1","id":"p12","x":121.99831754024119,"y":20},{"type":"addPoint","sketch":"s1","id":"p13","x":118.48409169553405,"y":28.48409169553404},{"type":"addPoint","sketch":"s1","id":"p14","x":110,"y":31.99831754024119},{"type":"addPoint","sketch":"s1","id":"p15","x":101.51590830446597,"y":28.48409169553404},{"type":"addPoint","sketch":"s1","id":"p16","x":98.00168245975881,"y":20},{"type":"addPoint","sketch":"s1","id":"p17","x":101.51590830446595,"y":11.51590830446596},{"type":"addPoint","sketch":"s1","id":"p18","x":110,"y":8.001682459758811},{"type":"addPoint","sketch":"s1","id":"p19","x":118.48409169553403,"y":11.515908304465956},{"type":"addCurve","sketch":"s1","id":"c10","curve":{"type":"circle","center":"p11","construction":true},"radius":11.998317540241189},{"type":"addCurve","sketch":"s1","id":"c11","curve":{"type":"line","a":"p12","b":"p13"}},{"type":"addCurve","sketch":"s1","id":"c12","curve":{"type":"line","a":"p13","b":"p14"}},{"type":"addCurve","sketch":"s1","id":"c13","curve":{"type":"line","a":"p14","b":"p15"}},{"type":"addCurve","sketch":"s1","id":"c14","curve":{"type":"line","a":"p15","b":"p16"}},{"type":"addCurve","sketch":"s1","id":"c15","curve":{"type":"line","a":"p16","b":"p17"}},{"type":"addCurve","sketch":"s1","id":"c16","curve":{"type":"line","a":"p17","b":"p18"}},{"type":"addCurve","sketch":"s1","id":"c17","curve":{"type":"line","a":"p18","b":"p19"}},{"type":"addCurve","sketch":"s1","id":"c18","curve":{"type":"line","a":"p19","b":"p12"}},{"type":"addConstraint","sketch":"s1","id":"k7","constraint":{"type":"pointOnCurve","point":"p12","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k8","constraint":{"type":"pointOnCurve","point":"p13","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k9","constraint":{"type":"pointOnCurve","point":"p14","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k10","constraint":{"type":"pointOnCurve","point":"p15","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k11","constraint":{"type":"pointOnCurve","point":"p16","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k12","constraint":{"type":"pointOnCurve","point":"p17","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k13","constraint":{"type":"pointOnCurve","point":"p18","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k14","constraint":{"type":"pointOnCurve","point":"p19","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k15","constraint":{"type":"equalLength","a":"c11","b":"c12"}},{"type":"addConstraint","sketch":"s1","id":"k16","constraint":{"type":"equalLength","a":"c11","b":"c13"}},{"type":"addConstraint","sketch":"s1","id":"k17","constraint":{"type":"equalLength","a":"c11","b":"c14"}},{"type":"addConstraint","sketch":"s1","id":"k18","constraint":{"type":"equalLength","a":"c11","b":"c15"}},{"type":"addConstraint","sketch":"s1","id":"k19","constraint":{"type":"equalLength","a":"c11","b":"c16"}},{"type":"addConstraint","sketch":"s1","id":"k20","constraint":{"type":"equalLength","a":"c11","b":"c17"}},{"type":"addConstraint","sketch":"s1","id":"k21","constraint":{"type":"equalLength","a":"c11","b":"c18"}},{"type":"addConstraint","sketch":"s1","id":"k22","constraint":{"type":"distancePointLine","point":"p12","line":"c15","value":22.17,"driving":true}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  feature s1:
+    + point p11: {"x":110,"y":20}
+    + point p12: {"x":121.99831754024119,"y":20}
+    + point p13: {"x":118.48409169553405,"y":28.48409169553404}
+    + point p14: {"x":110,"y":31.99831754024119}
+    + point p15: {"x":101.51590830446597,"y":28.48409169553404}
+    + point p16: {"x":98.00168245975881,"y":20}
+    + point p17: {"x":101.51590830446595,"y":11.51590830446596}
+    + point p18: {"x":110,"y":8.001682459758811}
+    + point p19: {"x":118.48409169553403,"y":11.515908304465956}
+    + radius c10: 11.998317540241189
+    + curve c10: {"construction":true,"type":"circle","center":"p11"}
+    + curve c11: {"type":"line","a":"p12","b":"p13"}
+    + curve c12: {"type":"line","a":"p13","b":"p14"}
+    + curve c13: {"type":"line","a":"p14","b":"p15"}
+    + curve c14: {"type":"line","a":"p15","b":"p16"}
+    + curve c15: {"type":"line","a":"p16","b":"p17"}
+    + curve c16: {"type":"line","a":"p17","b":"p18"}
+    + curve c17: {"type":"line","a":"p18","b":"p19"}
+    + curve c18: {"type":"line","a":"p19","b":"p12"}
+    + constraint k7: {"type":"pointOnCurve","point":"p12","curve":"c10"}
+    + constraint k8: {"type":"pointOnCurve","point":"p13","curve":"c10"}
+    + constraint k9: {"type":"pointOnCurve","point":"p14","curve":"c10"}
+    + constraint k10: {"type":"pointOnCurve","point":"p15","curve":"c10"}
+    + constraint k11: {"type":"pointOnCurve","point":"p16","curve":"c10"}
+    + constraint k12: {"type":"pointOnCurve","point":"p17","curve":"c10"}
+    + constraint k13: {"type":"pointOnCurve","point":"p18","curve":"c10"}
+    + constraint k14: {"type":"pointOnCurve","point":"p19","curve":"c10"}
+    + constraint k15: {"type":"equalLength","a":"c11","b":"c12"}
+    + constraint k16: {"type":"equalLength","a":"c11","b":"c13"}
+    + constraint k17: {"type":"equalLength","a":"c11","b":"c14"}
+    + constraint k18: {"type":"equalLength","a":"c11","b":"c15"}
+    + constraint k19: {"type":"equalLength","a":"c11","b":"c16"}
+    + constraint k20: {"type":"equalLength","a":"c11","b":"c17"}
+    + constraint k21: {"type":"equalLength","a":"c11","b":"c18"}
+    + constraint k22: {"type":"distancePointLine","point":"p12","line":"c15","value":22.17,"driving":true}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 17"
+    +   p.hint: "Uzavřených oblastí: 4"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 11; poloměr c8."
+    -   p.badge.open: "Stupně volnosti: 14"
+    -   p.hint: "Uzavřených oblastí: 3"
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a další 2; poloměr c8."
+    + h2: "Vazby a kóty (22)"
+    - h2: "Vazby a kóty (6)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p12, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p13, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p14, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p15, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p16, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p17, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p18, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p19, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c12"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c13"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c14"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c15"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c16"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c17"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Stejná délka"
+    +     small: "c11, c18"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vzdálenost bodu od úsečky"
+    +     small: "p12, c15"
+    +   input.value value="22.17" title="mm, or an expression"
+    +   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    +     input type=checkbox checked
+    +     "řídicí"
+    +   button.icon title="Smazat vazbu": "✕"
+  view: 5 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 1005.839
+    + line #8b9bb4 width 1: 24 numbers, sum 670.559
+    + line #8b9bb4 width 1: 24 numbers, sum 335.28
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63040.064
+    + line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
+    + points #1d4ed8 size 7: 57 numbers, sum 7427.541
+    - line #8b9bb4 width 1: 24 numbers, sum 743.913
+    - line #8b9bb4 width 1: 24 numbers, sum 495.942
+    - line #8b9bb4 width 1: 24 numbers, sum 247.971
+    - line #1d4ed8 width 2 onTop: 762 numbers, sum 54471.708
+    - points #1d4ed8 size 7: 30 numbers, sum 2555
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.897
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.897
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.897
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 16 numbers, sum 3689.647
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.424
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.424
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.424
+    + label "22.17" driving at [110.879, 17.879, 0]
+
+=== 15. a construction line; Escape ends the chain
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p20","x":0,"y":50},{"type":"addPoint","sketch":"s1","id":"p21","x":40,"y":50},{"type":"addCurve","sketch":"s1","id":"c19","curve":{"type":"line","a":"p20","b":"p21","construction":true}},{"type":"addConstraint","sketch":"s1","id":"k23","constraint":{"type":"horizontal","line":"c19"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  feature s1:
+    + point p20: {"x":0,"y":50}
+    + point p21: {"x":40,"y":50}
+    + curve c19: {"construction":true,"type":"line","a":"p20","b":"p21"}
+    + constraint k23: {"type":"horizontal","line":"c19"}
+  toolbar:
+    +   button.active title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    -   button.active title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 20"
+    -   p.badge.open: "Stupně volnosti: 17"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 13; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 11; poloměr c8."
+    - h2: "Polygon"
+    - label
+    -   "Sides (3 to 64)"
+    -   input type=number value="8"
+    - label
+    -   "Dimension of the size"
+    -   select value="circumscribed"
+    -     option value="none": "No dimension"
+    -     option selected value="circumscribed": "Diameter of the circumscribed circle"
+    -     option value="acrossFlats": "Size across flats (even number of sides)"
+    - p.hint: "Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded."
+    + h2: "Vazby a kóty (23)"
+    - h2: "Vazby a kóty (22)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c19"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Nové křivky budou běžné.
+  view: 9 scene(s) set
+  scene:
+    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100548.424
+    + points #1d4ed8 size 7: 63 numbers, sum 8077.541
+    - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
+    - points #1d4ed8 size 7: 57 numbers, sum 7427.541
+
+=== 16. a point
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p22","x":100,"y":55}]}) -> ok
+  feature s1:
+    + point p22: {"x":100,"y":55}
+  toolbar:
+    +   button.active title="Klikněte na místo bodu.": "Bod"
+    +   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button title="Klikněte na místo bodu.": "Bod"
+    -   button.active title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 22"
+    -   p.badge.open: "Stupně volnosti: 20"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 14; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 13; poloměr c8."
+  status: Klikněte na místo bodu.
+  view: 3 scene(s) set
+  scene:
+    + points #1d4ed8 size 7: 66 numbers, sum 8287.541
+    - points #1d4ed8 size 7: 63 numbers, sum 8077.541
+
+=== 17. select: a curve under the pointer is highlighted
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  toolbar:
+    +   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button title="Klikněte na místo bodu.": "Bod"
+    -   button title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button.active title="Klikněte na místo bodu.": "Bod"
+  status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63040.064
+    + line #0ea5e9 width 3 onTop: 6 numbers, sum 160
+
+=== 18. select: the bottom side
+  engine: diagnoseSketch("s1")  (x3)
+  panel:
+    + h2: "Výběr (1)"
+    - h2: "Výběr (0)"
+    +   button title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button: "Konstrukční"
+    +   button title="Delete": "Smazat"
+    -   button disabled: "Konstrukční"
+    -   button disabled title="Delete": "Smazat"
+  view: 2 scene(s) set
+  scene:
+    + line #f97316 width 3 onTop: 6 numbers, sum 160
+    - line #0ea5e9 width 3 onTop: 6 numbers, sum 160
+
+=== 19. a dimension of the selected line
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addConstraint","sketch":"s1","id":"k24","constraint":{"type":"distance","a":"origin","b":"p2","value":40,"driving":true}}]}) -> ok
+  feature s1:
+    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":40,"driving":true}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 21"
+    -   p.badge.open: "Stupně volnosti: 22"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 13; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 14; poloměr c8."
+    + h2: "Vazby a kóty (24)"
+    - h2: "Vazby a kóty (23)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vzdálenost"
+    +     small: "origin, p2"
+    +   input.value value="40" title="mm, or an expression"
+    +   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    +     input type=checkbox checked
+    +     "řídicí"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Vazba přidána.
+  view: 1 scene(s) set
+  scene:
+    + points #1c2430 size 7: 3 numbers, sum 40
+    + points #1d4ed8 size 7: 63 numbers, sum 9303.93
+    - points #1d4ed8 size 7: 66 numbers, sum 8287.541
+    + label "40" driving at [20, 0, 0]
+
+=== 20. select with Shift: two sides
+  engine: diagnoseSketch("s1")  (x3)
+  panel:
+    + h2: "Výběr (2)"
+    - h2: "Výběr (1)"
+    +   button title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    +   button title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    +   button title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61572.793
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    + line #f97316 width 3 onTop: 12 numbers, sum 680
+    - line #f97316 width 3 onTop: 6 numbers, sum 160
+
+=== 21. a constraint the sketch already implies is refused or added as the engine says
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addConstraint","sketch":"s1","id":"k25","constraint":{"type":"perpendicular","a":"c1","b":"c2"}}]}) -> ok
+  feature s1:
+    + constraint k25: {"type":"perpendicular","a":"c1","b":"c2"}
+  panel:
+    + p.issue.warning: "Vazby navíc: 1. V seznamu jsou označené; kliknutím na vazbu se ukáže, z čeho plyne."
+    + h2: "Vazby a kóty (25)"
+    - h2: "Vazby a kóty (24)"
+    + div.constraint.clickable.redundant title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    +   span.name
+    +     "Kolmo"
+    +     small: "c1, c2 · navíc"
+    +   button.icon title="Smazat vazbu": "✕"
+  view: 1 scene(s) set
+
+=== 22. a horizontal dimension between two points
+  engine: diagnoseSketch("s1")  (x6)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addConstraint","sketch":"s1","id":"k26","constraint":{"type":"horizontalDistance","a":"p22","b":"p11","value":10,"driving":true}}]}) -> ok
+  feature s1:
+    + constraint k26: {"type":"horizontalDistance","a":"p22","b":"p11","value":10,"driving":true}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 20"
+    -   p.badge.open: "Stupně volnosti: 21"
+    +   button title="Dva body leží na stejném místě.": "Totožné"
+    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    +   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    +   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    +   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    +   button title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button disabled: "Konstrukční"
+    -   button: "Konstrukční"
+    + h2: "Vazby a kóty (26)"
+    - h2: "Vazby a kóty (25)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovná vzdálenost"
+    +     small: "p22, p11"
+    +   input.value value="10" title="mm, or an expression"
+    +   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    +     input type=checkbox checked
+    +     "řídicí"
+    +   button.icon title="Smazat vazbu": "✕"
+  view: 5 scene(s) set
+  scene:
+    + line #1c2430 width 2 onTop: 6 numbers, sum 160
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61572.793
+    - line #f97316 width 3 onTop: 12 numbers, sum 680
+    + points #1d4ed8 size 7: 57 numbers, sum 8333.318
+    - points #1d4ed8 size 7: 63 numbers, sum 9303.93
+    + points #f97316 size 10: 6 numbers, sum 825
+    + label "10" driving at [105, 37.5, 0]
+
+=== 23. the same dimension again is refused in words
+  status: Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.  [error]
+  view: 0 scene(s) set
+
+=== 24. a dimension: an incomplete expression is marked while typing
+  panel:
+    +   input.value.invalid value="1 +" title="the expression is incomplete"
+    -   input.value value="40" title="mm, or an expression"
+  view: 0 scene(s) set
+
+=== 25. a dimension: an empty field changes nothing
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  panel:
+    +   input.value value="40" title="mm, or an expression"
+    -   input.value.invalid value="1 +" title="the expression is incomplete"
+  view: 1 scene(s) set
+
+=== 26. a dimension: a new value
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","value":45}) -> ok
+  feature s1:
+    + point p1: {"x":45,"y":30}
+    + point p2: {"x":45,"y":0}
+    - point p1: {"x":40,"y":30}
+    - point p2: {"x":40,"y":0}
+    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
+    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":40,"driving":true}
+  panel:
+    +   input.value value="45" title="mm, or an expression"
+    -   input.value value="40" title="mm, or an expression"
+  status: Hodnota kóty změněna.
+  view: 1 scene(s) set
+  scene:
+    + line #1c2430 width 2 onTop: 6 numbers, sum 180
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #1c2430 width 2 onTop: 6 numbers, sum 160
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    + points #1c2430 size 7: 3 numbers, sum 45
+    + points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    - points #1c2430 size 7: 3 numbers, sum 40
+    - points #1d4ed8 size 7: 57 numbers, sum 8333.318
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 570 | 110 numbers, sum 7601.703
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
+    + label "45" driving at [22.5, 0, 0]
+    - label "40" driving at [20, 0, 0]
+
+=== 27. a dimension made a reference one
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","driving":false}) -> ok
+  feature s1:
+    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":false}
+    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 21"
+    -   p.badge.open: "Stupně volnosti: 20"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 14; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 13; poloměr c8."
+    +   input.value value="45" disabled title="mm, or an expression"
+    -   input.value value="45" title="mm, or an expression"
+    +     input type=checkbox unchecked
+    -     input type=checkbox checked
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63140.064
+    - line #1c2430 width 2 onTop: 6 numbers, sum 180
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    + points #1d4ed8 size 7: 60 numbers, sum 7291.93
+    - points #1c2430 size 7: 3 numbers, sum 45
+    - points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    + label "(45)" reference at [22.5, 0, 0]
+    - label "45" driving at [22.5, 0, 0]
+
+=== 28. and a driving one again, with the measured value
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","driving":true,"value":45}) -> ok
+  feature s1:
+    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
+    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":false}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 20"
+    -   p.badge.open: "Stupně volnosti: 21"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 13; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a dalších 14; poloměr c8."
+    +   input.value value="45" title="mm, or an expression"
+    -   input.value value="45" disabled title="mm, or an expression"
+    +     input type=checkbox checked
+    -     input type=checkbox unchecked
+  view: 1 scene(s) set
+  scene:
+    + line #1c2430 width 2 onTop: 6 numbers, sum 180
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63140.064
+    + points #1c2430 size 7: 3 numbers, sum 45
+    + points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    - points #1d4ed8 size 7: 60 numbers, sum 7291.93
+    + label "45" driving at [22.5, 0, 0]
+    - label "(45)" reference at [22.5, 0, 0]
+
+=== 29. a click on a constraint: it is focused and explained
+  engine: diagnoseSketch("s1")
+  engine: explainConstraint("s1", "k25")
+  engine: diagnoseSketch("s1")
+  panel:
+    + div.constraint.clickable.implies title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    + div.constraint.clickable.implies title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    + div.constraint.clickable.redundant.focus title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    - div.constraint.clickable.redundant title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    + p.explain: "Vazba plyne z vazeb: Vodorovně (c1); Svisle (c2). Odebrat jde ona nebo kterákoli z nich, geometrie se tím nezmění."
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61577.793
+    - line #1c2430 width 2 onTop: 6 numbers, sum 180
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    + line #0ea5e9 width 4 onTop: 12 numbers, sum 750
+
+=== 30. the pointer over a constraint highlights its operands
+  engine: diagnoseSketch("s1")
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 3 onTop: 12 numbers, sum 750
+    - line #0ea5e9 width 4 onTop: 12 numbers, sum 750
+
+=== 31. Escape: the selection goes first
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  panel:
+    + h2: "Výběr (0)"
+    - h2: "Výběr (2)"
+    +   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    -   button title="Dva body leží na stejném místě.": "Totožné"
+    +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    -   button title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button disabled title="Delete": "Smazat"
+    -   button title="Delete": "Smazat"
+  view: 2 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 12 numbers, sum 750
+    - line #0ea5e9 width 3 onTop: 12 numbers, sum 750
+    + points #1d4ed8 size 7: 63 numbers, sum 9308.93
+    - points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    - points #f97316 size 10: 6 numbers, sum 825
+
+=== 32. Escape: then the focus
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  panel:
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    - div.constraint.clickable.implies title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    - div.constraint.clickable.implies title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    + div.constraint.clickable.redundant title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    - div.constraint.clickable.redundant.focus title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    - p.explain: "Vazba plyne z vazeb: Vodorovně (c1); Svisle (c2). Odebrat jde ona nebo kterákoli z nich, geometrie se tím nezmění."
+  view: 1 scene(s) set
+  scene:
+    + line #1c2430 width 2 onTop: 6 numbers, sum 180
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61577.793
+    - line #0ea5e9 width 4 onTop: 12 numbers, sum 750
+
+=== 33. the free entities are selected
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  panel:
+    + h2: "Výběr (22)"
+    - h2: "Výběr (0)"
+    +   button: "Konstrukční"
+    +   button title="Delete": "Smazat"
+    -   button disabled: "Konstrukční"
+    -   button disabled title="Delete": "Smazat"
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 228 numbers, sum 35098.341
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    + line #f97316 width 3 onTop: 576 numbers, sum 26819.212
+    - points #1d4ed8 size 7: 63 numbers, sum 9308.93
+    + points #f97316 size 10: 63 numbers, sum 9308.93
+
+=== 34. a press on a point and a move within four pixels: no drag yet
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  panel:
+    + h2: "Výběr (0)"
+    - h2: "Výběr (22)"
+    +   button disabled: "Konstrukční"
+    +   button disabled title="Delete": "Smazat"
+    -   button: "Konstrukční"
+    -   button title="Delete": "Smazat"
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #1d4ed8 width 2 onTop: 228 numbers, sum 35098.341
+    - line #f97316 width 3 onTop: 576 numbers, sum 26819.212
+    + points #1d4ed8 size 7: 60 numbers, sum 8478.93
+    + points #0ea5e9 size 10: 3 numbers, sum 210
+    - points #f97316 size 10: 63 numbers, sum 9308.93
+
+=== 35. a drag: the engine previews, the status follows without a rebuild of the panel
+  engine: preview({"type":"dragPoint","sketch":"s1","point":"p22","x":103,"y":67}, "s1") -> ok
+  engine: diagnoseSketch("s1")
+  view: 1 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 1042.394
+    + line #8b9bb4 width 1: 24 numbers, sum 694.93
+    + line #8b9bb4 width 1: 24 numbers, sum 347.465
+    - line #8b9bb4 width 1: 24 numbers, sum 1005.839
+    - line #8b9bb4 width 1: 24 numbers, sum 670.559
+    - line #8b9bb4 width 1: 24 numbers, sum 335.28
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
+    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102852.424
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100548.424
+    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8478.93
+    + points #0ea5e9 size 10: 3 numbers, sum 237
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 49.638
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 49.638
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 49.638
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 16 numbers, sum 3776.647
+    - points #0ea5e9 size 10: 3 numbers, sum 210
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.897
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.897
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.897
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 16 numbers, sum 3689.647
+    + label "22.17" driving at [113.879, 17.879, 0]
+    - label "22.17" driving at [110.879, 17.879, 0]
+    + label "10" driving at [108, 43.5, 0]
+    - label "10" driving at [105, 37.5, 0]
+
+=== 36. the release moves the point
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"dragPoint","sketch":"s1","point":"p22","x":103,"y":70}) -> ok
+  feature s1:
+    + point p11: {"x":113,"y":20}
+    + point p12: {"x":124.99831754024119,"y":19.999999999999584}
+    + point p13: {"x":121.48409169553433,"y":28.48409169553375}
+    + point p14: {"x":113.00000000000041,"y":31.998317540241192}
+    + point p15: {"x":104.51590830446625,"y":28.484091695534335}
+    + point p16: {"x":101.00168245975881,"y":20.000000000000416}
+    + point p17: {"x":104.51590830446567,"y":11.515908304466251}
+    + point p18: {"x":112.99999999999959,"y":8.001682459758808}
+    + point p19: {"x":121.48409169553375,"y":11.515908304465663}
+    - point p11: {"x":110,"y":20}
+    - point p12: {"x":121.99831754024119,"y":20}
+    - point p13: {"x":118.48409169553405,"y":28.48409169553404}
+    - point p14: {"x":110,"y":31.99831754024119}
+    - point p15: {"x":101.51590830446597,"y":28.48409169553404}
+    - point p16: {"x":98.00168245975881,"y":20}
+    - point p17: {"x":101.51590830446595,"y":11.51590830446596}
+    - point p18: {"x":110,"y":8.001682459758811}
+    - point p19: {"x":118.48409169553403,"y":11.515908304465956}
+    + point p22: {"x":103,"y":70}
+    - point p22: {"x":100,"y":55}
+    + radius c10: 11.99831754024119
+    - radius c10: 11.998317540241189
+  view: 1 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 1052.991
+    + line #8b9bb4 width 1: 24 numbers, sum 701.994
+    + line #8b9bb4 width 1: 24 numbers, sum 350.997
+    - line #8b9bb4 width 1: 24 numbers, sum 1042.394
+    - line #8b9bb4 width 1: 24 numbers, sum 694.93
+    - line #8b9bb4 width 1: 24 numbers, sum 347.465
+    + points #1d4ed8 size 7: 63 numbers, sum 9527.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 50.142
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 50.142
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 50.142
+    - points #0ea5e9 size 10: 3 numbers, sum 237
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 49.638
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 49.638
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 49.638
+    + label "10" driving at [108, 45, 0]
+    - label "10" driving at [108, 43.5, 0]
+
+=== 37. a drag cancelled by the system leaves the point where it was
+  engine: preview({"type":"dragPoint","sketch":"s1","point":"p22","x":100,"y":85}, "s1") -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  view: 2 scene(s) set
+
+=== 38. a change of the document under a drag ends the drag
+  engine: preview({"type":"dragPoint","sketch":"s1","point":"p22","x":100,"y":85}, "s1") -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"renameFeature","id":"s1","name":"Base"}) -> ok
+  feature s1:
+    + {"id":"s1","name":"Base","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+    - {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+  timeline:
+    +   span.name: "Base"
+    -   span.name: "Skica 1"
+  panel:
+    + h2: "Skica: Base"
+    - h2: "Skica: Skica 1"
+  view: 2 scene(s) set
+
+=== 39. the release after it does nothing
+  view: 0 scene(s) set
+
+=== 40. Escape ends a drag
+  engine: preview({"type":"dragPoint","sketch":"s1","point":"p22","x":100,"y":85}, "s1") -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  view: 2 scene(s) set
+
+=== 41. a press with Alt belongs to the view: nothing is dragged
+  view: 0 scene(s) set
+
+=== 42. the point is selected
+  engine: diagnoseSketch("s1")  (x3)
+  panel:
+    + h2: "Výběr (1)"
+    - h2: "Výběr (0)"
+    +   button title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button title="Delete": "Smazat"
+    -   button disabled title="Delete": "Smazat"
+  view: 2 scene(s) set
+  scene:
+    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    - points #1d4ed8 size 7: 63 numbers, sum 9527.93
+    + points #f97316 size 10: 3 numbers, sum 243
+
+=== 43. Delete removes the selected point
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"removeEntity","sketch":"s1","id":"p22"}]}) -> ok
+  feature s1:
+    - point p22: {"x":103,"y":70}
+    - constraint k26: {"type":"horizontalDistance","a":"p22","b":"p11","value":10,"driving":true}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 19"
+    -   p.badge.open: "Stupně volnosti: 20"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 12; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 13; poloměr c8."
+    + h2: "Výběr (0)"
+    - h2: "Výběr (1)"
+    +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    -   button title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button disabled title="Delete": "Smazat"
+    + h2: "Vazby a kóty (25)"
+    -   button title="Delete": "Smazat"
+    - h2: "Vazby a kóty (26)"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovná vzdálenost"
+    -     small: "p22, p11"
+    -   input.value value="10" title="mm, or an expression"
+    -   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    -     input type=checkbox checked
+    -     "řídicí"
+    -   button.icon title="Smazat vazbu": "✕"
+  status: Smazáno.
+  view: 1 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 1025.544
+    + line #8b9bb4 width 1: 24 numbers, sum 683.696
+    + line #8b9bb4 width 1: 24 numbers, sum 341.848
+    - line #8b9bb4 width 1: 24 numbers, sum 1052.991
+    - line #8b9bb4 width 1: 24 numbers, sum 701.994
+    - line #8b9bb4 width 1: 24 numbers, sum 350.997
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 48.835
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 48.835
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 48.835
+    - points #f97316 size 10: 3 numbers, sum 243
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 50.142
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 50.142
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 50.142
+    - label "10" driving at [108, 45, 0]
+
+=== 44. the construction line is made an ordinary curve
+  engine: diagnoseSketch("s1")  (x3)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"setConstruction","sketch":"s1","id":"c19","construction":false}]}) -> ok
+  feature s1:
+    + curve c19: {"type":"line","a":"p20","b":"p21"}
+    - curve c19: {"construction":true,"type":"line","a":"p20","b":"p21"}
+  panel:
+    + h2: "Výběr (1)"
+    - h2: "Výběr (0)"
+    +   button title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button: "Konstrukční"
+    +   button title="Delete": "Smazat"
+    -   button disabled: "Konstrukční"
+    -   button disabled title="Delete": "Smazat"
+  view: 3 scene(s) set
+  scene:
+    + line #b45309 width 1.5 dashed onTop: 576 numbers, sum 102062.424
+    + line #f97316 width 3 onTop: 6 numbers, sum 510
+    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102852.424
+
+=== 45. and deleted by the button, with the points nothing else uses
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"removeEntity","sketch":"s1","id":"c19"},{"type":"removeEntity","sketch":"s1","id":"p20"},{"type":"removeEntity","sketch":"s1","id":"p21"}]}) -> ok
+  feature s1:
+    - point p20: {"x":0,"y":50}
+    - point p21: {"x":40,"y":50}
+    - curve c19: {"type":"line","a":"p20","b":"p21"}
+    - constraint k23: {"type":"horizontal","line":"c19"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 16"
+    -   p.badge.open: "Stupně volnosti: 19"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 10; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 12; poloměr c8."
+    + h2: "Výběr (0)"
+    - h2: "Výběr (1)"
+    +   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button disabled: "Konstrukční"
+    +   button disabled title="Delete": "Smazat"
+    + h2: "Vazby a kóty (24)"
+    -   button: "Konstrukční"
+    -   button title="Delete": "Smazat"
+    - h2: "Vazby a kóty (25)"
+    -     "Vodorovně"
+    -     small: "c19"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+  view: 1 scene(s) set
+  scene:
+    - line #f97316 width 3 onTop: 6 numbers, sum 510
+    + points #1d4ed8 size 7: 54 numbers, sum 8012.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+
+=== 46. the origin cannot be deleted
+  engine: diagnoseSketch("s1")  (x3)
+  panel:
+    + h2: "Výběr (1)"
+    - h2: "Výběr (0)"
+    +   button title="Delete": "Smazat"
+    -   button disabled title="Delete": "Smazat"
+  status: Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.  [error]
+  view: 2 scene(s) set
+  scene:
+    + points #f97316 size 10: 3 numbers, sum 0
+    - points #a21caf size 7: 3 numbers, sum 0
+
+=== 47. Escape drops a shape in progress
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x4)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  toolbar:
+    +   button title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+  status: Klikněte na střed a pak na bod obvodu.
+  view: 4 scene(s) set
+
+=== 48. Escape: then the tool
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  toolbar:
+    +   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+  view: 1 scene(s) set
+
+=== 49. undo in a sketch
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: undo()
+  feature s1:
+    + point p20: {"x":0,"y":50}
+    + point p21: {"x":40,"y":50}
+    + curve c19: {"type":"line","a":"p20","b":"p21"}
+    + constraint k23: {"type":"horizontal","line":"c19"}
+  toolbar:
+    +   button title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 19"
+    -   p.badge.open: "Stupně volnosti: 16"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 12; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 10; poloměr c8."
+    + h2: "Vazby a kóty (25)"
+    - h2: "Vazby a kóty (24)"
+    +     "Vodorovně"
+    +     small: "c19"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 62728.83
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
+    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    - points #1d4ed8 size 7: 54 numbers, sum 8012.93
+
+=== 50. redo
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: redo()
+  feature s1:
+    - point p20: {"x":0,"y":50}
+    - point p21: {"x":40,"y":50}
+    - curve c19: {"type":"line","a":"p20","b":"p21"}
+    - constraint k23: {"type":"horizontal","line":"c19"}
+  toolbar:
+    +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button title="Ctrl+Shift+Z": "↷ Znovu"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 16"
+    -   p.badge.open: "Stupně volnosti: 19"
+    + p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 10; poloměr c8."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 12; poloměr c8."
+    + h2: "Vazby a kóty (24)"
+    - h2: "Vazby a kóty (25)"
+    -     "Vodorovně"
+    -     small: "c19"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 62728.83
+    + points #1d4ed8 size 7: 54 numbers, sum 8012.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+
+=== 51. the sketch is finished
+  toolbar:
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button title="Klikněte na místo bodu.": "Bod"
+    -   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
+    -   button.primary: "Dokončit skicu"
+    - div.group
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok.selected.editing
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Skica"
+    + label
+    +   "Název"
+    +   input value="Base"
+    - h2: "Skica: Base"
+    - div#sketch-status
+    -   p.badge.open: "Stupně volnosti: 16"
+    -   p.hint: "Uzavřených oblastí: 4"
+    - p.issue.warning: "Vazby navíc: 1. V seznamu jsou označené; kliknutím na vazbu se ukáže, z čeho plyne."
+    - p.hint: "Volné (v pohledu modře): body p1, p3, p4, p5, p6, p7, p8, p9 a dalších 10; poloměr c8."
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    - h2: "Výběr (1)"
+    - div.buttons
+    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    - div.buttons
+    -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    - div.buttons
+    -   button disabled: "Konstrukční"
+    -   button title="Delete": "Smazat"
+    - h2: "Vazby a kóty (24)"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovně"
+    -     small: "c1"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Svisle"
+    -     small: "c2"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovně"
+    -     small: "c3"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Svisle"
+    -     small: "c4"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovně"
+    -     small: "c5"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Svisle"
+    -     small: "c6"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p12, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p13, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p14, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p15, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p16, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p17, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p18, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Bod na křivce"
+    -     small: "p19, c10"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c12"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c13"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c14"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c15"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c16"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c17"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Stejná délka"
+    -     small: "c11, c18"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vzdálenost bodu od úsečky"
+    -     small: "p12, c15"
+    -   input.value value="22.17" title="mm, or an expression"
+    -   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    -     input type=checkbox checked
+    -     "řídicí"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vzdálenost"
+    -     small: "origin, p2"
+    -   input.value value="45" title="mm, or an expression"
+    -   label.check title="Řídicí kóta geometrii určuje, referenční ji jen měří"
+    -     input type=checkbox checked
+    -     "řídicí"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable.redundant title="Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých."
+    -   span.name
+    -     "Kolmo"
+    -     small: "c1, c2 · navíc"
+    -   button.icon title="Smazat vazbu": "✕"
+  status: Skica dokončena.
+  view: 1 scene(s) set
+  scene:
+    + line #f97316 width 2.5: 810 numbers, sum 63338.064
+    + line #f97316 width 1 dashed: 576 numbers, sum 102062.424
+    - line #1c2430 width 2 onTop: 6 numbers, sum 180
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
+    - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 102062.424
+    - points #1c2430 size 7: 3 numbers, sum 45
+    - points #1d4ed8 size 7: 54 numbers, sum 8012.93
+    - points #f97316 size 10: 3 numbers, sum 0
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 16 numbers, sum 3776.647
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 570 | 110 numbers, sum 7601.703
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 850
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
+    - label "22.17" driving at [113.879, 17.879, 0]
+    - label "45" driving at [22.5, 0, 0]

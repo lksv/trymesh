@@ -34,6 +34,7 @@
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
         button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
   timeline:
       h2: "Časová osa"

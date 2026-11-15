@@ -689,6 +689,10 @@ describe('the app, driven as a user drives it', () => {
     h.record('a query without a view: its answer as a tree of names and values');
     h.press('panel', 'Close');
     h.record('the query closed');
+    // ----- a picture of the model, saved by its button
+    h.press('toolbar', 'Save picture');
+    await until(() => h.downloads.includes('model.png'), 'the picture');
+    h.record('a picture of the model saved: every body in its colour, from the camera of the view, drawn off the screen');
     // ----- the section view: the model cut, the cut filled, and what is cut away not picked
     h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'section', true);
     h.click(at(10, 15, 10));
@@ -707,6 +711,9 @@ describe('the app, driven as a user drives it', () => {
     h.record('the plane stepped along its normal: asked again with the arguments of the form');
     h.rowIcon('Vysunutí 2', '👁');
     h.record('the pin hidden: its fill and its outline go with it');
+    h.press('toolbar', 'Save picture');
+    await until(() => h.downloads.includes('model.png'), 'the picture');
+    h.record('a picture saved while the section is shown: the bodies that are not hidden keep their colours, cut as the view is, each cut filled in the shade of its body');
     h.rowIcon('Vysunutí 2', '◌');
     const flip =h.field('From the other side (optional)') as HTMLInputElement;
     flip.checked = true;
@@ -725,6 +732,14 @@ describe('the app, driven as a user drives it', () => {
     h.record('a pair at zero picked: its two bodies are highlighted');
     gapRows()[gapRows().length - 1].click();
     h.record('a pair with a gap picked: the two faces named and highlighted, the two points joined by a line with its length');
+    h.press('toolbar', 'Save picture');
+    await until(() => h.downloads.includes('model.png'), 'the picture');
+    h.record('a picture saved while another answer is shown: the model alone, not cut and without what the answer highlights');
+    h.view.failing = 'no WebGL';
+    h.press('toolbar', 'Save picture');
+    await until(() => (h.document.getElementById('status')?.textContent ?? '').startsWith('The picture could not'), 'the refusal');
+    h.record('a picture the view cannot draw: nothing is saved and the status bar says why');
+    h.view.failing = undefined;
     h.type(h.field('Most pairs (optional)'), '1', true);
     h.press('panel', 'Ask again');
     h.record('at most one pair listed: the panel says how many there are');
@@ -814,6 +829,10 @@ describe('the app, driven as a user drives it', () => {
       h.press('toolbar', 'Rovina');
       h.press('panel', 'XY');
       h.record('a form is open');
+      expect(await ai('view_image', { view: 'top', bodies: ['e1'], width: 320, height: 240 })).toBe('ok');
+      h.record('the AI takes a picture: it is drawn off the screen, the form stays, and the status bar says that one was taken');
+      expect(await ai('view_image', { bodies: ['nope'] })).toMatch(/^notAvailable: view_image: bodies\[0\]/);
+      h.record('a picture of a body that is not there is refused: the AI has the reason, and the app says nothing, as for any question');
       expect(await ai('get_model', {})).toBe('ok');
       h.record('a question of the AI leaves the form alone');
       expect(await ai('execute', { command: rename('Vysunutí 1') })).toBe('ok');

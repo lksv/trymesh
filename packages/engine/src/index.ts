@@ -31,7 +31,7 @@ export type { Measurement } from './query/measure';
 export type { Gap, GapReport } from './query/gap';
 export { type PrintFrame, type PrintOrientation, type PrintPass, type PrintReport, frameOfDirection, printPass } from './query/print';
 export { type MassIntegrals, type MassProperties, type MassSource, massIntegrals } from './query/mass';
-export { type CutLoop, type SectionLoop, type SectionOfBody, type SectionRegion, type SectionResult, type SectionSpan, completeRegions, cut, takenAt } from './query/section';
+export { type CutLoop, type SectionLoop, type SectionOfBody, type SectionRegion, type SectionResult, type SectionSpan, SECTION_ARGS, completeRegions, cut, takenAt } from './query/section';
 export { type Closest, type MeshPart, closest, coordinatePrecision, meshAccuracy } from './mesh-distance';
 export { type Circle3, circleBetween } from './surfaces';
 export { argText, checkArgs, specProblems } from './query/check';

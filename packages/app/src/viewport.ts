@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { currentScale, fittedCamera, keptSide, topDown } from './camera';
 
 export interface LineSet {
   segments: ArrayLike<number>; // úsečky ve světových souřadnicích, 6 čísel na úsečku
@@ -32,6 +33,21 @@ export interface SceneModel {
   // the lines that belong to a body (`keptSegments` of draw.ts).
   clip?: HalfSpace;
 }
+// The model of a picture (D43): bodies each in its colour, lines and fills, and the half-space
+// that is cut away. Nothing of a user's view is in it: no labels, points or highlighted faces.
+export interface PictureModel {
+  bodies: { solid: Solid; color: number }[];
+  lines: LineSet[];
+  fills: SceneModel['fills'];
+  clip?: HalfSpace;
+}
+// The camera of a picture: a direction it looks from and what is up, fitted to the bodies of
+// the picture; or the camera of the user as it stands.
+export type PictureCamera = { from: Vec3; up: Vec3 } | 'current';
+export interface Picture {
+  base64: string; // PNG
+  scale: number; // mm per pixel
+}
 export interface BodyHit {
   body: Id;
   triangle: number;
@@ -50,9 +66,29 @@ export interface View {
   pixelSize(): number;
   lookAt(frame: Frame): void;
   fit(min: Vec3, max: Vec3): void;
+  // A picture of a model, drawn off the screen at the size given: what the user sees is not
+  // touched, and the picture depends on neither the window nor the user's camera (but for
+  // `current`).
+  image(model: PictureModel, camera: PictureCamera, width: number, height: number): Promise<Picture>;
 }
 
 const DISTANCE = 5000; // kamera stojí daleko, aby žádná část modelu nebyla za ní
+const BACKGROUND = 0xf2f4f7;
+const BODY_MATERIAL = { roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
+// The light of a camera: it hangs on the camera, so the model is lit from where it is seen.
+function lit(camera: THREE.Camera): void {
+  const light = new THREE.DirectionalLight(0xffffff, 2.2);
+  light.position.set(0.4, 0.7, 1); // in the coordinates of the camera: from the observer
+  camera.add(light, light.target);
+  light.target.position.set(0, 0, -1);
+}
+// A cut model in three.js: it keeps what lies on the side the normal of a clipping plane points
+// to (`keptSide`).
+function clippingOf(clip: HalfSpace | undefined): THREE.Plane[] | null {
+  if (!clip) return null;
+  const { normal, constant } = keptSide(clip);
+  return [new THREE.Plane(new THREE.Vector3(...normal), constant)];
+}
 
 export class Viewport implements View {
   private readonly renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -63,7 +99,7 @@ export class Viewport implements View {
   private readonly labelLayer = document.createElement('div');
   private bodyMeshes = new Map<Solid, THREE.Mesh>();
   private readonly lineMaterials = new Map<string, LineMaterial>();
-  private readonly bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xaab7c6, roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  private readonly bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xaab7c6, ...BODY_MATERIAL });
   private readonly raycaster = new THREE.Raycaster();
   private bodies: { id: Id; mesh: THREE.Mesh }[] = [];
   private labels: { at: THREE.Vector3; element: HTMLElement }[] = [];
@@ -73,7 +109,7 @@ export class Viewport implements View {
 
   constructor(private readonly container: HTMLElement) {
     this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setClearColor(0xf2f4f7);
+    this.renderer.setClearColor(BACKGROUND);
     this.renderer.localClippingEnabled = true; // a material may carry clipping planes (a cut model)
     container.append(this.renderer.domElement, this.labelLayer);
     this.labelLayer.className = 'labels';
@@ -81,10 +117,7 @@ export class Viewport implements View {
     this.camera.up.set(0, 0, 1);
     this.camera.position.set(0.55, -0.7, 0.45).normalize().multiplyScalar(DISTANCE);
     this.camera.zoom = 6;
-    const light = new THREE.DirectionalLight(0xffffff, 2.2);
-    light.position.set(0.4, 0.7, 1); // v souřadnicích kamery: svítí od pozorovatele
-    this.camera.add(light, light.target);
-    light.target.position.set(0, 0, -1);
+    lit(this.camera);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 1.1), this.content);
 
     // Bez myši (touchpad): Alt/Option + tažení levým otáčí, se Shiftem posouvá. Musí být zaregistrováno
@@ -125,11 +158,10 @@ export class Viewport implements View {
     for (const item of this.disposable) item.dispose();
     this.disposable = [];
 
-    // A cut model: three.js keeps what lies on the side the normal of a clipping plane points to,
-    // so the plane is the half-space turned round. The bodies are drawn two-sided while they are
-    // cut: a cavity would otherwise show through its back faces, which are not drawn.
+    // A cut model. The bodies are drawn two-sided while they are cut: a cavity would otherwise
+    // show through its back faces, which are not drawn.
     this.clip = model.clip;
-    const clipping = model.clip ? [new THREE.Plane(new THREE.Vector3(...model.clip.normal).negate(), new THREE.Vector3(...model.clip.normal).dot(new THREE.Vector3(...model.clip.origin)))] : null;
+    const clipping = clippingOf(model.clip);
     const side = clipping ? THREE.DoubleSide : THREE.FrontSide;
     if (this.bodyMaterial.side !== side) {
       this.bodyMaterial.side = side;
@@ -154,7 +186,7 @@ export class Viewport implements View {
       this.content.add(new THREE.Mesh(geometry, material));
     }
     for (const fill of model.fills) {
-      const mesh = this.fillMesh(fill);
+      const mesh = fillMesh(fill, (item) => this.own(item));
       if (mesh) this.content.add(mesh);
     }
     for (const set of model.lines) {
@@ -190,23 +222,6 @@ export class Viewport implements View {
   private own<T extends { dispose(): void }>(item: T): T {
     this.disposable.push(item);
     return item;
-  }
-
-  private fillMesh(fill: SceneModel['fills'][number]): THREE.Mesh | undefined {
-    const path = (loop: ArrayLike<number>) => Array.from({ length: loop.length / 2 }, (_, i) => new THREE.Vector2(loop[2 * i], loop[2 * i + 1]));
-    if (fill.loops.length === 0 || fill.loops[0].length < 6) return undefined;
-    const shape = new THREE.Shape(path(fill.loops[0]));
-    for (const hole of fill.loops.slice(1)) shape.holes.push(new THREE.Path(path(hole)));
-    const geometry = this.own(new THREE.ShapeGeometry(shape));
-    const material = this.own(
-      new THREE.MeshBasicMaterial({ color: fill.color, transparent: true, opacity: fill.opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: !fill.onTop, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
-    );
-    const mesh = new THREE.Mesh(geometry, material);
-    const { origin, x, y, normal } = fill.frame;
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.makeBasis(new THREE.Vector3(...x), new THREE.Vector3(...y), new THREE.Vector3(...normal)).setPosition(...origin);
-    mesh.renderOrder = 2;
-    return mesh;
   }
 
   private lineMaterial(set: LineSet): LineMaterial {
@@ -301,6 +316,92 @@ export class Viewport implements View {
     this.requestRender();
   }
 
+  // ---------------------------------------------------------------- a picture
+
+  // A picture of a model (D43), drawn into a render target of the size asked for, with a scene,
+  // a camera and a light of its own, and read back. Nothing of the user's view takes part but
+  // the renderer (and, for `current`, where the user's camera stands), so the user's view does
+  // not flash, and the picture does not depend on the size of the window or on the pixel ratio
+  // of the screen. It does not wait for a frame: a tab in the background still answers.
+  async image(model: PictureModel, camera: PictureCamera, width: number, height: number): Promise<Picture> {
+    const owned: { dispose(): void }[] = [];
+    const own = <T extends { dispose(): void }>(item: T): T => {
+      owned.push(item);
+      return item;
+    };
+    try {
+      const scene = new THREE.Scene();
+      const clipping = clippingOf(model.clip);
+      for (const { solid, color } of model.bodies) {
+        const material = own(new THREE.MeshStandardMaterial({ color, ...BODY_MATERIAL, side: clipping ? THREE.DoubleSide : THREE.FrontSide, clippingPlanes: clipping }));
+        scene.add(new THREE.Mesh(own(triangleGeometry(solid)), material));
+      }
+      for (const fill of model.fills) {
+        const mesh = fillMesh(fill, own);
+        if (mesh) scene.add(mesh);
+      }
+      for (const set of model.lines) {
+        if (set.segments.length === 0) continue;
+        const geometry = own(new LineSegmentsGeometry());
+        geometry.setPositions(Float32Array.from(set.segments as ArrayLike<number>));
+        const material = own(new LineMaterial({ color: set.color, linewidth: set.width, depthTest: !set.onTop, transparent: true }));
+        const line = new LineSegments2(geometry, material);
+        // The width of a line is in pixels of a resolution the material is told. three.js tells
+        // it the size of the canvas before every draw; a picture has its own size.
+        line.onBeforeRender = () => material.resolution.set(width, height);
+        line.renderOrder = set.onTop ? 3 : set.overFills ? 2.5 : 1;
+        scene.add(line);
+      }
+
+      const eye = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, 1, 2 * DISTANCE);
+      let scale: number;
+      if (camera === 'current') {
+        // where the user's camera stands and looks, and at least all it shows
+        this.camera.updateMatrixWorld();
+        eye.position.copy(this.camera.position);
+        eye.quaternion.copy(this.camera.quaternion);
+        scale = currentScale(this.camera.zoom, this.container.clientWidth, this.container.clientHeight, width, height);
+      } else {
+        // fitted to the bodies, and turned as the three vectors of the fitted camera say
+        const fitted = fittedCamera(camera.from, camera.up, model.bodies.map((body) => body.solid), width, height);
+        const back = new THREE.Vector3(...fitted.back);
+        eye.position.set(...fitted.center).addScaledVector(back, DISTANCE);
+        eye.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...fitted.right), new THREE.Vector3(...fitted.up), back));
+        scale = fitted.scale;
+      }
+      eye.zoom = 1 / scale;
+      eye.updateProjectionMatrix();
+      lit(eye);
+      scene.add(eye, new THREE.AmbientLight(0xffffff, 1.1));
+
+      // The colours of a target are those of the canvas only when the target says so: the output
+      // colour space of the renderer is used for the screen alone.
+      const target = own(new THREE.WebGLRenderTarget(width, height, { samples: 4 }));
+      target.texture.colorSpace = THREE.SRGBColorSpace;
+      const pixels = new Uint8Array(4 * width * height);
+      const before = this.renderer.getRenderTarget();
+      try {
+        this.renderer.setRenderTarget(target);
+        this.renderer.clear();
+        this.renderer.render(scene, eye);
+        this.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+      } finally {
+        this.renderer.setRenderTarget(before);
+      }
+      const canvas = document.createElement('canvas');
+      Object.assign(canvas, { width, height });
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('the browser gave no canvas to encode the picture with');
+      const data = context.createImageData(width, height);
+      data.data.set(topDown(pixels, width, height));
+      context.putImageData(data, 0, 0);
+      return { base64: canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''), scale };
+    } finally {
+      for (const item of owned) item.dispose();
+      this.requestRender(); // the state of the renderer was used by another scene
+    }
+  }
+
   // Přiblíží tak, aby byl vidět celý kvádr.
   fit(min: Vec3, max: Vec3): void {
     const center = new THREE.Vector3().addVectors(new THREE.Vector3(...min), new THREE.Vector3(...max)).multiplyScalar(0.5);
@@ -313,6 +414,25 @@ export class Viewport implements View {
     this.controls.update();
     this.requestRender();
   }
+}
+
+// A filled polygon in the plane of a frame: the first loop is the outline, the others are holes.
+// `own`: who disposes of what the mesh is made of.
+function fillMesh(fill: SceneModel['fills'][number], own: <T extends { dispose(): void }>(item: T) => T): THREE.Mesh | undefined {
+  const path = (loop: ArrayLike<number>) => Array.from({ length: loop.length / 2 }, (_, i) => new THREE.Vector2(loop[2 * i], loop[2 * i + 1]));
+  if (fill.loops.length === 0 || fill.loops[0].length < 6) return undefined;
+  const shape = new THREE.Shape(path(fill.loops[0]));
+  for (const hole of fill.loops.slice(1)) shape.holes.push(new THREE.Path(path(hole)));
+  const geometry = own(new THREE.ShapeGeometry(shape));
+  const material = own(
+    new THREE.MeshBasicMaterial({ color: fill.color, transparent: true, opacity: fill.opacity, side: THREE.DoubleSide, depthWrite: false, depthTest: !fill.onTop, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+  );
+  const mesh = new THREE.Mesh(geometry, material);
+  const { origin, x, y, normal } = fill.frame;
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.makeBasis(new THREE.Vector3(...x), new THREE.Vector3(...y), new THREE.Vector3(...normal)).setPosition(...origin);
+  mesh.renderOrder = 2;
+  return mesh;
 }
 
 // Trojúhelníky tělesa (nebo jen jedné stěny) bez sdílení vrcholů, s normálou plošky.

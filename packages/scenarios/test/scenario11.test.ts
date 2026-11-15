@@ -4,9 +4,12 @@
 // - 1a (D38), a section through the gears;
 // - 1c (D40), the gap between a planet and the carrier, and the tight places of the whole joint;
 // - 1d (D41), the mass of what turns with the output;
-// - 1e (D42), the printability of the housing in two orientations.
+// - 1e (D42), the printability of the housing in two orientations;
+// - 1f (D43), pictures of the joint: whole, the gears alone, and cut through the gears.
 import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, MassProperties, Measurement, PlaneRef, PrintOrientation, PrintReport, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { callHostOperation } from '../../mcp/src/host';
+import { type ImageRequest, type RenderedImage, VIEWS } from '../../mcp/src/view-image';
 import { bodiesAndHoles, parametersAndGearSketch } from './joint';
 import { expectAllOk, newEngine } from './kit';
 
@@ -476,5 +479,65 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     // a bed with a length of zero is refused by the description
     expect(engine.query('print', { bodies: ['housing'], orientations: [front], bed: { x: 220, y: 220, height: 0 } })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['bed', 'height'] } });
     expect(engine.query('print', { bodies: ['housing'], orientations: [{ by: { up: [0, 0, 0] } }] })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['orientations', 0, 'by', 'up'] } });
+  });
+
+  // ----- 1f: the pictures. A picture is drawn by the view of the app (run in a browser, see
+  // docs/ui/model.md); here the view writes down what it was asked to draw.
+  const pictures = (): { ask: (args: unknown) => ReturnType<typeof callHostOperation>; requests: ImageRequest[] } => {
+    const requests: ImageRequest[] = [];
+    const view = {
+      async image(request: ImageRequest): Promise<RenderedImage> {
+        requests.push(request);
+        return { base64: 'UE5H', width: request.width, height: request.height, scale: 0.2, bodies: (request.bodies ?? Object.keys(request.state.evaluation.bodies)).map((body) => ({ body, color: '#000000', colorName: 'black' })), cutAway: [] };
+      },
+    };
+    return { ask: (args) => callHostOperation({ engine, view }, 'view_image', args), requests };
+  };
+
+  it('1f: pictures of the joint: whole, the gears alone from above, and cut through the gears', async () => {
+    const { ask, requests } = pictures();
+    // the whole joint as the app starts with it
+    expect(await ask({})).toMatchObject({ ok: true, result: { kind: 'image', mediaType: 'image/png', about: { width: 800, height: 600 } } });
+    expect(requests[0].camera).toBe(VIEWS.iso);
+    expect(requests[0].bodies).toBeUndefined();
+    expect(Object.keys(requests[0].state.evaluation.bodies)).toEqual(['motor', 'plate', 'sun', 'planet', 'planets/1', 'planets/2', 'housing', 'carrier']);
+    // The gears alone, from above. The housing, the plate and the motor are left out, and so is
+    // the carrier: its disc lies over the gears and would hide them.
+    const gears = ['sun', 'planet', 'planets/1', 'planets/2'];
+    expect(await ask({ view: 'top', bodies: gears, width: 1024, height: 768 })).toMatchObject({ ok: true, result: { about: { bodies: gears.map((body) => ({ body })) } } });
+    expect(requests[1]).toMatchObject({ camera: VIEWS.top, bodies: gears, width: 1024, height: 768 });
+    // Cut across the axis through the gears, 40 above the seating face, seen from above: what is
+    // above the plane is cut away, and the cut of every body it goes through is filled.
+    expect((await ask({ view: 'top', section: { plane: XY, offset: 40 } })).ok).toBe(true);
+    const cut = requests[2].cut;
+    expect(cut?.frame.normal).toEqual([0, 0, 1]);
+    expect(cut?.frame.origin[2]).toBeCloseTo(40, 3);
+    expect(cut?.frame.origin[2]).toBeLessThan(40); // where the section was taken: just under the plane asked for
+    const regions = new Map<Id, number>();
+    for (const region of cut?.regions ?? []) regions.set(region.body, (regions.get(region.body) ?? 0) + 1);
+    // the sun and the three planets, the housing around them, and the three pins of the carrier inside the planets
+    expect([...regions]).toEqual([['sun', 1], ['planet', 1], ['planets/1', 1], ['planets/2', 1], ['housing', 1], ['carrier', 3]]);
+    // the housing is a ring with the ring gear and the six bolt holes cut out of it; a planet has the hole of its pin
+    const loopsOf = (body: Id): number[] => (cut?.regions ?? []).filter((region) => region.body === body).map((region) => region.loops.length);
+    expect(loopsOf('housing')).toEqual([8]);
+    expect(loopsOf('planet')).toEqual([2]);
+    expect(loopsOf('carrier')).toEqual([1, 1, 1]);
+  });
+
+  it('1f: a picture of an earlier state, of what the user looks at, and what is refused', async () => {
+    const { ask, requests } = pictures();
+    // before the ring gear was cut: the housing with its motor recess, cut along the axis, from the front
+    expect((await ask({ view: 'front', section: { plane: { kind: 'base', plane: 'XZ' } }, at: 'motorBore' })).ok).toBe(true);
+    expect(Object.keys(requests[0].state.evaluation.bodies)).not.toContain('carrier');
+    expect(requests[0].cut?.regions.map((region) => region.body)).toContain('housing');
+    expect((await ask({ view: 'current' })).ok).toBe(true);
+    expect(requests[1].camera).toBe('current');
+    // what is named and is not in the model is answered like for a query, with the argument
+    expect(await ask({ bodies: ['housing', 'nope'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[1]: the body "nope" is not in the state asked about' });
+    expect(await ask({ section: { plane: { kind: 'face', body: 'housing', face: side('housing', 'ho') } } })).toMatchObject({ ok: false, error: expect.stringMatching(/^notAvailable: view_image: section\.plane: the face is not planar/) });
+    expect(await ask({ view: 'isometric' })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidArguments: view_image: view: /) });
+    expect(requests).toHaveLength(2);
+    // without a view (a server over a document from a file has none) there is no picture
+    expect(await callHostOperation({ engine }, 'view_image', {})).toMatchObject({ ok: false, error: expect.stringMatching(/^notAvailable: view_image: /) });
   });
 });

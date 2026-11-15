@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./bridge-client": "./src/bridge-client.ts"
+    "./bridge-client": "./src/bridge-client.ts",
+    "./view-image": "./src/view-image.ts"
   },
   "scripts": {
     "build": "vite build",

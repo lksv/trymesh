@@ -34,6 +34,7 @@
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
         button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
   timeline:
       h2: "Časová osa"
@@ -450,6 +451,8 @@
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
+    +   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
     + div.row.ok
     - div.row.ok.selected
@@ -526,10 +529,8 @@
 
 === 12. the picked regions dropped by the button
   engine: getState("s1")
-  engine: getState("e1")  (x2)
-  engine: getState("s1")
-  engine: getState("e1")
-  engine: getState("s1")  (x4)
+  engine: getState("e1")  (x3)
+  engine: getState("s1")  (x5)
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)

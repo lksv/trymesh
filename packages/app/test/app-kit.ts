@@ -8,7 +8,7 @@ import { type Command, type Document, type Engine, type Frame, type Id, type Vec
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { Window } from 'happy-dom';
-import type { BodyHit, SceneModel, View } from '../src/viewport';
+import type { BodyHit, Picture, PictureCamera, PictureModel, SceneModel, View } from '../src/viewport';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
 
@@ -34,7 +34,8 @@ export class StubView implements View {
   readonly element: HTMLElement;
   scene: SceneModel = { bodies: [], lines: [], points: [], fills: [], faces: [], labels: [] };
   scenes = 0; // scenes set since the last record
-  calls: string[] = []; // lookAt and fit since the last record
+  calls: string[] = []; // lookAt, fit and image since the last record
+  failing?: string; // a picture fails with this, as a browser without WebGL would
 
   constructor(container: HTMLElement) {
     this.element = container.ownerDocument.createElement('canvas');
@@ -89,6 +90,17 @@ export class StubView implements View {
   }
   fit(min: Vec3, max: Vec3): void {
     this.calls.push(`fit ${numbers(min)} .. ${numbers(max)}`);
+  }
+  // A picture is not drawn here: what the view was asked to draw is written down, and the answer
+  // is a few bytes ("PNG" in base64) at a quarter of a millimetre per pixel.
+  async image(model: PictureModel, camera: PictureCamera, width: number, height: number): Promise<Picture> {
+    if (this.failing) throw new Error(this.failing);
+    const colours = model.bodies.map((body) => `#${body.color.toString(16).padStart(6, '0')}`).join(' ');
+    const fills = model.fills.map((fill) => `#${fill.color.toString(16).padStart(6, '0')}`).join(' ');
+    const segments = model.lines.reduce((sum, set) => sum + set.segments.length / 6, 0);
+    const cut = model.clip ? `, cut at ${numbers(model.clip.origin)} normal ${numbers(model.clip.normal)}, ${model.fills.length} fill(s) ${fills}` : '';
+    this.calls.push(`image ${width} × ${height}, camera ${camera === 'current' ? 'current' : `from ${numbers(camera.from)} up ${numbers(camera.up)}`}, ${model.bodies.length} bodies ${colours}, ${segments} segments${cut}`);
+    return { base64: 'UE5H', scale: 0.25 };
   }
 }
 

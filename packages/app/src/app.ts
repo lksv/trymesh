@@ -12,6 +12,7 @@ import {
   type Id,
   type Issue,
   type PlaneRef,
+  type SectionResult,
   type Vec2,
   type Vec3,
   bodyOwner,
@@ -19,6 +20,7 @@ import {
   faceKey,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
+import type { ViewCapability } from '@trymesh/mcp/view-image';
 import { byId, download, h } from './dom';
 import { insideFill, keptSegments } from './draw';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
@@ -26,6 +28,7 @@ import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
 import { type QueryPanel, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
 import { modelPanel } from './panels/model';
+import { savePicture, viewCapability } from './picture';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
@@ -46,6 +49,7 @@ const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
 
 export class App implements SketchHost, SceneHost {
   private readonly viewport: View;
+  private readonly pictures: ViewCapability; // a picture of a model, for the AI and for the button that saves one
   private mode: Mode = { kind: 'model' };
   selected?: Pick; // výběr v pohledu (režim modelu)
   hover?: Pick;
@@ -67,6 +71,7 @@ export class App implements SketchHost, SceneHost {
   // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
   constructor(readonly engine: Engine, view?: View) {
     this.viewport = view ?? new Viewport(byId('viewport'));
+    this.pictures = viewCapability(this.viewport);
     engine.subscribe(() => {
       dropAnswer(this.queries); // the answer of a query belonged to the document as it was
       this.refresh();
@@ -154,8 +159,8 @@ export class App implements SketchHost, SceneHost {
     }
     let restore: (() => void) | undefined;
     this.bridge = connectBridge(this.engine, {
-      // what the operations of the app need of it (AppHost), with its engine; the compiler asks for a new member here
-      host: { engine: this.engine },
+      // what the operations of the app need of it (AppHost), with its engine
+      host: { engine: this.engine, view: this.pictures },
       onStatus: (status) => {
         this.bridgeStatus = status;
         if (status === 'connected') this.say('Propojeno s MCP serverem: AI vidí a mění tento dokument.');
@@ -179,6 +184,11 @@ export class App implements SketchHost, SceneHost {
         if (changesDocument(this.engine, name, args)) this.setMode({ kind: 'model' });
       },
       onCall: (name, outcome) => {
+        // A picture is drawn off the screen: nothing shows that one was taken but this line. It
+        // is a question, like the others the AI asks without a word here: one that is refused
+        // says nothing (the AI has the reason), and one that is taken does not replace an error
+        // the user has not dealt with.
+        if (name === 'view_image') return outcome.ok && !this.note.error ? this.say('AI: a picture of the model was taken.') : undefined;
         if (!MUTATING.includes(name)) return;
         if (name === '_load') {
           if (!outcome.ok) restore?.();
@@ -340,6 +350,10 @@ export class App implements SketchHost, SceneHost {
     groups.push(
       group(
         button('Zobrazit vše', () => this.fit()),
+        button('Save picture', () => void this.savePicture(), {
+          title: 'Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions',
+          disabled: Object.keys(this.view().evaluation.bodies).every((body) => this.bodyHidden(body)),
+        }),
         button('Základní roviny', () => ((this.showBasePlanes = !this.showBasePlanes), this.refresh()), { active: this.showBasePlanes, title: 'Zobrazit nebo skrýt roviny XY, XZ, YZ' }),
       ),
     );
@@ -503,6 +517,22 @@ export class App implements SketchHost, SceneHost {
   planeSize(state: EngineState): number {
     const { min, max } = modelBounds(state);
     return Math.max(20, 0.7 * Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]));
+  }
+
+  // Saves a picture of the model as the user has it: the bodies that are not hidden, from the
+  // camera of the view, cut as the section view cuts it.
+  private async savePicture(): Promise<void> {
+    const state = this.view();
+    const visible = Object.keys(state.evaluation.bodies).filter((body) => !this.bodyHidden(body));
+    // the section the view shows: only the model mode draws what a query adds
+    const answer = this.mode.kind === 'model' && this.queries.open?.name === 'section' ? shownAnswer(this.queries, this) : undefined;
+    const shown = answer?.outcome.ok ? (answer.outcome.result as SectionResult) : undefined;
+    try {
+      const said = await savePicture(this.pictures, state, visible, shown, (name, base64) => download(name, Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)), 'image/png'));
+      this.say(said.text, said.error);
+    } catch (error) {
+      this.say(`The picture could not be drawn: ${error instanceof Error ? error.message : String(error)}`, true);
+    }
   }
 
   private fit(): void {

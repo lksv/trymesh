@@ -20,10 +20,8 @@
   engine: getState("s1")  (x6)
   engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
   engine: getState("s1")
-  engine: getState("e1")  (x2)
-  engine: getState("s1")
-  engine: getState("e1")
-  engine: getState("s1")  (x4)
+  engine: getState("e1")  (x3)
+  engine: getState("s1")  (x5)
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -116,6 +114,7 @@
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
         button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
   timeline:
       h2: "Časová osa"
@@ -287,23 +286,31 @@
     + line #f97316 width 2: 24 numbers, sum 1045.918
     + fill #f97316 opacity 0.3 at [0, 0, 10] normal [0, 0, 1]: 8 numbers, sum 35.044
 
-=== 4. a question of the AI leaves the form alone
+=== 4. the AI takes a picture: it is drawn off the screen, the form stays, and the status bar says that one was taken
+  status: AI: a picture of the model was taken.
+  view: 0 scene(s) set
+  view: image 320 × 240, camera from [0, 0, 1] up [0, 1, 0], 1 bodies #4e79a7, 12 segments
+
+=== 5. a picture of a body that is not there is refused: the AI has the reason, and the app says nothing, as for any question
   view: 0 scene(s) set
 
-=== 5. a command that changes nothing leaves the form alone
+=== 6. a question of the AI leaves the form alone
+  view: 0 scene(s) set
+
+=== 7. a command that changes nothing leaves the form alone
   engine: preview({"type":"renameFeature","id":"e1","name":"Vysunutí 1"}) -> ok
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Rovina 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":10},"index":5}, "r1") -> ok
   engine: execute({"type":"renameFeature","id":"e1","name":"Vysunutí 1"}) -> ok
   status: AI: execute
   view: 1 scene(s) set
 
-=== 6. a command the engine refuses leaves the form alone and is reported
+=== 8. a command the engine refuses leaves the form alone and is reported
   engine: preview({"type":"removeFeature","id":"nope"}) -> invalidCommand: removeFeature: feature "nope" neexistuje
   engine: execute({"type":"removeFeature","id":"nope"}) -> invalidCommand: removeFeature: feature "nope" neexistuje
   status: AI: execute selhalo: invalidCommand: removeFeature: feature "nope" neexistuje  [error]
   view: 0 scene(s) set
 
-=== 7. a command that changes the document closes the form first
+=== 9. a command that changes the document closes the form first
   engine: preview({"type":"renameFeature","id":"e1","name":"Deska"}) -> ok
   engine: execute({"type":"renameFeature","id":"e1","name":"Deska"}) -> ok
   feature e1:
@@ -402,7 +409,7 @@
     - line #f97316 width 2: 24 numbers, sum 1045.918
     - fill #f97316 opacity 0.3 at [0, 0, 10] normal [0, 0, 1]: 8 numbers, sum 35.044
 
-=== 8. a load that fails: the form and the rest of the app are as they were
+=== 10. a load that fails: the form and the rest of the app are as they were
   engine: getState("s2")
   engine: getState("e3")
   engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
@@ -533,7 +540,7 @@
     - line #26303c width 1.5: 744 numbers, sum 98605.758
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
-=== 9. a load: the app starts over with the new document
+=== 11. a load: the app starts over with the new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   toolbar:
@@ -558,6 +565,8 @@
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
+    +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
     + p.hint: "Zatím prázdná. Nové prvky se objeví zde."
     - div.row.ok
@@ -670,11 +679,11 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
     - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
-=== 10. undo by the AI after a load has nothing to undo, and says so
+=== 12. undo by the AI after a load has nothing to undo, and says so
   status: AI: undo selhalo: není co vracet  [error]
   view: 0 scene(s) set
 
-=== 11. a command of the AI and its undo: the app follows both
+=== 13. a command of the AI and its undo: the app follows both
   engine: execute({"type":"setParameter","name":"a","expr":"1"}) -> ok
   engine: undo()
   toolbar:
@@ -683,7 +692,7 @@
   status: AI: undo
   view: 2 scene(s) set
 
-=== 12. the connection is switched off
+=== 14. the connection is switched off
   toolbar:
     +   button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
     -   button.active title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI: připojeno"

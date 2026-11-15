@@ -56,15 +56,16 @@ export type ToolOutcome = { ok: true; result: Json } | { ok: false; error: strin
 // to the app), so bytes do not survive it: a file travels as base64 in this envelope, and the
 // server acts on the kind. `ToolOutcome.result` stays JSON; a `ToolAnswer` is JSON.
 // - `files`: the server writes them where the caller said (the tool `export`).
-// - `image`: returned to the client as image content. No tool answers with one yet; the first that
-//   does (a picture of the view) adds its handling to the server.
+// - `image`: returned to the client as image content (the operation `view_image`). `about` says
+//   what the picture shows that pixels do not (its scale, the colour of every body); the server
+//   prints it as text next to the picture.
 export interface FileEnvelope {
   path: string; // relative, as `ExportFile.path` of the engine
   mediaType: string;
   base64: string;
   about?: Record<string, unknown>;
 }
-export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[] } | { kind: 'image'; mediaType: 'image/png'; base64: string };
+export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[] } | { kind: 'image'; mediaType: 'image/png'; base64: string; about?: { [key: string]: Json } };
 
 // Chyba volání: špatný argument, neznámá skica. Vrací se volajícímu jako text.
 export class ToolError extends Error {}

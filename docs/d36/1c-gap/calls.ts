@@ -4,6 +4,10 @@
 // (`npx tsc -p docs/d36/tsconfig.json`). A step that cannot be written here is a hole in the
 // contract. Lines marked `@ts-expect-error` are calls that must not compile.
 //
+// As implemented (design.md, "As implemented"): part b below calls `context.kernel.minGap`, the
+// variant that was not taken; the entry is packages/engine/src/query/gap.ts, and part a is the
+// test in packages/scenarios/test/scenario11.test.ts.
+//
 // The numbers in the comments were measured on the model of scenario 9 with `minGap` of
 // Manifold 3.5.5 and a prototype of the pass that finds the two points (chord tolerance
 // 0.01 mm); they become the expectations of the test in packages/scenarios.

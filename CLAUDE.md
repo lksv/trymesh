@@ -72,9 +72,9 @@ The docs are living documents kept good enough to repeat the implementation from
 | File | Content |
 |---|---|
 | `docs/requirements.md` | What the PoC must do, validation scenarios |
-| `docs/decisions.md` | Overview table of decisions D1 to D37 and the short ones in full, with reasons and alternatives |
+| `docs/decisions.md` | Overview table of decisions D1 to D49 and the short ones in full (D38 to D49 link to the designs of the packages of D36), with reasons and alternatives |
 | `docs/decisions/` | Decisions too long for the overview: `D35-robot-joint.md`, and `D36-order-after-d35.md`, the order of work ahead |
-| `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, and the design of each package |
+| `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, the design of each package, and the review over the whole set (`cross-review.md`) |
 | `docs/architecture.md`, `docs/architecture/` | The design as implemented: the overview and the list of sections, and a file per area (document, sketch, naming, extrusion, pattern, ports, recompute, API, interface for AI, repository, verification) |
 | `docs/ui.md`, `docs/ui/` | UI functions as tables of commands and state read, a file per panel or form, each with the implementation status of its area |
 | `docs/backlog.md` | Features not done yet and why the design does not block them |

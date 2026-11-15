@@ -1,22 +1,38 @@
 // Fasáda enginu: příkazy, undo/redo, náhled, načtení a uložení, export.
 import { CommandError, applyCommand, emptyDocument, validateDocument } from './document';
-import { type DragTarget, type Deps, Evaluator, type SketchState, type WriteBack } from './evaluate';
+import { type DragTarget, type Deps, type EvaluateOptions, Evaluator, type WriteBack } from './evaluate';
 import { has } from './util';
-import { UNAVAILABLE, diagnose, explain } from './diagnose';
-import { Interferences } from './interference';
+import { INTERFERENCE_THRESHOLD, checkInterferenceOptions } from './interference';
+import { type Internals, Memo, queryContext } from './query/context';
+import { QUERIES, runQuery } from './query/index';
 import { toStl } from './solid';
-import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, SketchDiagnosis } from './types';
+import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOutcome } from './types';
 
 export function createEngine(deps: Deps): Engine {
   const evaluator = new Evaluator(deps);
-  const interferences = new Interferences(deps.kernel);
+  // What a query needs beyond the evaluation: the state of the recompute it was made from and the
+  // document it belongs to, kept for every evaluation the engine hands out. Kept weakly, so it
+  // lives as long as a caller holds the state.
+  const internals = new WeakMap<Evaluation, Internals>();
+  const evaluate = (doc: Document, options?: EvaluateOptions) => {
+    const result = evaluator.evaluate(doc, options);
+    internals.set(result.evaluation, { document: doc, state: result.state });
+    return result;
+  };
+  const queryDeps = { kernel: deps.kernel, memo: new Memo() };
   let document = emptyDocument();
-  let evaluation: Evaluation = evaluator.evaluate(document).evaluation;
+  let evaluation: Evaluation = evaluate(document).evaluation;
   let undoStack: Document[] = [];
   let redoStack: Document[] = [];
   const listeners = new Set<(state: EngineState) => void>();
 
-  const state = (doc: Document, result: Evaluation): EngineState => ({ document: doc, evaluation: result, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
+  // A state handed out. The document is the one the state shows: after a recompute wrote its
+  // results back, that is the document with them.
+  const state = (doc: Document, result: Evaluation): EngineState => {
+    const kept = internals.get(result);
+    if (kept) kept.document = doc;
+    return { document: doc, evaluation: result, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 };
+  };
   // Posluchači dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine:
   // vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní
   // posluchače o zprávu nepřipraví; vyhodí se až nakonec (stav je v té chvíli už zapsaný).
@@ -65,7 +81,7 @@ export function createEngine(deps: Deps): Engine {
   // numeric fields and, for sketches solved along the way, the solved variables and the stamp. The
   // cache is re-hung onto the new feature objects.
   const settle = (doc: Document, drag?: DragTarget): { document: Document; evaluation: Evaluation } => {
-    const { evaluation: result, writeBacks, trace } = evaluator.evaluate(doc, { drag });
+    const { evaluation: result, writeBacks, trace } = evaluate(doc, { drag });
     if (writeBacks.size === 0) return { document: doc, evaluation: result };
     const replaced = new Map<Id, Feature>();
     const features = doc.features.map((feature) => {
@@ -84,22 +100,16 @@ export function createEngine(deps: Deps): Engine {
     evaluation = next.evaluation;
   };
 
-  // Diagnostika skici se pamatuje podle vyhodnocené skici: dokud se skica ani stav před ní
-  // nezmění, je objekt tentýž a diagnostika se nepočítá znovu.
-  const diagnoses = new WeakMap<SketchState, SketchDiagnosis>();
-  const sketchStateOf = (id: Id, what: string): SketchState | undefined => {
-    if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: skica "${id}" neexistuje`);
-    return evaluator.sketchState(document, id);
-  };
-  const diagnosisOf = (sketch: SketchState): SketchDiagnosis => {
-    let diagnosis = diagnoses.get(sketch);
-    if (!diagnosis) diagnoses.set(sketch, (diagnosis = diagnose(sketch)));
-    return diagnosis;
-  };
-
   const stateAt = (at?: Id): EngineState => {
     if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
-    return state(document, at === undefined ? evaluation : evaluator.evaluate(document, { upTo: at }).evaluation);
+    return state(document, at === undefined ? evaluation : evaluate(document, { upTo: at }).evaluation);
+  };
+
+  // The methods that were queries before the catalog keep their own checks and their own texts,
+  // and throw; then they run the entry of the catalog that `query` runs, over the same context.
+  const contextOf = (name: string, of: EngineState) => queryContext(name, of.evaluation, internals.get(of.evaluation) as Internals, queryDeps);
+  const sketchOf = (id: Id, what: string): void => {
+    if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: skica "${id}" neexistuje`);
   };
 
   return {
@@ -135,7 +145,7 @@ export function createEngine(deps: Deps): Engine {
       if (at !== undefined && !applied.features.some((feature) => feature.id === at)) {
         return { ok: false, error: { code: 'invalidCommand', message: `preview: feature "${at}" v dokumentu po příkazu není` } };
       }
-      return { ok: true, state: state(applied, evaluator.evaluate(applied, { upTo: at, drag: dragOf(cmd) }).evaluation) };
+      return { ok: true, state: state(applied, evaluate(applied, { upTo: at, drag: dragOf(cmd) }).evaluation) };
     },
 
     undo() {
@@ -143,7 +153,7 @@ export function createEngine(deps: Deps): Engine {
       if (!previous) return;
       undoStack = undoStack.slice(0, -1);
       redoStack = [...redoStack, document];
-      commit({ document: previous, evaluation: evaluator.evaluate(previous).evaluation });
+      commit({ document: previous, evaluation: evaluate(previous).evaluation });
       notify();
     },
 
@@ -152,22 +162,22 @@ export function createEngine(deps: Deps): Engine {
       if (!next) return;
       redoStack = redoStack.slice(0, -1);
       undoStack = [...undoStack, document];
-      commit({ document: next, evaluation: evaluator.evaluate(next).evaluation });
+      commit({ document: next, evaluation: evaluate(next).evaluation });
       notify();
     },
 
     getState: stateAt,
 
     diagnoseSketch(id) {
-      const sketch = sketchStateOf(id, 'diagnoseSketch');
-      return sketch ? diagnosisOf(sketch) : UNAVAILABLE;
+      sketchOf(id, 'diagnoseSketch');
+      return QUERIES.sketchDiagnosis.run(contextOf('sketchDiagnosis', stateAt()), { sketch: id });
     },
 
     explainConstraint(id, constraint) {
-      const sketch = sketchStateOf(id, 'explainConstraint');
+      sketchOf(id, 'explainConstraint');
       const feature = document.features.find((f) => f.id === id);
       if (feature?.type !== 'sketch' || !has(feature.constraints, constraint)) throw new Error(`explainConstraint: vazba "${constraint}" ve skice "${id}" není`);
-      return sketch ? explain(sketch, constraint) : { redundant: false, impliedBy: [] };
+      return QUERIES.constraintExplanation.run(contextOf('constraintExplanation', stateAt()), { sketch: id, constraint });
     },
 
     load(json) {
@@ -200,8 +210,27 @@ export function createEngine(deps: Deps): Engine {
     },
 
     interference(options = {}) {
-      const state = stateAt(options.at);
-      return interferences.report(state.evaluation.bodies, options.bodies, options.threshold, state.document.settings.chordTolerance);
+      const asked = stateAt(options.at);
+      checkInterferenceOptions(asked.evaluation.bodies, options.bodies, options.threshold);
+      return QUERIES.interference.run(contextOf('interference', asked), { ...(options.bodies === undefined ? {} : { bodies: options.bodies }), threshold: options.threshold ?? INTERFERENCE_THRESHOLD });
+    },
+
+    // The state asked about is the current one, the one after `at`, or one this engine handed out.
+    // The document is the one kept with the evaluation, not `state.document`, so an evaluation
+    // cannot be paired with another document.
+    query(name, args, options = {}) {
+      type Outcome = ReturnType<Engine['query']>;
+      const refused = (code: 'invalidArguments' | 'notAvailable', message: string, arg: string): Outcome => ({ ok: false, error: { code, message, arg: [arg] } });
+      let asked: Evaluation;
+      if (options.state !== undefined) {
+        if (options.at !== undefined) return refused('invalidArguments', `${name}: a query takes \`at\` or \`state\`, not both`, 'state');
+        if (typeof options.state !== 'object' || options.state === null || !internals.has(options.state.evaluation)) return refused('invalidArguments', `${name}: \`state\` is not a state this engine handed out`, 'state');
+        asked = options.state.evaluation;
+      } else if (options.at !== undefined) {
+        if (!document.features.some((feature) => feature.id === options.at)) return refused('notAvailable', `${name}: \`at\`: the feature "${String(options.at)}" is not in the document`, 'at');
+        asked = stateAt(options.at).evaluation;
+      } else asked = stateAt().evaluation;
+      return runQuery(name, args, asked, internals.get(asked) as Internals, queryDeps) as QueryOutcome<never>;
     },
 
     subscribe(listener) {

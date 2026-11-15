@@ -9,7 +9,10 @@ import {
   FEATURE_TYPE_INFO,
   type FeatureTypeInfo,
   GENERATORS,
+  type AnyQuery,
+  type ArgKind,
   type NumberSpec,
+  QUERIES,
   SKETCH_TOOLS,
   type SketchToolInput,
   type SketchToolName,
@@ -48,7 +51,8 @@ export function engineTypes(): string {
   const [ports, evaluation] = [typesSource.search(marker('porty')), typesSource.search(marker('přepočet'))];
   if (ports < 0 || evaluation < ports) return typesSource;
   const note = '// (Rozhraní solveru a geometrického jádra jsou vynechána. `Solid` je trojúhelníková síť tělesa:\n// positions, triangles, faceIds; přes nástroje se nepřenáší, těleso popisuje get_body.)\n\n';
-  return typesSource.slice(0, ports) + note + typesSource.slice(evaluation);
+  // an import of the source file is not part of the description
+  return (typesSource.slice(0, ports) + note + typesSource.slice(evaluation)).replace(/^import type .*\n/gm, '');
 }
 
 export interface ConstraintDescription {
@@ -154,6 +158,7 @@ export function apiDescription(): {
   expressions: ReturnType<typeof expressionSyntax>;
   numericFields: ReturnType<typeof numericFields>;
   sketchTools: SketchToolDescription[];
+  queries: QueryDescription[];
   types: string;
 } {
   return {
@@ -164,6 +169,7 @@ export function apiDescription(): {
     expressions: expressionSyntax(),
     numericFields: numericFields(),
     sketchTools: sketchToolCatalog(),
+    queries: queryCatalog(),
     types: engineTypes(),
   };
 }
@@ -198,9 +204,78 @@ export function sketchToolCatalog(): SketchToolDescription[] {
   }));
 }
 
+// An argument of a query, of an export format or of an operation of the app, in words: what its
+// description (`ArgKind` of the engine) says a caller writes.
+export function argumentText(spec: ArgKind): string {
+  const entity: Record<string, string> = {
+    body: '{ kind: "body", body }',
+    face: '{ kind: "face", body, face: FaceName }',
+    edge: '{ kind: "edge", body, edge: EdgeName }',
+    sketchPoint: '{ kind: "sketchPoint", sketch, point } (the point `origin` is the origin of the sketch)',
+  };
+  const named = (fields: { readonly [name: string]: ArgKind & { optional?: boolean } }): string =>
+    Object.entries(fields)
+      .map(([name, field]) => `${name}${field.optional ? ' (optional)' : ''}: ${argumentText(field)}`)
+      .join('; ');
+  switch (spec.kind) {
+    case 'number':
+      return `a number, ${rangeText(spec.spec)}${spec.spec.unit === 'count' || spec.spec.unit === 'none' ? '' : `, ${spec.spec.unit}`}${spec.spec.default === undefined ? '' : `, default ${spec.spec.default}`}`;
+    case 'flag':
+      return 'true or false';
+    case 'text':
+      return 'a text';
+    case 'choice':
+      return `one of ${spec.options.map((option) => `"${option}"`).join(', ')}`;
+    case 'body':
+    case 'feature':
+    case 'sketch':
+      return `the ID of a ${spec.kind}`;
+    case 'constraint':
+      return `the ID of a constraint of the sketch given in \`${spec.of}\``;
+    case 'entity':
+      return `an entity of the model: ${spec.accepts.map((kind) => entity[kind]).join(' or ')}`;
+    case 'plane':
+      return 'a plane (PlaneRef)';
+    case 'axis':
+      return 'an axis (AxisRef)';
+    case 'vector':
+      return 'three numbers [x, y, z]';
+    case 'list': {
+      const count = spec.min !== undefined && spec.max !== undefined ? `, ${spec.min} to ${spec.max} items` : spec.min !== undefined ? `, at least ${spec.min}` : spec.max !== undefined ? `, at most ${spec.max}` : '';
+      return `a list${count}, each item ${argumentText(spec.of)}`;
+    }
+    case 'oneOf':
+      return `an object with exactly one of these keys: ${named(spec.options)}`;
+    case 'record':
+      return `an object with a value per ${spec.keys === 'text' ? 'name' : `${spec.keys} ID`}, each ${argumentText(spec.of)}`;
+    case 'fields':
+      return `an object { ${named(spec.fields)} }`;
+  }
+}
+
+// The queries of the engine's catalog (the tool query asks them): arguments and what each returns.
+export interface QueryDescription {
+  query: string;
+  title: string;
+  summary: string;
+  args: { name: string; description: string; required: boolean }[];
+  returns: string;
+}
+export function queryCatalog(): QueryDescription[] {
+  return Object.entries(QUERIES as Record<string, AnyQuery>).map(([query, spec]) => ({
+    query,
+    title: spec.title,
+    summary: spec.summary,
+    args: Object.entries(spec.args).map(([name, arg]) => ({ name, description: `${argumentText(arg)}${arg.summary ? `. ${arg.summary}` : ''}`, required: arg.optional !== true })),
+    returns: spec.returns,
+  }));
+}
+
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, types } = apiDescription();
+  const queryText = (entry: QueryDescription): string =>
+    [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
     [
       `- ${entry.tool} (${entry.title}): ${entry.summary}`,
@@ -262,6 +337,11 @@ export function apiText(): string {
     '# Sketch tools',
     'A sketch tool draws a whole shape with its constraints from a few inputs; run it with the tool sketch_tool `{ sketch, tool, input }`. An anchor is a place in the sketch, `{ at: [x, y] }`, optionally snapped: `snap: { kind: "point", id }` uses that point (an own point or `origin` is used as it is, a point of projected geometry gets a new point with a coincident constraint; `at` must still be given, a rough position is enough, and the place of the point is used) and `snap: { kind: "curve", id }` puts the point on that curve nearest to `at`. The result lists the IDs of what was made (`ids`), to be used in the next commands: the lines as regions of an extrusion, a line for a horizontal constraint, the size dimension for setField.',
     ...sketchTools.map(sketchToolText),
+    '',
+    '# Queries',
+    'A query reads the model and changes nothing; ask it with the tool query `{ query, args, at?, after? }`. `at` is a feature ID (the state after it); `after` is a command to preview first, so that a change can be asked about without being written. ' +
+      'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
+    ...queries.map(queryText),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

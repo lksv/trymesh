@@ -40,6 +40,7 @@ const ENGINE_IN_MCP: Record<keyof Engine, Reach> = {
   diagnoseSketch: { calls: [{ tool: 'get_sketch', args: { sketch: 's' } }] },
   explainConstraint: { calls: [{ tool: 'explain_constraint', args: { sketch: 's', constraint: 'r' } }] },
   interference: { calls: [{ tool: 'check_interference' }] },
+  query: { calls: [{ tool: 'query', args: { query: 'sketchDiagnosis', args: { sketch: 's' } } }] },
   exportMesh: { calls: [{ tool: 'export_stl', args: (dir) => ({ path: join(dir, 'model.stl') }) }] },
   save: { calls: [{ tool: 'save_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },
   load: { calls: [{ tool: 'open_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },

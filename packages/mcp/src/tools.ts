@@ -19,6 +19,9 @@ import {
   type Interference,
   type Issue,
   FEATURE_TYPE_INFO,
+  QUERIES,
+  type AnyQuery,
+  type QueryName,
   INTERFERENCE_THRESHOLD,
   SKETCH_TOOLS,
   type SketchFeature,
@@ -50,6 +53,15 @@ export type ToolOutcome = { ok: true; result: Json } | { ok: false; error: strin
 export class ToolError extends Error {}
 
 const round = (value: number): number => Math.round(value * 1e6) / 1e6 + 0;
+// The result of a query as a tool prints it: numbers to six decimal places, as the tools round
+// geometry. A key the query lists in `significant` gets that many significant digits instead, for
+// values that are small on purpose (a volume above a small threshold must not round to zero).
+function roundedResult(value: unknown, significant: { readonly [key: string]: number } = {}, key?: string): unknown {
+  if (typeof value === 'number') return key !== undefined && Object.prototype.hasOwnProperty.call(significant, key) ? Number(value.toPrecision(significant[key])) : round(value);
+  if (Array.isArray(value)) return value.map((item) => roundedResult(item, significant, key));
+  if (typeof value === 'object' && value !== null) return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, roundedResult(item, significant, name)]));
+  return value;
+}
 const text = (args: Record<string, unknown>, name: string): string => {
   const value = args[name];
   if (typeof value !== 'string' || value === '') throw new ToolError(`argument "${name}": čeká se neprázdný řetězec`);
@@ -357,13 +369,16 @@ function sketchDetail(engine: Engine, id: string): unknown {
 
 // What changed after a command enough for the caller to know: feature states that are not ok,
 // checks that fail and parameters in error.
+// The text of an invalid command.
+function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
+  const { code, message, commandIndex, expression } = result.error;
+  const where = expression?.error.position === undefined ? '' : ` (character ${expression.error.position + 1} of the expression)`;
+  return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (příkaz dávky s indexem ${commandIndex})`}`;
+}
+
 function outcome(result: CommandResult): unknown {
   // Neplatný příkaz dokument nezměnil: je to chyba volání, ne výsledek.
-  if (!result.ok) {
-    const { code, message, commandIndex, expression } = result.error;
-    const where = expression?.error.position === undefined ? '' : ` (character ${expression.error.position + 1} of the expression)`;
-    throw new ToolError(`${code}: ${message}${where}${commandIndex === undefined ? '' : ` (příkaz dávky s indexem ${commandIndex})`}`);
-  }
+  if (!result.ok) throw new ToolError(commandProblem(result));
   const { document, evaluation } = result.state;
   const problems = document.features
     .map((feature) => ({ id: feature.id, name: feature.name, ...(featureStatus(evaluation.features[feature.id]) as { status: string }) }))
@@ -561,6 +576,39 @@ export function tools(): Tool[] {
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = (pair: Interference) => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
         return { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+      },
+    },
+    {
+      name: 'query',
+      description:
+        `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section Queries. ` +
+        'Without `at` and `after` the answer is for the current model. `at` asks about the state after that feature. `after` is a command: the answer is for the model the document would have after it, and nothing is written, ' +
+        'so a parameter can be stepped and each step asked about. With both, the document after the command is evaluated up to `at`. Numbers in the answer are rounded to six decimal places.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', enum: Object.keys(QUERIES), description: 'The name of the query.' },
+          args: { type: 'object', description: 'The arguments of the query, by name; see describe_api.' },
+          at: { type: 'string', description: 'Feature ID; the state after it' },
+          after: { type: 'object', description: 'A command (as for execute) to preview first; the query is asked about the result and the document does not change.' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      run: (engine, args) => {
+        const name = text(args, 'query');
+        const at = optionalText(args, 'at');
+        const queryArgs = args.args ?? {};
+        let answer: ReturnType<Engine['query']>;
+        if (args.after === undefined || args.after === null) answer = engine.query(name as QueryName, queryArgs as never, at === undefined ? {} : { at });
+        else {
+          // the preview and the query run together where the engine is; nothing is written
+          const previewed = engine.preview(args.after as Command, at);
+          if (!previewed.ok) throw new ToolError(`after: ${commandProblem(previewed)}`);
+          answer = engine.query(name as QueryName, queryArgs as never, { state: previewed.state });
+        }
+        if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
+        return roundedResult(answer.result, (QUERIES as Record<string, AnyQuery>)[name].significant);
       },
     },
     {

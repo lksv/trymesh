@@ -1,5 +1,6 @@
 // Veřejné typy enginu: dokument, porty, výsledek přepočtu a API.
 // Zdrojem pravdy je docs/architecture.md; typy se s ním mají shodovat.
+import type { QueryArgs, QueryName, QueryResult } from './query/spec';
 
 export type Id = string; // trvalé, nikdy se nerecykluje
 export type Vec2 = [number, number];
@@ -558,6 +559,49 @@ export type Patch<T> = T extends number
       : T;
 export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>> | Patch<Pick<PatternFeature, 'source' | 'transform'>>;
 
+// ---------------------------------------------------------------- queries
+
+// One way to say "this thing of the model" in the arguments of a query. A query that takes a plane
+// or an axis takes `PlaneRef` or `AxisRef` as they are, not wrapped.
+export type EntityRef =
+  | { kind: 'body'; body: Id }
+  | { kind: 'face'; body: Id; face: FaceName }
+  | { kind: 'edge'; body: Id; edge: EdgeName }
+  | { kind: 'sketchPoint'; sketch: Id; point: Id }; // `origin` is the origin of the sketch
+
+// The place of an argument inside the arguments of a query: names and indexes, such as
+// `['orientations', 1, 'by', 'onBed']`. A key of a record is one segment.
+export type ArgPath = readonly (string | number)[];
+
+// A query does not throw for anything its caller can cause; it answers with a result or with
+// a reason, like a command.
+// - `invalidArguments`: an argument has the wrong shape or is out of its range, the query has no
+//   such argument, or `state` is not a state this engine handed out.
+// - `notAvailable`: something named is not in the state asked about. One rule for every ID,
+//   wherever it sits (an argument, an entity, a plane, an axis): a body, a face, an edge is looked
+//   up in the bodies of the state; a feature, a sketch, a constraint, a sketch point among the
+//   features the state evaluated. A mistyped ID and one that comes later on the timeline are the
+//   same answer. Also: `at` names no feature.
+// - `failed`: the computation gave up (the geometric kernel, a limit).
+// What was a successful answer stays one: a sketch that did not evaluate has the diagnosis
+// `status: 'unavailable'`, a list of fewer than two bodies has no collisions.
+export type QueryOutcome<Result> =
+  | { ok: true; result: Result }
+  | { ok: false; error: { code: 'invalidArguments' | 'notAvailable' | 'failed'; message: string; arg?: ArgPath } }; // arg: the argument concerned; ['at'] and ['state'] for the options
+
+// The state a query answers for: the current one, the one after a feature (`at`), or one that
+// `preview` or `getState` of this engine returned (`state`). With a previewed state nothing is
+// written, so a parameter can be stepped and each step asked about.
+export type QueryOptions = { at?: Id; state?: never } | { state: EngineState; at?: never };
+
+// An answer that can be large says so: a query with such an answer has an argument that limits it
+// and returns how much there was.
+export interface Truncated {
+  truncated?: { shown: number; total: number };
+}
+
+// ---------------------------------------------------------------- engine
+
 export interface Engine {
   execute(cmd: Command): CommandResult; // změní dokument, jeden krok undo
   preview(cmd: Command, at?: Id): CommandResult; // spočítá, ale nezapíše; at = jen po danou feature
@@ -570,5 +614,9 @@ export interface Engine {
   save(): string;
   exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // all bodies without a list; '3mf' později
   interference(options?: InterferenceOptions): InterferenceReport; // which bodies share a volume
+  // Asks a query of the catalog by its name. Everything new is asked this way; the methods above
+  // that are queries stay for their callers. The catalog (names, arguments, what each returns) is
+  // in the section Queries of the API description.
+  query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;
   subscribe(listener: (state: EngineState) => void): () => void;
 }

@@ -68,10 +68,12 @@ export const MAX_NUMBER = 1e9;
 
 export type NumberProblem = { code: 'notFinite' | 'outOfRange' | 'notInteger'; message: string };
 
-// Checks a value against the field description. An integer is returned rounded.
-export function checkNumber(value: number, spec: NumberSpec): { ok: true; value: number } | ({ ok: false } & NumberProblem) {
+// Checks a value against the field description. An integer is returned rounded. `limit` is the
+// largest magnitude allowed whatever the description says: numbers of the document have one
+// (coordinates of bodies are float32), an argument of a query has none.
+export function checkNumber(value: number, spec: NumberSpec, limit = MAX_NUMBER): { ok: true; value: number } | ({ ok: false } & NumberProblem) {
   if (!Number.isFinite(value)) return { ok: false, code: 'notFinite', message: 'the value is not a finite number' };
-  if (Math.abs(value) > MAX_NUMBER) return { ok: false, code: 'outOfRange', message: `the number is outside the range ±${MAX_NUMBER}` };
+  if (Math.abs(value) > limit) return { ok: false, code: 'outOfRange', message: `the number is outside the range ±${limit}` };
   let checked = value + 0; // no negative zero
   if (spec.integer) {
     const rounded = Math.round(value) + 0;

@@ -40,12 +40,14 @@ export class Evaluator {
 
   constructor(private readonly deps: Deps) {}
 
-  evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; writeBacks: Map<Id, WriteBack>; trace: Trace } {
+  // `state`: the state of the recompute the evaluation was made from, for what reads more than the
+  // evaluation publishes (the queries).
+  evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
     const { state: final, writeBacks, trace } = this.run(doc, options);
     const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
-    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks }, writeBacks, trace };
+    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks }, state: final, writeBacks, trace };
   }
 
   // The published surfaces of a face table. The table is replaced, never changed, so the list is kept

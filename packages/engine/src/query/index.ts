@@ -1,0 +1,31 @@
+// The catalog of queries, built like the registry of feature types: a query is a module in this
+// directory and one line here. `Engine.query` and the MCP tool `query` reach every entry; the
+// description for the AI and a form in the app read the catalog.
+import type { ArgPath, Evaluation, QueryOutcome } from '../types';
+import { has } from '../util';
+import { checkArgs } from './check';
+import { type ContextDeps, type Internals, queryContext } from './context';
+import { interference } from './interference';
+import { constraintExplanation, sketchDiagnosis } from './sketch';
+import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
+
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation };
+
+const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
+
+// Asks the query `name` about one state: checks the arguments against the description of the
+// query, fills in the defaults and runs it. `name` and `args` come from callers that are not typed
+// (a tool, the bridge), so both are checked here.
+export function runQuery(name: string, args: unknown, evaluation: Evaluation, internals: Internals, deps: ContextDeps): QueryOutcome<unknown> {
+  if (!has(QUERIES, name)) return refused('invalidArguments', `there is no query "${name}"; the queries are ${Object.keys(QUERIES).join(', ')}`, ['query']);
+  const spec = (QUERIES as Record<string, AnyQuery>)[name];
+  const checked = checkArgs(spec.args, args, { document: internals.document, evaluation });
+  if (!checked.ok) return refused(checked.code, `${name}: ${checked.message}`, checked.arg);
+  try {
+    // the checker has made the values what the description derives; that is the one cast
+    return { ok: true, result: spec.run(queryContext(name, evaluation, internals, deps), checked.value as never) };
+  } catch (error) {
+    if (error instanceof QueryFailure) return refused(error.code, `${name}: ${error.message}`, error.arg);
+    throw error;
+  }
+}

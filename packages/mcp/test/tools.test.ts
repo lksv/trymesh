@@ -95,7 +95,7 @@ describe('popis API', () => {
     expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
     expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
-    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);

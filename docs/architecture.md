@@ -67,10 +67,14 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
 | `document.ts` | commands, `validateDocument`, the upgrade of older documents, `fieldsOf`, `featureInput`, `featureRefs` |
 | `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
+| `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
+| `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
+| `query/interference.ts`, `query/sketch.ts` | the queries, one module each or a few that belong together |
+| `query/index.ts` | the catalog `QUERIES` and the runner |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
 | `engine.ts` | the facade |
 
-The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
+The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `query/*`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
 
 Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
@@ -867,6 +871,7 @@ interface Engine {
   save(): string;
   exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // all bodies without a list; '3mf' později
   interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below
+  query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;   // see Queries below
   subscribe(listener: (state: EngineState) => void): () => void;
 }
 
@@ -882,6 +887,53 @@ type CommandResult =
   | { ok: false; error: { code: 'invalidCommand' | 'invalidDocument'; message: string; commandIndex?: number;
       expression?: { path?: FieldPath; parameter?: string; check?: string; error: ExpressionError } } };   // a rejected expression: where and why
 ```
+
+### Queries (D37)
+
+A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation`.
+
+```ts
+type QueryOptions = { at?: Id } | { state: EngineState };   // now, after a feature, or a state this engine handed out
+type QueryOutcome<Result> =
+  | { ok: true; result: Result }
+  | { ok: false; error: { code: 'invalidArguments' | 'notAvailable' | 'failed'; message: string; arg?: ArgPath } };
+type EntityRef =                                            // "this thing of the model" in the arguments of a query
+  | { kind: 'body'; body: Id }
+  | { kind: 'face'; body: Id; face: FaceName }
+  | { kind: 'edge'; body: Id; edge: EdgeName }
+  | { kind: 'sketchPoint'; sketch: Id; point: Id };
+```
+
+**An entry** (`QuerySpec` in `query/spec.ts`) has a title, a summary and a text on what it returns (all three go to the description for the AI), the description of its arguments, optionally the keys of its result that a tool prints to significant digits (`significant`), and `run(context, args)`. Its result is plain JSON. The types of the queries are a map by name, `Queries`, that a query module extends by declaration merging (`declare module './spec' { interface Queries { … } }`), so a new query edits no shared type; the catalog is typed by the map.
+
+**Arguments** (`query/args.ts`) are named and described, and the checks, the description for the AI and a form in the app come from the description: a number with unit and range, a flag, a text, a choice, the ID of a body, a feature or a sketch, a constraint of the sketch named next to it, a reference to an entity with the kinds it accepts, a plane (`PlaneRef`), an axis (`AxisRef`), a vector, and four ways to build structure: a list with a least and a greatest count, exactly one of several named alternatives (`{ up: [0, 0, 1] }`), a record by key (IDs of bodies or features, or free names) and named fields. The type of the arguments is derived from the description (`ArgsOf`), so the two cannot disagree; `run` gets the same type with the defaults of optional numbers filled in at every depth (`RunArgsOf`). A description is written `as const satisfies ArgSpecs`.
+
+**Before `run`** the engine checks every argument against its description and fills in the defaults (`checkArgs` in `query/check.ts`). An error names the argument by its path, a list of names and indexes (`['orientations', 1, 'by', 'onBed']`).
+
+| Code | When |
+|---|---|
+| `invalidArguments` | the shape or the range is wrong, or the query has no such argument; `state` is not a state this engine handed out; there is no such query |
+| `notAvailable` | something named is not in the state asked about. One rule for every ID wherever it sits: a body, a face, an edge is looked up in the bodies of the state; a feature, a sketch, a constraint, a sketch point among the features the state evaluated. A mistyped ID and one that comes after `at` are the same answer. Also `at` that names no feature |
+| `failed` | the computation gave up: `run` threw `QueryFailure`, or the kernel threw inside a query |
+
+A number is checked against its own description only: the limit of ±1e9 on numbers of the document does not apply. A sketch that did not evaluate is in the document, so it is a valid argument, and its diagnosis is `unavailable`: what was a successful answer stays one. An exception of another kind inside `run` is a defect and passes through, as it does for commands.
+
+**The state.** A query answers for one state and never recomputes it: the current one, the one after a feature (`at`), or one that `preview` or `getState` returned (`state`), so a parameter can be stepped by previews and each step asked about with nothing written. The engine keeps, for every evaluation it hands out, the state of the recompute it was made from and the document it belongs to, by the identity of the evaluation and weakly. A state put together by a caller, or one of another engine, is refused, and the document is the one the engine kept, so an evaluation cannot be paired with another document. A drag preview is diagnosed as dragged.
+
+**The context** (`QueryContext`) is what `run` reads:
+
+| Member | What it gives |
+|---|---|
+| `state` | the document and the evaluation, without the bodies and the surfaces |
+| `bodies`, `surface(body, face)` | the geometry of bodies. A query reads it nowhere else, so that it answers for bodies moved to a pose once the mechanism of step 5 exists; a surface is asked by body and face because one face number can lie in two bodies |
+| `frame(ref)`, `axis(ref)` | the frame of a `PlaneRef` (for a face the normal points out of the body) and the line of an `AxisRef`, or the code the recompute gives for the same reference (`brokenReference`, `nonPlanarFace`) |
+| `face(name)`, `sketch(id)` | the number of a named face; what the recompute kept about a sketch (`SketchState`), undefined when it did not evaluate |
+| `kernel` | the geometric kernel; an exception of it becomes the answer `failed` |
+| `memo(owners, key, compute)` | a result kept for as long as all its owners live (both solids for a pair of bodies, the evaluated sketch for a diagnosis). Owners that live across recomputes are a solid, an evaluated sketch, the document, a section or a feature of it; the order of the owners does not matter, and the keys of different queries are kept apart |
+
+What does not belong to a body is never posed: a sketch and its points, an axis through a sketch point, a plane feature, a base plane or axis.
+
+**Guards.** `packages/mcp/test/queries.test.ts` has two tables typed by the map of queries, so a query without a row does not compile: arguments of the query's own type, which the test runs through the MCP tool `query`, and every argument with whether a caller may leave it out, which the test compares with the entry (a description handed over in a variable could carry an argument the type does not have). The test also checks that `of` of a constraint names a required sketch next to it.
 
 ### Bodies: volume, export and interference (D35, point 5)
 
@@ -1026,6 +1078,7 @@ klient AI ──stdio──▶ MCP server (Node) ──┬─▶ vlastní engine
 | `explain_constraint` | Jestli vazba plyne z ostatních a ze kterých. |
 | `get_body` | Stěny (rovinnost, plocha, normála) a hrany (druh, délka; u přímé krajní body, u kruhové střed a poloměr) se jmény použitelnými v odkazech. |
 | `check_interference` | Colliding pairs of bodies with the shared volume, and pairs the kernel could not compute; `bodies`, `threshold`, `at`. |
+| `query` | Asks any query of the catalog of the engine: `query` (its name), `args`, `at` (the state after a feature) and `after` (a command previewed first; the query is asked about the result and nothing is written; with both, the document after the command is evaluated up to `at`). Numbers of the answer are rounded to six decimal places, and the keys a query lists in `significant` to that many significant digits. An error is a text that starts with its code. The queries with their arguments are in `describe_api`, section Queries (D37). |
 | `execute`, `preview` | Příkaz enginu (i `batch`); `preview` nezapisuje. Výsledek shrne, co není v pořádku, a u každé skici řekne, jestli je vyřešená a kolik má volnosti. It also reports what is not a feature state: `failedChecks`, `parameterErrors`, and `fieldErrors` of features. |
 | `sketch_tool` | Runs a sketch tool of the engine (`sketchTool`) in a sketch: `{ sketch, tool, input, prefix?, preview? }`. It generates the IDs with `freshIds` (optionally with a prefix), writes the batch as one command (or only computes it with `preview: true`) and returns `ids` with what `execute` returns. |
 | `undo`, `redo` | Historie příkazů. |

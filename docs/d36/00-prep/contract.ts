@@ -540,7 +540,9 @@ export type QueryOptions = { at?: Id; state?: never } | { state: StateAfter; at?
 // decided and as about two hundred calls in the tests expect, and then calls `run` of the same
 // entry that `query` calls. The computation is shared; the messages are not. No further method
 // of this kind is added to `Engine`.
-export interface EngineAfter extends Omit<Engine, 'getState' | 'execute' | 'preview' | 'load' | 'subscribe'> {
+// (`query` is in the engine since the step was implemented. It is restated here because the draft
+// types it by the maps of this file, which carry what the contracts of the packages add.)
+export interface EngineAfter extends Omit<Engine, 'getState' | 'execute' | 'preview' | 'load' | 'subscribe' | 'query'> {
   // As today, with the surfaces in the evaluation and with what the packages add to the unions.
   getState(at?: Id): StateAfter;
   execute(cmd: CommandAfter): CommandResultAfter;

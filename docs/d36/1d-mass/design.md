@@ -128,3 +128,7 @@ Nothing was left without action.
 | `has` is in `util.ts`, not in `evaluate.ts` | internal (factual) | Yes (`util.ts:70`; `lookup` at `evaluate.ts:111`) | Corrected |
 
 Nothing was left without action. What stays open is under "Open": a body whose density comes from the document is taken solid until 3a brings a fill factor with the material.
+
+### Round 3 (2026-11-15): the fixes of round 2, the last round
+
+`codex` and a fresh internal subagent read only what the second fix commit (`bc6a44c`) changed; `agy` did not take part (out of quota). By the rule of the project this is the last round. Neither had a finding on this package. Both checked and found holding: the equation with its units, written the same in the contract, in `returns` and here, and what the entry computes; the three masses of the scenario (18.431, 7.372, 37.687 g); the test for a `fill` that applies to no body (a body with an explicit mass or its own density has fill 1; a mixed list passes; `fill: 1` and the default pass; a missing density is reported first); the index of a body without a volume in the argument. Nothing changed in this package in this round.

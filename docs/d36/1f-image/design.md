@@ -1,6 +1,6 @@
 # 1f View image for the AI
 
-**Decision D43. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D43. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: pictures of the joint: whole, the gears alone, and cut through the gears.
 
@@ -147,3 +147,14 @@ Nothing was left without action.
 | `completeRegions` was view code of the app, which `packages/mcp` cannot import | internal | Yes | It is a function of the engine (1a) |
 
 Nothing was left without action.
+
+### Round 3 (2026-11-15): the fixes of round 2, the last round
+
+`codex` and a fresh internal subagent read only what the second fix commit (`bc6a44c`) changed; `agy` did not take part (out of quota). By the rule of the project this is the last round. Neither found a blocker. Both found `cutOf`, its two callers and the refusal to save a picture without its cut consistent, the reused arguments of the section deriving the right types (the offset a number with its default), and no import from `packages/mcp` into the app. The findings that touch this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The picture inherits the mismatch of 1a: the model is clipped at the plane asked for and filled with loops taken `below` under it | codex (major, on 1a) | Yes | `cutOf` hands the capability the plane the section was taken at (`takenAt` of 1a); the model is clipped there and the fills lie in it |
+| The message of a section that is too large says "N points"; the number counts loops and points | internal | Yes | The message |
+
+Nothing was left without action. Not reviewed by anyone: the change of this round (`takenAt` in `cutOf`). Still true after three rounds: nothing of this package was run in a browser.

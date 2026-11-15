@@ -2,7 +2,7 @@
 // the AI and as the section view of the app. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Third version, after the second round of reviews (design.md, "Reviews").
+// Fourth version, after the third and last round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Solid, Vec2, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
@@ -18,8 +18,10 @@ import type { ResultUnits } from '../1b-measure/contract';
 //   reversed (after the offset). It decides which side the app cuts away. The section is taken
 //   just below the plane (see `cut`), and "below" turns with the normal: a body that ends in the
 //   plane shows its face as its section one way and is absent the other way. For a body the
-//   plane goes through, the loops are those of the other side of the plane, the precision of
-//   the coordinates away: the same shape within that precision, seen from the other side.
+//   plane goes through, the loops are those of a plane twice `below` away from the first, seen
+//   from the other side. How much they differ depends on the body: `below` times the slope of
+//   a wall, and near a wall that runs almost along the plane, or a feature that ends within
+//   that distance, even the number of loops can change.
 // - `bodies`: only these; without it all bodies of the state.
 // - `outline`: how a loop is written. `spans` (the default) is for reading: lines and arcs
 //   rebuilt from the surfaces, and what has no such form as a curve. `polylines` is for drawing:
@@ -60,18 +62,20 @@ export const SECTION_ARGS = {
 //   document except above the caps on the number of segments (design.md of 1b). `sweep` is the
 //   angle from `from` to `to` about `center` along the loop, positive counter-clockwise; a whole
 //   circle has `from` equal to `to` and a sweep of 2π or −2π.
-// - `curve`: `count` points from `from` to `to`, both included, `length` along them. A curve
-//   that is a whole loop has `from` equal to `to`; its points are the corners of the loop once,
-//   the first not repeated (as in a polyline), `count` is their number, and `length` includes
-//   the closing segment. `points` are there only while they fit the budget.
+// - `curve`: `count` points from `from` to `to`, both included. A curve that is a whole loop
+//   has `from` equal to `to`; its points are the corners of the loop once, the first not
+//   repeated (as in a polyline), and `count` is their number. `length` is the length of that
+//   piece of the polygon the mesh gives, as the length of a loop is (see `cut`); for a whole
+//   loop it is the length of the loop. `points` are there only while they fit the budget.
 export type SectionSpan = { face: FaceNameAfter; from: Vec2; to: Vec2 } & ({ kind: 'line' } | { kind: 'arc'; center: Vec2; radius: number; sweep: number } | { kind: 'curve'; count: number; length: number; points?: Vec2[] });
 
 // A closed loop. `area` and `length` are of the polygon the mesh gives (taken before the points
-// that are not corners are dropped), so a circle of radius r has a little less than πr² (the
-// polygon is inscribed).
+// that are not corners are dropped; those of the listed points may differ from them in the last
+// digits), so a circle of radius r has a little less than πr² (the polygon is inscribed).
 // - With `spans`: the spans in order.
 // - With `polylines`: the corners of the polygon in order, the first not repeated; left out when
 //   they do not fit the budget.
+// Where a loop starts is fixed by the shape, not by the mesh (see `cut`).
 export interface SectionLoop {
   area: number; // mm2, positive
   length: number; // mm
@@ -87,7 +91,9 @@ export interface SectionRegion {
   outer: SectionLoop;
   holes: SectionLoop[];
 }
-// - `loops`: how many closed loops the plane cuts out of the body.
+// - `loops`: how many closed loops the plane cuts out of the body. A loop left with fewer than
+//   three corners (see `cut`) is not a loop: it counts neither here nor in `area`, and a body
+//   left without loops is not listed.
 // - `regions`: left out when the outline of the body does not fit the budget (its spans, or with
 //   `polylines` its loops); the body then has its area and the number of its loops only.
 export interface SectionOfBody {
@@ -100,8 +106,11 @@ export interface SectionOfBody {
 // - `frame`: the cutting plane as it was asked for: after the offset and the flip. The points of
 //   the loops are in its x and y; `origin + x·u + y·v` is the point in the model.
 // - `below`: how far under that plane, against its normal, the section was really taken: the
-//   precision of the coordinates (see `cut`). The loops are those of the plane through
-//   `origin − below·normal`, laid into the frame.
+//   precision of the coordinates over all bodies asked about (see `cut`). The loops are those
+//   of the plane through `origin − below·normal`, laid into the frame. A body far from the
+//   origin in the same call therefore moves the cut of every body by that much. Who draws the
+//   cut clips at that plane, not at the one asked for (`takenAt` in calls.ts), so that the
+//   clipped mesh and the loops are of one plane.
 // - `bodies`: the bodies the plane cuts, in the order of the model. A body the plane misses is
 //   not listed.
 // - `inPlane`: bodies with a planar face that lies in the cutting plane (parallel within
@@ -147,31 +156,45 @@ export const SECTION_UNITS = { area: 'mm2', length: 'mm', radius: 'mm', sweep: '
 //   segments are chained by the edges they end on, not by comparing coordinates.
 // - The mesh of a body is a closed surface (every edge in exactly two triangles, once each way:
 //   guarantee 1 of the kernel port and the check of its adapter), so every chain closes.
-// - After the chains are closed, a segment shorter than `below` is dropped, and a point that
-//   lies between its two neighbours on the same face, nearer than `below` to the line through
-//   them, is dropped: the points of a loop are the corners of the polygon and do not depend on
-//   how a face is divided into triangles. The measure is the precision of the coordinates, not
-//   a fixed length: on a body that is not aligned with the axes the point on the diagonal of
-//   a side quad is off the line by the noise of float32. What is a corner is therefore decided
-//   to that precision; a model whose coordinates are so large that it nears the chord tolerance
-//   loses real corners of fine curves (measured: 987 corners instead of 1059 for the housing
-//   moved 2000 mm away). A loop without area is dropped.
-// - `area` and `length` are of the loop before points are dropped.
+// - After the chains are closed, the points that are not corners are dropped, so that the
+//   points of a loop do not depend on how a face is divided into triangles. `precision` is the
+//   precision of the coordinates of this body (`coordinatePrecision` of 1b over the body
+//   alone, so that the corners of a body do not depend on which other bodies were asked about);
+//   it is not a fixed length, because on a body that is not aligned with the axes the point on
+//   the diagonal of a side quad is off the line by the noise of float32. The rule, in this
+//   order:
+//   1. A segment shorter than `precision` goes: walking the chain, a point nearer than that to
+//      the last point kept is dropped, and the segment after it starts at the point kept.
+//   2. The points where the face changes are kept. A loop on one face keeps the point furthest
+//      from the mean of its points (a corner of its hull, wherever the mesh starts the chain);
+//      of several that far within `precision`, the smallest in the order of (u, v).
+//   3. From each kept point the walk goes on along the run on one face: the next point kept is
+//      the furthest one such that every point of the mesh between lies within `precision` of
+//      the straight segment to it. A dropped point is thus judged against the segment that
+//      replaces it, never against a line that later drops have moved: the polygon of the
+//      corners stays within `precision` of the polygon of the mesh, whatever the curve.
+//   4. A loop left with fewer than three corners is dropped (a sliver thinner than the
+//      precision: what a plane cuts just under an edge or a tip that lies in it).
+//   The loop is listed from the corner of step 2 (of several face changes, the smallest in the
+//   order of (u, v)), so the list does not depend on where the mesh starts the chain either.
+// - `area` is of the loop before points are dropped. `lengths[i]` is the length along the mesh
+//   polygon from `points[i]` to the next corner; their sum is the length of the loop.
 // - The material is on the left of a loop seen against the normal of the plane.
 export interface CutLoop {
   points: Vec2[];
   faces: number[]; // faces[i]: the face of the segment from points[i] to the next point
+  lengths: number[];
   area: number; // signed: positive for a loop that runs counter-clockwise
-  length: number;
 }
-export declare function cut(solid: Solid, frame: Frame, below: number): CutLoop[];
+export declare function cut(solid: Solid, frame: Frame, below: number, precision: number): CutLoop[];
 
 // ---------------------------------------------------------------- the section view of the app
 
 // What the section adds to the scene of the app (`SceneModel` in packages/app/src/viewport.ts,
 // here the stand-in of 1b): the half-space that is cut away. What lies on the side the normal
 // points to is not drawn and not picked; the cut is filled from the loops of the query
-// (`fills`), which lie in the plane itself and are not clipped.
+// (`fills`), which lie in the plane itself and are not clipped. The plane is the one the
+// section was taken at (`takenAt`), for the clip and for the fills alike.
 declare module '../1b-measure/contract' {
   interface SceneAdditions {
     clip: { origin: Vec3; normal: Vec3 };

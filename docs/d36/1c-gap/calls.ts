@@ -104,7 +104,10 @@ type PairAnswer = Gap | 'apart' | { refused: string };
 function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer {
   const [A, B] = [context.bodies[a], context.bodies[b]]; // from the context: the same code answers for a pose
   if (boxesApart(A, B, within)) return 'apart';
-  // the key has what the answer depends on besides the two meshes: the search distance, and the chord tolerance `accuracy` reads
+  // The key has what the answer reads besides the two meshes: the search distance, and the chord
+  // tolerance (`accuracy`). Today a solid never outlives its tolerance (a document with other
+  // settings is replayed from the start), so the tolerance in the key costs nothing and guards
+  // against a recompute that would one day keep solids.
   return context.memo([A.solid, B.solid], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): PairAnswer => {
     let measured: number;
     try {

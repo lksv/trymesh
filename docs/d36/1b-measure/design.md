@@ -1,6 +1,6 @@
 # 1b Measuring between two named entities, and the generic form of a query in the app
 
-**Decision D39. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D39. State: designed, not implemented; third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the wall between the root circle of the ring gear and the bolt holes.
 
@@ -164,7 +164,7 @@ The plan draws the six packages of track A side by side after the preparatory st
 | 1c | from 1b: `closest`, `coordinatePrecision`, `meshAccuracy`; for its view, the generic form |
 | 1d | from 1b: the generic form (it has no view) |
 | 1e | from 1b: the precision of the coordinates; for its view, the generic form |
-| 1f | from 1a: the query `section`, `completeRegions` (a function of the engine next to the query) and the clip of the viewport |
+| 1f | from 1a: the query `section`, `completeRegions` and `takenAt` (functions of the engine next to the query) and the clip of the viewport |
 
 So that the other four do not wait for the whole of this package, its first commit is the shared pieces alone: `mesh-distance.ts` (with `closest`, `coordinatePrecision`, `meshAccuracy`), `entity.ts`, and in the app `QueryView` with `SceneAdditions` and the map of units. With that merged, the engine sides of 1a, 1c, 1d and 1e run side by side, and their views follow the generic form.
 
@@ -247,3 +247,17 @@ The first round had many findings, several of them serious, and the fix was larg
 | The fills of the cut of a hidden body are drawn, in the view and in the saved picture | both (codex: major) | Yes (`app.ts:2119`, `:2134` leave hidden bodies out of the scene and of the highlight) | A fill and a line may name their body, and the scene leaves out those of hidden bodies; see 1a and 1f |
 
 Nothing of this round was left without action in this package. The engine directory (`queries/` here, `query/` in the implementation of the preparatory step on `master`) is noted under "Where it lives".
+
+### Round 3 (2026-11-15): the fixes of round 2, the last round
+
+Round 2 again found four major defects, so the fixes of that round were read once more, and by the rule of the project (at most three rounds, the third on the diff of the fix alone) this is the last round whatever it found. The reviewers read only what the second fix commit (`bc6a44c`) changed: `codex` (gpt-6-astra, effort high; five findings: two major, one factual error, two minor) and a fresh internal subagent that had seen neither the designs nor the earlier answers (ten findings: two major, the rest minor or factual; it wrote four experiments on the prototypes and two type probes). `agy` did not take part: out of quota in all three rounds. **Neither found a blocker.**
+
+What the round found is recorded where it belongs: the rule for the corners of a section, the plane a cut is drawn at, the per-body precision and the slivers in [1a](../1a-section/design.md); the variant of the gap without a port method, the reason for the tolerance in the key and the effect of the augmentation in [1c](../1c-gap/design.md); the contact of a whole face in [1e](../1e-print/design.md); one line in [1f](../1f-image/design.md); nothing in [1d](../1d-mass/design.md).
+
+On this package the reviewers had no finding. They checked and found holding: `SceneAdditions.fills` and `.lines` with their optional body; the texts of the view of `interference` against `app.ts`; `coordinatePrecision` as the expression of `interference.ts`; `meshAccuracy` for every pair; the accuracy of 0.020055 in the scenario. One line of this design changed: the row of 1f in "Order inside the track" names `takenAt`.
+
+**What is open after the last round** (each is recorded in its design; no further review is planned):
+
+- 1c: whether the kernel port gets `minGap` at all, or the gap is the pass of this package with `interference` for containment. It needs one measurement on a model larger than the joint and should be decided before 1c is implemented.
+- 1a, 1e, 1f: the fixes of this round (the rule for corners, `takenAt`, the dropped slivers; contact of a whole face) were checked by the type check and by runs of the prototypes, not by a reviewer.
+- All packages with an app side: nothing was run in a browser.

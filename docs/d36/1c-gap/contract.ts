@@ -1,7 +1,7 @@
 // Contract of package 1c of D36 (decision D40): the smallest gap between bodies. A draft, only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Third version, after the second round of reviews (design.md, "Reviews").
+// Fourth version, after the third and last round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
@@ -11,11 +11,17 @@ import type { ResultUnits } from '../1b-measure/contract';
 
 // One method is added to `SolidKernel` in types.ts; in the code it is one line of the interface.
 // A draft does not edit that file: the method is merged into the interface of the engine below,
-// so `context.kernel.minGap` is typed in every draft that is checked together with this one
-// (two packages that declare one method differently would merge as overloads, not as an error:
-// see design.md, "Needs"). The ports lie between the section comments `// --- porty` and
-// `// --- přepočet`, the part `describe_api` leaves out: an AI learns what the gap means from
-// the description of the query, not from the port.
+// so `context.kernel.minGap` is typed in every draft that is checked together with this one.
+// - It is declared as a property, not in method syntax: a second declaration of the same name
+//   with another type is then an error (TS2717), where two methods would quietly merge as
+//   overloads. 3d, which adds to the port as well, should do the same.
+// - The merge changes `SolidKernel` for the whole program it is loaded into. The joint check of
+//   the drafts passes because it holds only the sources of the engine and the drafts; a draft
+//   that builds a kernel, or imports the adapter or one of the three fakes in tests, would not
+//   compile until that code has `minGap`. That is the list of what the implementation changes.
+// The ports lie between the section comments `// --- porty` and `// --- přepočet`, the part
+// `describe_api` leaves out: an AI learns what the gap means from the description of the query,
+// not from the port.
 //
 // What an implementation guarantees:
 // 1. The value is the smallest distance between a point of the surface of `a` and a point of the
@@ -35,7 +41,7 @@ import type { ResultUnits } from '../1b-measure/contract';
 //    closer than that.
 declare module '../../../packages/engine/src/types' {
   interface SolidKernel {
-    minGap(a: Solid, b: Solid, within: number): number;
+    minGap: (a: Solid, b: Solid, within: number) => number;
   }
 }
 

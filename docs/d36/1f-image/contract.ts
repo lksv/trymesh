@@ -2,7 +2,7 @@
 // the app (`HostOperation` of the preparatory step), not a query: the engine has no renderer.
 // A draft, only type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Third version, after the second round of reviews (design.md, "Reviews").
+// Fourth version, after the third and last round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Vec3 } from '../../../packages/engine/src/index';
 import type { AppHost, ArgSpecs, EngineAfter, QueryOutcome, RunArgsOf, StateAfter, ToolAnswer } from '../00-prep/contract';
@@ -42,7 +42,8 @@ export type ViewName = keyof typeof VIEWS | 'current';
 // - `camera`: a camera fitted to what is drawn, or `current`: the user's camera as it stands
 //   (direction, target and scale).
 // - `cut`: the half-space that is cut away and what fills the cut, as the section view of 1a
-//   draws them: the frame of the cutting plane and, per region of the section, its loops in the
+//   draws them: the frame of the plane the section was taken at (`takenAt` of 1a: the model is
+//   clipped there and the fills lie in it) and, per region of the section, its loops in the
 //   x and y of that frame, the outer one first. The regions are all of them: a caller that has
 //   only a part of a section does not ask for a cut.
 // The answer says what it drew, so that a caller can relate pixels to millimetres and colours to

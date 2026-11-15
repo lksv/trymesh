@@ -131,8 +131,20 @@ declare function liesIn(surface: Extract<Surface, { kind: 'plane' }>, frame: Fra
 // Outer loops with the holes that lie in them.
 declare function nested(loops: CutLoop[]): { outer: CutLoop; holes: CutLoop[] }[];
 // The runs of segments of one face of a loop as spans, by the table of contract.ts; a curve
-// comes with its points.
+// comes with its points, and with its length summed from `lengths` of the loop (the length along
+// the mesh polygon, as the length of the loop is).
 declare function spansOf(loop: CutLoop, surfaceOf: (face: number) => Surface | undefined, nameOf: (face: number) => FaceNameAfter, frame: Frame): SectionSpan[];
+
+// The plane a section was really taken at: the frame of the answer moved `below` against its
+// normal. Whoever draws the cut (the section view of the app, the picture of 1f) clips the model
+// at this plane and lays the fills into it, so the edge of the clipped mesh and the loops belong
+// to one plane and meet. Clipping at the plane asked for would leave the two `below` apart, and
+// on a wall that leans the outlines would differ by `below` times its slope. A function of the
+// engine, next to the query, like `completeRegions`.
+export function takenAt(result: SectionResult): Frame {
+  const { frame, below } = result;
+  return { ...frame, origin: [frame.origin[0] - below * frame.normal[0], frame.origin[1] - below * frame.normal[1], frame.origin[2] - below * frame.normal[2]] };
+}
 
 // The regions of a complete answer, each with its body; undefined when anything was left out.
 // A caller that fills a cut (the section view of the app, the picture of 1f) fills only from
@@ -148,7 +160,7 @@ export const section: (typeof QUERIES)['section'] = {
   title: 'Section',
   summary: 'What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.',
   returns:
-    'frame: the cutting plane (origin, x, y, normal); points are [u, v] in its x and y. below: how far under the plane, against its normal, the section was taken (mm; the precision of the coordinates). bodies: for every body the plane cuts, area (mm2), loops (how many) and regions, each with area, an outer loop and holes. A loop has area, length and spans: line, arc (center and radius of the exact surface, sweep in rad, positive counter-clockwise; a whole circle has from equal to to) or curve (count, length, and points while they fit; a curve that is a whole loop lists its corners once), each with the face it lies on and from and to (points of the mesh; an end of an arc where another face cuts it lies inside its circle, by no more than the chord tolerance on a model of ordinary size). With outline polylines a loop has points instead of spans. inPlane: bodies with a face that lies in the cutting plane, one face each (such a body shows that face or nothing: move the offset). maxPoints is the budget of the answer: a span is one, a point is one, a loop written as a polyline is one; the outlines of all bodies are taken first, then the lists of points; what does not fit is left out whole (a body keeps area and loops, a curve count and length), and truncated says how much was listed of how much.',
+    'frame: the cutting plane (origin, x, y, normal); points are [u, v] in its x and y. below: how far under the plane, against its normal, the section was taken (mm; the precision of the coordinates of the bodies asked about). bodies: for every body the plane cuts, area (mm2), loops (how many) and regions, each with area, an outer loop and holes. The points of a loop are the corners of the polygon the mesh gives (points in line with their neighbours are left out, within the precision of the coordinates of the body); area and length are of that polygon before points are left out. A loop has area, length and spans: line, arc (center and radius of the exact surface, sweep in rad, positive counter-clockwise; a whole circle has from equal to to) or curve (count, length, and points while they fit; a curve that is a whole loop lists its corners once), each with the face it lies on and from and to (points of the mesh; an end of an arc where another face cuts it lies inside its circle, by no more than the chord tolerance on a model of ordinary size). With outline polylines a loop has points instead of spans. inPlane: bodies with a face that lies in the cutting plane, one face each (such a body shows that face or nothing: move the offset). maxPoints is the budget of the answer: a span is one, a point is one, a loop written as a polyline is one; the outlines of all bodies are taken first, then the lists of points; what does not fit is left out whole (a body keeps area and loops, a curve count and length), and truncated says how much was listed of how much.',
   args: SECTION_ARGS,
   run(context, args) {
     const base = context.frame(args.plane);
@@ -156,7 +168,9 @@ export const section: (typeof QUERIES)['section'] = {
     const frame = placed(base, args.offset, args.flip === true);
     const ids = args.bodies ?? Object.keys(context.bodies);
     const names = context.state.evaluation.faceNames;
-    const precision = coordinatePrecision(...ids.map((id) => context.bodies[id])); // geometry only from the context: the same code answers for a pose
+    // How far under the plane the cut is taken: one number for the call, over all bodies asked
+    // about. (Geometry only from the context: the same code answers for a pose.)
+    const below = coordinatePrecision(...ids.map((id) => context.bodies[id]));
     const polylines = args.outline === 'polylines';
     const budget = { left: args.maxPoints, shown: 0, total: 0 };
     // `count` items of the answer, when they still fit the budget
@@ -167,7 +181,7 @@ export const section: (typeof QUERIES)['section'] = {
       budget.shown += count;
       return true;
     };
-    const result: SectionResult = { frame, below: precision, bodies: [], inPlane: [] };
+    const result: SectionResult = { frame, below, bodies: [], inPlane: [] };
     // The first round, over the bodies in their order: the cut of each, and its outline (its
     // spans, or with polylines its loops) against the budget.
     const outlined: { entry: SectionOfBody; loops: CutLoop[]; spansIn: (loop: CutLoop) => SectionSpan[] }[] = [];
@@ -175,11 +189,12 @@ export const section: (typeof QUERIES)['section'] = {
       const body = context.bodies[id];
       const flush = body.faces.find((face) => {
         const surface = context.surface(id, names[face.id]);
-        return surface?.kind === 'plane' && liesIn(surface, frame, precision);
+        return surface?.kind === 'plane' && liesIn(surface, frame, below);
       });
       if (flush) result.inPlane.push({ body: id, face: names[flush.id] }); // at most one per body
-      const loops = cut(body.solid, frame, precision);
-      if (loops.length === 0) continue;
+      // the corners of a body are decided by its own precision, whatever else was asked about
+      const loops = cut(body.solid, frame, below, coordinatePrecision(body));
+      if (loops.length === 0) continue; // also a body of which only slivers under three corners were left
       const entry: SectionOfBody = { body: id, area: loops.reduce((sum, loop) => sum + loop.area, 0), loops: loops.length }; // holes are negative
       result.bodies.push(entry);
       const spans = new Map(loops.map((loop) => [loop, polylines ? [] : spansOf(loop, (face) => context.surface(id, names[face]), (face) => names[face], frame)]));
@@ -192,7 +207,7 @@ export const section: (typeof QUERIES)['section'] = {
     // points of an early body can no longer cost a later body its outline.
     for (const { entry, loops, spansIn } of outlined) {
       const write = (loop: CutLoop): SectionLoop => {
-        const head = { area: Math.abs(loop.area), length: loop.length };
+        const head = { area: Math.abs(loop.area), length: loop.lengths.reduce((sum, length) => sum + length, 0) };
         if (polylines) return fits(loop.points.length) ? { ...head, points: loop.points } : head;
         return { ...head, spans: spansIn(loop).map((span) => (span.kind === 'curve' && !fits(span.count) ? { ...span, points: undefined } : span)) };
       };
@@ -209,6 +224,8 @@ export const FIXTURE: { args: QueryArgs<'section'> } = { args: { plane: XY } };
 // The view asks for polylines with a budget far above any model the app can show, cuts the
 // scene away on the side the normal points to and fills the cut: one fill per region, the outer
 // loop first and its holes after it, which is the shape `fills` of the scene takes today.
+// - The model is clipped at the plane the section was taken at (`takenAt`), and the fills and
+//   the outline are laid into that plane.
 // - A cut is filled only from a complete answer. If the answer was truncated, a loop is missing
 //   somewhere, and a region filled without one of its holes would show material across
 //   a cavity. The view then clips the model, fills nothing and says so.
@@ -239,7 +256,7 @@ export const sectionView: QueryView<'section'> = {
     ];
   },
   scene(result): Partial<SceneAdditions> {
-    const { frame } = result;
+    const frame = takenAt(result);
     const clip = { origin: frame.origin, normal: frame.normal };
     const regions = completeRegions(result);
     if (!regions) return { clip };

@@ -1,6 +1,6 @@
 # 1c Smallest gap between bodies
 
-**Decision D40. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D40. State: designed, not implemented; fourth version, after three rounds of reviews. One choice is left open on purpose: whether the kernel port gets a method at all (see "Open").** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the gap between a planet and the carrier.
 
@@ -64,7 +64,7 @@ The adapter of Manifold checks both solids as `boolean` does, checks `within` it
 - **One pair the kernel refuses** is listed in `failed` with the kernel's reason and the others are still answered, as in the report of collisions. Only the call of the kernel is guarded. Anything else that throws inside the query is a defect and passes through, as the shared contract asks.
 - **The size of the answer** is limited by `maxPairs` (50 by default): the list of pairs (the closest first) and the list of refused pairs each hold at most that many. `close` and `refused` say how many there are, and `truncated` that a list was cut.
 - **The work** is bounded by the arguments: every pair among `bodies` is examined, each within `within`. The summary of the query says that the time grows with both. `maxPairs` limits the answer, not the work.
-- The answer for a pair is remembered by its two meshes (`context.memo` with both solids as owners; the key holds the search distance and the chord tolerance, which `accuracy` reads and which a body of only planar faces may survive a change of).
+- The answer for a pair is remembered by its two meshes (`context.memo` with both solids as owners; the key holds the search distance and the chord tolerance, which `accuracy` reads). The tolerance in the key is a guard, not a need of today: a document with other settings is replayed from its first feature (`evaluate.ts` keys the start of the replay by the settings object), so no solid outlives its tolerance, which `interference.ts` relies on as well.
 
 Everything about a body is read from the context, so the query answers at `at`, over `after` (stepping a parameter and reading the gap at each step) and, with package 5a, in a pose.
 
@@ -114,7 +114,9 @@ It is the collisions view with one line more in the scene.
 
 ## Needs from the preparatory step
 
-- **How a package adds to the kernel port.** Nothing is missing in the types: `SolidKernel` is an exported interface of the engine, and this package merges its method into it (`declare module '…/packages/engine/src/types'`), so `context.kernel.minGap(…)` compiles in every draft checked together with this one. (The second version said a draft cannot do that and cast the kernel to a type of its own; a reviewer showed that it can.) What is missing is a word in the shared contract that this is the way: the six maps are named there, the ports are not. Package 3d adds to the port as well; if two packages declared one method with different signatures, the merge would make overloads of them and the joint type check would not complain.
+- **How a package adds to the kernel port.** Nothing is missing in the types: `SolidKernel` is an exported interface of the engine, and this package merges its method into it (`declare module '…/packages/engine/src/types'`), so `context.kernel.minGap(…)` compiles in every draft checked together with this one. (The second version said a draft cannot do that and cast the kernel to a type of its own; a reviewer showed that it can.) What is missing is a word in the shared contract that this is the way: the six maps are named there, the ports are not. Two things that word should carry:
+  - An addition is declared as a property, not in method syntax. Package 3d adds to the port as well; two methods of one name with different signatures would merge as overloads without a complaint, two properties are an error (TS2717). This package declares `minGap` that way.
+  - The merge changes the port for the whole program it is loaded into. The joint check of the drafts passes because it holds only the sources of the engine and the drafts. A draft that builds a kernel, or imports the adapter or one of the fakes in tests, does not compile until that code has the method. A passing draft check therefore says nothing about the implementations of the port; they are the work of the implementation (the adapter, three fakes).
 - It uses the stand-ins of 1b: the units of a result, and `failed` with the path of the argument where the mistake is the caller's (a list of `bodies` that names one body twice and nothing else).
 
 ## Rejected
@@ -127,6 +129,13 @@ It is the collisions view with one line more in the scene.
 
   What the port method costs, so that the choice can be weighed again: a guarantee of seven points that every kernel has to keep, three fakes in tests, a change in a place shared with 3d, and two sources for one number (the kernel's distance and the points of the pass, with a second run of the pass when they disagree).
 
+  **A second variant without a port method, raised in the last review and not weighed before: the pass for the distance, and `interference` for containment.** The tested answer to "do they share a volume" is already behind the port as it is: `boolean('intersection')`, which `interference` wraps and remembers per pair of meshes, and which this design calls anyway for every pair at zero. The variant: the pass of 1b gives the distance; where it is above zero and the boxes of the two bodies overlap, `interference` is asked whether they share a volume (zero and `collision` if so). No ray test, no new method, no guarantee of seven points, nothing in the place shared with 3d.
+  - It has to be every pair whose boxes overlap, not only a pair with one box inside the other, as the reviewer put it: a body may be several pieces, of which one lies inside the other body while the box of the whole does not. On the joint that is 13 of 28 pairs, against the 18 pairs within 5 mm that go to `minGap` in this design; one `interference` of such a pair took 17 to 24 ms cold, one `minGap` 24 ms (the reviewer's run on the joint, for the five pairs with one box inside the other; not rerun by the author).
+  - For a pair whose distance is above zero the surfaces do not touch, so that boolean runs on separated surfaces, not on the flush faces the port gives no guarantee for.
+  - What it costs: the pass for every pair whose boxes are within the search distance, also those that turn out apart (the kernel answers those without the pass); and the distance of a pair is then only the engine's number.
+
+  This variant removes the one firm reason above and leaves speed. It was found in the third and last review round, too late to rebuild the design on it without a review of the result, so the design stays with the port method and names this as the choice to make before 1c is implemented (see "Open"). If it is taken, what changes is `gapOf` (no kernel call, a box test and `interference` instead), the seven guarantees and the port section go, and the answer, the arguments and the view stay as they are.
+
   Two reasons given in earlier versions did not hold and were dropped after reviews: that telling containment needs a boolean intersection for every pair whose boxes overlap (the first version), and that with `minGap` one library decides what touching means (the second: zero is decided by the engine's own threshold and the kind of contact by `interference`, in either variant).
 - **The port returns the two points as well.** Manifold does not give them; an adapter would have to find them itself, which is the pass the engine has anyway, and every other kernel would have to do the same behind the port.
 - **A search distance without a default (measure every pair fully).** The cost grows with the distance (5 ms against 339 ms for one pair of the joint), and an answer with a distance for every pair of a large model is mostly numbers nobody asked for.
@@ -138,7 +147,7 @@ It is the collisions view with one line more in the scene.
 ## Open
 
 - How the time grows with the number of bodies. A model of fifty bodies has 1225 pairs; the boxes cut most of them, but the trial has only the eight bodies of the joint. If it is too slow, the fallback is a limit on the pairs sent to the kernel, with the rest counted as not examined.
-- Whether the port method earns its place (see "Rejected", the first item). One measurement would settle it: a model with many pairs of bodies whose boxes are within the search distance and which are apart, asked with the kernel and with the pass alone. The joint has too few such pairs to tell. If the pass alone is as fast, the port stays as it is and the point-in-solid test is written.
+- **Whether the port method earns its place** (see "Rejected", the first item, with its two variants without a port method). To decide before this package is implemented. One measurement would settle it: a model with many pairs of bodies whose boxes are within the search distance and which are apart, asked three ways: with `minGap` and the pass (this design), with the pass and `interference` for the pairs whose boxes overlap, and with the pass and a point-in-solid test. The joint has too few such pairs to tell. If the second is as fast, the port stays as it is and 1c adds nothing to it.
 - Whether `fit` and `collision` should carry the depth of the overlap as well. Today the caller asks `interference` for it.
 
 ## Reviews
@@ -173,6 +182,18 @@ Not acted on: a limit on the number of pairs examined (codex, part of the findin
 | The containment test of the variant without the port tests one vertex of each body; a body may be several pieces | codex | Yes (`buildPrism` takes several regions into one body) | One vertex of each connected piece |
 | The accuracy of the scenario is 0.02 plus the precision of the coordinates | both | Yes | 0.0200515 in the comment |
 
-Changed with it, asked by no reviewer but raised as unchecked by one: the chord tolerance is in the key of the memory of a pair, because `accuracy` reads it and a body of only planar faces may be the same solid after the tolerance changes.
+Changed with it, asked by no reviewer but raised as unchecked by one: the chord tolerance is in the key of the memory of a pair, because `accuracy` reads it. (The reason first given for it, that a body of only planar faces may be the same solid after the tolerance changes, was false; see round 3.)
 
 Not acted on: nothing. Whether the port method is the right choice stays open on purpose; the design says what would decide it.
+
+### Round 3 (2026-11-15): the fixes of round 2, the last round
+
+`codex` and a fresh internal subagent read only what the second fix commit (`bc6a44c`) changed; `agy` did not take part (out of quota). By the rule of the project this is the last round; what is still open after it is recorded here as a known limit. Neither found a blocker. Both confirmed that the augmentation types the method in every draft, that the key of the memory is complete, and the two accuracies of the scenarios. The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The reasons for the port method are weighed against one variant only. The tested answer to "do they share a volume" is already behind the port: the pass for the distance and `interference` for containment need no new method | internal (major; input to the open decision) | Yes, with one correction: it has to be every pair whose boxes overlap, not only one box inside the other, because a body may be several pieces | The variant is written out and weighed under "Rejected"; the open item names it and the measurement; the head of this document says that the choice is open. **Not changed: the design itself still uses the port method** |
+| "A body of only planar faces may be the same solid after the tolerance changes" is false: other settings replay the document from its start and every solid is rebuilt | both (factual) | Yes (`evaluate.ts:227-228`; `interference.ts` relies on it) | The tolerance stays in the key as a guard; the reason is corrected here and in `calls.ts` |
+| The augmentation changes `SolidKernel` for the whole program; a draft that builds a kernel or imports the adapter or a fake would fail until that code has the method. And "overloads, not an error" holds only for method syntax | both | Yes (the reviewer's probes: TS2739 for a fake, TS2717 for a second property) | The method is declared as a property; both points are in the contract and in the need |
+
+**Known limit after the last round:** the choice between the port method and the variant with `interference` is not made. It needs the measurement named under "Open", on a model larger than the joint, and it should be made before 1c is implemented; taking the variant changes `gapOf` and removes the port section, nothing else.

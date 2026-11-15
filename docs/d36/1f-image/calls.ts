@@ -9,7 +9,7 @@ import type { Id } from '../../../packages/engine/src/index';
 import type { ArgsOf, EngineAfter, HostOperation, QueryOutcome, ToolAnswer } from '../00-prep/contract';
 import { HOST_OPERATIONS } from '../00-prep/contract';
 import type { SectionResult } from '../1a-section/contract';
-import { completeRegions } from '../1a-section/calls';
+import { completeRegions, takenAt } from '../1a-section/calls';
 import type { ImageRequest, OperationHost, RenderedImage, ViewCapability, ViewImageArgs } from './contract';
 import { MAX_IMAGE_BASE64, VIEWS, VIEW_IMAGE_ARGS, callOperation } from './contract';
 
@@ -73,7 +73,8 @@ export function cutOf(section: SectionResult, only?: readonly Id[]): ImageReques
   const regions = completeRegions(section);
   if (!regions) return undefined;
   const drawn = only ? regions.filter(({ body }) => only.includes(body)) : regions;
-  return { frame: section.frame, regions: drawn.map(({ region }) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) })) };
+  // the plane the section was taken at: the capability clips there and lays the fills into it
+  return { frame: takenAt(section), regions: drawn.map(({ region }) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) })) };
 }
 
 // The model to draw: the state after `at`, the bodies checked against it, and the cut taken from
@@ -95,7 +96,7 @@ function requestOf(host: OperationHost, args: ViewImageArgs): ImageRequest | Que
   if (!section.ok) return refused(section.error.code === 'invalidArguments' ? 'failed' : section.error.code, section.error.message, section.error.arg?.[0] === 'bodies' ? [...section.error.arg] : ['section', ...(section.error.arg ?? [])]);
   // a section with more points than the budget is not drawn half filled
   const cut = cutOf(section.result);
-  if (!cut) return refused('failed', `the section has ${section.result.truncated?.total} points, too many to draw; name fewer bodies`, ['section']);
+  if (!cut) return refused('failed', `the section has ${section.result.truncated?.total} loops and points, too many to draw; name fewer bodies`, ['section']);
   return { ...request, cut };
 }
 

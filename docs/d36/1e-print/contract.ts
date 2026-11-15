@@ -1,7 +1,7 @@
 // Contract of package 1e of D36 (decision D42): print queries. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Third version, after the second round of reviews (design.md, "Reviews").
+// Fourth version, after the third and last round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, QuantitySpec, Truncated } from '../00-prep/contract';
@@ -70,9 +70,11 @@ export const PRINT_ARGS = {
 // - `onBed`, for an orientation given by a face and the body that face belongs to: whether the
 //   face lies on the bed. False when something of the body reaches below it. It does not depend
 //   on what the list of contact faces shows.
-// - `contact`: the area that lies on the bed. Only planar faces count: a cylinder on its side
-//   touches the bed in a line, and the facet its polygon rests on is not a contact. `area` and
-//   `count` are of all faces on the bed; `faces` lists the largest, at most `maxFaces`.
+// - `contact`: the area that lies on the bed: the planar faces that look straight down (within
+//   `ANGLE_TOLERANCE`) and reach the lowest point of the body. Only planar faces count:
+//   a cylinder on its side touches the bed in a line, and the facet its polygon rests on is not
+//   a contact. `area` and `count` are of all faces on the bed; `faces` lists the largest, at
+//   most `maxFaces`.
 // - `overhang`: what looks down and leans more than the overhang angle from the vertical, and is
 //   not contact. `area` and `count` are of all overhanging faces; `small` of them are below
 //   `minArea` and not listed for that reason; `faces` lists the others, the largest first, at
@@ -118,17 +120,24 @@ export interface PrintFrame {
 // One pass over the triangles of a body: its box in the frame, and per face the area in contact
 // with the bed and the area that overhangs with the height it starts at.
 // - `normalOf`: the normal of a planar face, out of the body (from `context.frame`); undefined
-//   for a face that is not planar. A triangle of a planar face looks where its face looks; only
-//   a triangle of another face is judged by its own normal. A long thin triangle of a flat face
-//   has a normal that float32 coordinates spoil by more than `ANGLE_TOLERANCE` once the body is
-//   not aligned with the axes of the model, and the face is known exactly.
-// - A triangle is contact when its face is planar, that face looks straight down (its normal
-//   against `up` within `ANGLE_TOLERANCE`) and all the corners of the triangle are within
-//   `precision` of the lowest point of the body. `precision` is the precision of the coordinates
-//   (`coordinatePrecision` of 1b over the body). The direction is tested as well as the height:
-//   on a body thinner than the precision the top and the sides are that low too.
-// - Otherwise it overhangs when it looks down and leans from the vertical by more than `angle`
-//   plus `ANGLE_TOLERANCE`.
+//   for a face that is not planar, and for a planar face the context gives no frame for (its
+//   triangles are then judged one by one, like those of a round face). A triangle of a planar
+//   face looks where its face looks; only a triangle of another face is judged by its own
+//   normal. A long thin triangle of a flat face has a normal that float32 coordinates spoil by
+//   more than `ANGLE_TOLERANCE` once the body is not aligned with the axes of the model, and
+//   the face is known exactly.
+// - A planar face is contact as a whole, with all its area, when it looks straight down (its
+//   normal against `up` within `ANGLE_TOLERANCE`) and its lowest corner is within `precision`
+//   of the lowest point of the body. `precision` is the precision of the coordinates
+//   (`coordinatePrecision` of 1b over the body).
+//   - The direction is tested as well as the height: on a body thinner than the precision the
+//     top and the sides are that low too.
+//   - The face is judged as a whole, by its lowest corner, and not triangle by triangle with
+//     every corner at the lowest point: that would ask a face of size L to be level within
+//     `precision / L`, some hundred times tighter than `ANGLE_TOLERANCE`, and a direction typed
+//     with five digits would turn the whole bottom face into an overhang.
+// - A triangle that is not contact overhangs when it looks down and leans from the vertical by
+//   more than `angle` plus `ANGLE_TOLERANCE`.
 export interface PrintPass {
   size: Vec3;
   contact: Map<number, number>; // face → mm2

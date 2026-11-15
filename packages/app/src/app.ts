@@ -9,17 +9,13 @@ import {
   type Engine,
   type EngineState,
   type Expr,
-  type ExtrudeFeature,
   type FaceName,
   type Feature,
   type FeatureResult,
   type Frame,
   type Id,
   type Issue,
-  type PatternFeature,
-  type PlaneFeature,
   type PlaneRef,
-  type RegionRef,
   type SketchDiagnosis,
   type SketchFeature,
   type SketchResult,
@@ -29,58 +25,32 @@ import {
   type Vec3,
   CONSTRAINTS,
   MAX_POLYGON_SIDES,
-  FEATURE_TYPE_INFO,
-  GENERATORS,
-  type GeneratorName,
   bodyOwner,
   constraintKey,
   constraintPath,
   duplicateOf,
   emptyDocument,
-  emptySketch,
   faceKey,
-  featureInput,
-  generatorOf,
   isDimension,
-  isFlag,
-  producesTool,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h, markProblem } from './dom';
+import { COLOR, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
+import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
+import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import type { Note, PanelHost, ViewPick } from './host';
-import { FEATURE_TYPES, OPERATIONS, SIDES, factsText } from './labels';
 import { type Collisions, checkCollisions, followCollisions, pickedPair, shownCollisions } from './panels/collisions';
 import { modelPanel } from './panels/model';
-import { expressionProblem, fieldNote, fieldText, parseField, valueText } from './fields';
+import { expressionProblem, fieldText, parseField, valueText } from './fields';
 import {
   type Anchor,
-  type AxisKind,
   type DimensionVariant,
-  type ExtentKind,
-  type ExtentSide,
-  type ExtrudeDraft,
   GEOMETRIC_KINDS,
-  type PatternChange,
-  type PatternChoices,
-  type PatternDraft,
-  type PatternSpan,
-  type PlaneDraft,
   arcCommands,
   asConstruction,
-  axisKind,
-  type ExtrudeChange,
-  type ProfileKind,
-  type RememberedProfiles,
-  changeExtrude,
-  changePattern,
-  patternIncomplete,
-  patternSource,
-  rememberedProfile,
-  profileKind,
   circleCommands,
   deleteCommands,
   dimensionFor,
-  draftCommand,
   geometricFor,
   lineCommands,
   normalizeAngle,
@@ -93,9 +63,9 @@ import {
   polygonSizeKind,
 } from './sketch-commands';
 import { duplicateTwins, explanationText, freeEntities, freeSummary, markOf } from './sketch-diagnosis';
-import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
+import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, measure, operandsOf, polyline, sketchView } from './sketch-view';
 import { type SceneModel, type View, Viewport } from './viewport';
-import { angleProblem, bodyName, faceLabel, featureName, issueText } from './issue-text';
+import { bodyName, faceLabel, featureName, issueText } from './issue-text';
 
 type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
 
@@ -118,41 +88,8 @@ interface SketchMode {
   preview?: EngineState; // stav při tažení bodu
   repair?: Id; // promítnutí, které další kliknutí nástrojem Promítnout opraví
 }
-interface ExtrudeMode {
-  kind: 'extrude';
-  editing: boolean;
-  index: number; // pozice feature na časové ose
-  draft: ExtrudeDraft; // input form: a numeric field holds a number or an expression
-  distance?: ExtrudeDraft['extent']; // the distance extent the draft had last, to return to from "through all"
-  profiles?: RememberedProfiles; // the profile of each kind the draft had last, to return to from the other source
-  preview?: EngineState;
-  problem?: string;
-  warning?: boolean; // the problem is a warning of the preview, not an error
-  hover?: RegionRef;
-}
-interface PlaneMode {
-  kind: 'plane';
-  editing: boolean;
-  index: number;
-  draft: PlaneDraft;
-  preview?: EngineState;
-  problem?: string;
-  warning?: boolean;
-}
-interface PatternMode {
-  kind: 'pattern';
-  editing: boolean;
-  index: number;
-  draft: PatternDraft;
-  angle?: PatternSpan; // the angle span the draft had last, to return to from the full circle
-  preview?: EngineState;
-  problem?: string;
-  warning?: boolean;
-}
-// A feature being created or changed in a form; it is not in the document until confirmed.
-type DraftMode = ExtrudeMode | PlaneMode | PatternMode;
-type Mode = { kind: 'model' } | SketchMode | DraftMode;
-const isDraft = (m: Mode): m is DraftMode => m.kind === 'extrude' || m.kind === 'plane' || m.kind === 'pattern';
+type Mode = { kind: 'model' } | SketchMode | AnyDraft;
+const isDraft = (m: Mode): m is AnyDraft => m.kind === 'draft';
 
 interface SketchContext {
   feature: SketchFeature;
@@ -180,19 +117,7 @@ const TOOLS: [Tool, string, string][] = [
   ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
   ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
 ];
-const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
-const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
 const PICK_REACH = 7; // px
-const SLOW_PREVIEW = 150; // ms; a preview slower than this is not recomputed on every keystroke
-const PREVIEW_PAUSE = 500; // ms without typing before such a preview is computed
-const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb, clash: 0xdc2626 };
-
-const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
-  frame.origin[0] + u * frame.x[0] + v * frame.y[0],
-  frame.origin[1] + u * frame.x[1] + v * frame.y[1],
-  frame.origin[2] + u * frame.x[2] + v * frame.y[2],
-];
-const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
 
 export class App implements PanelHost {
@@ -205,15 +130,13 @@ export class App implements PanelHost {
   private markerIndex = 0; // kde značka naposledy ležela, pro případ, že její feature zmizí
   private readonly hidden = new Set<Id>();
   private showBasePlanes = true;
-  pending?: 'sketch' | 'plane'; // čeká se na výběr roviny
+  pending?: Feature['type']; // a new feature of this type waits for its plane to be picked
   private readonly collisions: Collisions = {};
   note: Note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
-  private previewCost = 0; // ms the last preview of a draft took
+  readonly drafting: DraftState = { cost: 0, confirming: false };
   private polygon: PolygonOptions = DEFAULT_POLYGON; // what the polygon tool draws; remembered between sketches
-  private previewTimer?: number;
-  private confirming = false; // a draft is being confirmed: no preview in between
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
   private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
@@ -246,7 +169,7 @@ export class App implements PanelHost {
     return id == null ? undefined : this.doc.features.find((f) => f.id === id);
   }
   // Names for a human: see issue-text.ts.
-  private readonly featureNames = (id: Id): string | undefined => this.feature(id)?.name;
+  readonly featureNames = (id: Id): string | undefined => this.feature(id)?.name;
   nameOf(id: Id): string {
     return featureName(id, this.featureNames);
   }
@@ -267,25 +190,25 @@ export class App implements PanelHost {
     else this.cache = m.preview ?? this.stateBefore(m.index);
     return this.cache;
   }
-  private stateBefore(index: number): EngineState {
+  stateBefore(index: number): EngineState {
     const previous = this.doc.features[index - 1];
     if (previous) return this.engine.getState(previous.id);
     const state = this.engine.getState();
     return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [] } };
   }
-  private invalidate(): void {
+  invalidate(): void {
     this.cache = undefined;
     this.contextCache = undefined;
   }
 
-  private insertIndex(): number {
+  insertIndex(): number {
     const at = this.doc.features.findIndex((f) => f.id === this.marker);
     return at < 0 ? this.doc.features.length : at + 1;
   }
 
   // ID nové entity: předpona a pořadové číslo, které se v dokumentu ještě nevyskytuje. Čítač se
   // během práce nevrací, takže se ID smazané entity znovu nepoužije.
-  private readonly newId = (prefix: string): Id => {
+  readonly newId = (prefix: string): Id => {
     const used = new Set<Id>();
     for (const f of this.doc.features) {
       used.add(f.id);
@@ -383,7 +306,7 @@ export class App implements PanelHost {
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
-    if (isDraft(this.mode) && !this.confirming) this.updatePreview();
+    if (isDraft(this.mode) && !this.drafting.confirming) updatePreview(this);
     if (this.mode.kind === 'sketch') {
       const context = this.sketchContext();
       const view = context?.view;
@@ -423,6 +346,21 @@ export class App implements PanelHost {
     if (pick.kind === 'face') return body.faces.some((face) => face.id === pick.faceId) && faceKey(state.evaluation.faceNames[pick.faceId]) === faceKey(pick.name);
     const edge = body.edges[pick.index];
     return edge !== undefined && faceKey(edge.name.a) === faceKey(pick.name.a) && faceKey(edge.name.b) === faceKey(pick.name.b);
+  }
+
+  // ----- what the forms use of the mode (PanelHost)
+  get draft(): AnyDraft | undefined {
+    return isDraft(this.mode) ? this.mode : undefined;
+  }
+  openDraft(mode: AnyDraft): void {
+    this.setMode(mode);
+  }
+  closeDraft(deselect: boolean): void {
+    if (deselect) this.selectedFeature = undefined;
+    this.setMode({ kind: 'model' });
+  }
+  inserted(id: Id): void {
+    if (this.marker) this.marker = id;
   }
 
   private setMode(mode: Mode): void {
@@ -466,12 +404,8 @@ export class App implements PanelHost {
     ];
     if (m.kind === 'model') {
       groups.push(
-        group(
-          button('Skica', () => this.startOnPlane('sketch'), { title: 'Nová skica na rovině nebo rovinné stěně', active: this.pending === 'sketch' }),
-          button('Vysunutí', () => this.startExtrude(), { title: 'Vysunout oblasti skici' }),
-          button('Rovina', () => this.startOnPlane('plane'), { title: 'Rovina posunutá od roviny nebo rovinné stěny', active: this.pending === 'plane' }),
-          button('Pattern', () => this.startPattern(), { title: 'Repeat extrusions that add or cut, or a body, around an axis' }),
-        ),
+        // a button per feature type that has one, in the order of TOOLBAR
+        group(...TOOLBAR.flatMap((type) => (FEATURE_UI[type].button ? [button(FEATURE_UI[type].button.label, () => this.create(type), { title: FEATURE_UI[type].button.title, active: this.pending === type })] : []))),
         group(button('Collisions', () => checkCollisions(this.collisions, this), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: shownCollisions(this.collisions, this) !== undefined })),
       );
     } else if (m.kind === 'sketch') {
@@ -541,12 +475,12 @@ export class App implements PanelHost {
   private renderTimeline(): void {
     const full = this.engine.getState();
     const markerIndex = this.insertIndex();
-    const editing = this.mode.kind === 'sketch' ? this.mode.id : isDraft(this.mode) ? this.mode.draft.id : undefined;
+    const editing: Id | undefined = this.mode.kind === 'sketch' ? this.mode.id : isDraft(this.mode) ? this.mode.draft.id : undefined;
     const busy = this.mode.kind !== 'model';
     const rows: HTMLElement[] = [h('h2', {}, 'Časová osa')];
     const markerRow = () => h('div', { className: 'marker', title: 'Sem se vkládají nové prvky' }, 'zde se vkládá');
 
-    const bodiless = (f: Feature): boolean => (f.type === 'extrude' && f.operation !== 'new') || (f.type === 'pattern' && f.source.type === 'features');
+    const bodiless = (f: Feature): boolean => !uiOf(f.type).hideable(f);
     full.document.features.forEach((f, index) => {
       const result: FeatureResult | undefined = full.evaluation.features[f.id];
       const status = result?.status ?? 'ok';
@@ -605,10 +539,7 @@ export class App implements PanelHost {
   edit(id: Id): void {
     const f = this.feature(id);
     if (!f) return;
-    if (f.type === 'sketch') this.enterSketch(id);
-    else if (f.type === 'extrude') this.startExtrude(f);
-    else if (f.type === 'pattern') this.startPattern(f);
-    else this.startPlane(f.base, f);
+    uiOf(f.type).edit(this, f);
   }
 
   // ---------------------------------------------------------------- pravý panel
@@ -617,14 +548,12 @@ export class App implements PanelHost {
     const m = this.mode;
     const panel = byId('panel');
     if (m.kind === 'sketch') panel.replaceChildren(...this.sketchPanel(m));
-    else if (m.kind === 'extrude') panel.replaceChildren(...this.extrudePanel(m));
-    else if (m.kind === 'plane') panel.replaceChildren(...this.planePanel(m));
-    else if (m.kind === 'pattern') panel.replaceChildren(...this.patternPanel(m));
+    else if (isDraft(m)) panel.replaceChildren(...m.form.panel(m, this));
     else panel.replaceChildren(...modelPanel(this, this.collisions));
   }
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
-  private issueText(issue: Issue): string {
+  issueText(issue: Issue): string {
     return issueText(issue, this.featureNames);
   }
 
@@ -689,7 +618,7 @@ export class App implements PanelHost {
     return { min, max };
   }
 
-  private planeSize(state: EngineState): number {
+  planeSize(state: EngineState): number {
     const { min, max } = this.modelSize(state);
     return Math.max(20, 0.7 * Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]));
   }
@@ -705,7 +634,7 @@ export class App implements PanelHost {
     if (this.showBasePlanes) for (const plane of ['XY', 'XZ', 'YZ'] as const) out.push({ kind: 'plane', key: plane, ref: { kind: 'base', plane }, frame: BASE[plane] });
     for (const f of state.document.features) {
       const frame = state.evaluation.features[f.id]?.plane;
-      const drafted = this.mode.kind === 'plane' && this.mode.draft.id === f.id; // rovina nemůže být svým vlastním základem
+      const drafted = isDraft(this.mode) && this.mode.draft.id === f.id; // rovina nemůže být svým vlastním základem
       if (f.type === 'plane' && frame && !this.hidden.has(f.id) && !drafted) out.push({ kind: 'plane', key: f.id, ref: { kind: 'plane', feature: f.id }, frame });
     }
     return out;
@@ -764,7 +693,7 @@ export class App implements PanelHost {
   }
 
   // Průsečík paprsku pod kurzorem s rovinou, v souřadnicích roviny.
-  private planePoint(event: { clientX: number; clientY: number }, frame: Frame): { at: Vec2; depth: number } | undefined {
+  planePoint(event: { clientX: number; clientY: number }, frame: Frame): { at: Vec2; depth: number } | undefined {
     const { origin, direction } = this.viewport.ray(event.clientX, event.clientY);
     const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const facing = dot(direction, frame.normal);
@@ -795,13 +724,9 @@ export class App implements PanelHost {
     const m = this.mode;
     if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // otáčení a posun pohledu
     if (m.kind === 'sketch') return this.sketchMove(event, m);
-    if (m.kind === 'extrude') {
-      const region = m.draft.profile.type === 'regions' ? this.regionAt(event, m) : undefined;
-      if ((region && m.hover && sameRegion(region, m.hover)) || region === m.hover) return;
-      m.hover = region;
-      return this.renderScene();
-    }
-    const hover = this.pick(event, { edges: m.kind === 'model' && !this.pending, faces: true, planes: true });
+    // a form that asks for no pick of the view gets the bare event
+    if (isDraft(m) && !m.form.picks) return m.form.hover?.(m, event, undefined, this) ? this.renderScene() : undefined;
+    const hover = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
     if (pickKey(hover) === pickKey(this.hover)) return;
     this.hover = hover;
     this.renderScene();
@@ -825,28 +750,11 @@ export class App implements PanelHost {
     }
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
     if (m.kind === 'sketch') return this.sketchClick(event, m);
-    if (m.kind === 'extrude') {
-      const profile = m.draft.profile;
-      const region = profile.type === 'regions' ? this.regionAt(event, m) : undefined; // a generated profile has no regions to pick
-      if (!region || profile.type !== 'regions') return;
-      const at = profile.regions.findIndex((r) => sameRegion(r, region));
-      m.draft = { ...m.draft, profile: { ...profile, regions: at < 0 ? [...profile.regions, region] : profile.regions.filter((_, i) => i !== at) } };
-      return this.draftChanged();
-    }
-    const pick = this.pick(event, { edges: m.kind === 'model' && !this.pending, faces: true, planes: true });
+    // a form gets its clicks from the app: the bare event, or what it asked to be picked
+    if (isDraft(m) && !m.form.picks) return m.form.click?.(m, event, undefined, this);
+    const pick = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
+    if (isDraft(m)) return m.form.click?.(m, event, pick, this);
     const ref = this.planeRefOf(pick);
-    if (m.kind === 'pattern') {
-      // a click on a body picks it as the source of a pattern of a body (not a copy of the preview itself)
-      const choices = this.patternChoices(m.index);
-      if (m.draft.source.type !== 'body' || !pick || pick.kind === 'plane' || !choices.bodies.includes(pick.body)) return;
-      m.draft = changePattern(m.draft, { body: pick.body }, choices, m.angle);
-      return this.draftChanged();
-    }
-    if (m.kind === 'plane') {
-      if (!ref) return this.say('Základem roviny může být rovina nebo rovinná stěna.', true);
-      m.draft = { ...m.draft, base: ref };
-      return this.draftChanged();
-    }
     if (this.pending) {
       const what = this.pending;
       if (!ref) this.say('Vyberte rovinu nebo rovinnou stěnu.', true);
@@ -896,7 +804,14 @@ export class App implements PanelHost {
 
   // ---------------------------------------------------------------- nová skica a rovina
 
-  private startOnPlane(what: 'sketch' | 'plane'): void {
+  // The button of a feature type: a type that starts on a plane waits for one, the others start at once.
+  private create(type: Feature['type']): void {
+    const create = FEATURE_UI[type].create;
+    if (create?.plane) this.startOnPlane(type);
+    else create?.run(this, { index: this.insertIndex() });
+  }
+
+  private startOnPlane(what: Feature['type']): void {
     const selected = this.feature(this.selectedFeature);
     // rovina vybraná na časové ose se použije, jen když leží před místem vkládání
     const before = selected?.type === 'plane' && this.doc.features.indexOf(selected) < this.insertIndex();
@@ -917,35 +832,12 @@ export class App implements PanelHost {
   usePlane(ref: PlaneRef): boolean {
     const what = this.pending;
     this.pending = undefined;
-    if (what === 'plane') {
-      this.startPlane(ref);
-      return true;
-    }
-    return this.createSketch(ref);
-  }
-
-  // Založí skicu; na stěně rovnou promítne její obrys (hrany druhu úsečka a kružnice).
-  private createSketch(ref: PlaneRef): boolean {
-    const id = this.newId('s');
-    const index = this.insertIndex();
-    const commands: Command[] = [{ type: 'addFeature', feature: emptySketch(id, `Skica ${id.slice(1)}`, ref), index }];
-    if (ref.kind === 'face') {
-      const key = faceKey(ref.face);
-      for (const edge of this.view().evaluation.bodies[ref.body]?.edges ?? []) {
-        if ((edge.kind === 'line' || edge.kind === 'circle') && (faceKey(edge.name.a) === key || faceKey(edge.name.b) === key)) {
-          commands.push({ type: 'addExternal', sketch: id, id: this.newId('x'), ref: { type: 'edge', body: ref.body, edge: edge.name, kind: edge.kind } });
-        }
-      }
-    }
-    if (!this.run({ type: 'batch', commands })) return false;
-    if (this.marker) this.marker = id;
-    this.enterSketch(id);
-    return true;
+    return what !== undefined && FEATURE_UI[what].create?.run(this, { index: this.insertIndex(), plane: ref }) === true;
   }
 
   // ---------------------------------------------------------------- skica
 
-  private enterSketch(id: Id): void {
+  enterSketch(id: Id): void {
     this.selectedFeature = id;
     this.setMode({ kind: 'sketch', id, tool: 'select', clicks: [], selection: [] });
     const frame = this.sketchContext()?.frame;
@@ -1396,478 +1288,6 @@ export class App implements PanelHost {
     return out;
   }
 
-  // ---------------------------------------------------------------- vysunutí a rovina
-
-  private sketchRegions(id: Id): { result: SketchResult; frame: Frame } | undefined {
-    if (!this.feature(id)) return undefined; // skica vysunutí mohla být smazána
-    const result = this.engine.getState(id).evaluation.features[id];
-    return result?.sketch && result.plane ? { result: result.sketch, frame: result.plane } : undefined;
-  }
-
-  private regionAt(event: PointerEvent, m: ExtrudeMode): RegionRef | undefined {
-    const info = this.sketchRegions(m.draft.profile.sketch);
-    const p = info && this.planePoint(event, info.frame)?.at;
-    if (!info || !p) return undefined;
-    return info.result.regions.find((region) => insideLoop(region.loops[0], p) && !region.loops.slice(1).some((hole) => insideLoop(hole, p)))?.ref;
-  }
-
-  private startExtrude(existing?: ExtrudeFeature): void {
-    if (existing) {
-      const index = this.doc.features.findIndex((f) => f.id === existing.id);
-      return this.setMode({ kind: 'extrude', editing: true, index, draft: featureInput(existing) });
-    }
-    const index = this.insertIndex();
-    const sketches = this.doc.features.slice(0, index).filter((f): f is SketchFeature => f.type === 'sketch');
-    const chosen = sketches.find((f) => f.id === this.selectedFeature) ?? sketches[sketches.length - 1];
-    if (!chosen) return this.say('Vysunutí potřebuje skicu. Nejdřív nějakou nakreslete.', true);
-    const id = this.newId('e');
-    this.setMode({ kind: 'extrude', editing: false, index, draft: { id, name: `Vysunutí ${id.slice(1)}`, suppressed: false, type: 'extrude', extent: { type: 'distance', start: 0, distance: 10 }, ...this.extrudeDefaults(chosen, index) } });
-    this.say('Klikáním v pohledu vyberte oblasti skici.');
-  }
-
-  // Výchozí volby: jediná oblast se vybere sama; skica na stěně tělesa navrhne přidání k němu.
-  private extrudeDefaults(sketch: SketchFeature, index: number): Pick2<ExtrudeFeature, 'profile' | 'operation' | 'targets'> {
-    const regions = this.sketchRegions(sketch.id)?.result.regions ?? [];
-    const bodies = Object.keys(this.stateBefore(index).evaluation.bodies);
-    const target = sketch.plane.kind === 'face' && bodies.includes(sketch.plane.body) ? sketch.plane.body : undefined;
-    return { profile: { type: 'regions', sketch: sketch.id, regions: regions.length === 1 ? [regions[0].ref] : [] }, operation: target ? 'add' : 'new', ...(target ? { targets: [target] } : {}) };
-  }
-
-  private startPlane(base: PlaneRef, existing?: PlaneFeature): void {
-    if (existing) return this.setMode({ kind: 'plane', editing: true, index: this.doc.features.findIndex((f) => f.id === existing.id), draft: featureInput(existing) });
-    const id = this.newId('r');
-    this.setMode({ kind: 'plane', editing: false, index: this.insertIndex(), draft: { id, name: `Rovina ${id.slice(1)}`, suppressed: false, type: 'plane', base, offset: 10 } });
-    this.say('Zadejte posun; kliknutím v pohledu lze změnit základ.');
-  }
-
-  // A new pattern: its source is the feature selected on the timeline when it can be one, otherwise
-  // the latest extrusion that adds or cuts, otherwise the latest body.
-  private startPattern(existing?: PatternFeature): void {
-    if (existing) return this.setMode({ kind: 'pattern', editing: true, index: this.doc.features.findIndex((f) => f.id === existing.id), draft: featureInput(existing) });
-    const index = this.insertIndex();
-    const source = patternSource(this.patternChoices(index), this.selectedFeature);
-    if (!source) return this.say('A pattern needs an extrusion that adds or cuts, or a body. Create one first.', true);
-    const id = this.newId('n');
-    this.setMode({ kind: 'pattern', editing: false, index, draft: { id, name: `Pattern ${id.slice(1)}`, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } } } });
-    this.say('Choose what to repeat, the axis and the count.');
-  }
-
-  // What a pattern at this place of the timeline can repeat and turn around.
-  private patternChoices(index: number): PatternChoices {
-    const before = this.doc.features.slice(0, index);
-    return {
-      tools: before.filter(producesTool).map((f) => f.id),
-      bodies: Object.keys(this.stateBefore(index).evaluation.bodies),
-      sketches: before.filter((f) => f.type === 'sketch').map((f) => f.id),
-    };
-  }
-
-  // Náhled: příkaz se spočítá po upravovanou feature a dokument se nemění.
-  private updatePreview(): void {
-    window.clearTimeout(this.previewTimer);
-    this.previewTimer = undefined;
-    const m = this.mode;
-    if (!isDraft(m)) return;
-    this.invalidate();
-    // An angle typed in degrees and out of range is reported in degrees here; the engine would
-    // report the radians it was converted to.
-    const angle = FEATURE_TYPE_INFO[m.draft.type].fields.map((field) => angleProblem(this.draftValue(m, field.path), field.spec)).find((problem) => problem !== undefined);
-    if (angle !== undefined) {
-      m.preview = undefined;
-      m.problem = angle;
-      m.warning = false;
-      this.previewCost = 0; // nothing was computed
-      return;
-    }
-    // vysunutí bez oblastí ještě není co počítat; panel na výběr upozorní sám (a pattern without a source likewise)
-    if ((m.kind === 'extrude' && this.unpicked(m)) || (m.kind === 'pattern' && patternIncomplete(m.draft))) {
-      m.preview = undefined;
-      m.problem = undefined;
-      m.warning = false;
-      this.previewCost = 0; // nothing was computed
-      return;
-    }
-    const started = performance.now();
-    const result = this.engine.preview(draftCommand(m.draft, m.editing, m.index), m.draft.id);
-    this.previewCost = performance.now() - started;
-    m.preview = result.ok ? result.state : undefined;
-    const outcome = result.ok ? result.state.evaluation.features[m.draft.id] : undefined;
-    m.problem = result.ok ? (outcome?.error ? this.issueText(outcome.error) : outcome?.warnings.map((w) => this.issueText(w)).join(' ')) || undefined : result.error.message;
-    // a warning does not stop the feature from being confirmed; it is shown as one
-    m.warning = result.ok && !outcome?.error;
-    this.invalidate();
-  }
-
-  // A change of the draft shows in the preview at once. When the last preview was slow (a pattern
-  // with many copies takes seconds), a change typed into a field waits for a pause in the typing
-  // instead: every keystroke would otherwise block the app for that long.
-  private draftChanged(rebuild = true): void {
-    if (!rebuild && this.previewCost > SLOW_PREVIEW) {
-      window.clearTimeout(this.previewTimer);
-      this.previewTimer = window.setTimeout(() => isDraft(this.mode) && this.showDraft(false), PREVIEW_PAUSE);
-      const problem = document.getElementById('draft-problem');
-      if (problem) {
-        problem.textContent = 'The preview takes a while; it follows after a pause in typing.';
-        problem.className = 'issue warning';
-      }
-      return;
-    }
-    this.showDraft(rebuild);
-  }
-  private showDraft(rebuild: boolean): void {
-    this.updatePreview();
-    if (rebuild) this.renderPanel();
-    else {
-      const m = this.mode as DraftMode;
-      const problem = document.getElementById('draft-problem');
-      if (problem) {
-        problem.textContent = m.problem ?? '';
-        problem.className = `issue ${m.warning ? 'warning' : 'error'}`;
-      }
-      // expression values next to the fields
-      for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
-      const facts = document.getElementById('draft-facts');
-      if (facts && m.kind === 'extrude') facts.textContent = factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
-      const bodies = document.getElementById('draft-bodies');
-      if (bodies && m.kind === 'pattern') bodies.textContent = this.patternBodies(m);
-    }
-    this.renderScene();
-  }
-
-  private confirmDraft(m: DraftMode): void {
-    // The form is left as soon as the command is in: the refresh the engine triggers must not
-    // preview the same change once more on top of the changed document (seconds for a slow pattern).
-    this.confirming = true;
-    const done = this.run(draftCommand(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[m.draft.type]} přidáno.`);
-    this.confirming = false;
-    if (!done) return;
-    if (!m.editing && this.marker) this.marker = m.draft.id;
-    this.selectedFeature = undefined;
-    this.setMode({ kind: 'model' });
-  }
-
-  private draftButtons(m: DraftMode): HTMLElement[] {
-    return [
-      h('p', { id: 'draft-problem', className: `issue ${m.warning ? 'warning' : 'error'}` }, m.problem ?? ''),
-      h(
-        'div',
-        { className: 'buttons' },
-        h('button', { textContent: 'OK', className: 'primary', disabled: (m.kind === 'extrude' && this.unpicked(m)) || (m.kind === 'pattern' && patternIncomplete(m.draft)), onclick: () => this.confirmDraft(m) }),
-        h('button', { textContent: 'Zrušit', onclick: () => this.setMode({ kind: 'model' }) }),
-      ),
-    ];
-  }
-
-  // A draft with a profile of regions and none picked yet: there is nothing to compute.
-  private unpicked(m: ExtrudeMode): boolean {
-    return m.draft.profile.type === 'regions' && m.draft.profile.regions.length === 0;
-  }
-
-  // Entities of a sketch a generator operand accepts: own curves and projected ones of the given kinds.
-  private operandChoices(sketch: Id, kinds: readonly string[]): { id: Id; label: string }[] {
-    const f = this.feature(sketch);
-    if (f?.type !== 'sketch') return [];
-    const radii = this.sketchRegions(sketch)?.result.radii ?? {};
-    const size = (id: Id): string => (radii[id] === undefined ? '' : ` ⌀ ${fmt(2 * radii[id])}`);
-    return [
-      ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
-      ...Object.entries(f.external).filter(([, ref]) => kinds.includes(ref.kind)).map(([id]) => ({ id, label: `${id}${size(id)} (projected)` })),
-    ];
-  }
-  // The first entity of each operand of a generator in a sketch; an operand without one is left out
-  // and the engine says what is missing.
-  private defaultOperands(generator: GeneratorName, sketch: Id): Record<string, Id> {
-    return Object.fromEntries(GENERATORS[generator].operands.flatMap((operand) => this.operandChoices(sketch, operand.kinds).slice(0, 1).map((choice) => [operand.field, choice.id])));
-  }
-  // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
-  private draftField(m: DraftMode, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
-    const unit = FEATURE_TYPE_INFO[m.draft.type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
-    const names = this.doc.parameters.map((p) => p.name);
-    const input = h('input', {
-      value: fieldText(this.draftValue(m, path), unit),
-      oninput: () => {
-        const parsed = parseField(input.value, unit);
-        markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
-        change(parsed ?? NaN); // the engine rejects an empty field and the preview says so
-      },
-    });
-    const note = h('small', { className: 'computed' }, this.draftNote(m, path, unit));
-    note.dataset.field = path;
-    note.dataset.unit = unit;
-    return h('label', {}, label, h('span', { className: 'field' }, input, note));
-  }
-  private draftValue(m: DraftMode, path: string): number | Expr {
-    return path.split('/').reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], m.draft) as number | Expr;
-  }
-  private draftNote(m: DraftMode, path: string, unit: Unit): string {
-    return fieldNote(this.draftValue(m, path), m.preview?.evaluation.features[m.draft.id]?.values?.[path], unit);
-  }
-
-  private extrudePanel(m: ExtrudeMode): HTMLElement[] {
-    const sketches = this.doc.features.slice(0, m.index).filter((f) => f.type === 'sketch');
-    const bodies = Object.keys(this.stateBefore(m.index).evaluation.bodies);
-    const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
-    const set = (change: ExtrudeChange, rebuild = true) => {
-      // the distance extent the draft had last comes back when the extent or the operation returns to it
-      if (m.draft.extent.type === 'distance') m.distance = m.draft.extent;
-      m.profiles = { ...m.profiles, [profileKind(m.draft.profile)]: m.draft.profile };
-      m.draft = changeExtrude(m.draft, change, bodies, m.distance, m.profiles);
-      this.draftChanged(rebuild);
-    };
-    const targets = m.draft.targets ?? [];
-    const missing = targets.filter((id) => !bodies.includes(id));
-    const extent = m.draft.extent;
-    const cut = m.draft.operation === 'cut';
-    const profile = m.draft.profile;
-    const kind = profileKind(profile);
-    // another sketch: the regions are picked again and the operands of a generator are found in it
-    const toSketch = (sketch: Id): ExtrudeChange => (profile.type === 'regions' ? { sketch, regions: [] } : { sketch, operands: this.defaultOperands(profile.generator, sketch) });
-    // a source the draft already had in this sketch comes back as it was; a new one finds its operands
-    const toSource = (source: ProfileKind): ExtrudeChange => (source === 'regions' || rememberedProfile(m.profiles ?? {}, source, profile.sketch) ? { source } : { source, operands: this.defaultOperands(source, profile.sketch) });
-    return [
-      h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nové vysunutí'),
-      // The profile: regions of the sketch, or a profile generator from the catalog.
-      h(
-        'label',
-        {},
-        'Profile',
-        h(
-          'select',
-          { onchange: (event: Event) => set(toSource((event.target as HTMLSelectElement).value as ProfileKind)) },
-          option('regions', 'Sketch regions', kind === 'regions'),
-          ...(Object.keys(GENERATORS) as GeneratorName[]).map((generator) => option(generator, GENERATORS[generator].title, kind === generator)),
-        ),
-      ),
-      h(
-        'label',
-        {},
-        'Skica',
-        h(
-          'select',
-          { onchange: (event: Event) => set(toSketch((event.target as HTMLSelectElement).value)) },
-          ...sketches.map((f) => option(f.id, f.name, f.id === profile.sketch)),
-          sketches.some((f) => f.id === profile.sketch) ? null : option(profile.sketch, '(chybí)', true),
-        ),
-      ),
-      ...(profile.type === 'regions' ? this.regionsFields(profile, set) : this.generatorFields(m, profile, set)),
-      h(
-        'label',
-        {},
-        'Operace',
-        h(
-          'select',
-          { onchange: (event: Event) => set({ operation: (event.target as HTMLSelectElement).value as ExtrudeFeature['operation'] }) },
-          ...(Object.keys(OPERATIONS) as ExtrudeFeature['operation'][]).map((operation) => option(operation, OPERATIONS[operation], operation === m.draft.operation)),
-        ),
-      ),
-      // The extent: a distance with a start, or through all targets (a cut only).
-      h(
-        'label',
-        {},
-        'Extent',
-        h(
-          'select',
-          { onchange: (event: Event) => set({ extent: (event.target as HTMLSelectElement).value as ExtentKind }) },
-          option('distance', EXTENTS.distance, extent.type === 'distance'),
-          h('option', { value: 'throughAll', textContent: cut ? EXTENTS.throughAll : `${EXTENTS.throughAll} (a cut only)`, selected: extent.type === 'throughAll', disabled: !cut }),
-        ),
-      ),
-      ...(extent.type === 'distance'
-        ? [
-            this.draftField(m, 'Start (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ start }, false)),
-            this.draftField(m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
-          ]
-        : [
-            h(
-              'label',
-              {},
-              'Side',
-              h(
-                'select',
-                { onchange: (event: Event) => set({ side: (event.target as HTMLSelectElement).value as ExtentSide }) },
-                ...(Object.keys(SIDES) as ExtentSide[]).map((side) => option(side, SIDES[side], side === extent.side)),
-              ),
-            ),
-            h('p', { className: 'hint' }, 'The length follows the target bodies at every recompute. On a face the normal points out of the body, so an ordinary hole goes against it.'),
-          ]),
-      m.draft.operation === 'add'
-        ? h(
-            'label',
-            {},
-            'Těleso',
-            h(
-              'select',
-              { onchange: (event: Event) => set({ target: (event.target as HTMLSelectElement).value }) },
-              ...bodies.map((body) => option(body, this.bodyName(body), body === targets[0])),
-              ...missing.map((body) => option(body, '(chybí)', true)),
-            ),
-          )
-        : null,
-      // A cut may go through several bodies: one checkbox per body. A target that no longer exists
-      // stays listed so that it can be unticked.
-      cut
-        ? h(
-            'fieldset',
-            { className: 'targets' },
-            h('legend', {}, 'Target bodies'),
-            ...[...bodies, ...missing].map((body) =>
-              h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: targets.includes(body), onchange: () => set({ toggleTarget: body }) }), bodies.includes(body) ? this.bodyName(body) : `${body} (missing)`),
-            ),
-            bodies.length === 0 && missing.length === 0 ? h('p', { className: 'hint' }, 'There is no body to cut yet.') : null,
-          )
-        : null,
-      ...this.draftButtons(m),
-    ].filter((element): element is HTMLElement => element !== null);
-  }
-
-  // The part of the extrusion form for a profile of sketch regions.
-  private regionsFields(profile: Extract<ExtrudeDraft['profile'], { type: 'regions' }>, set: (change: ExtrudeChange) => void): (HTMLElement | null)[] {
-    const available = this.sketchRegions(profile.sketch)?.result.regions ?? [];
-    const stale = profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
-    return [
-      h('p', { className: 'hint' }, `Vybraných oblastí: ${profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
-      stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
-      h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
-    ];
-  }
-
-  // The part of the extrusion form for a generated profile, built from the generator catalog:
-  // a select per operand, a field per number, a checkbox per flag and a select per reference.
-  private generatorFields(m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
-    const spec = GENERATORS[profile.generator];
-    const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
-    const earlier = this.doc.features.slice(0, m.index).filter((f) => f.id !== m.draft.id);
-    return [
-      ...spec.operands.map((operand) => {
-        const choices = this.operandChoices(profile.sketch, operand.kinds);
-        const chosen = profile.operands[operand.field];
-        return h(
-          'label',
-          {},
-          `${operand.field} (${operand.kinds.join(' or ')} of the sketch)`,
-          h(
-            'select',
-            { onchange: (event: Event) => set({ operands: { [operand.field]: (event.target as HTMLSelectElement).value } }) },
-            ...choices.map((choice) => option(choice.id, choice.label, choice.id === chosen)),
-            choices.some((choice) => choice.id === chosen) ? null : option(chosen ?? '', chosen === undefined ? '(none in the sketch)' : `${chosen} (missing)`, true),
-          ),
-        );
-      }),
-      ...Object.entries(spec.params).map(([name, param]) =>
-        isFlag(param)
-          ? h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: profile.params[name] === true, onchange: (event: Event) => set({ params: { [name]: (event.target as HTMLInputElement).checked } }) }), param.title)
-          : this.draftField(m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
-      ),
-      ...Object.entries(spec.refs).map(([name, ref]) => {
-        const choices = earlier.filter((f) => (ref.generators as readonly (string | undefined)[]).includes(generatorOf(f)));
-        const chosen = profile.refs?.[name];
-        return h(
-          'label',
-          { title: ref.summary },
-          ref.title,
-          h(
-            'select',
-            { onchange: (event: Event) => set({ refs: { [name]: (event.target as HTMLSelectElement).value || null } }) },
-            option('', '(none)', chosen === undefined),
-            ...choices.map((f) => option(f.id, f.name, f.id === chosen)),
-            chosen === undefined || choices.some((f) => f.id === chosen) ? null : option(chosen, `${this.nameOf(chosen)} (missing)`, true),
-          ),
-        );
-      }),
-      h('p', { id: 'draft-facts', className: 'hint' }, factsText(m.draft, m.preview?.evaluation.features[m.draft.id])),
-    ];
-  }
-
-  private planePanel(m: PlaneMode): HTMLElement[] {
-    const base = m.draft.base;
-    const label = base.kind === 'base' ? `rovina ${base.plane}` : base.kind === 'plane' ? `rovina „${this.nameOf(base.feature)}“` : `stěna ${faceLabel(base.face as FaceName, this.featureNames)} (${this.bodyName(base.body)})`;
-    return [
-      h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nová rovina'),
-      h('p', {}, `Základ: ${label}`),
-      h('p', { className: 'hint' }, 'Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu.'),
-      this.draftField(m, 'Offset along the normal (mm or an expression)', 'offset', (offset) => {
-        m.draft = { ...m.draft, offset };
-        this.draftChanged(false);
-      }),
-      ...this.draftButtons(m),
-    ];
-  }
-
-  // The pattern form: what to repeat (extrusions that add or cut, or one body), the axis and the
-  // count with the span. The preview shows the result; a source or an axis that no longer exists
-  // stays in the form marked as missing, so that it can be replaced.
-  private patternPanel(m: PatternMode): HTMLElement[] {
-    const choices = this.patternChoices(m.index);
-    const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
-    const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
-    const set = (change: PatternChange, rebuild = true) => {
-      if (m.draft.transform.span.type === 'angle') m.angle = m.draft.transform.span;
-      m.draft = changePattern(m.draft, change, choices, m.angle);
-      this.draftChanged(rebuild);
-    };
-    const { source } = m.draft;
-    const { axis, span } = m.draft.transform;
-    const out: (HTMLElement | null)[] = [
-      h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'New pattern'),
-      select('Repeat', (value) => set({ source: value as 'features' | 'body' }), option('features', 'Features (extrusions that add or cut)', source.type === 'features'), option('body', 'A body', source.type === 'body')),
-    ];
-    if (source.type === 'features') {
-      const missing = source.features.filter((id) => !choices.tools.includes(id));
-      out.push(
-        h(
-          'fieldset',
-          {},
-          h('legend', {}, 'Features'),
-          ...[...missing, ...choices.tools].map((id) =>
-            h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: source.features.includes(id), onchange: () => set({ toggleFeature: id }) }), choices.tools.includes(id) ? this.nameOf(id) : `${this.nameOf(id)} (missing)`),
-          ),
-          choices.tools.length === 0 && missing.length === 0 ? h('p', { className: 'hint' }, 'There is no extrusion that adds or cuts before this place of the timeline.') : null,
-        ),
-        h('p', { className: 'hint' }, 'Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy.'),
-      );
-    } else {
-      out.push(
-        select(
-          'Body',
-          (value) => set({ body: value }),
-          ...choices.bodies.map((body) => option(body, this.bodyName(body), body === source.body)),
-          choices.bodies.includes(source.body) ? null : option(source.body, source.body === '' ? '(no body yet)' : `${source.body} (missing)`, true),
-        ),
-        h('p', { className: 'hint' }, 'The copies are new bodies; what is added to the source after the pattern is not copied.'),
-      );
-    }
-    out.push(select('Axis', (value) => set({ axis: value as AxisKind }), ...(Object.keys(AXES) as AxisKind[]).map((kind) => option(kind, AXES[kind], kind === axisKind(axis)))));
-    if (axis.kind === 'sketchPoint') {
-      const sketch = this.feature(axis.sketch);
-      const points = sketch?.type === 'sketch' && choices.sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
-      out.push(
-        select(
-          'Sketch',
-          (value) => set({ sketch: value }),
-          ...choices.sketches.map((id) => option(id, this.nameOf(id), id === axis.sketch)),
-          choices.sketches.includes(axis.sketch) ? null : option(axis.sketch, `${this.nameOf(axis.sketch)} (missing)`, true),
-        ),
-        select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),
-        h('p', { className: 'hint' }, 'The axis is the normal of the sketch plane through the point.'),
-      );
-    } else if (choices.sketches.length === 0) out.push(h('p', { className: 'hint' }, 'An axis through a point needs a sketch before this place of the timeline.'));
-    out.push(
-      this.draftField(m, 'Count with the original (a whole number or an expression)', 'transform/count', (count) => set({ count }, false)),
-      select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),
-      span.type === 'angle' ? this.draftField(m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
-      h('p', { id: 'draft-bodies', className: 'hint' }, this.patternBodies(m)),
-      ...this.draftButtons(m),
-    );
-    return out.filter((element): element is HTMLElement => element !== null);
-  }
-  // The bodies the previewed pattern creates, for the form.
-  private patternBodies(m: PatternMode): string {
-    const bodies = m.preview?.evaluation.features[m.draft.id]?.bodies ?? [];
-    // a new pattern is not in the document yet: its copies take the name of the draft
-    const nameOf = (id: Id): string | undefined => (id === m.draft.id ? m.draft.name : this.featureNames(id));
-    return bodies.length ? `New bodies: ${bodies.map((body) => bodyName(body, nameOf)).join(', ')}.` : '';
-  }
-
   // ---------------------------------------------------------------- scéna
 
   renderScene(): void {
@@ -1884,10 +1304,8 @@ export class App implements PanelHost {
       model.bodies.push({ id, solid: body.solid });
       for (const edge of body.edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) outline.push(edge.segments[i]);
       // the faces of the selected extrusion, or of the copies the selected pattern made
-      if ((highlighted?.type === 'extrude' || highlighted?.type === 'pattern') && m.kind === 'model') {
-        const own = (name: FaceName): boolean => (highlighted.type === 'extrude' ? name.feature === highlighted.id : (name.copy ?? []).some((tag) => tag.pattern === highlighted.id));
-        for (const face of body.faces) if (own(evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
-      }
+      const owns = highlighted && m.kind === 'model' ? uiOf(highlighted.type).ownsFace : undefined;
+      if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
     }
     model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
     // the two bodies of the picked collision
@@ -1898,8 +1316,7 @@ export class App implements PanelHost {
     }
 
     // roviny
-    const half = this.planeSize(state) / 2;
-    const square = [-half, -half, half, -half, half, half, -half, half];
+    const square = planeSquare(this.planeSize(state));
     for (const plane of this.planes(state)) {
       const active = pickKey(plane) === pickKey(this.selected) || (plane.ref.kind === 'plane' && plane.ref.feature === this.selectedFeature);
       const hovered = pickKey(plane) === pickKey(this.hover);
@@ -1927,22 +1344,7 @@ export class App implements PanelHost {
     }
 
     if (m.kind === 'sketch') this.sketchScene(model, m);
-    if (m.kind === 'extrude') {
-      const info = this.sketchRegions(m.draft.profile.sketch);
-      const picked = m.draft.profile.type === 'regions' ? m.draft.profile.regions : undefined; // a generated profile shows no regions
-      for (const region of picked ? (info?.result.regions ?? []) : []) {
-        const chosen = picked!.some((r) => sameRegion(r, region.ref));
-        const hovered = m.hover !== undefined && sameRegion(m.hover, region.ref);
-        model.fills.push({ frame: info!.frame, loops: region.loops, color: chosen ? COLOR.region : hovered ? COLOR.hover : COLOR.rubber, opacity: chosen ? (hovered ? 0.6 : 0.45) : hovered ? 0.35 : 0.15, onTop: true });
-      }
-    }
-    if (m.kind === 'plane') {
-      const frame = evaluation.features[m.draft.id]?.plane;
-      if (frame) {
-        model.fills.push({ frame, loops: [square], color: COLOR.select, opacity: 0.3 });
-        model.lines.push({ segments: loopSegments(frame, square), color: COLOR.select, width: 2 });
-      }
-    }
+    if (isDraft(m)) m.form.overlay?.(m, model, this);
     this.viewport.setScene(model);
   }
 
@@ -2065,20 +1467,4 @@ export class App implements PanelHost {
       if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : 'svisle', tone: 'reference' });
     }
   }
-}
-
-type Pick2<T, K extends keyof T> = { [P in K]: T[P] };
-
-function pushPolyline(out: number[], frame: Frame, points: Vec2[]): void {
-  for (let i = 0; i + 1 < points.length; i++) out.push(...toWorld(frame, points[i][0], points[i][1]), ...toWorld(frame, points[i + 1][0], points[i + 1][1]));
-}
-
-// Uzavřená smyčka (dvojice souřadnic v rovině) jako úsečky ve světě.
-function loopSegments(frame: Frame, loop: number[]): number[] {
-  const points: Vec2[] = [];
-  for (let i = 0; i < loop.length; i += 2) points.push([loop[i], loop[i + 1]]);
-  points.push(points[0]);
-  const out: number[] = [];
-  pushPolyline(out, frame, points);
-  return out;
 }

@@ -1,11 +1,14 @@
 // Texts the panels and the forms share: the titles of the feature types and of the choices of an
 // extrusion, and the facts a profile generator publishes.
 import { type ExtrudeFeature, FEATURE_TYPE_INFO, type Feature, type FeatureResult, type GeneratorName, type Unit } from '@trymesh/engine';
+import { fmt } from './dom';
 import { valueText } from './fields';
 import type { ExtentSide, ExtrudeDraft } from './sketch-commands';
 
 export const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
 export const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
+// A numeric field of a feature for a summary: its expression with the value, or the value alone.
+export const shownValue = (feature: Feature, path: string, value: number): string => (feature.expressions?.[path] ? `${feature.expressions[path]} = ${fmt(value)}` : fmt(value));
 export const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 
 // Facts of a generated profile shown below the form and at the selected feature, with their units.

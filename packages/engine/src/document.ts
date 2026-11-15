@@ -4,13 +4,9 @@ import type {
   AxisRef,
   Check,
   Command,
-  CommandResult,
   Constraint,
-  CopyTag,
   Curve,
-  Dimension,
   Document,
-  EdgeName,
   Expr,
   ExternalRef,
   ExtrudeFeature,
@@ -29,154 +25,62 @@ import type {
   RegionRef,
   SketchFeature,
 } from './types';
-import { CONSTRAINTS, type EntityKind, type FieldSpec, MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
+import { CONSTRAINTS, type EntityKind, type FieldSpec, type NumberSpec } from './catalog';
 import { GENERATORS, isFlag } from './generators';
-import { type Environment, analyzeExpression, evaluateNumber, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
-import { ORIGIN, canonicalEdge, faceKey, has } from './util';
+import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
+import { bodyOwner, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptySketch, entityOf, isDimension, isDriving } from './sketch-content';
+import { ORIGIN, has } from './util';
+import {
+  CommandError,
+  type Dict,
+  type FeatureRef,
+  type FieldInfo,
+  type FieldMode,
+  Fields,
+  REF_LABEL,
+  axisRefs,
+  base,
+  boolean,
+  edgeName,
+  faceName,
+  faceRefs,
+  fail,
+  finite,
+  isObject,
+  newId,
+  object,
+  oneOf,
+  onlyFields,
+  plain,
+  planeRefs,
+  string,
+} from './validation';
+
+// What moved to the leaf modules keeps its path here: the tests and the modules above import it from
+// the document.
+export {
+  type Entity,
+  type EntityKind,
+  bodyOwner,
+  constraintKey,
+  constraintOperands,
+  constraintPath,
+  curvePoints,
+  derivedPoints,
+  documentIds,
+  duplicateOf,
+  emptySketch,
+  entityOf,
+  isDimension,
+  isDriving,
+} from './sketch-content';
+export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
 
 export const SCHEMA_VERSION = 2;
 
 export const emptyDocument = (): Document => ({ schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] });
 
-export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
-  id,
-  name,
-  suppressed: false,
-  type: 'sketch',
-  plane,
-  points: {},
-  radii: {},
-  curves: {},
-  constraints: {},
-  external: {},
-  solved: { inputs: '', external: {} },
-});
-
-// Neplatný příkaz nebo dokument. `commandIndex` říká, který příkaz dávky to byl.
-type ExpressionProblem = NonNullable<Extract<CommandResult, { ok: false }>['error']['expression']>;
-export class CommandError extends Error {
-  commandIndex?: number;
-  expression?: ExpressionProblem; // when the command rejected an expression: where and why
-}
-const fail = (message: string, expression?: ExpressionProblem): never => {
-  const error = new CommandError(message);
-  if (expression) error.expression = expression;
-  throw error;
-};
-
-// ---------------------------------------------------------------- základní kontroly
-
-type Dict = Record<string, unknown>;
-const isObject = (v: unknown): v is Dict => typeof v === 'object' && v !== null && !Array.isArray(v);
-const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${what}: čeká se objekt`));
-const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: čeká se řetězec`));
-// Čísla dokumentu: konečná a v rozumném rozsahu (souřadnice tělesa jsou float32). Záporná nula
-// se ukládá jako nula, aby se uložený a znovu načtený dokument nelišil.
-const finite = (v: unknown, what: string): number => {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: čeká se konečné číslo`);
-  if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: číslo je mimo rozsah ±${MAX_NUMBER}`);
-  return v + 0;
-};
-const boolean = (v: unknown, what: string): boolean => (typeof v === 'boolean' ? v : fail(`${what}: čeká se true nebo false`));
-const oneOf = <T extends string>(v: unknown, options: readonly T[], what: string): T =>
-  options.includes(v as T) ? (v as T) : fail(`${what}: čeká se jedna z hodnot ${options.join(', ')}`);
-
-// ID generuje volající. Nesmí obsahovat `/` (odvozená ID promítnuté geometrie), nesmí být `origin`
-// ani jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…): ID jsou klíče záznamů.
-function newId(v: unknown, what: string): Id {
-  const id = string(v, what);
-  if (id === '' || id.includes('/') || id === ORIGIN || id in Object.prototype) fail(`${what}: ID "${id}" není přípustné`);
-  return id;
-}
-
-// Všechna ID v dokumentu: features a entity všech skic.
-export function documentIds(doc: Document): Set<Id> {
-  const ids = new Set<Id>();
-  for (const f of doc.features) {
-    ids.add(f.id);
-    if (f.type === 'sketch') for (const group of [f.points, f.curves, f.constraints, f.external]) for (const id of Object.keys(group)) ids.add(id);
-  }
-  return ids;
-}
 const sketchIds = (s: SketchFeature): Id[] => [s.points, s.curves, s.constraints, s.external].flatMap((group) => Object.keys(group));
-
-// ---------------------------------------------------------------- numeric fields and expressions
-
-// A numeric field of a particular feature: address, catalog description, value and expression, if any.
-export interface FieldInfo {
-  path: FieldPath;
-  spec: NumberSpec;
-  value: number;
-  expr?: Expr;
-}
-
-// How validation treats expressions:
-// - load: a document. The field holds a number (the last valid value), the expression is in
-//   `expressions` and only its syntax is checked; the recompute evaluates it.
-// - add: a command creates a feature. The expression may be in the field as a string or in
-//   `expressions`; it is evaluated right away and what cannot be evaluated is an invalid command.
-// - update: a command changes a feature. A string in a field is evaluated right away; expressions
-//   of fields the change does not touch stay unevaluated (fixing one field must not trip over an
-//   error in another) and expressions of fields that ceased to exist are dropped.
-type FieldMode = 'load' | 'add' | 'update';
-
-// Reads the numeric fields of a feature during validation. The fields validation went through are
-// the fields the feature has; `fieldsOf` and the check that `expressions` holds no address of
-// a non-existent field both follow from that.
-class Fields {
-  readonly found: FieldInfo[] = [];
-  private readonly used = new Set<FieldPath>();
-
-  constructor(
-    private readonly mode: FieldMode,
-    private readonly given: Record<FieldPath, Expr>,
-    private readonly environment: () => Environment,
-  ) {}
-
-  number(value: unknown, path: FieldPath, spec: NumberSpec, what: string): number {
-    const given = has(this.given, path) ? this.given[path] : undefined;
-    if (typeof value === 'string') {
-      if (this.mode === 'load') fail(`${what}: a number is expected; an expression belongs in expressions`);
-      if (given !== undefined) fail(`${what}: the expression is given both in the field and in expressions`);
-      return this.add(path, spec, this.evaluate(value, path, spec, what), value);
-    }
-    const number = finite(value, what);
-    if (given === undefined) return this.add(path, spec, plain(number, spec, what));
-    this.used.add(path);
-    if (this.mode === 'add') return this.add(path, spec, this.evaluate(given, path, spec, what), given);
-    const syntax = analyzeExpression(given);
-    if (!syntax.ok) fail(`${what}: expression "${given}": ${syntax.error.message}`, { path, error: syntax.error });
-    return this.add(path, spec, plain(number, spec, what), given);
-  }
-
-  private add(path: FieldPath, spec: NumberSpec, value: number, expr?: Expr): number {
-    this.found.push({ path, spec, value, ...(expr === undefined ? {} : { expr: expr.trim() }) });
-    return value;
-  }
-
-  private evaluate(expr: Expr, path: FieldPath, spec: NumberSpec, what: string): number {
-    const result = evaluateNumber(expr, this.environment());
-    if (!result.ok) return fail(`${what}: expression "${expr}": ${result.error.message}`, { path, error: result.error });
-    const checked = checkNumber(result.value, spec);
-    if (!checked.ok) return fail(`${what}: expression "${expr}" gives ${result.value}: ${checked.message}`, { path, error: { code: checked.code, message: checked.message } });
-    return checked.value;
-  }
-
-  // Expressions of the fields the feature has, sorted by address. An expression for an address
-  // validation did not go through is an error; when a feature is being changed it is dropped (the
-  // field ceased to exist with the change).
-  expressions(what: string): Record<FieldPath, Expr> | undefined {
-    if (this.mode !== 'update') for (const path of Object.keys(this.given)) if (!this.used.has(path)) fail(`${what}.expressions: "${path}" is not a numeric field of this feature`);
-    const entries = this.found.filter((field) => field.expr !== undefined).map((field): [FieldPath, Expr] => [field.path, field.expr as Expr]);
-    return entries.length ? Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : 1))) : undefined;
-  }
-}
-
-// The number of a field without an expression.
-function plain(value: number, spec: NumberSpec, what: string): number {
-  const checked = checkNumber(value, spec);
-  return checked.ok ? checked.value : fail(`${what}: ${checked.message}`);
-}
 
 const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
   o.expressions === undefined ? {} : Object.fromEntries(Object.entries(object(o.expressions, `${what}.expressions`)).map(([path, expr]) => [path, string(expr, `${what}.expressions.${path}`)]));
@@ -192,63 +96,10 @@ export const MAX_PATTERN_COUNT = 200;
 const PATTERN_COUNT: NumberSpec = { title: 'Count', unit: 'count', integer: true, min: { value: 1 }, max: { value: MAX_PATTERN_COUNT } };
 const PATTERN_ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
 
-// ---------------------------------------------------------------- jména a odkazy mezi features
-
-// A face name in its canonical form. An empty `copy` is the same as none, so that one face has one
-// spelling.
-function faceName(v: unknown, what: string): FaceName {
-  const o = object(v, what);
-  const feature = string(o.feature, `${what}.feature`);
-  const role = oneOf(o.role, ['side', 'startCap', 'endCap'] as const, `${what}.role`);
-  const name: FaceName = role === 'side' ? { feature, role, curve: string(o.curve, `${what}.curve`) } : { feature, role };
-  if (o.copy === undefined) return name;
-  if (!Array.isArray(o.copy)) return fail(`${what}.copy: a list of { pattern, index } is expected`);
-  const copy = (o.copy as unknown[]).map((item, i): CopyTag => {
-    const tag = object(item, `${what}.copy[${i}]`);
-    const index = finite(tag.index, `${what}.copy[${i}].index`);
-    if (!Number.isInteger(index) || index < 1) fail(`${what}.copy[${i}].index: the number of a copy is an integer from 1`);
-    return { pattern: string(tag.pattern, `${what}.copy[${i}].pattern`), index };
-  });
-  return copy.length ? { ...name, copy } : name;
-}
-
 // A face exists only after the feature that named it and after every pattern that copied it.
 function requireFace(doc: Document, before: number | undefined, face: FaceName, what: string): void {
   requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, what);
   for (const tag of face.copy ?? []) requireRef(doc, before, { id: tag.pattern, kind: 'pattern' }, what);
-}
-const faceRefs = (face: FaceName, path: string): FeatureRef[] => [{ path, id: face.feature, kind: 'faceSource' }, ...(face.copy ?? []).map((tag): FeatureRef => ({ path, id: tag.pattern, kind: 'pattern' }))];
-
-function edgeName(v: unknown, what: string): EdgeName {
-  const o = object(v, what);
-  const edge = { a: faceName(o.a, `${what}.a`), b: faceName(o.b, `${what}.b`) };
-  if (faceKey(edge.a) === faceKey(edge.b)) fail(`${what}: hrana je rozhraní dvou různých stěn`);
-  return canonicalEdge(edge);
-}
-
-// Odkaz jedné feature na jinou. `path` je místo odkazu uvnitř feature (cesta oddělená lomítky).
-// - `entity` is a reference to an entity of a sketch (an operand of a profile generator): `id` is the
-//   entity, `sketch` its sketch and `accepts` the entity kinds allowed.
-// - `generated` is a reference to an extrusion whose profile comes from one of the generators in
-//   `accepts` (a gear in mesh with another gear).
-// - `tool` is a reference to a feature that applies a tool to bodies and can be repeated by
-//   a pattern: an extrusion with the operation add or cut.
-// - `pattern` is a reference to a pattern (the one that made the copy a face name speaks of).
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern';
-export interface FeatureRef {
-  path: string;
-  id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
-  kind: RefKind;
-  sketch?: Id;
-  accepts?: readonly string[];
-}
-const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude', pattern: 'pole (pattern)' };
-
-// ID tělesa je ID feature, která ho vytvořila, nebo `<feature>/<místní jméno>`, když jich feature
-// vytváří víc. Lomítko v ID zadaném volajícím být nesmí, takže rozklad je jednoznačný.
-export function bodyOwner(body: Id): { feature: Id; local?: string } {
-  const slash = body.indexOf('/');
-  return slash < 0 ? { feature: body } : { feature: body.slice(0, slash), local: body.slice(slash + 1) };
 }
 
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
@@ -324,68 +175,6 @@ function regions(v: unknown, what: string): RegionRef[] {
 }
 
 // ---------------------------------------------------------------- entity skici
-
-export type { EntityKind };
-export interface Entity {
-  kind: EntityKind;
-  own: boolean; // false = počátek nebo promítnutá geometrie: solver s ní nehýbe
-}
-
-// Odvozené entity promítnuté geometrie plynou z `kind`: `<id>`, `<id>/a`, `<id>/b` u úsečky,
-// `<id>`, `<id>/center` u kružnice.
-export function derivedPoints(id: Id, ref: ExternalRef): Id[] {
-  return ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`];
-}
-
-export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
-  if (id === ORIGIN) return { kind: 'point', own: false };
-  if (has(sketch.points, id)) return { kind: 'point', own: true };
-  if (has(sketch.curves, id)) return { kind: sketch.curves[id].type, own: true };
-  if (has(sketch.external, id)) return { kind: sketch.external[id].kind, own: false };
-  const slash = id.indexOf('/');
-  if (slash > 0) {
-    const parent = id.slice(0, slash);
-    if (has(sketch.external, parent) && derivedPoints(parent, sketch.external[parent]).includes(id)) return { kind: 'point', own: false };
-  }
-  return undefined;
-}
-
-export function curvePoints(curve: Curve): Id[] {
-  if (curve.type === 'line') return [curve.a, curve.b];
-  if (curve.type === 'circle') return [curve.center];
-  return [curve.center, curve.start, curve.end];
-}
-
-// Operandy vazby v pořadí katalogu.
-export function constraintOperands(c: Constraint): Id[] {
-  return CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
-}
-
-// A dimension is a constraint the catalog marks with the `dimension` flag: it has a value and `driving`.
-export const isDimension = (c: Constraint): c is Dimension => CONSTRAINTS[c.type].dimension === true;
-
-// The address of a constraint value among the numeric fields of a sketch.
-export const constraintPath = (constraint: Id, value = 'value'): FieldPath => `constraints/${constraint}/${value}`;
-
-// Vazby, které dostává solver: geometrické a řídicí kóty.
-export const isDriving = (c: Constraint): boolean => !isDimension(c) || c.driving;
-
-// Klíč vazby pro hledání duplicit: typ a operandy. Operandy, které katalog označuje za
-// zaměnitelné (u orientovaných kót a úhlu záměna jen obrací znaménko hodnoty), se seřadí.
-export function constraintKey(c: Constraint): string {
-  const spec = CONSTRAINTS[c.type];
-  const value = (field: string): Id => (c as unknown as Record<string, Id>)[field];
-  const unordered = (spec.unordered ?? []).map(value).sort();
-  const ordered = spec.operands.filter((operand) => !spec.unordered?.includes(operand.field)).map((operand) => value(operand.field));
-  return JSON.stringify([c.type, ...unordered, ...ordered]);
-}
-
-// Řídicí vazba se stejným typem a operandy, která už ve skice je (kromě vazby `except`).
-export function duplicateOf(sketch: SketchFeature, c: Constraint, except?: Id): Id | undefined {
-  if (!isDriving(c)) return undefined;
-  const key = constraintKey(c);
-  return Object.keys(sketch.constraints).find((id) => id !== except && isDriving(sketch.constraints[id]) && constraintKey(sketch.constraints[id]) === key);
-}
 
 // A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
 // the position the sketch has stored for the point. That is its last solved position; for a point
@@ -477,10 +266,6 @@ function projected(v: unknown, what: string): Projected {
 }
 
 // ---------------------------------------------------------------- features
-
-function base(o: Dict, what: string): { id: Id; name: string; suppressed: boolean } {
-  return { id: newId(o.id, `${what}.id`), name: string(o.name, `${what}.name`), suppressed: boolean(o.suppressed, `${what}.suppressed`) };
-}
 
 function planeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PlaneFeature {
   return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
@@ -594,13 +379,6 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   return { ...feature, targets };
 }
 
-// A field of another variant is a mistake, not something to drop silently: a pattern of a body
-// given a list of features too would otherwise be stored as something else than what was sent.
-function onlyFields(o: Dict, fields: readonly string[], what: string, owner: string): void {
-  // a key without a value is not a field (in-process callers build objects that way; JSON has none)
-  for (const key of Object.keys(o)) if (o[key] !== undefined && !fields.includes(key)) fail(`${what}.${key}: ${owner} has no such field`);
-}
-
 function axisRef(doc: Document, before: number | undefined, v: unknown, what: string): AxisRef {
   const o = object(v, what);
   const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
@@ -612,13 +390,6 @@ function axisRef(doc: Document, before: number | undefined, v: unknown, what: st
   requireRef(doc, before, { id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
   return { kind, sketch, point };
 }
-const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
-  axis.kind === 'base'
-    ? []
-    : [
-        { path, id: axis.sketch, kind: 'sketch' },
-        { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
-      ];
 
 function patternFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PatternFeature {
   const given = object(o.source, `${what}.source`);
@@ -720,9 +491,6 @@ interface FeatureTypeSpec<F extends Feature> {
   // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
   patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
 }
-
-const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
-  ref.kind === 'plane' ? [{ path, id: ref.feature, kind: 'plane' }] : ref.kind === 'face' ? [{ path, id: ref.body, kind: 'body' }, ...faceRefs(ref.face, path)] : [];
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane: {

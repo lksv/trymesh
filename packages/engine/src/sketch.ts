@@ -1,6 +1,6 @@
 // Skica: vstup solveru a razítko, referenční kóty, detekce profilů a oblastí.
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
-import { constraintOperands, derivedPoints, isDimension } from './document';
+import { constraintOperands, derivedPoints, isDimension } from './sketch-content';
 import type { Constraint, Curve, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2 } from './util';
 

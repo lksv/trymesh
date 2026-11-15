@@ -1,7 +1,7 @@
 // Diagnostika skici: duplicitní a nadbytečné vazby, volnost bodů a poloměrů, vysvětlení vazby.
 // Pravidla jsou v docs/architecture.md, sekce Diagnostika skici; počítá se z rozboru v analysis.ts.
 import type { SketchAnalysis } from './analysis';
-import { constraintKey, constraintOperands, curvePoints } from './document';
+import { constraintKey, constraintOperands, curvePoints } from './sketch-content';
 import type { ConstraintExplanation, Constraint, Id, SketchDiagnosis, SolveInput } from './types';
 import { has } from './util';
 

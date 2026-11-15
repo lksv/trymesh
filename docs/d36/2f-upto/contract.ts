@@ -24,8 +24,9 @@ import type { PlaneRefAfter } from '../00-prep/contract';
 //   length follows the face when the model changes. A copy made by a pattern runs from its own
 //   start to that same plane (the plane does not move with the copy, and the copy does not need
 //   the face to be there still).
-// - A plane parallel to the sketch plane (within the angle tolerance) gives one length for the
-//   whole profile; the tool is then the one a distance extent of that length builds.
+// - When the lengths over the profile differ by no more than the length tolerance (a plane
+//   parallel to the sketch plane), the tool has one length and is the one a distance extent of
+//   that length builds, end cap included.
 // - For every operation (`new`, `add`, `cut`); it needs no target to measure. No taper.
 // - Errors of the feature: `brokenReference` (the plane or the face is not in the state before
 //   the feature), `nonPlanarFace`, and `invalidExtent` below.
@@ -39,8 +40,8 @@ export const EXTENT_GAP = { title: 'Gap before the plane', unit: 'mm', default: 
 // ================================================================ the issue code
 
 // `invalidExtent`, an error: the tool cannot reach the plane.
-// - the plane is parallel to the direction of the extrusion (within the angle tolerance), or so
-//   near to it that a length is out of the range of the numbers of a document;
+// - the plane is parallel to the direction of the extrusion, or within 0.01 rad of it (the tool
+//   would be more than a hundred times as long as its start is far from the plane);
 // - the plane passes through the start of the tool, or touches it: some point of the profile at
 //   the start is on the other side of the plane than the rest, or closer to it than the length
 //   tolerance. (A plane that lies wholly on one side is reached, whichever side it is.)

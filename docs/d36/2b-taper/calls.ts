@@ -31,8 +31,9 @@ export const lipLeadIn = (): StateAfter => run({ type: 'setField', feature: 'lip
 
 // ---------------------------------------------------------------- a countersink by hand
 
-// Two concentric circles on the top of the lid, in its middle. Their sizes are made up for the
-// geometry (8 and 5 mm); they are no screw. Real sizes come from the catalogs of 2c.
+// Two concentric circles on the top of the lid, in its middle. Their sizes and the angle of the
+// cone are made up for the geometry (8 and 5 mm, 45° a side); they are no screw. Real sizes and
+// angles come from the catalogs of 2c.
 const circle = (sketch: Id, id: Id, radius: string): CommandAfter[] => [
   { type: 'addCurve', sketch, id, curve: { type: 'circle', center: 'lidMid' }, radius: 1 },
   { type: 'addConstraint', sketch, id: `${id}r`, constraint: { type: 'radius', curve: id, value: radius, driving: true } },

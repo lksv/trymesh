@@ -16,7 +16,7 @@ import type { PlainDistanceExtent } from '../2a-offset/contract';
 // - `plain`: a cylinder.
 // - `counterbore`: a cylinder for the head (`headDiameter`, `headDepth`), then the bore.
 // - `countersink`: a cone from `headDiameter` at the mouth down to the bore; `angle` is the
-//   included angle of the cone (π/2 for a 90° head). The depth of the cone follows from the three.
+//   included angle of the cone (π/2 for a cone of 90°). The depth of the cone follows from the three.
 // - `nutPocket`: a hexagon `acrossFlats` wide and `headDepth` deep, then the bore. `rotation` is
 //   the angle of one corner of the hexagon from the X axis of the sketch, counter-clockwise.
 export type HoleShape =
@@ -72,7 +72,7 @@ export const HOLE_FIELDS = {
 // What the result of the feature publishes in `facts`.
 export const HOLE_FACTS = {
   headDepth: 'the depth of the head along the hole in mm: given for a counterbore and a nut pocket, computed for a countersink; absent for a plain hole',
-  depth: 'the depth of the whole hole in mm for the feature itself, not for its copies (for "through all": how far the targets reach from the mouth, without the overshoot of the tool)',
+  depth: 'the depth of the whole hole in mm for the feature itself, not for its copies (for "through all": how far the targets reach from the mouth, without the overshoot of the tool; measured on the mesh, so exact to about 1e-7 of its coordinates)',
 } as const;
 
 // ================================================================ the unions
@@ -104,8 +104,9 @@ declare module '../00-prep/contract' {
   // - the head is not wider than the bore (for a nut pocket: the bore does not fit between the flats);
   // - the head is as deep as the hole or deeper. For "through all" the hole is as deep as the
   //   targets reach from the mouth, and the overshoot of the tool does not count. Targets that
-  //   do not reach past the mouth at all are not this error: the tool is built, cuts nothing and
-  //   the feature has the warning `noEffect`, as a cut that misses.
+  //   do not reach past the mouth at all (within the resolution of their meshes) are not this
+  //   error: the tool is built, cuts nothing and the feature has the warning `noEffect`, as
+  //   a cut that misses.
   //   The reach is that of the whole targets, not of the material under each point: a head that
   //   passes through a thin plate of a body that reaches deeper elsewhere is not detected.
   // - two points are so close that their holes would overlap; `refs` name the points.

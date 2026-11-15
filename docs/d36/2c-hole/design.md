@@ -1,6 +1,6 @@
 # 2c Hole feature and the hardware catalogs (D46)
 
-**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It needs [2a](../2a-offset/design.md) (the extent as a service, the flag `notProjected` on a reference, the tool builds as modules), [2b](../2b-taper/design.md) (the stack of sections, the cone, circles between surfaces) and one class of [2f](../2f-upto/design.md) (`ToolProblem`). The tools of this package (a countersink, a counterbore with its step, a hexagon pocket with its step, four holes in one tool) were run through the real kernel adapter in the spike of 2b ("What was tried"); nothing else was run. **No dimension of a screw, a nut or an insert is written in these files: none was looked up, and none may come from memory.** The columns of the catalogs are a proposal for the same reason ("The catalogs").
+**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It needs [2a](../2a-offset/design.md) (the extent as a service, the flag `notProjected` on a reference, the tool builds as modules), [2b](../2b-taper/design.md) (the stack of sections, the cone, circles between surfaces) and one class of [2f](../2f-upto/design.md) (`ToolProblem`). The tools of this package (a countersink, a counterbore with its step, a hexagon pocket with its step, four holes in one tool) were run through the real kernel adapter in the spike of 2b ("What was tried"); nothing else was run. **No dimension of a screw, a nut or an insert is written in these files: none was looked up, and none may come from memory.** The columns of the catalogs are a proposal for the same reason ("The catalogs").
 
 Files: [contract.ts](contract.ts) (the feature, its patch, the face roles, the issue code, the catalogs' columns, the query), [calls.ts](calls.ts) (its part of validation scenario 12, and the whole scenario in its order).
 
@@ -91,13 +91,16 @@ The step, in `features/hole.ts`:
 
   | Reach | What `build` does |
   |---|---|
-  | not above `LENGTH_TOLERANCE` | the targets do not pass the mouth. The tool is built, as long as its head and the overshoot; it lies wholly beyond the targets, so `applyTool` reports every target unchanged: the warning `noEffect`, and the recipe stays for a pattern |
-  | above it, and not above the depth of the head plus the tolerance | `invalidHole`, thrown as a `ToolProblem` (2f): the error of the feature, or of the copy of a pattern |
-  | above the depth of the head | the tool is the reach and the overshoot long; the overshoot only lengthens the bore |
+  | not above `ε` | the targets do not pass the mouth. The tool is built, as long as its head and the overshoot; it lies wholly beyond the targets, so `applyTool` reports every target unchanged: the warning `noEffect`, and the recipe stays for a pattern |
+  | above `ε`, and not above the depth of the head plus `ε` | `invalidHole`, thrown as a `ToolProblem` (2f): the error of the feature, or of the copy of a pattern |
+  | above the depth of the head plus `ε` | the tool is the reach and the overshoot long; the overshoot only lengthens the bore |
+
+  `ε` is the resolution of the solids, not `LENGTH_TOLERANCE`: `1e-5 · max(1, c)`, with `c` the largest coordinate of the targets and of the sketch plane, the number `toolSpan` computes its overshoot from. It is the scale `applyTool` uses already when it asks whether a face lies on the surface of a target. The reach is measured on float32 positions against a frame in doubles, so for a target that ends exactly in the sketch plane it is rounding noise and not zero: a review measured 1.5e-6 for a plate with its top at 33.4 and 3e-6 at 100.3, above the length tolerance of 1e-6, and with that tolerance a headed hole pointing away from such a plate would have been `invalidHole`. The noise is about 1e-7 of the coordinate, a hundred times below `ε`.
 
   The first version took the length of the span, overshoot included, for the depth. A review showed both ends of that: a head half a millimetre deeper than a plate passed (the overshoot is at least a millimetre), and a hole pointing away from its target got `invalidHole` from a head deeper than the overshoot, where the contract promises `noEffect`.
 - **What is not detected.** The reach is that of the whole targets, not of the material under each point. The lid of scenario 12 is a plate with a lip around it: "through all" from its top reaches to the lower edge of the lip, so a head deeper than the plate and shallower than plate and lip passes, and leaves an opening as wide as the head with no seat in the body. The feature has no error; the face `holeSeat` is then in no body, and a sketch on it is a `brokenReference`. Finding it would need the material along the axis of every hole (a ray through the targets per point and per build); deferred, and the scenario keeps the plate thicker than the head (`calls.ts`, `socketHeadsInstead`).
-- `facts.depth` is `|distance|` or the reach.
+- **What is not detected**, of the same kind: the reach is that of all targets of the feature together, so a head deeper than one thin target passes when another target reaches further.
+- `facts.depth` is `|distance|` or the reach. The reach is a measure on float32 positions: it agrees with the model to about 1e-7 of its coordinates, not to the last digit of a double.
 
 **The circles of a hole** all have one number of sides, by its largest radius (`segments` of `sketch.ts` with the chord tolerance), starting at the X axis of the sketch. The hexagon has six; its step to the bore is the hexagon with the circle as a hole, triangulated by the kernel. A step between two circles is triangulated the same way.
 
@@ -146,7 +149,7 @@ The backlog asks for "a tool that composes the feature" from the catalog. It is 
 
 - **Arguments**: `use` (clearance, socketHead, countersunk, nutPocket, heatSetInsert), `size`, `fit` (the clearance series, medium when left out), `allowance` (an expression added to every diameter and to the size across flats).
 - **Answer**: `shape` (in the input form of a hole shape: numbers, or expressions when an allowance was given), `label`, `depth` for an insert, `from` (the catalogs used).
-- **The angle of a countersink is always an expression in degrees** (`deg(…)`, from the radians of the catalog). The tool `query` prints numbers rounded to six decimal places, and an AI passes on what it read: a right angle would arrive in the feature as 1.570796 and differ from the catalog. The expression survives, and the form shows the angle the standard prints. The lengths of the catalogs have few decimals and pass the rounding unchanged.
+- **The angle of a countersink is always an expression in degrees** (`deg(…)`, from the radians of the catalog). The tool `query` prints numbers rounded to six decimal places, and an AI passes on what it read: an angle of π/2, to take one whose decimals do not end, would arrive in the feature as 1.570796 and differ from the catalog. The expression survives, and the form shows the angle the standard prints. The lengths of the catalogs have few decimals and pass the rounding unchanged.
 - **It looks at `use` first** and asks only the catalogs that use reads: an insert needs no row of `clearanceHoles`. (The first version asked for the clearance hole before anything else.)
 - **What maps to what** is the judgement an AI must not be left to make from memory:
 
@@ -257,10 +260,10 @@ The first is in `requireRef`, which the preparatory step moves to `features/inde
 
 ## Tests the implementation owes
 
-- Engine: each kind at one point and at several; the volumes against the formulas; the surfaces; the kinds of the edges and the projection of both rims of a countersink and of a counterbore; a sketch on a seat and on a flat, and a flat's origin with a `start` that is not zero; the names after a change of the kind and after a point is added; every refusal; "through all" with a head half a millimetre deeper than a plate (refused although the overshoot is longer), away from the target (`noEffect`, and a pattern of it that hits), and through the plate of a body with a deeper rim (the case that is not detected, pinned as it behaves); a pattern of a hole and of a hole with a pocket in one list; the patch of every field; `label`.
+- Engine: each kind at one point and at several; the volumes against the formulas; the surfaces; the kinds of the edges and the projection of both rims of a countersink and of a counterbore; a sketch on a seat and on a flat, and a flat's origin with a `start` that is not zero; the names after a change of the kind and after a point is added; every refusal; "through all" with a head half a millimetre deeper than a plate (refused although the overshoot is longer), away from the target (`noEffect`, and a pattern of it that hits; with the mouth at a height float32 does not hold exactly, such as 33.4, and on a body turned by a pattern, where the reach is noise and not zero), and through the plate of a body with a deeper rim (the case that is not detected, pinned as it behaves); a pattern of a hole and of a hole with a pocket in one list; the patch of every field; `label`.
 - The catalogs: the pinned rows and the checks above. The query: every use, a size missing in one catalog and present in another, the allowance as an expression that the feature then accepts, the angle through the tool `query` and back into a feature.
 - MCP: the fixture of the query in the table of the guard.
-- Scenario 12, from `calls.ts` of the four packages. One assumption of it depends on numbers nobody has read yet: that the cone of the countersunk screw it uses is shallower than the plate of the lid (`screwChecks` asserts it, and says what to change).
+- Scenario 12, from `calls.ts` of the four packages. No assertion of it depends on a number of a standard: where a head has to fit into the plate of the lid, the scenario sets the thickness of the plate from the row of the catalog (`screwHoles`, `socketHeadsInstead`).
 
 ## Reviews
 
@@ -285,3 +288,19 @@ Checked by the reviewers and found sound: the roles are unique per face, and the
 Not acted on:
 
 - Detecting a head that passes through a thin part of a deeper body (raised by the fix, not by a reviewer): stated as a limit, with the test that pins it.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1, at `83c8405`
+
+The reviewers are in the record of [2a](../2a-offset/design.md). The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The three cases of "through all" compare the reach with `LENGTH_TOLERANCE`, but the reach is measured on float32 positions: for a plate whose top is the sketch plane it is 1.5e-6 at a height of 33.4 and 3e-6 at 100.3, and 1.3e-6 on a body turned by a pattern. A headed hole pointing away from its target is then `invalidHole` again; the scenario passed only because 33 is held exactly | internal, major (probe of the engine) | Yes (`toolSpan` subtracts a frame in doubles from float32 positions) | The cases are decided at the resolution of the solids, `1e-5 · max(1, c)`, the scale of `applyTool`; `facts.depth` is said to be a float32 measure and `screwChecks` compares it within 1e-4; the owed test names a height that is not held exactly and a turned body |
+| `screwChecks` asserts that the cone of the countersunk screw is shallower than the plate of the lid, a fixed 3 mm: an assertion on a number of a standard nobody has read. The comment admitted it; the scenario would still fail on valid catalog data | codex, major; internal, as the one flagged assertion | Yes | `screwHoles` sets `lidT` from the row of the catalog: the cone of the head down to its point, which is deeper than any countersink for it, and a millimetre, never less than the 3 mm the earlier parts were built with |
+| The right angle of a countersunk head is written as an example in three places | internal, flag | Yes: never asserted, but it reads as a value of a standard beside the sentence that none is written | The three places speak of a cone or of π/2 as arithmetic, not of a head |
+
+Found holding by both: a tool that only touches its targets comes back unchanged (run by both through the real kernel; the internal reviewer with a countersink, a plain tool and a hexagon, the mouth flush on a plate and also over its edge, at three heights: no face of the tool in the result and no change of volume); the use is looked at first; `deg(…)` survives the expression language, `Input<HoleShape>` and a patch, and another kind replaces the shape and drops its expressions; `holeWall` and `own` remain only in this record; the scenario from its first call to its last (no ID twice, every face exists, the numbers follow from the parameters, no preview reads a state it does not have).
+
+Not checked by either: whether each of the four calls that must not compile fails for the reason it names (the internal reviewer's type probe was refused by the guard of the worktree; the contracts as a whole type-check, and an unused `@ts-expect-error` is an error of the compiler). The columns of the catalogs against any standard.
+
+Not acted on: nothing.

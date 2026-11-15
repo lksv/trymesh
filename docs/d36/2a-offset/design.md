@@ -1,6 +1,6 @@
 # 2a Profile offset and a wall from a line (D44)
 
-**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
+**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
 
 Files: [contract.ts](contract.ts) (what the package adds, and the one declaration of the changed extrusion that track B shares), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -123,12 +123,13 @@ Then the moved outline is tested. First as a sketch profile is, by the two check
 - on the exact curves: two curves may touch only at a corner they share (`compatible`);
 - after tessellation: no two edges cross and no loop has fewer than three points (`soundTessellation`).
 
-Those two are not enough, for a moved outline or for a sketch (the review found both cases in today's `detectProfile`; "Reviews"): `soundTessellation` looks for proper crossings only. So the polylines that will be built get two more tests:
+Those two are not enough, for a moved outline or for a sketch (the reviews found the cases in today's `detectProfile`; "Reviews"): `soundTessellation` looks for proper crossings only, where the ends of each edge lie strictly on opposite sides of the other. An edge that ends on another one, passes through its end or runs along it is not a crossing to it. So the polylines that will be built get three more tests, in this order:
 
-- **area:** every tessellated loop has the sign of area of its exact loop, and an area above `LENGTH_TOLERANCE` times its length. A sliver between an arc and its chord tessellates into points on one line: three or more points, no crossing, no area;
-- **nesting:** for every pair of tessellated loops "lies inside" is what it was for the exact loops before the offset, tested with one vertex of the one against the polygon of the other (they do not cross, so one vertex decides). This catches a hole that grew past its outer loop without touching it (the outer loop shrank inside it), and a small hole that lies inside an exact circle and outside its polygon, between two of its corners.
+- **clearance:** any two tessellated edges that have no vertex in common are farther apart than `LENGTH_TOLERANCE` (the distance of two segments, which is zero when they meet in any way: at an end of one of them and along a common stretch too); and of two edges that share a vertex, the other end of each is farther than the tolerance from the other edge, so neither folds back onto its neighbour. It runs in the sweep `soundTessellation` has, with the distance in place of the test of sides. The loops of a moved outline have keys of their own and share no vertex, so after this test every loop is a simple polygon and no two loops have a point in common;
+- **area:** every tessellated loop has the sign of area of its exact loop, and an area above `LENGTH_TOLERANCE` times its length. A sliver between an arc and its chord tessellates into points on one line, which the clearance refuses already (its edges fold back); the test stays for the sign, which a loop that is simple can still have lost against its exact loop;
+- **nesting:** for every pair of tessellated loops "lies inside" is what it was for the exact loops before the offset, tested with one vertex of the one against the polygon of the other. One vertex decides because of the clearance: two simple polygons without a common point are either nested or apart. (The second version of this design relied on "they do not cross" from `soundTessellation`; a review built a hole that passes through an edge of its outer polygon at two of its own vertices, with one vertex inside.) This catches a hole that grew past its outer loop without touching it (the outer loop shrank inside it), and a small hole that lies inside an exact circle and outside its polygon, between two of its corners.
 
-A profile that fails any of them is `invalidProfile`. What passes hands `buildPrism` no loop without area and no hole outside its outer loop.
+A profile that fails any of them is `invalidProfile`. What passes hands `buildPrism` simple polygons, none without area, none touching another, and every hole inside its outer loop.
 
 The moved outline is tessellated with the rule of today (`segments` of `sketch.ts`, by the new radius), each loop with keys of its own, and handed to `buildPrism` as regions with their holes. `sideOf` answers with the moved curves in the direction of the sketch curve, so the surfaces are exact: the plane of a moved line, a cylinder with the new radius.
 
@@ -244,12 +245,12 @@ What the maps of [the plan](../README.md) do not have yet; the session that owns
   - `sketch.ts` is listed for 2d and step 6; this package adds `Loop.exact` and exports four things from it. 2d (re-pointing an end of a curve, a fillet of a corner) changes what the `curves` of a wall and the `point` of a `wallEnd` refer to, as it does for regions.
   - `applyCommand` is listed for 2d, 3a and 5a; this package edits its `setField` branch.
   - `ToolRecipe`, `Prism` and `applyTool` (`recompute/state.ts`, `recompute/services.ts`) have no row. Track B renames `Prism` (here), lets a build fail with a code (2f) and shares the handling of an `Applied` (2c); the pattern of 2e and the revolve of 4a use all three.
-- **A finding in today's code**, outside the package: `detectProfile` accepts a region whose polyline has no area, and a hole that lies outside the polygon of its outer circle ("Reviews"). The two new tests are written for moved outlines; applying them to every sketch profile changes which sketches are valid and is a fix of its own, with its regressions in `review.test.ts`.
+- **A finding in today's code**, outside the package: `detectProfile` accepts a region whose polyline has no area, a hole that lies outside the polygon of its outer circle, and a hole that passes through an edge of its outer polygon at its own vertices ("Reviews", both rounds; each was reproduced against the code of today). The three new tests are written for moved outlines; applying them to every sketch profile changes which sketches are valid and is a fix of its own, with its regressions in `review.test.ts`.
 - **Numbers.** D44 to D47 and scenario 12 are in the brief; the table "Numbers" of the plan still gives 11 as the next scenario.
 
 ## Tests the implementation owes
 
-- Engine: the offset of a rectangle, of a rounded rectangle (tangent joins), of a D shape (an arc meeting a line at an angle, both branches), of an outline with holes, of a selection with a shared curve; every refusal above, with the sliver and the small hole of the review for the two tests on the polylines; `offset` then `−offset` gives the outline back (a property test over random convex and L-shaped outlines); the wall of one line, of an L, of an arc, of a circle; `setField` on an absent field; the patch that removes it.
+- Engine: the offset of a rectangle, of a rounded rectangle (tangent joins), of a D shape (an arc meeting a line at an angle, both branches), of an outline with holes, of a selection with a shared curve; every refusal above, with the sliver, the small hole and the hole through an edge at its own vertices of the reviews for the three tests on the polylines; `offset` then `−offset` gives the outline back (a property test over random convex and L-shaped outlines); the wall of one line, of an L, of an arc, of a circle; `setField` on an absent field; the patch that removes it.
 - `review.test.ts` of the engine: the mesh of an extrusion without an offset is byte for byte what it was.
 - Scenario 12 in `packages/scenarios`, from `calls.ts` of the four packages.
 
@@ -279,3 +280,15 @@ Checked by the reviewers and found sound: the direction each curve moves for out
 Not acted on:
 
 - `ProfileSourceB` is a closed alias, so another track could not merge a profile variant (internal, as a note): none plans one, and the extent, which two packages do extend, is open.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1, at `83c8405`
+
+The same two reviewers, read-only, asked for blockers, majors and factual errors only. `codex` returned four findings over the four packages. The internal subagent returned one major, one factual error and one flag, with probes against the real engine and kernel; it was stopped by a usage limit before it reported and was resumed with the same brief. `agy` did not take part: its account is out of quota. Every finding was checked against the code. The one on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The nesting test rests on "the loops do not cross", which `soundTessellation` does not give: it counts only crossings where the ends of each edge lie strictly on opposite sides of the other. A hole whose two vertices lie on an edge of its outer polygon passes through it, has one vertex inside and a sound area. Built from an inward offset of a valid outline and run through today's `detectProfile` and `buildPrism` | codex, blocker | Yes (`sketch.ts`, the test of sides with `< 0` on both products). The case needs a vertex exactly on an edge, which is rare; the claim was false all the same | A third test, clearance, in front of the other two: edges without a common vertex keep a distance, neighbours do not fold back. With it the loops are simple and disjoint, and one vertex does decide the nesting |
+
+Found holding by both: the signed sweep of an arc for both senses and for outer loops and holes; the area test for the sliver; `notProjected` where it is enforced; the widened pre-check of `setField` with `Fields`, `fieldsOf` and a patch (no existing test changes its message). The internal reviewer worked five cases through the two tests of round 1 and found each refused; what it named as remaining ("a vertex exactly on an edge of another loop") is the finding above.
+
+Not checked by either: a numeric search for counterexamples to the tests on the polylines; they were reasoned through, not fuzzed. The implementation owes a property test (a random outline that passes hands the kernel a mesh it accepts).

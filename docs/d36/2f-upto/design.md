@@ -1,6 +1,6 @@
 # 2f Extent up to a planar face (D47)
 
-**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
+**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the variant, the issue code, the facts), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -75,18 +75,19 @@ The plane is resolved once per recompute of the feature, in the state before it,
 1. **The plane.** The step of the extrusion resolves `extent.plane` with the service `frame(ref, state)` in the state before the feature: `brokenReference` or `nonPlanarFace` end the step there. The recipe keeps the plane (a point and a normal in model coordinates).
 2. **The span.** `toolSpan` of `recompute/extent.ts` returns the start and either an end level (as today) or the end as a level per point. For `upTo` it gets the kept plane and the frame the tool is built in (the feature's own, or the transformed one of a copy).
 3. **The lengths.** For a point of the profile the length is where the line through that point at the start, along the normal, meets the plane. With `N` the normal of the plane and `n` the normal of the frame:
-   - `|N · n| ≤ sin(ANGLE_TOLERANCE)`: the plane is parallel to the direction, `invalidExtent`;
+   - `|N · n| ≤ sin(UP_TO_MIN_ANGLE)`, a constant of `recompute/extent.ts`, 0.01 rad (about 0.6°): the plane is parallel to the direction or nearly so, `invalidExtent`. The angle is wider than `ANGLE_TOLERANCE` on purpose. It bounds every length by a hundred times the distance of the start from the plane, which is of the size of the model; with the tolerance of 1e-4 a plane 10 mm away gave a tool 90 m long, far beyond what the kernel adapter resolves (about 1e-4 of the largest coordinate);
    - the lengths to the plane where it is have to be all positive or all negative, each beyond `LENGTH_TOLERANCE`; otherwise the plane passes through the start or touches it, `invalidExtent`;
-   - the lengths to the plane moved by the gap have to keep that sign, each beyond the tolerance; otherwise the gap is too large, `invalidExtent`;
-   - a length above `MAX_NUMBER` of `catalog.ts` (a plane a hair off parallel gives one) is `invalidExtent` as well.
+   - the lengths to the plane moved by the gap have to keep that sign, each beyond the tolerance; otherwise the gap is too large, `invalidExtent`.
 
    The points tested are the vertices of the tessellated profile, which is the tool that is built: the length is linear, so the vertices of a polygon test all of it. An arc of the exact profile lies outside its polygon by up to the chord tolerance, so a plane that just touches the exact circle may pass; the tool it then gives is sound. The lengths in `facts` are those of the tool.
-   - A plane parallel to the sketch plane within `ANGLE_TOLERANCE` gives one length for all points, measured at the origin of the sketch. The tool is then the prism of a distance extent, and `lengthMin` equals `lengthMax` exactly.
+   - **One length.** When the lengths that passed these tests differ over the profile by no more than `LENGTH_TOLERANCE` (a plane parallel to the sketch plane; the arithmetic gives its lengths a rounding apart), the tool gets one length, the middle between the shortest and the longest. It is then the prism of a distance extent, its end cap is described as the cap of one (step 5), and `lengthMin` equals `lengthMax` exactly. The end is off the plane by at most half the tolerance, and the one length has the sign of all of them. (The second version decided by the angle between the two planes and measured the one length at the origin of the sketch. For a profile far from that origin the end was then off the plane by the angle times that distance, with no bound: a review gave a profile at x = 40 000 and a plane tilted by 5e-5, where the lengths over the profile are 1 and the length at the origin is −1, so the tool turned round.)
 4. **The mesh.** `buildPrism` takes the end as a level per vertex. The winding and which cap is `startCap` follow the sign of the lengths, as they follow the sign of `distance` today.
 5. **The faces.** Sides as today: the plane of a line, the cylinder of an arc, cut off by the tilted end. The end cap is a plane:
    - `origin`: the origin of the sketch carried along the normal into the plane (today: into the level of the cap);
    - `y`: the Y axis of the sketch carried the same way into the plane and normalised;
    - `normal`: the normal of the plane.
+
+   With one length (step 3) the cap is the cap of a distance extent, as today: the origin of the sketch at that level, its Y axis, the normal of the sketch plane. The description then matches the mesh that was built.
    A sketch can stand on it. Its edges with the sides of lines are lines; with a cylinder it is a circle only when the plane is across the axis, otherwise `other` (an ellipse), which is what `edgeKind` answers for those surfaces already.
 6. **The facts.** `lengthMin`, `lengthMax` (positive) and `forward`, for the tool of the feature itself, not for its copies.
 
@@ -125,7 +126,7 @@ The plane is resolved once per recompute of the feature, in the state before it,
 
 | Code | Kind | When |
 |---|---|---|
-| `invalidExtent` | error, new | the plane is parallel to the direction of the extrusion (or so near it that the length is out of range); it passes through the start of the tool or touches it; the gap reaches the start |
+| `invalidExtent` | error, new | the plane is parallel to the direction of the extrusion, or within 0.01 rad of it; it passes through the start of the tool or touches it; the gap reaches the start |
 | `brokenReference` | error | the plane, the body or the face is not in the state before the feature |
 | `nonPlanarFace` | error | the face is not planar |
 
@@ -164,7 +165,7 @@ The plane is resolved once per recompute of the feature, in the state before it,
 
 ## Tests the implementation owes
 
-- Engine: a post up to a parallel face (one length, the mesh of a distance extent), to a tilted one (the volume of a cylinder cut by a plane is its area times the length at the centre), to a plane feature and a base plane; both directions; the gap with both signs, and a gap larger than the way to the plane; the end cap as a sketch plane; every refusal; the length after a change of the model; a cut up to a face of its own target; an addition that swallows the face it ends on, alone and as the source of a pattern; a pattern over a tilted plane with a length per copy, and one with a copy that is parallel to the plane.
+- Engine: a post up to a parallel face (one length, the mesh of a distance extent), to a tilted one (the volume of a cylinder cut by a plane is its area times the length at the centre), to a plane feature and a base plane; both directions; the gap with both signs, and a gap larger than the way to the plane; the end cap as a sketch plane; every refusal, with a plane 0.005 rad off the direction (refused) and one 0.02 rad off (built); a profile far from the origin of its sketch under a plane tilted by less than the angle tolerance (the review's case: lengths per vertex, no one length, the tool on the right side); the length after a change of the model; a cut up to a face of its own target; an addition that swallows the face it ends on, alone and as the source of a pattern; a pattern over a tilted plane with a length per copy, and one with a copy that is parallel to the plane.
 - Scenario 12.
 
 ## Reviews
@@ -189,3 +190,16 @@ Checked by the reviewers and found sound: the lengths to a tilted plane are line
 Not acted on:
 
 - The extrema of the length on exact arcs (codex): above.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1, at `83c8405`
+
+The reviewers are in the record of [2a](../2a-offset/design.md). The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The one length of a plane "parallel within the angle tolerance", measured at the origin of the sketch, can turn the tool round: a profile at x = 40 000 to 40 001 under the plane z = −1 + 0.00005 x has lengths 1 to 1.00005 and the length −1 at the origin. Without a change of sign the end is off the plane by the tilt times the distance from the origin, with no bound; and the end cap kept the tilted normal for a mesh built flat | codex, major; internal, as a lesser point (0.03 mm at 300 mm) | Yes (the arithmetic; `ANGLE_TOLERANCE` is 1e-4) | One length only when the lengths over the profile differ by no more than `LENGTH_TOLERANCE`; it is the middle of the extremes; the end cap is then described as the cap of a distance extent |
+| The bound on the length does not bound it: `MAX_NUMBER` is 1e9, and a plane that passes the test of the angle gives at most 1e4 times the distance of the start from the plane, so the test fires only beyond 100 m. A plane 10 mm away and 1.1e-4 rad off parallel gives a tool 90 909 mm long | internal, factual | Yes (`catalog.ts`, `util.ts`) | The bound is gone. The plane has to stand 0.01 rad off the direction (`UP_TO_MIN_ANGLE`), which bounds every length by a hundred times the distance of the start from the plane |
+
+Found holding by both: the kept plane (nothing else is needed in `ToolRecipe`: the plane lives in the closure of `build`, as the profile does; the memoisation holds, because a moved face means another state object before the feature, so the step and a pattern after it recompute); `build` is called from two places; the order of the tests of the gap, and that a negative gap only lengthens.
+
+Not acted on: nothing.

@@ -1,6 +1,6 @@
 # 2b Taper on extrusion (D45)
 
-**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
+**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the field, the upgrade step, the rule for circles as one function), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -38,7 +38,7 @@ Files: [contract.ts](contract.ts) (the field, the upgrade step, the rule for cir
 
 | Use | Sketch | Extent |
 |---|---|---|
-| a countersink from the face the head sits in | the circle of the head, on that face | a cut with a negative `distance` (into the body) and a negative taper: `deg(-45)` for a 90° head |
+| a countersink from the face the head sits in | the circle of the head, on that face | a cut with a negative `distance` (into the body) and a negative taper of half the included angle of the cone: `deg(-45)` for a cone of 90°, as an example of the arithmetic. The angle of a real screw head comes from the catalog of 2c, not from here |
 | the same from the bore | the circle of the bore | `start` at the bottom of the cone, `distance` up to the face, `deg(45)` |
 | a chamfer of the bottom edge against elephant foot | the outline | a slab with `profile/offset: -c`, `distance: c` and `deg(45)`; the body continues straight above it |
 | a draft on a rib or a boss | its profile | `deg(-2)` |
@@ -52,7 +52,7 @@ Reasons:
 
 **The sketched profile holds at the start of the extent**, also when `start` is not zero. The alternative (it holds in the sketch plane, and the tool is cut out of a cone through it) would make `start` change the size of the start cap, which reads as a bug in every use above.
 
-**The angle is measured from the direction of the extrusion, per side**, so a 90° countersink is 45°. The included angle of a cone is what a hole says (2c); a taper applies to planes as well, where "included" means nothing.
+**The angle is measured from the direction of the extrusion, per side**, so a cone with an included angle of 90° is a taper of 45°. The included angle of a cone is what a hole says (2c); a taper applies to planes as well, where "included" means nothing.
 
 ## The tool: a stack of sections
 
@@ -84,10 +84,14 @@ function buildStack(feature: Id, sections: Section[], caps: [name, name], frame:
 
    Where an arc meets a neighbour at an angle, its sweep changes from ring to ring, and straight edges between two rings go wrong in two ways. The corner moves along a conic, so the segment between the two corners leaves both surfaces. And the points of the arc, spread evenly over a sweep that differs between the rings, do not lie on common rulings of the cone, so the triangles between them are sheared across it. (The first version of this design tested the corner only; a review computed a triangle 0.011 mm off its cone where the corner passed at 0.004, for a tolerance of 0.01.) Both errors shrink with rings in between: the outline moved by `t · |distance| · tan(taper)` at the level `t` of the way.
 
-   The rule tests the mesh that will be built, not a model of it:
-   - an arc whose sweep changes is divided for half the chord tolerance, so that the shear has the other half;
-   - for every such arc and every interval between two rings, the middle of every edge and of every diagonal between the rings is measured against the exact cone, and the middle of the corner edge against the corner of the exact outline at that level;
-   - the number of intervals doubles until all are within the chord tolerance, at most 64. At 64 the tool is built as it is and the tolerance is no longer kept there, as for an arc at the cap of 4096 segments today; the docs say so.
+   The rule tests the mesh that will be built, not a model of it, and it tests one point per triangle with a bound that covers the rest:
+   - an arc whose sweep changes is divided for a third of the chord tolerance (about 1.7 times the points of today), so that the test below can pass once the rings are close;
+   - for every such arc and every interval between two rings, the centroid of every triangle of its side is measured against the exact cone: `(r − R) · cos(taper)`, with `r` the distance of the point from the axis and `R` the radius of the cone at its level;
+   - the number of intervals doubles until every centroid is within **a third** of the chord tolerance, at most 64. At 64 the tool is built as it is and the tolerance is no longer kept there, as for an arc at the cap of 4096 segments today; the docs say so.
+
+   Why a third at one point bounds the whole triangle. `r` is a convex function of the position (the length of a linear image of it) and `R` is linear, so `r − R` is convex over a flat triangle. Its three corners lie on the cone (the points of every ring are on the exact arc of that level, and a corner of the outline is on both of its curves), so it is zero there, never positive inside, and has a deepest point `m` with the value `−M`. The line from `m` through the centroid leaves the triangle at a point `q` of its border, where the value is not positive; the centroid divides `m q` so that at least a third of the weight is on `m` (its barycentric coordinates are all a third, and those of `m` at most one). By convexity the value at the centroid is at most `−M / 3`. So `M` is at most three times what is measured, edges and diagonals included, and the tolerance is kept wherever the loop ended before 64. (The second version measured the middle of every edge and diagonal against the whole tolerance; a review computed a diagonal at 0.0101 for a tolerance of 0.01 where every middle passed. The deepest point of a convex function with two zeros need not be the middle, only within twice its value, and the inside of a triangle can be deeper than its edges.)
+
+   The corner edge needs no test of its own: it is an edge of triangles of the cone, and on the other side the triangles of a line lie in its plane exactly, because both ends of every corner edge are in that plane. What the polyline of the corner misses is the place of the edge within the two surfaces, not the distance of the mesh from either.
 
    Every ring built is checked like the far one.
 
@@ -182,7 +186,8 @@ The last row is a limit to state in the docs: two features that meet in a circle
 
 ## Open questions
 
-- Whether 64 intervals are the right cap for the levels. A review computed 4 to 16 intervals for a D shape of radius 10 under far offsets of 1 to 5 mm at the tolerance 0.01; the middles of edges and diagonals are where a straight piece is furthest from a surface without an inflection, or close to that.
+- Whether 64 intervals are the right cap for the levels. The reviews computed 1 to 16 intervals for a D shape of radius 10 under far offsets of 1 to 5 mm at the tolerance 0.01, and 1 or 2 for arcs of radius 30 to 500, with the rule of the second version (the middles of edges against the whole tolerance). The rule of this version is stricter (a third of the tolerance at the centroid) and was not run; expect about one more doubling.
+- The factor of three is the bound that can be proved in three lines, not the tightest one (random triangles gave at most 1.88; "Reviews", round 2). If the extra points of such arcs show in real models, the deepest point of the convex function over each triangle can be found instead (a few steps of a minimisation in two variables) and compared with the whole tolerance.
 - The text of the paragraph for the AI. The table of uses is the candidate.
 
 ## Needs from the preparatory step
@@ -198,7 +203,7 @@ The last row is a limit to state in the docs: two features that meet in a circle
 
 ## Tests the implementation owes
 
-- Engine: the volume of a tapered box and of a frustum of a circle against the formulas; the surfaces (the plane of a line, the cone of a circle and of a hole in a profile, the apex and the direction of the axis for both signs of the taper and of the distance); the kinds of the edges and both projections of a countersink; a sketch on a tilted side, with a start and without, and that its origin does not move when a taper is added; a D shape with levels (every middle of an edge and of a diagonal within the tolerance of its cone, and the half disc of the review);  every refusal; a pattern of a tapered cut; `circleBetween` for the four pairs and for what must not be a circle.
+- Engine: the volume of a tapered box and of a frustum of a circle against the formulas; the surfaces (the plane of a line, the cone of a circle and of a hole in a profile, the apex and the direction of the axis for both signs of the taper and of the distance); the kinds of the edges and both projections of a countersink; a sketch on a tilted side, with a start and without, and that its origin does not move when a taper is added; a D shape with levels, the half disc of the first review and the clipped disc of the second (the mesh sampled densely over every triangle of a cone, not at the points the rule measures, stays within the tolerance of its cone); every refusal; a pattern of a tapered cut; `circleBetween` for the four pairs and for what must not be a circle.
 - The adapter: tapered tools in the fuzz.
 - The upgrade: a document with a taper saved, loaded, and refused by a list of steps without `2b-taper`.
 - Scenario 12.
@@ -222,3 +227,18 @@ The reviewers and the brief are in the record of [2a](../2a-offset/design.md) ("
 Checked by the reviewers and found sound: the apex, the direction of the axis and the half angle for all four combinations of signs and for a hole of a profile (computed); the four pairs of `circleBetween`; that an extent drops an unknown key on load today (a load with `extent.taper` succeeds and the key is gone), so the step is needed; the numbers of the scenario (the rib keeps 0.34 mm at its top under −3°, the lip 0.79 mm under −10°).
 
 Not acted on: nothing.
+
+### Round 2 (2026-11-15), narrow: the fixes of round 1, at `83c8405`
+
+The reviewers are in the record of [2a](../2a-offset/design.md). The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The middles of edges and diagonals do not bound the error: the deepest point of a straight piece between two rings of different radii is not its middle. A disc of radius 2.26 clipped at x = −1.995, far offset −1.598, tolerance 0.01: the rule stops at four intervals with every middle within 0.009993, and a diagonal is 0.010134 off its cone at 56 % of its length | codex, major | Yes. The excess is small (1.3 %), but the design claimed the tolerance below 64 intervals. The internal reviewer ran the same rule on D shapes and saw it end between 1 and 16 intervals with the ring edges at half the tolerance; it did not sample off the middles | The rule measures the centroid of every triangle against a third of the tolerance, with the proof that this bounds the whole triangle (the deviation from a cone is convex over a flat triangle with its corners on the cone). Such arcs are divided for a third of the tolerance. The corner test is gone: it is covered |
+| The right angle of a countersunk head is written in two places as if it were known | internal, flag | Yes: an example, never asserted, but it reads as a value of a standard | The two places say a cone of 90° as an example of the arithmetic; the angle of a screw comes from the catalog of 2c |
+
+Found holding by both: the origin of a tilted side for all eight combinations of the signs of the taper, the distance and the start (it equals `a` for a taper or a start of zero and matches `buildPrism` and `faceFrame`); the note on mirrored builds (`buildPrism` has a fixed winding, `transformFrame` keeps the reflection, only `transformSolid` reverses triangles); the loop of the levels is well defined and terminates.
+
+Not acted on: nothing.
+
+What was run for the fix, and what was not. The bound was checked in numbers after it was written (a script outside the repository): 195 000 random flat triangles with their corners on a cone (half angles up to 45° either way, radii 1 to 21, up to 0.6 rad wide), each sampled on a grid of 861 points. The deviation was never positive, and its largest size was at most 1.88 times its size at the centroid; the proof gives three. The loop of the levels with the new rule was not run, and no reviewer has read this version of it; the test that samples the built mesh is owed with the implementation.

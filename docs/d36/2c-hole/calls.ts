@@ -35,7 +35,7 @@ const rowOf = <Row>(catalog: keyof Catalogs, rows: Record<string, Row>, size: st
 };
 const plus = (value: number, allowance: string | undefined): number | string => (allowance === undefined ? value : `${value} + ${allowance}`);
 // An angle goes out as an expression in degrees: a tool rounds numbers to six decimal places,
-// which a right angle in radians does not survive, and a person reads "deg(90)".
+// which an angle in radians rarely survives, and a person reads degrees ("deg(…)").
 const degrees = (radians: number): string => `deg(${Number(((radians * 180) / Math.PI).toFixed(9))})`;
 export const hardwareHole: (typeof QUERIES)['hardwareHole'] = {
   title: 'Hole for a piece of hardware',
@@ -84,7 +84,15 @@ const POINTS = ['s1', 's2', 's3', 's4'];
 export function screwHoles(): StateAfter {
   const preset = unwrap(engine.query('hardwareHole', { use: 'countersunk', size: 'M3', allowance: 'holeComp' }));
   const far = (axis: 'L' | 'W'): string => `${axis} - (${INSET})`;
+  // The bores have to be in the lid, so its plate has to be thicker than the cone is deep. How
+  // deep that is follows from numbers of a standard, and none is written here: the plate is set
+  // from the row of the catalog. The cone of the head down to its point is deeper than any
+  // countersink for it, whatever the bore and the allowance; the plate gets that and
+  // a millimetre, and never less than the 3 mm the parts before were built with.
+  const screw = DATA_CATALOGS.countersunkScrews.rows['M3'];
+  const plate = Math.max(3, screw.headDiameter / 2 / Math.tan(screw.headAngle / 2) + 1);
   return run(
+    { type: 'setParameter', name: 'lidT', expr: String(plate) },
     { type: 'setParameter', name: 'holeComp', expr: '0.2' },
     ...sketchOn('screws', onFace('lid', LID_TOP)),
     ...pointAt('screws', 's1', INSET, INSET),
@@ -123,15 +131,14 @@ export function screwChecks(state: StateAfter): boolean {
   const circles = rims.length === 8 && rims.every((edge) => edge.kind === 'circle');
   // The depth of the cone is published, and so is the depth of the hole: "through all" of the
   // lid reaches to the lower edge of its lip, so the depth is the plate and the lip, without the
-  // overshoot of the tool.
+  // overshoot of the tool. That depth is measured on the mesh (float32), so it is compared at
+  // the resolution of the mesh and not of a double.
   const facts = state.evaluation.features['screwHoles'].facts;
   const [headDepth, depth] = Object.keys(HOLE_FACTS).map((name) => facts?.[name]); // headDepth, depth
   const [plate, lip] = ['lidT', 'lipH'].map((name) => state.evaluation.parameters[name]);
   if (typeof headDepth !== 'number' || typeof depth !== 'number' || !plate?.ok || !lip?.ok) return false;
-  // An assumption of the scenario, to be looked at when the catalog is typed in: the cone of
-  // this screw is shallower than the plate of the lid (`lidT`). If the numbers of the standard
-  // say otherwise the bores are not in the lid, this fails, and the scenario raises `lidT`.
-  const sunk = headDepth < plate.value && about(depth, plate.value + lip.value);
+  // the cone is shallower than the plate: `screwHoles` made the plate thick enough for it
+  const sunk = headDepth < plate.value && Math.abs(depth - (plate.value + lip.value)) < 1e-4;
   return fromCatalog && heads.join() === POINTS.join() && bores === 4 && conical && circles && sunk;
 }
 
@@ -161,7 +168,9 @@ export function socketHeadsInstead(): boolean {
 // A nut pocket has six flats per point, numbered from the corner the rotation points to.
 export function nutPockets(): number[] {
   const preset = unwrap(engine.query('hardwareHole', { use: 'nutPocket', size: 'M3' }));
-  const preview = done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { shape: preset.shape } }));
+  if (preset.shape.type !== 'nutPocket' || typeof preset.shape.headDepth !== 'number') return [];
+  // the plate from the thickness of the nut, as for the socket heads
+  const preview = done(engine.preview({ type: 'batch', commands: [{ type: 'setParameter', name: 'lidT', expr: `${preset.shape.headDepth} + 2` }, { type: 'updateFeature', id: 'screwHoles', patch: { shape: preset.shape } }] }));
   return named(preview, 'screwHoles', 'holeFlat')
     .flatMap((name) => (name.role === 'holeFlat' && name.point === 's1' ? [name.flat] : []))
     .sort((a, b) => a - b); // 1..6
@@ -202,8 +211,9 @@ export function refusals(): (string | undefined | boolean)[] {
     // a point that is not in the sketch is an invalid command
     engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { points: ['s1', 'nope'] } }).ok, // false
     // a hole that misses its target is the warning of a cut that does: the box is below the lid
-    // and the hole now runs up from the top of the lid
-    done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { targets: ['box'], extent: { type: 'distance', start: 5, distance: 10 } } })).evaluation.features['screwHoles'].warnings[0]?.code, // noEffect
+    // and the hole now runs up from the top of the lid (deeper than the plate is thick, so
+    // deeper than its cone, whatever the catalog says)
+    done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { targets: ['box'], extent: { type: 'distance', start: 5, distance: 'lidT + 5' } } })).evaluation.features['screwHoles'].warnings[0]?.code, // noEffect
     // "through all" away from the target: the lid does not reach above its own top, so the
     // tool is built, cuts nothing and the recipe stays for a pattern; not `invalidHole`
     done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { extent: { type: 'throughAll', side: 'forward' } } })).evaluation.features['screwHoles'].warnings[0]?.code, // noEffect

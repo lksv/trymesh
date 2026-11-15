@@ -1,5 +1,4 @@
 // The extrusion feature.
-import type { NumberSpec } from '../catalog';
 import { toolSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
 import { applyTool, issue, withFaces } from '../recompute/services';
@@ -9,27 +8,15 @@ import type { Region } from '../sketch';
 import { transformFrame } from '../solid';
 import type { ExtrudeFeature } from '../types';
 import { has } from '../util';
-import { type Dict, type FeatureRef, type ValidationContext, base, fail, object, oneOf, string } from '../validation';
+import { type Dict, type FeatureRef, type ValidationContext, base, fail, oneOf, string } from '../validation';
+import { EXTENT_FIELD_SPECS, extentOf } from './extent';
 import type { FeatureModule } from './module';
 import { PROFILE_FIELD_SPECS, profileRefs, profileSource, removableFromProfile } from './profile';
 
-const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
-const EXTENT_DISTANCE: NumberSpec = { title: 'Distance', unit: 'mm', nonZero: true };
-
 function extrudeFeature(o: Dict, what: string, context: ValidationContext): ExtrudeFeature {
-  const { fields } = context;
   const profile = profileSource(context, o.profile, `${what}.profile`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
-  const given = object(o.extent, `${what}.extent`);
-  let extent: ExtrudeFeature['extent'];
-  if (oneOf(given.type, ['distance', 'throughAll'] as const, `${what}.extent.type`) === 'distance') {
-    const start = fields.number(given.start, 'extent/start', EXTENT_START, `${what}.extent.start`);
-    extent = { type: 'distance', start, distance: fields.number(given.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.extent.distance`) };
-  } else {
-    // The length comes from the targets, so there must be some: only a cut goes through all.
-    if (operation !== 'cut') fail(`${what}.extent.type: throughAll is only for the operation cut`);
-    extent = { type: 'throughAll', side: oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.extent.side`) };
-  }
+  const extent = extentOf(context, o.extent, `${what}.extent`, { throughAll: operation === 'cut' });
   const feature: ExtrudeFeature = {
     ...base(o, what),
     type: 'extrude',
@@ -102,8 +89,7 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
       'The profile is a set of regions of a sketch, or comes from a profile generator (see Profile generators).',
     fields: [
       ...PROFILE_FIELD_SPECS,
-      { path: 'extent/start', spec: EXTENT_START, when: { path: 'extent/type', equals: 'distance' } },
-      { path: 'extent/distance', spec: EXTENT_DISTANCE, when: { path: 'extent/type', equals: 'distance' } },
+      ...EXTENT_FIELD_SPECS,
     ],
     bodies: 'self',
   },

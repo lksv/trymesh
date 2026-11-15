@@ -20,6 +20,7 @@ export {
 } from './document';
 export { generatorOf, producesTool } from './features/index';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
+export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
 export { QUERIES } from './query/index';
 export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, RunArgsOf } from './query/args';
 export { type AnyQuery, type Queries, type QueryArgs, type QueryContext, QueryFailure, type QueryName, type QueryResult, type QuerySpec } from './query/spec';

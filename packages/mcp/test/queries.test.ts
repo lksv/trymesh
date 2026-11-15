@@ -2,7 +2,7 @@
 // - A query added to the catalog without a row in the two tables below does not compile.
 // - The test runs every query through the tool, and compares what the types let through: the names
 //   of the arguments of an entry and which of them are optional.
-import { type AnyQuery, type Command, type Engine, QUERIES, type QueryArgs, type QueryName, specProblems } from '@trymesh/engine';
+import { type AnyQuery, type Command, DATA_CATALOGS, type Engine, QUERIES, type QueryArgs, type QueryName, specProblems } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { apiDescription, apiText } from '../src/api';
 import { callTool, changesDocument, tools } from '../src/tools';
@@ -44,6 +44,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   sketchDiagnosis: { sketch: 's' },
   constraintExplanation: { sketch: 's', constraint: 'r' },
   body: { body: 'low' },
+  catalog: { name: Object.keys(DATA_CATALOGS)[0] ?? 'none' },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -52,6 +53,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   sketchDiagnosis: { sketch: 'required' },
   constraintExplanation: { sketch: 'required', constraint: 'required' },
   body: { body: 'required' },
+  catalog: { name: 'required', key: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -67,6 +69,12 @@ describe('the catalog of queries', () => {
   it.each(ENTRIES)('%s is reached by the tool query and described to the AI', (name) => {
     const engine = model();
     const answer = call(engine, { query: name, args: FIXTURES[name as QueryName] });
+    // the engine has no data catalog yet, so the query `catalog` has nothing to answer with; the
+    // first catalog makes this branch fail, and its name is then the fixture by itself
+    if (name === 'catalog' && Object.keys(DATA_CATALOGS).length === 0) {
+      expect(answer).toEqual({ error: 'notAvailable: catalog: name: there is no catalog "none"; the engine has no catalog yet' });
+      return;
+    }
     expect(answer?.error, JSON.stringify(answer)).toBeUndefined();
     expect(answer).toEqual(JSON.parse(JSON.stringify(answer))); // plain JSON
     const described = apiDescription().queries.find((entry) => entry.query === name);

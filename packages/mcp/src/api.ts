@@ -8,6 +8,7 @@ import {
   EXPRESSION_SYNTAX,
   FEATURE_TYPE_INFO,
   type FeatureTypeInfo,
+  DATA_CATALOGS,
   GENERATORS,
   type AnyQuery,
   type ArgKind,
@@ -159,6 +160,7 @@ export function apiDescription(): {
   numericFields: ReturnType<typeof numericFields>;
   sketchTools: SketchToolDescription[];
   queries: QueryDescription[];
+  catalogs: ReturnType<typeof dataCatalogs>;
   types: string;
 } {
   return {
@@ -170,6 +172,7 @@ export function apiDescription(): {
     numericFields: numericFields(),
     sketchTools: sketchToolCatalog(),
     queries: queryCatalog(),
+    catalogs: dataCatalogs(),
     types: engineTypes(),
   };
 }
@@ -271,9 +274,14 @@ export function queryCatalog(): QueryDescription[] {
   }));
 }
 
+// The data catalogs of the engine by name; their rows are read with the query `catalog`.
+export function dataCatalogs(): { catalog: string; title: string; summary: string }[] {
+  return Object.entries(DATA_CATALOGS as Record<string, { title: string; summary: string }>).map(([catalog, table]) => ({ catalog, title: table.title, summary: table.summary }));
+}
+
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, catalogs, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -342,6 +350,10 @@ export function apiText(): string {
     'A query reads the model and changes nothing; ask it with the tool query `{ query, args, at?, after? }`. `at` is a feature ID (the state after it); `after` is a command to preview first, so that a change can be asked about without being written. ' +
       'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
     ...queries.map(queryText),
+    '',
+    '# Catalogs',
+    'Tables of data the engine carries; read one with the query `catalog` `{ name, key? }`. A catalog fills in fields: the document stores the numbers, not a reference to a row.',
+    ...(catalogs.length ? catalogs.map((entry) => `- ${entry.catalog} (${entry.title}): ${entry.summary}`) : ['(none yet)']),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

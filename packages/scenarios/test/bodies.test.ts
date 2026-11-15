@@ -1,7 +1,7 @@
 // D35 point 5 against the real adapters: volume and bounds of a body, export of chosen bodies and
 // the interference query.
 import { describe, expect, it } from 'vitest';
-import { type Command, type Engine, type EngineState, type Id, type SolidKernel, bodyFileName, createEngine, INTERFERENCE_THRESHOLD } from '@trymesh/engine';
+import { type Command, type Engine, type EngineState, type Id, type InterferenceReport, type SolidKernel, bodyFileName, createEngine, INTERFERENCE_THRESHOLD } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { XY, addSketch, circle, expectAllOk, extrude, newEngine, rectLoop, rectangle, run } from './kit';
@@ -25,16 +25,18 @@ function overlapping(engine: Engine = newEngine()): Engine {
   return engine;
 }
 
-// The real kernel with a count of intersections and a switch that makes them fail.
+// The real kernel with a count of intersections, a switch that makes them fail and one that
+// makes them return a mesh with a coordinate that is not a number.
 async function watchedEngine() {
   const real = await createManifoldKernel();
-  const watch = { intersections: 0, fail: false };
+  const watch = { intersections: 0, fail: false, broken: false };
   const kernel: SolidKernel = {
     triangulate: (loops) => real.triangulate(loops),
     boolean: (op, a, b) => {
       if (op === 'intersection') {
         watch.intersections++;
         if (watch.fail) throw new Error('the kernel gave up');
+        if (watch.broken) return { positions: Float32Array.from([NaN, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]), faceIds: Uint32Array.from([0, 0, 0, 0]) };
       }
       return real.boolean(op, a, b);
     },
@@ -334,6 +336,44 @@ describe('interference of bodies', () => {
     expect(engine.interference({ threshold: 0 })).toEqual({ pairs: [], fits: [], failed: [], checked: 66 });
   });
 
+  it('findings of the fourth review: a turned fit that ends on a planar face of the other body', () => {
+    // A plate with two holes of radius 4 and a pin drawn by the circle of the first one; its copy
+    // turned by half a turn sits in the second hole with its corners elsewhere. `more` shapes
+    // the holes and the pin. The answer is that of the turned copy; the pin in its own hole
+    // coincides with it and has to be clear, or to collide where `collides` says so.
+    const seated = (collides: boolean, holeFrom: number, pinFrom: number, pinLength: number, ...more: Command[]): InterferenceReport => {
+      const engine = newEngine();
+      run(engine, addSketch('S1', XY), rectangle('S1', 'r', -20, -10, 40, 20, null), circle('S1', 'h1', 10, 0, 4), circle('S1', 'h2', -10, 0, 4));
+      run(engine, span('PLATE', 'S1', [rectLoop('r'), ['h1'], ['h2']], 0, 10), span('holes', 'S1', [['h1'], ['h2']], holeFrom, 10 - holeFrom, 'cut', ['PLATE']));
+      run(engine, span('PIN', 'S1', [['h1']], pinFrom, pinLength), addSketch('S2', XY), circle('S2', 'c', 10, 0, 6), circle('S2', 'c2', -10, 0, 6));
+      expectAllOk(run(engine, ...more, { type: 'addFeature', feature: { id: 'PP', name: 'PP', suppressed: false, type: 'pattern', source: { type: 'body', body: 'PIN' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } }));
+      const own = engine.interference({ bodies: ['PLATE', 'PIN'] });
+      expect(own).toEqual({ pairs: collides ? [{ a: 'PIN', b: 'PLATE', volume: expect.any(Number), depth: expect.closeTo(0.005, 4) }] : [], fits: [], failed: [], checked: 1 });
+      return engine.interference({ bodies: ['PLATE', 'PP/1'] });
+    };
+    const fit = { pairs: [], fits: [{ a: 'PLATE', b: 'PP/1', volume: expect.any(Number), depth: expect.closeTo(0.0097, 3) }], failed: [], checked: 1 };
+    // The end of a sliver is a point of the cap of the pin inside the plate, as near to the floor
+    // of the hole as to its wall. Taken for a planar face in a planar face it made a collision of:
+    // a pin seated on the floor of a blind hole, standing out of it, flush and below the top
+    expect(seated(false, 5, 5, 8)).toEqual(fit);
+    expect(seated(false, 5, 5, 5)).toEqual(fit);
+    expect(seated(false, 5, 5, 4)).toEqual(fit);
+    // a pin with a collar that lies on the plate
+    expect(seated(false, 0, 0, 10, span('COLLAR', 'S2', [['c']], 10, 2, 'add', ['PIN']))).toEqual(fit);
+    // a pin with a head in a counterbore
+    expect(seated(false, 0, 0, 6, span('bores', 'S2', [['c'], ['c2']], 6, 4, 'cut', ['PLATE']), span('HEAD', 'S2', [['c']], 6, 4, 'add', ['PIN']))).toEqual(fit);
+    // a pin standing 0.003 out of its through hole, and as much below the top: the cap is nearer
+    // to the top of the plate than the wall of the hole is
+    expect(seated(false, 0, 0, 10.003)).toEqual(fit);
+    expect(seated(false, 0, 0, 9.997)).toEqual(fit);
+    // What a polygon does not explain stays a collision: the pin 0.005 too long for the blind
+    // hole, the collar 0.005 inside the top of the plate.
+    let report = seated(true, 5, 4.995, 8);
+    expect(report).toEqual({ pairs: [{ a: 'PLATE', b: 'PP/1', volume: expect.any(Number), depth: expect.closeTo(0.011, 3) }], fits: [], failed: [], checked: 1 });
+    report = seated(true, 0, 0, 10, span('COLLAR', 'S2', [['c']], 9.995, 2, 'add', ['PIN']));
+    expect(report).toEqual({ pairs: [{ a: 'PLATE', b: 'PP/1', volume: expect.any(Number), depth: expect.closeTo(0.011, 3) }], fits: [], failed: [], checked: 1 });
+  });
+
   it('`a` is the smaller ID whatever the order of the bodies; copies are named by their derived IDs', () => {
     const engine = newEngine();
     // `z` is created before `a`; the copies of `a` turn by 10° and overlap their neighbours
@@ -388,5 +428,14 @@ describe('interference of bodies', () => {
     engine.undo();
     watch.fail = false;
     expect(engine.interference().failed).toEqual([]);
+    // a mesh the kernel returns with a coordinate that is not a number is a failure too, not a clear pair
+    watch.broken = true;
+    run(engine, { type: 'updateFeature', id: 'C', patch: { extent: { start: 6 } } });
+    expect(engine.interference().failed).toEqual([
+      { a: 'A', b: 'C', message: 'the intersection has a volume that is not a number' },
+      { a: 'B', b: 'C', message: 'the intersection has a volume that is not a number' },
+    ]);
+    engine.undo();
+    watch.broken = false;
   });
 });

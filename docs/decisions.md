@@ -1064,6 +1064,18 @@ type AxisRef =
 
   Left as they are: two identical round bodies thinner than the chord tolerance are a fit (their mean thickness is under the tolerance and a round face is there); the measure is brute force over the points and the nearby triangles, about two seconds for one pair at a chord tolerance of 0.0001; an export waiting for an app that does not answer holds the queue of exports for the 30 seconds of the bridge timeout.
 
+  **Fourth review of point 5 (2026-11-15),** of the rule of the third fix only (collision, fit or not reported), by another instance of the model, read-only, with probes against the real kernel. The checks of the third round were repeated and held: a pin too thick for its hole, a key in the wall of a bore, a splined shaft in its hub, small planar overlaps, fits at tolerances from 0.0005 to 0.1.
+
+  | Finding | Fix |
+  |---|---|
+  | Serious: a turned pin that ends on a planar face of the other body was a collision at every tolerance: seated on the floor of a blind hole, with a collar on the plate, with a head in a counterbore, also drawn on a plane that looks the other way. The end of a sliver is a point of the cap of the pin inside the plate, as near to the floor as to the wall of the hole, and the tie went to the planar face. The planar condition of the third fix caused it | A point of a planar face does not count for the planar part of the depth when a round face of the body it is in lies within the tolerance (`excuse` of `penetration`) |
+  | A pin standing out of its through hole by less than the sagitta, or as much below the top, was a collision (0.003 mm; at 0.02 a fit) | The same rule covers it |
+  | `pieces` joined pieces that touch at one vertex, so a lump touching the slivers was thinned out again | Pieces are joined by shared edges |
+  | An intersection with a coordinate that is not a number had a volume that compares false with the threshold: the pair was clear | Such a pair is in `failed` |
+  | Docs: the floor of the kernel for planar faces is two millionths of the largest coordinate, not one of "the size"; a fit may be deeper than the tolerance by the precision; two round faces bulging towards each other overlap by up to twice the tolerance before they collide; the kernel fails far from the origin also at the default tolerance | Said in architecture.md, in the comment of `InterferenceReport` and in the description of `check_interference` |
+
+  Left as it is: an overlap of planar faces lying wholly within the tolerance of a round face (a lip narrower than about twice the tolerance) is now a fit.
+
 **6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
 
 - Stejný poloměr: planegcs má vazby `equal_radius_cc`, `equal_radius_ca` a `equal_radius_aa` (nalezeno v typech knihovny 1.3.0, nespuštěno).

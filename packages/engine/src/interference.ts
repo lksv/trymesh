@@ -6,7 +6,9 @@ import { has } from './util';
 // Volumes up to this are noise, not a collision. In the spike flush faces, a pin in the hole cut
 // by the same circle and identical cylinders gave exactly zero, and gears with a negative backlash
 // of 0.05 mm 0.5 to 1.7 mm³. The kernel has a floor of its own below that: an overlap thinner than
-// about a millionth of the size of the two bodies is welded away and counts as touching.
+// about a millionth of the size of the two bodies is welded away and counts as touching. Their
+// size is the larger of their diagonal and twice their largest coordinate, so for planar faces
+// the floor is about two millionths of the largest coordinate of the pair.
 // A pin in a hole of the same diameter whose polygon is turned differently shares far more than
 // this (slivers at the corners); how deep the bodies reach into each other tells it apart, see
 // `report`.
@@ -53,7 +55,7 @@ const SHEET = 1e-3;
 //   out; they are left out of the surface, but only when the depth is at most `limit` without
 //   that, since looking for them is the slow part and can only raise the result.
 function depthOf(common: Solid, a: Solid, b: Solid, isPlanar: (face: number) => boolean, limit: number, slack: number): Reach {
-  const reached = penetration(common, a, b, isPlanar);
+  const reached = penetration(common, a, b, isPlanar, limit);
   const rough = Math.max(reached.depth, thickestPiece(common));
   return { depth: rough > limit ? rough : Math.max(reached.depth, thickestPiece(common, SHEET * slack)), planar: reached.planar };
 }
@@ -73,8 +75,8 @@ export class Interferences {
   //   a pair, whatever its size (large flush faces of turned copies share a fraction of a mm³).
   // - A reported pair is a fit when neither body reaches deeper into the other than `tolerance`
   //   (the chord tolerance of the document), what they share has a round face and no planar face
-  //   of one body reaches into a planar face of the other; otherwise it is a collision: see
-  //   InterferenceReport.
+  //   of one body reaches into a planar face of the other further than the polygon of a round
+  //   face next to it explains; otherwise it is a collision: see InterferenceReport.
   // - The kernel gives no guarantee for an intersection with flush faces and may fail (its result
   //   is cleaned and verified); such a pair is in `failed`, neither colliding nor clear.
   // - Boxes that do not overlap need no kernel: the volume is zero.
@@ -112,6 +114,7 @@ export class Interferences {
         // the absolute value: a sliver the cleaning left inside out must not hide as a negative volume
         const common = this.kernel.boolean('intersection', a.solid, b.solid);
         const volume = Math.abs(volumeOf(common));
+        if (!Number.isFinite(volume)) throw new Error('the intersection has a volume that is not a number');
         const planar = new Map([...a.faces, ...b.faces].map((face) => [face.id, face.planar]));
         const slack = PRECISION * Math.max(1, ...a.bounds.min.map(Math.abs), ...a.bounds.max.map(Math.abs), ...b.bounds.min.map(Math.abs), ...b.bounds.max.map(Math.abs));
         // a face the two lists do not have cannot be called planar

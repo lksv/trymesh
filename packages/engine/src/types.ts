@@ -323,15 +323,18 @@ export interface Interference {
 }
 // - `pairs`: the collisions.
 // - `fits`: pairs in which neither body reaches deeper into the other than the chord tolerance of
-//   the document and what they share has a round face. Round faces are polygons; a pin in a hole
-//   of the same diameter overlaps the wall by the slivers at its corners wherever the two
-//   polygons are turned differently (up to about a quarter of the chord tolerance times the area
-//   of the fit). The model cannot tell such a fit from a real overlap of round faces that
-//   shallow, so these pairs are listed apart and are not collisions of the design. Planar faces
-//   have no such excuse: where a planar face of one body reaches into a planar face of the
-//   other, the pair is a collision however shallow.
+//   the document (plus the precision of the coordinates) and what they share has a round face.
+//   Round faces are polygons; a pin in a hole of the same diameter overlaps the wall by the
+//   slivers at its corners wherever the two polygons are turned differently (up to about
+//   a quarter of the chord tolerance times the area of the fit). The model cannot tell such
+//   a fit from a real overlap of round faces that shallow, so these pairs are listed apart and
+//   are not collisions of the design. Two round faces that bulge towards each other may overlap
+//   by up to about twice the tolerance before the pair is a collision. Planar faces have no such
+//   excuse: where a planar face of one body reaches into a planar face of the other, away from
+//   the slivers of a round face, the pair is a collision however shallow.
 // - Not reported at all: bodies that only touch, and a shared volume no deeper than the
-//   precision of the coordinates (a millionth of the largest coordinate), whatever its size.
+//   precision of the coordinates (a millionth of the largest coordinate of the pair; planar
+//   faces have to overlap by about twice that), whatever its size.
 // - `failed`: the kernel computes an intersection without a guarantee for flush faces and may
 //   fail; such a pair is neither among the colliding ones nor among the clear ones.
 export interface InterferenceReport {

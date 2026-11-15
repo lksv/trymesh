@@ -189,3 +189,7 @@ No view, as designed: the generic form of a query asks `mass` and shows the answ
 Tested by three recorded steps of the model case of `packages/app/test/app.test.ts` (two bodies and a density by body, the answer with its units, a body left without a density) and a case of `packages/app/test/query-controls.test.ts`; run in a browser (`docs/ui/queries.md`, "Implementation status").
 
 **Not done:** the mass in the model panel next to the volume (deferred by the design until bodies have a density); a marker at the centre of mass.
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diff only, a cheaper model). It went through every control of the form for the same defect (a whole value written from what the control was built with, after a part of it changed without building the panel again) and found none left: the choices that others depend on build the panel again, and the rest write to their own path. It found `Form.get`, the key a list passes to its items, the new case of the test (it fails without the fix) and the recorded steps right. No finding; one suggestion, taken: a comment at the list of the keys a record still offers, which is the one place that reads the record as it was built.

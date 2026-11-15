@@ -252,6 +252,8 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     const add = (key: string | undefined): void => {
       if (key !== undefined && key !== '' && !Object.prototype.hasOwnProperty.call(now(), key)) form.set(path, { ...now(), [key]: undefined }, true);
     };
+    // The keys still to offer, and the rows above, are those of the record as it was built:
+    // a key is added or removed only here, and both build the panel again.
     const free = (keys ?? []).filter(([id]) => !Object.prototype.hasOwnProperty.call(current, id));
     const text: HTMLInputElement = h('input', { placeholder: 'name', onchange: () => add(text.value.trim()) });
     return [...rows, keys ? choice(free, undefined, add, 'Add…') : text];

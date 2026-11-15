@@ -44,6 +44,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `sketch-content.ts` | what the content of a sketch is, without validation: entities, operands and keys of constraints, the IDs of a document, the owner of a body ID |
 | `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
 | `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
+| `mesh-distance.ts`, `surfaces.ts` | the smallest distance of two parts of the mesh, the precision of its coordinates and the accuracy of a number measured on it; the circle two surfaces meet in |
 | `solid.ts`, `interference.ts` | the mesh of a prism, faces and edges of a body, the plane on a face, the projection of an edge, STL; interference of bodies |
 | `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `SketchState`) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
@@ -58,6 +59,8 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
 | `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
 | `query/interference.ts`, `query/sketch.ts`, `query/body.ts`, `query/catalog.ts` | the queries, one module each or a few that belong together |
+| `query/entity.ts` | `entityShape`: what a face, an edge or a sketch point is exactly, for a query that takes an entity |
+| `query/measure.ts` | the query `measure`: the exact part between two entities and the smallest distance on the mesh |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

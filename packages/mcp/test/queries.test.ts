@@ -4,7 +4,7 @@
 //   of the arguments of an entry and which of them are optional.
 import { type AnyQuery, type Command, DATA_CATALOGS, type Engine, QUERIES, type QueryArgs, type QueryName, specProblems } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
-import { apiDescription, apiText } from '../src/api';
+import { apiDescription, apiText, argumentText } from '../src/api';
 import { callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
@@ -45,6 +45,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   constraintExplanation: { sketch: 's', constraint: 'r' },
   body: { body: 'low' },
   catalog: { name: Object.keys(DATA_CATALOGS)[0] ?? 'none' },
+  measure: { from: { kind: 'face', body: 'low', face: { feature: 'low', role: 'startCap' } }, to: { kind: 'face', body: 'low', face: { feature: 'low', role: 'endCap' } } },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -54,6 +55,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   constraintExplanation: { sketch: 'required', constraint: 'required' },
   body: { body: 'required' },
   catalog: { name: 'required', key: 'optional' },
+  measure: { from: 'required', to: 'required' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -96,6 +98,12 @@ describe('the catalog of queries', () => {
     expect(text).toContain('  - bodies (optional): a list, each item the ID of a body. The bodies to check against each other; without it all bodies.');
     expect(text).toContain('  - threshold (optional): a number, non-negative, mm3, default 0.001. The smallest shared volume that counts.');
     expect(text).toContain('  - constraint: the ID of a constraint of the sketch given in `sketch`');
+    expect(text).toContain('- measure (Measure): Distance and angle between two faces, edges or sketch points.');
+    expect(text).toContain('  - from: an entity of the model: { kind: "face", body, face: FaceName } or { kind: "edge", body, edge: EdgeName } or { kind: "sketchPoint", sketch, point } (the point `origin` is the origin of the sketch). A face or an edge of a body, or a sketch point.');
+    // an alternative and a field may say what they are for (D39); the summary follows in brackets
+    expect(argumentText({ kind: 'oneOf', options: { up: { kind: 'vector', title: 'Up', summary: 'The direction that points up.' }, turn: { kind: 'fields', fields: { about: { kind: 'vector' }, by: { kind: 'flag', optional: true, summary: 'A quarter turn' } } } } })).toBe(
+      'an object with exactly one of these keys: up: three numbers [x, y, z] (The direction that points up); turn: an object { about: three numbers [x, y, z]; by (optional): true or false (A quarter turn) }',
+    );
     expect(text).not.toMatch(/^import type/m); // the import of types.ts is not part of the description
     expect(text).toContain('query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;');
   });

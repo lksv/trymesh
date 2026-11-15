@@ -1,6 +1,6 @@
 # 1b Measuring between two named entities, and the generic form of a query in the app
 
-**Decision D39. State: designed, not implemented; third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D39. State: the engine side is implemented (the shared pieces and the query `measure`; see "As implemented" at the end); the generic form of a query in the app is not yet. The design is in its third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the wall between the root circle of the ring gear and the bolt holes.
 
@@ -261,3 +261,17 @@ On this package the reviewers had no finding. They checked and found holding: `S
 - 1c: whether the kernel port gets `minGap` at all, or the gap is the pass of this package with `interference` for containment. It needs one measurement on a model larger than the joint and should be decided before 1c is implemented.
 - 1a, 1e, 1f: the fixes of this round (the rule for corners, `takenAt`, the dropped slivers; contact of a whole face) were checked by the type check and by runs of the prototypes, not by a reviewer.
 - All packages with an app side: nothing was run in a browser.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+One commit on the branch `d36/1b` with the shared pieces and the query together: the split into two was meant to let other sessions start on the shared pieces, and one session implements the track. What differs from the design above and from `contract.ts`:
+
+- **Where the modules are.** The queries of the engine live in `packages/engine/src/query/` (the preparatory step, implemented after this design was written), so the entry is `query/measure.ts` and the resolver of an entity `query/entity.ts`, next to the query `body` it asks for `convex`. `mesh-distance.ts` is at the root of the engine, as designed. The circle of two surfaces got a module of its own, `surfaces.ts` (`circleBetween`), because 2b needs it over `Surface` as well (`docs/d36/cross-review.md`, row 11); it knows the plane and the cylinder, and 2b adds the pairs with a cone.
+- **The four needs of the preparatory step** are met in the shared types instead of by stand-ins: `QuerySpec.units` (keys of the result to a unit, as `significant`; the stand-ins `ResultUnits` per query and `QUERY_UNITS` are not needed), `invalidArguments` as a third code of `QueryFailure`, an optional `title` and `summary` on an entry of `fields` and an option of `oneOf` (printed by `describe_api`), and `BodyEdge` changed in place: the circle of a circular edge is required and has its axis (`BodyEdgeExact` of the contract is `BodyEdge`).
+- **`get_body`** prints the axis of a circular edge next to its centre and radius. The three places of `packages/mcp/test/tools.test.ts` that read circles pass unchanged, as the design expected.
+- **The pass over two parts** walks the pieces left after the coarse step along the longest axis of the two parts, with one part sorted by where its pieces start, instead of comparing every remaining pair of boxes; and it stops at the first distance of zero. Measured on the joint of scenario 9 on a loaded machine: the ring gear against a bolt hole 3 ms; two whole bodies 12 to 140 ms; the housing against the plate it sits on (they touch along a face) 320 ms before the early stop.
+- **A sketch point** is read from the solved geometry the recompute kept (`context.sketch(id).geometry`), which has the origin and the points of projected geometry as well.
+- **The scenario.** `packages/scenarios/test/scenario11.test.ts` is the part of scenario 11 of this package; the builders of the joint moved from the test of scenario 9 into `packages/scenarios/test/joint.ts`, which both use. The numbers of the prototype hold: 15.2837 mm on the mesh between (33.526, 0, 28) and (48.810, 0, 28), accuracy 0.020055, 15.275 exactly.
+- **Not driven by a model yet:** a cone (no face is one until 2b), and a general surface.

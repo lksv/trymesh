@@ -15,6 +15,8 @@
 // another argument, inside `fields` another of those fields.
 // A number is checked against its own description only. The limit of ±1e9 on a number of the
 // document (coordinates are float32) is not applied to an argument.
+// An alternative of `oneOf` and a field of `fields` may carry a `title` and a `summary` of their
+// own, for a form and for the description; without them they are known by their keys.
 // A description is written `as const satisfies ArgSpecs`; without `as const` the options of
 // a choice and the accepted kinds of an entity widen to `string` and the derived type with them.
 import type { NumberSpec } from '../catalog';
@@ -32,9 +34,14 @@ export type ArgKind =
   | { kind: 'axis' } // AxisRef
   | { kind: 'vector' } // three numbers
   | { kind: 'list'; of: ArgKind; min?: number; max?: number }
-  | { kind: 'oneOf'; options: { readonly [name: string]: ArgKind } }
+  | { kind: 'oneOf'; options: { readonly [name: string]: ArgKind & Described } }
   | { kind: 'record'; keys: 'body' | 'feature' | 'text'; of: ArgKind }
-  | { kind: 'fields'; fields: { readonly [name: string]: ArgKind & { optional?: boolean } } };
+  | { kind: 'fields'; fields: { readonly [name: string]: ArgKind & Described & { optional?: boolean } } };
+// What a nested entry may say about itself.
+export interface Described {
+  title?: string;
+  summary?: string;
+}
 export type ArgSpec = ArgKind & { title: string; summary?: string; optional?: boolean };
 export type ArgSpecs = { readonly [name: string]: ArgSpec };
 

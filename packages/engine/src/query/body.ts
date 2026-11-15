@@ -1,6 +1,7 @@
 // The query `body`: a body described for a reader that does not hold its mesh. Every face with its
 // name, its surface and its area, every edge with its name and its shape.
-import type { BodyDescription, BodyEdge, BodyFace, BodyResult, EdgeKind, Surface, Vec3 } from '../types';
+import { type Circle3, circleBetween } from '../surfaces';
+import type { BodyDescription, BodyEdge, BodyFace, BodyResult, EdgeKind, FaceName, Surface, Vec3 } from '../types';
 import { add3, cross3, dot3, len3, mul3, sub3 } from '../util';
 import type { ArgSpecs } from './args';
 import type { QuerySpec } from './spec';
@@ -47,10 +48,11 @@ function faceSums(body: BodyResult, axisOf: (face: number) => { origin: Vec3; ax
 }
 
 // The shape of an edge from its segments (6 numbers per segment, in no particular order). The
-// length always; for a straight edge the two ends along its direction (an edge can have gaps),
-// for a circular one the centre and the radius fitted to its vertices, when they can be.
+// length always; for a straight edge the two ends along its direction (an edge can have gaps);
+// for a circular one its circle, which is that of the surfaces of its two faces (`circle`), not
+// a fit to its vertices: it is exact, and an arc of two segments has it as well.
 type EdgeShape = BodyEdge extends infer E ? (E extends BodyEdge ? Omit<E, 'name'> : never) : never;
-function edgeShape(kind: EdgeKind, s: Float64Array): EdgeShape {
+function edgeShape(kind: EdgeKind, s: Float64Array, circle: Circle3 | undefined): EdgeShape {
   const count = s.length / 6;
   const at = (i: number): Vec3 => [s[3 * i], s[3 * i + 1], s[3 * i + 2]];
   let length = 0;
@@ -66,31 +68,9 @@ function edgeShape(kind: EdgeKind, s: Float64Array): EdgeShape {
     const span = len3(sub3(at(high), at(low)));
     return { ...base, kind, from: at(low), to: at(high), gaps: length < span - 1e-6 * Math.max(1, span) };
   }
-  if (kind === 'circle') {
-    if (count < 3) return { ...base, kind };
-    // The centre of the circle through three vertices spread along the edge. The segments come in
-    // no particular order, so the three are chosen by geometry: a vertex, the one farthest from it
-    // and the one farthest from the line through those two (three picked by position in the list
-    // can lie next to each other, which gives no centre or an imprecise one). The two ends of an
-    // arc are left out when the arc has enough vertices without them: where another face cuts
-    // the circle short, the end lies on a chord of the polygon, not on the circle.
-    const uses = new Map<string, number>();
-    for (let i = 0; i < 2 * count; i++) uses.set(at(i).join(','), (uses.get(at(i).join(',')) ?? 0) + 1);
-    const inner = Array.from({ length: 2 * count }, (_, i) => at(i)).filter((point) => (uses.get(point.join(',')) as number) > 1);
-    const vertices = new Set(inner.map((point) => point.join(','))).size >= 3 ? inner : Array.from({ length: 2 * count }, (_, i) => at(i));
-    const a = vertices[0];
-    let [b, c] = [a, a];
-    for (const point of vertices) if (len3(sub3(point, a)) > len3(sub3(b, a))) b = point;
-    const off = (point: Vec3): number => len3(cross3(sub3(b, a), sub3(point, a)));
-    for (const point of vertices) if (off(point) > off(c)) c = point;
-    const [u, v] = [sub3(b, a), sub3(c, a)];
-    const [uu, vv, uv] = [dot3(u, u), dot3(v, v), dot3(u, v)];
-    const det = 2 * (uu * vv - uv * uv);
-    if (Math.abs(det) <= 1e-12 * uu * vv) return { ...base, kind };
-    const [q, r] = [(vv * (uu - uv)) / det, (uu * (vv - uv)) / det];
-    const center: Vec3 = [a[0] + q * u[0] + r * v[0], a[1] + q * u[1] + r * v[1], a[2] + q * u[2] + r * v[2]];
-    return { ...base, kind, circle: { center, radius: len3(sub3(a, center)) } };
-  }
+  // the kind `circle` promises a plane across the axis of a cylinder; without their circle the
+  // edge is described as a general one
+  if (kind === 'circle' && circle) return { ...base, kind, circle };
   return { ...base, kind: kind === 'coplanar' ? 'coplanar' : 'other' };
 }
 
@@ -101,7 +81,7 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
   summary: 'A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.',
   returns:
     '`volume` (mm³), `bounds` (`min`, `max`), `faces`: each `{ name, surface, area, meshNormal?, convex? }` (`surface` is a plane, a cylinder, a cone, a swept or a general surface; `meshNormal` of a planar face is its unit normal out of the body; `convex` of a cylinder or a cone is true for a pin and false for a hole), ' +
-    '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, radius }` when it can be fitted.',
+    '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, axis, radius }`, exact: the circle of the two surfaces, whole even when the edge is an arc of it.',
   args: BODY_ARGS,
   // The description is kept by the mesh: a body that did not change is not walked again.
   run: (context, { body: id }) => {
@@ -124,7 +104,11 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
           ...(axisOf(surface) ? { convex: sum.outward > 0 } : {}),
         };
       });
-      const edges = result.edges.map((edge): BodyEdge => ({ name: edge.name, ...edgeShape(edge.kind, edge.segments) }));
+      const surfaceOf = (name: FaceName): Surface | undefined => context.surface(id, name);
+      const edges = result.edges.map((edge): BodyEdge => {
+        const [a, b] = [surfaceOf(edge.name.a), surfaceOf(edge.name.b)];
+        return { name: edge.name, ...edgeShape(edge.kind, edge.segments, edge.kind === 'circle' && a && b ? circleBetween(a, b) : undefined) };
+      });
       return { volume: result.volume, bounds: result.bounds, faces, edges };
     });
     return { body: id, ...described };

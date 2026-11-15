@@ -621,11 +621,11 @@ export interface BodyFace {
 }
 // `segments`: the number of straight pieces the edge has in the mesh.
 // - A line has its two ends along its direction; `gaps` says that a cut interrupts it.
-// - The centre and the radius of a circle are fitted to its vertices and may be missing (an arc
-//   too short to fit).
+// - The circle of a circular edge is that of the surfaces of its two faces, exact, and whole even
+//   when the edge is an arc of it. `axis` is a unit vector without a sign.
 export type BodyEdge = { name: EdgeName; length: number; segments: number } & (
   | { kind: 'line'; from: Vec3; to: Vec3; gaps: boolean }
-  | { kind: 'circle'; circle?: { center: Vec3; radius: number } }
+  | { kind: 'circle'; circle: { center: Vec3; axis: Vec3; radius: number } }
   | { kind: 'coplanar' | 'other' }
 );
 

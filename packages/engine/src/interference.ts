@@ -1,4 +1,5 @@
 // Interference of bodies: the volume two bodies share, pair by pair (D35, point 5).
+import { coordinatePrecision } from './mesh-distance';
 import { type Reach, penetration, thickestPiece, volumeOf } from './solid';
 import type { BodyResult, Id, InterferenceReport, Solid, SolidKernel } from './types';
 import { has } from './util';
@@ -37,8 +38,6 @@ interface Shared {
   slack: number; // how precisely a depth is known
 }
 const NOTHING: Shared = { volume: 0, depth: 0, planar: 0, round: false, slack: 0 };
-// Coordinates are single precision: a depth is known to about this part of the largest coordinate.
-const PRECISION = 1e-6;
 
 // Faces of the two bodies that coincide leave sheets without thickness in their intersection.
 // Their two sides have the same coordinates, so they are looked for within a small part of the
@@ -72,7 +71,8 @@ export function sharedBy(kernel: SolidKernel, a: BodyResult, b: BodyResult, tole
     const volume = Math.abs(volumeOf(common));
     if (!Number.isFinite(volume)) throw new Error('the intersection has a volume that is not a number');
     const planar = new Map([...a.faces, ...b.faces].map((face) => [face.id, face.planar]));
-    const slack = PRECISION * Math.max(1, ...a.bounds.min.map(Math.abs), ...a.bounds.max.map(Math.abs), ...b.bounds.min.map(Math.abs), ...b.bounds.max.map(Math.abs));
+    // coordinates are single precision: a depth is known to about a millionth of the largest coordinate
+    const slack = coordinatePrecision(a, b);
     // a face the two lists do not have cannot be called planar
     const isPlanar = (face: number): boolean => planar.get(face) === true;
     const deep = volume > 0 ? depthOf(common, a.solid, b.solid, isPlanar, tolerance + slack, slack) : { depth: 0, planar: 0 };

@@ -14,6 +14,8 @@ describe('a cut model', () => {
     expect(Array.from(keptSegments([...below, ...above, ...up, ...down, ...inPlane], clip))).toEqual([...below, 0, 0, 0, 5, 0, 5, 4, 2, 5, 4, 2, 1, ...inPlane]);
     // seen from the other side the other parts are left
     expect(Array.from(keptSegments([...below, ...above, ...up], { origin: clip.origin, normal: [0, 0, -1] }))).toEqual([...above, 5, 0, 5, 10, 0, 10]);
+    // an end exactly in the plane: the segment is kept whole from below and leaves nothing from above
+    expect(Array.from(keptSegments([0, 0, 5, 3, 0, 2, 0, 0, 5, 3, 0, 8, 7, 7, 9, 7, 7, 5], clip))).toEqual([0, 0, 5, 3, 0, 2]);
     // without a cut the segments are handed on as they are
     const segments = Float64Array.from(up);
     expect(keptSegments(segments, undefined)).toBe(segments);

@@ -225,11 +225,11 @@ const LONG = 30; // items of a list the tree shows before it cuts it
 function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost): HTMLElement[] {
   const number = (one: number): string => {
     const digits = entry.significant?.[key];
-    const exact = digits === undefined ? one : Number(one.toPrecision(digits));
     const unit: ResultUnit | undefined = entry.units?.[key];
     // rounded once, as it is shown: an angle after it became degrees (a whole turn is 360°, not
-    // the 359.999982° of six decimal places of radians)
-    return unit ? resultText(exact, unit) : plainNumber(exact);
+    // the 359.999982° of six decimal places of radians), and to the significant digits of the
+    // entry where it gives them, not to six decimal places after them
+    return unit ? resultText(one, unit, digits) : digits === undefined ? plainNumber(one) : String(Number(one.toPrecision(digits)) + 0);
   };
   const line = (text: string): HTMLElement => h('p', { className: 'answer' }, `${key}: ${text}`);
   if (typeof value === 'number') return [line(number(value))];

@@ -298,3 +298,14 @@ Left as known limits:
 Run in a browser (2026-11-15): the cut model with the fill and the outline, a cavity that shows its walls, a click on the cut (nothing), on a wall below it and into a hole (their faces), the step of the plane, a hidden body. One thing seen there that the design does not cover: a sketch that stands on a face above the cut stays where it is, in the air; sketches belong to no body and are not cut.
 
 **Not done:** the view while a form of a feature is open and over a preview (deferred by the design), a click on the filled cut that selects its body (open in the design), a step other than 1 mm.
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diffs only, a cheaper model) of the section view and of the commit with what the browser showed in the form of a query. It found the sign of the clipping plane, the cut of the lines, the test of a fill, the hidden bodies and the agreement of what is drawn with what is picked right. Four findings, none serious; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The new rule that keeps a checkbox of the form of a query at the start of its row also hit the labels of the class `check` of the other forms (the targets of an extrusion, the options of a pattern, a dimension), where the checkbox is centred beside its text (moderate, cosmetic) | Yes (the selectors) | The rule leaves labels of that class alone |
+| The test that stops a pick at the filled cut took a plane behind the eye for one in front of everything: its depth is negative, so it is less than that of any hit | Reasoned; the eye stands far outside the model, so no case was made | A fill stops a pick only in front of the eye |
+| The tree of an answer rounded a number to the significant digits its query asks for and then to six decimal places, which leaves nothing of a value that is small on purpose | Yes; with a unit it was so before as well | The significant digits are kept as they are, with a unit and without (`resultText`); a case in the test of the fields |
+| No test of a segment with an end exactly in the plane of the cut; such a segment on the side that is cut away left a segment of no length | Yes | It leaves nothing; a case in the test of the drawing helpers |

@@ -533,7 +533,7 @@ export class App implements SketchHost, SceneHost {
     if (cut) {
       for (const fill of cut.fills) {
         const p = this.planePoint(event, fill.frame);
-        if (p && insideFill(p.at, fill.loops) && (!hit || p.depth < hit.depth)) return undefined;
+        if (p && p.depth > 0 && insideFill(p.at, fill.loops) && (!hit || p.depth < hit.depth)) return undefined; // in front of the eye
       }
     }
     if (want.edges) {

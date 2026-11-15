@@ -36,7 +36,7 @@ export function keptSegments(segments: ArrayLike<number>, clip: HalfSpace | unde
   const out: number[] = [];
   for (let i = 0; i < segments.length; i += 6) {
     const [a, b] = [height(i), height(i + 3)];
-    if (a > 0 && b > 0) continue;
+    if (a >= 0 && b >= 0 && (a > 0 || b > 0)) continue; // cut away; one end may touch the plane
     const end = (k: number): number[] => [segments[k], segments[k + 1], segments[k + 2]];
     if (a <= 0 && b <= 0) {
       out.push(...end(i), ...end(i + 3));

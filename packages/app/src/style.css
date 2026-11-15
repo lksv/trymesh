@@ -319,8 +319,8 @@ select {
 }
 /* the form of a query: a checkbox keeps its size, an item of a list is one row, the fields of
    a group and the answer as a tree are set in from what they belong to */
-label > input[type='checkbox'],
-label > button.link {
+label:not(.check) > input[type='checkbox'],
+label:not(.check) > button.link {
   align-self: flex-start;
 }
 .item {

@@ -20,13 +20,14 @@ import {
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, h } from './dom';
+import { insideFill, keptSegments } from './draw';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
-import { type QueryPanel, dropAnswer, followQueries, openQuery, queryMenu, shownAnswer, takeSelection } from './panels/query';
+import { type QueryPanel, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
 import { modelPanel } from './panels/model';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
-import { type SceneHost, modelBounds, modelScene } from './scene';
+import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
 import { DEFAULT_POLYGON } from './sketch-commands';
 import { type View, Viewport } from './viewport';
@@ -524,7 +525,17 @@ export class App implements SketchHost, SceneHost {
   // Co je pod kurzorem: hrana má přednost před stěnou, stěna před rovinou.
   pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
     const state = this.view();
-    const hit = this.viewport.pickBody(event.clientX, event.clientY);
+    const hit = this.viewport.pickBody(event.clientX, event.clientY); // the view skips what is cut away
+    // A cut model: nothing is picked through the filled cut. A ray that meets a filled region
+    // before anything that is drawn would otherwise pick the far wall of the body, or a body
+    // behind it, by a click on what looks like solid material.
+    const cut = this.mode.kind === 'model' ? shownCut(queryScene(this.queries, this), this) : undefined;
+    if (cut) {
+      for (const fill of cut.fills) {
+        const p = this.planePoint(event, fill.frame);
+        if (p && p.depth > 0 && insideFill(p.at, fill.loops) && (!hit || p.depth < hit.depth)) return undefined; // in front of the eye
+      }
+    }
     if (want.edges) {
       const project = this.viewport.projector();
       const slack = 8 * this.viewport.pixelSize();
@@ -534,7 +545,7 @@ export class App implements SketchHost, SceneHost {
         if (this.bodyHidden(body)) continue;
         data.edges.forEach((edge, index) => {
           if (edge.kind === 'coplanar') return;
-          const s = edge.segments;
+          const s = keptSegments(edge.segments, cut?.clip); // an edge that is cut away is not drawn
           for (let i = 0; i < s.length; i += 6) {
             const [a, b] = [project(s[i], s[i + 1], s[i + 2]), project(s[i + 3], s[i + 4], s[i + 5])];
             const [dx, dy] = [b.x - a.x, b.y - a.y];

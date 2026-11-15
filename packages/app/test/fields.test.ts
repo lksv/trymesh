@@ -3,7 +3,7 @@ import { type ExtrudeFeature, type PlaneFeature, createEngine, emptySketch, feat
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from '../src/fields';
+import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, resultText, valueText } from '../src/fields';
 import { changeExtrude, draftCommand } from '../src/sketch-commands';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -41,6 +41,14 @@ describe('numeric field text', () => {
     expect(plainNumber(-0)).toBe('0');
     expect(valueText(16.2, 'mm')).toBe('16.2 mm');
     expect(valueText(3, 'count')).toBe('3');
+    // a number of a result: an angle is rounded after it became degrees, and the significant
+    // digits a query asks for are kept where six decimal places would leave nothing
+    expect(resultText(-2 * Math.PI, 'rad')).toBe('-360°');
+    expect(resultText(Math.PI / 6, 'rad')).toBe('30°');
+    expect(resultText(0.0000012345678, 'mm3')).toBe('0.000001 mm³');
+    expect(resultText(0.0000012345678, 'mm3', 4)).toBe('0.000001235 mm³');
+    expect(resultText(12.345678, 'mm', 4)).toBe('12.35 mm');
+    expect(resultText(1234.5678, 'g·mm2', 6)).toBe('1234.57 g·mm²');
     expect(fieldNote(5, 5, 'mm')).toBe(''); // a number needs no note
     expect(fieldNote('h', 12, 'mm')).toBe('= 12 mm');
     expect(fieldNote('h', undefined, 'mm')).toBe('= ?');

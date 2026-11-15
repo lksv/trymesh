@@ -102,6 +102,34 @@ What does not belong to a body is never posed: a sketch and its points, an axis 
 
 A pair without an exact answer gets `smallest`, `angle` when both entities have a direction, and no `distance`; nothing is fitted to the mesh to make up an exact-looking number.
 
+**The section** (`section`, `query/section.ts`, D38) is what a plane cuts out of the bodies: per body its area, the number of its closed loops and its regions (an outer loop and the holes in it), with the points in the x and y of the cutting plane. The plane is a `PlaneRef` with an `offset` along its normal and a `flip`; the frame of the answer is the plane as asked for. It is one pass over the triangles of a body and uses no kernel, which is what keeps the name of the face under every piece of a loop.
+
+- *The pass* (`cut`). The heights of the vertices are measured from the plane moved against its normal by the precision of the coordinates of the bodies asked about (`below` of the answer), and a vertex at zero or more counts as above. Every vertex is then on one side, every crossed triangle gives exactly one segment, directed so that the material is on its left, and the segments are chained by the mesh edges they end on, not by coordinates. The point on an edge is computed from its two vertices in a fixed order, so the two triangles of the edge share it. The mesh of a body is a closed surface, so every chain closes; a mesh that is not is answered as `failed`.
+  - Why not at the plane itself: the vertices of a face that lies in the plane are in float32, to either side of it as soon as the body is not aligned with the axes, and the section would be a random part of that face. The consequence is stated in the answer: a body that ends in the plane from below shows that face, one that starts in it shows nothing, and `inPlane` names the bodies with a planar face in the plane (one face each).
+- *The corners* (`corners`). A side face is a strip of quads of two triangles, so half of the points of a chain lie on diagonals. The points that are not corners are dropped, by the precision of the coordinates of the body being cut (not of all bodies asked about, and not a fixed length), in fixed steps:
+  1. a point nearer than the precision to the last point kept goes, and its segment starts at the point kept; the walk starts at the point of the chain that is first in the exact order of u, then v;
+  2. the points where the face changes are kept; a loop on one face is walked from the point furthest from the mean of its points and then starts at the corner of that walk furthest from the mean of those corners;
+  3. from each kept point the next is the furthest one such that every point between lies within the precision of the straight segment to it, so the polygon of the corners stays within the precision of the points step 1 left however slowly a curve turns (and within twice the precision of a point step 1 dropped);
+  4. what is thinner than the precision is dropped: a loop left with fewer than three corners, or with an area under the precision times half its length (a sliver under an edge that lies in the plane).
+
+  The list starts at the corner of step 2 that is first in the order of (u, v), where two u within the precision count as the same, and the loops of a body are in the order of their first points (the first of those left, again and again). So neither depends on where the mesh starts a chain. On a division of a face into other triangles the corners of a polygon stay, with two reservations: a real corner that lies within the precision of the segment to a point of the mesh just past it is stood for by that point, and on a curve that turns slowly the corners follow where the list starts. `area` and `length` are those of the chain before points are dropped.
+
+  The search of step 3 costs one step per point on a straight run: the points between narrow the directions a segment may still take, a point outside them is ruled out, the search ends when none is left, and a point inside them that is at least as far as every point between needs no distance measured.
+- *The spans.* A loop is cut into runs that lie on one face, and what a run is follows from the surface of the face and how the plane meets it (within `ANGLE_TOLERANCE`), not from a fit:
+
+  | Surface | The plane meets it | Span |
+  |---|---|---|
+  | plane | any way | line |
+  | cylinder | across the axis | arc: centre, radius, sweep |
+  | cylinder | along the axis | line |
+  | cone | across the axis | arc |
+  | swept | along the direction of the sweep | line |
+  | anything | otherwise | curve: the number of its points and its length, and the points while they fit the budget |
+
+  The ends of a span are corners of the mesh, so the spans of a loop join exactly; the centre and the radius of an arc are those of the surface. The sweep is summed along the corners of the run, and is exactly ±2π for a whole circle.
+- *The budget* (`maxPoints`, 500 by default) counts items: a span, a point, a loop written as a polyline. It is spent in two rounds, each over the bodies in their order: first the outlines, then the lists of points, each whole or not at all, so the points of an early body never cost a later one its outline. `truncated` says how much was listed of how much.
+- *For whoever draws a cut:* `outline: 'polylines'` gives every loop as its polygon; `takenAt(result)` is the plane the section was taken at, which is where the model is clipped and the fills are laid, and `completeRegions(result)` gives the regions with their bodies only when nothing was left out, because a region filled without one of its holes would show material across a cavity.
+
 **Distances on the mesh** (`mesh-distance.ts`), shared by the queries that measure:
 
 - `closest(a, b, within?)` is the smallest distance of two parts of the mesh (a point, the segments of an edge, the triangles of a solid or of one face of it) with the two points and, for triangles, the two faces.

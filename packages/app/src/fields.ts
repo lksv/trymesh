@@ -31,13 +31,17 @@ export function fieldText(value: number | Expr, unit: Unit): string {
 
 const UNIT_LABEL: Record<Unit, string> = { mm: ' mm', rad: '°', count: '', none: '', mm2: ' mm²', mm3: ' mm³', g: ' g', 'g/cm3': ' g/cm³' };
 
+// A number as it is shown: six decimal places, or that many significant digits (a value that is
+// small on purpose, which six decimal places would round to zero).
+const shownNumber = (value: number, significant?: number): string => (significant === undefined ? plainNumber(value) : String(Number(value.toPrecision(significant)) + 0));
+
 // A value with its unit for a human: "16.2 mm", "30°".
-export const valueText = (value: number, unit: Unit): string => `${plainNumber(unit === 'rad' ? value * DEGREES : value)}${UNIT_LABEL[unit]}`;
+export const valueText = (value: number, unit: Unit, significant?: number): string => `${shownNumber(unit === 'rad' ? value * DEGREES : value, significant)}${UNIT_LABEL[unit]}`;
 
 // The unit as it is written after a number.
 export const unitLabel = (unit: Unit): string => UNIT_LABEL[unit].trim();
 // A number of the result of a query with its unit, which may be one only a result has.
-export const resultText = (value: number, unit: ResultUnit): string => (unit === 'g·mm2' ? `${plainNumber(value)} g·mm²` : valueText(value, unit));
+export const resultText = (value: number, unit: ResultUnit, significant?: number): string => (unit === 'g·mm2' ? `${shownNumber(value, significant)} g·mm²` : valueText(value, unit, significant));
 
 // The note next to a field with an expression: its resulting value.
 export const fieldNote = (value: number | Expr, computed: number | undefined, unit: Unit): string => (typeof value !== 'string' ? '' : computed === undefined ? '= ?' : `= ${valueText(computed, unit)}`);

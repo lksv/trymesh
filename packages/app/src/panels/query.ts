@@ -1,9 +1,9 @@
 // The generic form of a query (D39): every query of the catalog of the engine can be asked from
 // the app, with a form built from the description of its arguments. One query is open at a time,
 // in the model panel. Its state is one object the app holds and only this module reads and writes.
-import { type AnyQuery, type ArgKind, type ArgPath, type ArgSpecs, type FaceName, type Id, QUERIES, type QueryName, type QueryOutcome, type ResultUnit } from '@trymesh/engine';
+import { type AnyQuery, type ArgKind, type ArgPath, type ArgSpecs, type FaceName, type Id, QUERIES, type QueryName, type QueryOutcome, type ResultUnit, faceKey } from '@trymesh/engine';
 import { h } from '../dom';
-import { resultText } from '../fields';
+import { plainNumber, resultText } from '../fields';
 import type { Note, PanelHost, ViewPick } from '../host';
 import { faceLabel } from '../issue-text';
 import { CONTROLS, type Form } from '../queries/controls';
@@ -220,13 +220,16 @@ const LONG = 30; // items of a list the tree shows before it cuts it
 
 // An answer without a view: a tree of names and values. Numbers are rounded as the tool `query`
 // rounds them (six decimal places, or the significant digits the entry gives) and get the unit
-// the entry gives for their key; a face name is written as the app writes one, a body by its name.
+// the entry gives for their key; a face name is written as the lists of the form write one (its
+// label and its key, because the sides of a body share a label), a body by its name.
 function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost): HTMLElement[] {
   const number = (one: number): string => {
     const digits = entry.significant?.[key];
-    const rounded = digits === undefined ? Math.round(one * 1e6) / 1e6 + 0 : Number(one.toPrecision(digits));
     const unit: ResultUnit | undefined = entry.units?.[key];
-    return unit ? resultText(rounded, unit) : String(rounded);
+    // rounded once, as it is shown: an angle after it became degrees (a whole turn is 360°, not
+    // the 359.999982° of six decimal places of radians), and to the significant digits of the
+    // entry where it gives them, not to six decimal places after them
+    return unit ? resultText(one, unit, digits) : digits === undefined ? plainNumber(one) : String(Number(one.toPrecision(digits)) + 0);
   };
   const line = (text: string): HTMLElement => h('p', { className: 'answer' }, `${key}: ${text}`);
   if (typeof value === 'number') return [line(number(value))];
@@ -236,11 +239,11 @@ function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost): HT
   if (Array.isArray(value)) {
     if (value.every((item) => typeof item === 'number')) return [line(`[${value.map((item) => number(item as number)).join(', ')}]`)];
     const rows = value.slice(0, LONG).flatMap((item, index) => tree(item, `${index + 1}`, entry, host));
-    return [h('div', { className: 'group' }, h('p', { className: 'answer' }, `${key} (${value.length})`), ...rows, value.length > LONG ? h('p', { className: 'hint' }, `… and ${value.length - LONG} more`) : null)];
+    return [h('div', { className: 'tree' }, h('p', { className: 'answer' }, `${key} (${value.length})`), ...rows, value.length > LONG ? h('p', { className: 'hint' }, `… and ${value.length - LONG} more`) : null)];
   }
   if (isRecord(value)) {
-    if (typeof value.feature === 'string' && typeof value.role === 'string') return [line(faceLabel(value as unknown as FaceName, host.featureNames))];
-    return [h('div', { className: 'group' }, h('p', { className: 'answer' }, key), ...Object.entries(value).flatMap(([name, item]) => tree(item, name, entry, host)))];
+    if (typeof value.feature === 'string' && typeof value.role === 'string') return [line(`${faceLabel(value as unknown as FaceName, host.featureNames)} · ${faceKey(value as unknown as FaceName)}`)];
+    return [h('div', { className: 'tree' }, h('p', { className: 'answer' }, key), ...Object.entries(value).flatMap(([name, item]) => tree(item, name, entry, host)))];
   }
   return [];
 }

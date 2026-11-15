@@ -109,6 +109,7 @@
           option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
           option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
           option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -573,6 +574,7 @@
     -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
     -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -677,6 +679,7 @@
     +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
     +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -977,6 +980,7 @@
     -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
     -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1134,6 +1138,7 @@
     +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
     +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1489,8 +1494,9 @@
     +   button.link: "Add"
     + label title="The smallest shared volume that counts."
     +   "Threshold (optional)"
-    +   input.value value="" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
     + div.buttons
     +   button.primary: "Ask again"
     +   button: "Close"
@@ -1659,8 +1665,9 @@
     -   button.link: "Add"
     - label title="The smallest shared volume that counts."
     -   "Threshold (optional)"
-    -   input.value value="" placeholder="0.001"
-    -   span.unit: "mm³"
+    -   span.field
+    -     input.value value="" placeholder="0.001"
+    -     span.unit: "mm³"
     - div.buttons
     -   button.primary: "Ask again"
     -   button: "Close"
@@ -1926,8 +1933,9 @@
     +   button.link: "Add"
     + label.invalid title="interference: threshold: the value must not be negative"
     +   "Threshold (optional)"
-    +   input.value value="-1" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="-1" placeholder="0.001"
+    +     span.unit: "mm³"
     - h2 title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     - label title="A face or an edge of a body, or a sketch point."
     -   "From"
@@ -1999,216 +2007,217 @@
     -   button.link: "Add"
     - label.invalid title="interference: threshold: the value must not be negative"
     -   "Threshold (optional)"
-    -   input.value value="-1" placeholder="0.001"
-    -   span.unit: "mm³"
+    -   span.field
+    -     input.value value="-1" placeholder="0.001"
+    -     span.unit: "mm³"
     + p.answer: "body: Deska"
     + p.answer: "volume: 12000 mm³"
-    + div.group
+    + div.tree
     +   p.answer: "bounds"
     +   p.answer: "min: [0, 0, 0]"
     +   p.answer: "max: [40, 30, 10]"
-    + div.group
+    + div.tree
     +   p.answer: "faces (6)"
-    +   div.group
+    +   div.tree
     +     p.answer: "1"
-    +     p.answer: "name: Deska – víko ve skice"
-    +     div.group
+    +     p.answer: "name: Deska – víko ve skice · e1/startCap"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 0]"
     +       p.answer: "normal: [0, 0, 1]"
     +     p.answer: "area: 1200 mm²"
     +     p.answer: "meshNormal: [0, 0, -1]"
-    +   div.group
+    +   div.tree
     +     p.answer: "2"
-    +     p.answer: "name: Deska – protější víko"
-    +     div.group
+    +     p.answer: "name: Deska – protější víko · e1/endCap"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 10]"
     +       p.answer: "normal: [0, 0, 1]"
     +     p.answer: "area: 1200 mm²"
     +     p.answer: "meshNormal: [0, 0, 1]"
-    +   div.group
+    +   div.tree
     +     p.answer: "3"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c1"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 0]"
     +       p.answer: "normal: [0, -1, 0]"
     +     p.answer: "area: 400 mm²"
     +     p.answer: "meshNormal: [0, -1, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "4"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c2"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [40, 0, 0]"
     +       p.answer: "normal: [1, 0, 0]"
     +     p.answer: "area: 300 mm²"
     +     p.answer: "meshNormal: [1, 0, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "5"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c3"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [40, 30, 0]"
     +       p.answer: "normal: [0, 1, 0]"
     +     p.answer: "area: 400 mm²"
     +     p.answer: "meshNormal: [0, 1, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "6"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c4"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 30, 0]"
     +       p.answer: "normal: [-1, 0, 0]"
     +     p.answer: "area: 300 mm²"
     +     p.answer: "meshNormal: [-1, 0, 0]"
-    + div.group
+    + div.tree
     +   p.answer: "edges (12)"
-    +   div.group
+    +   div.tree
     +     p.answer: "1"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c1"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 10]"
     +     p.answer: "to: [40, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "2"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c2"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 10]"
     +     p.answer: "to: [40, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "3"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c3"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 10]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "4"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 10]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "5"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – bok · e1/side/c2"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 0]"
     +     p.answer: "to: [40, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "6"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 0]"
     +     p.answer: "to: [0, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "7"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 0]"
     +     p.answer: "to: [40, 0, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "8"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c2"
+    +       p.answer: "b: Deska – bok · e1/side/c3"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 0]"
     +     p.answer: "to: [40, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "9"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c2"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 0]"
     +     p.answer: "to: [40, 30, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "10"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c3"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 30, 0]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "11"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c3"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 0]"
     +     p.answer: "to: [0, 30, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "12"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c4"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
@@ -2234,212 +2243,212 @@
     -   button: "Close"
     - p.answer: "body: Deska"
     - p.answer: "volume: 12000 mm³"
-    - div.group
+    - div.tree
     -   p.answer: "bounds"
     -   p.answer: "min: [0, 0, 0]"
     -   p.answer: "max: [40, 30, 10]"
-    - div.group
+    - div.tree
     -   p.answer: "faces (6)"
-    -   div.group
+    -   div.tree
     -     p.answer: "1"
-    -     p.answer: "name: Deska – víko ve skice"
-    -     div.group
+    -     p.answer: "name: Deska – víko ve skice · e1/startCap"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 0]"
     -       p.answer: "normal: [0, 0, 1]"
     -     p.answer: "area: 1200 mm²"
     -     p.answer: "meshNormal: [0, 0, -1]"
-    -   div.group
+    -   div.tree
     -     p.answer: "2"
-    -     p.answer: "name: Deska – protější víko"
-    -     div.group
+    -     p.answer: "name: Deska – protější víko · e1/endCap"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 10]"
     -       p.answer: "normal: [0, 0, 1]"
     -     p.answer: "area: 1200 mm²"
     -     p.answer: "meshNormal: [0, 0, 1]"
-    -   div.group
+    -   div.tree
     -     p.answer: "3"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c1"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 0]"
     -       p.answer: "normal: [0, -1, 0]"
     -     p.answer: "area: 400 mm²"
     -     p.answer: "meshNormal: [0, -1, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "4"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c2"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [40, 0, 0]"
     -       p.answer: "normal: [1, 0, 0]"
     -     p.answer: "area: 300 mm²"
     -     p.answer: "meshNormal: [1, 0, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "5"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c3"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [40, 30, 0]"
     -       p.answer: "normal: [0, 1, 0]"
     -     p.answer: "area: 400 mm²"
     -     p.answer: "meshNormal: [0, 1, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "6"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c4"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 30, 0]"
     -       p.answer: "normal: [-1, 0, 0]"
     -     p.answer: "area: 300 mm²"
     -     p.answer: "meshNormal: [-1, 0, 0]"
-    - div.group
+    - div.tree
     -   p.answer: "edges (12)"
-    -   div.group
+    -   div.tree
     -     p.answer: "1"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c1"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 10]"
     -     p.answer: "to: [40, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "2"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c2"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 10]"
     -     p.answer: "to: [40, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "3"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c3"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 10]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "4"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 10]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "5"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – bok · e1/side/c2"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 0]"
     -     p.answer: "to: [40, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "6"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 0]"
     -     p.answer: "to: [0, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "7"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 0]"
     -     p.answer: "to: [40, 0, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "8"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c2"
+    -       p.answer: "b: Deska – bok · e1/side/c3"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 0]"
     -     p.answer: "to: [40, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "9"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c2"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 0]"
     -     p.answer: "to: [40, 30, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "10"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c3"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 30, 0]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "11"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c3"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 0]"
     -     p.answer: "to: [0, 30, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "12"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c4"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
@@ -2448,7 +2457,226 @@
     -     p.answer: "gaps: no"
   view: 1 scene(s) set
 
-=== 60. a change of the document throws the answer away
+=== 60. the query Section: the plane is the top of the plate, taken from a click, 5 mm into the body
+  panel:
+    + h2 title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    + label title="A base plane, a plane feature or a planar face."
+    +   "Cutting plane"
+    +   select value="face"
+    +     option value="": "—"
+    +     option value="base:XY": "XY"
+    +     option value="base:XZ": "XZ"
+    +     option value="base:YZ": "YZ"
+    +     option value="plane:r2": "Rovina 2"
+    +     option selected value="face": "Deska – protější víko · e1/endCap"
+    +   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    + label title="Moves the plane along its normal."
+    +   "Offset (optional)"
+    +   span.field
+    +     input.value value="-5" placeholder="0"
+    +     span.unit: "mm"
+    + label
+    +   "From the other side (optional)"
+    +   input type=checkbox unchecked
+    + label title="Without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="spans: lines, arcs and curves with the face each lies on (the default). polylines: the points of every loop, for drawing."
+    +   "Form of a loop (optional)"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="spans": "spans"
+    +     option value="polylines": "polylines"
+    + label title="The budget of the answer: spans, loops of polylines and points together."
+    +   "Budget (optional)"
+    +   span.field
+    +     input.value value="" placeholder="500"
+    +     span.unit
+    + div.buttons
+    +   button.primary: "Ask"
+    +   button: "Close"
+  view: 3 scene(s) set
+  scene:
+    + face e1 #1 #0ea5e9 opacity 0.3
+
+=== 61. asked: the model is cut, the cut of the three bodies filled and outlined, the bodies with their areas
+  engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-5,"outline":"polylines","maxPoints":1000000}, {}) -> ok
+  panel:
+    +   button.primary: "Ask again"
+    -   button.primary: "Ask"
+    + p.answer: "Deska: 1200 mm² in 1 piece"
+    + p.answer: "Vysunutí 2: 78.333 mm² in 1 piece"
+    + p.answer: "Vysunutí 3: 450 mm² in 1 piece"
+    + div.buttons
+    +   button title="Move the plane along its normal and ask again": "−1 mm"
+    +   button title="Move the plane along its normal and ask again": "+1 mm"
+  view: 1 scene(s) set
+  scene:
+    + clip: cut away above [0, 0, 5] along [0, 0, 1]
+    + line #26303c width 1.5: 396 numbers, sum 48546.049
+    + line #26303c width 1.5 overFills: 24 numbers, sum 1554.997
+    + line #26303c width 1.5 overFills: 300 numbers, sum 43734.871
+    + line #26303c width 1.5 overFills: 24 numbers, sum 2224.997
+    - line #26303c width 1.5: 744 numbers, sum 98825.758
+    + fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 530
+    + fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 100 numbers, sum 20715.13
+    + fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 955
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 62. a click on the filled cut selects nothing: behind it is the inside of the plate
+  view: 1 scene(s) set
+
+=== 63. a click on a wall below the cut selects as ever
+  panel:
+    + h2: "Výběr"
+    + p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
+    + p.hint.body
+    +   "Deska: 12000 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+  view: 2 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 160
+    + line #f97316 width 4 onTop: 6 numbers, sum 160
+
+=== 64. the rim of the pin that is cut away is not under the pointer; the one below the cut is
+  panel:
+    - h2: "Výběr"
+    - p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
+    - p.hint.body
+    -   "Deska: 12000 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+  view: 2 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 300 numbers, sum 41718.589
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 160
+    - line #f97316 width 4 onTop: 6 numbers, sum 160
+
+=== 65. the plane stepped along its normal: asked again with the arguments of the form
+  engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-4,"outline":"polylines","maxPoints":1000000}, {}) -> ok
+  panel:
+    +     input.value value="-4" placeholder="0"
+    -     input.value value="-5" placeholder="0"
+  view: 1 scene(s) set
+  scene:
+    + clip: cut away above [0, 0, 6] along [0, 0, 1]
+    + line #26303c width 1.5: 396 numbers, sum 48575.049
+    + line #26303c width 1.5 overFills: 24 numbers, sum 1585.997
+    + line #26303c width 1.5 overFills: 300 numbers, sum 44135.871
+    + line #26303c width 1.5 overFills: 24 numbers, sum 2255.997
+    - clip: cut away above [0, 0, 5] along [0, 0, 1]
+    - line #26303c width 1.5: 396 numbers, sum 48546.049
+    - line #26303c width 1.5 overFills: 24 numbers, sum 1554.997
+    - line #26303c width 1.5 overFills: 300 numbers, sum 43734.871
+    - line #26303c width 1.5 overFills: 24 numbers, sum 2224.997
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 530
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 100 numbers, sum 20715.13
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 955
+    - line #0ea5e9 width 4 onTop: 300 numbers, sum 41718.589
+    - fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 530
+    - fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 100 numbers, sum 20715.13
+    - fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 955
+
+=== 66. the pin hidden: its fill and its outline go with it
+  timeline:
+    + div.row.ok.hidden
+    - div.row.ok
+    +   button.icon title="Hide or show": "◌"
+    -   button.icon title="Hide or show": "👁"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e3
+    - bodies: e1, e2, e3
+    + line #26303c width 1.5: 96 numbers, sum 6302.997
+    - line #26303c width 1.5: 396 numbers, sum 48575.049
+    - line #26303c width 1.5 overFills: 300 numbers, sum 44135.871
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 100 numbers, sum 20715.13
+
+=== 67. seen from the other side: the other half is cut away
+  engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-4,"flip":true,"outline":"polylines","maxPoints":1000000}, {}) -> ok
+  timeline:
+    + div.row.ok
+    - div.row.ok.hidden
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "◌"
+  panel:
+    +   input type=checkbox checked
+    -   input type=checkbox unchecked
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + clip: cut away above [0, 0, 6] along [0, 0, -1]
+    + line #26303c width 1.5: 396 numbers, sum 53835.258
+    + line #26303c width 1.5 overFills: 24 numbers, sum 1146.003
+    + line #26303c width 1.5 overFills: 300 numbers, sum 44106.109
+    + line #26303c width 1.5 overFills: 24 numbers, sum 1926.003
+    - bodies: e1, e3
+    - clip: cut away above [0, 0, 6] along [0, 0, 1]
+    - line #26303c width 1.5: 96 numbers, sum 6302.997
+    - line #26303c width 1.5 overFills: 24 numbers, sum 1585.997
+    - line #26303c width 1.5 overFills: 24 numbers, sum 2255.997
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -110
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 100 numbers, sum -14744.87
+    + fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -485
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 530
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 955
+
+=== 68. the section closed: the model is whole again
+  panel:
+    - h2 title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    - label title="A base plane, a plane feature or a planar face."
+    -   "Cutting plane"
+    -   select value="face"
+    -     option value="": "—"
+    -     option value="base:XY": "XY"
+    -     option value="base:XZ": "XZ"
+    -     option value="base:YZ": "YZ"
+    -     option value="plane:r2": "Rovina 2"
+    -     option selected value="face": "Deska – protější víko · e1/endCap"
+    -   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    - label title="Moves the plane along its normal."
+    -   "Offset (optional)"
+    -   span.field
+    -     input.value value="-4" placeholder="0"
+    -     span.unit: "mm"
+    - label
+    -   "From the other side (optional)"
+    -   input type=checkbox checked
+    - label title="Without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="spans: lines, arcs and curves with the face each lies on (the default). polylines: the points of every loop, for drawing."
+    -   "Form of a loop (optional)"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="spans": "spans"
+    -     option value="polylines": "polylines"
+    - label title="The budget of the answer: spans, loops of polylines and points together."
+    -   "Budget (optional)"
+    -   span.field
+    -     input.value value="" placeholder="500"
+    -     span.unit
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - p.answer: "Deska: 1200 mm² in 1 piece"
+    - p.answer: "Vysunutí 2: 78.333 mm² in 1 piece"
+    - p.answer: "Vysunutí 3: 450 mm² in 1 piece"
+    - div.buttons
+    -   button title="Move the plane along its normal and ask again": "−1 mm"
+    -   button title="Move the plane along its normal and ask again": "+1 mm"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 744 numbers, sum 98825.758
+    - clip: cut away above [0, 0, 6] along [0, 0, -1]
+    - line #26303c width 1.5: 396 numbers, sum 53835.258
+    - line #26303c width 1.5 overFills: 24 numbers, sum 1146.003
+    - line #26303c width 1.5 overFills: 300 numbers, sum 44106.109
+    - line #26303c width 1.5 overFills: 24 numbers, sum 1926.003
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -110
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 100 numbers, sum -14744.87
+    - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -485
+
+=== 69. a change of the document throws the answer away
   engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
@@ -2464,18 +2692,19 @@
     +   button.link: "Add"
     + label title="The smallest shared volume that counts."
     +   "Threshold (optional)"
-    +   input.value value="" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
     + div.buttons
     +   button.primary: "Ask"
     +   button: "Close"
   view: 2 scene(s) set
 
-=== 61. waiting for a plane cancelled
+=== 70. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 62. a new document
+=== 71. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

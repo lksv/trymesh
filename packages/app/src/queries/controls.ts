@@ -104,7 +104,8 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
       const checked = checkNumber(number, spec.spec, Infinity);
       return checked.ok ? undefined : (angleProblem(number, spec.spec) ?? checked.message);
     };
-    return [numberField(spec.spec.unit, value, spec.spec.default, check, (number) => form.set(path, number)), h('span', { className: 'unit', textContent: unitLabel(spec.spec.unit) })];
+    // the field and its unit in one row
+    return [h('span', { className: 'field' }, numberField(spec.spec.unit, value, spec.spec.default, check, (number) => form.set(path, number)), h('span', { className: 'unit', textContent: unitLabel(spec.spec.unit) }))];
   },
   flag: (_spec, value, path, form) => {
     const box = h('input', { type: 'checkbox', checked: value === true, onchange: () => form.set(path, box.checked) });
@@ -184,12 +185,13 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     // The three fields share what was typed so far: the panel is not built again after a number,
     // so each of them has to see the numbers of the other two.
     const parts: unknown[] = [current[0], current[1], current[2]];
-    return [0, 1, 2].map((axis) =>
+    const fields = [0, 1, 2].map((axis) =>
       numberField('none', parts[axis], undefined, () => undefined, (number) => {
         parts[axis] = number;
         form.set(path, parts.every((part) => part === undefined) ? undefined : [...parts]);
       }),
     );
+    return [h('span', { className: 'field' }, ...fields)];
   },
   // A row per element, added and removed within `min` and `max`.
   list: (spec, value, path, form, siblings) => {
@@ -246,7 +248,7 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     return [
       h(
         'div',
-        { className: 'group' },
+        { className: 'fields' },
         ...Object.entries(spec.fields).map(([name, field]) => h('label', {}, `${form.title(field, name)}${field.optional ? ' (optional)' : ''}`, ...CONTROLS[field.kind](field as never, current[name], [...path, name], form, current))),
       ),
     ];

@@ -1,6 +1,6 @@
 # 1a Section: the query and the section view in the app
 
-**Decision D38. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D38. State: implemented and merged into `master` on 2026-11-15: the query `section` and the section view of the app; see "As implemented" at the end. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: a section through the gears.
 
@@ -231,3 +231,81 @@ Two rows of this table were overtaken by round 3: the rule for corners of this r
 Nothing found in this round was left without action in this package.
 
 **Not reviewed by anyone: the fixes of this round.** They are the new rule for corners with its start, the precision per body, `takenAt` for the clip, and the dropped slivers. They are type-checked and the rule for corners was run on the joint, on the turned and moved bodies and on the two shapes made to break it (the prototype is outside the repository). The implementation should begin by turning those runs into tests.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/section.ts`: the entry `section` in `QUERIES`, the pass `cut` with the rule for corners (`corners`), `nested`, `spansOf`, and `takenAt` and `completeRegions` exported from the index of the engine. The runs of the prototype became tests, as the last review asked: `packages/engine/test/section.test.ts` (meshes and chains written by hand: a ring turned about general axes and moved up to 2000 mm away, cut through and in the plane of its end cap; the parabola and the circle made to break the rule for corners; the table of spans), `packages/scenarios/test/section.test.ts` (the query on a small model with the real adapters) and the part of 1a in `scenario11.test.ts`.
+
+**The numbers of the design hold on the joint**, all of them as measured by the prototype: the areas (190.354, 431.379, 6131.972, 58.606), 19 loops and 2792 corners at z = 40, the budget (289 of 2224 at the default, 19 of 2224 at 30), 92 lines along the axis with the motor at 2385 and the carrier at 362.5, 38 spans through the nut pockets, 6028.838 for the front face of the housing with five bodies in `inPlane`, and nothing from outside. The six bodies at z = 40 take 20 to 30 ms together. "One body takes at most 3 ms" of the design holds for the bodies of the joint, not in general: the time grows with the triangles the plane crosses (a plate with 288 holes cut across: some 25 ms).
+
+What differs from the design and from `contract.ts`:
+
+- **A face that is not planar is `notAvailable`**, not `failed`, with the path `['plane']`: `QueryFailure` of the engine names that very case under `notAvailable` (something named is not in the state in the form the query needs).
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+- **The order of (u, v) takes two u within the precision as the same.** The design orders by u, then v. Two corners above each other (the two ends of a wall along v, which every box has) have the same u only up to the noise of the coordinates, so the exact order would let that noise choose where a loop starts. The first corner is the one with the smallest v among those whose u is the smallest within the precision of the body.
+- **The loops of a body are in the order of their first points**, and so are the regions and the holes of a region: the first of those left in that order, again and again. The design did not say; without it their order would follow the numbering of the triangles.
+- **Step 1 starts at a point the chain fixes** (the first in the exact order of u, then v) and closes the walk: a last point nearer than the precision to the first one is dropped, and the segment before it ends at the first point. The design said neither where the walk starts nor what closes it, and the points left depend on both.
+- **A loop on one face is walked twice.** The design starts it at the point furthest from the mean of its points. That point need not be a corner (a point of the mesh in line beside a corner can be as far, within the precision), and the mean of the points of the mesh follows how the face is divided. The first walk, from that point, gives corners; the list then starts at the corner furthest from the mean of those corners, the first point left out when it lies in line between its neighbours; the second walk starts there.
+- **Step 4 also drops a loop thinner than the precision on average** (an area under the precision times half the length). Three corners in a line, each a change of face, are a loop of no area by the count alone.
+- **The search for the furthest point** (step 3) reads the directions of the points between: a point outside the directions a segment may still take is ruled out, the search ends when none is left, and a point inside them that is at least as far as every point between is taken without measuring a distance. Which point is taken is decided by the distances up to rounding in their last digits. Without it a loop on one face of 1440 points would cost over a billion distance tests, and a straight run its points squared.
+- **The bound of step 3 holds for the points step 1 left.** A point step 1 dropped lies within the precision of a point that step 3 may drop in turn, so it can be up to twice the precision from the corners.
+- **`spansOf` is given the plane the section was taken at**, which is where the circle of a cone has its radius.
+- **A mesh that is not closed, and a hole that lies in no outer loop, are `failed`.** Neither can come from a body of the engine; the alternative was an open chain or a region without its hole.
+- **A body named twice in `bodies` is cut once**, and the bodies are listed in the order they were asked about (without `bodies`, the order of the model).
+- **The parabola of the design keeps 15 corners here, not 17.** The exact curve of the prototype's run is not recorded; on y = x² from 0 to 1 in steps of 0.001 the fewest segments that stay within 0.001 are 14, which is what the rule gives. The properties the design claims are tested: no point of the chain further than the precision from the corners, and the same list wherever the chain starts. The circle keeps 79 corners, as measured.
+
+**Not driven by a model yet:** an arc of a cone (no face is a cone until 2b) and a curve on a general surface; both are tested on loops written by hand. A plane that is not along an axis of the model is tested on the turned ring (the pass), not through the query: a model has no way to make such a plane.
+
+### Review of the engine side (2026-11-15)
+
+One full review (new geometry) by a subagent that did not write the code, with probes it ran: a brute-force copy of the rule for corners against 42 000 random and adversarial chains; the areas of the joint integrated over 800 offsets against the volumes of the bodies (ratio 1.00000 along Z); 4800 queries over the three base planes and every planar face of the joint as a plane; the triangles of every body renumbered and reordered; bodies turned and moved up to 9000 mm; open meshes; and 43 mutants of the module against its tests. It found nothing serious: the pass, the nesting, the spans and the budget held on everything it ran. One finding was moderate and the rest minor. No second round (the rule asks for one above six findings with three serious, or after a large fix).
+
+| Finding | Held | What was done |
+|---|---|---|
+| The rule for corners took a time that grew with the square of the points in two shapes: a straight run of many points on one face (5000 points: 3.4 s) and a loop on one face with many corners (20 000 points: 1.6 s) (moderate) | Yes (run) | The end of a run is found once; a point inside the directions left that is at least as far as every point between is taken without a distance test. Both cases, and a loop of 130 000 points, now pass a regression with a time limit of a second |
+| A point of the mesh in line beside a corner could become the start of a loop on one face and was then kept: 37 corners for a polygon of 36 (on the carrier 0.01 mm above the end of its pins) | Yes (run on the joint) | A loop on one face is walked twice (see above) |
+| The start of a loop on one face followed how the face is divided (the mean was over the points of the mesh) | Yes (run) | The same: the mean is over the corners |
+| Step 1 depended on where the mesh starts the chain: the coordinates of corners moved by up to an eighth of the precision on the joint, and a chain with three points 0.7 of the precision apart gave four corners from one start and five from the others | Yes (run) | Step 1 starts at a point the chain fixes; the regression compares every start to the last digit |
+| The corners can be up to twice the precision from a point step 1 dropped, not within the precision | Yes (a chain written for it: 1.98 of the precision) | Stated as it is, in the code, the architecture and above; it needs two points nearer than the precision |
+| The wedge of directions did change the point taken, in the last digit: `asin` near a quarter turn is off by 1.5e-8 rad and the slack was 1e-9 | Yes (76 of 18 876 cases of a probe aimed at it; none in the 42 000) | The directions that rule a point out are widened by 1e-7 rad; the claim says "up to rounding" |
+| A loop of more than some 125 000 points threw `RangeError` (a list spread into the arguments of `Math.min`) | Yes (run) | Loops instead of spread arguments |
+| The loops were sorted by a comparison with a tolerance, which is no order: three boxes with first corners 0.6 of the precision apart came back in three orders | Yes (run; needs u between one and two precisions apart) | The first of those left, again and again |
+| A loop of three or more corners with no area was taken for a hole and failed the whole query ("a hole of the section lies in no outer loop") | Reasoned and run on a chain written by hand; no body of 4800 queries produced it | Step 4 drops what is thinner than the precision on average |
+| Tests: eleven mutants passed, among them no sorting of the loops (the test was vacuous), stopping at the first point that fails, the distance from the line instead of the segment, a walk across changes of face, the precision of the call for the corners, the flip before the offset, the total of a body whose polylines did not fit, `inPlane` without the direction, a hole placed by its first point only | Yes (run) | Each has a case now: `packages/engine/test/review.test.ts` ("the section: the review of D38"), the two cases marked "review" in `packages/scenarios/test/section.test.ts`, and the test of the order of loops rewritten |
+| Statements that did not hold as written: "the same list wherever the chain starts", "within the precision of the mesh", "the search only saves time", "one body takes at most 3 ms"; `contract.ts` still described the draft | Yes | Reworded here, in the code and in `docs/architecture/api.md`; `contract.ts` points to this section |
+
+Left as known limits:
+
+- **A real corner within the precision of the segment to a point of the mesh just past it is stood for by that point.** The rule asks for the furthest point that keeps every point between within the precision, and such a point does. The number of corners of a polygon does not change, and the corners are the same wherever the chain starts; they are then points of the mesh beside the corners, within the precision of the polygon.
+- **On a curve that turns slowly the corners follow where the list starts**, which for a loop on one face follows the points of the mesh. The design says so for the start; it holds for the set of corners too.
+- **A hole that touches its island** at a point a rounding error outside the island would go to the loop around both. On the boundary itself it went to the right one; no body produced the case.
+- **A whole loop on a cylinder whose axis lies outside the loop** would get the sign of its sweep from rounding. A loop on one cylinder cut across its axis always winds round the axis.
+- **Not reached by the review:** a pose (the context does not pose bodies yet), a cone or a general surface from a model (none exists), a mesh of the kernel with an edge in four triangles.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/section.ts` (the view: `prepare`, the rows, the scene), `SceneModel.clip` and `LineSet.overFills` in `viewport.ts`, `shownCut` in `scene.ts`, `keptSegments` and `insideFill` in `draw.ts`, and the pick of `app.ts`. What differs from the design and from `calls.ts`:
+
+- **The lines of a body are cut by the scene, not by their material.** The design left it open ("if the line material of three.js honours a clipping plane, otherwise the scene builder cuts the segments"). Cut by the builder (`keptSegments`), the lines of a cut model are in the description of the scene, where the recorded test of the app sees them; the pick of edges uses the same function. The bodies and their highlighted faces are clipped by their materials.
+- **The outline of the cut is drawn after the fills** (`overFills`). A fill is pulled towards the eye so that it wins over a face of a body in its plane; a line in the same plane would lose to it as well. The fills write no depth, so a line drawn after them is covered only by what stands in front of it.
+- **Nothing picked through the cut** is decided in the pick of the app, not in `pickBody`: the view skips the hits that are cut away, and the app then asks whether the ray meets a filled region of the cut before that hit (`shownCut` gives the fills that are drawn, without those of hidden bodies). It returns nothing at all in that case; with `pickBody` answering "no body" alone, the pick would have gone on to the edges and the planes behind the fill.
+- **The areas of the panel** are shown to a thousandth of a square millimetre.
+- **A body with a face in the plane** gets a sentence of its own in the panel, with what it means.
+- **What a view adds to a scene is built once per answer**: the pick asks for it on every move of the pointer.
+
+Run in a browser (2026-11-15): the cut model with the fill and the outline, a cavity that shows its walls, a click on the cut (nothing), on a wall below it and into a hole (their faces), the step of the plane, a hidden body. One thing seen there that the design does not cover: a sketch that stands on a face above the cut stays where it is, in the air; sketches belong to no body and are not cut.
+
+**Not done:** the view while a form of a feature is open and over a preview (deferred by the design), a click on the filled cut that selects its body (open in the design), a step other than 1 mm.
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diffs only, a cheaper model) of the section view and of the commit with what the browser showed in the form of a query. It found the sign of the clipping plane, the cut of the lines, the test of a fill, the hidden bodies and the agreement of what is drawn with what is picked right. Four findings, none serious; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The new rule that keeps a checkbox of the form of a query at the start of its row also hit the labels of the class `check` of the other forms (the targets of an extrusion, the options of a pattern, a dimension), where the checkbox is centred beside its text (moderate, cosmetic) | Yes (the selectors) | The rule leaves labels of that class alone |
+| The test that stops a pick at the filled cut took a plane behind the eye for one in front of everything: its depth is negative, so it is less than that of any hit | Reasoned; the eye stands far outside the model, so no case was made | A fill stops a pick only in front of the eye |
+| The tree of an answer rounded a number to the significant digits its query asks for and then to six decimal places, which leaves nothing of a value that is small on purpose | Yes; with a unit it was so before as well | The significant digits are kept as they are, with a unit and without (`resultText`); a case in the test of the fields |
+| No test of a segment with an end exactly in the plane of the cut; such a segment on the side that is cut away left a segment of no length | Yes | It leaves nothing; a case in the test of the drawing helpers |

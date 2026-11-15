@@ -1,18 +1,20 @@
 // Operations of the app (D37): the registry and its guards, and the way of a call from a client
 // through the server and the bridge into the app and back, with operations made up for the test.
 // - An operation added to the registry without a row in the two tables below does not compile.
-import { type ArgSpecs, type Command, type Engine, type QueryOutcome, specProblems } from '@trymesh/engine';
+import { type ArgSpecs, type Command, type Engine, type QueryOutcome, checkArgs, specProblems } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { apiDescription, apiText, hostOperations } from '../src/api';
 import { type Bridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
-import { type AnyHostOperation, type AppHost, HOST_OPERATIONS, type Host, type HostOperationArgs, type HostOperationName, type HostOperationSet, callHostOperation, isHostOperation } from '../src/host';
+import { type AnyHostOperation, type AppHost, HOST_OPERATIONS, type Host, type HostOperationArgs, type HostOperationName, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from '../src/host';
 import { type ToolAnswer, tools } from '../src/tools';
 import { connect, newEngine } from './kit';
 
 // ---------------------------------------------------------------- the guards
 
-// Arguments of every operation, of the operation's own type.
+// Arguments of every operation, of the operation's own type, that are valid over `model()` below.
+// The test checks them against the description; the operation itself needs the app to run, so
+// its package tests it there.
 const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {};
 // Every argument of every operation and whether a caller may leave it out, as the type says.
 const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {};
@@ -30,18 +32,24 @@ describe('the registry of operations of the app', () => {
       expect(described, name).toEqual((ARGUMENTS as Record<string, unknown>)[name]);
       expect(specProblems(spec.args), name).toEqual([]);
       expect(spec.title && spec.summary && spec.returns, name).toBeTruthy();
-      // an operation is a tool by its name: not one a tool has, and not an internal one
-      expect(taken, name).not.toContain(name);
-      expect(tools().map((tool) => tool.name), name).not.toContain(name);
-      expect(name.startsWith('_'), name).toBe(false);
+      const { document, evaluation } = model().getState();
+      expect(checkArgs(spec.args, (FIXTURES as Record<string, unknown>)[name], { document, evaluation }), name).toMatchObject({ ok: true });
       expect(apiText()).toContain(`- ${name} (`);
     }
+    // an operation is a tool by its name: not one a tool has, and not an internal one
+    expect(hostOperationProblems(HOST_OPERATIONS, [...taken, ...tools().map((tool) => tool.name)])).toEqual([]);
     expect(apiDescription().operations.map((entry) => entry.query)).toEqual(Object.keys(HOST_OPERATIONS));
     expect(apiText()).toContain('# Operations of the app');
   });
 });
 
 // ---------------------------------------------------------------- the way of a call
+
+const model = (): Engine => {
+  const engine = newEngine();
+  engine.execute(disc);
+  return engine;
+};
 
 // What the app of the test offers to its operations, besides the engine.
 type TestHost = AppHost & { picture(width: number): Promise<string> };
@@ -96,7 +104,7 @@ describe('an operation of the app', () => {
   afterAll(async () => {
     await bridge.close();
   });
-  const appWith = async (engine: Engine, host: TestHost | undefined, operations: HostOperationSet = OPERATIONS) => {
+  const appWith = async (engine: Engine, host: (Host & TestHost) | undefined, operations: HostOperationSet = OPERATIONS) => {
     let status: BridgeStatus = 'off';
     const before: string[] = [];
     const calls: string[] = [];
@@ -118,10 +126,17 @@ describe('an operation of the app', () => {
     session.engine.execute(disc);
     expect(await session.call('count_bodies')).toEqual({ error: expect.stringMatching(/^notAvailable: count_bodies: the operation runs in the app and no app is connected/) });
 
-    const app = newEngine();
-    app.execute(disc);
+    const app = model();
     const widths: number[] = [];
-    const { connection, before, calls } = await appWith(app, { picture: async (width) => (widths.push(width), Buffer.from(`png ${width}`).toString('base64')) });
+    // the host is an instance of a class: an operation gets the object itself, with the methods of its prototype
+    class AppOfTheTest {
+      constructor(readonly engine: Engine) {}
+      async picture(width: number): Promise<string> {
+        widths.push(width);
+        return Buffer.from(`png ${width}`).toString('base64');
+      }
+    }
+    const { connection, before, calls } = await appWith(app, new AppOfTheTest(app));
     expect(await session.call('count_bodies')).toEqual({ bodies: 1 });
     // an image is image content of the protocol, not text
     const image = await session.client.callTool({ name: 'view_image', arguments: { body: 'disc' } });
@@ -157,7 +172,8 @@ describe('an operation of the app', () => {
     first.connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');
     // an older app: the server offers an operation the app does not have
-    const second = await appWith(newEngine(), { picture: async () => '' }, {});
+    const older = newEngine();
+    const second = await appWith(older, { engine: older, picture: async () => '' }, {});
     expect(await session.call('count_bodies')).toEqual({ error: 'neznámý nástroj "count_bodies"' });
     second.connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');
@@ -178,6 +194,19 @@ describe('an operation of the app', () => {
     connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');
     await session.close();
+  });
+
+  it('an operation cannot take the name of a tool: the server and the bridge client refuse to start', async () => {
+    const entry = OPERATIONS.count_bodies;
+    expect(hostOperationProblems(OPERATIONS, ['get_model', '_load'])).toEqual([]);
+    expect(hostOperationProblems({ get_model: entry, _mine: entry, '': entry }, ['get_model'])).toEqual(['the operation "get_model" has the name of a tool', 'the operation "_mine" has the name of an internal tool (a leading underscore)', 'an operation has no name']);
+    // a tool of the engine, an internal one, and a file tool of the server
+    await expect(connect({ operations: { get_model: entry } })).rejects.toThrow('createTrymeshServer: the operation "get_model" has the name of a tool');
+    await expect(connect({ operations: { _load: entry } })).rejects.toThrow(/the operation "_load" has the name of a tool; the operation "_load" has the name of an internal tool/);
+    await expect(connect({ operations: { export: entry } })).rejects.toThrow('the operation "export" has the name of a tool');
+    expect(() => connectBridge(newEngine(), { operations: { execute: entry } })).toThrow('connectBridge: the operation "execute" has the name of a tool');
+    // a host of another engine than the one connected is a mistake of the app
+    expect(() => connectBridge(newEngine(), { host: { engine: newEngine() }, operations: OPERATIONS })).toThrow('connectBridge: the host has another engine than the one connected');
   });
 
   it('callHostOperation: the entry next to callTool', async () => {

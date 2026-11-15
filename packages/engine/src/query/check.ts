@@ -106,13 +106,14 @@ class Checker {
         if (spec.kind === 'number' && spec.spec.default !== undefined) out[name] = spec.spec.default;
         continue;
       }
-      out[name] = this.value(spec, given, [...path, name], value);
+      out[name] = this.value(spec, given, [...path, name], value, path);
     }
     return out;
   }
 
-  // `siblings`: the values next to this one, for `of` of a constraint.
-  private value(spec: ArgKind, value: unknown, path: ArgPath, siblings: Record<string, unknown>): unknown {
+  // `siblings`: the named values of the record this one is in (at `within`), for `of` of
+  // a constraint. A list, a record by key and an alternative keep the record they are in.
+  private value(spec: ArgKind, value: unknown, path: ArgPath, siblings: Record<string, unknown>, within: ArgPath): unknown {
     switch (spec.kind) {
       case 'number': {
         if (typeof value !== 'number') return invalid(path, 'a number is expected');
@@ -136,7 +137,8 @@ class Checker {
       case 'constraint': {
         const id = this.id(value, path, 'constraint');
         // the sketch next to it was checked first only if it is listed first; check it here as well
-        const sketch = this.sketch(siblings[spec.of], [...path.slice(0, -1), spec.of]);
+        if (siblings[spec.of] === undefined) return invalid([...within, spec.of], 'the argument is required');
+        const sketch = this.sketch(siblings[spec.of], [...within, spec.of]);
         return has(sketch.constraints, id) ? id : missing(path, `the sketch "${sketch.id}" has no constraint "${id}"`);
       }
       case 'entity': {
@@ -161,18 +163,19 @@ class Checker {
         return ref;
       }
       case 'vector':
-        return Array.isArray(value) && value.length === 3 && value.every((item) => typeof item === 'number' && Number.isFinite(item)) ? value.map((item: number) => item + 0) : invalid(path, 'three finite numbers are expected');
+        // `Array.from` visits the holes of a sparse array, which `every` and `map` skip
+        return Array.isArray(value) && value.length === 3 && Array.from(value).every((item) => typeof item === 'number' && Number.isFinite(item)) ? Array.from(value, (item: number) => item + 0) : invalid(path, 'three finite numbers are expected');
       case 'list': {
         if (!Array.isArray(value)) return invalid(path, 'a list is expected');
         if (spec.min !== undefined && value.length < spec.min) return invalid(path, `at least ${spec.min} ${spec.min === 1 ? 'item is' : 'items are'} expected`);
         if (spec.max !== undefined && value.length > spec.max) return invalid(path, `at most ${spec.max} ${spec.max === 1 ? 'item is' : 'items are'} expected`);
-        return value.map((item, i) => this.value(spec.of, item, [...path, i], siblings));
+        return Array.from(value, (item, i) => this.value(spec.of, item, [...path, i], siblings, within));
       }
       case 'oneOf': {
         const names = Object.keys(spec.options);
         const given = isObject(value) ? Object.keys(value).filter((name) => value[name] !== undefined) : [];
         if (!isObject(value) || given.length !== 1 || !has(spec.options, given[0])) return invalid(path, `an object with exactly one of ${names.join(', ')} is expected`);
-        return { [given[0]]: this.value(spec.options[given[0]], value[given[0]], [...path, given[0]], siblings) };
+        return { [given[0]]: this.value(spec.options[given[0]], value[given[0]], [...path, given[0]], siblings, within) };
       }
       case 'record': {
         if (!isObject(value)) return invalid(path, 'an object with a value per key is expected');
@@ -181,7 +184,7 @@ class Checker {
           if (key in Object.prototype) invalid([...path, key], 'the key is not allowed');
           if (spec.keys === 'body') this.body(key, [...path, key]);
           if (spec.keys === 'feature' && !this.feature(key)) missing([...path, key], `the feature "${key}" is not in the state asked about`);
-          out[key] = this.value(spec.of, item, [...path, key], siblings);
+          out[key] = this.value(spec.of, item, [...path, key], siblings, within);
         }
         return out;
       }

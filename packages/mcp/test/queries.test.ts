@@ -86,6 +86,11 @@ describe('the catalog of queries', () => {
     const tool = tools().find((candidate) => candidate.name === 'query');
     expect((tool?.inputSchema as { properties: { query: { enum: string[] } } }).properties.query.enum).toEqual(Object.keys(QUERIES));
     for (const name of Object.keys(QUERIES)) expect(tool?.description).toContain(name);
+    // `null` counts as not given, as for the arguments of every tool; only at the top level of `args`
+    const engine = model();
+    expect(call(engine, { query: 'interference', args: { bodies: null, threshold: null }, at: null, after: null })).toEqual(call(engine, { query: 'interference' }));
+    expect(call(engine, { query: 'interference', args: null })).toEqual(call(engine, { query: 'interference' }));
+    expect(call(engine, { query: 'interference', args: { bodies: ['low', null] } })).toEqual({ error: 'invalidArguments: interference: bodies[1]: the ID of a body is expected' });
     const text = apiText();
     expect(text).toContain('# Queries');
     expect(text).toContain('  - bodies (optional): a list, each item the ID of a body. The bodies to check against each other; without it all bodies.');

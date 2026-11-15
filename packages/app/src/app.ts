@@ -328,8 +328,8 @@ export class App {
     }
     let restore: (() => void) | undefined;
     this.bridge = connectBridge(this.engine, {
-      // what the operations of the app need of it (AppHost); the compiler asks for a new member here
-      host: {},
+      // what the operations of the app need of it (AppHost), with its engine; the compiler asks for a new member here
+      host: { engine: this.engine },
       onStatus: (status) => {
         this.bridgeStatus = status;
         if (status === 'connected') this.say('Propojeno s MCP serverem: AI vidí a mění tento dokument.');

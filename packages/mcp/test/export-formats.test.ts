@@ -70,7 +70,7 @@ describe('the catalog of export formats', () => {
     const text = apiText();
     expect(text).toContain('# Export formats');
     expect(text).toContain('- stl (STL): Bodies as triangle meshes in binary STL');
-    expect(text).toContain('  - bodies: a list, each item the ID of a body. The bodies to export, each once, in this order; without it all bodies.');
+    expect(text).toContain('  - bodies: a list, at least 1, each item the ID of a body. The bodies to export, each once, in this order; without it all bodies.');
     expect(text).toContain('  - perBody: true or false. A folder with one file per body');
     expect(text).toContain('export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;');
   });
@@ -87,6 +87,10 @@ describe('the tool that hands the files of an export to the server', () => {
     expect(exported(engine, { format: 'stl', options: { perBody: true } })).toMatchObject({ layout: 'directory', files: [{ path: 'low.stl' }, { path: 'high.stl' }] });
     // the state: after a feature, or after a command that is only previewed
     expect(exported(engine, { format: 'stl', at: 'low' }).files[0].about.bodies).toEqual(['low']);
+    // `null` counts as not given, as for the arguments of every tool; only at the top level of the options
+    expect(exported(engine, { format: 'stl', options: { bodies: null, perBody: null }, at: null, after: null })).toEqual(one);
+    expect(exported(engine, { format: 'stl', options: null })).toEqual(one);
+    expect(exported(engine, { format: 'stl', options: { bodies: [null] } })).toEqual({ error: 'invalidArguments: stl: bodies[0]: the ID of a body is expected' });
     const before = engine.save();
     expect(exported(engine, { format: 'stl', after: { type: 'removeFeature', id: 'low' } }).files[0].about.bodies).toEqual(['high']);
     expect(exported(engine, { format: 'stl', after: { type: 'removeFeature', id: 'high' }, at: 'low' }).files[0].about.bodies).toEqual(['low']);

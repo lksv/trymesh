@@ -15,6 +15,7 @@ const refused = (run: () => unknown, message: RegExp) => {
 
 describe('the schema of the document', () => {
   it('master: the version is the number of steps plus one, and no names are written', () => {
+    // the names in their order are pinned: a version counts the steps by position, so the list only grows at its end
     expect(UPGRADES.map((entry) => entry.name)).toEqual(['d35-profiles-and-parameters', 'd37-schema-steps']);
     expect(SCHEMA_PENDING).toBe(0);
     expect(SCHEMA_VERSION).toBe(3);

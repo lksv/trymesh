@@ -7,7 +7,9 @@ import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey,
 import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
 import { generatorOf, producesTool } from '../src/index';
 import { type SketchGeometry, detectProfile } from '../src/sketch';
-import type { Command, Curve, Document, EngineState, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, SolidKernel } from '../src/types';
+import type { ArgSpecs } from '../src/query/args';
+import { checkArgs } from '../src/query/check';
+import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, SolidKernel } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -317,5 +319,46 @@ describe('a module per feature type (D37): what the move could have changed unse
     expect(kept).toBeUndefined();
     const values = { Evaluator, FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, SCHEMA_VERSION, CommandError, applyCommand, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptyDocument, emptySketch, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, validateDocument, withPath };
     for (const [name, value] of Object.entries(values)) expect(value, name).toBeDefined();
+  });
+});
+
+// Findings of the review of the registries (D37, parts 1 and 4).
+describe('the checker of arguments', () => {
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const document = (
+    [
+      { type: 'addFeature', feature: emptySketch('S1', 'S1', XY) },
+      { type: 'addCurve', sketch: 'S1', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+      { type: 'addConstraint', sketch: 'S1', id: 'r', constraint: { type: 'radius', curve: 'c', value: 5, driving: true } },
+    ] as Command[]
+  ).reduce(applyCommand, emptyDocument());
+  const scope = { document, evaluation: { features: { S1: {} }, bodies: {}, faceNames: [] } as unknown as Evaluation };
+  const problem = (specs: ArgSpecs, args: unknown) => {
+    const checked = checkArgs(specs, args, scope);
+    return checked.ok ? checked.value : [checked.code, checked.arg, checked.message];
+  };
+  const CONSTRAINT = { kind: 'constraint', of: 'sketch', title: 'C' } as const;
+  const SKETCH = { kind: 'sketch', title: 'S' } as const;
+
+  it('the sketch of a constraint inside a list, a record or an alternative is the argument next to that list', () => {
+    const inList: ArgSpecs = { all: { kind: 'list', of: CONSTRAINT, title: 'All' }, sketch: SKETCH };
+    expect(problem(inList, { all: ['r'], sketch: 'S1' })).toEqual({ all: ['r'], sketch: 'S1' });
+    expect(problem(inList, { all: ['r'], sketch: 'nope' })).toEqual(['notAvailable', ['sketch'], 'sketch: the sketch "nope" is not in the state asked about']);
+    expect(problem(inList, { all: ['r'] })).toEqual(['invalidArguments', ['sketch'], 'sketch: the argument is required']);
+    expect(problem(inList, { all: ['nope'], sketch: 'S1' })).toEqual(['notAvailable', ['all', 0], 'all[0]: the sketch "S1" has no constraint "nope"']);
+    const inRecord: ArgSpecs = { by: { kind: 'record', keys: 'text', of: CONSTRAINT, title: 'By' }, sketch: SKETCH };
+    expect(problem(inRecord, { by: { a: 'r' }, sketch: 'nope' })).toEqual(['notAvailable', ['sketch'], expect.any(String)]);
+    const inChoice: ArgSpecs = { pick: { kind: 'oneOf', options: { one: CONSTRAINT }, title: 'Pick' }, sketch: SKETCH };
+    expect(problem(inChoice, { pick: { one: 'r' }, sketch: 'nope' })).toEqual(['notAvailable', ['sketch'], expect.any(String)]);
+    // inside fields the sketch is among those fields, also when the constraint sits in a list of them
+    const inRows: ArgSpecs = { rows: { kind: 'list', of: { kind: 'fields', fields: { cs: { kind: 'list', of: CONSTRAINT }, sketch: { kind: 'sketch' } } }, title: 'Rows' } };
+    expect(problem(inRows, { rows: [{ cs: ['r'], sketch: 'S1' }] })).toEqual({ rows: [{ cs: ['r'], sketch: 'S1' }] });
+    expect(problem(inRows, { rows: [{ cs: ['r'], sketch: 'nope' }] })).toEqual(['notAvailable', ['rows', 0, 'sketch'], 'rows[0].sketch: the sketch "nope" is not in the state asked about']);
+  });
+
+  it('a hole in a list or in a vector is refused', () => {
+    expect(problem({ f: { kind: 'list', of: { kind: 'flag' }, title: 'F' } }, { f: [true, , false] })).toEqual(['invalidArguments', ['f', 1], 'f[1]: true or false is expected']);
+    expect(problem({ v: { kind: 'vector', title: 'V' } }, { v: [1, , 3] })).toEqual(['invalidArguments', ['v'], 'v: three finite numbers are expected']);
+    expect(problem({ v: { kind: 'vector', title: 'V' } }, { v: [1, 2, 3] })).toEqual({ v: [1, 2, 3] });
   });
 });

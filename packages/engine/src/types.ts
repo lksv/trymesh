@@ -585,6 +585,8 @@ export type ArgPath = readonly (string | number)[];
 //   features the state evaluated. A mistyped ID and one that comes later on the timeline are the
 //   same answer. Also: `at` names no feature.
 // - `failed`: the computation gave up (the geometric kernel, a limit).
+// A result may be kept by the engine and returned again for the same state: do not change it,
+// like a state the engine returns.
 // What was a successful answer stays one: a sketch that did not evaluate has the diagnosis
 // `status: 'unavailable'`, a list of fewer than two bodies has no collisions.
 export type QueryOutcome<Result> =

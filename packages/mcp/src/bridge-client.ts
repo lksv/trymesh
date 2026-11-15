@@ -1,8 +1,8 @@
 // Strana aplikace: připojí engine k mostu MCP serveru a obsluhuje jeho požadavky. Běží v prohlížeči
 // i v Node (testy), proto čte proud událostí přes fetch a ne přes EventSource.
 import type { Engine } from '@trymesh/engine';
-import { type AppHost, HOST_OPERATIONS, type HostOperationSet, callHostOperation, isHostOperation } from './host';
-import { MUTATING, type ToolOutcome, callProblem, callTool } from './tools';
+import { HOST_OPERATIONS, type Host, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from './host';
+import { MUTATING, type ToolOutcome, callProblem, callTool, tools } from './tools';
 
 export { MUTATING, changesDocument } from './tools';
 
@@ -26,9 +26,9 @@ export interface BridgeClientOptions {
   onDisplaced?: () => void; // k serveru se připojila jiná aplikace; tahle se už sama znovu nepřipojí
   beforeCall?: (name: string, args: Record<string, unknown>) => void; // před provedením nástroje: aplikace si může uklidit rozpracovaný stav
   onCall?: (name: string, outcome: ToolOutcome) => void; // po každém obslouženém požadavku
-  // What the operations of the app need of it besides the engine (host.ts). Without it an operation
-  // answers `notAvailable`.
-  host?: AppHost;
+  // What the operations of the app need of it, with the engine that is connected (host.ts). It is
+  // handed to an operation as it is. Without it an operation answers `notAvailable`.
+  host?: Host;
   operations?: HostOperationSet; // the operations served; the registry by default (tests give their own)
 }
 
@@ -38,6 +38,8 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
   let stopped = false;
   let document = 0; // pořadové číslo dokumentu; server ho dostává s každou odpovědí
   const operations = options.operations ?? HOST_OPERATIONS;
+  const defects = [...hostOperationProblems(operations, tools().map((tool) => tool.name)), ...(options.host !== undefined && options.host.engine !== engine ? ['the host has another engine than the one connected'] : [])];
+  if (defects.length) throw new Error(`connectBridge: ${defects.join('; ')}`);
   let status: BridgeStatus | undefined;
   const report = (next: BridgeStatus) => {
     if (status !== next) options.onStatus?.((status = next));
@@ -48,7 +50,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
     try {
       if (isHostOperation(call.name, operations)) {
         // an operation of the app changes nothing in the document, so the app has nothing to tidy up before it
-        outcome = await callHostOperation(options.host === undefined ? undefined : { ...options.host, engine }, call.name, call.args ?? {}, operations);
+        outcome = await callHostOperation(options.host, call.name, call.args ?? {}, operations);
       } else {
         // a call the tools refuse outright (an argument outside the schema) must not cancel what the user is doing
         const refused = callProblem(call.name, call.args ?? {});

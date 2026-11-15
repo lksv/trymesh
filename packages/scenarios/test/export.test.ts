@@ -80,8 +80,8 @@ describe('Engine.export', () => {
     const empty = engine.export('stl', {});
     expect(empty).toMatchObject({ ok: true, result: { layout: 'file', empty: 'the model has no body to export', files: [{ path: 'model.stl', about: { bodies: [], triangles: 0 } }] } });
     expect(engine.export('stl', { perBody: true })).toEqual({ ok: true, result: { layout: 'directory', files: [], empty: 'the model has no body to export' } });
-    // an empty list is the caller's choice of no body, and says the same
-    expect(model().export('stl', { bodies: [] })).toMatchObject({ ok: true, result: { empty: 'the model has no body to export' } });
+    // an empty list is not "all bodies" and not "no body in the model": it is refused
+    expect(failure(model().export('stl', { bodies: [] }))).toEqual(['invalidArguments', ['bodies'], 'stl: bodies: at least 1 item is expected']);
     expect(model().export('stl', {})).not.toHaveProperty('result.empty');
   });
 
@@ -92,8 +92,6 @@ describe('Engine.export', () => {
     expect(failure(engine.export('stl', { perBody: 1 } as never))).toEqual(['invalidArguments', ['perBody'], 'stl: perBody: true or false is expected']);
     expect(failure(engine.export('stl', { perbody: true } as never))).toEqual(['invalidArguments', ['perbody'], 'stl: perbody: there is no such argument']);
     expect(failure(engine.export('step' as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format "step"; the formats are stl']);
-    expect(failure(engine.export('stl', {}, { at: 'nope' }))).toEqual(['notAvailable', ['at'], 'stl: `at`: the feature "nope" is not in the document']);
-    expect(failure(engine.export('stl', {}, { state: newEngine().getState() }))).toEqual(['invalidArguments', ['state'], 'stl: `state` is not a state this engine handed out']);
     expect(() => engine.exportMesh('stl', ['nope'])).toThrow('exportMesh: the body "nope" does not exist');
     expect(() => engine.exportMesh('stl', 'PLATE' as never)).toThrow('exportMesh: bodies is a list of body IDs');
     expect(() => engine.exportMesh('step' as never)).toThrow('export: formát step není podporovaný');

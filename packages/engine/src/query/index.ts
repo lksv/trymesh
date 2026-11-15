@@ -19,7 +19,7 @@ const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: 
 // query, fills in the defaults and runs it. `name` and `args` come from callers that are not typed
 // (a tool, the bridge), so both are checked here.
 export function runQuery(name: string, args: unknown, evaluation: Evaluation, internals: Internals, deps: ContextDeps): QueryOutcome<unknown> {
-  if (!has(QUERIES, name)) return refused('invalidArguments', `there is no query "${name}"; the queries are ${Object.keys(QUERIES).join(', ')}`, ['query']);
+  if (typeof name !== 'string' || !has(QUERIES, name)) return refused('invalidArguments', `there is no query ${typeof name === 'string' ? `"${name}"` : 'of that name (a text is expected)'}; the queries are ${Object.keys(QUERIES).join(', ')}`, ['query']);
   const spec = (QUERIES as Record<string, AnyQuery>)[name];
   const checked = checkArgs(spec.args, args, { document: internals.document, evaluation });
   if (!checked.ok) return refused(checked.code, `${name}: ${checked.message}`, checked.arg);

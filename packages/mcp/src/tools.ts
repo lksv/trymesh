@@ -341,6 +341,15 @@ function askedState(engine: Engine, args: Record<string, unknown>): QueryOptions
   return { state: previewed.state };
 }
 
+// The named arguments of a query or the options of a format, as a tool passes them on: `null`
+// counts as not given, as for the arguments of every tool. Only at the top level; inside a value
+// a `null` is a value the engine judges.
+function named(value: unknown): unknown {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null));
+}
+
 function base64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -577,7 +586,7 @@ export function tools(): Tool[] {
       run: (engine, args) => {
         const name = text(args, 'query');
         // the preview and the query run together where the engine is; nothing is written
-        const answer = engine.query(name as QueryName, (args.args ?? {}) as never, askedState(engine, args));
+        const answer = engine.query(name as QueryName, named(args.args) as never, askedState(engine, args));
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
         return roundedResult(answer.result, (QUERIES as Record<string, AnyQuery>)[name].significant);
       },
@@ -676,7 +685,7 @@ export function tools(): Tool[] {
       // body) is refused with the reason the format gives.
       run: (engine, args): ToolAnswer => {
         const format = text(args, 'format');
-        const answer = engine.export(format as ExportFormat, (args.options ?? {}) as never, askedState(engine, args));
+        const answer = engine.export(format as ExportFormat, named(args.options) as never, askedState(engine, args));
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
         if (answer.result.empty !== undefined) throw new ToolError(answer.result.empty);
         return { kind: 'files', layout: answer.result.layout, files: answer.result.files.map((file) => ({ path: file.path, mediaType: file.mediaType, base64: base64(file.bytes), ...(file.about ? { about: file.about } : {}) })) };

@@ -111,6 +111,7 @@ export function createEngine(deps: Deps): Engine {
   const askedState = (name: string, options: QueryOptions): { evaluation: Evaluation; internals: Internals } | QueryOutcome<never> => {
     const refused = (code: 'invalidArguments' | 'notAvailable', message: string, arg: string): QueryOutcome<never> => ({ ok: false, error: { code, message, arg: [arg] } });
     let asked: Evaluation;
+    if (typeof options !== 'object' || options === null) return refused('invalidArguments', `${name}: the options are an object with \`at\` or \`state\``, 'options');
     if (options.state !== undefined) {
       if (options.at !== undefined) return refused('invalidArguments', `${name}: \`at\` or \`state\` is given, not both`, 'state');
       if (typeof options.state !== 'object' || options.state === null || !internals.has(options.state.evaluation)) return refused('invalidArguments', `${name}: \`state\` is not a state this engine handed out`, 'state');
@@ -233,12 +234,12 @@ export function createEngine(deps: Deps): Engine {
     },
 
     query(name, args, options = {}) {
-      const asked = askedState(name, options);
+      const asked = askedState(typeof name === 'string' ? name : 'query', options);
       return 'ok' in asked ? asked : (runQuery(name, args, asked.evaluation, asked.internals, queryDeps) as QueryOutcome<never>);
     },
 
     export(format, options, queryOptions = {}) {
-      const asked = askedState(format, queryOptions);
+      const asked = askedState(typeof format === 'string' ? format : 'export', queryOptions);
       return 'ok' in asked ? asked : runExport(format, options, asked.evaluation, asked.internals, queryDeps);
     },
 

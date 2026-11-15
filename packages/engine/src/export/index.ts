@@ -31,7 +31,7 @@ const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: 
 // Exports one state in the format `format`: checks the options against the description of the
 // format, fills in the defaults and runs it. Both come from callers that are not typed.
 export function runExport(format: string, options: unknown, evaluation: Evaluation, internals: Internals, deps: ContextDeps, formats: Record<string, AnyExportFormat> = EXPORT_FORMATS): QueryOutcome<Exported> {
-  if (typeof format !== 'string' || !has(formats, format)) return refused('invalidArguments', `there is no export format "${String(format)}"; the formats are ${Object.keys(formats).join(', ')}`, ['format']);
+  if (typeof format !== 'string' || !has(formats, format)) return refused('invalidArguments', `there is no export format ${typeof format === 'string' ? `"${format}"` : 'of that name (a text is expected)'}; the formats are ${Object.keys(formats).join(', ')}`, ['format']);
   const spec = formats[format];
   const checked = checkArgs(spec.options, options, { document: internals.document, evaluation });
   if (!checked.ok) return refused(checked.code, `${format}: ${checked.message}`, checked.arg);

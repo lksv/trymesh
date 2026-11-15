@@ -16,6 +16,8 @@ import type { Json, ToolAnswer, ToolOutcome } from './tools';
 
 // What an operation needs of the app besides the engine. Empty until the first operation.
 export interface AppHost {}
+// The host as the app hands it over: its capabilities and its engine in one object, which an
+// operation gets as it is (not a copy: a host may be an instance of a class).
 export type Host = AppHost & { engine: Engine };
 
 export interface HostOperation<S> {
@@ -49,6 +51,18 @@ export const OPERATIONS_ARE_VALID: [InvalidSpecs] extends [never] ? true : { [N 
 export const HOST_OPERATIONS: HostCatalog = {};
 
 const own = (set: HostOperationSet, name: string): boolean => Object.prototype.hasOwnProperty.call(set, name);
+
+// An operation is a tool by its name, and a call is looked up among the operations first. So the
+// name must not be one a tool has (`taken`: the tools of the engine with the internal ones, and
+// the file tools of the server) and must not look like an internal tool. The server and the bridge
+// client refuse to start with a set that breaks this; a test runs it over the registry.
+export function hostOperationProblems(operations: HostOperationSet, taken: readonly string[]): string[] {
+  return Object.keys(operations).flatMap((name) => [
+    ...(taken.includes(name) ? [`the operation "${name}" has the name of a tool`] : []),
+    ...(name.startsWith('_') ? [`the operation "${name}" has the name of an internal tool (a leading underscore)`] : []),
+    ...(name === '' ? ['an operation has no name'] : []),
+  ]);
+}
 export const isHostOperation = (name: string, operations: HostOperationSet = HOST_OPERATIONS): boolean => own(operations, name);
 
 // What the server answers when no app is connected: the operation has nothing to run in.
@@ -58,7 +72,7 @@ const refused = (name: string, error: { code: string; message: string; arg?: Arg
 
 // Runs the operation `name` in the app: checks the arguments against its description in the state
 // of the document now (as a query does), runs it and returns its answer as a tool outcome, whose
-// result is a `ToolAnswer`. `host` is missing when the caller connected its engine without one.
+// result is a `ToolAnswer`. `host` is missing when the app connected its engine without one.
 // An exception of the operation is a defect and goes on to the caller.
 export async function callHostOperation(host: Host | undefined, name: string, args: unknown, operations: HostOperationSet = HOST_OPERATIONS): Promise<ToolOutcome> {
   if (!own(operations, name)) return { ok: false, error: `there is no operation "${name}"` };

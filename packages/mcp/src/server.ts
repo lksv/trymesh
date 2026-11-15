@@ -9,7 +9,7 @@ import { EXPORT_FORMATS, type Engine, exportPathProblem } from '@trymesh/engine'
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
-import { HOST_OPERATIONS, type HostOperationSet, isHostOperation, noAppText } from './host';
+import { HOST_OPERATIONS, type HostOperationSet, hostOperationProblems, isHostOperation, noAppText } from './host';
 import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
 
 export interface TrymeshServerOptions {
@@ -193,7 +193,12 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const session = bridge?.session();
         const target = path(args, true) as string;
         const given = Object.fromEntries(['format', 'options', 'at', 'after'].filter((name) => args[name] !== undefined && args[name] !== null).map((name) => [name, args[name]]));
-        const answer = (await must(session, '_export', given)) as unknown as Extract<ToolAnswer, { kind: 'files' }>;
+        const outcome = await call(session, '_export', given);
+        // an app from before the catalog of formats does not know the internal tool
+        if (!outcome.ok) throw new Failure(session !== undefined && outcome.error === 'neznámý nástroj "_export"' ? 'the connected app is older than this server and cannot export a format of the catalog; reload the app' : outcome.error);
+        const answer = outcome.result as unknown as Extract<ToolAnswer, { kind: 'files' }>;
+        // a format that returns no file and does not say why is a defect; nothing is written, not even the folder
+        if (answer.files.length === 0) throw new Failure('nothing was written, the export has no file');
         // the form of the paths is the engine's to guarantee; what is written to disk is checked again
         const problem = exportPathProblem(answer.files);
         if (problem) throw new Failure(`nothing was written, the export has a path that cannot be written: ${problem}`);
@@ -204,6 +209,9 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       }),
     },
   ];
+  // an operation of the app is a tool by its name and is looked up first: it must not shadow a tool
+  const shadowed = hostOperationProblems(operations, [...tools().map((tool) => tool.name), ...fileTools.map((tool) => tool.name)]);
+  if (shadowed.length) throw new Error(`createTrymeshServer: ${shadowed.join('; ')}`);
 
   const server = new Server({ name: 'trymesh', version: '0.0.0' }, { capabilities: { tools: {} } });
   // Malý výsledek se vypíše s odsazením (čte se líp), velký úsporně.

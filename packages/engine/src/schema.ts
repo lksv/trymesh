@@ -12,6 +12,10 @@
 // A step reads and changes only what its package owns, or what is on `master` already, so steps of
 // different packages give the same document in either order.
 //
+// The list only grows at its end: the steps `master` has are never reordered or renamed, because
+// the version of a document counts them by position. A branch that is merged puts its steps after
+// everything `master` has by then.
+//
 // Branches. Two branches cannot both raise the version, so a branch appends its steps and counts
 // them in `SCHEMA_PENDING`: the steps at the end of the list that `master` does not have yet.
 // A build with pending steps saves the version of the `master` it started from and the names of

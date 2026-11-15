@@ -6,7 +6,7 @@ import type { ExportFile, Id } from '../types';
 import type { ExportFormatSpec } from './spec';
 
 export const STL_OPTIONS = {
-  bodies: { kind: 'list', of: { kind: 'body' }, title: 'Bodies', summary: 'The bodies to export, each once, in this order; without it all bodies.', optional: true },
+  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'The bodies to export, each once, in this order; without it all bodies.', optional: true },
   perBody: { kind: 'flag', title: 'A file per body', summary: 'A folder with one file per body, named by the body ID, instead of one file with all of them.', optional: true },
 } as const satisfies ArgSpecs;
 

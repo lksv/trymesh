@@ -322,7 +322,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
     expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nic' } })).toEqual({ error: expect.stringMatching(/^after: /) });
-    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: [] } })).toEqual({ error: 'the model has no body to export' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: [] } })).toEqual({ error: 'invalidArguments: stl: bodies: at least 1 item is expected' });
     await expect(readdir(nowhere)).rejects.toThrow();
     const other = await connect();
     expect(await other.call('export', { format: 'stl', path: nowhere })).toEqual({ error: 'the model has no body to export' });

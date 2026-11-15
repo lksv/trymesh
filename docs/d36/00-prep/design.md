@@ -1,16 +1,16 @@
 # 00 Preparatory step
 
-**State: scope approved; parts 1 and 4 have a contract, not reviewed.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees).
+**State: scope approved; parts 1 and 4 have a contract in its second version, after one round of reviews; the second round is pending.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees).
 
 | Part | State |
 |---|---|
-| 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); type-checked, no review yet |
+| 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); reviewed once and rewritten, see "Reviews" |
 | 4 Shared vocabulary | same |
-| 2 A module per feature type | proposal below; the interface of a step is not designed |
+| 2 A module per feature type | designed in [part2-feature-modules.md](part2-feature-modules.md); not reviewed |
 | 3 Panels and forms of the app | proposal below; the context of a panel is not designed |
 | 5, 6 Documents by area, several trees | proposal below; no code |
 
-The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type, so they get a design here and no contract.
+The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type, so they get a design and no contract.
 
 The step is the counterpart of step 0 of D35. It changes no behaviour: every existing test passes unchanged, except where a test calls a method that moved. Its purpose is that the packages of [the plan](../README.md) add files and single lines instead of rewriting the same places.
 
@@ -21,42 +21,44 @@ It is done by one session, not in parallel, after D35 point 7 is closed, and it 
 **Today.** A query is a method of `Engine` (`diagnoseSketch`, `explainConstraint`, `interference`), and its MCP tool is written by hand in `packages/mcp/src/tools.ts`. Three things follow:
 
 - A new query touches the `Engine` interface, `engine.ts`, `tools.ts` and the guard table. Step 1 of D36 is six queries, so six packages would edit the same four places.
-- The tool checks its arguments itself. `check_interference` verifies the threshold and the list of bodies in `tools.ts`; a caller of `engine.interference` in the app gets none of that.
+- The three methods throw for a wrong argument (`interference.ts` checks the threshold, the shape of the list and that the bodies exist; `engine.ts` throws for an unknown sketch or constraint). The MCP tools turn the exceptions into error texts and add checks of their own (`check_interference` wants at least two different bodies when a list is given); the app calls `interference` and `diagnoseSketch` without catching.
 - Part of what the AI is told is computed in the MCP package and the app cannot use it: `bodyDetail` and `edgeShape` (area and normal of a face, length, ends, centre and radius of an edge), `sketchDetail` (areas of regions, advice on what to constrain). That is the mirror image of the rule that the app must not compute.
 
-**Proposal.** A catalog `QUERIES` in the engine, built like the registry of feature types.
+**Design** (`contract.ts`, second version).
 
-- An entry has a title and a summary for the description, a specification of its arguments, an example that the engine accepts, and a function over a context (the document and the evaluation at a chosen feature, the kernel, a cache).
-- `Engine.query(name, args)` is the one way in. The three existing queries become entries; the app's collisions panel and the sketch diagnosis call `query`.
-- The same function runs over a state that a preview returned. A parameter can then be stepped and the collisions asked for without touching the history, which is what the pose sweep of step 5 needs.
-- Arguments are read through one reader, as numeric fields are read through `Fields`: numbers with a unit and a range (`NumberSpec`), and references to named things (see the shared vocabulary). The description for the AI and the checks come from the same specification.
-- A result is plain data with full precision. Rounding belongs to whoever presents it.
-- MCP generates its tools from the catalog: name, description and input schema. Existing tool names stay (`check_interference`, `explain_constraint`), so nothing changes for a client.
-- The description of a body (`bodyDetail`, `edgeShape`) moves into the engine as a query. Package 1b builds on it.
-- Tests: every entry of the catalog is offered as a tool and its example runs, as the tests of the constraint catalog do today. The guard table over the methods of `Engine` stays, with fewer rows.
+- **A catalog `QUERIES` in the engine**, built like the registry of feature types. An entry has a title, a summary and a description of what it returns (all three go to the description for the AI), a description of its arguments, and a function over a context. `Engine.query(name, args, options)` is the one way in.
+- **A query answers for one state and never recomputes it.** A query reads more than the public state: the diagnosis of a sketch needs the input of the solver, how the solve ended and the analysis of freedom, which live in the internal state of the recompute, and the surfaces of faces are not published at all. The engine therefore keeps, for every state it hands out, the internal state it came from, by the identity of the evaluation, and the context gives a query what it needs from there (`frame`, `axis`, `sketch`). A drag preview is diagnosed as dragged. A state that this engine did not produce is refused.
+- **The state is chosen three ways:** the current one, the one after a feature (`at`), or one that `preview` returned (`state`); the last two exclude each other in the type. Over MCP the third is `after`: the tool takes a command, the server previews it and asks the query about the previewed state. That is how an AI steps a parameter or a pose without writing anything.
+- **Arguments are named and described** (`ArgSpec`): a number with unit and range, a flag, a text, a choice, an ID of a body, a feature or a sketch, a constraint of a sketch, a reference to a named entity with the kinds it accepts, a plane (`PlaneRef`), an axis (`AxisRef`), a vector, and three ways to build structure: a list, one of several named alternatives, and a record by ID. `calls.ts` writes with them a section, a print query with several orientations that are each a direction or a face, a pose and mass properties.
+- **The type of the arguments is derived from their description** (`ArgsOf`), so the two cannot disagree. A reference to an entity gets the type of exactly the kinds it accepts.
+- **The types of queries are a map by name that modules extend by declaration merging** (`Queries`). A package adds its description, its result and its entry in its own file; no shared type is edited.
+- **A query does not throw for what its caller can cause.** `QueryOutcome` is a result or an error with a code: `invalidArguments` (with the name of the argument), `notAvailable` (the thing asked about does not exist in this state), `failed` (the kernel, a limit). An exception of another kind is a defect and passes through, as it does for commands.
+- **What is a successful answer today stays one.** A sketch that did not evaluate has the diagnosis `unavailable`; a list of one body has no collisions and `checked: 0` (a test of the scenarios requires it).
+- **A cache comes with the context** (`memo(owners, key, compute)`): a result lives as long as all the objects it was computed from. Both solids own an answer about a pair of bodies, as in the cache of `interference` today; a body ID in the key is not enough, because the body behind an ID changes.
+- **A large answer says that it was cut** (`Truncated`): a query with such an answer has an argument that limits it. The engine is synchronous and cannot cancel, so a query that can be slow bounds its work by its arguments.
+- **The description of a body moves into the engine as it is** (`BodyDescription`): what `bodyDetail` and `edgeShape` compute, including the number of segments of an edge and a centre and radius fitted to vertices, which may be missing. The step adds what the surfaces give for free: the surface of a face and whether a cylinder or a cone is a hole or a pin. Reading circles from the surfaces instead of fitting them changes numbers and belongs to package 1b.
 
-**What the contract settles** (2026-11-14, `contract.ts`):
+**No existing tool changes.** `check_interference`, `get_sketch`, `explain_constraint` and `get_body` keep their names, schemas and answers; they stay hand-written and call `query` inside. `get_model`, `get_document` and `get_parameters` are views of the state and stay as they are. Generated tools (name, description and input schema from the catalog, numbers rounded to six significant digits) start with the queries of step 1. The first version of this design generated `check_interference` and called the resulting change of rounding "the one visible change"; the reviews showed three more (the tolerance, the note, the rule about two bodies), so nothing is regenerated.
 
-- **A query answers, it does not throw.** `QueryOutcome` is a result or an error with a code (`invalidArguments` with the name of the argument, `notAvailable`, `failed`), like `CommandResult`. Today the three query methods throw for a wrong argument and each caller catches in its own way.
-- **Arguments are flat and named** (`ArgSpec`): a number with a `NumberSpec`, a flag, a choice, an ID of a body, a feature or a sketch, a constraint of a sketch, a reference to a named entity, a vector. The checks, the input schema of the tool and a form in the app read the same description. The sketch tools of D35 point 7 made the same choice.
-- **The types of queries are a map by name that modules extend by declaration merging** (`Queries`). A package adds its arguments, its result and its entry in its own file; no shared type is edited. The first draft kept whole specifications in the map and read the result type back by inference; writing `calls.ts` showed that the result came out as `never`, so the map now holds `{ args, result }`.
-- **A query can run over a previewed state** (`QueryOptions.state`). `calls.ts` steps a parameter through `preview` and asks for collisions at each value without writing anything.
-- **A cache comes with the context** (`memo(owner, key, compute)`): a result lives as long as the object it was computed for.
-- **Tools.** A query that names a `tool` gets a generated one. `check_interference` is generated. `get_sketch`, `explain_constraint` and `get_body` stay hand-written and call `query` inside, because they add labels and advice. `get_model`, `get_document` and `get_parameters` are views of the state, not computations, and stay as they are.
-- **The description of a body moves into the engine** (`BodyDescription`): faces with their surface, area and outward normal, edges with their length and their line or circle. The centre and radius of a circular edge are fitted to vertices in `tools.ts` today; the engine knows them from the surfaces.
-- **Guards.** A table of fixtures by query name: a query without a fixture does not compile, and the test runs each one through its tool.
+**What a tool may answer** (`ToolAnswer`). Today a tool returns JSON and the server prints it as text; `callTool` and the bridge to the app pass the result through JSON, so bytes do not survive, and STL has a base64 envelope of its own in a hidden tool. That envelope becomes general: an answer is data, files (with the layout `file` or `directory`), or an image, which the server returns to the client as image content.
 
-**The one visible change.** A generated tool rounds every number of the answer the same way (six significant digits). `check_interference` rounds the volume to six and the depth to four today, and adds the chord tolerance and a note when the model has fewer than two bodies; the tolerance moves into the result of the query, the note into the error `invalidArguments`. Tests that compare its exact output change.
+**Operations of the app** (`HostOperation`). A picture of the viewport is not a query: the engine has no renderer and the operation is asynchronous. It is an operation of the host, described like a query and offered as a tool; over a document from a file it answers `notAvailable`. The path of a tool call becomes awaitable for these; the queries of the engine stay synchronous. A package adds the capability it needs to the host by declaration merging (`AppHost`).
+
+**The description for the AI.** `describe_api` cuts its types out of the raw text of `types.ts`, so types in query modules do not reach it. It gets three generated sections, like the one for constraints: the queries (name, tool, summary, each argument from its description, what it returns), the catalogs (name and summary) and the export formats.
+
+**Guards.** A table of fixtures by query name, with arguments of the query's own type and the tool call that reaches it: a query without a fixture does not compile, and the test runs each one through its tool. The table over the methods of `Engine` stays, with fewer rows. The consumers in the other packages are part of the type check, so the declaration merging is exercised through the entry of the engine package.
 
 **Open.**
 
-- A limit on the time and on the size of the answer. A subtraction with a clearance or a section through a gear can be slow or large. Nothing in the contract yet.
-- Whether a query may change with the document (a result that names features) or only with the evaluation. It decides what `memo` may use as an owner.
+- The result types of queries are described to the AI by a text (`returns`). Whether the raw text of the query modules should reach `describe_api` as well, as `types.ts` does, is left to the first package with a result that a sentence does not describe.
 - The generated form of a query in the app (part 3).
+- How long a query may take over the bridge. The bridge gives up after 30 seconds, but that does not stop a computation in the app.
 
 ## 2. A module per feature type
 
 **Today.** `document.ts` (1370 lines) holds the validators of all feature types and the registry `FEATURE_TYPES`. `Evaluator` in `evaluate.ts` has a private method per type (`plane`, `sketch`, `extrude`, `pattern`) and a `switch` over them. D36 adds at least six feature types (hole, import, insert, boolean of bodies, split, revolve, chamfer and fillet), each of which would add a block to both files.
+
+Designed in full in [part2-feature-modules.md](part2-feature-modules.md); this is the summary.
 
 **Proposal.** `packages/engine/src/features/<type>.ts` holds what belongs to one type: its entry of the registry (validation, references, bodies, the fields a patch may change) and its step of the recompute. The registry and the `switch` keep one line per type, and the compiler still guards that both are complete.
 
@@ -89,16 +91,18 @@ Things that several packages need and that must be the same in all of them. They
 | Version of the document schema | 3a, 5a, every new feature type | `SCHEMA_VERSION` is 2 and `upgrade` is one function from version 1. Two branches cannot both raise the version. Proposed: `upgrade` becomes a list of steps, one per version, and the version is raised at the merge, not in the branch of a package |
 | Issue codes | most packages | `IssueCode` only grows. A package states the codes it adds in its design |
 
-What `contract.ts` proposes:
+What `contract.ts` proposes (second version):
 
-- **Surfaces** (`Surface`): plane, cylinder, cone, swept, general. A sketch stands only on a plane. An edge is a circle where a plane across the axis meets a cylinder or a cone, a line where two planes meet, `other` otherwise; `EdgeKind` keeps its four values. The type becomes public: today `FaceInfo` is internal to `solid.ts` and the evaluation publishes only `planar`, which is why `tools.ts` has to fit circles to vertices.
-- **References** (`EntityRef`): a body, a face, an edge, a sketch point, a plane (`PlaneRef`), an axis (`AxisRef`).
-- **Placement** (`FramePlacement`): a frame taken from a plane, three offsets and a turn about the normal, all numeric fields. A draft; no package of steps 1 and 2 uses it.
-- **Export** (`ExportFormats`, `ExportFile`): a format is an entry that returns files; `Engine.export(format, options)` replaces `exportMesh`. One MCP tool `export`; `export_stl` stays as the same tool with the format fixed.
-- **Data catalogs** (`DataCatalog`): a title, a source, columns with units, rows by key. Read through the query `catalog`; the description for the AI lists catalogs by name only, so it does not grow with the tables.
-- **Schema version** (`UPGRADES`): a list of upgrade steps, the version is its length plus one, a branch appends its step and the number is fixed at the merge.
-
-Not settled: the sign of a normal. A plane's normal and an axis carry no sign in the engine today; the contract keeps that and gives the outward direction only in the description of a body. Whether a query that takes a face as a print orientation needs more is for package 1e.
+- **Units** (`QuantityUnit`): `Unit` grows by area, volume, mass and density. The threshold of the interference query is a volume already; mass properties and body properties need the rest. A numeric field of the document and an argument of a query use the same description.
+- **Surfaces** (`Surface`): plane, cylinder, cone, swept, general. A sketch stands only on a plane. `FaceInfo` stays internal and keeps what only the engine needs (the `y` direction of a planar face, from which the frame of a sketch on the face is built); `Surface` is derived from it and published in the evaluation next to the names of the faces (`faceSurfaces`).
+- **Sides.** A surface has no side; the axis of a cone is the exception, because a cone has two halves. Which side the material is on belongs to the face of a body: the outward normal of a planar face, and for a cylinder or a cone whether it is a pin or a hole (`BodyFace.convex`). Directions that have a sign are frames: the frame of a face points out of the body and the base planes have fixed normals. A query that takes a face as a direction resolves its frame.
+- **Edges.** An edge is a circle where both faces are surfaces of revolution about the same axis, a plane across the axis counting as one, away from the apex of a cone. That covers the mouth of a countersink (a plane and the cone) and its lower rim (the cone and the cylinder). `EdgeKind` keeps its four values; `projectEdge` assumes a plane and a cylinder today and changes with the rule.
+- **References** (`EntityRef`): a body, a face, an edge, a sketch point. A plane and an axis are not wrapped: an argument of the kind `plane` or `axis` takes a `PlaneRef` or an `AxisRef` as features do.
+- **Export** (`ExportFormats`, `EXPORT_FORMATS`, `Exported`): a format is an entry that returns files and says whether they are one file or a folder; a file has a relative path, so a robot description can have a folder of meshes, and may say what it holds (bodies and triangles for STL). `Engine.export(format, options)` replaces `exportMesh`. One MCP tool `export` checks the options against the chosen format and writes with the guarantees `export_stl` has today; `export_stl` stays as it is and uses the same writer.
+- **Data catalogs** (`DataCatalog`, `Catalogs`, `DATA_CATALOGS`): a title, a source, columns with units, rows by key. Every catalog has its own columns. Code reads the table with its row type; an untyped caller uses the query `catalog`; the description for the AI lists catalogs by name only.
+- **Schema version** (`UPGRADES`): a list of upgrade steps; the version is its length plus one. Version numbers exist only on `master`: a branch appends its step, the number is fixed at the merge, and a document saved by a build of a branch is not portable. The runner checks the version it gets and refuses one it does not know.
+- **Placement of a body: taken out.** The first version had a frame from a plane, three offsets and a turn about its normal, which cannot turn a part upside down or tilt it. Package 3b designs it, with the requirements written in `contract.ts`.
+- **Data coming in** (a mesh to import) does not fit into a tool call: a tool takes a path and the server reads the file. How the content reaches the engine of a connected app is for package 3b.
 
 ## 5. Documents by area
 
@@ -117,3 +121,33 @@ A short description of how a package gets its tree: a branch `d36/<id>`, a git w
 5. Documents by area (part 5) and the trees (part 6).
 
 Parts 2, 3 and 4 touch different packages of code and could be three commits of one point or three points; to be decided when the step is designed in full.
+
+## Reviews
+
+### Round 1 (2026-11-14 and 15): parts 1 and 4, first version of the contract
+
+Three independent reviewers got the same brief, read-only. `codex` (gpt-6-astra, effort high) returned eleven findings. `agy` (gemini-4-argon-high) returned twelve and was cut by a network error in the middle of the twelfth. The internal subagent failed twice on the network and returned nothing; it takes part from the second round. Every finding was checked against the code before it was acted on.
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| A query cannot reach what it needs: the diagnosis of a sketch reads the internal state of the recompute, and the surfaces of faces are not published. Recomputing from the document would diagnose a drag preview as not dragged | both, blocker | Yes (`engine.ts` asks `evaluator.sketchState`; `evaluate.ts` drops `faceInfos` and does not remember a dragged step) | The engine keeps the internal state of every state it hands out; the context gives `frame`, `axis` and `sketch`; `faceSurfaces` in the evaluation |
+| `Surface` drops the `y` direction of a planar face, which `faceFrame` needs | agy, blocker | Yes for replacing `FaceInfo`, which the text suggested | `FaceInfo` stays internal with `y`; `Surface` is derived |
+| The arguments cannot describe the print query (a list of orientations that are a direction or a face), a pose (a record), a catalog lookup (a text), a bare `PlaneRef`; units stop at millimetres | both, blocker | Yes | `text`, `plane`, `axis`, `list`, `oneOf`, `record`; `QuantityUnit`; `calls.ts` writes the cases |
+| A posed query cannot be asked over MCP: a client cannot pass a state | agy, blocker | Yes | `after`: a command the server previews before the query |
+| A view image is not a query (the app makes it, asynchronously), and bytes do not survive the path of a tool answer | both, blocker | Yes (`callTool` and the bridge pass results through JSON; the server answers with text only) | `HostOperation`, `ToolAnswer` with files and an image |
+| Export: no registry at run time, the answer of `export_stl` loses `bodies` and `triangles`, a file name without a folder, nothing says whether the path is a file or a folder, options differ by format | both, blocker | Yes | `EXPORT_FORMATS`, `ExportFile.path` and `about`, `Exported.layout`, options checked per format |
+| The description of the arguments is not tied to their types: a list of bodies described as a flag compiles | both, major | Yes (tried) | `ArgsOf` derives the type from the description |
+| The cache in the example is stale when the second body changes | both, major | Yes | `memo` takes all owners; the example uses both solids |
+| The step changes more than the rounding: `interference` validates in the engine already, a list of one body is a valid call that a test requires, the tolerance is not in the report, `get_body` has `segments`, the app does not catch | both, major | Yes; two statements of the design about today's code were wrong | No existing tool is regenerated; successful answers stay successful; the body description moves as it is; the statements are corrected |
+| The rule for circular edges misses the lower rim of a countersink (a cone and a cylinder) and the apex | both, major | Yes | Circle: two surfaces of revolution about the same axis |
+| A cylinder or a cone does not say whether it is a hole or a pin; the axis of a cone needs a direction | agy, major | Yes; the example `holeRadii` returned pins as well | `BodyFace.convex`; the axis of a cone points from the apex to the face |
+| `FramePlacement` cannot give a part any orientation; "a normal carries no sign" confuses surfaces with frames | both, major | Yes | Placement taken out and left to 3b with requirements; the text on sides rewritten |
+| Two branches that each append an upgrade step both produce "version 3" | codex, major | Yes | Version numbers only on `master`; a document of a branch is not portable; the runner checks the version |
+| No example in an entry although the design promised one; fixtures were untyped; `describe_api` does not see types in query modules | both, major | Yes | `returns` in an entry; typed fixtures with the tool call; three generated sections of the description |
+| The catalog has no unit for density and its lookup is untyped | agy, major (cut short) | Yes as far as it was readable | `QuantityUnit` in columns; `Catalogs` by name |
+| "Never throws" needs a rule for other exceptions; work and output need bounds; asynchrony belongs to the host | codex, note | Yes | The rule on defects; `Truncated`; asynchrony only in `HostOperation` |
+
+One statement of a review did not hold: `agy` quoted a comment of the contract about wrapped tools that is not in the file, and concluded that an entry cannot name its tool; `QuerySpec.tool` was there. Its conclusion that `explain_constraint` must stay hand-written is right and was already the design.
+
+Not acted on: stable identifiers of schema steps instead of numbers (codex, as an alternative). A list with numbers fixed at the merge is enough while documents of branches are not exchanged.
+

@@ -1,5 +1,6 @@
 // Nálezy z revize enginu ověřené proti skutečným adaptérům, a chybové kódy, které dosud neměly test.
 import type { Command, SketchFeature } from '@trymesh/engine';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 
@@ -185,5 +186,53 @@ describe('queries and exports: callers that are not typed', () => {
     const engine = plate();
     expect(failure(engine.export('stl', { bodies: [] }))).toEqual(['invalidArguments', ['bodies'], 'stl: bodies: at least 1 item is expected']);
     expect(engine.exportMesh('stl', [])).toHaveLength(84); // the method of before keeps its answer
+  });
+});
+
+// D44 (package 2a of D36) changed what a profile hands to the prism build (`sideOf` in place of
+// `curveOf`, exact curves on every loop) and added an offset. A document that does not use the
+// offset must not see any of it: the meshes of this model, their face numbers and the table of
+// face names are, byte for byte, what the code before D44 built (the hash was computed with the
+// engine of the commit before the package and with this one, and was the same).
+describe('an extrusion without an offset (D44)', () => {
+  it('builds the mesh it built before the offset existed', () => {
+    const engine = newEngine();
+    const extrude = (id: string, loops: string[][], start: number, distance: number, operation: 'new' | 'add' | 'cut', targets?: string[]): Command => ({
+      type: 'addFeature',
+      feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S1', regions: loops.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })) }, extent: { type: 'distance', start, distance }, operation, ...(targets ? { targets } : {}) },
+    });
+    // a plate 40 × 30 with two rounded corners, a round hole and a slot of two lines and two arcs
+    const points: Record<string, [number, number]> = {
+      p1: [0, 0], p2: [35, 0], p3: [40, 5], p4: [40, 25], p5: [35, 30], p6: [0, 30], c1: [35, 5], c2: [35, 25],
+      k: [10, 15], s1: [20, 10], s2: [30, 10], s3: [30, 20], s4: [20, 20], sc1: [30, 15], sc2: [20, 15],
+    };
+    const curves: Record<string, SketchFeature['curves'][string]> = {
+      a: { type: 'line', a: 'p1', b: 'p2' }, ra: { type: 'arc', center: 'c1', start: 'p2', end: 'p3' }, b: { type: 'line', a: 'p3', b: 'p4' },
+      rb: { type: 'arc', center: 'c2', start: 'p4', end: 'p5' }, c: { type: 'line', a: 'p5', b: 'p6' }, d: { type: 'line', a: 'p6', b: 'p1' },
+      sa: { type: 'line', a: 's1', b: 's2' }, sra: { type: 'arc', center: 'sc1', start: 's2', end: 's3' }, sb: { type: 'line', a: 's3', b: 's4' }, srb: { type: 'arc', center: 'sc2', start: 's4', end: 's1' },
+    };
+    const [OUTER, SLOT] = [['a', 'ra', 'b', 'rb', 'c', 'd'], ['sa', 'sra', 'sb', 'srb']];
+    const state = run(
+      engine,
+      addSketch('S1', XY),
+      ...Object.entries(points).map(([id, [x, y]]): Command => ({ type: 'addPoint', sketch: 'S1', id, x, y })),
+      ...Object.entries(curves).map(([id, curve]): Command => ({ type: 'addCurve', sketch: 'S1', id, curve })),
+      { type: 'addCurve', sketch: 'S1', id: 'hole', curve: { type: 'circle', center: 'k' }, radius: 4 },
+      constrain('S1', 'fix', { type: 'coincident', a: 'p1', b: 'origin' }),
+      extrude('A', [OUTER], 0, 10, 'new'),
+      extrude('B', [OUTER, SLOT, ['hole']], 10, 3, 'add', ['A']),
+      extrude('C', [SLOT], 2, 20, 'cut', ['A']),
+      extrude('D', [['hole']], 20, 5, 'new'),
+    );
+    expectAllOk(state);
+    const hash = createHash('sha256');
+    const bytes = (array: Float32Array | Uint32Array): Uint8Array => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+    for (const id of Object.keys(state.evaluation.bodies).sort()) {
+      const { solid } = state.evaluation.bodies[id];
+      hash.update(id).update(bytes(solid.positions)).update(bytes(solid.triangles)).update(bytes(solid.faceIds));
+    }
+    hash.update(JSON.stringify(state.evaluation.faceNames));
+    expect(Object.values(state.evaluation.bodies).map((body) => body.solid.triangles.length / 3)).toEqual([828, 176]);
+    expect(hash.digest('hex')).toBe('666e3a9c7aa781c5d11d058cb048f37175c7714bcf48de5b1bde7013fecc0911');
   });
 });

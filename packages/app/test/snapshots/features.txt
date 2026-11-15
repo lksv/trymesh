@@ -182,6 +182,7 @@
     +   "Profile"
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -190,6 +191,11 @@
     + p.hint: "Vybraných oblastí: 0. Oblasti se vybírají kliknutím v pohledu."
     + div.buttons
     +   button disabled: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     + label
     +   "Operace"
     +   select value="new"
@@ -486,6 +492,7 @@
     -   "Profile"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
     - label
     -   "Skica"
@@ -494,6 +501,11 @@
     - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     - div.buttons
     -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Operace"
     -   select value="new"
@@ -579,6 +591,7 @@
     +   "Profile"
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -587,6 +600,11 @@
     + p.hint: "Vybraných oblastí: 0. Oblasti se vybírají kliknutím v pohledu."
     + div.buttons
     +   button disabled: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     + label
     +   "Operace"
     +   select value="new"
@@ -703,6 +721,7 @@
     -   "Profile"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
     - label
     -   "Skica"
@@ -711,6 +730,11 @@
     - p.hint: "Vybraných oblastí: 0. Oblasti se vybírají kliknutím v pohledu."
     - div.buttons
     -   button disabled: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Operace"
     -   select value="new"
@@ -1058,6 +1082,7 @@
     +   "Profile"
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -1071,6 +1096,11 @@
     -   p.hint: "Uzavřených oblastí: 1"
     - p.hint: "Volné (v pohledu modře): bod p6; poloměr c6."
     +   button: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     + label
     +   "Operace"
     +   select value="add"
@@ -1477,6 +1507,7 @@
     -   "Profile"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
     - label
     -   "Skica"
@@ -1486,6 +1517,11 @@
     - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     - div.buttons
     -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Operace"
     -   select value="new"
@@ -2503,6 +2539,7 @@
     +   "Profile"
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -2517,6 +2554,11 @@
     -   p.hint: "Uzavřených oblastí: 0"
     - h2: "Výběr (0)"
     +   button: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     + label
     +   "Operace"
     +   select value="new"
@@ -2595,9 +2637,9 @@
   panel:
     +   select value="involuteGear"
     +     option value="regions": "Sketch regions"
-    +     option selected value="involuteGear": "Involute gear"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    +     option selected value="involuteGear": "Involute gear"
     -     option value="involuteGear": "Involute gear"
     + label
     +   "circle (circle of the sketch)"
@@ -2618,9 +2660,11 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/backlash" data-unit="mm"
-    + label
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
     +   "Rotation (° or an expression in radians)"
-    +   span.field
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
     +     input value="0"
     +     small.computed data-field="profile/params/rotation" data-unit="rad"
     + label.check
@@ -2631,9 +2675,8 @@
     +   select value=""
     +     option selected value="": "(none)"
     + p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
-    - div.buttons
-    -   button: "Zrušit výběr oblastí"
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 4500 numbers, sum 804493.379
@@ -2726,22 +2769,23 @@
   panel:
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
-    +     option value="involuteGear": "Involute gear"
     -   select value="involuteGear"
     -     option value="regions": "Sketch regions"
+    +     option value="involuteGear": "Involute gear"
     -     option selected value="involuteGear": "Involute gear"
     + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     + div.buttons
     +   button: "Zrušit výběr oblastí"
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
     -   "circle (circle of the sketch)"
     -   select value="c7"
     -     option selected value="c7": "c7 ⌀ 20"
     - label
     -   "Number of teeth"
-    -   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     -     input value="12"
     -     small.computed data-field="profile/params/teeth" data-unit="count"
-    - label
     -   "Pressure angle (° or an expression in radians)"
     -   span.field
     -     input value="25"
@@ -2793,9 +2837,9 @@
   panel:
     +   select value="involuteGear"
     +     option value="regions": "Sketch regions"
-    +     option selected value="involuteGear": "Involute gear"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    +     option selected value="involuteGear": "Involute gear"
     -     option value="involuteGear": "Involute gear"
     + label
     +   "circle (circle of the sketch)"
@@ -2816,9 +2860,11 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/backlash" data-unit="mm"
-    + label
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
     +   "Rotation (° or an expression in radians)"
-    +   span.field
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
     +     input value="0"
     +     small.computed data-field="profile/params/rotation" data-unit="rad"
     + label.check
@@ -2829,9 +2875,8 @@
     +   select value=""
     +     option selected value="": "(none)"
     + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
-    - div.buttons
-    -   button: "Zrušit výběr oblastí"
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 4284 numbers, sum 763297.741
@@ -2968,6 +3013,7 @@
     -   "Profile"
     -   select value="involuteGear"
     -     option value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option selected value="involuteGear": "Involute gear"
     - label
     -   "Skica"
@@ -3057,7 +3103,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.531
 
 === 63. a double click on the timeline opens the form of the feature
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x3)
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -3154,6 +3200,7 @@
     +   "Profile"
     +   select value="regions"
     +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -3162,6 +3209,11 @@
     + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     + div.buttons
     +   button: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
     + label
     +   "Operace"
     +   select value="new"
@@ -3226,9 +3278,9 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.173
 
 === 64. the change is saved
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x4)
-  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}) -> ok
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}
@@ -3340,6 +3392,7 @@
     -   "Profile"
     -   select value="regions"
     -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
     - label
     -   "Skica"
@@ -3348,6 +3401,11 @@
     - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     - div.buttons
     -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Operace"
     -   select value="new"
@@ -3525,6 +3583,7 @@
     +   "Profile"
     +   select value="involuteGear"
     +     option value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
     +     option selected value="involuteGear": "Involute gear"
     + label
     +   "Skica"
@@ -3731,6 +3790,7 @@
     -   "Profile"
     -   select value="involuteGear"
     -     option value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
     -     option selected value="involuteGear": "Involute gear"
     - label
     -   "Skica"

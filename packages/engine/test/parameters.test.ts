@@ -295,12 +295,13 @@ describe('catalog of numeric fields', () => {
   it('the static field description matches what validation reads', () => {
     expect(FEATURE_TYPE_INFO.plane.fields.map((f) => f.path)).toEqual(['offset']);
     // fields of a variant come with `when`; the parameters of profile generators are listed with their generator
-    expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.when?.path !== 'profile/generator').map((f) => f.path)).toEqual(['extent/start', 'extent/distance']);
+    expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.when?.path !== 'profile/generator').map((f) => f.path)).toEqual(['profile/offset', 'profile/thickness', 'extent/start', 'extent/distance']);
     expect(FEATURE_TYPE_INFO.sketch.fields).toEqual([]);
     const doc = run(base(), { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 0, distance: 5 }) }, { type: 'addFeature', feature: { id: 'P1', name: 'P1', suppressed: false, type: 'plane', base: XY, offset: 3 } });
     for (const id of ['E1', 'P1']) {
       const f = feature(doc, id);
-      const listed = FEATURE_TYPE_INFO[f.type].fields.filter((field) => !field.when || atPath(f, field.when.path) === field.when.equals);
+      // an optional field (its description has a default) is a field of the feature only while the feature has it (D44)
+      const listed = FEATURE_TYPE_INFO[f.type].fields.filter((field) => (!field.when || atPath(f, field.when.path) === field.when.equals) && (field.spec.default === undefined || atPath(f, field.path) !== undefined));
       expect(fieldsOf(f).map((field) => [field.path, field.spec])).toEqual(listed.map((field) => [field.path, field.spec]));
     }
     // dimensions: exactly the constraints with the dimension flag have the value `value`

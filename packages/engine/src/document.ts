@@ -36,7 +36,7 @@ import {
   planeRef,
   string,
 } from './validation';
-import { FEATURE_TYPES, refContext, requireRef, specOf } from './features/index';
+import { FEATURE_TYPES, FEATURE_TYPE_INFO, refContext, requireRef, specOf } from './features/index';
 import type { FeatureModule } from './features/module';
 import { constraint, curve, externalRef } from './features/sketch';
 
@@ -446,7 +446,10 @@ export function applyCommand(doc: Document, command: Command): Document {
       const index = indexOf(doc, cmd.feature, 'setField');
       const f = doc.features[index];
       const path = string(cmd.path, 'setField.path');
-      if (!fieldsOf(f).some((field) => field.path === path)) fail(`setField.path: "${path}" is not a numeric field of feature "${f.id}"`);
+      // An optional field (its description in the registry has a default, which is what its absence
+      // means) is reached also while the feature does not have it: the command then adds it.
+      const optional = (): boolean => FEATURE_TYPE_INFO[f.type].fields.some((field) => field.path === path && field.spec.default !== undefined && (!field.when || atPath(f, field.when.path) === field.when.equals));
+      if (!fieldsOf(f).some((field) => field.path === path) && !optional()) fail(`setField.path: "${path}" is not a numeric field of feature "${f.id}"`);
       if (typeof cmd.value !== 'number' && typeof cmd.value !== 'string') fail('setField.value: a number or an expression is expected');
       const { expressions, ...rest } = f;
       const input = { ...withPath(rest, path, cmd.value), expressions: without(expressions ?? {}, (other) => other === path) } as Dict;

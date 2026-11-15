@@ -5,7 +5,8 @@ import { test } from 'vitest';
 import { createEngine, emptySketch } from '../packages/engine/src/index';
 import type { Command, Engine, Solid } from '../packages/engine/src/index';
 import type { Region } from '../packages/engine/src/sketch';
-import { buildPrism, volumeOf } from '../packages/engine/src/solid';
+import { buildPrism } from '../packages/engine/src/recompute/tool-prism';
+import { volumeOf } from '../packages/engine/src/solid';
 import { createManifoldKernel } from '../packages/kernel-manifold/src/index';
 import { createPlanegcsSolver } from '../packages/solver-planegcs/src/index';
 
@@ -197,7 +198,7 @@ function prism(loop: P[], z0: number, z1: number, holes: P[][] = []): Solid {
   const toLoop = (points: P[], name: string) => ({ xy: points.flat(), keys: points.map((_, i) => `${tag}/${name}/${i}`), curves: points.map(() => name) });
   const region: Region = { ref: { outerLoop: ['side'] }, outer: toLoop(loop, 'side'), holes: holes.map((h, i) => toLoop([...h].reverse(), `hole${i}`)) };
   const frame = { ...FRAME, origin: [0, 0, z0] as [number, number, number] };
-  const built = buildPrism(tag, [region], frame, [0, z1 - z0], () => ({ type: 'round', center: [0, 0], radius: 1 }), nextFace, kernel);
+  const built = buildPrism(tag, [region], frame, [0, z1 - z0], (curve) => ({ name: { role: 'side', curve }, shape: { type: 'round', center: [0, 0], radius: 1 } }), nextFace, kernel);
   nextFace += built.faces.length;
   return built.solid;
 }

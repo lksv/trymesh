@@ -1,6 +1,6 @@
 # 2a Profile offset and a wall from a line (D44)
 
-**State: design, fourth version, after three rounds of reviews, the last allowed ("Reviews"; what is still open is listed there as known limits).** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
+**State: implemented and merged into `master` (2026-11-15); see "As implemented" for where the code differs from this design.** The design below is its fourth version, after three rounds of reviews, the last allowed ("Reviews"; what is still open is listed there as known limits). Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
 
 Files: [contract.ts](contract.ts) (what the package adds, and the one declaration of the changed extrusion that track B shares), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -311,3 +311,50 @@ Still open, as known limits:
 
 - The three tests were not run on real offset outlines, nor near the tolerance in floating point (the fuzz was on integer grids). The property test owed above is where that shows.
 - The wording of this round's fix (neighbours by position, a key per corner, the widened boxes) was read by no reviewer.
+
+## As implemented
+
+### The engine, the app and the tests (2026-11-15)
+
+The two moves came first, each in a commit of its own with the tests unchanged: `buildPrism` to `recompute/tool-prism.ts` with `Prism` renamed `BuiltTool` (and `SideCurve` moved to `recompute/state.ts` with it), and the document half of an extent to `features/extent.ts`. Then the package: `recompute/outline.ts` (the outline of a selection, the move of a chain, the polylines and their tests, the wall), the branches of `recompute/profile.ts`, `sideOf` in the prism build, the validation and the references in `features/profile.ts`, the optional field in the `setField` branch of `applyCommand`, the two roles, the two paragraphs for the AI, and the form of the app. The rules as they are in the code are in [architecture/extrude.md](../../architecture/extrude.md), "Profile offset and a wall"; the form is in [ui/extrude.md](../../ui/extrude.md).
+
+Where the code differs from the design above:
+
+- **`OutlineCurve` carries its end points.** A line and an arc have `from` and `to` (the points) and `ends` (the keys of their two vertices); the start angle of an arc is `start`. The design gave an arc only angles. The points are needed for the test "does this point lie inside this loop" to be exact where a ray passes through a vertex that a line and an arc share: both curves then read the same coordinates.
+- **The nesting before the move is asked with the middle of a curve**, not with a vertex. Two loops of a selection may share a vertex (regions that meet in a point give two loops, as the design says), and a vertex of one then lies on the other; the middle of a curve lies on no other loop of a valid profile.
+- **The order of the tests of the polylines** is clearance, area, the crossing test of a sketch profile, nesting. The clearance covers every crossing and names the two curves, so the crossing test finds nothing after it; it stays as the design asks for it. A loop of fewer than three points is reported with the area ("leaves no area").
+- **A tangent joint with a line uses the normal of the line**, so the moved line passes through the new corner exactly; the moved arc is then off by `d · (1 − cos(angle))`, under 5e-9 of the offset at `ANGLE_TOLERANCE`.
+- **The plane of a wall end** is given from the corner on the left of the end curve to the corner on its right (in the direction of the curve), so the frame of a sketch on it does not depend on the end the chain is walked from. The design named the face and not its plane.
+- **A closed wall whose inner side has no radius left** (a circle with a thickness of its diameter or more) is refused like any radius that is used up; it does not become a disc.
+- **The regression "the mesh without an offset is byte for byte what it was"** is in `packages/scenarios/test/review.test.ts`, not in the tests of the engine: a mesh needs the triangulation of the real kernel. The hash was computed with the engine of the commit before the package and with the package, on the same model, and was the same.
+- **The fields of the registry**: `profile/offset` and `profile/thickness` come first in `FEATURE_TYPE_INFO.extrude.fields`, before the parameters of the generators. Two tests that pinned the order say so.
+- **Types moved for the modules**: `ProfileProblem` and the new `Outline` and `FaceRole` (a face name without its feature and copy) are in `recompute/state.ts`; `OutlineCurve` is in `sketch.ts`, because `Loop.exact` holds it and `sketch.ts` is imported by `recompute/*`, not the other way.
+- **The app** beyond the design: `pixelSize` moved from the host of the sketch mode to `PanelHost` (the form needs the reach of a pick); the label of a wall face adds what tells it apart ("side of a wall (left of c5)"); switching the profile source says in the status line what a click picks now; the kit of the scenarios prints a face name with every part of its role.
+
+The message of a refusal, as the owner decided (open questions): it starts with what moved the outline, names the curves and ends with what to do. For an offset: "The offset of -16 mm leaves no length for the curves "rb", "rd": their neighbours meet before them, so they vanish. Use a smaller offset or give the corners a radius larger than the offset, or draw the moved outline in the sketch and extrude that."
+
+Tests: see [architecture/verification.md](../../architecture/verification.md), "The offset of a profile and a wall". The property test the reviews of the design asked for is there in two parts: an offset and its opposite on 200 random outlines of lines (engine), and 24 random rounded rectangles with a hole built and cut by the real kernel (scenarios).
+
+Seen in a browser (the app of this branch on its own port, with the model of scenario 12 loaded): the box with its cavity, the rib and the mitred bracket in a picture from above; the form of a wall with the curves of the sketch drawn over the body, two of them taken by clicks, the chosen and the hovered one highlighted, and the preview of the wall.
+
+Known limits, besides those of the design:
+
+- A mitre has no limit: a sharp corner moves by `offset / sin(half the corner angle)`.
+- Regions that meet in a point can be moved inwards (they come apart) and not outwards (they run into each other); a selection where the common outline cannot be followed through such a point is refused.
+- The app offers only own curves for a wall and draws all of them while the form is open, also over the bodies; there is no pick of a chain as a whole.
+
+### Review (2026-11-15)
+
+One full review of the commit of the package by a subagent that did not write it, read-only, with probes against the real adapters and its own fuzz (the numbers are in [architecture/verification.md](../../architecture/verification.md)). No serious finding; one round was enough.
+
+| Finding | Severity | Holds? | What changed |
+|---|---|---|---|
+| A wall refused by the tests of its polylines names the keys of its outline (`R|ab`, `E|e`) in the message and in `refs`, not curves of the sketch | moderate (run) | Yes | `outlineRegions` takes what a key stands for; a wall answers with the curve of a side and the end curve of an end. Both sides of one curve are worded as such |
+| A cusp (a line or an arc that meets an arc tangentially, the loop turning back): the side of the new corner is read from the sign of a number that is zero, so a valid inward offset is refused or built on 1e-9 of noise. Nothing wrong was built | minor (run) | Yes | At a cusp the corner is the intersection in the direction of travel of the curve that starts there |
+| An offset that leaves a strip thinner than float32 resolves but above the tolerance gives a body without volume there. The same holds for a sketch drawn that thin | minor (run), not a regression | Yes | Recorded as a limit in the architecture |
+| `side` of a `wallSide` accepts any text | minor | By design ("Faces of a wall": a well-formed name of a face that does not exist is a broken reference, like a curve the feature never had) | Nothing |
+| The summary of the extrusion in `describe_api` did not mention the offset and the wall | minor | Yes | The summary says it |
+| No test of the two findings above | | Yes | `packages/engine/test/review.test.ts` |
+
+Checked by the reviewer and found sound: the geometry of the offset and of the wall on the fuzz and on hand cases with exact areas (both branches of a D, a lens, a keyhole, holes and islands, loops that share a vertex, extremes of the offset); the document level (`setField` on the absent field, patches, load, undo, references, no upgrade step); the claim that a document without an offset is unchanged (the hash test run against the commit before the package); the app by reading. Not checked by it: the app in a browser (done by the author, above), the MCP build, the spikes.
+

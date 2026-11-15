@@ -53,6 +53,7 @@ export interface PanelHost {
   // ----- the view
   planePoint(event: { clientX: number; clientY: number }, frame: Frame): { at: Vec2; depth: number } | undefined; // where the ray under the pointer meets a plane
   planeSize(state: EngineState): number; // the side of the square a plane is drawn as
+  pixelSize(): number; // millimetres per pixel of the view
 
   // ----- the mode
   readonly draft: AnyDraft | undefined; // the open form, if one is open

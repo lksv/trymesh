@@ -57,7 +57,6 @@ export interface SketchHost extends PanelHost {
   readonly sketching: SketchState;
   sketchContext(): SketchContext | undefined; // of the open sketch; kept until the shown state changes
   pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): ViewPick | undefined; // what is under the pointer in the model
-  pixelSize(): number; // millimetres per pixel of the view
 }
 
 export const TOOLS: [Tool, string, string][] = [

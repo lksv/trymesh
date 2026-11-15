@@ -1,6 +1,6 @@
 // Pomůcky pro validační scénáře: engine se skutečnými adaptéry a stavba běžných skic.
 import { expect } from 'vitest';
-import { type Command, type CommandResult, type Constraint, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Solid, createEngine, emptySketch } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Solid, createEngine, emptySketch, faceParts } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 
@@ -114,9 +114,11 @@ export const status = (state: EngineState): Record<Id, string> =>
 export function expectAllOk(state: EngineState): void {
   expect(status(state)).toEqual(Object.fromEntries(state.document.features.map((f) => [f.id, 'ok'])));
 }
-// Face names of a body as text; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
+// Face names of a body as text: the feature, the role and what tells apart the faces of the role
+// (`E/side/<curve>`, `E/wallSide/<curve>/<side>`); a face of a copy made by a pattern has
+// `@<pattern>:<number>` appended.
 export const faceNames = (state: EngineState, body: Id): string[] =>
   state.evaluation.bodies[body].faces
     .map((f) => state.evaluation.faceNames[f.id])
-    .map((n) => (n.role === 'side' ? `${n.feature}/side/${n.curve}` : `${n.feature}/${n.role}`) + (n.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join(''))
+    .map((n) => [n.feature, n.role, ...faceParts(n)].join('/') + (n.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join(''))
     .sort();

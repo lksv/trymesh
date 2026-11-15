@@ -6,7 +6,9 @@ import { type Deps, type DragTarget, type EvaluateOptions, Evaluator, type Place
 import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
 import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
 import { generatorOf, producesTool } from '../src/index';
-import { type SketchGeometry, detectProfile } from '../src/sketch';
+import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, wallOutline } from '../src/recompute/outline';
+import type { Outline, ProfileProblem } from '../src/recompute/state';
+import { type Region, type SketchGeometry, detectProfile } from '../src/sketch';
 import type { ArgSpecs } from '../src/query/args';
 import { checkArgs } from '../src/query/check';
 import type { EntityShape } from '../src/query/entity';
@@ -309,8 +311,10 @@ describe('a module per feature type (D37): what the move could have changed unse
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-2)).toEqual(['extent/start', 'extent/distance']);
-    expect(paths.slice(0, -2).every((path) => path.startsWith('profile/params/'))).toBe(true);
-    expect(paths.length).toBeGreaterThan(2);
+    // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
+    expect(paths.slice(0, 2)).toEqual(['profile/offset', 'profile/thickness']);
+    expect(paths.slice(2, -2).every((path) => path.startsWith('profile/params/'))).toBe(true);
+    expect(paths.length).toBeGreaterThan(4);
     expect(FEATURE_TYPE_INFO.extrude.updatable).toEqual(['profile', 'extent', 'operation', 'targets']);
     expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset']);
     expect(FEATURE_TYPE_INFO.pattern.updatable).toEqual(['source', 'transform']);
@@ -532,5 +536,89 @@ describe('the section: the review of D38', () => {
     // the precision is 3e-5 (the boxes reach 30 mm): the first two are level in u, so the lower one
     // comes first; the third is further in u than the precision
     for (const order of seen) expect(order).toEqual([10, 20, 0]);
+  });
+});
+
+// The review of D44 (package 2a of D36): the offset of a profile and a wall along curves.
+describe('the offset of a profile and a wall (D44): findings of the review', () => {
+  const MOVE: Move = { subject: 'The move', cure: 'Do something else.' };
+  const flat = (points: Record<string, [number, number]>, curves: [string, Curve][]): SketchFeature => sketch(points, curves.map(([id, curve]): Entry => [id, curve]));
+  const moved = (s: SketchFeature, d: number): Region[] | ProfileProblem => {
+    const found = profile(s);
+    expect(found.valid).toBe(true);
+    const outline = selectionOutline(found.regions) as Outline;
+    const there = movedOutline(outline, d, MOVE);
+    return 'code' in there ? there : outlineRegions(there, nestingOf(outline), 0.01, MOVE);
+  };
+  const areaOf = (regions: Region[]): number => {
+    const { xy } = regions[0].outer;
+    let sum = 0;
+    for (let i = 0; i < xy.length / 2; i++) {
+      const j = (i + 1) % (xy.length / 2);
+      sum += xy[2 * i] * xy[2 * j + 1] - xy[2 * j] * xy[2 * i + 1];
+    }
+    return sum / 2;
+  };
+
+  // A cusp: a line that ends where an arc touches it and the loop turns back. The old corner is the
+  // point of contact, which lies on the axis the two candidates for the new corner mirror about; its
+  // side was read from noise, so the offset was refused for an end point at y = 0 and at y = -1e-9
+  // and built for y = +1e-9.
+  it('a cusp between a line and an arc: the corner is on the side the loop goes on to', () => {
+    for (const y of [0, 1e-9, -1e-9]) {
+      // the wedge between the line y = 0 and a circle of radius 5 that touches it at the origin
+      const s = flat({ a: [-8, 0], o: [0, y], c: [0, 5], q: [-5, 5] }, [['l', { type: 'line', a: 'a', b: 'o' }], ['r', { type: 'arc', center: 'c', start: 'q', end: 'o' }], ['back', { type: 'line', a: 'q', b: 'a' }]]);
+      for (const d of [-0.2, -0.05]) {
+        const regions = moved(s, d);
+        expect('code' in regions ? regions.message : '', `y ${y}, d ${d}`).toBe('');
+        if ('code' in regions) continue;
+        // the new corner is where the line y = |d| meets the circle of radius 5 + |d|, on the side of the wedge
+        const corner = -Math.sqrt((5 - d) ** 2 - (5 + d) ** 2);
+        const at = regions[0].outer.exact?.find((curve) => curve.key === 'r');
+        expect(at).toMatchObject({ type: 'arc', radius: 5 - d });
+        expect(at?.type === 'arc' ? at.from[0] : NaN).toBeCloseTo(corner, 6);
+        expect(areaOf(regions)).toBeGreaterThan(0);
+        expect(areaOf(regions)).toBeLessThan(areaOf(moved(s, d / 2) as Region[]));
+      }
+      // outwards the line and the circle part
+      expect(moved(s, 0.2)).toMatchObject({ code: 'invalidProfile', refs: ['l', 'r'], message: expect.stringMatching(/no longer meet/) });
+    }
+  });
+
+  it('a cusp between two arcs', () => {
+    // two circles of radius 5 that touch at the origin from both sides of the y axis, closed far above
+    const s = flat({ o: [0, 0], cl: [-5, 0], cr: [5, 0], tl: [-5, 5], tr: [5, 5] }, [['left', { type: 'arc', center: 'cl', start: 'o', end: 'tl' }], ['right', { type: 'arc', center: 'cr', start: 'tr', end: 'o' }], ['top', { type: 'line', a: 'tl', b: 'tr' }]]);
+    const regions = moved(s, -0.2);
+    expect('code' in regions ? regions.message : '').toBe('');
+    if ('code' in regions) return;
+    // the loop passes both arcs clockwise, so they grow to 5.2 and meet at x = 0, y = +sqrt(5.2² − 5²),
+    // above the old corner: the end of `left` as the loop passes it
+    const corner = regions[0].outer.exact?.find((curve) => curve.key === 'left');
+    expect(corner).toMatchObject({ type: 'arc', radius: 5.2, forward: false });
+    expect(corner?.type === 'arc' ? corner.to : []).toEqual([expect.closeTo(0, 9), expect.closeTo(Math.sqrt(5.2 ** 2 - 25), 9)]);
+    // outwards the circles shrink away from each other, and from the line above them
+    expect(moved(s, 0.2)).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/no longer meet/) });
+  });
+
+  // A wall refused by the tests of its polylines named the keys of its outline (`R|ab`, `E|e`) in the
+  // message and in `refs`, where a caller expects curves of the sketch.
+  it('a wall refused for its polylines names the curves of the sketch', () => {
+    const wall = (s: SketchFeature, ids: string[], thickness: number): Region[] | ProfileProblem => {
+      const found = wallOutline(s, geometry(s), ids, thickness, MOVE);
+      return 'code' in found ? found : outlineRegions(found.outline, found.nesting, 0.01, MOVE, found.curveOf);
+    };
+    const line = (a: string, b: string): Curve => ({ type: 'line', a, b });
+    // the last line crosses the first
+    const cross = flat({ a: [0, 0], b: [20, 0], c: [20, 10], d: [10, 10], e: [10, -10] }, [['ab', line('a', 'b')], ['bc', line('b', 'c')], ['cd', line('c', 'd')], ['de', line('d', 'e')]]);
+    expect(wall(cross, ['ab', 'bc', 'cd', 'de'], 1)).toMatchObject({ refs: ['ab', 'de'], message: expect.stringMatching(/makes the curves "ab", "de" touch or cross/) });
+    // the free end of the chain comes back to within the thickness of its start: an end is named by its curve
+    const back = flat({ a: [0, 0], b: [20, 0], c: [20, 10], d: [0.5, 10], e: [0.5, 0.9] }, [['ab', line('a', 'b')], ['bc', line('b', 'c')], ['cd', line('c', 'd')], ['de', line('d', 'e')]]);
+    const refused = wall(back, ['ab', 'bc', 'cd', 'de'], 2) as ProfileProblem;
+    expect(refused.code).toBe('invalidProfile');
+    expect(refused.refs.every((ref) => ['ab', 'bc', 'cd', 'de'].includes(ref as string))).toBe(true);
+    expect(refused.message).not.toMatch(/[RLE]\|/);
+    // a wall thinner than the tolerance: the two sides of its one curve
+    const thin = flat({ a: [0, 0], b: [20, 0] }, [['ab', line('a', 'b')]]);
+    expect(wall(thin, ['ab'], 1e-7)).toMatchObject({ refs: ['ab'], message: expect.stringMatching(/the (two sides of the )?curve "ab"/) });
   });
 });

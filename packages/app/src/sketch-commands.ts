@@ -241,7 +241,10 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
 // expression. When an existing feature is edited the form therefore sends its expressions back
 // instead of removing them with numbers.
 export type ExtrudeDraft = Input<ExtrudeFeature>;
-type ProfileSourcePatch = Input<Extract<ProfileSource, { type: 'regions' }>> | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs'> & { refs: Record<string, Id | null> });
+type ProfileSourcePatch =
+  | (Omit<Input<Extract<ProfileSource, { type: 'regions' }>>, 'offset'> & { offset: number | Expr | null })
+  | Input<Extract<ProfileSource, { type: 'wall' }>>
+  | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs'> & { refs: Record<string, Id | null> });
 export type PlaneDraft = Input<PlaneFeature>;
 
 // A change of an extrusion draft.
@@ -255,18 +258,23 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   does not lose the start, the distance and their expressions.
 // - `start` and `distance` belong to the distance extent and `side` to "through all"; a change for
 //   the other variant is ignored.
-// - `source` switches the profile between regions of the sketch and a profile generator. A new
-//   generated profile gets the operands the form found in the sketch and the defaults of the catalog.
+// - `source` switches the profile between regions of the sketch, a wall along its curves and
+//   a profile generator. A new generated profile gets the operands the form found in the sketch and
+//   the defaults of the catalog; a new wall has no curves yet and the thickness `WALL_THICKNESS`.
 //   `operands`, `params` and `refs` change entries of a generated profile (`null` removes a
-//   reference); `regions` belongs to a profile of regions.
-export type ProfileKind = 'regions' | GeneratorName;
-export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'regions' ? 'regions' : profile.generator);
+//   reference); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
+//   an optional field); `curves` and `thickness` belong to a wall.
+export type ProfileKind = 'regions' | 'wall' | GeneratorName;
+export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'generated' ? profile.generator : profile.type);
 export type ExtentKind = ExtrudeFeature['extent']['type'];
 export type ExtentSide = Extract<ExtrudeFeature['extent'], { type: 'throughAll' }>['side'];
 export interface ExtrudeChange {
   source?: ProfileKind;
   sketch?: Id;
   regions?: RegionRef[];
+  offset?: number | Expr | null;
+  curves?: Id[];
+  thickness?: number | Expr;
   operands?: Record<string, Id>;
   params?: Record<string, number | Expr | boolean>;
   refs?: Record<string, Id | null>;
@@ -279,6 +287,7 @@ export interface ExtrudeChange {
   toggleTarget?: Id;
 }
 const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
+export const WALL_THICKNESS = 2; // mm: what a new wall starts with
 // What a new draft starts with where the catalog has no default (the parameter is required).
 const FORM_DEFAULTS: Record<GeneratorName, Record<string, number>> = { involuteGear: { teeth: 18 } };
 
@@ -297,8 +306,16 @@ function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange, 
   const sketch = change.sketch ?? profile.sketch;
   let next = profile;
   if (change.source !== undefined && change.source !== profileKind(profile))
-    next = rememberedProfile(remembered, change.source, sketch) ?? (change.source === 'regions' ? { type: 'regions', sketch, regions: [] } : generatedProfile(change.source, sketch, {}));
-  if (next.type === 'regions') return { ...next, sketch, ...(change.regions === undefined ? {} : { regions: change.regions }) };
+    next =
+      rememberedProfile(remembered, change.source, sketch) ??
+      (change.source === 'regions' ? { type: 'regions', sketch, regions: [] } : change.source === 'wall' ? { type: 'wall', sketch, curves: [], thickness: WALL_THICKNESS } : generatedProfile(change.source, sketch, {}));
+  if (next.type === 'regions') {
+    // the offset is an optional field: it is in the draft only while it has a value
+    const { offset: old, ...rest } = next;
+    const offset = change.offset === undefined ? old : change.offset;
+    return { ...rest, sketch, ...(change.regions === undefined ? {} : { regions: change.regions }), ...(offset === undefined || offset === null ? {} : { offset }) };
+  }
+  if (next.type === 'wall') return { ...next, sketch, ...(change.curves === undefined ? {} : { curves: [...change.curves].sort() }), ...(change.thickness === undefined ? {} : { thickness: change.thickness }) };
   const refs = Object.fromEntries(Object.entries({ ...next.refs, ...change.refs }).filter((entry): entry is [string, Id] => entry[1] !== null));
   const { refs: _old, ...rest } = next;
   return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params: { ...next.params, ...change.params }, ...(Object.keys(refs).length ? { refs } : {}) };
@@ -411,10 +428,11 @@ export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, ed
   // the draft holds every field of the source and the transform, so merging them replaces both
   if (draft.type === 'pattern') return { type: 'updateFeature', id: draft.id, patch: { source: draft.source, transform: draft.transform } };
   const { id, extent, operation, targets } = draft;
-  // The patch merges with the feature, so a reference the draft no longer has must be removed
-  // explicitly; every other entry of the profile is in the draft.
+  // The patch merges with the feature, so what the draft no longer has must be removed explicitly:
+  // the offset of regions and a reference of a generated profile. Every other entry of the
+  // profile is in the draft.
   const profile: ProfileSourcePatch =
-    draft.profile.type === 'regions' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
+    draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 

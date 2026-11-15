@@ -1,10 +1,10 @@
 // What the steps of the feature types share: reading the state (a frame of a plane reference, an
 // axis), applying a tool to its targets, the texts of issues. Functions over the state, imported by
 // the modules of the feature types; they are not handed over in a context that would grow with them.
-import { type Prism, analyzeBody, faceFrame, onSurface, toWorld, volumeOf } from '../solid';
+import { analyzeBody, faceFrame, onSurface, toWorld, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
 import { faceKey, has } from '../util';
-import type { Applied, Model, Placement, State, ToolRecipe } from './state';
+import type { Applied, BuiltTool, Model, Placement, State, ToolRecipe } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
 // jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
@@ -71,7 +71,7 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
   const first = model.faceNames.length;
   const bodies = { ...model.bodies };
   const unchanged: Id[] = [];
-  let tool: Prism;
+  let tool: BuiltTool;
   try {
     tool = recipe.build(recipe.targets.map((target) => model.bodies[target]), first, placement);
     for (const target of recipe.targets) {
@@ -102,7 +102,7 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
 }
 
 // The face tables of a model with the faces of a new tool appended.
-export function withFaces(state: Model, tool: Prism, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
+export function withFaces(state: Model, tool: BuiltTool, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
   return {
     faceNames: [...state.faceNames, ...tool.faces.map((f) => f.name)],
     faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],

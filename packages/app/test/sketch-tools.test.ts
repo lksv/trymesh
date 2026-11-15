@@ -10,6 +10,7 @@ import {
   GEOMETRIC_KINDS,
   type PatternChoices,
   type PatternDraft,
+  WALL_THICKNESS,
   arcCommands,
   asConstruction,
   axisKind,
@@ -511,10 +512,11 @@ describe('nálezy z revize aplikace', () => {
     const last = { type: 'distance' as const, start: 'h / 2', distance: 'h' };
     expect(changeExtrude(all, { extent: 'distance' }, ['e1'], last).extent).toEqual(last);
     expect(changeExtrude(all, { operation: 'add' }, ['e1'], last).extent).toEqual(last);
-    expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: all.profile, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
+    // editing sends the profile whole; what a draft of regions does not have, its offset, is removed
+    expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...all.profile, offset: null }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
-    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: draft.profile, extent: draft.extent, operation: 'add', targets: ['smazané'] } });
+    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: draft.extent, operation: 'add', targets: ['smazané'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
     expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4 } });
   });
@@ -561,6 +563,60 @@ describe('nálezy z revize aplikace', () => {
     expect(engine.getState().document.features[1]).toMatchObject({ profile: { params: { teeth: 24 } } });
     // the generated profile of a new draft comes from the catalog
     expect(generatedProfile('involuteGear', 's', {}).operands).toEqual({});
+  });
+
+  it('an extrusion draft with an offset and with a wall (D44)', () => {
+    const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    // the offset is in the draft only while it has a value: a number, an expression, and gone again
+    const grown = changeExtrude(draft, { offset: 2 }, []);
+    expect(grown.profile).toEqual({ ...draft.profile, offset: 2 });
+    expect(changeExtrude(grown, { offset: '-wall' }, []).profile).toEqual({ ...draft.profile, offset: '-wall' });
+    expect(changeExtrude(grown, { distance: 7 }, []).profile).toEqual(grown.profile); // another field leaves it
+    expect(changeExtrude(grown, { offset: null }, []).profile).toEqual(draft.profile);
+    expect(changeExtrude(grown, { offset: 0 }, []).profile).toEqual({ ...draft.profile, offset: 0 }); // a zero is a value
+    expect(changeExtrude(grown, { regions: [] }, []).profile).toEqual({ type: 'regions', sketch: 's', regions: [], offset: 2 });
+    // a wall: no curve yet and the thickness a new wall starts with; the curves are kept sorted
+    const wall = changeExtrude(grown, { source: 'wall' }, []);
+    expect(wall.profile).toEqual({ type: 'wall', sketch: 's', curves: [], thickness: WALL_THICKNESS });
+    expect(profileKind(wall.profile)).toBe('wall');
+    const along = changeExtrude(wall, { curves: ['n', 'm'], thickness: 'ribT' }, []);
+    expect(along.profile).toEqual({ type: 'wall', sketch: 's', curves: ['m', 'n'], thickness: 'ribT' });
+    expect(changeExtrude(along, { offset: 1, regions: [] }, []).profile).toEqual(along.profile); // fields of the other source
+    expect(changeExtrude(along, { sketch: 's9', curves: [] }, []).profile).toEqual({ type: 'wall', sketch: 's9', curves: [], thickness: 'ribT' });
+    // the form remembers each kind: regions with their offset and back to the wall
+    const remembered = { regions: grown.profile, wall: along.profile };
+    expect(changeExtrude(along, { source: 'regions' }, [], undefined, remembered).profile).toEqual(grown.profile);
+    expect(changeExtrude(grown, { source: 'wall' }, [], undefined, remembered).profile).toEqual(along.profile);
+
+    // the engine accepts the drafts as new features and as changes of existing ones
+    const { engine, run } = setup();
+    run([
+      { type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin' }, radius: 8 },
+      { type: 'addPoint', sketch: 's', id: 'p1', x: 20, y: 0 },
+      { type: 'addPoint', sketch: 's', id: 'p2', x: 30, y: 0 },
+      { type: 'addPoint', sketch: 's', id: 'p3', x: 30, y: 10 },
+      { type: 'addCurve', sketch: 's', id: 'm', curve: { type: 'line', a: 'p1', b: 'p2', construction: true } },
+      { type: 'addCurve', sketch: 's', id: 'n', curve: { type: 'line', a: 'p2', b: 'p3', construction: true } },
+    ]);
+    const feature = (id: Id): ExtrudeFeature => engine.getState().document.features.find((f) => f.id === id) as ExtrudeFeature;
+    run([draftCommand(grown, false, 1), draftCommand({ ...changeExtrude(along, { thickness: 2 }, []), id: 'e2', name: 'e2' }, false, 2)]);
+    expect(engine.getState().evaluation.features).toMatchObject({ e1: { status: 'ok' }, e2: { status: 'ok' } });
+    expect(feature('e1').profile).toEqual({ ...draft.profile, offset: 2 });
+    expect(feature('e2').profile).toEqual({ type: 'wall', sketch: 's', curves: ['m', 'n'], thickness: 2 });
+    // editing: an offset the draft no longer has is removed; a draft that never had one sends the same shape
+    const without = changeExtrude(feature('e1'), { offset: null, distance: 6 }, []);
+    expect(draftCommand(without, true, 1)).toMatchObject({ type: 'updateFeature', id: 'e1', patch: { profile: { type: 'regions', offset: null } } });
+    run([draftCommand(without, true, 1)]);
+    expect(feature('e1').profile).toEqual(draft.profile);
+    run([draftCommand(changeExtrude(feature('e1'), { distance: 9 }, []), true, 1)]);
+    expect(feature('e1')).toMatchObject({ profile: draft.profile, extent: { distance: 9 } });
+    // a wall is sent whole, and regions turned into a wall replace the profile
+    run([draftCommand(changeExtrude(feature('e2'), { curves: ['m'], thickness: 3 }, []), true, 2)]);
+    expect(feature('e2').profile).toEqual({ type: 'wall', sketch: 's', curves: ['m'], thickness: 3 });
+    run([draftCommand(changeExtrude(changeExtrude(feature('e1'), { source: 'wall' }, []), { curves: ['n'] }, []), true, 1)]);
+    expect(feature('e1').profile).toEqual({ type: 'wall', sketch: 's', curves: ['n'], thickness: WALL_THICKNESS });
+    run([draftCommand(changeExtrude(changeExtrude(feature('e1'), { source: 'regions' }, []), { regions: [{ outerLoop: ['c1'] }], offset: 1 }, []), true, 1)]);
+    expect(feature('e1').profile).toEqual({ ...draft.profile, offset: 1 });
   });
 
   it('a pattern draft: the source, the axis, the count and the span', () => {

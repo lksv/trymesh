@@ -4,6 +4,7 @@
 // the description of the API for the AI all read the registry.
 import { bodyOwner, entityOf } from '../sketch-content';
 import type { Document, Feature } from '../types';
+import { ORIGIN } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';
 import { extrude } from './extrude';
 import type { FeatureModule, FeatureTypeInfo } from './module';
@@ -39,6 +40,7 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
     const entity = entityOf(sketch, ref.id);
     if (!entity) return fail(`${what}: the sketch "${sketch.id}" has no entity "${ref.id}"`);
     if (!ref.accepts?.includes(entity.kind)) fail(`${what}: "${ref.id}" is a ${entity.kind}, expected ${(ref.accepts ?? []).join(' or ')}`);
+    if (ref.notProjected && !entity.own && ref.id !== ORIGIN) fail(`${what}: "${ref.id}" is projected geometry; an own ${(ref.accepts ?? []).join(' or ')} of the sketch "${sketch.id}" is expected`);
     return;
   }
   const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };

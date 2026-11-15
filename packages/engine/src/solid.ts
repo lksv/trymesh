@@ -288,13 +288,19 @@ export function areaOf(s: Solid, eps?: number): number {
   return area;
 }
 
-// The distance from a point to the surface of a solid, as a function prepared once for many
-// points. With `region` only the triangles whose box touches it are used: the answer is then right
-// for points whose nearest triangle is one of them.
-function distanceToSurface(solid: Solid, region?: { min: Vec3; max: Vec3 }): { count: number; distance: (point: Vec3) => number } {
+// The nearest triangle of the surface of a solid to a point, as a function prepared once for many
+// points: the distance and the face the triangle belongs to (-1 and Infinity without triangles).
+// With `region` only the triangles whose box touches it are used: the answer is then right for
+// points whose nearest triangle is one of them.
+interface Nearest {
+  distance: number;
+  face: number;
+}
+function nearestOnSurface(solid: Solid, region?: { min: Vec3; max: Vec3 }): { count: number; nearest: (point: Vec3) => Nearest } {
   const p = solid.positions;
   const corners: number[] = []; // 9 numbers a triangle
   const boxes: number[] = []; // 6 numbers a triangle
+  const faces: number[] = [];
   for (let t = 0; t < solid.triangles.length; t += 3) {
     const [a, b, c] = [3 * solid.triangles[t], 3 * solid.triangles[t + 1], 3 * solid.triangles[t + 2]];
     const box = [0, 0, 0, 0, 0, 0];
@@ -307,10 +313,12 @@ function distanceToSurface(solid: Solid, region?: { min: Vec3; max: Vec3 }): { c
     if (outside) continue;
     boxes.push(...box);
     corners.push(p[a], p[a + 1], p[a + 2], p[b], p[b + 1], p[b + 2], p[c], p[c + 1], p[c + 2]);
+    faces.push(solid.faceIds[t / 3]);
   }
-  const count = boxes.length / 6;
-  const distance = (point: Vec3): number => {
+  const count = faces.length;
+  const nearest = (point: Vec3): Nearest => {
     let best = Infinity; // squared
+    let face = -1;
     for (let t = 0; t < count && best > 0; t++) {
       let far = 0;
       for (let axis = 0; axis < 3; axis++) {
@@ -321,71 +329,126 @@ function distanceToSurface(solid: Solid, region?: { min: Vec3; max: Vec3 }): { c
       const k = 9 * t;
       const away = sub3(point, closestOnTriangle(point, [corners[k], corners[k + 1], corners[k + 2]], [corners[k + 3], corners[k + 4], corners[k + 5]], [corners[k + 6], corners[k + 7], corners[k + 8]]));
       const squared = dot3(away, away);
-      if (squared < best) best = squared; // a degenerate triangle may give NaN: it is skipped
+      // a degenerate triangle may give NaN: it is skipped
+      if (squared < best) [best, face] = [squared, faces[t]];
     }
-    return Math.sqrt(best);
+    return { distance: Math.sqrt(best), face };
   };
-  return { count, distance };
+  return { count, nearest };
+}
+
+// The triangles of a mesh by connected piece (pieces are connected through shared vertices).
+function pieces(solid: Solid): number[][] {
+  const parent = new Int32Array(solid.positions.length / 3).map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
+    return i;
+  };
+  for (let t = 0; t < solid.triangles.length; t += 3) {
+    const root = find(solid.triangles[t]);
+    parent[find(solid.triangles[t + 1])] = root;
+    parent[find(solid.triangles[t + 2])] = root;
+  }
+  const groups = new Map<number, number[]>();
+  for (let t = 0; t < solid.triangles.length / 3; t++) {
+    const root = find(solid.triangles[3 * t]);
+    const group = groups.get(root);
+    if (group) group.push(t);
+    else groups.set(root, [t]);
+  }
+  return [...groups.values()];
+}
+
+// The largest mean thickness of a connected piece of a mesh: twice the volume of the piece over
+// its surface. Piece by piece, so that a lump is not thinned out by slivers elsewhere in the mesh.
+// With `eps` the sheets are left out of the surface (see `areaOf`).
+export function thickestPiece(solid: Solid, eps?: number): number {
+  let thickest = 0;
+  for (const triangles of pieces(solid)) {
+    const piece: Solid = {
+      positions: solid.positions,
+      triangles: Uint32Array.from(triangles.flatMap((t) => [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]])),
+      faceIds: Uint32Array.from(triangles.map((t) => solid.faceIds[t])),
+    };
+    const volume = Math.abs(volumeOf(piece));
+    if (!(volume > 0)) continue;
+    const area = areaOf(piece, eps);
+    if (area > 0) thickest = Math.max(thickest, (2 * volume) / area);
+  }
+  return thickest;
 }
 
 // How deep two bodies reach into each other, measured on what they share (`common`, their
-// intersection). Every point of the surface of `common` lies on the surface of `a` or of `b`; its
-// distance to the other surface says how deep in the other body it is. The result is the largest
-// such distance over the vertices of `common`, the middles of its edges and the centroids of its
-// triangles (the corners of a thin overlap along an edge often lie on both surfaces; the middle
-// of that edge does not).
+// intersection as the kernel returns it).
+// - Every point of the surface of the shared volume lies on the surface of `a` or of `b`; its
+//   distance to the other surface says how deep in the other body it is. The points looked at are
+//   the vertices of `common`, the middles of its edges and the centroids of its triangles (the
+//   corners of a thin overlap along an edge often lie on both surfaces; the middle does not).
 // - A sheet without thickness that the kernel leaves where faces of the two bodies coincide lies
 //   on both surfaces and gives zero, so it cannot hide a real overlap next to it.
-// - A sliver between two polygons of one circle gives at most the sagitta of the polygons.
-// - A chunk gives how far one body goes into the other, whatever else the two bodies share.
-export function penetration(common: Solid, a: Solid, b: Solid): number {
+// - `depth` is the largest such distance. `planar` is the largest one among the points of
+//   a planar face of one body measured against a planar face of the other: an overlap that no
+//   polygon of a round face explains.
+// - A point with a distance that is not a number (a degenerate triangle) is left out.
+export interface Reach {
+  depth: number;
+  planar: number;
+}
+export function penetration(common: Solid, a: Solid, b: Solid, isPlanar: (face: number) => boolean): Reach {
   const q = common.positions;
-  const used = new Uint8Array(q.length / 3);
-  const samples: Vec3[] = [];
+  const reach: Reach = { depth: 0, planar: 0 };
+  if (common.triangles.length === 0) return reach;
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (let t = 0; t < common.triangles.length; t += 3) {
-    const centroid: Vec3 = [0, 0, 0];
-    const corners: Vec3[] = [];
-    for (let k = 0; k < 3; k++) {
-      const vertex = common.triangles[t + k];
-      const at: Vec3 = [q[3 * vertex], q[3 * vertex + 1], q[3 * vertex + 2]];
-      corners.push(at);
-      for (let axis = 0; axis < 3; axis++) {
-        centroid[axis] += at[axis] / 3;
-        min[axis] = Math.min(min[axis], at[axis]);
-        max[axis] = Math.max(max[axis], at[axis]);
-      }
-      if (used[vertex]) continue;
-      used[vertex] = 1;
-      samples.push(at);
-    }
-    samples.push(centroid);
-    // an edge is shared by two triangles: taken from the one that has it in ascending order of vertices
-    for (let k = 0; k < 3; k++) {
-      if (common.triangles[t + k] < common.triangles[t + ((k + 1) % 3)]) samples.push(mul3(add3(corners[k], corners[(k + 1) % 3]), 0.5));
+  for (let t = 0; t < common.triangles.length; t++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const value = q[3 * common.triangles[t] + axis];
+      min[axis] = Math.min(min[axis], value);
+      max[axis] = Math.max(max[axis], value);
     }
   }
-  if (samples.length === 0) return 0;
   // Triangles near what is shared answer for nearly every point. A point whose nearest triangle
   // may lie further (a body wholly inside the other has none of the other surface nearby) is
   // asked again over the whole surface.
   const size = len3(sub3(max, min));
   const region = { min: min.map((value) => value - size) as Vec3, max: max.map((value) => value + size) as Vec3 };
-  const measure = (solid: Solid): ((point: Vec3) => number) => {
-    const near = distanceToSurface(solid, region);
-    let whole: ((point: Vec3) => number) | undefined;
+  const measure = (solid: Solid): ((point: Vec3) => Nearest) => {
+    const near = nearestOnSurface(solid, region);
+    let whole: ((point: Vec3) => Nearest) | undefined;
     return (point) => {
-      const distance = near.distance(point);
-      if (distance <= size || near.count === solid.triangles.length / 3) return distance;
-      whole ??= distanceToSurface(solid).distance;
+      const found = near.nearest(point);
+      if (found.distance <= size || near.count === solid.triangles.length / 3) return found;
+      whole ??= nearestOnSurface(solid).nearest;
       return whole(point);
     };
   };
   const [toA, toB] = [measure(a), measure(b)];
-  let depth = 0;
-  for (const point of samples) depth = Math.max(depth, toA(point), toB(point));
-  return Number.isFinite(depth) ? depth : 0;
+  // the deeper of the two distances of a point, remembered by vertex and by edge (a pair of vertices)
+  const known = new Map<number, Nearest>();
+  const vertices = q.length / 3;
+  const look = (key: number | undefined, at: Vec3, face: number): void => {
+    let deep = key === undefined ? undefined : known.get(key);
+    if (!deep) {
+      const [inA, inB] = [toA(at), toB(at)];
+      deep = inA.distance >= inB.distance ? inA : inB;
+      if (key !== undefined) known.set(key, deep);
+    }
+    if (!Number.isFinite(deep.distance)) return;
+    reach.depth = Math.max(reach.depth, deep.distance);
+    if (isPlanar(face) && isPlanar(deep.face)) reach.planar = Math.max(reach.planar, deep.distance);
+  };
+  for (let t = 0; t < common.triangles.length; t += 3) {
+    const face = common.faceIds[t / 3];
+    const index = [common.triangles[t], common.triangles[t + 1], common.triangles[t + 2]];
+    const corners = index.map((vertex): Vec3 => [q[3 * vertex], q[3 * vertex + 1], q[3 * vertex + 2]]);
+    for (let k = 0; k < 3; k++) {
+      const next = (k + 1) % 3;
+      look(index[k], corners[k], face);
+      look(vertices * (Math.min(index[k], index[next]) + 1) + Math.max(index[k], index[next]), mul3(add3(corners[k], corners[next]), 0.5), face);
+    }
+    look(undefined, mul3(add3(add3(corners[0], corners[1]), corners[2]), 1 / 3), face);
+  }
+  return reach;
 }
 
 // ---------------------------------------------------------------- stěny a hrany tělesa

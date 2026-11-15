@@ -11,7 +11,11 @@ import { connect, newEngine } from './kit';
 
 // File operations of the server can be made to fail: a test sets a hook that sees every write and
 // every rename before it happens and may throw. The real operation runs otherwise.
-const disk = vi.hoisted(() => ({ beforeWrite: undefined as ((path: string) => void) | undefined, beforeRename: undefined as ((from: string, to: string) => void) | undefined }));
+const disk = vi.hoisted(() => ({
+  beforeWrite: undefined as ((path: string) => void) | undefined,
+  beforeRename: undefined as ((from: string, to: string) => void) | undefined,
+  beforeRemove: undefined as ((path: string) => void) | undefined,
+}));
 vi.mock('node:fs/promises', async (original) => {
   const real = await original<typeof import('node:fs/promises')>();
   return {
@@ -23,6 +27,10 @@ vi.mock('node:fs/promises', async (original) => {
     rename: async (from: string, to: string) => {
       disk.beforeRename?.(from, to);
       return real.rename(from, to);
+    },
+    rm: async (...args: Parameters<typeof real.rm>) => {
+      disk.beforeRemove?.(String(args[0]));
+      return real.rm(...args);
     },
   };
 });
@@ -309,7 +317,43 @@ describe('MCP server: bodies', () => {
     const clean = join(dir, 'clean');
     expect(await session.call('export_stl', { path: clean, perBody: true, bodies: ['Wheel', 'base'] })).toEqual({ error: 'the export failed: no permission. Nothing of it was left in the directory' });
     disk.beforeRename = undefined;
-    expect(await readdir(clean)).toEqual([]);
+    // not even the directory the export had to create, nor its parents
+    await expect(readdir(clean)).rejects.toThrow();
+    writes = 0;
+    disk.beforeWrite = () => {
+      if (++writes === 1) throw new Error('disk full');
+    };
+    expect(await session.call('export_stl', { path: join(dir, 'made', 'for', 'this'), perBody: true, bodies: ['Wheel'] })).toEqual({ error: 'the export failed: disk full. Nothing of it was left in the directory' });
+    writes = 0;
+    expect(await session.call('export_stl', { path: join(dir, 'made2', 'one.stl'), bodies: ['Wheel'] })).toEqual({ error: 'the export failed: disk full' });
+    disk.beforeWrite = undefined;
+    await expect(readdir(join(dir, 'made'))).rejects.toThrow();
+    await expect(readdir(join(dir, 'made2'))).rejects.toThrow();
+    // a directory that was there before stays, with what it holds
+    writes = 0;
+    disk.beforeWrite = () => {
+      if (++writes === 1) throw new Error('disk full');
+    };
+    expect(await session.call('export_stl', { path: join(failing, 'sub'), perBody: true, bodies: ['Wheel'] })).toEqual({ error: 'the export failed: disk full. Nothing of it was left in the directory' });
+    disk.beforeWrite = undefined;
+    expect((await readdir(failing)).sort()).toEqual([`.trymesh-export-${process.pid}-0.tmp`, 'base.stl']);
+    // the directory of the call cannot be removed: the answer says so, after a success and after a failure
+    disk.beforeRemove = (path) => {
+      if (path.includes('.trymesh-export-') && !path.endsWith('.tmp') && !path.endsWith('.stl')) throw new Error('busy');
+    };
+    const kept = join(dir, 'kept');
+    const leftover = await session.call('export_stl', { path: kept, perBody: true, bodies: ['Wheel'] });
+    expect(leftover.files).toHaveLength(1);
+    expect(leftover.note).toMatch(/^the temporary directory .*kept.\.trymesh-export-\w+ could not be removed$/);
+    writes = 0;
+    disk.beforeWrite = () => {
+      if (++writes === 1) throw new Error('disk full');
+    };
+    const twice = await session.call('export_stl', { path: join(dir, 'kept2'), perBody: true, bodies: ['base'] });
+    disk.beforeWrite = undefined;
+    disk.beforeRemove = undefined;
+    expect(twice.error).toMatch(/^the export failed: disk full\. Nothing of it was left in the directory; the temporary directory .*\.trymesh-export-\w+ could not be removed$/);
+    expect(await readdir(join(dir, 'kept2'))).toHaveLength(1); // the directory that could not be removed keeps its parent
     // and the export works again afterwards
     expect((await session.call('export_stl', { path: clean, perBody: true, bodies: ['Wheel', 'base'] })).files).toHaveLength(2);
 

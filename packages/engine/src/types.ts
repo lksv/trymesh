@@ -327,8 +327,11 @@ export interface Interference {
 //   of the same diameter overlaps the wall by the slivers at its corners wherever the two
 //   polygons are turned differently (up to about a quarter of the chord tolerance times the area
 //   of the fit). The model cannot tell such a fit from a real overlap of round faces that
-//   shallow, so these pairs are listed apart and are not collisions of the design. Planar bodies
-//   have no such excuse: their overlap is a collision however shallow.
+//   shallow, so these pairs are listed apart and are not collisions of the design. Planar faces
+//   have no such excuse: where a planar face of one body reaches into a planar face of the
+//   other, the pair is a collision however shallow.
+// - Not reported at all: bodies that only touch, and a shared volume no deeper than the
+//   precision of the coordinates (a millionth of the largest coordinate), whatever its size.
 // - `failed`: the kernel computes an intersection without a guarantee for flush faces and may
 //   fail; such a pair is neither among the colliding ones nor among the clear ones.
 export interface InterferenceReport {

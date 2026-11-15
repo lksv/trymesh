@@ -1,6 +1,6 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -179,15 +179,28 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           if (existing.length && args.overwrite !== true) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
         }
         const directory = perBody ? target : dirname(target);
-        await mkdir(directory, { recursive: true }).catch((error) => {
+        // the first directory this call had to create, if any: taken away again when the export fails
+        const created = await mkdir(directory, { recursive: true }).catch((error) => {
           throw new Failure(`nothing was written, the directory ${directory} cannot be created: ${reason(error)}`);
         });
+        const tidy = async (): Promise<void> => {
+          if (created === undefined) return;
+          // only directories that are still empty, from the target up to the first one created
+          for (let at = directory; at.length >= created.length; at = dirname(at)) {
+            if (!(await rmdir(at).then(() => true, () => false)) || at === created) break;
+          }
+        };
         const written: { path: string; bodies: string[]; triangles: number; bytes: number }[] = [];
         if (!perBody) {
-          for (const file of files) {
-            const bytes = Buffer.from(file.base64, 'base64');
-            await writeFile(file.path, bytes);
-            written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+          try {
+            for (const file of files) {
+              const bytes = Buffer.from(file.base64, 'base64');
+              await writeFile(file.path, bytes);
+              written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
+            }
+          } catch (error) {
+            await tidy();
+            throw new Failure(`the export failed: ${reason(error)}`);
           }
           return { files: written };
         }
@@ -198,6 +211,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         // exports, or a file of the user, cannot get in each other's way.
         let staging: string | undefined;
         const moved: string[] = [];
+        let failure: string | undefined;
+        let nothingLeft = false;
         try {
           staging = await mkdtemp(join(target, '.trymesh-export-'));
           for (const file of files) {
@@ -219,11 +234,17 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
             replaced.length ? `these files had already been replaced by new ones: ${replaced.join(', ')}` : '',
             kept.length ? `these new files could not be removed again: ${kept.join(', ')}` : '',
           ].filter((text) => text !== '');
-          throw new Failure(`the export failed: ${reason(error)}. ${left.length ? `The set is not complete; ${left.join('; ')}` : 'Nothing of it was left in the directory'}`);
-        } finally {
-          if (staging !== undefined) await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+          nothingLeft = left.length === 0;
+          failure = `the export failed: ${reason(error)}. ${nothingLeft ? 'Nothing of it was left in the directory' : `The set is not complete; ${left.join('; ')}`}`;
         }
-        return { files: written };
+        // the directory of the call goes in every case; one that cannot be removed is said, not hidden
+        const stale = staging === undefined ? undefined : await rm(staging, { recursive: true, force: true }).then(() => undefined, () => staging);
+        const leftover = stale === undefined ? '' : `the temporary directory ${stale} could not be removed`;
+        if (failure !== undefined) {
+          if (nothingLeft && stale === undefined) await tidy();
+          throw new Failure(leftover ? `${failure}; ${leftover}` : failure);
+        }
+        return { files: written, ...(leftover ? { note: leftover } : {}) };
       }),
     },
   ];

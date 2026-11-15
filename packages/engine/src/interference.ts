@@ -1,5 +1,5 @@
 // Interference of bodies: the volume two bodies share, pair by pair (D35, point 5).
-import { areaOf, penetration, volumeOf } from './solid';
+import { type Reach, penetration, thickestPiece, volumeOf } from './solid';
 import type { BodyResult, Id, InterferenceReport, Solid, SolidKernel } from './types';
 import { has } from './util';
 
@@ -30,27 +30,32 @@ export function bodyFileName(body: Id): string {
 interface Shared {
   volume: number;
   depth: number; // see `depthOf`
+  planar: number; // the part of the depth that planar faces reach into each other
   round: boolean; // what they share has a face that is not planar
-  slack: number; // how precisely `depth` is known
+  slack: number; // how precisely a depth is known
 }
-const NOTHING: Shared = { volume: 0, depth: 0, round: false, slack: 0 };
+const NOTHING: Shared = { volume: 0, depth: 0, planar: 0, round: false, slack: 0 };
 // Coordinates are single precision: a depth is known to about this part of the largest coordinate.
 const PRECISION = 1e-6;
+
+// Faces of the two bodies that coincide leave sheets without thickness in their intersection.
+// Their two sides have the same coordinates, so they are looked for within a small part of the
+// precision of a depth: a real sliver as thin as that precision must keep its surface, or its
+// mean thickness comes out many times too large.
+const SHEET = 1e-3;
 
 // How deep what two bodies share is: the larger of two measures.
 // - How far one body reaches into the other (`penetration`). It finds a real overlap whatever
 //   else the pair shares, but it is zero where the two surfaces coincide all around a volume
 //   (two identical bodies, an identical part of two bodies).
-// - The mean thickness of what they share, twice its volume over its surface. It finds a volume
-//   enclosed by coincident surfaces. Sheets without thickness, which the kernel leaves where
-//   faces coincide, would thin it out; they are left out of the surface, but only when the depth
-//   is at most `limit` without that, since looking for them is the slow part and can only raise
-//   the result.
-function depthOf(common: Solid, volume: number, a: Solid, b: Solid, limit: number, eps: number): number {
-  const reached = penetration(common, a, b);
-  const mean = (area: number): number => (area > 0 ? (2 * volume) / area : 0);
-  const rough = Math.max(reached, mean(areaOf(common)));
-  return rough > limit ? rough : Math.max(reached, mean(areaOf(common, eps)));
+// - The mean thickness of the thickest connected piece of what they share, twice its volume over
+//   its surface. It finds a volume enclosed by coincident surfaces. Sheets would thin a piece
+//   out; they are left out of the surface, but only when the depth is at most `limit` without
+//   that, since looking for them is the slow part and can only raise the result.
+function depthOf(common: Solid, a: Solid, b: Solid, isPlanar: (face: number) => boolean, limit: number, slack: number): Reach {
+  const reached = penetration(common, a, b, isPlanar);
+  const rough = Math.max(reached.depth, thickestPiece(common));
+  return { depth: rough > limit ? rough : Math.max(reached.depth, thickestPiece(common, SHEET * slack)), planar: reached.planar };
 }
 
 // The query with a memory of the pairs it has computed, by the identity of the two meshes: after
@@ -64,9 +69,12 @@ export class Interferences {
   // a list; a body that does not exist is the caller's mistake and throws.
   // - A pair is reported when the volume of its intersection is above the threshold; `a` is the
   //   smaller ID in string order. Pairs come in the order of the bodies in the model.
+  // - A volume no deeper than the precision of the coordinates is noise of flush faces, not
+  //   a pair, whatever its size (large flush faces of turned copies share a fraction of a mm³).
   // - A reported pair is a fit when neither body reaches deeper into the other than `tolerance`
-  //   (the chord tolerance of the document) and what they share has a round face; otherwise it
-  //   is a collision: see InterferenceReport.
+  //   (the chord tolerance of the document), what they share has a round face and no planar face
+  //   of one body reaches into a planar face of the other; otherwise it is a collision: see
+  //   InterferenceReport.
   // - The kernel gives no guarantee for an intersection with flush faces and may fail (its result
   //   is cleaned and verified); such a pair is in `failed`, neither colliding nor clear.
   // - Boxes that do not overlap need no kernel: the volume is zero.
@@ -83,8 +91,8 @@ export class Interferences {
         report.checked++;
         const shared = this.shared(bodies[a], bodies[b], tolerance);
         if ('message' in shared) report.failed.push({ a, b, message: shared.message });
-        else if (shared.volume > threshold) {
-          const fit = shared.round && shared.depth <= tolerance + shared.slack;
+        else if (shared.volume > threshold && shared.depth > shared.slack) {
+          const fit = shared.round && shared.planar <= shared.slack && shared.depth <= tolerance + shared.slack;
           (fit ? report.fits : report.pairs).push({ a, b, volume: shared.volume, depth: shared.depth });
         }
       }
@@ -106,12 +114,10 @@ export class Interferences {
         const volume = Math.abs(volumeOf(common));
         const planar = new Map([...a.faces, ...b.faces].map((face) => [face.id, face.planar]));
         const slack = PRECISION * Math.max(1, ...a.bounds.min.map(Math.abs), ...a.bounds.max.map(Math.abs), ...b.bounds.min.map(Math.abs), ...b.bounds.max.map(Math.abs));
-        result = {
-          volume,
-          depth: volume > 0 ? depthOf(common, volume, a.solid, b.solid, tolerance + slack, slack) : 0,
-          round: common.faceIds.some((id) => planar.get(id) === false),
-          slack,
-        };
+        // a face the two lists do not have cannot be called planar
+        const isPlanar = (face: number): boolean => planar.get(face) === true;
+        const deep = volume > 0 ? depthOf(common, a.solid, b.solid, isPlanar, tolerance + slack, slack) : { depth: 0, planar: 0 };
+        result = { volume, ...deep, round: common.faceIds.some((id) => planar.get(id) === false), slack };
       } catch (error) {
         result = { message: error instanceof Error ? error.message : String(error) };
       }

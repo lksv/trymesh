@@ -260,6 +260,80 @@ describe('interference of bodies', () => {
     expect(plates.interference()).toEqual({ pairs: [{ a: 'HIGH', b: 'LOW', volume: expect.closeTo(20, 2), depth: expect.closeTo(0.05, 4) }], fits: [], failed: [], checked: 1 });
   });
 
+  it('findings of the third review: slivers thinner than the precision, planar faces beside a round one, a lump behind slivers, noise of flush faces', () => {
+    const turned = (id: Id, body: Id, count: number, angle?: number): Command => ({
+      type: 'addFeature',
+      feature: { id, name: id, suppressed: false, type: 'pattern', source: { type: 'body', body }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count, span: angle === undefined ? { type: 'full' } : { type: 'angle', angle } } },
+    });
+    // 1. Pins of radius 25 in three holes on a ring, the copies turned by 1.234 rad each. The
+    //    polygons nearly coincide here, so the slivers are thinner than a ten-thousandth of
+    //    a millimetre. Taking them for sheets without thickness left the volume with next to no
+    //    surface and a mean thickness of 0.04: a collision out of a fit.
+    let engine = newEngine();
+    const holes = [0, 1, 2].map((k): [Id, number, number] => [`h${k}`, 75 * Math.cos(1.234 * k), 75 * Math.sin(1.234 * k)]);
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -150, -150, 300, 300, null), ...holes.map(([id, x, y]) => circle('S1', id, x, y, 25)));
+    run(engine, span('PLATE', 'S1', [rectLoop('r'), ...holes.map(([id]) => [id])], 0, 10), span('holes', 'S1', holes.map(([id]) => [id]), 0, 10, 'cut', ['PLATE']), span('PIN', 'S1', [['h0']], 0, 10));
+    expectAllOk(run(engine, turned('PP', 'PIN', 3, 2 * 1.234)));
+    let report = engine.interference();
+    expect(report.failed).toEqual([]);
+    expect(report.pairs).toEqual([]);
+    // the first copy is within the precision of the coordinates and not reported at all
+    expect(report.fits).toEqual([{ a: 'PLATE', b: 'PP/2', volume: expect.any(Number), depth: expect.any(Number) }]);
+    expect(report.fits[0].depth).toBeLessThanOrEqual(0.01);
+
+    // 2. A shallow overlap of planar faces is a collision also when a round face is nearby:
+    //    a disc 0.005 inside the top of a plate, a pin 0.005 too long for its blind hole, two
+    //    plates overlapping by 0.005 with one hole through both.
+    const plate = (): Engine => {
+      const made = newEngine();
+      run(made, addSketch('S1', XY), rectangle('S1', 'r', -20, -20, 40, 40, null), span('PLATE', 'S1', [rectLoop('r')], 0, 10));
+      return made;
+    };
+    engine = plate();
+    run(engine, addSketch('S2', XY), circle('S2', 'k', 0, 0, 5), span('DISC', 'S2', [['k']], 9.995, 5));
+    expect(engine.interference()).toEqual({ pairs: [{ a: 'DISC', b: 'PLATE', volume: expect.closeTo(disc(5) * 0.005, 3), depth: expect.closeTo(0.005, 4) }], fits: [], failed: [], checked: 1 });
+    engine = plate();
+    run(engine, addSketch('S2', XY), circle('S2', 'k', 0, 0, 4), span('H', 'S2', [['k']], 5, 5, 'cut', ['PLATE']), span('PIN', 'S2', [['k']], 4.995, 8));
+    expect(engine.interference()).toEqual({ pairs: [{ a: 'PIN', b: 'PLATE', volume: expect.closeTo(disc(4) * 0.005, 3), depth: expect.closeTo(0.005, 4) }], fits: [], failed: [], checked: 1 });
+    engine = plate();
+    run(engine, span('TOP', 'S1', [rectLoop('r')], 9.995, 5), addSketch('S2', XY), circle('S2', 'k', 0, 0, 4), span('H', 'S2', [['k']], 0, 15, 'cut', ['PLATE', 'TOP']));
+    expect(engine.interference()).toEqual({ pairs: [{ a: 'PLATE', b: 'TOP', volume: expect.closeTo((1600 - disc(4)) * 0.005, 2), depth: expect.closeTo(0.005, 4) }], fits: [], failed: [], checked: 1 });
+    // a round face reaching into a planar one by as little stays a fit: a cylinder 0.005 into the side of a plate
+    engine = plate();
+    run(engine, addSketch('S2', XY), circle('S2', 'k', 24.995, 0, 5), span('CYL', 'S2', [['k']], 0, 10));
+    report = engine.interference();
+    expect(report).toEqual({ pairs: [], fits: [{ a: 'CYL', b: 'PLATE', volume: expect.any(Number), depth: expect.closeTo(0.005, 4) }], failed: [], checked: 1 });
+
+    // 3. A cube of 1 mm³ that both bodies have at the same place, next to the slivers of a long
+    //    fit: its surfaces coincide, so nothing reaches into anything, and the mean thickness of
+    //    the whole shared volume is that of the slivers. Taken piece by piece the cube shows.
+    engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', -20, -10, 40, 20, null), circle('S1', 'h1', 10, 0, 4), circle('S1', 'h2', -10, 0, 4));
+    run(engine, span('PLATE', 'S1', [rectLoop('r'), ['h1'], ['h2']], 0, 100), span('holes', 'S1', [['h1'], ['h2']], 0, 100, 'cut', ['PLATE']));
+    run(engine, addSketch('S3', XY), rectangle('S3', 'q', -0.5, 30, 1, 1, null), span('CUBE', 'S3', [rectLoop('q')], 0, 1, 'add', ['PLATE']));
+    run(engine, addSketch('S2', XY), rectangle('S2', 'w', -0.5, -31, 1, 1, null), circle('S2', 'p', 10, 0, 4));
+    expectAllOk(run(engine, span('PIN', 'S2', [['p']], 0, 100), span('PCUBE', 'S2', [rectLoop('w')], 0, 1, 'add', ['PIN']), turned('PP', 'PIN', 2)));
+    report = engine.interference({ bodies: ['PLATE', 'PP/1'] });
+    expect(report.fits).toEqual([]);
+    expect(report.pairs).toEqual([{ a: 'PLATE', b: 'PP/1', volume: expect.any(Number), depth: expect.closeTo(1 / 3, 2) }]); // a cube of 1 mm: twice its volume over its surface
+    expect(report.pairs[0].volume).toBeGreaterThan(1);
+
+    // 4. Wedges of a big ring turned by a pattern lie flush on each other. What the kernel finds
+    //    between them is noise of single precision (half a mm³ at a depth of 0.00001 mm), far
+    //    below what the coordinates can tell: not a pair at all.
+    engine = newEngine();
+    const corners: [number, number][] = [[300, 0], [3000, 0], [3000 * Math.cos(Math.PI / 6), 3000 * Math.sin(Math.PI / 6)], [300 * Math.cos(Math.PI / 6), 300 * Math.sin(Math.PI / 6)]];
+    run(
+      engine,
+      addSketch('S1', XY),
+      ...corners.map(([x, y], i): Command => ({ type: 'addPoint', sketch: 'S1', id: `w${i}`, x, y })),
+      ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: 'S1', id: `e${i}`, curve: { type: 'line', a: `w${i}`, b: `w${(i + 1) % 4}` } })),
+    );
+    expectAllOk(run(engine, span('W', 'S1', [['e0', 'e1', 'e2', 'e3']], 0, 600), turned('P', 'W', 12)));
+    expect(engine.interference()).toEqual({ pairs: [], fits: [], failed: [], checked: 66 });
+    expect(engine.interference({ threshold: 0 })).toEqual({ pairs: [], fits: [], failed: [], checked: 66 });
+  });
+
   it('`a` is the smaller ID whatever the order of the bodies; copies are named by their derived IDs', () => {
     const engine = newEngine();
     // `z` is created before `a`; the copies of `a` turn by 10° and overlap their neighbours

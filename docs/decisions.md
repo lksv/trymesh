@@ -1050,6 +1050,20 @@ type AxisRef =
 
   What stays true and is documented: a real overlap of round faces shallower than the chord tolerance is a fit (jammed gears whose flanks overlap by less than the tolerance, a pin thicker than its hole by less than the tolerance when its polygon is turned the same way). The depth is measured at the vertices, the middles of edges and the centroids of the triangles of the shared mesh, so on a coarse mesh it can come out a little under the true value.
 
+  **Third review of point 5 (2026-11-14 to 15),** of the new depth and of the export, because the second fix replaced a measure that had failed. The reviewing agent was cut off by lost connections three times; its notes were kept in a file and the open points were finished by the author with the reviewer's probes (a sweep of pins in holes over radii, lengths, turns and tolerances; shallow planar overlaps; lumps beside slivers). What it found:
+
+  | Finding | Fix |
+  |---|---|
+  | Legitimate fits came out as collisions for some turns of a copy (pins of radius 25 turned by 1.234 rad: depth 0.039 at a tolerance of 0.01; pins far from the origin). The polygons nearly coincided there, the slivers were thinner than the precision of a depth, and the search for sheets took their faces for sheets: the volume was left with next to no surface and a mean thickness forty times too large | Sheets are looked for within a thousandth of that precision (their two sides have the same coordinates). Unit tests of the measures on meshes written by hand, and the case in the scenario test |
+  | A shallow overlap of planar faces passed as a fit whenever the shared mesh had any round triangle: a disc 0.005 mm inside the top of a plate, a pin 0.005 mm too long for its blind hole, two plates overlapping by 0.005 mm with one hole through both | The depth has a planar part: the points of a planar face measured against a planar face of the other body. A fit must not have one |
+  | A cube of 1 mm³ that both bodies had at the same place hid behind the slivers of a long fit: its surfaces coincide, so nothing reaches into anything, and the mean thickness was taken over the whole shared mesh | The mean thickness is taken for each connected piece and the thickest one counts |
+  | Flush planar faces of turned copies of a large body (a ring of wedges 3000 mm across) were collisions of 0.5 mm³ at a depth of 0.00001 mm: planar pairs collide however shallow, so noise did too | A shared volume no deeper than the precision of the coordinates is not a pair |
+  | One point that is not a number (a degenerate triangle) set the whole measure to zero | Such a point is left out |
+  | Export: a directory of the call that could not be removed was hidden; directories created for an export that failed stayed; the staging path is 23 characters longer than the final one | The answer names a directory it could not remove; created directories are removed after a failure; the length is documented |
+  | Tests: nothing covered the search for sheets, the centroids, the slack or the fall-back to the whole surface | Unit tests in `packages/engine/test/solid-depth.test.ts` |
+
+  Left as they are: two identical round bodies thinner than the chord tolerance are a fit (their mean thickness is under the tolerance and a round face is there); the measure is brute force over the points and the nearby triangles, about two seconds for one pair at a chord tolerance of 0.0001; an export waiting for an app that does not answer holds the queue of exports for the 30 seconds of the bridge timeout.
+
 **6. Vazby.** Stejný poloměr a pevný bod se přidávají podle D34 (typ, katalog, rovnice rozboru, překlad pro solver).
 
 - Stejný poloměr: planegcs má vazby `equal_radius_cc`, `equal_radius_ca` a `equal_radius_aa` (nalezeno v typech knihovny 1.3.0, nespuštěno).

@@ -272,10 +272,27 @@ export interface Frame {
   normal: Vec3;
 }
 
+// What a face is, exactly: the surface it lies on. It follows from the definition of the feature
+// that made the face, not from the mesh.
+// - A sketch can stand only on a plane.
+// - A cylinder comes from an arc or a circle of a profile; a cone from a taper, a countersink or
+//   a revolved line; a swept surface (a planar curve moved along `axis`) from gear teeth; a general
+//   surface says nothing more.
+// - A surface has no side: `normal` of a plane and `axis` of a cylinder carry no sign. Which side the
+//   material is on belongs to the face of a body. The exception is `axis` of a cone, which points
+//   from the apex towards the face, because a cone has two halves.
+export type Surface =
+  | { kind: 'plane'; origin: Vec3; normal: Vec3 }
+  | { kind: 'cylinder'; origin: Vec3; axis: Vec3; radius: number } // origin: a point of the axis
+  | { kind: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number } // radians, between the axis and the surface
+  | { kind: 'swept'; axis: Vec3 }
+  | { kind: 'general' };
+
 export interface Evaluation {
   features: Record<Id, FeatureResult>;
   bodies: Record<Id, BodyResult>; // stav po poslední vyhodnocené feature
   faceNames: FaceName[]; // společná tabulka, index = číslo stěny
+  faceSurfaces: Surface[]; // the surface of every face, index = number of the face, like `faceNames`
   parameters: Record<string, ParameterResult>; // values and errors of parameters
   checks: Record<string, CheckResult>; // check results by name
 }

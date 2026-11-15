@@ -5,8 +5,8 @@ import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } f
 import { specOf } from './features/index';
 import { issue, lookup } from './recompute/services';
 import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, WriteBack } from './recompute/state';
-import { analyzeBody } from './solid';
-import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id } from './types';
+import { type FaceInfo, analyzeBody, surfaceOf } from './solid';
+import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id, Surface } from './types';
 
 // The types of the state moved to recompute/state.ts; what this module exported keeps its path.
 export type { Deps, DragTarget, Placement, SketchState, ToolRecipe, WriteBack } from './recompute/state';
@@ -36,6 +36,7 @@ export class Evaluator {
   private readonly memo = new WeakMap<Resolution, WeakMap<State, Step>>();
   private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
   private readonly initial = new WeakMap<Document['settings'], State>();
+  private readonly published = new WeakMap<FaceInfo[], Surface[]>();
 
   constructor(private readonly deps: Deps) {}
 
@@ -44,7 +45,15 @@ export class Evaluator {
     const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
-    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, parameters, checks }, writeBacks, trace };
+    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks }, writeBacks, trace };
+  }
+
+  // The published surfaces of a face table. The table is replaced, never changed, so the list is kept
+  // by its identity: states with the same faces share one list.
+  private surfaces(faceInfos: FaceInfo[]): Surface[] {
+    let surfaces = this.published.get(faceInfos);
+    if (!surfaces) this.published.set(faceInfos, (surfaces = faceInfos.map(surfaceOf)));
+    return surfaces;
   }
 
   // Substitutes the values of the feature's expressions. `environment` holds the values of the names

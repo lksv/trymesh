@@ -291,7 +291,7 @@ export class App {
     const previous = this.doc.features[index - 1];
     if (previous) return this.engine.getState(previous.id);
     const state = this.engine.getState();
-    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [] } };
+    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [] } };
   }
   private invalidate(): void {
     this.cache = undefined;

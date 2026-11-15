@@ -14,7 +14,9 @@ export interface OperandSpec {
 
 // ---------------------------------------------------------------- numeric fields
 
-export type Unit = 'mm' | 'rad' | 'count' | 'none';
+// Lengths are millimetres and angles radians; areas, volumes, masses and densities are derived (an
+// argument of a query such as a threshold on a shared volume, the properties of a body).
+export type Unit = 'mm' | 'rad' | 'count' | 'none' | 'mm2' | 'mm3' | 'g' | 'g/cm3';
 
 export interface Bound {
   value: number;

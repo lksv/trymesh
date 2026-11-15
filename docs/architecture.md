@@ -458,6 +458,19 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 
 The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has three kinds: a plane, a cylinder and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and only an edge between a plane and a cylinder is a circle.
 
+**Surfaces (D37).** The evaluation publishes what a face is, next to its name: `faceSurfaces[number]`, derived from `FaceInfo` by `surfaceOf` in `solid.ts`.
+
+```ts
+type Surface =
+  | { kind: 'plane'; origin: Vec3; normal: Vec3 }
+  | { kind: 'cylinder'; origin: Vec3; axis: Vec3; radius: number }   // origin: a point of the axis
+  | { kind: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }      // no feature makes one yet (taper, countersink, revolve)
+  | { kind: 'swept'; axis: Vec3 }                                    // a planar curve moved along `axis`: gear teeth
+  | { kind: 'general' };                                             // no feature makes one yet (revolve of an arc, twist, fillet)
+```
+
+A surface has no side: `normal` of a plane and `axis` of a cylinder carry no sign (the axis of a cone is the exception, it points from the apex towards the face). Which side the material is on belongs to the face of a body. `FaceInfo` stays internal, because it also keeps what only the engine needs (the `y` direction of a planar face, from which the frame of a sketch on it is built). The list is kept by the identity of the face table, so states with the same faces share one list. The surfaces are where the model was modelled.
+
 ### Hrany (D22)
 
 Hrana je rozhraní dvou různě pojmenovaných stěn. Jejím jménem je neuspořádaná dvojice jmen stěn:
@@ -778,6 +791,7 @@ interface Evaluation {
   features: Record<Id, FeatureResult>;
   bodies: Record<Id, BodyResult>;           // stav po poslední vyhodnocené feature
   faceNames: FaceName[];                    // společná tabulka, index = číslo stěny
+  faceSurfaces: Surface[];                  // the surface of every face, same index (D37)
   parameters: Record<string, ParameterResult>;   // values and errors of parameters
   checks: Record<string, CheckResult>;           // 'ok' | 'failed' | 'error' by check name
 }

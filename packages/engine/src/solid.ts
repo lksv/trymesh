@@ -1,7 +1,7 @@
 // Tělesa: stavba sítě extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany.
 // Pravidla jsou v docs/architecture.md, sekce Pojmenování a Extrude.
 import type { Region } from './sketch';
-import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, Id, IssueCode, Projected, ProjectionKind, Solid, SolidKernel, Vec2, Vec3 } from './types';
+import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, Id, IssueCode, Projected, ProjectionKind, Solid, SolidKernel, Surface, Vec2, Vec3 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from './util';
 
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
@@ -11,6 +11,14 @@ export type FaceInfo =
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
   | { planar: false; surface: 'swept'; axis: Vec3 };
+// The surface of a face as the evaluation publishes it. `FaceInfo` stays internal and keeps what only
+// the engine needs: the `y` direction of a planar face, from which the frame of a sketch on the
+// face is built.
+export function surfaceOf(info: FaceInfo): Surface {
+  if (info.planar) return { kind: 'plane', origin: info.origin, normal: info.normal };
+  if (info.surface === 'cylinder') return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
+  return { kind: 'swept', axis: info.axis };
+}
 type Cylinder = Extract<FaceInfo, { surface: 'cylinder' }>;
 type Plane = Extract<FaceInfo, { planar: true }>;
 

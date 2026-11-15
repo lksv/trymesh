@@ -648,10 +648,47 @@ describe('the app, driven as a user drives it', () => {
     h.record('the marker moved: the answer belongs to another state and is hidden, with its note');
     h.press('timeline', 'Zobrazit celý model');
     h.record('back at the end: the answer is shown again');
-    h.press('panel', 'Check again');
+    h.press('panel', 'Ask again');
     h.record('checked again');
     h.press('panel', 'Close');
     h.record('closed');
+    // ----- the generic form of a query: measuring
+    const menu = h.document.querySelector('#toolbar select') as HTMLSelectElement;
+    const control = (label: string, index: number): HTMLSelectElement => (h.field(label).closest('label') as HTMLElement).querySelectorAll('select, input')[index] as HTMLSelectElement;
+    h.type(menu, 'measure', true);
+    h.record('the query Measure opened from the menu: its two arguments, the first armed');
+    h.click(at(10, 15, 10));
+    h.record('a click on a face goes to the armed argument, not to the selection; the next argument is armed');
+    h.click(at(90, 15, 10));
+    h.record('a click near the rim of the pin gives its edge: both entities given');
+    h.press('panel', 'Ask');
+    h.record('asked: the numbers with their units, the face highlighted, the smallest distance drawn');
+    h.type(control('To', 0), 'sketchPoint', true);
+    h.type(control('To', 1), control('To', 1).options[1].value, true);
+    h.type(control('To', 2), 'origin', true);
+    h.record('the second entity chosen from the lists: a sketch and its point; the answer stays that of the question asked');
+    h.press('panel', 'Ask again');
+    h.record('asked again: the face against a sketch point');
+    h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'measure', true);
+    h.press('panel', 'Ask');
+    h.record('asked with nothing given: the engine names the argument, and its row is marked');
+    h.press('panel', 'Pick in the view'); // nothing is armed after a question
+    h.click(at(10, 15, 10));
+    h.click(at(90, 15, 10));
+    h.press('panel', 'Ask again');
+    h.record('the arguments given and asked again: the note of the error goes with it');
+    // a number out of its range reaches the engine, which refuses it at its argument
+    h.press('toolbar', 'Collisions');
+    h.type(h.field('Threshold (optional)'), '5', true);
+    h.type(h.field('Threshold (optional)'), '-1', true);
+    h.press('panel', 'Ask again');
+    h.record('a threshold below zero: marked while typed, sent as typed, refused by the engine at the threshold');
+    h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'body', true);
+    h.type(h.field('Body'), (h.field('Body') as HTMLSelectElement).options[1].value, true);
+    h.press('panel', 'Ask');
+    h.record('a query without a view: its answer as a tree of names and values');
+    h.press('panel', 'Close');
+    h.record('the query closed');
     h.press('toolbar', 'Collisions');
     outside(h, { type: 'renameFeature', id: 'e2', name: 'Kolík' });
     h.record('a change of the document throws the answer away');

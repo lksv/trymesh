@@ -8,6 +8,7 @@
 //
 // so adding a query edits no shared type; the registry gets one line.
 import type { SketchState } from '../recompute/state';
+import type { Unit } from '../catalog';
 import type { ArgPath, AxisRef, BodyResult, Document, Evaluation, FaceName, Frame, Id, PlaneRef, SolidKernel, Surface, Vec3 } from '../types';
 import type { ArgSpecs, ArgsOf, RunArgsOf } from './args';
 
@@ -57,6 +58,10 @@ export interface RefProblem {
   problem: 'brokenReference' | 'nonPlanarFace';
 }
 
+// The unit of a number of a result: the units of a numeric field, and those only a result has.
+export type ResultUnit = Unit | 'g·mm2';
+export type ResultUnits = { readonly [key: string]: ResultUnit };
+
 // `Result` is plain JSON (numbers, texts, lists, objects): it goes through the tool `query`, the
 // bridge to the app and a generic form as it is. A query that has bytes is an export.
 export interface QuerySpec<S, Result> {
@@ -68,6 +73,10 @@ export interface QuerySpec<S, Result> {
   // digits instead of six decimal places: values that are small on purpose, such as a volume
   // compared with a small threshold.
   significant?: { readonly [key: string]: number };
+  // Keys of the result, at any depth, whose numbers have that unit: what `returns` says in words,
+  // for a program. A generic form shows an angle in degrees and writes the unit after a number;
+  // a number under a key that is not listed is shown bare.
+  units?: ResultUnits;
   // A property, not a method, so that its parameter is checked strictly against the map below.
   // A query that builds on another calls its `run` with the same context.
   // - It does not throw for what its caller can cause. For what only the computation finds out it
@@ -84,6 +93,7 @@ export interface AnyQuery {
   returns: string;
   args: ArgSpecs;
   significant?: { readonly [key: string]: number };
+  units?: ResultUnits;
   run: (context: QueryContext, args: never) => unknown;
 }
 
@@ -101,11 +111,15 @@ export type QueryCatalog = { [N in QueryName]: QuerySpec<Queries[N]['spec'], Que
 type InvalidSpecs = { [N in keyof Queries]: Queries[N]['spec'] extends ArgSpecs ? never : N }[keyof Queries];
 export const SPECS_ARE_VALID: [InvalidSpecs] extends [never] ? true : { [N in InvalidSpecs]: 'is not a valid description' } = true;
 
-// What `run` throws for what only the computation finds out: a face that is not planar where
-// a plane is asked for, a body that is empty, a limit.
+// What `run` throws for what only the computation finds out.
+// - `notAvailable`: something named is not in the state asked about in the form the query needs
+//   (a sketch that did not evaluate, a face that is not planar where a plane is asked for).
+// - `invalidArguments`: the arguments do not go together in a way their description cannot say
+//   (a direction of length zero, a list that names one body twice).
+// - `failed`: the computation gave up (a body that is empty, a limit, the kernel).
 export class QueryFailure extends Error {
   constructor(
-    readonly code: 'notAvailable' | 'failed',
+    readonly code: 'notAvailable' | 'invalidArguments' | 'failed',
     message: string,
     readonly arg?: ArgPath,
   ) {

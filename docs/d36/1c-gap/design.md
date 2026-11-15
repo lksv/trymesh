@@ -147,7 +147,7 @@ It is the collisions view with one line more in the scene.
 ## Open
 
 - How the time grows with the number of bodies. A model of fifty bodies has 1225 pairs; the boxes cut most of them, but the trial has only the eight bodies of the joint. If it is too slow, the fallback is a limit on the pairs sent to the kernel, with the rest counted as not examined.
-- **Whether the port method earns its place** (see "Rejected", the first item, with its two variants without a port method). To decide before this package is implemented. One measurement would settle it: a model with many pairs of bodies whose boxes are within the search distance and which are apart, asked three ways: with `minGap` and the pass (this design), with the pass and `interference` for the pairs whose boxes overlap, and with the pass and a point-in-solid test. The joint has too few such pairs to tell. If the second is as fast, the port stays as it is and 1c adds nothing to it.
+- **Whether the port method earns its place: decided by the owner on 2026-11-15.** The port stays as it is. The gap is the pass of 1b (`closest`), and a body that lies wholly inside another is told by `interference`, not by a method `minGap` and not by a point-in-solid test. The first step of the implementation is the measurement this item proposed, on a model with many pairs of bodies that are near and apart; `minGap` is taken only if the variant without it comes out noticeably slower. Where this design speaks of `context.kernel.minGap`, read the pass until that measurement says otherwise.
 - Whether `fit` and `collision` should carry the depth of the overlap as well. Today the caller asks `interference` for it.
 
 ## Reviews

@@ -1,6 +1,6 @@
 # 1b Measuring between two named entities, and the generic form of a query in the app
 
-**Decision D39. State: designed, not implemented; third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D39. State: implemented and merged into `master` on 2026-11-15: the engine side (the shared pieces and the query `measure`) and the generic form of a query in the app with its two views; see "As implemented" at the end. The design is in its third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the wall between the root circle of the ring gear and the bolt holes.
 
@@ -261,3 +261,67 @@ On this package the reviewers had no finding. They checked and found holding: `S
 - 1c: whether the kernel port gets `minGap` at all, or the gap is the pass of this package with `interference` for containment. It needs one measurement on a model larger than the joint and should be decided before 1c is implemented.
 - 1a, 1e, 1f: the fixes of this round (the rule for corners, `takenAt`, the dropped slivers; contact of a whole face) were checked by the type check and by runs of the prototypes, not by a reviewer.
 - All packages with an app side: nothing was run in a browser.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+One commit on the branch `d36/1b` with the shared pieces and the query together: the split into two was meant to let other sessions start on the shared pieces, and one session implements the track. What differs from the design above and from `contract.ts`:
+
+- **Where the modules are.** The queries of the engine live in `packages/engine/src/query/` (the preparatory step, implemented after this design was written), so the entry is `query/measure.ts` and the resolver of an entity `query/entity.ts`, next to the query `body` it asks for `convex`. `mesh-distance.ts` is at the root of the engine, as designed. The circle of two surfaces got a module of its own, `surfaces.ts` (`circleBetween`), because 2b needs it over `Surface` as well (`docs/d36/cross-review.md`, row 11); it knows the plane and the cylinder, and 2b adds the pairs with a cone.
+- **The four needs of the preparatory step** are met in the shared types instead of by stand-ins: `QuerySpec.units` (keys of the result to a unit, as `significant`; the stand-ins `ResultUnits` per query and `QUERY_UNITS` are not needed), `invalidArguments` as a third code of `QueryFailure`, an optional `title` and `summary` on an entry of `fields` and an option of `oneOf` (the title is for a form; `describe_api` prints the summary, as it does for an argument of the top level), and `BodyEdge` changed in place: the circle of a circular edge is required and has its axis (`BodyEdgeExact` of the contract is `BodyEdge`).
+- **`get_body`** prints the axis of a circular edge next to its centre and radius. The three places of `packages/mcp/test/tools.test.ts` that read circles pass unchanged, as the design expected.
+- **The pass over two parts** walks the pieces left after the coarse step along the longest axis of the two parts, with one part sorted by where its pieces start, instead of comparing every remaining pair of boxes; and it stops at the first distance of zero. Measured on the joint of scenario 9 on a loaded machine: the ring gear against a bolt hole 3 ms; two whole bodies 12 to 140 ms (the reviewer measured up to 264 ms for the sun against the housing); the housing against the plate it sits on (they touch along a face) 320 ms before the early stop.
+- **A sketch point** is read from the solved geometry the recompute kept (`context.sketch(id).geometry`), which has the origin and the points of projected geometry as well.
+- **The scenario.** `packages/scenarios/test/scenario11.test.ts` is the part of scenario 11 of this package; the builders of the joint moved from the test of scenario 9 into `packages/scenarios/test/joint.ts`, which both use. The numbers of the prototype hold: 15.2837 mm on the mesh between (33.526, 0, 28) and (48.810, 0, 28), accuracy 0.020055, 15.275 exactly.
+- **Not driven by a model yet:** a cone (no face is one until 2b), and a general surface.
+
+### Review of the engine side (2026-11-15)
+
+One full review (new geometry) by a subagent that did not write the code, with probes it ran: a fuzz of 300 000 pairs of pieces and 400 rounds of mixed parts against an independent reference, 27 pairs of whole bodies and 15 pairs of faces of the joint against brute force, 2211 pairs of entities of a model for the symmetry of the exact part, and mutants of the two modules against their unit tests. It found nothing serious or moderate: the pruning of the pass is sound and the exact part is right. No second round (the rule asks for one above six findings with three serious, or after a large fix).
+
+| Finding | Held | What was done |
+|---|---|---|
+| Within the angle tolerance the exact distance and `facing` depended on which entity was named first (planes 5e-5 rad apart with origins a metre apart sideways: 10 one way, 10.05 the other; a gap of 0.01 mm: `towards` one way, `away` the other) | Yes (run) | What counts as parallel is measured along the direction between the two; the regression asks both ways |
+| `within` let through a pair up to `LENGTH_TOLERANCE` further than the bound | Yes (run) | A pair further than `within` is not found; one exactly that far is |
+| The faces named: a chain of improvements each under the tolerance never reset the choice; a pair that touches kept the face of a pair that was merely close; two faces equally good were decided by the order of the triangles | Yes (run) | The pairs about as close as the best are remembered and the choice is made at the end among those within the tolerance of the answer; a touching pair names its own faces; equal faces go by the smaller number |
+| A triangle without an area (two corners in one place, three in a line) against a point: NaN, or a distance too large (2.236 for 1) | Yes (run; never too small) | Such a triangle is as close as its nearest side |
+| Tests: the only skew lines were at a right angle; `facing` of oblique planes, the tolerance of the exact part from either side, the reset of the faces and the early stop were not tested | Yes (mutants passed) | Added, with the findings above, to `packages/engine/test/review.test.ts` |
+| The commit message says `describe_api` prints the title of a nested entry; it prints the summary | Yes | Said as it is here and in the architecture |
+| A planar face whose frame cannot be directed would be refused as "the body has no face" | Reasoned only; no such face could be made | The text says what is wrong |
+
+Left as known limits:
+
+- **A line and a plane that are parallel only within the tolerance** are measured at the point the line is given by, so the distance is exact to the tolerance times the length of the line (5 against 4.9 for a line a metre long at half the tolerance). Geometry modelled parallel is exactly parallel and is not affected.
+- **A point of projected geometry whose projection is broken** is answered where the sketch last had it: the recompute keeps the last valid position, and the sketch carries the warning. The branch of `entityShape` for a point without a place could not be reached.
+- **The reference of the test "agrees with every pair tried one by one"** is the same function on single pieces, so the test checks the pass, not the distance of two pieces; that one is covered by the cases written by hand and was checked by the reviewer's independent reference.
+
+### The app side (2026-11-15)
+
+`packages/app/src/panels/query.ts` (the panel and its state), `queries/controls.ts` (`CONTROLS`), `queries/index.ts` (`QUERY_VIEWS`, `QueryView`, `ViewPanel`, `SceneAdditions`), `queries/measure.ts` and `queries/interference.ts`. `panels/collisions.ts` is gone. What differs from the design and from the stand-ins of `contract.ts`:
+
+- **The state** is `QueryPanel { open?, note? }` with `OpenQuery` for the open query (`QueryPanelState` of the contract); the note of the answer lives beside it, as the note of the collisions did.
+- **A selection** is the pick of the view as the app has it (`ViewPick`), not a type of its own: `takeSelection(panel, pick)`.
+- **The units** come from `units` of the entry in the engine; `body` and `interference` got theirs with this commit, so the tree writes `12000 mm³`.
+- **A control reports a change with `set(path, value, rebuild)`**: a change that alters what follows (the kind of an entity, a body, a sketch, an alternative, a row added) builds the panel again, a typed number does not.
+- **The numbers of the view of `measure`** measured on the mesh are shown to a thousandth of a millimetre; the exact ones as the app writes any number.
+- **A distance between two faces that look at each other** is labelled *Gap*, beside *Thickness* for two that look away.
+- **Not done:** a control that is armed is not disarmed by Escape (the button toggles it); the draft is not highlighted in the view before the query is asked.
+
+**What the recorded test of the app sees**, as the design listed: `engine.query('interference', …)` where `engine.interference` was called; the menu of queries in the toolbar at every step of the model mode; the heading *Interference* with the two optional arguments of the query in place of "Collisions (N)"; the buttons *Ask again* and *Close*. The rows, the hints, the highlight of a picked pair and the note are unchanged. The case of the model got nine steps for the form (opening `measure` from the menu, a face and an edge taken from clicks, asking, an entity chosen from the lists, asking with nothing given, a query without a view, closing).
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diff only, a cheaper model). Three defects of the form, none serious; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The control of a vector: each of its three fields wrote the vector with only its own number, because the panel is not built again after a typed number | Yes (no query has a vector yet, so no step of the app reached it) | The three fields share what was typed; `packages/app/test/query-controls.test.ts` drives the control directly |
+| A number marked as wrong (below its range, or not a number) was not written to the draft, so *Ask* asked with the value from before while the field showed the new one | Yes | What was typed always reaches the draft, a text that is not a number as that text; the engine refuses it at its argument and the row is marked. A step of the model case (a threshold of −1) and the test of the control |
+| The note of an error stayed in the status bar after a later answer that has no note of its own (a failed `measure`, then a good one) | Yes | The note of the answer before goes when a new answer comes without one; a step of the model case |
+
+Found while the fixes were tested, outside the diff reviewed:
+
+- **The recorded test wrote down the wrong row of a list.** The app marks the row of a list as `selected` before the row is in the list. A browser keeps the mark; the DOM of the tests (happy-dom) loses it and shows the second row instead, so the records of every form with a list whose third or later row was chosen were wrong (the polygon by its size across flats recorded as "circumscribed", a cut recorded as "add", the axis Z as Y, the entities of a query). `h` of `packages/app/src/dom.ts` now tells a list its value once its rows are in it, which changes nothing in a browser. The three records changed in rows of lists only.
+
+Known limits: the form was not run in a browser (the browser of the Playwright server was held by another session); what a browser shows is covered by the record of the test only as far as happy-dom behaves as one.

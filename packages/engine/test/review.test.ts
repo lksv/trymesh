@@ -9,7 +9,10 @@ import { generatorOf, producesTool } from '../src/index';
 import { type SketchGeometry, detectProfile } from '../src/sketch';
 import type { ArgSpecs } from '../src/query/args';
 import { checkArgs } from '../src/query/check';
-import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, SolidKernel } from '../src/types';
+import type { EntityShape } from '../src/query/entity';
+import { exactBetween } from '../src/query/measure';
+import { closest } from '../src/mesh-distance';
+import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -360,5 +363,73 @@ describe('the checker of arguments', () => {
     expect(problem({ f: { kind: 'list', of: { kind: 'flag' }, title: 'F' } }, { f: [true, , false] })).toEqual(['invalidArguments', ['f', 1], 'f[1]: true or false is expected']);
     expect(problem({ v: { kind: 'vector', title: 'V' } }, { v: [1, , 3] })).toEqual(['invalidArguments', ['v'], 'v: three finite numbers are expected']);
     expect(problem({ v: { kind: 'vector', title: 'V' } }, { v: [1, 2, 3] })).toEqual({ v: [1, 2, 3] });
+  });
+});
+
+// Findings of the review of D39 (the query `measure` and the distances on the mesh).
+describe('measuring: the review of D39', () => {
+  type Triangle = [Vec3, Vec3, Vec3];
+  const mesh = (triangles: Triangle[], faces: number[]): Solid => ({
+    positions: Float32Array.from(triangles.flat(2)),
+    triangles: Uint32Array.from(triangles.flatMap((_, i) => [3 * i, 3 * i + 1, 3 * i + 2])),
+    faceIds: Uint32Array.from(faces),
+  });
+  const plane = (origin: Vec3, normal: Vec3): EntityShape => ({ is: 'plane', origin, normal });
+  const line = (from: Vec3, direction: Vec3): EntityShape => ({ is: 'line', from, to: [from[0] + direction[0], from[1] + direction[1], from[2] + direction[2]], direction });
+  const tilt = (angle: number): Vec3 => [Math.sin(angle), 0, Math.cos(angle)];
+
+  it('what counts as parallel is measured the same whichever entity is named first', () => {
+    // two planes 5e-5 rad apart whose origins lie a metre apart sideways
+    for (const gap of [10, 0.01]) {
+      const [a, b] = [plane([0, 0, 0], [0, 0, 1]), plane([1000, 0, gap], tilt(Math.PI - 5e-5))];
+      const [there, back] = [exactBetween(a, b, 1e-6), exactBetween(b, a, 1e-6)];
+      expect(back.distance).toBeCloseTo(there.distance as number, 9);
+      expect(back.facing).toBe(there.facing);
+      expect(there.facing).toBeDefined();
+    }
+    // two lines 5e-5 rad apart
+    const [first, second] = [line([0, 0, 0], [0, 0, 1]), line([5, 0, 1000], tilt(5e-5))];
+    expect(exactBetween(second, first, 1e-6).distance).toBeCloseTo(exactBetween(first, second, 1e-6).distance as number, 9);
+    // the tolerance from both sides: at half of it two planes have a distance, at twice it they cross
+    expect(exactBetween(plane([0, 0, 0], [0, 0, 1]), plane([0, 0, 5], tilt(5e-5)), 1e-6).distance).toBeCloseTo(5, 6);
+    expect(exactBetween(plane([0, 0, 0], [0, 0, 1]), plane([0, 0, 5], tilt(2e-4)), 1e-6).distance).toBeUndefined();
+    // planes that look opposite ways only roughly have no facing, and no distance
+    expect(exactBetween(plane([0, 0, 0], [0, 0, 1]), plane([0, 0, 5], tilt((5 * Math.PI) / 6)), 1e-6)).toEqual({ angle: expect.closeTo((5 * Math.PI) / 6, 12) });
+    // skew lines that are not at a right angle: the common perpendicular, not the offset of their points
+    const skew = exactBetween(line([0, 0, 0], [1, 0, 0]), line([3, 7, 6], [Math.SQRT1_2, Math.SQRT1_2, 0]), 1e-6);
+    expect(skew).toEqual({ distance: expect.closeTo(6, 12), angle: expect.closeTo(Math.PI / 4, 12) });
+  });
+
+  it('`within` is a bound: a pair further than it is not found, one exactly that far is', () => {
+    const [low, high] = [mesh([[[0, 0, 0], [4, 0, 0], [0, 4, 0]]], [0]), mesh([[[0, 0, 3], [4, 0, 3], [0, 4, 3]]], [0])];
+    expect(closest({ solid: low }, { solid: high }, 3 - 5e-7)).toBeUndefined();
+    expect(closest({ solid: low }, { solid: high }, 3)?.distance).toBe(3);
+  });
+
+  it('the face named is among the pairs as close as the answer, whatever the order of the triangles', () => {
+    // above the point: a triangle of face 1 that faces it, a hair further than the two that stand
+    // edge-on over it (faces 2 and 3); the improvements are each smaller than the tolerance
+    const facing: Triangle = [[-1, -1, 1.0000016], [0, 1, 1.0000016], [1, -1, 1.0000016]];
+    const upright = (height: number): Triangle => [[0, 0, height], [1, 0, height + 1], [-1, 0, height + 1]];
+    const found = closest({ point: [0, 0, 0] }, { solid: mesh([facing, upright(1.0000008), upright(1)], [1, 2, 3]) });
+    expect(found?.distance).toBe(1);
+    expect(found?.faceB).toBe(2); // faces 2 and 3 are equally edge-on: the smaller number; face 1 is too far
+    // parts that touch: the faces of the pair at zero, not of one that was merely close before it
+    const near: Triangle = [[-1, -1, 5e-7], [1, -1, 5e-7], [0, 1, 5e-7]];
+    const touching: Triangle = [[0, 0, 0], [1, 0, 1], [-1, 0, 1]];
+    expect(closest({ point: [0, 0, 0] }, { solid: mesh([near, touching], [9, 4]) })).toMatchObject({ distance: 0, faceB: 4 });
+    // two faces that face the point equally (it lies on the bisector of their edge)
+    const top: Triangle = [[0, 0, 10], [10, 0, 10], [10, 10, 10]];
+    const side: Triangle = [[10, 0, 10], [10, 0, 0], [10, 10, 10]];
+    expect(closest({ solid: mesh([top, side], [1, 5]) }, { point: [13, 5, 13] })?.faceA).toBe(1);
+    expect(closest({ solid: mesh([side, top], [5, 1]) }, { point: [13, 5, 13] })?.faceA).toBe(1);
+  });
+
+  it('a triangle without an area is as close as its sides', () => {
+    // two corners in one place: the closest point is on the side that is left
+    expect(closest({ point: [2, 1, 0] }, { solid: mesh([[[0, 0, 0], [0, 0, 0], [5, 0, 0]]], [0]) })).toMatchObject({ distance: 1, b: [2, 0, 0] });
+    // three corners in a line
+    expect(closest({ point: [3, 0, 2] }, { solid: mesh([[[0, 0, 0], [2, 0, 0], [5, 0, 0]]], [0]) })).toMatchObject({ distance: 2, b: [3, 0, 0] });
+    expect(closest({ point: [7, 0, 0] }, { solid: mesh([[[0, 0, 0], [2, 0, 0], [5, 0, 0]]], [0]) })?.distance).toBe(2);
   });
 });

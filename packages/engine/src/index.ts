@@ -24,8 +24,12 @@ export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, cata
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';
 export { QUERIES } from './query/index';
-export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, RunArgsOf } from './query/args';
-export { type AnyQuery, type Queries, type QueryArgs, type QueryContext, QueryFailure, type QueryName, type QueryResult, type QuerySpec } from './query/spec';
+export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, Described, RunArgsOf } from './query/args';
+export { type AnyQuery, type Queries, type QueryArgs, type QueryContext, QueryFailure, type QueryName, type QueryResult, type QuerySpec, type ResultUnit, type ResultUnits } from './query/spec';
+export { type EntityShape, type ShapedRef, entityShape } from './query/entity';
+export type { Measurement } from './query/measure';
+export { type Closest, type MeshPart, closest, coordinatePrecision, meshAccuracy } from './mesh-distance';
+export { type Circle3, circleBetween } from './surfaces';
 export { argText, checkArgs, specProblems } from './query/check';
 export { SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES, type UpgradeStep } from './schema';
 export { CONSTRAINTS, type Bound, type ConstraintSpec, type EntityKind, type FieldSpec, type NumberSpec, type OperandSpec, type Unit, checkNumber, rangeText } from './catalog';

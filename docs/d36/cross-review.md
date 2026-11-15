@@ -103,16 +103,16 @@ Taken over into [README.md](README.md) with this review:
 - the rule for an addition to a port;
 - the numbers taken.
 
-## Decisions waiting for the owner
+## Decisions of the owner
 
-Each is described in the design named. None blocks the start of a track; the ones marked "before" should be answered before the implementation of that package, because a later change costs documents or a rewrite.
+Each is described in the design named. The owner answered four of them on 2026-11-15 (1c, 1f, 2c, 3a); 2a and 5a wait. None blocks the start of a track; the ones marked "before" should be answered before the implementation of that package, because a later change costs documents or a rewrite.
 
-| Package | Question | When |
+| Package | Question | When, or what was decided |
 |---|---|---|
-| 1c | Does the kernel port get `minGap`, or does the gap use only the pass over triangles with `interference` or a point-in-solid test? One measurement on a model with many near pairs settles it | before 1c |
-| 1f | Is the app normally connected while the AI works? If not, a picture is missing exactly there, and a rasteriser in the server joins the package | before 1f |
+| 1c | Does the kernel port get `minGap`, or does the gap use only the pass over triangles with `interference` or a point-in-solid test? | **Decided 2026-11-15:** the port stays as it is; the gap is the pass of 1b, and a body wholly inside another is told by `interference`. The first step of 1c measures this on a model with many near pairs, and `minGap` is taken only if the variant without it comes out noticeably slower |
+| 1f | Is the app normally connected while the AI works? | **Decided 2026-11-15:** yes; a picture comes only from the connected app, and without it the operation answers that it is not available. No rasteriser in the server |
 | 2a | Should an inward offset that makes a corner arc vanish give a sharp corner instead of an error? | before 2a is closed; the design leaves it out |
-| 2c | The source of the numbers of the hardware tables (the standards, or a named published table); the maker of the heat-set inserts; bearings now or later | before 2c |
-| 3a | One field `use` or two flags (`reference`, `auxiliary`); the rows of the catalog of materials (which makers, metals or not) | before 3a: it is the shape of the document |
+| 2c | The source of the numbers of the hardware tables; the maker of the heat-set inserts; bearings now or later | **Decided 2026-11-15:** a named published table is the source, with a second, independent one for the check in the review; bearings are deferred to step 3. The owner has no fixed maker of inserts (unbranded ones), so that catalog cannot come from one data sheet: proposed, and still to be confirmed before 2c, are rows by the size as sold (thread, outer diameter, length) with typical values, a source that says so, and the hole of a feature kept as numbers the user corrects after measuring. The owner is to say which sizes he buys |
+| 3a | One field `use` or two flags (`reference`, `auxiliary`); the rows of the catalog of materials | **Decided 2026-11-15:** one field `use` with the values `part`, `reference` and `auxiliary`, as designed. The catalog has the seven printing materials of the design, each density from the technical data sheet of Prusament, and from that of Bambu Lab where Prusament does not make the material; a material neither makes is reported at the implementation, not filled in from elsewhere. No metals at the start |
 | 5a | A coupled motion through a parameter; a forest of links instead of one root; a missing link is not a broken reference; the model as modelled is the zero of every joint; the axis of a joint from a cylindrical face deferred | before 5a: the first three differ from the wording of the brief |
 | 00 | The schema version was raised to 3 by the preparatory step (row 16), so documents saved from now on are refused by builds made before it | for information |

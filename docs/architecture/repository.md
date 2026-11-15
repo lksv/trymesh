@@ -25,14 +25,17 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `features/index.ts` | `FEATURE_UI`: one entry per feature type of the engine, complete by the compiler (how the type starts, how it is edited, its lines in the model panel, its faces, its eye on the timeline, its form), and `TOOLBAR`, the order of the buttons |
 | `features/draft.ts` | What the forms share: the mode of a draft (`DraftMode`, which carries its form), the preview and the pause of a slow one, numeric fields, the buttons |
 | `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, what a move and a click mean, what it draws) |
-| `panels/model.ts`, `parameters.ts`, `collisions.ts`, `sketch.ts` | The panels, as functions over the host; a panel that keeps state (the collisions) has it in an object the app holds |
+| `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
+| `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
+| `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
+| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the two views there are; the collisions are the view of `interference` |
 | `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
 | `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`) |
 | `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. `View` is its interface; a test passes its own |
 | `sketch-view.ts`, `sketch-commands.ts`, `sketch-diagnosis.ts` | The geometry of a sketch for drawing, hit tests and measuring; the commands of the drawing tools, constraints and dimensions from a selection; the texts of the diagnosis |
 | `draw.ts`, `labels.ts`, `fields.ts`, `issue-text.ts`, `dom.ts` | Shared helpers: drawing into a scene, texts, numeric fields with units, issues named for a human, the DOM |
 
-A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`).
+A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`). `packages/app/test/query-controls.test.ts` drives the controls of the form of a query that no query of the catalog reaches yet.
 
 Modules of the engine (`packages/engine/src`), after the preparatory step of D36 (D37):
 
@@ -44,6 +47,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `sketch-content.ts` | what the content of a sketch is, without validation: entities, operands and keys of constraints, the IDs of a document, the owner of a body ID |
 | `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
 | `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
+| `mesh-distance.ts`, `surfaces.ts` | the smallest distance of two parts of the mesh, the precision of its coordinates and the accuracy of a number measured on it; the circle two surfaces meet in |
 | `solid.ts`, `interference.ts` | the mesh of a prism, faces and edges of a body, the plane on a face, the projection of an edge, STL; interference of bodies |
 | `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `SketchState`) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
@@ -58,6 +62,8 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
 | `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
 | `query/interference.ts`, `query/sketch.ts`, `query/body.ts`, `query/catalog.ts` | the queries, one module each or a few that belong together |
+| `query/entity.ts` | `entityShape`: what a face, an edge or a sketch point is exactly, for a query that takes an entity |
+| `query/measure.ts` | the query `measure`: the exact part between two entities and the smallest distance on the mesh |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

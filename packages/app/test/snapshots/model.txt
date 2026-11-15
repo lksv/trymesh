@@ -101,6 +101,14 @@
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
       div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -557,6 +565,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -653,6 +669,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -945,6 +969,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1094,6 +1126,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1438,18 +1478,25 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
 
 === 43. collisions: the block reaches into the plate
-  engine: interference({})
+  engine: query("interference", {}, {}) -> ok
   toolbar:
     +   button.active title="Check which bodies share a volume": "Collisions"
     -   button title="Check which bodies share a volume": "Collisions"
   panel:
-    + h2: "Collisions (1)"
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   input.value value="" placeholder="0.001"
+    +   span.unit: "mm³"
+    + div.buttons
+    +   button.primary: "Ask again"
+    +   button: "Close"
     + div.row title="Highlight the two bodies. One reaches 5 mm into the other"
     +   span.name: "Deska × Vysunutí 3"
     +   small: "1500 mm³"
-    + div.buttons
-    +   button: "Check again"
-    +   button: "Close"
   status: Collisions: 1 pair(s) of bodies share a volume.  [error]
   view: 1 scene(s) set
 
@@ -1489,13 +1536,11 @@
     - div.row.ok
     + button.link: "Zobrazit celý model"
   panel:
-    - h2: "Collisions (1)"
+    +   button.primary: "Ask"
+    -   button.primary: "Ask again"
     - div.row.selected title="Highlight the two bodies. One reaches 5 mm into the other"
     -   span.name: "Deska × Vysunutí 3"
     -   small: "1500 mm³"
-    - div.buttons
-    -   button: "Check again"
-    -   button: "Close"
   status: 
   view: 1 scene(s) set
   scene:
@@ -1545,13 +1590,11 @@
     - div.row.ok.later
     - button.link: "Zobrazit celý model"
   panel:
-    + h2: "Collisions (1)"
+    +   button.primary: "Ask again"
+    -   button.primary: "Ask"
     + div.row.selected title="Highlight the two bodies. One reaches 5 mm into the other"
     +   span.name: "Deska × Vysunutí 3"
     +   small: "1500 mm³"
-    + div.buttons
-    +   button: "Check again"
-    +   button: "Close"
   view: 1 scene(s) set
   scene:
     + bodies: e1, e2, e3
@@ -1585,7 +1628,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
 
 === 47. checked again
-  engine: interference({})
+  engine: query("interference", {}, {}) -> ok
   panel:
     + div.row title="Highlight the two bodies. One reaches 5 mm into the other"
     - div.row.selected title="Highlight the two bodies. One reaches 5 mm into the other"
@@ -1610,18 +1653,803 @@
     +   button title="Check which bodies share a volume": "Collisions"
     -   button.active title="Check which bodies share a volume": "Collisions"
   panel:
-    - h2: "Collisions (1)"
+    - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    - label title="The bodies to check against each other; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="The smallest shared volume that counts."
+    -   "Threshold (optional)"
+    -   input.value value="" placeholder="0.001"
+    -   span.unit: "mm³"
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
     - div.row title="Highlight the two bodies. One reaches 5 mm into the other"
     -   span.name: "Deska × Vysunutí 3"
     -   small: "1500 mm³"
-    - div.buttons
-    -   button: "Check again"
-    -   button: "Close"
   status: 
   view: 1 scene(s) set
 
-=== 49. a change of the document throws the answer away
-  engine: interference({})
+=== 49. the query Measure opened from the menu: its two arguments, the first armed
+  panel:
+    + h2 title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    + label title="A face or an edge of a body, or a sketch point."
+    +   "From"
+    +   select value=""
+    +     option selected value="": "what"
+    +     option value="face": "Face"
+    +     option value="edge": "Edge"
+    +     option value="sketchPoint": "Sketch point"
+    +   button.active title="Take a face or an edge selected in the view": "Click a face or an edge in the view…"
+    + label
+    +   "To"
+    +   select value=""
+    +     option selected value="": "what"
+    +     option value="face": "Face"
+    +     option value="edge": "Edge"
+    +     option value="sketchPoint": "Sketch point"
+    +   button title="Take a face or an edge selected in the view": "Pick in the view"
+    + div.buttons
+    +   button.primary: "Ask"
+    +   button: "Close"
+  view: 1 scene(s) set
+
+=== 50. a click on a face goes to the armed argument, not to the selection; the next argument is armed
+  panel:
+    +   select value="face"
+    +     option value="": "what"
+    +     option selected value="face": "Face"
+    -   select value=""
+    -     option selected value="": "what"
+    -     option value="face": "Face"
+    +   select value="e1"
+    +     option value="": "body"
+    +     option selected value="e1": "Deska"
+    +     option value="e2": "Vysunutí 2"
+    +     option value="e3": "Vysunutí 3"
+    +   select value="{"feature":"e1","role":"endCap"}"
+    +     option value="": "face"
+    +     option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    +     option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    +     option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    +     option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    +     option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    +     option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    +   button title="Take a face or an edge selected in the view": "Pick in the view"
+    -   button.active title="Take a face or an edge selected in the view": "Click a face or an edge in the view…"
+    +   button.active title="Take a face or an edge selected in the view": "Click a face or an edge in the view…"
+    -   button title="Take a face or an edge selected in the view": "Pick in the view"
+  view: 2 scene(s) set
+  scene:
+    + face e1 #1 #0ea5e9 opacity 0.3
+
+=== 51. a click near the rim of the pin gives its edge: both entities given
+  panel:
+    +   select value="edge"
+    +     option value="": "what"
+    -   select value=""
+    -     option selected value="": "what"
+    +     option selected value="edge": "Edge"
+    -     option value="edge": "Edge"
+    +   select value="e2"
+    +     option value="": "body"
+    +     option value="e1": "Deska"
+    +     option selected value="e2": "Vysunutí 2"
+    +     option value="e3": "Vysunutí 3"
+    +   select value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}"
+    +     option value="": "edge"
+    +     option selected value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}": "e2/endCap | e2/side/c5 (circle)"
+    +     option value="{"a":{"feature":"e2","role":"side","curve":"c5"},"b":{"feature":"e2","role":"startCap"}}": "e2/side/c5 | e2/startCap (circle)"
+    +   button title="Take a face or an edge selected in the view": "Pick in the view"
+    -   button.active title="Take a face or an edge selected in the view": "Click a face or an edge in the view…"
+  view: 2 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 300 numbers, sum 45701.065
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 52. asked: the numbers with their units, the face highlighted, the smallest distance drawn
+  engine: query("measure", {"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"to":{"kind":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}}}, {}) -> ok
+  panel:
+    +   button.primary: "Ask again"
+    -   button.primary: "Ask"
+    + p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 0 mm"
+    + p.answer title="Exact: two faces by their normals out of the bodies; a face and an axis by the axis; two axes without a sense": "Angle: 90°"
+    + p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 45 mm ± 0.01 mm"
+  view: 1 scene(s) set
+  scene:
+    + line #f97316 width 2 onTop: 6 numbers, sum 575
+    + points #f97316 size 8: 6 numbers, sum 575
+    - line #0ea5e9 width 4 onTop: 300 numbers, sum 45701.065
+    + face e1 #1 #0ea5e9 opacity 0.4
+    + label "45 mm" reference at [62.5, 15, 10]
+
+=== 53. the second entity chosen from the lists: a sketch and its point; the answer stays that of the question asked
+  panel:
+    +   select value="sketchPoint"
+    -   select value="edge"
+    +     option value="edge": "Edge"
+    +     option selected value="sketchPoint": "Sketch point"
+    +   select value="s1"
+    +     option value="": "sketch"
+    +     option selected value="s1": "Skica 1"
+    +     option value="s2": "Skica 2"
+    +   select value="origin"
+    +     option value="": "point"
+    +     option selected value="origin": "origin"
+    +     option value="p1": "p1"
+    +     option value="p2": "p2"
+    +     option value="p3": "p3"
+    +     option value="p4": "p4"
+    -     option selected value="edge": "Edge"
+    -     option value="sketchPoint": "Sketch point"
+    -   select value="e2"
+    -     option value="": "body"
+    -     option value="e1": "Deska"
+    -     option selected value="e2": "Vysunutí 2"
+    -     option value="e3": "Vysunutí 3"
+    -   select value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}"
+    -     option value="": "edge"
+    -     option selected value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}": "e2/endCap | e2/side/c5 (circle)"
+    -     option value="{"a":{"feature":"e2","role":"side","curve":"c5"},"b":{"feature":"e2","role":"startCap"}}": "e2/side/c5 | e2/startCap (circle)"
+  view: 0 scene(s) set
+
+=== 54. asked again: the face against a sketch point
+  engine: query("measure", {"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"to":{"kind":"sketchPoint","sketch":"s1","point":"origin"}}, {}) -> ok
+  panel:
+    + p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 10 mm"
+    + p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 10 mm ± 0 mm"
+    - p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 0 mm"
+    - p.answer title="Exact: two faces by their normals out of the bodies; a face and an axis by the axis; two axes without a sense": "Angle: 90°"
+    - p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 45 mm ± 0.01 mm"
+  view: 1 scene(s) set
+  scene:
+    + line #f97316 width 2 onTop: 6 numbers, sum 30
+    - line #f97316 width 2 onTop: 6 numbers, sum 575
+    + points #f97316 size 8: 6 numbers, sum 30
+    - points #f97316 size 8: 6 numbers, sum 575
+    + label "10 mm" reference at [0, 0, 5]
+    - label "45 mm" reference at [62.5, 15, 10]
+
+=== 55. asked with nothing given: the engine names the argument, and its row is marked
+  engine: query("measure", {}, {}) -> invalidArguments: measure: from: the argument is required
+  panel:
+    + label.invalid title="measure: from: the argument is required"
+    - label title="A face or an edge of a body, or a sketch point."
+    +   select value=""
+    +     option selected value="": "what"
+    +     option value="face": "Face"
+    -   select value="face"
+    -     option value="": "what"
+    -     option selected value="face": "Face"
+    -   select value="e1"
+    -     option value="": "body"
+    -     option selected value="e1": "Deska"
+    -     option value="e2": "Vysunutí 2"
+    -     option value="e3": "Vysunutí 3"
+    -   select value="{"feature":"e1","role":"endCap"}"
+    -     option value="": "face"
+    -     option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    -     option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    -     option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    -     option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    -     option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    -     option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    +   select value=""
+    +     option selected value="": "what"
+    -   select value="sketchPoint"
+    -     option value="": "what"
+    +     option value="sketchPoint": "Sketch point"
+    -     option selected value="sketchPoint": "Sketch point"
+    -   select value="s1"
+    -     option value="": "sketch"
+    -     option selected value="s1": "Skica 1"
+    -     option value="s2": "Skica 2"
+    -   select value="origin"
+    -     option value="": "point"
+    -     option selected value="origin": "origin"
+    -     option value="p1": "p1"
+    -     option value="p2": "p2"
+    -     option value="p3": "p3"
+    -     option value="p4": "p4"
+    + p.issue.error: "measure: from: the argument is required"
+    - p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 10 mm"
+    - p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 10 mm ± 0 mm"
+  status: measure: from: the argument is required  [error]
+  view: 2 scene(s) set
+  scene:
+    - line #f97316 width 2 onTop: 6 numbers, sum 30
+    - points #f97316 size 8: 6 numbers, sum 30
+    - face e1 #1 #0ea5e9 opacity 0.4
+    - label "10 mm" reference at [0, 0, 5]
+
+=== 56. the arguments given and asked again: the note of the error goes with it
+  engine: query("measure", {"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"to":{"kind":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}}}, {}) -> ok
+  panel:
+    + label title="A face or an edge of a body, or a sketch point."
+    - label.invalid title="measure: from: the argument is required"
+    +   select value="face"
+    +     option value="": "what"
+    +     option selected value="face": "Face"
+    -   select value=""
+    -     option selected value="": "what"
+    -     option value="face": "Face"
+    +   select value="e1"
+    +     option value="": "body"
+    +     option selected value="e1": "Deska"
+    +     option value="e2": "Vysunutí 2"
+    +     option value="e3": "Vysunutí 3"
+    +   select value="{"feature":"e1","role":"endCap"}"
+    +     option value="": "face"
+    +     option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    +     option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    +     option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    +     option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    +     option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    +     option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    +   select value="edge"
+    +     option value="": "what"
+    -   select value=""
+    -     option selected value="": "what"
+    +     option selected value="edge": "Edge"
+    -     option value="edge": "Edge"
+    +   select value="e2"
+    +     option value="": "body"
+    +     option value="e1": "Deska"
+    +     option selected value="e2": "Vysunutí 2"
+    +     option value="e3": "Vysunutí 3"
+    +   select value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}"
+    +     option value="": "edge"
+    +     option selected value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}": "e2/endCap | e2/side/c5 (circle)"
+    +     option value="{"a":{"feature":"e2","role":"side","curve":"c5"},"b":{"feature":"e2","role":"startCap"}}": "e2/side/c5 | e2/startCap (circle)"
+    + p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 0 mm"
+    + p.answer title="Exact: two faces by their normals out of the bodies; a face and an axis by the axis; two axes without a sense": "Angle: 90°"
+    + p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 45 mm ± 0.01 mm"
+    - p.issue.error: "measure: from: the argument is required"
+  status: 
+  view: 5 scene(s) set
+  scene:
+    + line #f97316 width 2 onTop: 6 numbers, sum 575
+    + points #f97316 size 8: 6 numbers, sum 575
+    + face e1 #1 #0ea5e9 opacity 0.4
+    + label "45 mm" reference at [62.5, 15, 10]
+
+=== 57. a threshold below zero: marked while typed, sent as typed, refused by the engine at the threshold
+  engine: query("interference", {}, {}) -> ok
+  engine: query("interference", {"threshold":-1}, {}) -> invalidArguments: interference: threshold: the value must not be negative
+  toolbar:
+    +   button.active title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label.invalid title="interference: threshold: the value must not be negative"
+    +   "Threshold (optional)"
+    +   input.value value="-1" placeholder="0.001"
+    +   span.unit: "mm³"
+    - h2 title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    - label title="A face or an edge of a body, or a sketch point."
+    -   "From"
+    -   select value="face"
+    -     option value="": "what"
+    -     option selected value="face": "Face"
+    -     option value="edge": "Edge"
+    -     option value="sketchPoint": "Sketch point"
+    -   select value="e1"
+    -     option value="": "body"
+    -     option selected value="e1": "Deska"
+    -     option value="e2": "Vysunutí 2"
+    -     option value="e3": "Vysunutí 3"
+    -   select value="{"feature":"e1","role":"endCap"}"
+    -     option value="": "face"
+    -     option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    -     option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    -     option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    -     option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    -     option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    -     option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    -   button title="Take a face or an edge selected in the view": "Pick in the view"
+    - label
+    -   "To"
+    -   select value="edge"
+    -     option value="": "what"
+    -     option value="face": "Face"
+    -     option selected value="edge": "Edge"
+    -     option value="sketchPoint": "Sketch point"
+    -   select value="e2"
+    -     option value="": "body"
+    -     option value="e1": "Deska"
+    -     option selected value="e2": "Vysunutí 2"
+    -     option value="e3": "Vysunutí 3"
+    -   select value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}"
+    -     option value="": "edge"
+    -     option selected value="{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}": "e2/endCap | e2/side/c5 (circle)"
+    -     option value="{"a":{"feature":"e2","role":"side","curve":"c5"},"b":{"feature":"e2","role":"startCap"}}": "e2/side/c5 | e2/startCap (circle)"
+    -   button title="Take a face or an edge selected in the view": "Pick in the view"
+    + p.issue.error: "interference: threshold: the value must not be negative"
+    - p.answer title="Exact: between the planes, the axes, the lines, the centres or the points of the two": "Distance: 0 mm"
+    - p.answer title="Exact: two faces by their normals out of the bodies; a face and an axis by the axis; two axes without a sense": "Angle: 90°"
+    - p.answer title="Measured on the mesh between the two as they are on the bodies; round faces are polygons": "Smallest distance: 45 mm ± 0.01 mm"
+  status: interference: threshold: the value must not be negative  [error]
+  view: 2 scene(s) set
+  scene:
+    - line #f97316 width 2 onTop: 6 numbers, sum 575
+    - points #f97316 size 8: 6 numbers, sum 575
+    - face e1 #1 #0ea5e9 opacity 0.4
+    - label "45 mm" reference at [62.5, 15, 10]
+
+=== 58. a query without a view: its answer as a tree of names and values
+  engine: query("body", {"body":"e1"}, {}) -> ok
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button.active title="Check which bodies share a volume": "Collisions"
+  panel:
+    + h2 title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    + label
+    +   "Body"
+    +   select value="e1"
+    +     option value="": "—"
+    +     option selected value="e1": "Deska"
+    +     option value="e2": "Vysunutí 2"
+    +     option value="e3": "Vysunutí 3"
+    - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    - label title="The bodies to check against each other; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label.invalid title="interference: threshold: the value must not be negative"
+    -   "Threshold (optional)"
+    -   input.value value="-1" placeholder="0.001"
+    -   span.unit: "mm³"
+    + p.answer: "body: Deska"
+    + p.answer: "volume: 12000 mm³"
+    + div.group
+    +   p.answer: "bounds"
+    +   p.answer: "min: [0, 0, 0]"
+    +   p.answer: "max: [40, 30, 10]"
+    + div.group
+    +   p.answer: "faces (6)"
+    +   div.group
+    +     p.answer: "1"
+    +     p.answer: "name: Deska – víko ve skice"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [0, 0, 0]"
+    +       p.answer: "normal: [0, 0, 1]"
+    +     p.answer: "area: 1200 mm²"
+    +     p.answer: "meshNormal: [0, 0, -1]"
+    +   div.group
+    +     p.answer: "2"
+    +     p.answer: "name: Deska – protější víko"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [0, 0, 10]"
+    +       p.answer: "normal: [0, 0, 1]"
+    +     p.answer: "area: 1200 mm²"
+    +     p.answer: "meshNormal: [0, 0, 1]"
+    +   div.group
+    +     p.answer: "3"
+    +     p.answer: "name: Deska – bok"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [0, 0, 0]"
+    +       p.answer: "normal: [0, -1, 0]"
+    +     p.answer: "area: 400 mm²"
+    +     p.answer: "meshNormal: [0, -1, 0]"
+    +   div.group
+    +     p.answer: "4"
+    +     p.answer: "name: Deska – bok"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [40, 0, 0]"
+    +       p.answer: "normal: [1, 0, 0]"
+    +     p.answer: "area: 300 mm²"
+    +     p.answer: "meshNormal: [1, 0, 0]"
+    +   div.group
+    +     p.answer: "5"
+    +     p.answer: "name: Deska – bok"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [40, 30, 0]"
+    +       p.answer: "normal: [0, 1, 0]"
+    +     p.answer: "area: 400 mm²"
+    +     p.answer: "meshNormal: [0, 1, 0]"
+    +   div.group
+    +     p.answer: "6"
+    +     p.answer: "name: Deska – bok"
+    +     div.group
+    +       p.answer: "surface"
+    +       p.answer: "kind: plane"
+    +       p.answer: "origin: [0, 30, 0]"
+    +       p.answer: "normal: [-1, 0, 0]"
+    +     p.answer: "area: 300 mm²"
+    +     p.answer: "meshNormal: [-1, 0, 0]"
+    + div.group
+    +   p.answer: "edges (12)"
+    +   div.group
+    +     p.answer: "1"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – protější víko"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 40 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 0, 10]"
+    +     p.answer: "to: [40, 0, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "2"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – protější víko"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 30 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 0, 10]"
+    +     p.answer: "to: [40, 30, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "3"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – protější víko"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 40 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 30, 10]"
+    +     p.answer: "to: [0, 30, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "4"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – protější víko"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 30 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 0, 10]"
+    +     p.answer: "to: [0, 30, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "5"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 10 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 0, 0]"
+    +     p.answer: "to: [40, 0, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "6"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 10 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 0, 0]"
+    +     p.answer: "to: [0, 0, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "7"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – víko ve skice"
+    +     p.answer: "length: 40 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 0, 0]"
+    +     p.answer: "to: [40, 0, 0]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "8"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 10 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 30, 0]"
+    +     p.answer: "to: [40, 30, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "9"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – víko ve skice"
+    +     p.answer: "length: 30 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 0, 0]"
+    +     p.answer: "to: [40, 30, 0]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "10"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – bok"
+    +     p.answer: "length: 10 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 30, 0]"
+    +     p.answer: "to: [0, 30, 10]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "11"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – víko ve skice"
+    +     p.answer: "length: 40 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [40, 30, 0]"
+    +     p.answer: "to: [0, 30, 0]"
+    +     p.answer: "gaps: no"
+    +   div.group
+    +     p.answer: "12"
+    +     div.group
+    +       p.answer: "name"
+    +       p.answer: "a: Deska – bok"
+    +       p.answer: "b: Deska – víko ve skice"
+    +     p.answer: "length: 30 mm"
+    +     p.answer: "segments: 1"
+    +     p.answer: "kind: line"
+    +     p.answer: "from: [0, 0, 0]"
+    +     p.answer: "to: [0, 30, 0]"
+    +     p.answer: "gaps: no"
+    - p.issue.error: "interference: threshold: the value must not be negative"
+  status: 
+  view: 2 scene(s) set
+
+=== 59. the query closed
+  panel:
+    - h2 title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    - label
+    -   "Body"
+    -   select value="e1"
+    -     option value="": "—"
+    -     option selected value="e1": "Deska"
+    -     option value="e2": "Vysunutí 2"
+    -     option value="e3": "Vysunutí 3"
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - p.answer: "body: Deska"
+    - p.answer: "volume: 12000 mm³"
+    - div.group
+    -   p.answer: "bounds"
+    -   p.answer: "min: [0, 0, 0]"
+    -   p.answer: "max: [40, 30, 10]"
+    - div.group
+    -   p.answer: "faces (6)"
+    -   div.group
+    -     p.answer: "1"
+    -     p.answer: "name: Deska – víko ve skice"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [0, 0, 0]"
+    -       p.answer: "normal: [0, 0, 1]"
+    -     p.answer: "area: 1200 mm²"
+    -     p.answer: "meshNormal: [0, 0, -1]"
+    -   div.group
+    -     p.answer: "2"
+    -     p.answer: "name: Deska – protější víko"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [0, 0, 10]"
+    -       p.answer: "normal: [0, 0, 1]"
+    -     p.answer: "area: 1200 mm²"
+    -     p.answer: "meshNormal: [0, 0, 1]"
+    -   div.group
+    -     p.answer: "3"
+    -     p.answer: "name: Deska – bok"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [0, 0, 0]"
+    -       p.answer: "normal: [0, -1, 0]"
+    -     p.answer: "area: 400 mm²"
+    -     p.answer: "meshNormal: [0, -1, 0]"
+    -   div.group
+    -     p.answer: "4"
+    -     p.answer: "name: Deska – bok"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [40, 0, 0]"
+    -       p.answer: "normal: [1, 0, 0]"
+    -     p.answer: "area: 300 mm²"
+    -     p.answer: "meshNormal: [1, 0, 0]"
+    -   div.group
+    -     p.answer: "5"
+    -     p.answer: "name: Deska – bok"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [40, 30, 0]"
+    -       p.answer: "normal: [0, 1, 0]"
+    -     p.answer: "area: 400 mm²"
+    -     p.answer: "meshNormal: [0, 1, 0]"
+    -   div.group
+    -     p.answer: "6"
+    -     p.answer: "name: Deska – bok"
+    -     div.group
+    -       p.answer: "surface"
+    -       p.answer: "kind: plane"
+    -       p.answer: "origin: [0, 30, 0]"
+    -       p.answer: "normal: [-1, 0, 0]"
+    -     p.answer: "area: 300 mm²"
+    -     p.answer: "meshNormal: [-1, 0, 0]"
+    - div.group
+    -   p.answer: "edges (12)"
+    -   div.group
+    -     p.answer: "1"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – protější víko"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 40 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 0, 10]"
+    -     p.answer: "to: [40, 0, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "2"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – protější víko"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 30 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 0, 10]"
+    -     p.answer: "to: [40, 30, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "3"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – protější víko"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 40 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 30, 10]"
+    -     p.answer: "to: [0, 30, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "4"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – protější víko"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 30 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 0, 10]"
+    -     p.answer: "to: [0, 30, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "5"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 10 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 0, 0]"
+    -     p.answer: "to: [40, 0, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "6"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 10 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 0, 0]"
+    -     p.answer: "to: [0, 0, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "7"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – víko ve skice"
+    -     p.answer: "length: 40 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 0, 0]"
+    -     p.answer: "to: [40, 0, 0]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "8"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 10 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 30, 0]"
+    -     p.answer: "to: [40, 30, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "9"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – víko ve skice"
+    -     p.answer: "length: 30 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 0, 0]"
+    -     p.answer: "to: [40, 30, 0]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "10"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – bok"
+    -     p.answer: "length: 10 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 30, 0]"
+    -     p.answer: "to: [0, 30, 10]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "11"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – víko ve skice"
+    -     p.answer: "length: 40 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [40, 30, 0]"
+    -     p.answer: "to: [0, 30, 0]"
+    -     p.answer: "gaps: no"
+    -   div.group
+    -     p.answer: "12"
+    -     div.group
+    -       p.answer: "name"
+    -       p.answer: "a: Deska – bok"
+    -       p.answer: "b: Deska – víko ve skice"
+    -     p.answer: "length: 30 mm"
+    -     p.answer: "segments: 1"
+    -     p.answer: "kind: line"
+    -     p.answer: "from: [0, 0, 0]"
+    -     p.answer: "to: [0, 30, 0]"
+    -     p.answer: "gaps: no"
+  view: 1 scene(s) set
+
+=== 60. a change of the document throws the answer away
+  engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
     + {"id":"e2","name":"Kolík","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
@@ -1629,13 +2457,25 @@
   timeline:
     +   span.name: "Kolík"
     -   span.name: "Vysunutí 2"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   input.value value="" placeholder="0.001"
+    +   span.unit: "mm³"
+    + div.buttons
+    +   button.primary: "Ask"
+    +   button: "Close"
   view: 2 scene(s) set
 
-=== 50. waiting for a plane cancelled
+=== 61. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 51. a new document
+=== 62. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

@@ -2,6 +2,7 @@
 // Pravidla jsou v docs/architecture.md, sekce Pojmenování a Extrude.
 import type { Region } from './sketch';
 import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, Id, IssueCode, Projected, ProjectionKind, Solid, SolidKernel, Surface, Vec2, Vec3 } from './types';
+import { closestOnTriangle } from './mesh-distance';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from './util';
 
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
@@ -238,27 +239,6 @@ export function onSurface(result: Solid, first: number, before: Solid, eps: numb
     if (!found) return false;
   }
   return true;
-}
-
-// The point of the triangle abc closest to p (Ericson, Real-Time Collision Detection, 5.1.5).
-function closestOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
-  const [ab, ac, ap] = [sub3(b, a), sub3(c, a), sub3(p, a)];
-  const [d1, d2] = [dot3(ab, ap), dot3(ac, ap)];
-  if (d1 <= 0 && d2 <= 0) return a;
-  const bp = sub3(p, b);
-  const [d3, d4] = [dot3(ab, bp), dot3(ac, bp)];
-  if (d3 >= 0 && d4 <= d3) return b;
-  const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) return add3(a, mul3(ab, d1 / (d1 - d3)));
-  const cp = sub3(p, c);
-  const [d5, d6] = [dot3(ab, cp), dot3(ac, cp)];
-  if (d6 >= 0 && d5 <= d6) return c;
-  const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) return add3(a, mul3(ac, d2 / (d2 - d6)));
-  const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add3(b, mul3(sub3(c, b), (d4 - d3) / (d4 - d3 + (d5 - d6))));
-  const sum = va + vb + vc;
-  return add3(a, add3(mul3(ab, vb / sum), mul3(ac, vc / sum)));
 }
 
 // The area of the surface of a solid. With `eps` the sheets are left out: triangles that lie back

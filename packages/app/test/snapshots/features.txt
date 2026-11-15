@@ -19,6 +19,14 @@
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
       div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -144,6 +152,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -412,6 +428,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -509,6 +533,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -601,6 +633,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -740,6 +780,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     +   button.primary: "Dokončit skicu"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
@@ -1104,6 +1152,12 @@
   engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6"]}]},"operation":"cut","targets":["e1"]},"index":4}, "e3") -> ok
   engine: getState("s2")  (x3)
   panel:
+    +   select value="cut"
+    -   select value="add"
+    +     option value="add": "Přidat k tělesu"
+    +     option selected value="cut": "Odebrat z tělesa"
+    -     option selected value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
     +     option value="throughAll": "Through all"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     + fieldset.targets
@@ -1254,10 +1308,10 @@
   panel:
     +   select value="new"
     +     option selected value="new": "Nové těleso"
-    +     option value="add": "Přidat k tělesu"
-    -   select value="add"
+    -   select value="cut"
     -     option value="new": "Nové těleso"
-    -     option selected value="add": "Přidat k tělesu"
+    +     option value="cut": "Odebrat z tělesa"
+    -     option selected value="cut": "Odebrat z tělesa"
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
@@ -1327,6 +1381,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1474,6 +1536,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1526,10 +1596,10 @@
     + p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
     + label
     +   "Axis"
-    +   select value="Y"
+    +   select value="Z"
     +     option value="X": "Axis X"
-    +     option selected value="Y": "Axis Y"
-    +     option value="Z": "Axis Z"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     + label
     +   "Count with the original (a whole number or an expression)"
@@ -1574,21 +1644,27 @@
   engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["e3"]},"transform":{"type":"circular","axis":{"kind":"sketchPoint","sketch":"s1","point":"p5"},"count":4,"span":{"type":"full"}}},"index":5}, "n1") -> ok
   engine: getState("e3")
   panel:
+    +   select value="sketchPoint"
+    -   select value="Z"
+    +     option value="Z": "Axis Z"
+    +     option selected value="sketchPoint": "Through a point of a sketch"
+    + label
     +   "Sketch"
     +   select value="s1"
     +     option selected value="s1": "Skica 1"
     +     option value="s2": "Skica 2"
     + label
     +   "Point"
-    +   select value="p1"
+    +   select value="p5"
     +     option value="origin": "origin of the sketch"
-    +     option selected value="p1": "p1"
+    +     option value="p1": "p1"
     +     option value="p2": "p2"
     +     option value="p3": "p3"
     +     option value="p4": "p4"
-    +     option value="p5": "p5"
+    +     option selected value="p5": "p5"
     + p.hint: "The axis is the normal of the sketch plane through the point."
-    + label
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
   view: 3 scene(s) set
 
 === 34. a count typed: previewed at once, because the preview before it was fast
@@ -1779,6 +1855,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1853,11 +1937,11 @@
     - p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
     - label
     -   "Axis"
-    -   select value="Y"
+    -   select value="sketchPoint"
     -     option value="X": "Axis X"
-    -     option selected value="Y": "Axis Y"
+    -     option value="Y": "Axis Y"
     -     option value="Z": "Axis Z"
-    -     option value="sketchPoint": "Through a point of a sketch"
+    -     option selected value="sketchPoint": "Through a point of a sketch"
     - label
     -   "Sketch"
     -   select value="s1"
@@ -1865,13 +1949,13 @@
     -     option value="s2": "Skica 2"
     - label
     -   "Point"
-    -   select value="p1"
+    -   select value="p5"
     -     option value="origin": "origin of the sketch"
-    -     option selected value="p1": "p1"
+    -     option value="p1": "p1"
     -     option value="p2": "p2"
     -     option value="p3": "p3"
     -     option value="p4": "p4"
-    -     option value="p5": "p5"
+    -     option selected value="p5": "p5"
     - p.hint: "The axis is the normal of the sketch plane through the point."
     - label
     -   "Count with the original (a whole number or an expression)"
@@ -1947,6 +2031,14 @@
     -   button.active title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -2075,6 +2167,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -2186,6 +2286,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     +   button.primary: "Dokončit skicu"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
@@ -2349,10 +2457,10 @@
     +     option value="involuteGear": "Involute gear"
     + label
     +   "Skica"
-    +   select value="s2"
+    +   select value="s3"
     +     option value="s1": "Skica 1"
-    +     option selected value="s2": "Skica 2"
-    +     option value="s3": "Skica 3"
+    +     option value="s2": "Skica 2"
+    +     option selected value="s3": "Skica 3"
     + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
     - h2: "Skica: Skica 3"
     - div#sketch-status
@@ -2712,6 +2820,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -2802,10 +2918,10 @@
     -     option selected value="involuteGear": "Involute gear"
     - label
     -   "Skica"
-    -   select value="s2"
+    -   select value="s3"
     -     option value="s1": "Skica 1"
-    -     option selected value="s2": "Skica 2"
-    -     option value="s3": "Skica 3"
+    -     option value="s2": "Skica 2"
+    -     option selected value="s3": "Skica 3"
     - label
     -   "circle (circle of the sketch)"
     -   select value="c7"
@@ -2898,6 +3014,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -3059,6 +3183,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -3245,6 +3377,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -3323,10 +3463,10 @@
     +     option selected value="involuteGear": "Involute gear"
     + label
     +   "Skica"
-    +   select value="s2"
+    +   select value="s3"
     +     option value="s1": "Skica 1"
-    +     option selected value="s2": "Skica 2"
-    +     option value="s3": "Skica 3"
+    +     option value="s2": "Skica 2"
+    +     option selected value="s3": "Skica 3"
     + label
     +   "circle (circle of the sketch)"
     +   select value="c7"
@@ -3437,6 +3577,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -3517,10 +3665,10 @@
     -     option selected value="involuteGear": "Involute gear"
     - label
     -   "Skica"
-    -   select value="s2"
+    -   select value="s3"
     -     option value="s1": "Skica 1"
-    -     option selected value="s2": "Skica 2"
-    -     option value="s3": "Skica 3"
+    -     option value="s2": "Skica 2"
+    -     option selected value="s3": "Skica 3"
     - label
     -   "circle (circle of the sketch)"
     -   select value="c7"
@@ -3631,6 +3779,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -3715,11 +3871,11 @@
     + p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
     + label
     +   "Axis"
-    +   select value="Y"
+    +   select value="sketchPoint"
     +     option value="X": "Axis X"
-    +     option selected value="Y": "Axis Y"
+    +     option value="Y": "Axis Y"
     +     option value="Z": "Axis Z"
-    +     option value="sketchPoint": "Through a point of a sketch"
+    +     option selected value="sketchPoint": "Through a point of a sketch"
     + label
     +   "Sketch"
     +   select value="s1"
@@ -3727,13 +3883,13 @@
     +     option value="s2": "Skica 2"
     + label
     +   "Point"
-    +   select value="p1"
+    +   select value="p5"
     +     option value="origin": "origin of the sketch"
-    +     option selected value="p1": "p1"
+    +     option value="p1": "p1"
     +     option value="p2": "p2"
     +     option value="p3": "p3"
     +     option value="p4": "p4"
-    +     option value="p5": "p5"
+    +     option selected value="p5": "p5"
     + p.hint: "The axis is the normal of the sketch plane through the point."
     + label
     +   "Count with the original (a whole number or an expression)"
@@ -3820,6 +3976,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -3906,11 +4070,11 @@
     - p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
     - label
     -   "Axis"
-    -   select value="Y"
+    -   select value="sketchPoint"
     -     option value="X": "Axis X"
-    -     option selected value="Y": "Axis Y"
+    -     option value="Y": "Axis Y"
     -     option value="Z": "Axis Z"
-    -     option value="sketchPoint": "Through a point of a sketch"
+    -     option selected value="sketchPoint": "Through a point of a sketch"
     - label
     -   "Sketch"
     -   select value="s1"
@@ -3918,13 +4082,13 @@
     -     option value="s2": "Skica 2"
     - label
     -   "Point"
-    -   select value="p1"
+    -   select value="p5"
     -     option value="origin": "origin of the sketch"
-    -     option selected value="p1": "p1"
+    -     option value="p1": "p1"
     -     option value="p2": "p2"
     -     option value="p3": "p3"
     -     option value="p4": "p4"
-    -     option value="p5": "p5"
+    -     option selected value="p5": "p5"
     - p.hint: "The axis is the normal of the sketch plane through the point."
     - label
     -   "Count with the original (a whole number or an expression)"
@@ -3999,6 +4163,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -4160,6 +4332,14 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -4299,6 +4479,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     +   button.primary: "Dokončit skicu"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
@@ -4483,6 +4671,14 @@
     -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
     -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +   button title="Check which bodies share a volume": "Collisions"
     -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
     -   button.primary: "Dokončit skicu"
@@ -4754,6 +4950,14 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     +   button.primary: "Dokončit skicu"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
     +   button.icon disabled title="Hide or show": "👁"

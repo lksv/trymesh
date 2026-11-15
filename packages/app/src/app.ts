@@ -23,7 +23,7 @@ import { byId, download, h } from './dom';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
-import { type Collisions, checkCollisions, followCollisions, shownCollisions } from './panels/collisions';
+import { type QueryPanel, dropAnswer, followQueries, openQuery, queryMenu, shownAnswer, takeSelection } from './panels/query';
 import { modelPanel } from './panels/model';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene } from './scene';
@@ -54,7 +54,7 @@ export class App implements SketchHost, SceneHost {
   readonly hidden = new Set<Id>();
   private showBasePlanes = true;
   pending?: Feature['type']; // a new feature of this type waits for its plane to be picked
-  private readonly collisions: Collisions = {};
+  private readonly queries: QueryPanel = {}; // the query open in the model panel, with its answer
   note: Note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
@@ -67,7 +67,7 @@ export class App implements SketchHost, SceneHost {
   constructor(readonly engine: Engine, view?: View) {
     this.viewport = view ?? new Viewport(byId('viewport'));
     engine.subscribe(() => {
-      this.collisions.answer = undefined; // the answer belonged to the document as it was
+      dropAnswer(this.queries); // the answer of a query belonged to the document as it was
       this.refresh();
     });
     const canvas = this.viewport.element;
@@ -224,7 +224,7 @@ export class App implements SketchHost, SceneHost {
     if (this.marker && at < 0) this.marker = features[Math.min(this.markerIndex, features.length) - 1]?.id ?? null;
     if (this.marker && this.marker === features[features.length - 1]?.id) this.marker = null;
     this.markerIndex = features.findIndex((f) => f.id === this.marker);
-    followCollisions(this.collisions, this);
+    followQueries(this.queries, this);
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
@@ -318,7 +318,11 @@ export class App implements SketchHost, SceneHost {
       groups.push(
         // a button per feature type that has one, in the order of TOOLBAR
         group(...TOOLBAR.flatMap((type) => (FEATURE_UI[type].button ? [button(FEATURE_UI[type].button.label, () => this.create(type), { title: FEATURE_UI[type].button.title, active: this.pending === type })] : []))),
-        group(button('Collisions', () => checkCollisions(this.collisions, this), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: shownCollisions(this.collisions, this) !== undefined })),
+        // every query of the catalog of the engine from one menu; the collisions keep their button
+        group(
+          queryMenu(this.queries, this),
+          button('Collisions', () => openQuery(this.queries, this, 'interference'), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: this.queries.open?.name === 'interference' && shownAnswer(this.queries, this) !== undefined }),
+        ),
       );
     } else if (m.kind === 'sketch') {
       groups.push(
@@ -461,7 +465,7 @@ export class App implements SketchHost, SceneHost {
     const panel = byId('panel');
     if (m.kind === 'sketch') panel.replaceChildren(...sketchPanel(this, m));
     else if (isDraft(m)) panel.replaceChildren(...m.form.panel(m, this));
-    else panel.replaceChildren(...modelPanel(this, this.collisions));
+    else panel.replaceChildren(...modelPanel(this, this.queries));
   }
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
@@ -634,7 +638,8 @@ export class App implements SketchHost, SceneHost {
       }
       return;
     }
-    this.selected = pick;
+    // an armed control of the open query takes the selection; the app then keeps none of its own
+    if (!pick || !takeSelection(this.queries, pick)) this.selected = pick;
     this.renderPanel();
     this.renderScene();
   }
@@ -740,7 +745,7 @@ export class App implements SketchHost, SceneHost {
   // The scene of the model, then what the open sketch or the open form adds to it.
   renderScene(): void {
     const m = this.mode;
-    const model = modelScene(this, this.collisions, m.kind === 'sketch' ? m : undefined);
+    const model = modelScene(this, this.queries, m.kind === 'sketch' ? m : undefined);
     if (m.kind === 'sketch') sketchScene(this, m, model);
     if (isDraft(m)) m.form.overlay?.(m, model, this);
     this.viewport.setScene(model);

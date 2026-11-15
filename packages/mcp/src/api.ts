@@ -223,9 +223,10 @@ export function argumentText(spec: ArgKind): string {
     edge: '{ kind: "edge", body, edge: EdgeName }',
     sketchPoint: '{ kind: "sketchPoint", sketch, point } (the point `origin` is the origin of the sketch)',
   };
-  const named = (fields: { readonly [name: string]: ArgKind & { optional?: boolean } }): string =>
+  // a nested entry may say what it is for; its summary follows in brackets
+  const named = (fields: { readonly [name: string]: ArgKind & { optional?: boolean; summary?: string } }): string =>
     Object.entries(fields)
-      .map(([name, field]) => `${name}${field.optional ? ' (optional)' : ''}: ${argumentText(field)}`)
+      .map(([name, field]) => `${name}${field.optional ? ' (optional)' : ''}: ${argumentText(field)}${field.summary ? ` (${field.summary.replace(/\.$/, '')})` : ''}`)
       .join('; ');
   switch (spec.kind) {
     case 'number':

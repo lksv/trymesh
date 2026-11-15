@@ -243,9 +243,9 @@ The first is in `requireRef`, which the preparatory step moves to `features/inde
 
 ## Open questions
 
-- **For the owner: the source of the numbers.** Does the owner have the four standards, or is a named published table acceptable as the source (with the second table for the review)? The design does not pick one.
-- **For the owner: which heat-set inserts.** One maker's data sheet has to be chosen; the hole diameters differ.
-- **For the owner: bearings.** The backlog lists "common bearing sizes" among the catalog content. They are deferred here; say if a link needs them before step 3.
+- **The source of the numbers: decided by the owner on 2026-11-15.** A named published table is the source of each catalog, with a second, independent table for the check in the review; `source` of the catalog names it.
+- **Which heat-set inserts: answered by the owner on 2026-11-15, not closed.** He has no fixed maker (unbranded inserts), so the catalog cannot be the data sheet of one maker, which this design assumed. Proposed: rows by the size as sold (thread, outer diameter, length) instead of by the thread alone, with typical values and a `source` that says so; the summary tells that unbranded inserts differ and a hole should be tried in a test print; the hole of a feature is stored as numbers, so the value of the catalog is a start the user corrects. To confirm before the implementation, with the sizes the owner buys.
+- **Bearings: decided by the owner on 2026-11-15.** Deferred to step 3, until a link needs them.
 - Whether the series of clearance holes are the right choices for printed parts, where the allowance does most of the work. Kept as the proposal, to be confirmed against the standard with the other columns.
 - The sizes: M2 to M8 is a guess at what printed parts use.
 - A head through a thin part of a body that reaches deeper elsewhere is not detected with "through all" ("The depth"). Whether the ray per point is worth its cost is left to the first model that trips over it.

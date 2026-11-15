@@ -230,7 +230,7 @@ function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown
     segments: edge.segments,
     length: round(edge.length),
     ...(edge.kind === 'line' ? { from: edge.from.map(round), to: edge.to.map(round), ...(edge.gaps ? { gaps: true } : {}) } : {}),
-    ...(edge.kind === 'circle' && edge.circle ? { center: edge.circle.center.map(round), radius: round(edge.circle.radius) } : {}),
+    ...(edge.kind === 'circle' ? { center: edge.circle.center.map(round), radius: round(edge.circle.radius), axis: edge.circle.axis.map(round) } : {}),
   });
   return {
     id,

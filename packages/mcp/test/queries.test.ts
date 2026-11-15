@@ -47,6 +47,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   catalog: { name: Object.keys(DATA_CATALOGS)[0] ?? 'none' },
   measure: { from: { kind: 'face', body: 'low', face: { feature: 'low', role: 'startCap' } }, to: { kind: 'face', body: 'low', face: { feature: 'low', role: 'endCap' } } },
   section: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
+  gap: {},
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -58,6 +59,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   catalog: { name: 'required', key: 'optional' },
   measure: { from: 'required', to: 'required' },
   section: { plane: 'required', offset: 'optional', flip: 'optional', bodies: 'optional', outline: 'optional', maxPoints: 'optional' },
+  gap: { bodies: 'optional', within: 'optional', maxPairs: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -126,6 +128,12 @@ describe('the tool query', () => {
     expect(call(engine, { query: 'sketchDiagnosis', args: { sketch: 's' } })).toMatchObject({ status: 'solved', degreesOfFreedom: 0 });
     expect(call(engine, { query: 'constraintExplanation', args: { sketch: 's', constraint: 'd' } })).toEqual(engine.explainConstraint('s', 'd'));
     expect(call(engine, { query: 'interference' })).toMatchObject({ checked: 1 }); // no arguments at all
+    // the gap (D40): the two discs share a slice, so their distance is zero and the kind of zero is said
+    expect(call(engine, { query: 'gap' })).toEqual({ within: 5, pairs: [{ a: 'high', b: 'low', distance: 0, contact: 'collision' }], close: 1, apart: 0, failed: [], refused: 0, checked: 1 });
+    // lifted by 0.1234567 mm above the lower disc: the distance is printed to six significant digits, the accuracy to three
+    const lifted = call(engine, { query: 'gap', args: { bodies: ['low', 'high'] }, after: { type: 'setField', feature: 'high', path: 'extent/start', value: 10.1234567 } });
+    expect(lifted.pairs).toMatchObject([{ a: 'high', b: 'low', distance: 0.123457, accuracy: 0.02 }]);
+    expect(call(engine, { query: 'gap', args: { bodies: ['low', 'low'] } })).toEqual({ error: 'invalidArguments: gap: bodies: two different bodies are needed for a pair' });
   });
 
   it('`at` asks after a feature and `after` about a change that is not written', () => {
@@ -149,7 +157,7 @@ describe('the tool query', () => {
     expect(call(engine, { query: 'interference', args: { bodies: ['low', 'nope'] } })).toEqual({ error: 'notAvailable: interference: bodies[1]: the body "nope" is not in the state asked about' });
     expect(call(engine, { query: 'interference', args: { threshold: -1 } })).toEqual({ error: 'invalidArguments: interference: threshold: the value must not be negative' });
     expect(call(engine, { query: 'interference', at: 'nope' })).toEqual({ error: 'notAvailable: interference: `at`: the feature "nope" is not in the document' });
-    expect(call(engine, { query: 'gap' })).toEqual({ error: expect.stringContaining('invalidArguments: there is no query "gap"') });
+    expect(call(engine, { query: 'nope' })).toEqual({ error: expect.stringContaining('invalidArguments: there is no query "nope"') });
     expect(call(engine, { query: 'interference', after: { type: 'removeFeature', id: 'nope' } })).toEqual({ error: expect.stringMatching(/^after: invalidCommand: /) });
     expect(call(engine, { query: 'interference', after: { type: 'renameFeature', id: 'low', name: 'x' }, at: 'nope' })).toEqual({ error: expect.stringMatching(/^after: invalidCommand: /) });
     expect(call(engine, {})).toEqual({ error: expect.stringContaining('"query"') });

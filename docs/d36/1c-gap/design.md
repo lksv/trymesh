@@ -1,6 +1,6 @@
 # 1c Smallest gap between bodies
 
-**Decision D40. State: designed, not implemented; fourth version, after three rounds of reviews. One choice is left open on purpose: whether the kernel port gets a method at all (see "Open").** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D40. State: implemented and merged into `master` on 2026-11-15: the query `gap` and the gap view of the app. The kernel port did not get a method: the owner decided so and the measurement confirmed it; see "The measurement" and "As implemented" at the end, which say where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the gap between a planet and the carrier.
 
@@ -147,7 +147,7 @@ It is the collisions view with one line more in the scene.
 ## Open
 
 - How the time grows with the number of bodies. A model of fifty bodies has 1225 pairs; the boxes cut most of them, but the trial has only the eight bodies of the joint. If it is too slow, the fallback is a limit on the pairs sent to the kernel, with the rest counted as not examined.
-- **Whether the port method earns its place: decided by the owner on 2026-11-15.** The port stays as it is. The gap is the pass of 1b (`closest`), and a body that lies wholly inside another is told by `interference`, not by a method `minGap` and not by a point-in-solid test. The first step of the implementation is the measurement this item proposed, on a model with many pairs of bodies that are near and apart; `minGap` is taken only if the variant without it comes out noticeably slower. Where this design speaks of `context.kernel.minGap`, read the pass until that measurement says otherwise.
+- **Whether the port method earns its place: decided by the owner on 2026-11-15.** The port stays as it is. The gap is the pass of 1b (`closest`), and a body that lies wholly inside another is told by `interference`, not by a method `minGap` and not by a point-in-solid test. The first step of the implementation is the measurement this item proposed, on a model with many pairs of bodies that are near and apart; `minGap` is taken only if the variant without it comes out noticeably slower. Where this design speaks of `context.kernel.minGap`, read the pass until that measurement says otherwise. **Measured on 2026-11-15: the variant without the port method is as fast; the port stays as it is** ("The measurement").
 - Whether `fit` and `collision` should carry the depth of the overlap as well. Today the caller asks `interference` for it.
 
 ## Reviews
@@ -197,3 +197,96 @@ Not acted on: nothing. Whether the port method is the right choice stays open on
 | The augmentation changes `SolidKernel` for the whole program; a draft that builds a kernel or imports the adapter or a fake would fail until that code has the method. And "overloads, not an error" holds only for method syntax | both | Yes (the reviewer's probes: TS2739 for a fake, TS2717 for a second property) | The method is declared as a property; both points are in the contract and in the need |
 
 **Known limit after the last round:** the choice between the port method and the variant with `interference` is not made. It needs the measurement named under "Open", on a model larger than the joint, and it should be made before 1c is implemented; taking the variant changes `gapOf` and removes the port section, nothing else.
+
+## The measurement (2026-11-15)
+
+The first step of the implementation, as the owner decided: the two variants on the joint of scenario 9 and on a model with many pairs, a disc with 72 holes on three circles and a pin in each (clearance 0.15 mm; the pins of the inner circle 2.8 mm from their neighbours). The script is kept outside the repository; it called `minGap` of Manifold 3.5.5 through the adapter's access to the library, and `closest` and the intersection of `interference` as the engine has them. Each pair whose boxes are within the search distance was computed without the store of results; the times are of the third run, in milliseconds.
+
+- **(a)** `minGap` for every such pair; for a gap above zero the pass told to look within the kernel's distance; for a gap of zero the intersection.
+- **(b)** the pass within the search distance for every such pair; the intersection for a gap of zero and for every pair whose boxes overlap.
+
+| Model | Search | Pairs: all, boxes within, boxes overlap | (a) | (b) |
+|---|---|---|---|---|
+| the joint: 8 bodies, 17 146 triangles | 1 | 28, 16, 13 | 543 (kernel 177, pass 282, shared 83) | 546 (pass 352, shared 194) |
+| | 5 | 28, 18, 13 | 889 (kernel 349, pass 443, shared 97) | 807 (pass 558, shared 249) |
+| | 20 | 28, 23, 13 | 2203 (kernel 1478, pass 651, shared 73) | 883 (pass 718, shared 165) |
+| the disc with pins: 73 bodies, 21 996 triangles | 1 | 2628, 72, 72 | 1709 (kernel 956, pass 752) | 1945 (pass 776, shared 1168) |
+| | 5 | 2628, 96, 72 | 1960 (kernel 1170, pass 789) | 2233 (pass 1068, shared 1164) |
+| | 20 | 2628, 184, 72 | 3502 (kernel 2192, pass 1308) | 3024 (pass 1641, shared 1381) |
+
+- The two variants gave the same distance for every pair, to the last digit, and the same pairs as close, at zero and apart.
+- **(b) is between 14 % slower and 2.5 times faster.** It is slower where every close pair is a body in a hole of another (the disc: an intersection of 16 ms for each of the 72 pins, against a `minGap` of 12 ms), and faster as the search distance grows, because the cost of `minGap` grows with it and that of the pass hardly does.
+- Nothing here is "noticeably slower", so **the port stays as it is** and the query is variant (b). What the port method would have cost is listed under "Rejected".
+- The boxes cut the pairs of the larger model from 2628 to 96, which answers the first item of "Open" as far as this model goes: the time follows the pairs that are near, not the square of the bodies.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/gap.ts`: the entry `gap` in `QUERIES`, with `Gap` and `GapReport` exported from the index of the engine. Tests: `packages/scenarios/test/gap.test.ts` (small models against the real adapters: the two points and their faces, the kinds of zero, a body inside the material of another and one in a closed cavity, a body of two pieces, the search distance, the limit of the answer, `at` and a previewed state, how often the kernel is asked, a kernel that fails), the part of scenario 11 in `scenario11.test.ts`, and the rows of the query in `packages/mcp/test/queries.test.ts`.
+
+**The numbers of the design hold on the joint**: 0.140453 between the wall of the bore of the planet (`planetHole/side/ph`, at (17.610, 0, 34)) and the pin of the carrier (`carrierPin/side/pin`, at (17.750, 0, 34)) with an accuracy of 0.0200515; 28 pairs checked, 15 close and 13 apart; three pairs touching (motor and plate, motor and sun, plate and housing), then 0.0497 (each planet and the ring gear), 0.0499 (the sun and each planet), 0.1405 (each planet and the carrier), 0.5, 0.99 and 1.5812; the plate and the carrier 34 apart; the planet made too large collides with the housing. The whole joint takes under a second the first time (0.8 s in the measurement) and nothing when asked again.
+
+What differs from the design and from `contract.ts`:
+
+- **The kernel port is not changed.** There is no `minGap`, no guarantee of seven points and no fake to extend; "The cheap variant" above describes the port method that was not taken. One pair is answered so:
+  1. boxes at least the search distance apart (and further apart than the precision of the coordinates): `apart`, nothing is computed;
+  2. the pass (`closest` over the two solids, within the search distance, and within the precision of the coordinates at least);
+  3. a distance no larger than the precision of the coordinates: zero, with the kind of contact from `interference`;
+  4. otherwise `interference` is asked whether the pair shares a volume, which finds a body that lies wholly inside the material of the other, however far from its surface (also when the pass found nothing within the search distance); a collision or a fit is a distance of zero with that contact;
+  5. otherwise the distance of the pass with its two points and faces, or `apart` when the pass found nothing closer than the search distance.
+
+  `interference` looks at the boxes itself and asks the kernel only for a pair whose boxes overlap, so step 4 costs nothing for the others.
+- **`distance` is the number of the pass**, in double precision over the float32 coordinates; there is no second source to disagree with, and no second run of the pass.
+- **`failed` holds the pairs for which the kernel could not tell whether one body lies inside the other** (step 4: the surfaces do not meet, the boxes overlap, the intersection failed), with a message that says so and the kernel's own. The design had there the pairs `minGap` refused. Such a pair has a distance from the pass, but calling it a gap would be a guess; it is neither close nor apart. A pair whose surfaces meet and whose intersection fails is close, with the contact `unknown`, as designed.
+- **Nothing is caught**: the pass does not throw for a body of the engine, and `interference` reports a failure of the kernel in its answer.
+- **One body named twice and nothing else is `invalidArguments`**, with the path `['bodies']`: the code `QueryFailure` got with 1b for exactly this. The design wrote `failed`, the stand-in of that time. A list that names a body twice among others asks about the pairs of the different ones.
+- **What a pair shares is kept by its two meshes separately from the gap**, so another search distance measures the pair again but does not ask the kernel again. It is kept apart from what the query `interference` itself keeps (the store keeps the queries apart), so a model asked for both its collisions and its gaps intersects a pair twice.
+- **Pairs at the same distance** come in the order of the bodies in the model, whatever the order of `bodies`; that is what the pairs at zero do. Copies of one body (the three planets) have gaps that differ in their last digits, and their order among themselves follows those digits.
+- **`units` and `significant`** are on the entry: `distance`, `accuracy` and `within` are millimetres; a tool prints the distance to six significant digits and the accuracy to three.
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+
+**Known limits.**
+
+- A body inside the material of another that shares less than the threshold of `interference` (0.001 mm³) with it, or no deeper than the precision of the coordinates, is not a collision there and so gets its distance to the surface around it.
+- The time of the whole joint is the pass: some 30 ms a pair on bodies of a few thousand triangles. A model of many large bodies that all lie within the search distance of each other would take long; the fallback under "Open" (a limit on the pairs examined) is not built.
+
+### Review of the engine side (2026-11-15)
+
+One full review by a subagent that did not write the code, read-only, with probes against the real adapters. No serious finding. It checked by probe, and found right: three sets of 26 random blocks against the analytic answer of boxes (class, distance, the points and faces on the right body, the counts and the order), bars that cross with no vertex inside the other, identical bodies in one place, contact along an edge and at a corner, an overlap of 1e-5 and of 5e-4 (as `interference` says), a body inside the material and one in a closed cavity at several search distances, a ring on a shaft, the counts and the type of a pair, the keys of the store, and every mistaken argument. One round; the fix is small.
+
+| Finding | Held | What was done |
+|---|---|---|
+| Two behaviours are pinned by no test: the search distance in the key of what is remembered, and the threshold of zero. Proven by mutation: all tests passed with either changed, while a probe showed the wrong answer (moderate) | Yes: every pair the tests asked with two search distances was cut by the boxes, and every touching pair was at exactly zero on the mesh | Tests: a body in a cavity asked within 2, 5, 3 and 2 again; two blocks 5 m from the origin and 0.004 mm apart are touching, the same blocks at the origin have a gap |
+| Pairs at one distance follow the order of the list `bodies`, not of the model as the comment and this document said | Yes | The bodies are taken in the order of the model, filtered by the list, as `interference` does |
+| With a search distance below the precision of the coordinates a pair that is zero by the query's own rule was counted apart | Yes (three probes) | A pair is looked for within the precision at least; zero is within any search distance |
+| The remembered answer was handed out by reference: a reader that changed it changed the next answer | Yes (probe) | The answer is built anew every time; what is remembered names neither a body nor a face, and says which mesh its first point lies on |
+| "`minGap` is no faster" (the module, the architecture) and "about 0.6 s" (here) do not match the table | Yes | "Not noticeably faster"; "under a second" |
+| The limit of the list of pairs that could not be measured is pinned by no test (reasoned) | Yes | The test of a failing kernel has two such pairs and a limit of one |
+
+Not acted on, and why:
+
+- **A failure of the kernel is remembered for as long as the two meshes live**, as a contact `unknown` or a pair that could not be measured. It is how `interference` keeps its failures; it matters only if the kernel fails on one call and not on the next for the same input, which it does not.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/gap.ts`, one line in `QUERY_VIEWS`. The view is the one of "What the app shows" and of `calls.ts`, with these differences:
+
+- **A picked gap also highlights its two faces and names them under its row.** The design drew the two bodies and the line. A gap of a tenth of a millimetre is not seen at the size of a model, and the faces are what the answer is for.
+- **The numbers are rounded to a thousandth of a millimetre**, as the view of `measure` does; the accuracy is left out when it rounds to nothing, and a gap that rounds to nothing reads "under 0.001 mm" so that it is not taken for a contact.
+- **A contact is worded** (`unknown` reads "touching or colliding"), with what it means in the tooltip of the row.
+- **The note** starts with "Gaps:" and says "No two bodies within …" when there is none.
+- **The colours** are those of the app (`COLOR.select`, `COLOR.clash`, and `COLOR.hover` for the faces, the line and the points), not the three numbers of `calls.ts`.
+- **Not asked when the form opens** (the collisions are): the search distance is an argument a user sets first, and the query may take a second.
+
+Tested by five recorded steps of the model case of `packages/app/test/app.test.ts` (the rows, a pair at zero picked, a gap picked, the list cut, closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").
+
+**Not done:** a zoom to the picked gap; the view over a preview or while a form of a feature is open (the generic form is not shown then).
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diff only, a cheaper model). It found the rows and the picked row to agree (the line under a picked row and the pairs that could not be measured shift no index), the two kinds of a pair told apart, each face on its own body, the rounding, an answer with nothing in it or with failures only, the recorded steps and the documents right. One finding, minor; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The line that says a list was cut names both lists whenever either was cut, so it could read "3 of 3 pair(s) within the search distance and 5 of 9 that could not be measured" | Yes | Each list is named only when it was cut |

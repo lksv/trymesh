@@ -110,6 +110,7 @@
           option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
           option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
           option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -575,6 +576,7 @@
     -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -680,6 +682,7 @@
     +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -981,6 +984,7 @@
     -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1139,6 +1143,7 @@
     +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -2676,7 +2681,138 @@
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 100 numbers, sum -14744.87
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -485
 
-=== 69. a change of the document throws the answer away
+=== 69. the query Smallest gap within 100 mm: a row per pair, the closest first, a pair at zero with its contact
+  engine: query("gap", {"within":100}, {}) -> ok
+  panel:
+    + h2 title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    + label title="Only pairs among these; without it all bodies. Two bodies ask about one pair."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="Pairs further apart than this are counted, not measured. A larger distance takes longer."
+    +   "Search distance (optional)"
+    +   span.field
+    +     input.value value="100" placeholder="5"
+    +     span.unit: "mm"
+    + label title="The most pairs to list, the closest first."
+    +   "Most pairs (optional)"
+    +   span.field
+    +     input.value value="" placeholder="50"
+    +     span.unit
+    + div.buttons
+    +   button.primary: "Ask again"
+    +   button: "Close"
+    + div.row title="Highlight the two bodies. The two bodies share a volume"
+    +   span.name: "Deska × Vysunutí 3"
+    +   small: "collision"
+    + div.row title="Highlight the two bodies and show where the gap is"
+    +   span.name: "Vysunutí 2 × Vysunutí 3"
+    +   small: "25 mm ± 0.01 mm"
+    + div.row title="Highlight the two bodies and show where the gap is"
+    +   span.name: "Deska × Vysunutí 2"
+    +   small: "45 mm ± 0.01 mm"
+  status: Gaps: 3 pair(s) of bodies within 100 mm of each other.
+  view: 2 scene(s) set
+
+=== 70. a pair at zero picked: its two bodies are highlighted
+  panel:
+    + div.row.selected title="Highlight the two bodies. The two bodies share a volume"
+    - div.row title="Highlight the two bodies. The two bodies share a volume"
+  view: 1 scene(s) set
+  scene:
+    + face e1 #0 #f97316 opacity 0.45
+    + face e1 #1 #f97316 opacity 0.45
+    + face e1 #2 #f97316 opacity 0.45
+    + face e1 #3 #f97316 opacity 0.45
+    + face e1 #4 #f97316 opacity 0.45
+    + face e1 #5 #f97316 opacity 0.45
+    + face e3 #9 #dc2626 opacity 0.45
+    + face e3 #10 #dc2626 opacity 0.45
+    + face e3 #11 #dc2626 opacity 0.45
+    + face e3 #12 #dc2626 opacity 0.45
+    + face e3 #13 #dc2626 opacity 0.45
+    + face e3 #14 #dc2626 opacity 0.45
+
+=== 71. a pair with a gap picked: the two faces named and highlighted, the two points joined by a line with its length
+  panel:
+    + div.row title="Highlight the two bodies. The two bodies share a volume"
+    - div.row.selected title="Highlight the two bodies. The two bodies share a volume"
+    + div.row.selected title="Highlight the two bodies and show where the gap is"
+    - div.row title="Highlight the two bodies and show where the gap is"
+    + p.hint: "Between Deska – bok and Vysunutí 2 – bok."
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 2 onTop: 6 numbers, sum 485
+    + points #0ea5e9 size 8: 6 numbers, sum 485
+    + face e2 #6 #dc2626 opacity 0.45
+    + face e2 #7 #dc2626 opacity 0.45
+    + face e2 #8 #dc2626 opacity 0.45
+    + face e1 #3 #0ea5e9 opacity 0.4
+    + face e2 #8 #0ea5e9 opacity 0.4
+    + label "45 mm" reference at [62.5, 15, 0]
+    - face e3 #9 #dc2626 opacity 0.45
+    - face e3 #10 #dc2626 opacity 0.45
+    - face e3 #11 #dc2626 opacity 0.45
+    - face e3 #12 #dc2626 opacity 0.45
+    - face e3 #13 #dc2626 opacity 0.45
+    - face e3 #14 #dc2626 opacity 0.45
+
+=== 72. at most one pair listed: the panel says how many there are
+  engine: query("gap", {"within":100,"maxPairs":1}, {}) -> ok
+  panel:
+    +     input.value value="1" placeholder="50"
+    -     input.value value="" placeholder="50"
+    + p.hint: "Listed: 1 of 3 pair(s) within the search distance. Raise "Most pairs" to see the rest."
+    - div.row title="Highlight the two bodies and show where the gap is"
+    -   span.name: "Vysunutí 2 × Vysunutí 3"
+    -   small: "25 mm ± 0.01 mm"
+    - div.row.selected title="Highlight the two bodies and show where the gap is"
+    -   span.name: "Deska × Vysunutí 2"
+    -   small: "45 mm ± 0.01 mm"
+    - p.hint: "Between Deska – bok and Vysunutí 2 – bok."
+  view: 1 scene(s) set
+  scene:
+    - line #0ea5e9 width 2 onTop: 6 numbers, sum 485
+    - points #0ea5e9 size 8: 6 numbers, sum 485
+    - face e1 #0 #f97316 opacity 0.45
+    - face e1 #1 #f97316 opacity 0.45
+    - face e1 #2 #f97316 opacity 0.45
+    - face e1 #3 #f97316 opacity 0.45
+    - face e1 #4 #f97316 opacity 0.45
+    - face e1 #5 #f97316 opacity 0.45
+    - face e2 #6 #dc2626 opacity 0.45
+    - face e2 #7 #dc2626 opacity 0.45
+    - face e2 #8 #dc2626 opacity 0.45
+    - face e1 #3 #0ea5e9 opacity 0.4
+    - face e2 #8 #0ea5e9 opacity 0.4
+    - label "45 mm" reference at [62.5, 15, 0]
+
+=== 73. the gaps closed
+  panel:
+    - h2 title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    - label title="Only pairs among these; without it all bodies. Two bodies ask about one pair."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="Pairs further apart than this are counted, not measured. A larger distance takes longer."
+    -   "Search distance (optional)"
+    -   span.field
+    -     input.value value="100" placeholder="5"
+    -     span.unit: "mm"
+    - label title="The most pairs to list, the closest first."
+    -   "Most pairs (optional)"
+    -   span.field
+    -     input.value value="1" placeholder="50"
+    -     span.unit
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - div.row title="Highlight the two bodies. The two bodies share a volume"
+    -   span.name: "Deska × Vysunutí 3"
+    -   small: "collision"
+    - p.hint: "Listed: 1 of 3 pair(s) within the search distance. Raise "Most pairs" to see the rest."
+  status: 
+  view: 1 scene(s) set
+
+=== 74. a change of the document throws the answer away
   engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
@@ -2700,11 +2836,11 @@
     +   button: "Close"
   view: 2 scene(s) set
 
-=== 70. waiting for a plane cancelled
+=== 75. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 71. a new document
+=== 76. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

@@ -2,6 +2,11 @@
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
 // Fourth version, after the third and last round of reviews (design.md, "Reviews").
+//
+// As implemented (design.md, "The measurement" and "As implemented"): the kernel port did not
+// get `minGap`; the query measures with the pass of 1b and asks `interference` about a shared
+// volume. The part "the kernel port" below is the variant that was not taken, kept as designed.
+// The types of the query are in packages/engine/src/query/gap.ts.
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';

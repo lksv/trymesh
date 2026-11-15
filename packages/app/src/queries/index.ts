@@ -2,6 +2,7 @@
 // names and values. A view replaces the tree with rows of its own, adds to the scene, and words
 // the note of the status line.
 import type { EngineState, FaceName, Frame, Id, QueryArgs, QueryName, QueryResult, ResultUnit, Vec3 } from '@trymesh/engine';
+import { gapView } from './gap';
 import { interferenceView } from './interference';
 import { measureView } from './measure';
 import { sectionView } from './section';
@@ -56,4 +57,4 @@ export interface QueryView<N extends QueryName> {
   note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 
-export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView };
+export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView };

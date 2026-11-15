@@ -28,7 +28,7 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
 | `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
 | `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
-| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts`, `queries/section.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the three views there are; the collisions are the view of `interference`, the cut model the view of `section` |
+| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts`, `queries/section.ts`, `queries/gap.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the three views there are; the collisions are the view of `interference`, the cut model the view of `section` |
 | `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
 | `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`); what a view of a query adds, and the cut it may make (`shownCut`, read by the scene and by the pick of the app) |
 | `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. A scene may be cut (`SceneModel.clip`): the bodies and their highlighted faces are clipped by their materials and not hit in the half-space that is cut away. `View` is its interface; a test passes its own |
@@ -65,6 +65,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/entity.ts` | `entityShape`: what a face, an edge or a sketch point is exactly, for a query that takes an entity |
 | `query/measure.ts` | the query `measure`: the exact part between two entities and the smallest distance on the mesh |
 | `query/section.ts` | the query `section`: the cut of a body by a plane (`cut`), the corners of a loop, the regions, the spans read from the surfaces and the budget; `takenAt` and `completeRegions` for whoever draws a cut |
+| `query/gap.ts` | the query `gap`: the smallest distance of every pair of bodies within a search distance, from the pass over the meshes, with `interference` for the kind of a zero and for a body inside another |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

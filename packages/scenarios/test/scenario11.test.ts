@@ -1,8 +1,9 @@
 // Validation scenario 11 (docs/requirements.md): the queries of step 1 of D36 asked about the
 // robot joint of scenario 9. Each package of track A adds its part:
 // - 1b (D39), measuring: the wall between the root circle of the ring gear and the bolt holes;
-// - 1a (D38), a section through the gears.
-import type { EdgeName, Engine, EntityRef, FaceName, Id, Measurement, PlaneRef, QueryArgs, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
+// - 1a (D38), a section through the gears;
+// - 1c (D40), the gap between a planet and the carrier, and the tight places of the whole joint.
+import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, Measurement, PlaneRef, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bodiesAndHoles, parametersAndGearSketch } from './joint';
 import { expectAllOk, newEngine } from './kit';
@@ -22,6 +23,11 @@ function section(engine: Engine, args: QueryArgs<'section'>, at?: Id): SectionRe
   return answer.result;
 }
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
+function gap(engine: Engine, args: QueryArgs<'gap'> = {}, options: QueryOptions = {}): GapReport {
+  const answer = engine.query('gap', args, options);
+  if (!answer.ok) throw new Error(`${answer.error.code}: ${answer.error.message}`);
+  return answer.result;
+}
 const loopsOf = (result: SectionResult): SectionLoop[] => result.bodies.flatMap((body) => (body.regions ?? []).flatMap((region) => [region.outer, ...region.holes]));
 const spansOf = (result: SectionResult): SectionSpan[] => loopsOf(result).flatMap((loop) => loop.spans ?? []);
 
@@ -210,5 +216,87 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     expect(outside.inPlane.map((entry) => entry.body)).toEqual(['housing']);
     // a face that is not planar gives no cutting plane
     expect(engine.query('section', { plane: { kind: 'face', body: 'housing', face: side('housing', 'ho') } })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['plane'] } });
+  });
+
+  it('1c: the gap between a planet and the carrier lies on the wall of the bore and on the pin', () => {
+    // The pin of the carrier (diameter 5) goes through the bore of the planet (5.3): 0.15 by
+    // design, a little less between the two polygons.
+    const report = gap(engine, { bodies: ['planet', 'carrier'] });
+    expect(report).toMatchObject({ within: 5, close: 1, apart: 0, refused: 0, checked: 1 });
+    const [pair] = report.pairs;
+    if (!('between' in pair)) throw new Error('a gap above zero says where it is');
+    expect(pair).toMatchObject({ a: 'carrier', b: 'planet', distance: expect.closeTo(0.140453, 5) }); // `a` is the smaller ID
+    // The closest points lie on the rim of the bore, where the cap of the planet is as near as
+    // its wall: the face named is the wall, the feature to change.
+    expect(pair.between.faceA).toEqual(side('carrierPin', 'pin'));
+    expect(pair.between.faceB).toEqual(side('planetHole', 'ph'));
+    expect(pair.between.a).toEqual([expect.closeTo(17.75, 3), expect.closeTo(0, 3), expect.closeTo(34, 3)]);
+    expect(pair.between.b).toEqual([expect.closeTo(17.61, 3), expect.closeTo(0, 3), expect.closeTo(34, 3)]);
+    // two bodies with round faces, and the precision of the coordinates of a pair that reaches 51.5 mm
+    expect(pair.accuracy).toBeCloseTo(0.02 + 51.5e-6, 9);
+    expect(Math.abs(pair.distance - 0.15)).toBeLessThan(pair.accuracy);
+  });
+
+  it('1c: the tight places of the whole joint in one call, the closest first', () => {
+    const started = performance.now();
+    const report = gap(engine);
+    const took = performance.now() - started;
+    expect(report).toMatchObject({ within: 5, close: 15, apart: 13, refused: 0, checked: 28, failed: [] });
+    expect(report.truncated).toBeUndefined();
+    const listed = report.pairs.map((pair) => `${pair.a} ${pair.b} ${'between' in pair ? pair.distance.toFixed(4) : pair.contact}`);
+    // the three copies of a planet are the same gap to the last digits or so: their order among
+    // themselves is that of the numbers, so the list is compared group by group
+    expect(report.pairs.map((pair) => pair.distance)).toEqual([...report.pairs.map((pair) => pair.distance)].sort((a, b) => a - b));
+    expect(listed.slice(0, 3)).toEqual(['motor plate touching', 'motor sun touching', 'housing plate touching']); // in the order of the bodies
+    expect(listed.slice(3, 6).sort()).toEqual(['housing planet 0.0497', 'housing planets/1 0.0497', 'housing planets/2 0.0497']);
+    expect(listed.slice(6, 9).sort()).toEqual(['planet sun 0.0499', 'planets/1 sun 0.0499', 'planets/2 sun 0.0499']);
+    expect(listed.slice(9, 12).sort()).toEqual(['carrier planet 0.1405', 'carrier planets/1 0.1405', 'carrier planets/2 0.1405']);
+    expect([...listed].sort()).toEqual([
+      // seating faces: flush, no shared volume
+      'motor plate touching',
+      'motor sun touching',
+      'housing plate touching',
+      // the backlash of 0.05 between the flanks of the teeth
+      'housing planet 0.0497',
+      'housing planets/1 0.0497',
+      'housing planets/2 0.0497',
+      'planet sun 0.0499',
+      'planets/1 sun 0.0499',
+      'planets/2 sun 0.0499',
+      // the pins of the carrier in the bores of the planets
+      'carrier planet 0.1405',
+      'carrier planets/1 0.1405',
+      'carrier planets/2 0.1405',
+      'carrier sun 0.5000',
+      'housing motor 0.9900', // the motor in its recess, 1 by design
+      'carrier housing 1.5812',
+    ].sort());
+    expect(listed.slice(12)).toEqual(['carrier sun 0.5000', 'housing motor 0.9900', 'carrier housing 1.5812']);
+    // the backlash lies between the faces of teeth
+    const mesh = report.pairs.find((pair) => pair.a === 'planet' && pair.b === 'sun');
+    expect(mesh && 'between' in mesh && [mesh.between.faceA, mesh.between.faceB]).toEqual([side('planet', 'teeth'), side('sunTeeth', 'teeth')]);
+    // 28 pairs of some 17 000 triangles together: a few seconds at most on a loaded machine
+    expect(took).toBeLessThan(10_000);
+    // the answer is remembered by the meshes: asked again, nothing is measured
+    const again = performance.now();
+    expect(gap(engine)).toEqual(report);
+    expect(performance.now() - again).toBeLessThan(took / 2 + 50);
+  });
+
+  it('1c: a pair far apart, a pair that collides, and the gap followed over a parameter', () => {
+    // the plate and the pins of the carrier are 34 mm apart: counted, and measured with a larger search distance
+    expect(gap(engine, { bodies: ['plate', 'carrier'] })).toMatchObject({ pairs: [], close: 0, apart: 1 });
+    const far = gap(engine, { bodies: ['plate', 'carrier'], within: 50 });
+    expect(far.pairs).toMatchObject([{ a: 'carrier', b: 'plate', distance: expect.closeTo(34, 6) }]);
+    // the planet made too large, as in part i of scenario 9, without writing it down
+    const tooLarge = engine.preview({ type: 'setField', feature: 'skGears', path: 'constraints/dp/value', value: 'module * Zp + 1' });
+    if (!tooLarge.ok) throw new Error(tooLarge.error.message);
+    expect(gap(engine, { bodies: ['housing', 'planet'] }, { state: tooLarge.state }).pairs).toEqual([{ a: 'housing', b: 'planet', distance: 0, contact: 'collision' }]);
+    // the gap of the sun and a planet follows the backlash
+    const looser = engine.preview({ type: 'setParameter', name: 'backlash', expr: '0.2' });
+    if (!looser.ok) throw new Error(looser.error.message);
+    const [open] = gap(engine, { bodies: ['sun', 'planet'] }, { state: looser.state }).pairs;
+    expect(open.distance).toBeGreaterThan(0.15);
+    expect(open.distance).toBeLessThan(0.2);
   });
 });

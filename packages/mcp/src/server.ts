@@ -1,13 +1,14 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { lstat, mkdir, mkdtemp, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import type { Engine } from '@trymesh/engine';
+import { EXPORT_FORMATS, type Engine, exportPathProblem } from '@trymesh/engine';
 import type { Bridge } from './bridge';
-import { type Json, type JsonSchema, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
+import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
+import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
 
 export interface TrymeshServerOptions {
   engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
@@ -22,7 +23,16 @@ interface FileTool {
   run(args: Record<string, unknown>): Promise<Json>;
 }
 
-class Failure extends Error {}
+// The messages of the writer that speak of what the files hold: bodies for `export_stl` (its file
+// names come from body IDs), the files themselves for `export`.
+const STL_WORDING: Wording = {
+  tooLong: (bodies, limit) => `nothing was written, the file names of these bodies are longer than ${limit} bytes: ${bodies.join(', ')} (export them into one file with \`bodies\`, or rename the features)`,
+  sameName: (first, second) => `the bodies "${first}" and "${second}" would get file names that differ only in the case of letters; export them separately`,
+};
+const FILE_WORDING: Wording = {
+  tooLong: (names, limit) => `nothing was written, these file names are longer than ${limit} bytes: ${names.join(', ')}`,
+  sameName: (first, second) => `nothing was written, the files "${first}" and "${second}" have names that differ only in the case of letters`,
+};
 
 const COMPACT_FROM = 20_000; // znaků
 
@@ -63,9 +73,6 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     return resolve(value === '~' || value.startsWith('~/') ? homedir() + value.slice(1) : value);
   };
   const PATH = (description: string, required = true): JsonSchema => ({ type: 'object', properties: { path: { type: 'string', description } }, required: required ? ['path'] : [], additionalProperties: false });
-
-  const MAX_FILE_NAME = 255; // bytes
-  const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
   // Exports run one after another: a client may send several at once, and two of them checking
   // and writing the same directory at the same time could not keep "nothing is written unless
@@ -154,97 +161,42 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         for (const flag of ['perBody', 'overwrite']) if (args[flag] !== undefined && args[flag] !== null && typeof args[flag] !== 'boolean') throw new Failure(`argument "${flag}": true or false is expected`);
         const perBody = args.perBody === true;
         const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[] };
-        const files = exported.files.filter((file) => file.bodies.length > 0).map((file) => ({ ...file, path: perBody ? join(target, `${file.name}.stl`) : target }));
+        const files = exported.files.filter((file) => file.bodies.length > 0);
         if (files.length === 0) throw new Failure('the model has no body to export');
-        const existing: string[] = []; // files of the set that are on disk already
-        if (perBody) {
-          // a file name is limited to 255 bytes on the common file systems; found before anything is written
-          const long = files.filter((file) => Buffer.byteLength(`${file.name}.stl`) > MAX_FILE_NAME);
-          if (long.length) throw new Failure(`nothing was written, the file names of these bodies are longer than ${MAX_FILE_NAME} bytes: ${long.map((file) => file.bodies[0]).join(', ')} (export them into one file with \`bodies\`, or rename the features)`);
-          // File names come from body IDs, so the caller did not name them one by one: nothing is
-          // written unless every file can be written without replacing or shadowing another.
-          const seen = new Map<string, string>();
-          for (const file of files) {
-            const folded = file.path.toLowerCase();
-            const other = seen.get(folded);
-            if (other !== undefined) throw new Failure(`the bodies "${other}" and "${file.bodies[0]}" would get file names that differ only in the case of letters; export them separately`);
-            seen.set(folded, file.bodies[0]);
-          }
-          for (const file of files) {
-            const found = await lstat(file.path).catch(() => undefined);
-            // something that is not a file (a directory of that name) cannot be replaced by one
-            if (found && !found.isFile()) throw new Failure(`nothing was written, ${file.path} exists and is not a file`);
-            if (found) existing.push(file.path);
-          }
-          if (existing.length && args.overwrite !== true) throw new Failure(`nothing was written, these files already exist: ${existing.join(', ')} (choose another directory or pass overwrite: true)`);
-        }
-        const directory = perBody ? target : dirname(target);
-        // the first directory this call had to create, if any: taken away again when the export fails
-        const created = await mkdir(directory, { recursive: true }).catch((error) => {
-          throw new Failure(`nothing was written, the directory ${directory} cannot be created: ${reason(error)}`);
-        });
-        const tidy = async (): Promise<void> => {
-          if (created === undefined) return;
-          // only directories that are still empty, from the target up to the first one created
-          for (let at = directory; at.length >= created.length; at = dirname(at)) {
-            if (!(await rmdir(at).then(() => true, () => false)) || at === created) break;
-          }
-        };
-        const written: { path: string; bodies: string[]; triangles: number; bytes: number }[] = [];
-        if (!perBody) {
-          try {
-            for (const file of files) {
-              const bytes = Buffer.from(file.base64, 'base64');
-              await writeFile(file.path, bytes);
-              written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
-            }
-          } catch (error) {
-            await tidy();
-            throw new Failure(`the export failed: ${reason(error)}`);
-          }
-          return { files: written };
-        }
-        // Per body the files are first written into a directory of this call inside the target,
-        // under their final names, and moved once all of them are on disk. A failure while writing
-        // (a full disk, a name or a path the file system refuses) leaves the target as it was
-        // instead of a part of the set. The directory is new for every call (mkdtemp), so two
-        // exports, or a file of the user, cannot get in each other's way.
-        let staging: string | undefined;
-        const moved: string[] = [];
-        let failure: string | undefined;
-        let nothingLeft = false;
-        try {
-          staging = await mkdtemp(join(target, '.trymesh-export-'));
-          for (const file of files) {
-            const bytes = Buffer.from(file.base64, 'base64');
-            await writeFile(join(staging, `${file.name}.stl`), bytes);
-            written.push({ path: file.path, bodies: file.bodies, triangles: file.triangles, bytes: bytes.length });
-          }
-          for (const file of files) {
-            await rename(join(staging, `${file.name}.stl`), file.path);
-            moved.push(file.path);
-          }
-        } catch (error) {
-          // A move that fails after others succeeded: the new files that replaced nothing are
-          // removed again; a file that replaced an old one cannot be brought back and is named.
-          const added = moved.filter((file) => !existing.includes(file));
-          const replaced = moved.filter((file) => existing.includes(file));
-          const kept = (await Promise.all(added.map((file) => rm(file, { force: true }).then(() => undefined, () => file)))).filter((file) => file !== undefined);
-          const left = [
-            replaced.length ? `these files had already been replaced by new ones: ${replaced.join(', ')}` : '',
-            kept.length ? `these new files could not be removed again: ${kept.join(', ')}` : '',
-          ].filter((text) => text !== '');
-          nothingLeft = left.length === 0;
-          failure = `the export failed: ${reason(error)}. ${nothingLeft ? 'Nothing of it was left in the directory' : `The set is not complete; ${left.join('; ')}`}`;
-        }
-        // the directory of the call goes in every case; one that cannot be removed is said, not hidden
-        const stale = staging === undefined ? undefined : await rm(staging, { recursive: true, force: true }).then(() => undefined, () => staging);
-        const leftover = stale === undefined ? '' : `the temporary directory ${stale} could not be removed`;
-        if (failure !== undefined) {
-          if (nothingLeft && stale === undefined) await tidy();
-          throw new Failure(leftover ? `${failure}; ${leftover}` : failure);
-        }
-        return { files: written, ...(leftover ? { note: leftover } : {}) };
+        const out = files.map((file): OutFile => ({ name: perBody ? `${file.name}.stl` : '', subject: file.bodies[0], base64: file.base64, about: { bodies: file.bodies, triangles: file.triangles } }));
+        return (await writeExport(target, perBody ? 'directory' : 'file', out, args.overwrite === true, STL_WORDING)) as Json;
+      }),
+    },
+    {
+      name: 'export',
+      description:
+        `Exports the model in a format of the engine's catalog: ${Object.keys(EXPORT_FORMATS).join(', ')}. The options of each format are in describe_api, section Export formats. A format writes one file, and then \`path\` is that file and is overwritten, ` +
+        'or a set of files, and then `path` is a directory: nothing is written unless every file can be, and a file that already exists is replaced only with `overwrite`. `at` exports the state after that feature; `after` is a command to preview first, and what is exported is the model after it, with nothing written to the document.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: Object.keys(EXPORT_FORMATS), description: 'The export format.' },
+          path: { type: 'string', description: 'path of the file, or of the directory for a format or an option that writes a set of files' },
+          options: { type: 'object', description: 'The options of the format, by name; see describe_api.' },
+          overwrite: { type: 'boolean', description: 'for a set of files: replace files that already exist' },
+          at: { type: 'string', description: 'Feature ID; the state after it' },
+          after: { type: 'object', description: 'A command (as for execute) to preview first; the result is exported and the document does not change.' },
+        },
+        required: ['format', 'path'],
+        additionalProperties: false,
+      },
+      run: (args) => oneByOne(async () => {
+        const session = bridge?.session();
+        const target = path(args, true) as string;
+        const given = Object.fromEntries(['format', 'options', 'at', 'after'].filter((name) => args[name] !== undefined && args[name] !== null).map((name) => [name, args[name]]));
+        const answer = (await must(session, '_export', given)) as unknown as Extract<ToolAnswer, { kind: 'files' }>;
+        // the form of the paths is the engine's to guarantee; what is written to disk is checked again
+        const problem = exportPathProblem(answer.files);
+        if (problem) throw new Failure(`nothing was written, the export has a path that cannot be written: ${problem}`);
+        const nested = answer.files.filter((file) => file.path.includes('/'));
+        if (nested.length) throw new Failure(`nothing was written, this server cannot write an export with folders yet: ${nested.map((file) => file.path).join(', ')}`);
+        const out = answer.files.map((file): OutFile => ({ name: file.path, subject: file.path, base64: file.base64, about: file.about ?? {} }));
+        return (await writeExport(target, answer.layout, out, args.overwrite === true, FILE_WORDING)) as Json;
       }),
     },
   ];

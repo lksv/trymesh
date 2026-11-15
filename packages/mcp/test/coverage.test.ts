@@ -42,6 +42,7 @@ const ENGINE_IN_MCP: Record<keyof Engine, Reach> = {
   interference: { calls: [{ tool: 'check_interference' }] },
   query: { calls: [{ tool: 'query', args: { query: 'sketchDiagnosis', args: { sketch: 's' } } }, { tool: 'get_body', args: { body: 'a' } }] },
   exportMesh: { calls: [{ tool: 'export_stl', args: (dir) => ({ path: join(dir, 'model.stl') }) }] },
+  export: { calls: [{ tool: 'export', args: (dir) => ({ format: 'stl', path: join(dir, 'exported.stl') }) }] },
   save: { calls: [{ tool: 'save_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },
   load: { calls: [{ tool: 'open_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },
   subscribe: { internal: 'change notifications for the app; an MCP client asks again instead' },

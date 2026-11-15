@@ -53,7 +53,7 @@ describe('MCP server', () => {
   it('seznam nástrojů: obecné nástroje enginu a nástroje pro soubory, se schématem vstupu', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl']);
+    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'export_stl', 'export']);
     for (const tool of tools) {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
@@ -272,6 +272,64 @@ describe('MCP server: bodies', () => {
     await session.close();
   });
 
+  it('export: a format of the catalog into a file or a directory, of the state now, after a feature or after a previewed command', async () => {
+    const session = await connect();
+    await build(session);
+    // one file: the same bytes as export_stl, and the file is overwritten
+    const one = join(dir, 'export', 'all.stl');
+    const all = await session.call('export', { format: 'stl', path: one });
+    expect(all.files).toEqual([{ path: one, bodies: ['base', 'Wheel', 'planets/1', 'planets/2'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    await session.call('export_stl', { path: join(dir, 'export', 'old.stl') });
+    expect(await readFile(one)).toEqual(await readFile(join(dir, 'export', 'old.stl')));
+    const some = await session.call('export', { format: 'stl', path: one, options: { bodies: ['Wheel'] } });
+    expect(some.files).toEqual([{ path: one, bodies: ['Wheel'], triangles: all.files[0].triangles / 4, bytes: 84 + 50 * (all.files[0].triangles / 4) }]);
+    expect((await readFile(one)).length).toBe(some.files[0].bytes);
+    // a set of files: the directory is created, nothing is replaced without `overwrite`
+    const parts = join(dir, 'export', 'parts');
+    const set = await session.call('export', { format: 'stl', path: parts, options: { perBody: true } });
+    expect(set.files.map((file: { path: string; bodies: string[] }) => [file.path, file.bodies])).toEqual([
+      [join(parts, 'base.stl'), ['base']],
+      [join(parts, 'Wheel.stl'), ['Wheel']],
+      [join(parts, 'planets%2F1.stl'), ['planets/1']],
+      [join(parts, 'planets%2F2.stl'), ['planets/2']],
+    ]);
+    expect((await readdir(parts)).sort()).toEqual(['Wheel.stl', 'base.stl', 'planets%2F1.stl', 'planets%2F2.stl']);
+    for (const file of set.files) expect((await readFile(file.path)).length).toBe(file.bytes);
+    expect(await session.call('export', { format: 'stl', path: parts, options: { perBody: true, bodies: ['base'] } })).toEqual({ error: expect.stringMatching(/nothing was written, these files already exist: .*base\.stl/) });
+    expect((await session.call('export', { format: 'stl', path: parts, options: { perBody: true, bodies: ['base'] }, overwrite: true })).files).toHaveLength(1);
+    // the state after a feature
+    expect((await session.call('export', { format: 'stl', path: join(dir, 'export', 'at.stl'), at: 'base' })).files[0].bodies).toEqual(['base']);
+    // the model after a command that is only previewed: the document stays
+    const without = await session.call('export', { format: 'stl', path: join(dir, 'export', 'after'), options: { perBody: true }, after: { type: 'removeFeature', id: 'planets' } });
+    expect(without.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['base'], ['Wheel']]);
+    expect((await readdir(join(dir, 'export', 'after'))).sort()).toEqual(['Wheel.stl', 'base.stl']);
+    expect((await session.call('get_model')).bodies).toHaveLength(4);
+    // a file name too long for a file system: nothing of the set is written
+    const long = 'L'.repeat(252);
+    const tooLong = await session.call('export', { format: 'stl', path: join(dir, 'export', 'long'), options: { perBody: true }, after: disc(long, 's1', 20) });
+    expect(tooLong).toEqual({ error: expect.stringMatching(/nothing was written, these file names are longer than 255 bytes: L+\.stl$/) });
+    await expect(readdir(join(dir, 'export', 'long'))).rejects.toThrow();
+
+    // refusals: of the server (its own arguments), then of the engine (the format and its options)
+    const nowhere = join(dir, 'export', 'nowhere');
+    expect(await session.call('export', { format: 'stl' })).toEqual({ error: expect.stringContaining('path') });
+    expect(await session.call('export', { path: nowhere })).toEqual({ error: expect.stringContaining('format') });
+    expect(await session.call('export', { format: 'stl', path: nowhere, perBody: true })).toEqual({ error: 'unknown argument "perBody"; the tool takes format, path, options, overwrite, at, after' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
+    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nic' } })).toEqual({ error: expect.stringMatching(/^after: /) });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: [] } })).toEqual({ error: 'the model has no body to export' });
+    await expect(readdir(nowhere)).rejects.toThrow();
+    const other = await connect();
+    expect(await other.call('export', { format: 'stl', path: nowhere })).toEqual({ error: 'the model has no body to export' });
+    await expect(readdir(nowhere)).rejects.toThrow();
+    await Promise.all([session.close(), other.close()]);
+  });
+
   it('export_stl per body: a failure midway leaves the directory as it was, exports at once do not mix their files', async () => {
     const session = await connect();
     await build(session);
@@ -465,6 +523,10 @@ describe('most do běžící aplikace', () => {
     const parts = await session.call('export_stl', { path: join(dir, 'z-aplikace'), perBody: true, bodies: ['high'] });
     expect(parts.files).toEqual([{ path: join(dir, 'z-aplikace', 'high.stl'), bodies: ['high'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
     expect((await readFile(parts.files[0].path)).length).toBe(84 + 50 * parts.files[0].triangles);
+    // a format of the catalog is exported by the engine of the app; a previewed command stays a preview there
+    const viaCatalog = await session.call('export', { format: 'stl', path: join(dir, 'z-aplikace', 'low.stl'), after: { type: 'removeFeature', id: 'high' } });
+    expect(viaCatalog.files).toEqual([{ path: join(dir, 'z-aplikace', 'low.stl'), bodies: ['low'], triangles: parts.files[0].triangles, bytes: 84 + 50 * parts.files[0].triangles }]);
+    expect(Object.keys(app.getState().evaluation.bodies)).toEqual(['low', 'high']);
     expect(session.engine.getState().document.features).toEqual([]);
 
     // po odpojení pracují nástroje nad vlastním enginem serveru

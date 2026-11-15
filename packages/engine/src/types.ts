@@ -1,5 +1,6 @@
 // Veřejné typy enginu: dokument, porty, výsledek přepočtu a API.
 // Zdrojem pravdy je docs/architecture.md; typy se s ním mají shodovat.
+import type { ExportFormat, ExportOptions } from './export/spec';
 import type { QueryArgs, QueryName, QueryResult } from './query/spec';
 
 export type Id = string; // trvalé, nikdy se nerecykluje
@@ -625,6 +626,28 @@ export type BodyEdge = { name: EdgeName; length: number; segments: number } & (
   | { kind: 'coplanar' | 'other' }
 );
 
+// What an export format returns: files. `file`: one file, and the caller's path names it (`path`
+// of the file is then only a suggested name). `directory`: the caller's path names a folder and
+// `path` of each file is relative to it.
+export interface Exported {
+  layout: 'file' | 'directory';
+  files: ExportFile[];
+  // Set when the export holds nothing worth writing (the model has no body): the reason. A format
+  // still returns its files (STL of no bodies is a file without triangles); a tool that writes
+  // them refuses instead.
+  empty?: string;
+}
+export interface ExportFile {
+  // Relative, with forward slashes: `meshes/arm.stl`. Every segment is non-empty and is not `.` or
+  // `..`, there is no backslash, and no path is a folder of another. What depends on the disk is
+  // the writer's to refuse: a segment longer than the file system allows, two names in one folder
+  // that differ only in the case of letters.
+  path: string;
+  mediaType: string;
+  bytes: Uint8Array;
+  about?: Record<string, unknown>; // what the file holds, for the answer of a tool (STL: `bodies`, `triangles`)
+}
+
 // ---------------------------------------------------------------- engine
 
 export interface Engine {
@@ -643,5 +666,8 @@ export interface Engine {
   // that are queries stay for their callers. The catalog (names, arguments, what each returns) is
   // in the section Queries of the API description.
   query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;
+  // Exports the model in a format of the catalog (section Export formats of the API description).
+  // `exportMesh` above stays for its callers. The bodies are exported as modelled.
+  export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;
   subscribe(listener: (state: EngineState) => void): () => void;
 }

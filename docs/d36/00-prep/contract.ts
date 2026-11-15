@@ -542,7 +542,7 @@ export type QueryOptions = { at?: Id; state?: never } | { state: StateAfter; at?
 // of this kind is added to `Engine`.
 // (`query` is in the engine since the step was implemented. It is restated here because the draft
 // types it by the maps of this file, which carry what the contracts of the packages add.)
-export interface EngineAfter extends Omit<Engine, 'getState' | 'execute' | 'preview' | 'load' | 'subscribe' | 'query'> {
+export interface EngineAfter extends Omit<Engine, 'getState' | 'execute' | 'preview' | 'load' | 'subscribe' | 'query' | 'export'> {
   // As today, with the surfaces in the evaluation and with what the packages add to the unions.
   getState(at?: Id): StateAfter;
   execute(cmd: CommandAfter): CommandResultAfter;

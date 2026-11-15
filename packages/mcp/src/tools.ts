@@ -18,11 +18,13 @@ import {
   type FeatureResult,
   type Id,
   type Interference,
+  type ExportFormat,
   type Issue,
   FEATURE_TYPE_INFO,
   QUERIES,
   type AnyQuery,
   type QueryName,
+  type QueryOptions,
   INTERFERENCE_THRESHOLD,
   SKETCH_TOOLS,
   type SketchFeature,
@@ -49,6 +51,20 @@ export interface Tool {
 }
 
 export type ToolOutcome = { ok: true; result: Json } | { ok: false; error: string };
+
+// What a tool may answer with besides plain data. A result goes through JSON (`callTool`, the bridge
+// to the app), so bytes do not survive it: a file travels as base64 in this envelope, and the
+// server acts on the kind. `ToolOutcome.result` stays JSON; a `ToolAnswer` is JSON.
+// - `files`: the server writes them where the caller said (the tool `export`).
+// - `image`: returned to the client as image content. No tool answers with one yet; the first that
+//   does (a picture of the view) adds its handling to the server.
+export interface FileEnvelope {
+  path: string; // relative, as `ExportFile.path` of the engine
+  mediaType: string;
+  base64: string;
+  about?: Record<string, unknown>;
+}
+export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[] } | { kind: 'image'; mediaType: 'image/png'; base64: string };
 
 // Chyba volání: špatný argument, neznámá skica. Vrací se volajícímu jako text.
 export class ToolError extends Error {}
@@ -314,6 +330,23 @@ function sketchDetail(engine: Engine, id: string): unknown {
 
 // What changed after a command enough for the caller to know: feature states that are not ok,
 // checks that fail and parameters in error.
+// The state a tool asks a query or an export about, from its arguments `at` and `after`. `after` is
+// a command: it is previewed where the engine is and the state after it is asked, so nothing is
+// written; with both, the document after the command is evaluated up to `at`.
+function askedState(engine: Engine, args: Record<string, unknown>): QueryOptions {
+  const at = optionalText(args, 'at');
+  if (args.after === undefined || args.after === null) return at === undefined ? {} : { at };
+  const previewed = engine.preview(args.after as Command, at);
+  if (!previewed.ok) throw new ToolError(`after: ${commandProblem(previewed)}`);
+  return { state: previewed.state };
+}
+
+function base64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 // The text of an invalid command.
 function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
   const { code, message, commandIndex, expression } = result.error;
@@ -416,6 +449,7 @@ const COMMAND: JsonSchema = {
 };
 
 // Nástroje, které mění dokument (včetně vnitřního načtení).
+// (`_export` and `query` preview a command of their caller; they write nothing.)
 export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load'];
 
 // Seznam nástrojů. Sestavuje se při každém dotazu, protože popisy vycházejí z katalogu enginu.
@@ -542,16 +576,8 @@ export function tools(): Tool[] {
       },
       run: (engine, args) => {
         const name = text(args, 'query');
-        const at = optionalText(args, 'at');
-        const queryArgs = args.args ?? {};
-        let answer: ReturnType<Engine['query']>;
-        if (args.after === undefined || args.after === null) answer = engine.query(name as QueryName, queryArgs as never, at === undefined ? {} : { at });
-        else {
-          // the preview and the query run together where the engine is; nothing is written
-          const previewed = engine.preview(args.after as Command, at);
-          if (!previewed.ok) throw new ToolError(`after: ${commandProblem(previewed)}`);
-          answer = engine.query(name as QueryName, queryArgs as never, { state: previewed.state });
-        }
+        // the preview and the query run together where the engine is; nothing is written
+        const answer = engine.query(name as QueryName, (args.args ?? {}) as never, askedState(engine, args));
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
         return roundedResult(answer.result, (QUERIES as Record<string, AnyQuery>)[name].significant);
       },
@@ -635,14 +661,25 @@ export function tools(): Tool[] {
         const chosen = bodyList(engine, args) ?? Object.keys(all);
         if (chosen.length === 0) throw new ToolError(args.bodies === undefined || args.bodies === null ? 'the model has no body to export' : 'argument "bodies": the list is empty; leave it out to export all bodies');
         if (args.perBody !== undefined && typeof args.perBody !== 'boolean') throw new ToolError('argument "perBody": true or false is expected');
-        const file = (bodies: string[]) => {
-          const bytes = engine.exportMesh('stl', bodies);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-          return { bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: btoa(binary) };
-        };
+        const file = (bodies: string[]) => ({ bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: base64(engine.exportMesh('stl', bodies)) });
         const unique = [...new Set(chosen)];
         return { files: args.perBody === true ? unique.map((id) => ({ name: bodyFileName(id), ...file([id]) })) : [file(unique)] };
+      },
+    },
+    {
+      name: '_export',
+      description: '',
+      inputSchema: NONE,
+      hidden: true,
+      // The files of an export in a format of the engine's catalog, as a `ToolAnswer`. The server
+      // writes them; the engine may run in the app. An export that holds nothing worth writing (no
+      // body) is refused with the reason the format gives.
+      run: (engine, args): ToolAnswer => {
+        const format = text(args, 'format');
+        const answer = engine.export(format as ExportFormat, (args.options ?? {}) as never, askedState(engine, args));
+        if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
+        if (answer.result.empty !== undefined) throw new ToolError(answer.result.empty);
+        return { kind: 'files', layout: answer.result.layout, files: answer.result.files.map((file) => ({ path: file.path, mediaType: file.mediaType, base64: base64(file.bytes), ...(file.about ? { about: file.about } : {}) })) };
       },
     },
   ];

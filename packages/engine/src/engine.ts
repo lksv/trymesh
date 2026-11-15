@@ -3,10 +3,10 @@ import { CommandError, applyCommand, emptyDocument, validateDocument } from './d
 import { type DragTarget, type Deps, type EvaluateOptions, Evaluator, type WriteBack } from './evaluate';
 import { has } from './util';
 import { INTERFERENCE_THRESHOLD, checkInterferenceOptions } from './interference';
+import { EXPORT_FORMATS, runExport } from './export/index';
 import { type Internals, Memo, queryContext } from './query/context';
 import { QUERIES, runQuery } from './query/index';
-import { toStl } from './solid';
-import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOutcome } from './types';
+import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOptions, QueryOutcome } from './types';
 
 export function createEngine(deps: Deps): Engine {
   const evaluator = new Evaluator(deps);
@@ -103,6 +103,23 @@ export function createEngine(deps: Deps): Engine {
   const stateAt = (at?: Id): EngineState => {
     if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
     return state(document, at === undefined ? evaluation : evaluate(document, { upTo: at }).evaluation);
+  };
+
+  // The state a query or an export is asked about: the current one, the one after `at`, or one this
+  // engine handed out. The document is the one kept with the evaluation, not `state.document`, so
+  // an evaluation cannot be paired with another document.
+  const askedState = (name: string, options: QueryOptions): { evaluation: Evaluation; internals: Internals } | QueryOutcome<never> => {
+    const refused = (code: 'invalidArguments' | 'notAvailable', message: string, arg: string): QueryOutcome<never> => ({ ok: false, error: { code, message, arg: [arg] } });
+    let asked: Evaluation;
+    if (options.state !== undefined) {
+      if (options.at !== undefined) return refused('invalidArguments', `${name}: \`at\` or \`state\` is given, not both`, 'state');
+      if (typeof options.state !== 'object' || options.state === null || !internals.has(options.state.evaluation)) return refused('invalidArguments', `${name}: \`state\` is not a state this engine handed out`, 'state');
+      asked = options.state.evaluation;
+    } else if (options.at !== undefined) {
+      if (!document.features.some((feature) => feature.id === options.at)) return refused('notAvailable', `${name}: \`at\`: the feature "${String(options.at)}" is not in the document`, 'at');
+      asked = stateAt(options.at).evaluation;
+    } else asked = stateAt().evaluation;
+    return { evaluation: asked, internals: internals.get(asked) as Internals };
   };
 
   // The methods that were queries before the catalog keep their own checks and their own texts,
@@ -204,9 +221,9 @@ export function createEngine(deps: Deps): Engine {
       if (format !== 'stl') throw new Error(`export: formát ${String(format)} není podporovaný`);
       const all = evaluation.bodies;
       if (bodies !== undefined && (!Array.isArray(bodies) || bodies.some((id) => typeof id !== 'string'))) throw new Error('exportMesh: bodies is a list of body IDs');
-      const chosen = bodies === undefined ? Object.keys(all) : [...new Set(bodies)];
-      for (const id of chosen) if (!has(all, id)) throw new Error(`exportMesh: the body "${id}" does not exist`);
-      return toStl(chosen.map((id) => all[id].solid));
+      for (const id of bodies ?? []) if (!has(all, id)) throw new Error(`exportMesh: the body "${id}" does not exist`);
+      // the entry of the catalog that `export` runs: one file with the chosen bodies
+      return EXPORT_FORMATS.stl.run(contextOf('export:stl', stateAt()), bodies === undefined ? {} : { bodies }).files[0].bytes;
     },
 
     interference(options = {}) {
@@ -215,22 +232,14 @@ export function createEngine(deps: Deps): Engine {
       return QUERIES.interference.run(contextOf('interference', asked), { ...(options.bodies === undefined ? {} : { bodies: options.bodies }), threshold: options.threshold ?? INTERFERENCE_THRESHOLD });
     },
 
-    // The state asked about is the current one, the one after `at`, or one this engine handed out.
-    // The document is the one kept with the evaluation, not `state.document`, so an evaluation
-    // cannot be paired with another document.
     query(name, args, options = {}) {
-      type Outcome = ReturnType<Engine['query']>;
-      const refused = (code: 'invalidArguments' | 'notAvailable', message: string, arg: string): Outcome => ({ ok: false, error: { code, message, arg: [arg] } });
-      let asked: Evaluation;
-      if (options.state !== undefined) {
-        if (options.at !== undefined) return refused('invalidArguments', `${name}: a query takes \`at\` or \`state\`, not both`, 'state');
-        if (typeof options.state !== 'object' || options.state === null || !internals.has(options.state.evaluation)) return refused('invalidArguments', `${name}: \`state\` is not a state this engine handed out`, 'state');
-        asked = options.state.evaluation;
-      } else if (options.at !== undefined) {
-        if (!document.features.some((feature) => feature.id === options.at)) return refused('notAvailable', `${name}: \`at\`: the feature "${String(options.at)}" is not in the document`, 'at');
-        asked = stateAt(options.at).evaluation;
-      } else asked = stateAt().evaluation;
-      return runQuery(name, args, asked, internals.get(asked) as Internals, queryDeps) as QueryOutcome<never>;
+      const asked = askedState(name, options);
+      return 'ok' in asked ? asked : (runQuery(name, args, asked.evaluation, asked.internals, queryDeps) as QueryOutcome<never>);
+    },
+
+    export(format, options, queryOptions = {}) {
+      const asked = askedState(format, queryOptions);
+      return 'ok' in asked ? asked : runExport(format, options, asked.evaluation, asked.internals, queryDeps);
     },
 
     subscribe(listener) {

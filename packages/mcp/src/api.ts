@@ -9,6 +9,8 @@ import {
   FEATURE_TYPE_INFO,
   type FeatureTypeInfo,
   DATA_CATALOGS,
+  EXPORT_FORMATS,
+  type AnyExportFormat,
   GENERATORS,
   type AnyQuery,
   type ArgKind,
@@ -161,6 +163,7 @@ export function apiDescription(): {
   sketchTools: SketchToolDescription[];
   queries: QueryDescription[];
   catalogs: ReturnType<typeof dataCatalogs>;
+  exports: ReturnType<typeof exportFormats>;
   types: string;
 } {
   return {
@@ -173,6 +176,7 @@ export function apiDescription(): {
     sketchTools: sketchToolCatalog(),
     queries: queryCatalog(),
     catalogs: dataCatalogs(),
+    exports: exportFormats(),
     types: engineTypes(),
   };
 }
@@ -279,9 +283,19 @@ export function dataCatalogs(): { catalog: string; title: string; summary: strin
   return Object.entries(DATA_CATALOGS as Record<string, { title: string; summary: string }>).map(([catalog, table]) => ({ catalog, title: table.title, summary: table.summary }));
 }
 
+// The export formats of the engine's catalog (the tool export writes them) with their options.
+export function exportFormats(): { format: string; title: string; summary: string; options: { name: string; description: string }[] }[] {
+  return Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>).map(([format, spec]) => ({
+    format,
+    title: spec.title,
+    summary: spec.summary,
+    options: Object.entries(spec.options).map(([name, option]) => ({ name, description: `${argumentText(option)}${option.summary ? `. ${option.summary}` : ''}` })),
+  }));
+}
+
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, catalogs, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, catalogs, exports, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -354,6 +368,10 @@ export function apiText(): string {
     '# Catalogs',
     'Tables of data the engine carries; read one with the query `catalog` `{ name, key? }`. A catalog fills in fields: the document stores the numbers, not a reference to a row.',
     ...(catalogs.length ? catalogs.map((entry) => `- ${entry.catalog} (${entry.title}): ${entry.summary}`) : ['(none yet)']),
+    '',
+    '# Export formats',
+    'The tool export `{ format, path, options?, overwrite?, at?, after? }` writes the model in one of these formats (it needs a disk, so it is a tool of the server). Bodies are exported as modelled. All options are optional unless said otherwise.',
+    ...exports.map((entry) => [`- ${entry.format} (${entry.title}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

@@ -1,0 +1,239 @@
+# 2a Profile offset and a wall from a line (D44)
+
+**State: design, first version, before the reviews.** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
+
+Files: [contract.ts](contract.ts) (what the package adds, and the one declaration of the changed extrusion that track B shares), [calls.ts](calls.ts) (its part of validation scenario 12).
+
+The package is the first of track B (2a, 2b, 2c; 2f beside them). It decides three things for the whole track: the shape of the shared declaration, what a profile hands to a tool build, and whether tool builds and extents become modules of their own.
+
+## What the backlog says, checked against the code
+
+[backlog.md](../../backlog.md), "Profile offset" and the row "Wall from a line", propose: an optional numeric field `profile/offset` on a profile of regions, computed per curve with mitre joins so that side faces keep their names; `invalidProfile` when a curve vanishes or loops meet; not for a generated profile; a wall from a line as an extension, a profile from an open chain of curves offset to both sides.
+
+| Statement of the backlog | What the code says |
+|---|---|
+| "An optional field does not change the document shape" | True for the profile source, and stronger: `profileSource` (`document.ts`) refuses a field its variant does not list (`PROFILE_FIELDS`) and a type it does not know, so a build without the package refuses such a document by itself and no upgrade step is needed. An optional numeric field is new, though: every numeric field of today is always present, and `setField` only takes the address of a field the feature has (`fieldsOf`). See "An optional numeric field" |
+| "`ResolvedProfile` already has the form this needs (regions plus `curveOf`)" | Half true. `Region` holds loops as polylines with a curve ID per edge (`Loop` in `sketch.ts`); the exact curves (`Shape`: line, arc, circle) live only inside `detectProfile`. An offset per curve needs them, in the order and direction of the loop. `curveOf` gives a shape by curve ID, which is enough for the surfaces of the side faces and not for the joins |
+| "Every curve maps to exactly one curve, so side faces keep their names" | True for the outline of the selection, with one condition the backlog does not state: the offset has to be applied to the selected regions taken together. `buildPrism` (`solid.ts`) drops a curve shared by two selected regions; offsetting each region on its own would make the two overlap across that curve |
+| The wall is "an open chain of curves offset to both sides" | `RegionRef` names a closed region by the curves of its outer loop and cannot name a chain. A curve of a chain makes two side faces, and `FaceName` of the role `side` has one `curve`, so the two would share a name. An open non-construction line that ends on another curve makes the profile of the whole sketch invalid (`compatible` in `sketch.ts` allows contact at joined points only) |
+
+## The cheap variant
+
+- **Offset.** `offset?: number` on the profile source `regions` (field `profile/offset`, millimetres, either sign, an expression allowed). The outline of the selected regions is moved curve by curve and joined by mitres. Topology never changes: a curve that vanishes, neighbours that no longer meet, loops that touch, cross or change their nesting are the error `invalidProfile`, with a text that names the curves.
+- **Wall.** A third variant of the profile source, `{ type: 'wall', sketch, curves, thickness }`: own curves of the sketch that form one chain, offset by half the thickness to each side. An open chain gets straight ends; a closed chain (a circle, a closed loop) gives a band with a hole. The source reads solved curves and needs neither regions nor a valid sketch profile, so the centre line of a rib is a construction line.
+- **Unchanged when not used.** A profile of regions without an offset (the field absent or exactly zero after its expression is evaluated) takes the code path of today; the mesh of every existing document stays what it is.
+- **For every feature that takes a profile.** Both live in the profile service of the preparatory step, so the revolve of 4a gets them without importing the extrusion.
+
+**Deferred**, none blocked by the design:
+
+- Curves that drop out. An inward offset larger than a corner radius has a natural result (the arc is gone and its neighbours meet in a sharp corner); here it is an error. This is the limit most likely to be hit: the cavity of a box with rounded outer corners needs a corner radius larger than the wall. The taper of 2b cannot drop curves at all (it pairs the curves of two profiles one to one), which is why the two share one rule for now. See "Open questions".
+- Round joins and a mitre limit. A sharp convex corner moves by `offset / sin(half the corner angle)`; nothing caps it. Round joins add corner faces that need a name.
+- An offset of a generated profile (its sides are polylines without source curves).
+- A wall to one side only or shifted off its chain, rounded ends, projected curves in a chain, a rib that grows until it meets the body (a wall here has an explicit extent like any extrusion).
+- The offset as geometry inside the sketch that can be dimensioned against (step 6, needs the solver).
+
+## Document
+
+```ts
+type ProfileSource =
+  | { type: 'regions'; sketch: Id; regions: RegionRef[]; offset?: number }
+  | { type: 'generated'; ... }                                    // unchanged
+  | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number };
+```
+
+- `PROFILE_FIELDS` gets `offset` for `regions` and the list of `wall`; a generated profile with an offset stays an invalid command.
+- `curves` of a wall is a non-empty list of curve IDs, stored sorted and without duplicates (the order of the chain is derived from the joins, like the holes of a region). A command verifies each curve the feature did not have before: it has to be an own curve of the sketch (a line, an arc or a circle; construction or not). Whether the curves form a chain shows in the recompute, because it depends on solved positions.
+- References: `profile/sketch` as today; one reference of the kind `entity` per curve of a wall, at `profile/curves`, with `accepts: ['line', 'arc', 'circle']` and a new flag `own: true` on `FeatureRef`. Today `requireRef` takes a projected curve for an entity of the kind `line` (`entityOf` answers for `sketch.external` as well); a generator operand wants that, a wall does not, because the ends of its faces are named by sketch points and a projected line has derived ones (`<id>/a`).
+- `updateFeature` merges a variant with the same `type` by field (`mergePatch`), so `{ profile: { offset: 2 } }` sets the offset; `{ profile: { offset: null } }` removes it, also from a feature that did not have it (`removable` of the extrusion gets the path). Another `type` replaces the profile and has to be complete, as today.
+- Numeric fields in the registry (`FEATURE_TYPE_INFO.extrude.fields`): `profile/offset` when `profile/type` is `regions`; `profile/thickness` (positive) when it is `wall`.
+- Face names: a wall adds two roles, `wallSide` (`curve`, `side`) and `wallEnd` (`point`); see "Faces of a wall". An offset adds none.
+- No upgrade step, no command, no query, no section of the document.
+
+### An optional numeric field
+
+`profile/offset` is the first numeric field of a feature that may be absent. (Parameters of a generator may be left out of a command, but the validator then stores the default, so the document always has them.) The same rule serves `extent/taper` of 2b and `extent/gap` of 2f.
+
+- **Absent means the default, and the default is not stored.** Storing `offset: 0` in every profile of regions would rewrite every extrusion of every document on load, change what the tests and the snapshot of the app class compare, and make every document saved by the new build unreadable for an older one although nothing in it uses the package. (Rejected alternative 7.)
+- **What is given is kept.** `offset: 0` sent by a command stays in the document. Dropping it would break `updateFeature`, which requires every path a patch sets to exist in the validated feature (the check after `validated` in `applyCommand`). The two spellings of "no offset" compute the same.
+- **The field is described once.** Its `NumberSpec` has `default: 0`; the rule "a field whose description has a default may be left out" is the one the generator catalog already states for its parameters. `describe_api` and the forms read it from there.
+- **`setField` reaches it.** Today `setField` refuses an address `fieldsOf(feature)` does not list, so an AI could not put an expression on the offset of an extrusion that has none without knowing to use `updateFeature` instead. The check moves behind the validation: the value is written at the address, the feature is validated, and the address has to be among the fields the validation read. An address under the profile that does not exist is refused by `PROFILE_FIELDS`; one under the extent, where unknown keys are dropped, by the moved check, with the message of today. This is one edit of the `setField` branch of `applyCommand`, a shared place of the plan; `calls.ts` (`offsetOnAndOff`) writes the case.
+- `fieldsOf` lists the field only while the feature has it; `expressions` may hold `profile/offset` only then, as for any field.
+
+## Recompute
+
+### What a profile hands on
+
+`profile(id, source, state, chordTolerance)` of `recompute/profile.ts` keeps returning regions as polylines, the frame, and a description of the sides. Two things change in what it returns (internal types, not type-checked here):
+
+```ts
+interface ResolvedProfile {
+  regions: Region[];
+  frame: Frame;
+  // was `curveOf(id): SideCurve`: the key is what `Loop.curves` holds for an edge. For regions it is
+  // the curve ID and the name is `{ role: 'side', curve }`; a wall names its sides itself.
+  sideOf(key: string): { name: Omit<FaceName, 'feature' | 'copy'>; shape: SideCurve };
+  // The exact outline the regions were tessellated from, after the offset. Asked for by a tool
+  // build that has to move it again (the taper of 2b). A generated profile has none.
+  outline?: () => Outline | ProfileProblem;
+  facts?: Facts;
+  warnings?: Issue[];
+}
+// One closed loop as exact curves in the direction the loop passes them; the material is on the left.
+type OutlineCurve = { key: string; forward: boolean /* passed in the direction of the sketch curve */ } & (
+  | { type: 'line'; from: Vec2; to: Vec2 }
+  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number }   // sweep signed: positive counter-clockwise
+  | { type: 'circle'; center: Vec2; radius: number; ccw: boolean });
+interface Outline { regions: { outer: OutlineCurve[]; holes: OutlineCurve[][] }[] }
+```
+
+`buildPrism` changes in one line: the name of a side face comes from `sideOf(key).name` instead of being composed there. Nothing else in it changes, and nothing at all for a profile without an offset.
+
+### The outline of the selection
+
+`detectProfile` already walks every loop as half-edges of exact shapes; it gets to keep them: `Loop` gains an optional `exact: OutlineCurve[]`, with the vertex keys of its corners (generated loops have none). From the selected regions the outline is put together as the prism does it for side faces:
+
+1. Take the curves of all loops of all selected regions. A curve that occurs twice (once from each of two selected regions) is dropped.
+2. Chain the rest by their vertex keys. At a vertex with one curve leaving it the chain is unambiguous. Where several leave (regions that meet in a point), the chain follows the region it came along; if that curve was dropped as well, the profile is refused (`invalidProfile`: the regions meet in a point in a way the cheap variant does not untangle).
+3. A loop with a positive area is an outer loop, the others are holes of the smallest outer loop that contains them (a point-in-loop test on one vertex, as `detectProfile` does for the holes of a region).
+
+Why together and not region by region: a sketch that holds the outline of a box and the circles of its posts has the region "outline with holes" and one region per circle. The cavity wants the whole outline, so all of them are selected; region by region, the circles would grow into the region around them.
+
+### The offset of a loop
+
+Every curve moves to the right of its direction of travel by `d` (the material is on the left, so a positive `d` grows the profile, and holes, which run clockwise, shrink):
+
+- a line becomes the parallel line;
+- an arc or a circle keeps its centre; the radius grows by `d` where the centre is on the side of the material (a counter-clockwise pass) and shrinks by `d` otherwise.
+
+The corner between two consecutive moved curves:
+
+- tangent neighbours (directions at the corner equal within `ANGLE_TOLERANCE`): the old corner moved by `d` along the common normal. This is the rounded rectangle; no intersection is computed, because a tangent contact is a double root;
+- two lines: the intersection of the moved lines;
+- a line and a circle, or two circles: of the two intersections of the moved carriers, the one on the branch of the old corner (for a line and a circle the same one in the order along the line; for two circles the one on the same side of the line of centres). That is the corner that moves continuously with `d`; "the nearest one" is not, once the offset is large.
+
+Refused with `invalidProfile`, `refs` naming the curves:
+
+- a radius that is not above `LENGTH_TOLERANCE`;
+- neighbours whose moved carriers do not meet;
+- a curve that turned round or has no length: a line whose new ends are not in the old direction by more than the tolerance; an arc whose new sweep (the old one plus the change of its end angle less the change of its start angle, each within half a turn) is not positive or exceeds a full turn.
+
+Then the moved outline is tested as a sketch profile is, by the two checks `detectProfile` runs, exported from `sketch.ts` for a set of exact loops:
+
+- on the exact curves: two curves may touch only at a corner they share (`compatible`);
+- after tessellation: no two edges cross and no loop collapses (`soundTessellation`).
+
+And one more, which a sketch does not need because its regions come out of the planar graph: every loop keeps the sign of its area, and for every pair of loops "lies inside" is what it was before the offset. Without it a hole that grew past its outer loop without touching it (the outer loop shrank inside it) would pass.
+
+The moved outline is tessellated with the rule of today (`segments` of `sketch.ts`, by the new radius), each loop with keys of its own, and handed to `buildPrism` as regions with their holes. `sideOf` answers with the moved curves in the direction of the sketch curve, so the surfaces are exact: the plane of a moved line, a cylinder with the new radius.
+
+One consequence to state in the docs: the frame of a sketch on a side face has its origin at the start point of the line (`faceFrame`, architecture.md, "Rovina skici na stěně"). For a moved line that is the mitred corner, so it moves with the offset.
+
+### The wall
+
+1. The curves are looked up among the own curves of the solved sketch; a missing one is a `brokenReference` (as a missing operand of a generator).
+2. They are chained by joined end points. The joining of points (the same point, or a satisfied `coincident`) is the rule of `detectProfile` and becomes a function of `sketch.ts` that both use. Refused with `invalidProfile` and a text: a curve without length, a point where three of the curves meet, curves that are not connected, a circle together with anything else.
+3. An open chain is walked from the free end with the smaller vertex key; a closed one counter-clockwise. The chain is moved by `+thickness / 2` and by `−thickness / 2` with the offset of a loop above (for an open chain the first and the last curve have one neighbour only).
+4. Open: the loop is the right side forwards, a straight end, the left side backwards, a straight end. Closed: the right side is the outer loop and the left side, reversed, its hole.
+5. The same three checks as for the offset. A chain that crosses itself, or whose two sides cross at a tight bend, is refused there.
+
+### Faces of a wall
+
+| Face | Name | Surface |
+|---|---|---|
+| a side from a line | `{ role: 'wallSide', curve, side }` | plane |
+| a side from an arc or a circle | the same | cylinder |
+| a free end of an open chain | `{ role: 'wallEnd', point }` | plane |
+| caps | `startCap`, `endCap` | plane |
+
+`side` is `left` or `right` of the curve in its own direction: a line from its point `a` to `b`; an arc and a circle counter-clockwise, so `left` is the side of the centre. The name therefore depends on the sketch curve alone, not on the order of `curves` or on the end the chain is walked from, and adding a curve to the chain renames nothing. `point` of an end is the point the end curve names (`a`, `b`, `start` or `end`), an own point of the sketch or `origin`.
+
+The validator of a face name checks a part of the kind `text` as a text, so `side: 'top'` is a well-formed name of a face that does not exist: a broken reference, like a `side` with a curve the feature never had.
+
+## Tool builds and extents as modules
+
+The preparatory step left this to the first package that changes them ([part2-feature-modules.md](../00-prep/part2-feature-modules.md), "Open").
+
+- **Tool builds: a module each, under `recompute/`.** After track B and 4a there are three: the prism of today (any regions, a per-curve description of the sides), the stack of sections of 2b (needs the exact outline; the taper, the hole of 2c and later the chamfered ends of an extrusion) and the revolve of 4a. They share only what they return, which is `Prism` today and is renamed `BuiltTool` (a solid and its new faces) in `recompute/state.ts`, next to `ToolRecipe`. `buildPrism` moves to `recompute/tool-prism.ts` as it is, in a commit of its own with nothing else in it; 2b adds `recompute/tool-stack.ts`. `solid.ts` keeps what is about bodies: transforms, `analyzeBody`, the kinds of edges, frames, projection.
+- **The prism stays, beside the stack.** The stack could build a straight prism too, but with other triangles. Keeping the prism for everything without a taper leaves the meshes of existing documents and the pinned fuzz seeds alone, and it is the only build for a generated profile.
+- **The extent becomes a service on both sides, like the profile; it is not split by variant.** The hole of 2c takes an extent "like a cut" and the revolve takes none, so the validation of an extent cannot stay inside the validator of the extrusion. `features/extent.ts` gets the document half (the variants, their numeric fields, their references, what a patch may remove), moved out of `extrudeFeature` unchanged; `recompute/extent.ts` (which the preparatory step creates for `toolSpan`) keeps the recompute half. Three variants of a few lines each do not justify a file per variant. Who may use which variant and which field (no taper for a hole) is an argument of the validator.
+
+The two moves are the first commits of 2a's implementation and change no behaviour.
+
+## Where the code lives
+
+After the preparatory step ([part2-feature-modules.md](../00-prep/part2-feature-modules.md)):
+
+| File | What 2a does there |
+|---|---|
+| `types.ts` | `ProfileSource` (the field and the variant), two members of `FaceName`. Their comments are what the AI reads |
+| `features/profile.ts` | validation of `offset` and of `wall`, `PROFILE_FIELDS`, the references of a wall, what a patch may remove, the two field descriptions |
+| `features/extrude.ts` | two lines in `info.fields` |
+| `features/extent.ts` | new, by a move without change (above) |
+| `recompute/outline.ts` | new: `Outline`, the outline of a selection, the offset of a loop, the chain of a wall, tessellation |
+| `recompute/profile.ts` | the branches for an offset and for a wall; `sideOf`; `outline` |
+| `recompute/tool-prism.ts` | new, by a move (above); the one line for the name of a side |
+| `sketch.ts` | `Loop.exact`; the joining of points, `segments` and the two checks exported |
+| `validation.ts` | `own` on a reference to an entity; the two entries of `FACE_ROLES` |
+| `document.ts` | the `setField` branch of `applyCommand` |
+| `packages/mcp/src/api.ts` | a paragraph of `CONVENTIONS`: the offset and its sign, the wall and its face names |
+| `packages/app` | below |
+
+## The app and MCP
+
+- **MCP** needs no code: the fields are in the registry, the types in `types.ts`, the roles in `FACE_ROLES`. `get_sketch` lists the curves an AI names in `curves`.
+- **The extrusion form** (`features/extrude.ts` of the app after part 3; `extrudePanel` today):
+  - for a profile of regions a field "Offset (mm or an expression; positive grows the profile)". It is empty while the draft has no offset, and emptying it removes the field;
+  - the select of the profile source gets "Wall along curves". The form then shows the number of chosen curves, a button that clears them and the field "Thickness". A click in the view toggles the curve of the sketch nearest to the point where the pointer meets the sketch plane: the form already gets that point (it finds regions with it), and `hitCurve` of `sketch-view.ts` is the hit test the sketch mode uses;
+  - `changeExtrude` and `ExtrudeChange` (`sketch-commands.ts`) get `offset`, `curves` and `thickness`; `ProfileKind` gets `wall`, so the form remembers the wall of a draft like its regions.
+- The table of role texts of the app (`ROLES` in `issue-text.ts`) gets two lines; the compiler asks for them.
+
+## Issue codes
+
+None new.
+
+| Code | When |
+|---|---|
+| `invalidProfile` | the offset or the wall cannot be built; the message is the package's own and names the curves, as a generator's is today (the general text of the code is about crossing sketch curves) |
+| `brokenReference` | a curve of a wall is not in the sketch any more |
+| `noProfile` | as today: a selected region is not in the sketch |
+
+## Shared vocabulary
+
+- **Takes:** `FeatureTypes` and `FeaturePatches` (the changed extrusion), `FaceRoles` and `FACE_ROLES`, `PlaneRefAfter` and `setSketchPlane` for a sketch on a wall face, the profile as a service on both sides.
+- **Adds:** `extrude` in `FeatureTypes` and `FeaturePatches` (owned here for track B); the roles `wallSide` and `wallEnd`; inside the track the two interfaces `DistanceExtentFields` and `ExtentVariants` that 2b and 2f extend.
+
+## Rejected alternatives
+
+1. **`CrossSection.offset` of Manifold** (the first idea of the backlog). It works on polylines: the identity of curves is lost, and with it the face names and the exact surfaces; convex corners get arcs without a source curve. It would also widen the kernel port.
+2. **A polygon offsetting library.** A new third-party library needs the owner's approval (D2) and has the same loss of identity. Not assumed.
+3. **The offset as a field of the extrusion** instead of the profile source. The revolve would not get it, and a field directly on a feature is dropped by an older build without a word, so it would need an upgrade step.
+4. **The offset of each selected region on its own.** Refuses or distorts the common case of an outline with inner curves in the same sketch (above).
+5. **Round joins.** Equal to mitres for tangent corners; elsewhere they add a face per corner that has no source curve to be named by.
+6. **"The nearest intersection" for a corner.** Wrong for large offsets; the branch rule is as cheap.
+7. **Storing the default** (`offset: 0` in every profile). See "An optional numeric field".
+8. **A wall as a feature type of its own** (`rib`). It is a profile: as a source it gets every extent, the taper of 2b, patterns and later the revolve for nothing.
+9. **A wall as a mode of `regions`** (the band between an outline and its offset). `RegionRef` cannot name an open chain, which is the case a rib needs.
+10. **Sides of a wall named by the direction of the chain** (`left` of the walk). The walk starts at an end chosen by a rule; extending the chain at that end would swap every name.
+11. **An open chain named by its two end points.** Ambiguous where two paths join them, and a point says less than the curves when one is removed.
+12. **Projected curves in a chain.** Possible later; the ends would be named by derived points, and nothing in the scenario needs it.
+
+## Open questions
+
+- **For the owner: curves that drop out.** Should an inward offset that makes a corner arc vanish give sharp corners instead of an error? It is the natural result for a box with rounded corners and a wall thicker than the radius. It costs a loop that removes vanished curves and joins their neighbours, and a rule that differs from the taper's. The design leaves it out, as the backlog does.
+- Whether the mitre needs a limit. Left until a model runs into a spike.
+- The text of `invalidProfile` for an offset is in English like every new message; the general text of the code stays Czech until its line changes.
+
+## Needs from the preparatory step
+
+- None for the contract of parts 1 and 4: the scenario is written with the six maps as they are.
+- A note for part 2, not a change: `FeatureRef` gets the flag `own` and `ResolvedProfile` the two members above. Both are in files part 2 creates (`validation.ts`, `recompute/state.ts`); the package edits them after the move.
+
+## Tests the implementation owes
+
+- Engine: the offset of a rectangle, of a rounded rectangle (tangent joins), of a D shape (an arc meeting a line at an angle, both branches), of an outline with holes, of a selection with a shared curve; every refusal above; `offset` then `−offset` gives the outline back (a property test over random convex and L-shaped outlines); the wall of one line, of an L, of an arc, of a circle; `setField` on an absent field; the patch that removes it.
+- `review.test.ts` of the engine: the mesh of an extrusion without an offset is byte for byte what it was.
+- Scenario 12 in `packages/scenarios`, from `calls.ts` of the four packages.
+
+## Reviews
+
+Not yet run.

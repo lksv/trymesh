@@ -20,7 +20,7 @@ declare const engine: EngineAfter; // with the joint of scenario 9, as packages/
 declare function fail(message: string): never;
 const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result : fail(`${outcome.error.code}: ${outcome.error.message}`));
 const cap = (feature: string, role: 'startCap' | 'endCap'): FaceNameAfter => ({ feature, role });
-const BED: Vec3 = [220, 220, 250];
+const BED = { x: 220, y: 220, height: 250 };
 
 // ---------------------------------------------------------------- a. scenario 11: the housing in two orientations
 
@@ -82,6 +82,12 @@ export function onARoundFace(): string {
   return outcome.ok ? fail('expected an error') : `${outcome.error.code} in ${String(outcome.error.arg)}`; // failed in orientations,1,by,onBed
 }
 
+// A bed with a length of zero is refused before `run`: the range is in the description.
+export function flatBed(): string {
+  const outcome = engine.query('print', { bodies: ['housing'], orientations: [{ by: { up: [0, 0, 1] } }], bed: { x: 220, y: 220, height: 0 } });
+  return outcome.ok ? fail('expected an error') : `${outcome.error.code} in ${String(outcome.error.arg)}`; // invalidArguments in bed,height
+}
+
 engine.query('print', {
   // @ts-expect-error an orientation is a direction or a face, not both
   orientations: [{ by: { up: [0, 0, 1], onBed: { kind: 'face', body: 'housing', face: cap('housing', 'startCap') } } }],
@@ -125,7 +131,7 @@ export const print: (typeof QUERIES)['print'] = {
     'angle: the overhang angle used (rad). bodies: for every body its orientations in the order asked, each with up (unit vector), size (mm: x, y, height in the print frame), fits (with a bed; the footprint either way round), onBed (for an orientation given by a face, on the body of that face: whether the face lies on the bed), contact (area in mm2 and count of all planar faces on the bed; faces: the largest, with their areas) and overhang (area in mm2 and count of all overhanging faces; small: how many of them are below minArea and not listed; faces: the others, the largest first, each with area and from, the height in mm above the bed where it starts). Each list holds at most maxFaces faces, so the answer is at most 2 × maxFaces faces per body and orientation; truncated when maxFaces cut any list.',
   args: PRINT_ARGS,
   run(context, args) {
-    if (args.bed && args.bed.some((length) => !(length > 0))) throw new QueryFailure('failed', 'the bed has three lengths above zero', ['bed']);
+    const { bed } = args; // three lengths above zero: the description says so and the engine checked it before `run`
     const placed = args.orientations.map((orientation, index) => placedOf(context, orientation, index));
     const names = context.state.evaluation.faceNames;
     let [shown, total] = [0, 0];
@@ -150,7 +156,7 @@ export const print: (typeof QUERIES)['print'] = {
       const orientations = placed.map(({ frame, onBed }): PrintOrientation => {
         const pass = printPass(body.solid, frame, args.overhang, normalOf, precision);
         const [width, depth, height] = pass.size;
-        const fits = args.bed && height <= args.bed[2] && ((width <= args.bed[0] && depth <= args.bed[1]) || (width <= args.bed[1] && depth <= args.bed[0]));
+        const fits = bed && height <= bed.height && ((width <= bed.x && depth <= bed.y) || (width <= bed.y && depth <= bed.x));
         const contact = [...pass.contact].map(([face, area]) => ({ face: names[face], area })).sort((a, b) => b.area - a.area);
         const over = [...pass.overhang].map(([face, value]) => ({ face: names[face], ...value })).sort((a, b) => b.area - a.area);
         const large = over.filter((entry) => entry.area >= args.minArea);
@@ -177,8 +183,10 @@ export const FIXTURE: { args: QueryArgs<'print'> } = { args: { orientations: [{ 
 // A row per body and orientation with what decides: fits, the height, the contact and the
 // overhang, and whether a face named to lie on the bed does. A picked row paints the overhanging
 // faces of that orientation and its contact faces, and lists the overhanging faces below it with
-// their areas and heights. A last line says when `maxFaces` cut a list: the view replaces the
-// tree, so nothing else would. Rows are counted through all bodies, in the order of the answer.
+// their areas and heights. Under the list it says what the list leaves out and why, per list:
+// how many faces on the bed and how many overhanging faces `maxFaces` cut, and how many
+// overhangs are below `minArea`. The view replaces the tree, so nothing else would say it.
+// Rows are counted through all bodies, in the order of the answer.
 export const printView: QueryView<'print'> = {
   answer(result, _args, panel) {
     const line = (className: string, textContent: string): HTMLElement => Object.assign(document.createElement('div'), { className, textContent });
@@ -188,10 +196,16 @@ export const printView: QueryView<'print'> = {
       const row = line(`row ${panel.picked === index ? 'selected' : ''}`, text);
       row.onclick = () => panel.pick(panel.picked === index ? undefined : index);
       if (panel.picked !== index) return [row];
-      const faces = orientation.overhang.faces.map((entry) => line('hint', `${panel.faceLabel(entry.face)}: ${panel.number(entry.area, 'mm2')} from ${panel.number(entry.from, 'mm')} above the bed`));
-      return [row, ...faces];
+      const { contact, overhang } = orientation;
+      const faces = overhang.faces.map((entry) => line('hint', `${panel.faceLabel(entry.face)}: ${panel.number(entry.area, 'mm2')} from ${panel.number(entry.from, 'mm')} above the bed`));
+      const left = [
+        ...(contact.faces.length < contact.count ? [`${contact.faces.length} of ${contact.count} faces on the bed are shown`] : []),
+        ...(overhang.faces.length < overhang.count - overhang.small ? [`${overhang.faces.length} of ${overhang.count - overhang.small} overhanging faces are listed`] : []),
+        ...(overhang.small ? [`${overhang.small} smaller overhang(s) are not listed`] : []),
+      ];
+      return [row, ...faces, ...(left.length ? [line('hint', `${left.join('; ')}.`)] : [])];
     });
-    return result.truncated ? [...out, line('hint', `${result.truncated.shown} of ${result.truncated.total} faces are listed.`)] : out;
+    return result.truncated ? [...out, line('hint', `In all, ${result.truncated.shown} of ${result.truncated.total} faces are listed.`)] : out;
   },
   scene(result, _args, panel): Partial<SceneAdditions> {
     const rows = result.bodies.flatMap((body) => body.orientations.map((orientation) => ({ body: body.body, orientation })));

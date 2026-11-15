@@ -28,7 +28,8 @@ const face = (body: Id, name: FaceNameAfter): Extract<ShapedRef, { kind: 'face' 
 export function wallOnTheMesh(): { wall: number; accuracy: number; parallel: boolean } {
   const measured: Measurement = unwrap(engine.query('measure', { from: face('housing', side('ring', 'teeth')), to: face('housing', side('boltHole', 'bh')) }));
   // from.is `swept`, to.is `cylinder`; smallest.distance 15.2837 between (33.526, 0, 28) and
-  // (48.810, 0, 28); accuracy 0.02 (the housing has round faces, and both entities lie on it); angle 0
+  // (48.810, 0, 28); angle 0; accuracy 0.020055: the housing has round faces and both entities
+  // lie on it (0.01 twice), plus the precision of the coordinates (a millionth of 55)
   return { wall: measured.smallest.distance, accuracy: measured.smallest.accuracy, parallel: measured.angle === 0 && measured.distance === undefined };
 }
 
@@ -178,26 +179,27 @@ export const measureView: QueryView<'measure'> = {
 // form opens; the collisions and then the fits are rows, a fit marked as one, each with its
 // volume and, in its title, how deep one body reaches into the other; the pairs the kernel
 // could not compute are listed with the reason; a picked row draws its two bodies in the two
-// colours of today; and the note in the status bar counts the fits and the failures.
+// colours of today; and the note in the status bar counts the fits and the failures. The rows
+// and the texts are those of app.ts. What does not carry over is the heading "Collisions (N)"
+// and the two buttons: the heading and the buttons of a query are the generic panel's
+// (design.md lists it with what the recorded test will see).
 const SELECT = 0xf97316; // `COLOR.select` and `COLOR.clash` of app.ts
 const CLASH = 0xdc2626;
 export const interferenceView: QueryView<'interference'> = {
   immediate: true,
   answer(result, _args, panel) {
     const line = (className: string, text: string): HTMLElement => Object.assign(document.createElement('p'), { className, textContent: text });
+    // a row as today: the two names, and the volume in a `small` after them
     const row = (pair: (typeof result.pairs)[number], index: number, fit: boolean): HTMLElement => {
-      const element = Object.assign(document.createElement('div'), {
-        className: `row ${panel.picked === index ? 'selected' : ''}`,
-        title: `Highlight the two bodies. One reaches ${panel.number(pair.depth, 'mm')} into the other`,
-        textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: ${fit ? 'fit, ' : ''}${panel.number(pair.volume, 'mm3')}`,
-      });
+      const element = Object.assign(document.createElement('div'), { className: `row ${panel.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${panel.number(pair.depth, 'mm')} into the other` });
+      element.append(Object.assign(document.createElement('span'), { className: 'name', textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}` }), Object.assign(document.createElement('small'), { textContent: `${fit ? 'fit, ' : ''}${panel.number(pair.volume, 'mm3')}` }));
       element.onclick = () => panel.pick(panel.picked === index ? undefined : index);
       return element;
     };
     return [
       ...(result.pairs.length === 0 && result.failed.length === 0 ? [line('hint', `No two bodies collide; ${result.checked} pair(s) checked. Bodies that only touch do not count.`)] : []),
       ...result.pairs.map((pair, index) => row(pair, index, false)),
-      ...(result.fits.length ? [line('hint', 'Fits: round faces that reach into each other by no more than the chord tolerance.')] : []),
+      ...(result.fits.length ? [line('hint', 'Fits: round faces that reach into each other by no more than the chord tolerance. Round faces are polygons, so a pin in a hole of the same diameter overlaps its wall by slivers; that is not a collision of the design.')] : []),
       ...result.fits.map((pair, index) => row(pair, result.pairs.length + index, true)), // `picked` counts through both lists
       ...result.failed.map((pair) => line('issue warning', `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: could not be computed (${pair.message})`)),
     ];

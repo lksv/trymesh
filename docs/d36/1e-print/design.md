@@ -1,6 +1,6 @@
 # 1e Print queries
 
-**Decision D42. State: designed, not implemented; second version, after one round of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D42. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the printability of the housing in two orientations.
 
@@ -33,10 +33,10 @@ A face gives a direction, for every body of the call. The bed is always put at t
 **Per body and orientation** the answer has:
 
 - `size`: the box in the print frame (x, y, the height). The frame is fixed by a rule, so the same question gives the same box: for a direction, x is the X axis of the model laid into the bed (the Y axis when up is within 45° of X); for a face, the x of its frame.
-- `fits`, when a bed is given: the height within the bed's, and the footprint within its x and y either way round, because a quarter turn costs nothing. A diagonal placement is tried with `turn`.
-- `contact`: the area on the bed, per face. A triangle is contact when its face is planar and all its corners are at the lowest point of the body within the precision of the coordinates (`coordinatePrecision` of 1b). Round faces never count: a line of contact has no area, and a facet of the polygon is not one.
+- `fits`, when a bed is given: the height within the bed's, and the footprint within its x and y either way round, because a quarter turn costs nothing. A diagonal placement is tried with `turn`. The bed is three named lengths above zero (`x`, `y`, `height`), so the range is in the description and a bed without a size is refused before the query runs.
+- `contact`: the area on the bed, per face. A triangle is contact when its face is planar, that face looks straight down (within `ANGLE_TOLERANCE`), and all the corners of the triangle are at the lowest point of the body within the precision of the coordinates (`coordinatePrecision` of 1b). Round faces never count: a line of contact has no area, and a facet of the polygon is not one. Both tests are needed: the height alone would take the top and the sides of a body thinner than the precision for contact.
 - `overhang`: the area that looks down and leans from the vertical by more than the overhang angle, and is not contact; per named face, with the height above the bed where the overhang of that face starts (`from`), the largest first. The total area and the number of faces are of all of them.
-- **Where a triangle looks.** A triangle of a planar face looks where its face looks: the normal of the face out of the body, which the engine knows exactly (`context.frame`). Only a triangle of a face that is not planar is judged by its own normal.
+- **Where a triangle looks.** A triangle of a planar face looks where its face looks: the normal of the face out of the body, which the engine knows exactly (`context.frame`). Only a triangle of a face that is not planar is judged by its own normal. This holds for the contact and for the overhang alike.
 
 **The threshold on the overhang area** is an argument, `minArea`, 1 mm² by default: the overhang of a face below it is in the totals and not in the list, and `small` says how many such faces there are. It is what the backlog asks for against the noise of small horizontal holes. The nut pockets of the housing (17.19 mm² each) are above it and are listed, which is right: they are what an AI should see.
 
@@ -80,12 +80,12 @@ packages/app/src/queries/print.ts   the view
 The generic form of 1b with a view of its own (`QUERY_VIEWS.print`; `calls.ts` writes it).
 
 - **The form**: the bodies as rows; the orientations as rows, each a choice between a direction (three numbers) and a face taken from a selection in the view, with the turn in degrees; the bed as three numbers; the angle in degrees.
-- **The answer**: a row per body and orientation with what decides (whether it fits, whether a face named to lie on the bed does, the height, the area on the bed, the overhang and on how many faces). A picked row paints the overhanging faces of that orientation in one colour and its contact faces in another, on the model as it stands, and lists the overhanging faces under it with their areas and heights. A line says when a list was cut. The view does not turn the model onto a bed: the faces are the answer, and they are where the user would change the design.
+- **The answer**: a row per body and orientation with what decides (whether it fits, whether a face named to lie on the bed does, the height, the area on the bed, the overhang and on how many faces). A picked row paints the overhanging faces of that orientation in one colour and its contact faces in another, on the model as it stands, and lists the overhanging faces under it with their areas and heights. Under that list it says, per list, what is not shown and why: how many faces on the bed and how many overhanging faces `maxFaces` cut, and how many overhangs are below `minArea`. The view does not turn the model onto a bed: the faces are the answer, and they are where the user would change the design.
 - The nested arguments of an orientation (`by`, `up`, `onBed`, `turn`) are labelled by their keys: the description cannot give them titles (a need recorded in 1b).
 
 ## Needs from the preparatory step
 
-None of its own. It uses the stand-ins of 1b: the units of a result (the angle, shown in degrees), and `failed` with the path of the argument where the mistake is the caller's and the description cannot say it (a bed with a length that is not above zero, a direction without a length: a `vector` is three numbers with no range).
+None of its own. It uses the stand-ins of 1b: the units of a result (the angle, shown in degrees), and `failed` with the path of the argument where the mistake is the caller's and the description cannot say it (a direction without a length: a `vector` is three numbers with no range).
 
 ## Rejected
 
@@ -93,6 +93,8 @@ None of its own. It uses the stand-ins of 1b: the units of a result (the angle, 
 - **An error when the named face is not the lowest thing of its body.** It is a fact about the orientation, and often the interesting one (a boss below the face). `onBed` says it.
 - **Reading "is the face on the bed" off the list of contact faces** (the first version). The list is cut by `maxFaces`; a body resting on twenty-one faces would hide the answer.
 - **Contact as "everything at the lowest height".** It counts the facets of round faces; see the 96 mm² of a cylinder on its side.
+- **Contact by the height alone** (the second version, which dropped the test of the direction together with the triangle's own normal). On a slab thinner than the precision of the coordinates the top and the sides are at the lowest point too. The normal of the face costs nothing to test.
+- **The bed as a `vector`** (the first two versions). Three numbers with no range, so a bed of size zero had to be refused in `run`, as a failure of the computation. Three named numbers say the range in the description.
 - **Every triangle judged by its own normal** (the first version). Right on a body aligned with the axes, and off by a fraction of a square millimetre on a turned one; the face is known exactly, so there is no reason to ask the triangle.
 - **A fixed overhang threshold, no argument.** Printers and materials differ; the backlog names 45° as a default, not as a constant.
 - **Overhangs as one number per body.** The backlog's own point: without the face the number does not say what to change.
@@ -118,5 +120,17 @@ Two independent reviewers, read-only, at commit `b2fdf2d`: `codex` (gpt-6-astra,
 | The nested arguments of an orientation cannot have titles | internal | Yes | A need recorded in 1b; noted under "What the app shows" |
 
 Found while fixing, by no reviewer: rerunning the prototype with the smaller precision on a turned housing showed that a triangle of a flat face judged by its own normal can miss the contact (0.42 mm² of 6028.84). The rule is now that a triangle of a planar face looks where its face looks; see "Measured" and "Rejected".
+
+Nothing was left without action.
+
+### Round 2 (2026-11-15): the fixes of round 1
+
+`codex` and a new internal subagent, on what the fix commit `7f03434` changed; `agy` did not take part (out of quota). The round as a whole is recorded in [1b](../1b-measure/design.md). Both found the counting of the two lists right and the new step of the scenario true to the model (the disc of the carrier starts at z = 46.5 and its pins reach down to 34, so the carrier "on" `carrier/startCap` rests on the three pin ends). The internal reviewer ran the contact rule on 192 cases (eight bodies, eight directions, as modelled and turned to coordinates of 200 and 2000) and found no face in contact that does not look down. The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| Contact without a test of the direction takes the top and the sides of a body thinner than the precision of the coordinates for contact (a slab 0.00005 thick at x = 100) | codex (major); the internal reviewer called the risk theoretical and proposed the same fix | Yes: nothing sets a smallest thickness of an extrusion | Contact tests the normal of the face against up as well as the height. Rerun on the housing, as modelled and turned: the same four numbers |
+| The view shows only the sum of what `maxFaces` cut, not which list of which orientation, nor the overhangs below `minArea` | codex | Yes | A line per picked orientation: each list's shown and counted faces, and `small` |
+| The bed can be written with its range, so its check does not belong in `run` | internal | Yes (a probe: `fields` of three numbers with an open lower bound) | The bed is `{ x, y, height }`; a bed of size zero is `invalidArguments` before `run`; `calls.ts` has the case |
 
 Nothing was left without action.

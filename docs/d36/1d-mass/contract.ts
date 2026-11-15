@@ -1,7 +1,7 @@
 // Contract of package 1d of D36 (decision D41): mass properties of bodies. A draft, only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, QuantitySpec, QueryContext } from '../00-prep/contract';
@@ -20,9 +20,10 @@ const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }
 // - `fill`: the part of the volume that is material, for a printed part with infill. It goes
 //   with `density`: the mass and the inertia of the bodies that take `density` are multiplied by
 //   it, and no other body is touched (a motor given in `densities`, a body with a density or
-//   a mass of its own). It assumes the material is spread evenly, which a part with solid
-//   shells and a sparse core is not; an effective density measured on a printed sample is
-//   better.
+//   a mass of its own). A `fill` other than 1 that applies to no listed body is refused
+//   (`failed` with the path `['fill']`) and not ignored: the caller meant it for something. It
+//   assumes the material is spread evenly, which a part with solid shells and a sparse core is
+//   not; an effective density measured on a printed sample is better.
 // - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it.
 export const MASS_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece.' },
@@ -49,8 +50,8 @@ export const MASS_ARGS = {
 //   a horizontal axis is at a distance and has no lever.)
 // - `bodies`: every listed body by itself: its mass, its volume, the density of its material
 //   (before the fill factor; for a body with an explicit mass, that mass over its volume), the
-//   fill factor that was applied to it (1 when none was) and its centre of mass. The mass is
-//   density times fill times volume.
+//   fill factor that was applied to it (1 when none was) and its centre of mass. In the units
+//   of the answer, mass (g) = density (g/cm3) × fill × volume (mm3) / 1000.
 export interface MassProperties {
   mass: number; // g
   volume: number; // mm3

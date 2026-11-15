@@ -2,10 +2,11 @@
 // the app (`HostOperation` of the preparatory step), not a query: the engine has no renderer.
 // A draft, only type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Vec3 } from '../../../packages/engine/src/index';
 import type { AppHost, ArgSpecs, EngineAfter, QueryOutcome, RunArgsOf, StateAfter, ToolAnswer } from '../00-prep/contract';
+import { SECTION_ARGS } from '../1a-section/contract';
 
 // ---------------------------------------------------------------- the views
 
@@ -81,8 +82,9 @@ declare module '../00-prep/contract' {
 // - `bodies`: only these; the picture is fitted to them. Hiding the housing shows the gears.
 // - `section`: the model cut by a plane, as the query `section` of 1a takes it (a plane, an
 //   offset along its normal, a flip). What lies on the side the normal points to is cut away and
-//   the cut is filled. The three arguments are written again here, without the titles they have
-//   in `SECTION_ARGS`: an entry of `fields` cannot carry a title (design.md of 1b, "Needs").
+//   the cut is filled. The three arguments are the descriptions of `SECTION_ARGS` themselves,
+//   with their titles and defaults. (A title written here as a literal would not compile: the
+//   type of an entry of `fields` has none. See design.md of 1b, "Needs".)
 // - `at`: the model as it was after this feature. An argument here because the path of an
 //   operation has no `at` and no `after` (design.md, "Needs").
 // - `width`, `height`: the size of the picture in pixels.
@@ -94,7 +96,7 @@ export const VIEW_IMAGE_ARGS = {
     title: 'Section',
     summary: 'Cuts the model by a plane; what lies on the side its normal points to is not drawn.',
     optional: true,
-    fields: { plane: { kind: 'plane' }, offset: { kind: 'number', optional: true, spec: { title: 'Offset along the normal', unit: 'mm', default: 0 } }, flip: { kind: 'flag', optional: true } },
+    fields: { plane: SECTION_ARGS.plane, offset: SECTION_ARGS.offset, flip: SECTION_ARGS.flip },
   },
   at: { kind: 'feature', title: 'After the feature', summary: 'The model as it was after this feature.', optional: true },
   width: { kind: 'number', title: 'Width', optional: true, spec: { title: 'Width in pixels', unit: 'count', integer: true, min: { value: 64 }, max: { value: 1600 }, default: 800 } },

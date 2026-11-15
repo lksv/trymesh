@@ -14,7 +14,7 @@ import type { BodyResultAfter, CommandAfter, EngineAfter, QueryArgs, QueryContex
 import { QUERIES, QueryFailure } from '../00-prep/contract';
 import type { QueryView, SceneAdditions } from '../1b-measure/contract';
 import { QUERY_VIEWS, closest, coordinatePrecision, meshAccuracy } from '../1b-measure/contract';
-import type { Gap, GapReport, SolidKernelAfter } from './contract';
+import type { Gap, GapReport } from './contract';
 import { GAP_ARGS } from './contract';
 
 declare const engine: EngineAfter; // with the joint of scenario 9, as packages/scenarios/test/scenario9.test.ts builds it
@@ -26,7 +26,8 @@ const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result 
 // One pair is asked by naming its two bodies. The pin of the carrier (diameter 5) goes through
 // the bore of the planet (5.3): 0.15 by design, 0.140453 on the meshes, between
 // `planetHole/side/ph` at (17.610, 0, 34) and `carrierPin/side/pin` at (17.750, 0, 34), with an
-// accuracy of 0.02 (two bodies with round faces; the precision of the coordinates adds 5e-5).
+// accuracy of 0.0200515 (two bodies with round faces, 0.01 each, and the precision of the
+// coordinates: a millionth of 51.5, the largest coordinate of the two; printed as 0.0201).
 // The closest point lies on the rim of the bore; the face named is the wall of the bore, not the
 // cap of the planet.
 export function planetAndCarrier(): { gap: number; onPin: boolean; accuracy: number } {
@@ -103,11 +104,11 @@ type PairAnswer = Gap | 'apart' | { refused: string };
 function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer {
   const [A, B] = [context.bodies[a], context.bodies[b]]; // from the context: the same code answers for a pose
   if (boxesApart(A, B, within)) return 'apart';
-  return context.memo([A.solid, B.solid], `within:${within}`, (): PairAnswer => {
-    const kernel = context.kernel as SolidKernelAfter; // the port after this package
+  // the key has what the answer depends on besides the two meshes: the search distance, and the chord tolerance `accuracy` reads
+  return context.memo([A.solid, B.solid], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): PairAnswer => {
     let measured: number;
     try {
-      measured = kernel.minGap(A.solid, B.solid, within);
+      measured = context.kernel.minGap(A.solid, B.solid, within); // the port after this package (contract.ts)
     } catch (error) {
       return { refused: error instanceof Error ? error.message : String(error) };
     }

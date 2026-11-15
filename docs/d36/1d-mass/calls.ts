@@ -57,6 +57,11 @@ export const sparse = (): number => unwrap(engine.query('mass', { bodies: ['carr
 // no density and the fallback is used.
 export const oddName: QueryToolInput = { query: 'mass', args: { bodies: ['constructor'], densities: {}, density: PLA } };
 export const overMcp: QueryToolInput = { query: 'mass', args: { bodies: ['carrier'], density: PLA }, at: 'carrier' }; // the disc before its pins
+// A fill factor that reaches no body is refused, not ignored: the motor has its own density here.
+export function fillForNothing(): string {
+  const outcome = engine.query('mass', { bodies: ['motor'], densities: { motor: 2.9 }, fill: 0.4 });
+  return outcome.ok ? fail('expected an error') : `${outcome.error.code} in ${String(outcome.error.arg)}`; // failed in fill
+}
 
 // Until body properties exist a body has no density of its own, so one has to be given.
 export function noDensity(): string {
@@ -86,19 +91,21 @@ export const mass: (typeof QUERIES)['mass'] = {
   title: 'Mass properties',
   summary: 'Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. A fill factor scales a printed part with infill.',
   returns:
-    'mass (g), volume (mm3), centerOfMass (mm, model coordinates), inertia (g·mm2; the tensor about the centre of mass in the axes of the model, three rows; off the diagonal the negative products of inertia, as URDF writes them; 1 g·mm2 = 1e-9 kg·m2), about (with an axis: moment in g·mm2 and the perpendicular distance of the centre of mass from the axis in mm), bodies (each body with its mass, volume, the density of its material in g/cm3, the fill factor applied to it and its centre of mass; mass = density × fill × volume).',
+    'mass (g), volume (mm3), centerOfMass (mm, model coordinates), inertia (g·mm2; the tensor about the centre of mass in the axes of the model, three rows; off the diagonal the negative products of inertia, as URDF writes them; 1 g·mm2 = 1e-9 kg·m2), about (with an axis: moment in g·mm2 and the perpendicular distance of the centre of mass from the axis in mm), bodies (each body with its mass, volume, the density of its material in g/cm3, the fill factor applied to it and its centre of mass; mass in g = density × fill × volume in mm3 / 1000).',
   args: MASS_ARGS,
   significant: { mass: 6, inertia: 6, moment: 6 },
   run(context, args) {
     const total = { mass: 0, volume: 0, first: [0, 0, 0] as Vec3, second: [0, 0, 0, 0, 0, 0] as MassIntegrals['second'] };
     const bodies: MassProperties['bodies'] = [];
-    [...new Set(args.bodies)].forEach((id, index) => {
+    // a body named twice counts once
+    for (const id of new Set(args.bodies)) {
       const solid = context.bodies[id].solid; // from the context: the same code answers for a pose
       const unit = context.memo([solid], 'integrals', () => massIntegrals(solid));
-      if (!(unit.volume > 0)) throw new QueryFailure('failed', `the body "${id}" has no volume`, ['bodies', index]);
+      if (!(unit.volume > 0)) throw new QueryFailure('failed', `the body "${id}" has no volume`, ['bodies', args.bodies.indexOf(id)]); // the place in the argument, not in the set
       // Whose density: the call's by body, then the body's own (3a), then the call's for all.
       // An own key of the record only: a body may have the ID `constructor`, which every object
-      // has by inheritance (the engine guards its own records the same way, `has` in evaluate.ts).
+      // has by inheritance (the engine guards its own records the same way: `has` in util.ts,
+      // used by `lookup` in evaluate.ts).
       const named = args.densities !== undefined && Object.prototype.hasOwnProperty.call(args.densities, id) ? { density: args.densities[id] } : undefined;
       const own = named ?? massSourceOf(context, id);
       const source = own ?? (args.density === undefined ? undefined : { density: args.density });
@@ -112,7 +119,9 @@ export const mass: (typeof QUERIES)['mass'] = {
       total.first = total.first.map((value, k) => value + perVolume * unit.first[k]) as Vec3;
       total.second = total.second.map((value, k) => value + perVolume * unit.second[k]) as MassIntegrals['second'];
       bodies.push({ body: id, mass: weight, volume: unit.volume, density, fill, centerOfMass: unit.first.map((value) => value / unit.volume) as Vec3 });
-    });
+    }
+    // a fill factor that reached no body was meant for something: say so instead of ignoring it
+    if (args.fill !== 1 && bodies.every((body) => body.fill === 1)) throw new QueryFailure('failed', 'the fill factor applies to bodies that take `density`, and none of the listed bodies does: give their densities as effective ones', ['fill']);
     const centerOfMass = total.first.map((value) => value / total.mass) as Vec3;
     const inertia = tensorAbout(total.second, total.mass, centerOfMass);
     const result: MassProperties = { mass: total.mass, volume: total.volume, centerOfMass, inertia, bodies };

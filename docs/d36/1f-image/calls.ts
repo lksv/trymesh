@@ -66,11 +66,14 @@ const refused = (code: 'notAvailable' | 'failed', message: string, arg?: (string
 
 // The cut of a request from an answer of the query `section` asked with polylines: the frame
 // and, per region, its loops. Undefined when the answer is not complete: a region filled without
-// one of its holes would show material across a cavity (the rule of the section view of 1a,
-// and its function).
-export function cutOf(section: SectionResult): ImageRequest['cut'] | undefined {
+// one of its holes would show material across a cavity (the rule of 1a and its function, which
+// lives in the engine next to the query). With `only`, the regions of other bodies are left
+// out: the cut of a body that is not drawn is not filled.
+export function cutOf(section: SectionResult, only?: readonly Id[]): ImageRequest['cut'] | undefined {
   const regions = completeRegions(section);
-  return regions && { frame: section.frame, regions: regions.map((region) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) })) };
+  if (!regions) return undefined;
+  const drawn = only ? regions.filter(({ body }) => only.includes(body)) : regions;
+  return { frame: section.frame, regions: drawn.map(({ region }) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) })) };
 }
 
 // The model to draw: the state after `at`, the bodies checked against it, and the cut taken from
@@ -120,14 +123,19 @@ export const registered: Pick<typeof HOST_OPERATIONS, 'view_image'> = { view_ima
 // the camera of the view, at a fixed size. Nothing of this goes through the bridge.
 // - `shown`: the answer of the query `section` the query panel shows at the moment, if it shows
 //   one (the answer the section view asked for, with polylines). The picture is then cut as the
-//   view is. An answer that is not complete is not filled in the view either; the picture then
-//   has no cut and the app says so.
-// - `visible`: the bodies the user has not hidden; the others are not in the picture either.
+//   view is. An answer that is not complete cannot be drawn as a cut (the view clips it without
+//   a fill and says so): nothing is saved then, and the app is told why, as the operation
+//   answers `failed`. An uncut picture of a view that shows a cut would be the wrong picture.
+// - `visible`: the bodies the user has not hidden; the others are not in the picture, and
+//   neither are the fills of their cuts.
 // - What the picture leaves out is what the capability leaves out: the selection, the sketches,
 //   the planes and the labels. The button is labelled "Save picture of the model", not of the
 //   view.
-export async function saveImage(state: ImageRequest['state'], visible: Id[], shown: SectionResult | undefined, save: (name: string, base64: string) => void): Promise<void> {
-  const cut = shown && cutOf(shown);
+// The answer is what the status bar says.
+export async function saveImage(state: ImageRequest['state'], visible: Id[], shown: SectionResult | undefined, save: (name: string, base64: string) => void): Promise<{ text: string; error: boolean }> {
+  const cut = shown && cutOf(shown, visible);
+  if (shown && !cut) return { text: 'The section is too large to draw, so no picture was saved. Close the section or cut fewer bodies.', error: true };
   const image = await viewport.image({ state, bodies: visible, camera: 'current', width: 1600, height: 1200, ...(cut ? { cut } : {}) });
   save('view.png', image.base64);
+  return { text: 'Picture saved.', error: false };
 }

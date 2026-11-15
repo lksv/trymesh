@@ -1,6 +1,6 @@
 # 1b Measuring between two named entities, and the generic form of a query in the app
 
-**Decision D39. State: designed, not implemented; second version, after one round of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D39. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the wall between the root circle of the ring gear and the bolt holes.
 
@@ -79,7 +79,7 @@ packages/app/src/
   queries/measure.ts, queries/interference.ts   the two views of this package
 ```
 
-`queries/` in the engine is this track's proposal for where the modules of queries go; the preparatory step names no directory.
+`queries/` in the engine is this track's proposal for where the modules of queries go; the design of the preparatory step, as this branch has it, names no directory. The implementation of that step, begun on `master` after this branch was cut, puts them into `packages/engine/src/query/`; the modules of this track go wherever that step ends up keeping its own (and the operations of 1f next to its `HOST_OPERATIONS`). Nothing else in these designs depends on the path.
 
 - `mesh-distance.ts` holds the distance of two triangles and the pass over two sets with boxes.
   - Two triangles: the least of six corner to triangle and nine edge to edge distances (`closestOnTriangle` exists in `solid.ts` and moves here), and zero when an edge of one goes through the other. Without the last test two triangles that cross through their insides come out apart (a reviewer's example gives 0.65 where the answer is zero), and two faces of colliding bodies would measure a distance.
@@ -98,7 +98,7 @@ packages/app/src/
 | `Queries` | `measure` |
 | Issue codes | none: a query answers with a `QueryOutcome` |
 | `BodyDescription` | the circle of a circular edge becomes exact and required (`BodyEdgeExact`) |
-| The engine's modules | `entityShape`, `closest`, `coordinatePrecision` and `meshAccuracy`, used by other packages of the track |
+| The engine's modules | `closest`, `coordinatePrecision` and `meshAccuracy`, used by other packages of the track (1a, 1c, 1e); `entityShape`, used by this query alone today and written for the posed queries of 5a |
 | MCP | nothing by hand: the tool `query` reaches it; `returns` describes the answer |
 
 `measure` reads the geometry of bodies only from its context, so it is asked at `at`, over `after` and, later, in a pose.
@@ -107,7 +107,7 @@ packages/app/src/
 
 Part 3 of the preparatory step decides that a form is built from the description of the arguments of a query, that a query may have a view of its own, and that an answer belongs to the document and the place on the timeline it was asked at. It leaves the form itself to this package. What follows is that design; the interfaces are in `contract.ts` as stand-ins (the app's own types cannot be imported into a draft) and, unlike the sketch of part 3, they are type-checked: every query of track A writes its view against them in its `calls.ts`.
 
-**Today.** The collisions are the one query of the model in the app: a toolbar button, a block of the model panel, a field of `App` with the answer and the marker it was asked at, a picked pair that draws its two bodies in two colours, and a note in the status bar that goes when the answer goes (`checkCollisions`, `collisionsPanel`, `shownCollisions` in `app.ts`). A click in the model mode selects a face, an edge or a plane in one place (`onUp`: `this.selected = pick`); edges are picked only in the model mode, from the segments of the edges of the bodies, and an edge of the kind `coplanar` is never picked. Sketch points are picked only inside the sketch mode.
+**Today.** The collisions are the one query of the model in the app: a toolbar button, a block of the model panel, a field of `App` with the answer and the marker it was asked at, a picked pair that draws its two bodies in two colours, and a note in the status bar that goes when the answer goes (`checkCollisions`, `collisionsPanel`, `shownCollisions` in `app.ts`). A click in the model mode selects a face, an edge or a plane in one place (`onUp`: `this.selected = pick`). Edges are picked from the segments of the edges of the bodies (in the model mode by a click, in the sketch mode only by the tool that projects geometry), and an edge of the kind `coplanar` is never picked. Sketch points are picked only inside the sketch mode.
 
 **The panel.** One query is open at a time, shown in the model panel below the selected feature, where the collisions are today. Its state is one object (`QueryPanelState`) that the app holds and only the panel reads and writes: the name of the query, the arguments being filled in, the control that is armed, and the answer.
 
@@ -139,8 +139,15 @@ Part 3 of the preparatory step decides that a form is built from the description
 - A view gets the state the answer was asked about, the names the app uses, a picked row (what a row is belongs to the view) and a way to ask again with other arguments of the form. It is typed by its query: the arguments it hands to `ask` are checked.
 - What `prepare` adds never reaches the form: the view is handed the arguments of the form, and the answer keeps both those and the ones the engine really got.
 - A view that replaces the tree is then the only thing that shows the answer, so it shows all of it: failures, and lists that were cut.
-- **`interference`**: the collisions panel of today becomes this view (`calls.ts` writes it in full): asked at once; the collisions and the fits as rows, a fit marked as one, with the volume and, in the title, the depth; the pairs the kernel could not compute with the reason; a picked pair drawn in the two colours of today; the note of today with its counts of fits and failures. `panels/collisions.ts` of the preparatory step goes.
-- **What the recorded test of the app (part 3) will see.** The app calls `engine.query('interference', …)` where it called `engine.interference`; the toolbar has one button more at every step; and the block of the collisions is built by the generic panel, so its heading and its buttons ("Ask again", "Close") are the panel's. The commit that makes the collisions a view changes the snapshot in those three ways and says so; the rows, the hint texts, the highlight and the note stay.
+- What a view adds about a body the user has hidden is not drawn: a highlighted face, a coloured body, and a fill or a line that names its body. Today's highlight of a collision leaves hidden bodies out the same way.
+- **`interference`**: the collisions panel of today becomes this view (`calls.ts` writes it in full, with the rows and the texts of `collisionsPanel`): asked at once; the collisions and the fits as rows, each the two names and its volume, a fit marked as one, with the depth in the title; the two hints of today, word for word; the pairs the kernel could not compute with the reason; a picked pair drawn in the two colours of today; the note of today with its counts of fits and failures. `panels/collisions.ts` of the preparatory step goes.
+- **What the recorded test of the app (part 3) will see.** Four things change, and the commit that makes the collisions a view says so:
+  - the app calls `engine.query('interference', …)` where it called `engine.interference`;
+  - the toolbar has one button more at every step;
+  - the heading of the block is the title of the query, not "Collisions (N)": the number of collisions is in the note and in the rows;
+  - its buttons are the panel's ("Ask again", "Close") instead of "Check again" and "Close".
+
+  The rows, the hint texts, the highlight and the note stay as they are.
 - **`measure`**: the numbers with units (a distance between faces that look away from each other is labelled as a thickness), the two entities highlighted, and the two points of the smallest distance joined by a line with its length.
 - What the other four add is in their designs: the section clips the scene and fills the cut (1a), the gap lists pairs and draws the line of a picked one (1c), the print query lists orientations and highlights the overhanging faces of a picked one (1e); mass properties (1d) need no view.
 
@@ -157,19 +164,28 @@ The plan draws the six packages of track A side by side after the preparatory st
 | 1c | from 1b: `closest`, `coordinatePrecision`, `meshAccuracy`; for its view, the generic form |
 | 1d | from 1b: the generic form (it has no view) |
 | 1e | from 1b: the precision of the coordinates; for its view, the generic form |
-| 1f | from 1a: the query `section` and the clip of the viewport |
+| 1f | from 1a: the query `section`, `completeRegions` (a function of the engine next to the query) and the clip of the viewport |
 
-So that the other four do not wait for the whole of this package, its first commit is the shared pieces alone: `mesh-distance.ts` (with `closest`, `coordinatePrecision`, `meshAccuracy`), `entity.ts`, and in the app `QueryView` with `SceneAdditions` and the map of units. With that merged, the engine sides of 1a, 1c, 1d and 1e run side by side, and their views follow the generic form. `viewport.ts` is written by 1a (the clip, the pick) and by 1f (the picture), in that order; it is a shared place the plan does not list.
+So that the other four do not wait for the whole of this package, its first commit is the shared pieces alone: `mesh-distance.ts` (with `closest`, `coordinatePrecision`, `meshAccuracy`), `entity.ts`, and in the app `QueryView` with `SceneAdditions` and the map of units. With that merged, the engine sides of 1a, 1c, 1d and 1e run side by side, and their views follow the generic form.
+
+Files of the app that more than one package of the track writes, in this order, and that the table "Shared places" of the plan does not list or lists only for the split of `app.ts`:
+
+| File | Written by |
+|---|---|
+| `viewport.ts` | 1a (the clip, the pick), then 1f (the picture, a colour per body) |
+| `scene.ts` | 1b (the additions of a view), 1a (the clip, fills and lines that name a body), 1f (a scene of a model alone) |
+| `app.ts` | 1b (the query panel, the selection offered to it), 1a (the pick of edges), 1f (the host with `view`, the button) |
 
 ## Needs from the preparatory step
 
 - **The unit of a number in a result.** `QuerySpec` has `significant` (keys whose numbers are small on purpose) and `returns` (a sentence for the AI), and nothing a program can read about units. The case that cannot be written: the generic form shows the answer of `measure` without a view and has `angle: 1.570796`; it cannot write `90°`, which is how the app shows every other angle (the rule that only the GUI converts bare numbers). Proposed: an optional `units` on `QuerySpec`, keys of the result at any depth to a unit, in the form `significant` has; mass properties (1d) need one unit more than `QuantityUnit` has, `g·mm2`. Stand-in: `ResultUnits`, a map each query of the track exports next to its entry, and `QUERY_UNITS`, which the form reads.
-- **A failure in `run` that is the caller's mistake.** `QueryFailure` takes `notAvailable` or `failed`. A relation between arguments that a description cannot express (in this track: a body without a density in 1d, a bed with a size that is not positive in 1e, fewer than two different bodies in 1c) is found in `run` and is neither: nothing is missing from the state and the computation did not give up. Proposed: `invalidArguments` as a third code of `QueryFailure`. Stand-in: `failed` with the path of the argument.
-- **A title for a nested field and for an alternative.** An entry of `fields` and an option of `oneOf` are an `ArgKind` with at most `optional`; a `title` or a `summary` there does not compile. The case: the orientations of 1e (`by`, `up`, `onBed`, `turn`) and the section of 1f (`plane`, `offset`, `flip`) can be labelled in the form, and described to the AI, only by their keys; and 1f has to retype the arguments of the section instead of reusing the description of 1a, which has titles. Proposed: optional `title` and `summary` on both.
+- **A failure in `run` that is the caller's mistake.** `QueryFailure` takes `notAvailable` or `failed`. A relation between arguments that a description cannot express is found in `run` and is neither: nothing is missing from the state and the computation did not give up. In this track: a body without a density and a fill factor that applies to no body (1d), a direction of length zero (1e: a `vector` is three numbers with no range), fewer than two different bodies (1c). Proposed: `invalidArguments` as a third code of `QueryFailure`. Stand-in: `failed` with the path of the argument. (A range that a description can express is put there: the bed of 1e is three named numbers above zero and needs no check in `run`.)
+- **A title for a nested field and for an alternative.** The type of an entry of `fields` and of an option of `oneOf` is an `ArgKind` with at most `optional`: it has no `title` and no `summary`. A description written there as a literal with a title does not compile (TS2353), and generic code that reads a nested entry through its type cannot reach a title even when the value has one. The case: the orientations of 1e (`by`, `up`, `onBed`, `turn`) can be labelled in the form, and described to the AI, only by their keys. A description that exists as a value can be reused as it is (1f puts `SECTION_ARGS.plane`, `.offset` and `.flip` into its `section`), but the form still cannot read their titles through the declared type. Proposed: optional `title` and `summary` on both.
 - **A change of a shared type that is not one of the maps.** The six maps of the contract let a draft add to the unions of `types.ts`. `BodyDescription` is a type of the shared contract itself, and its change by this package (the exact circle of an edge) cannot be merged into anything: the result of the query `body` keeps the old member in the drafts. The case: reading `edge.circle.axis` from `engine.query('body', …)` does not compile. Stand-in: `BodyEdgeExact`, and the scenario written over that type.
-- **Part 3, the scene.** A view adds to the scene (`QueryView.scene`), as a feature form does through `overlay`. For that `scene.ts` has to ask the panel of the queries for its additions when it builds the scene of the model, and resolve a face given by name to its mesh. Nothing of that is a new member of `PanelHost`; it is a call in the scene builder that the commit of this package adds. Stated here because part 3 lists the collisions as the only thing the scene asks a panel about.
 
 Nothing is missing for the query itself: the context has the surfaces, the frames, the edges and the solved sketches, and `calls.ts` writes the entry in full.
+
+Not a need, but a thing the commit of this package does in a file of part 3: a view adds to the scene (`QueryView.scene`), as a feature form does through `overlay`. `scene.ts` asks the panel of the queries for its additions when it builds the scene of the model, resolves a face given by name to its mesh, and leaves out what an addition says about a body the user has hidden. Part 3 lists the collisions as the only thing the scene asks a panel about; nothing of the preparatory step has to change for this.
 
 ## Rejected
 
@@ -214,3 +230,20 @@ Not acted on:
 
 - Keys of a map of units checked against the result type (internal). The map is a stand-in for a field of `QuerySpec` that the preparatory step would add next to `significant`, which is not tied to the result type either; the two should be decided together there.
 - A hard limit on the pairs of triangles tested (codex). Left under "Open" until a model larger than the joint shows whether the coarse step is enough.
+
+### Round 2 (2026-11-15): the fixes of round 1
+
+The first round had many findings, several of them serious, and the fix was large, so the reviewers ran once more, on what the fix commit (`7f03434`) changed: `codex` (gpt-6-astra, effort high; thirteen findings: three major, eight minor, two factual errors) and a new internal subagent that had not seen the designs (eleven: one major, nine minor, a group of five factual errors; it reran and varied the prototypes and wrote two type probes). `agy` did not take part: still out of quota. Neither found a blocker. Both confirmed the fixes of round 1 that are not listed below (the pass through a triangle, `meshAccuracy`, the typed view, the guard of the kernel call, the union of `Gap`, the arithmetic of the counts, the own keys of `densities`, the complete section before a fill, the light). This table has the findings on this package and on the track as a whole; each of the other designs records its own.
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| "A draft cannot merge into `SolidKernel`" and "1f has to retype the arguments of the section" are false: an interface of the engine can be augmented, and a description that exists as a value can be reused as a nested field | both (factual) | Yes (both probes compile; adopted and type-checked here) | 1c merges its method into the port and drops its cast; 1f reuses `SECTION_ARGS`; the two needs are narrowed to what is really missing |
+| The scene builder is not a need of the preparatory step; one of the three cases of `invalidArguments` can be written today | internal | Yes | The first is now a note; the bed of 1e is three named numbers with a range, and the list of cases is restated |
+| The view of `interference` still drops the second sentence of the hint about fits, writes a row as one text and loses the heading with the count | both | Yes (`app.ts:789-803`) | The rows and both hints are those of the code; the heading and the buttons are listed with what the snapshot commit changes |
+| The scenario's accuracy is 0.020055 by the rule, not 0.02 | both | Yes | The comment of the scenario (and the one of 1c) |
+| "Edges are picked only in the model mode": the tool that projects geometry picks edges in a sketch | internal (factual) | Yes (`app.ts:1248`, `:1311`) | Corrected |
+| `entityShape` is "used by other packages of the track": by none | internal (factual) | Yes | Corrected: this query, and 5a |
+| `viewport.ts` is not the only shared file the plan misses: `scene.ts` and `app.ts` are written by 1b, 1a and 1f; `completeRegions` is shared by 1a and 1f | both | Yes | The table of files under "Order inside the track"; 1f's row |
+| The fills of the cut of a hidden body are drawn, in the view and in the saved picture | both (codex: major) | Yes (`app.ts:2119`, `:2134` leave hidden bodies out of the scene and of the highlight) | A fill and a line may name their body, and the scene leaves out those of hidden bodies; see 1a and 1f |
+
+Nothing of this round was left without action in this package. The engine directory (`queries/` here, `query/` in the implementation of the preparatory step on `master`) is noted under "Where it lives".

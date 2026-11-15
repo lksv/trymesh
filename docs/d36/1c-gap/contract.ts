@@ -1,20 +1,21 @@
 // Contract of package 1c of D36 (decision D40): the smallest gap between bodies. A draft, only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
-import type { Id, Solid, SolidKernel, Vec3 } from '../../../packages/engine/src/index';
+import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
 import type { ResultUnits } from '../1b-measure/contract';
 
 // ---------------------------------------------------------------- the kernel port
 
-// One method is added to `SolidKernel` in types.ts. A draft cannot edit that file and the shared
-// contract has no map for additions to the port (design.md, "Needs"), so the port after this
-// package is written as a type of its own and the entry casts `context.kernel` to it; in the
-// code it is one line of the interface. The ports lie between the section comments
-// `// --- porty` and `// --- přepočet`, the part `describe_api` leaves out: an AI learns what
-// the gap means from the description of the query, not from the port.
+// One method is added to `SolidKernel` in types.ts; in the code it is one line of the interface.
+// A draft does not edit that file: the method is merged into the interface of the engine below,
+// so `context.kernel.minGap` is typed in every draft that is checked together with this one
+// (two packages that declare one method differently would merge as overloads, not as an error:
+// see design.md, "Needs"). The ports lie between the section comments `// --- porty` and
+// `// --- přepočet`, the part `describe_api` leaves out: an AI learns what the gap means from
+// the description of the query, not from the port.
 //
 // What an implementation guarantees:
 // 1. The value is the smallest distance between a point of the surface of `a` and a point of the
@@ -32,8 +33,10 @@ import type { ResultUnits } from '../1b-measure/contract';
 // 6. The same input gives the same output. With `a` and `b` swapped the last digit may differ.
 // 7. The cost grows with `within`: the kernel looks at every pair of triangles whose boxes are
 //    closer than that.
-export interface SolidKernelAfter extends SolidKernel {
-  minGap(a: Solid, b: Solid, within: number): number;
+declare module '../../../packages/engine/src/types' {
+  interface SolidKernel {
+    minGap(a: Solid, b: Solid, within: number): number;
+  }
 }
 
 // ---------------------------------------------------------------- the query

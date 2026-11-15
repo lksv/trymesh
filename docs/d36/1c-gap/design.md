@@ -1,6 +1,6 @@
 # 1c Smallest gap between bodies
 
-**Decision D40. State: designed, not implemented; second version, after one round of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D40. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the gap between a planet and the carrier.
 
@@ -64,7 +64,7 @@ The adapter of Manifold checks both solids as `boolean` does, checks `within` it
 - **One pair the kernel refuses** is listed in `failed` with the kernel's reason and the others are still answered, as in the report of collisions. Only the call of the kernel is guarded. Anything else that throws inside the query is a defect and passes through, as the shared contract asks.
 - **The size of the answer** is limited by `maxPairs` (50 by default): the list of pairs (the closest first) and the list of refused pairs each hold at most that many. `close` and `refused` say how many there are, and `truncated` that a list was cut.
 - **The work** is bounded by the arguments: every pair among `bodies` is examined, each within `within`. The summary of the query says that the time grows with both. `maxPairs` limits the answer, not the work.
-- The answer for a pair is remembered by its two meshes (`context.memo` with both solids and the search distance in the key).
+- The answer for a pair is remembered by its two meshes (`context.memo` with both solids as owners; the key holds the search distance and the chord tolerance, which `accuracy` reads and which a body of only planar faces may survive a change of).
 
 Everything about a body is read from the context, so the query answers at `at`, over `after` (stepping a parameter and reading the gap at each step) and, with package 5a, in a pose.
 
@@ -114,17 +114,20 @@ It is the collisions view with one line more in the scene.
 
 ## Needs from the preparatory step
 
-- **A place for additions to the kernel port.** The six maps of the contract cover the unions of `types.ts`; `SolidKernel` is an interface of the engine that a draft can neither edit nor merge into. The case: `context.kernel.minGap(…)` does not compile, so the entry casts the kernel to a type of this package (`SolidKernelAfter`). Package 3d adds to the port as well and will write a "port after" of its own, and the joint type check of the drafts compares the two with nothing. Proposed: the port after the preparatory step as an interface of the shared contract (`SolidKernelAfter`, the type of `QueryContext.kernel`), which a package extends by declaration merging.
+- **How a package adds to the kernel port.** Nothing is missing in the types: `SolidKernel` is an exported interface of the engine, and this package merges its method into it (`declare module '…/packages/engine/src/types'`), so `context.kernel.minGap(…)` compiles in every draft checked together with this one. (The second version said a draft cannot do that and cast the kernel to a type of its own; a reviewer showed that it can.) What is missing is a word in the shared contract that this is the way: the six maps are named there, the ports are not. Package 3d adds to the port as well; if two packages declared one method with different signatures, the merge would make overloads of them and the joint type check would not complain.
 - It uses the stand-ins of 1b: the units of a result, and `failed` with the path of the argument where the mistake is the caller's (a list of `bodies` that names one body twice and nothing else).
 
 ## Rejected
 
-- **No change of the port: the pass of 1b alone.** A real alternative, and the one to fall back to if the port should stay as narrow as it is. The pass finds the distance of two meshes as well as the kernel does, and as fast on the joint; it answers zero when the surfaces cross. What it does not see is a body that lies wholly inside the material of another: no surfaces are near and the distance comes out positive. That case can be told without the kernel, by testing whether one vertex of each body lies inside the other (counting the crossings of a ray), since surfaces that do not cross leave only "apart" and "one inside the other". It was rejected for three reasons, none of them that it cannot work:
-  - The pass is quadratic in the worst case and only its coarse step keeps it fast (an open item of 1b). The kernel keeps a tree over the triangles, and the query asks about every pair of bodies, later at every step of a pose (5a).
-  - A point-in-solid test is new numeric code with its own hard cases (a ray through an edge or a vertex), where the library has a tested one.
-  - What "touching" means would then be decided by two passes of the engine and, for the kind of contact, by the kernel in `interference`; with `minGap` the same library answers both.
+- **No change of the port: the pass of 1b alone.** A real alternative, and the one to fall back to if the port should stay as narrow as it is. The pass finds the distance of two meshes as well as the kernel does, and as fast on the joint; it answers zero when the surfaces cross. What it does not see is a body that lies wholly inside the material of another: no surfaces are near and the distance comes out positive. That case can be told without the kernel, by testing whether a vertex lies inside the other body (counting the crossings of a ray), since surfaces that do not cross leave only "apart" and "one inside the other". One vertex of each connected piece of each body has to be tested: a body may be several pieces (an extrusion of two regions is one body), and one of them may lie inside the other body while the vertex tested lies outside.
 
-  The first version of this design gave a wrong reason here (that telling containment needs a boolean intersection for every pair whose boxes overlap); a reviewer corrected it.
+  The port method is kept, on one firm reason and one open question:
+  - A point-in-solid test is new numeric code with its own hard cases (a ray through an edge or a vertex; the pieces of a body), where the library has a tested answer to "do they share a volume".
+  - Speed is an open question, not a reason. For a pair with a gap above zero the query runs the pass anyway, to find the two points, so such a pair costs the kernel call and the pass (24 ms and 10 to 60 ms on the joint) where the variant without the port costs the pass alone. The kernel saves the pass for the pairs that turn out apart or at zero. Which wins depends on the model: see "Open".
+
+  What the port method costs, so that the choice can be weighed again: a guarantee of seven points that every kernel has to keep, three fakes in tests, a change in a place shared with 3d, and two sources for one number (the kernel's distance and the points of the pass, with a second run of the pass when they disagree).
+
+  Two reasons given in earlier versions did not hold and were dropped after reviews: that telling containment needs a boolean intersection for every pair whose boxes overlap (the first version), and that with `minGap` one library decides what touching means (the second: zero is decided by the engine's own threshold and the kind of contact by `interference`, in either variant).
 - **The port returns the two points as well.** Manifold does not give them; an adapter would have to find them itself, which is the pass the engine has anyway, and every other kernel would have to do the same behind the port.
 - **A search distance without a default (measure every pair fully).** The cost grows with the distance (5 ms against 339 ms for one pair of the joint), and an answer with a distance for every pair of a large model is mostly numbers nobody asked for.
 - **One pair per call (`a`, `b`).** The sketch of the preparatory step. "Where is it tight" would be a call per pair, with the list of pairs made up by the caller; the collisions already have the other shape.
@@ -135,6 +138,7 @@ It is the collisions view with one line more in the scene.
 ## Open
 
 - How the time grows with the number of bodies. A model of fifty bodies has 1225 pairs; the boxes cut most of them, but the trial has only the eight bodies of the joint. If it is too slow, the fallback is a limit on the pairs sent to the kernel, with the rest counted as not examined.
+- Whether the port method earns its place (see "Rejected", the first item). One measurement would settle it: a model with many pairs of bodies whose boxes are within the search distance and which are apart, asked with the kernel and with the pass alone. The joint has too few such pairs to tell. If the pass alone is as fast, the port stays as it is and the point-in-solid test is written.
 - Whether `fit` and `collision` should carry the depth of the overlap as well. Today the caller asks `interference` for it.
 
 ## Reviews
@@ -157,3 +161,18 @@ Two independent reviewers, read-only, at commit `b2fdf2d`: `codex` (gpt-6-astra,
 | The engine side needs 1b, which the plan does not show | both | Yes | Stated at the top; the table is in 1b |
 
 Not acted on: a limit on the number of pairs examined (codex, part of the finding on limits). The pairs are those of the bodies the caller names, and the eight bodies of the joint take 0.4 s; left under "Open" with its fallback.
+
+### Round 2 (2026-11-15): the fixes of round 1
+
+`codex` and a new internal subagent, on what the fix commit `7f03434` changed; `agy` did not take part (out of quota). The round as a whole is recorded in [1b](../1b-measure/design.md). Both confirmed that only the kernel call is guarded, that a pair cannot be written without its points, and that `close`, `apart`, `refused`, `checked` and `truncated` add up; the internal reviewer reran the pass that finds the points. The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| "A draft can neither edit nor merge into `SolidKernel`" is false: the interface can be augmented, and `context.kernel.minGap` then needs no cast | both (factual) | Yes (tried here: the drafts type-check) | The method is merged into the port; `SolidKernelAfter` and the cast are gone; the need is narrowed to a word in the shared contract, with the note on overloads |
+| Two of the three restated reasons for the port method do not hold: the query runs the pass for every open pair anyway, so the kernel is not the faster path there; and zero is decided by the engine's threshold and by `interference` in either variant | internal | Yes (the code of `gapOf`; the reviewer's rerun: 10 to 60 ms for the pass against 24 ms for the kernel call) | One reason is kept (a point-in-solid test is new numeric code), speed is stated as an open question with the measurement that would settle it, the third reason is dropped, and the costs of the port method are listed |
+| The containment test of the variant without the port tests one vertex of each body; a body may be several pieces | codex | Yes (`buildPrism` takes several regions into one body) | One vertex of each connected piece |
+| The accuracy of the scenario is 0.02 plus the precision of the coordinates | both | Yes | 0.0200515 in the comment |
+
+Changed with it, asked by no reviewer but raised as unchecked by one: the chord tolerance is in the key of the memory of a pair, because `accuracy` reads it and a body of only planar faces may be the same solid after the tolerance changes.
+
+Not acted on: nothing. Whether the port method is the right choice stays open on purpose; the design says what would decide it.

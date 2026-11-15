@@ -1,10 +1,10 @@
 // Contract of package 1e of D36 (decision D42): print queries. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
+import type { ArgSpecs, FaceNameAfter, QuantitySpec, Truncated } from '../00-prep/contract';
 import type { ResultUnits } from '../1b-measure/contract';
 
 // ---------------------------------------------------------------- the arguments
@@ -20,8 +20,9 @@ import type { ResultUnits } from '../1b-measure/contract';
 //     below it).
 //   `turn` turns the body about the vertical. It changes only the size along x and y, for
 //   a part that fits the bed only one way round.
-// - `bed`: the printable space as three lengths: x, y and the height. Without it nothing is
-//   said about fitting.
+// - `bed`: the printable space as three lengths above zero: x, y and the height. Without it
+//   nothing is said about fitting. Three named numbers and not a `vector`, so that the range is
+//   in the description and is checked before `run`.
 // - `overhang`: how far a face that looks down may lean from the vertical before it counts as
 //   an overhang: 45° by default. A face at exactly this angle is not one.
 // - `minArea`: overhangs of a face smaller than this are counted in the totals and not listed.
@@ -29,6 +30,7 @@ import type { ResultUnits } from '../1b-measure/contract';
 //   the overhanging faces), the largest first.
 // The answer is bounded by these arguments: a fixed size and at most twice `maxFaces` faces for
 // every body in every orientation, at most twelve orientations, and the bodies asked about.
+const BED_LENGTH = { title: 'Length of the printable space', unit: 'mm', min: { value: 0, open: true } } as const satisfies QuantitySpec;
 export const PRINT_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Each is a print of its own; without it all bodies.', optional: true },
   orientations: {
@@ -45,7 +47,13 @@ export const PRINT_ARGS = {
       },
     },
   },
-  bed: { kind: 'vector', title: 'Bed', summary: 'The printable space in mm: x, y and the height.', optional: true },
+  bed: {
+    kind: 'fields',
+    title: 'Bed',
+    summary: 'The printable space in mm: x, y and the height.',
+    optional: true,
+    fields: { x: { kind: 'number', spec: BED_LENGTH }, y: { kind: 'number', spec: BED_LENGTH }, height: { kind: 'number', spec: BED_LENGTH } },
+  },
   overhang: { kind: 'number', title: 'Overhang angle', summary: 'From the vertical.', optional: true, spec: { title: 'Overhang angle from the vertical', unit: 'rad', min: { value: 0 }, max: { value: Math.PI / 2 }, default: Math.PI / 4 } },
   minArea: { kind: 'number', title: 'Smallest overhang listed', optional: true, spec: { title: 'Smallest overhang of a face that is listed', unit: 'mm2', min: { value: 0 }, default: 1 } },
   maxFaces: { kind: 'number', title: 'Most faces', optional: true, spec: { title: 'Most faces in a list, per body and orientation', unit: 'count', integer: true, min: { value: 1 }, default: 20 } },
@@ -114,9 +122,11 @@ export interface PrintFrame {
 //   a triangle of another face is judged by its own normal. A long thin triangle of a flat face
 //   has a normal that float32 coordinates spoil by more than `ANGLE_TOLERANCE` once the body is
 //   not aligned with the axes of the model, and the face is known exactly.
-// - A triangle is contact when its face is planar and all its corners are within `precision` of
-//   the lowest point of the body. `precision` is the precision of the coordinates
-//   (`coordinatePrecision` of 1b over the body).
+// - A triangle is contact when its face is planar, that face looks straight down (its normal
+//   against `up` within `ANGLE_TOLERANCE`) and all the corners of the triangle are within
+//   `precision` of the lowest point of the body. `precision` is the precision of the coordinates
+//   (`coordinatePrecision` of 1b over the body). The direction is tested as well as the height:
+//   on a body thinner than the precision the top and the sides are that low too.
 // - Otherwise it overhangs when it looks down and leans from the vertical by more than `angle`
 //   plus `ANGLE_TOLERANCE`.
 export interface PrintPass {

@@ -1,6 +1,6 @@
 # 1d Mass properties
 
-**Decision D41. State: designed, not implemented; second version, after one round of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D41. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the mass of the carrier beyond the output.
 
@@ -26,13 +26,14 @@ One query, `mass`, over a list of bodies taken as one rigid piece.
 2. the body's own, from the document, once body properties exist (3a);
 3. `density`, one number in the call for every body that has neither.
 
-A body with none of the three fails the query, with the path of `density`. Today the second source is empty, so `density` (or `densities`) has to be given. When 3a arrives nothing in the arguments or the answer changes: `density` becomes the fallback for bodies without a property, and `densities` the way to ask "what would it weigh in another material" without touching the document.
+A body with none of the three fails the query, with the path of `density`. Today the second source is empty, so `density` (or `densities`) has to be given. When 3a arrives the arguments and the shape of the answer stay: `density` becomes the fallback for bodies without a property, and `densities` the way to ask "what would it weigh in another material" without touching the document. What a call answers can change, though: a body that gets a material in the document no longer takes `density`, and with it no longer `fill` (below).
 
-- `densities` is read by its own keys only. A body may have an ID that every object has by inheritance (`constructor`); the engine guards its own records by ID the same way (`has`, `lookup` in `evaluate.ts`).
+- `densities` is read by its own keys only. A body may have an ID that every object has by inheritance (`constructor`); the engine guards its own records by ID the same way (`has` in `util.ts`, used by `lookup` in `evaluate.ts`).
 - **How the two packages meet** is one function, `massSourceOf(context, body)`, which returns undefined for every body until 3a makes it read its section of the document. It reads the document through the state of the context, which is allowed: a density is not geometry of a body. It may answer with a density or with an explicit mass (a motor with a data sheet); a body with an explicit mass counts with the density that gives it that mass, spread evenly. Package 3a edits this one function, so its commit comes after this package; the plan lets 3a start on its own, and the two meet here.
 - **The fill factor** (`fill`, above 0 up to 1, 1 by default) goes with `density`: it multiplies the density of the bodies that take the fallback, and of no other. A density given by body in `densities` is taken as it is (the motor of the scenario, or an effective density measured on a printed sample), and so is whatever the document will say about a body (3a). The first version multiplied every density by it, which made the motor of a link lighter when the printed parts were sparse.
   - It assumes the material is spread evenly through the part; a real print has solid shells and a sparse core, so the mass is roughly right and the inertia is too low. The description of the argument says so and points at an effective density.
-  - The answer lists, for each body, the density of its material and the fill factor that was applied, so the mass can be checked: density times fill times volume.
+  - The answer lists, for each body, the density of its material and the fill factor that was applied, so the mass can be checked: in the units of the answer, mass (g) = density (g/cm³) × fill × volume (mm³) / 1000.
+  - A `fill` other than 1 that applies to no listed body is refused (`failed`, with the path of `fill`), not ignored. Otherwise the same call (the carrier, `density: 1.24`, `fill: 0.4`) would answer 7.372 g today and, without a word, 18.431 g once the carrier has a material in the document. With some bodies taking the fallback and some not, the fill factor of each body in the answer says which.
 
 **The frame of the inertia: about the centre of mass, in the axes of the model.** It is the tensor a robot description takes as it is, when the frame of a link keeps the orientation of the model (the proposal of the backlog). It does not depend on where the origin of the model is, and it is what the parallel axis theorem starts from. It is returned as three rows, so there is no question which sign an element off the diagonal has: it is the element of the tensor, the negative product of inertia, as URDF and MJCF write it.
 
@@ -83,7 +84,7 @@ The generic form of 1b: the bodies as rows, the density and the fill factor as n
 ## Needs from the preparatory step
 
 - **A unit for an inertia.** `QuantityUnit` has no `g·mm2`. No argument needs it; a result does, once results have units (the need recorded in 1b). Until then the stand-in `ResultUnit` of 1b carries it.
-- Otherwise it uses the stand-ins of 1b: `failed` with the path of the argument where the mistake is the caller's (a body without a density).
+- Otherwise it uses the stand-ins of 1b: `failed` with the path of the argument where the mistake is the caller's (a body without a density; a fill factor that applies to no body).
 
 ## Rejected
 
@@ -114,3 +115,16 @@ Two independent reviewers, read-only, at commit `b2fdf2d`: `codex` (gpt-6-astra,
 | 3a is assigned an edit of `massSourceOf` while the plan lets it start on its own | codex | Yes | Stated where the two meet: the commit of 3a comes after this package |
 
 Nothing was left without action.
+
+### Round 2 (2026-11-15): the fixes of round 1
+
+`codex` and a new internal subagent, on what the fix commit `7f03434` changed; `agy` did not take part (out of quota). The round as a whole is recorded in [1b](../1b-measure/design.md). Both found the read by own keys and the rule for `fill` working as written and the numbers of the scenario following from it (14863.496 × 1.24e-3 × 0.4 = 7.372). The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| "Mass = density × fill × volume" is off by a thousand in the units of the answer (g, g/cm³, mm³) | codex | Yes | The equation with its units, in the contract, in `returns` and here |
+| "Nothing changes when 3a arrives" is not true for a call with `fill`: once the body has a material in the document, `fill` reaches nobody and is silently ignored | internal | Yes | The sentence is corrected, and a `fill` that applies to no listed body is refused; `calls.ts` has the case |
+| The path of "the body has no volume" indexes the list without duplicates, not the argument | internal | Yes | The index of the body in the argument |
+| `has` is in `util.ts`, not in `evaluate.ts` | internal (factual) | Yes (`util.ts:70`; `lookup` at `evaluate.ts:111`) | Corrected |
+
+Nothing was left without action. What stays open is under "Open": a body whose density comes from the document is taken solid until 3a brings a fill factor with the material.

@@ -102,6 +102,13 @@ export function onlyAreas(): { regions: boolean; loops: number } {
   const section = unwrap(engine.query('section', { plane: XY, offset: 40, maxPoints: 0 }));
   return { regions: section.bodies.some((body) => body.regions !== undefined), loops: section.bodies.reduce((sum, body) => sum + body.loops, 0) }; // false, 19
 }
+// A small budget goes to the outlines first: with 30, every body has its spans (19 of them, so
+// the six bolt circles of the housing are there) and no curve has its points; truncated is
+// { shown: 19, total: 2224 }. The teeth of the sun (270 points) do not take the housing's place.
+export function outlinesFirst(): boolean {
+  const section = unwrap(engine.query('section', { plane: XY, offset: 40, maxPoints: 30 }));
+  return section.bodies.every((body) => body.regions !== undefined) && section.truncated?.shown === 19;
+}
 
 // A face that is not planar cannot be the cutting plane.
 export function notAPlane(): string {
@@ -126,13 +133,22 @@ declare function nested(loops: CutLoop[]): { outer: CutLoop; holes: CutLoop[] }[
 // The runs of segments of one face of a loop as spans, by the table of contract.ts; a curve
 // comes with its points.
 declare function spansOf(loop: CutLoop, surfaceOf: (face: number) => Surface | undefined, nameOf: (face: number) => FaceNameAfter, frame: Frame): SectionSpan[];
-declare function lengthOf(loop: CutLoop): number;
+
+// The regions of a complete answer, each with its body; undefined when anything was left out.
+// A caller that fills a cut (the section view of the app, the picture of 1f) fills only from
+// this: a region filled without one of its holes would show material across a cavity. It is
+// a function of the engine, next to the query and exported from the index of the package: the
+// operation of 1f lives in packages/mcp, which cannot import the app.
+export function completeRegions(result: SectionResult): { body: Id; region: SectionRegion }[] | undefined {
+  if (result.truncated) return undefined;
+  return result.bodies.flatMap((body) => (body.regions ?? []).map((region) => ({ body: body.body, region })));
+}
 
 export const section: (typeof QUERIES)['section'] = {
   title: 'Section',
   summary: 'What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.',
   returns:
-    'frame: the cutting plane (origin, x, y, normal); points are [u, v] in its x and y. bodies: for every body the plane cuts, area (mm2), loops (how many) and regions, each with area, an outer loop and holes. A loop has area, length and spans: line, arc (center and radius of the exact surface, sweep in rad, positive counter-clockwise; a whole circle has from equal to to) or curve (count, length, and points while they fit), each with the face it lies on and from and to (points of the mesh; an end of an arc may lie up to the chord tolerance inside its circle). With outline polylines a loop has points instead of spans. The section is taken just below the plane, against its normal. inPlane: bodies with a face that lies in the cutting plane, one face each (such a body shows that face or nothing: move the offset). maxPoints is the budget of the answer: a span is one, a point is one; what does not fit is left out whole (a body keeps area and loops, a curve count and length), and truncated says how much was listed of how much.',
+    'frame: the cutting plane (origin, x, y, normal); points are [u, v] in its x and y. below: how far under the plane, against its normal, the section was taken (mm; the precision of the coordinates). bodies: for every body the plane cuts, area (mm2), loops (how many) and regions, each with area, an outer loop and holes. A loop has area, length and spans: line, arc (center and radius of the exact surface, sweep in rad, positive counter-clockwise; a whole circle has from equal to to) or curve (count, length, and points while they fit; a curve that is a whole loop lists its corners once), each with the face it lies on and from and to (points of the mesh; an end of an arc where another face cuts it lies inside its circle, by no more than the chord tolerance on a model of ordinary size). With outline polylines a loop has points instead of spans. inPlane: bodies with a face that lies in the cutting plane, one face each (such a body shows that face or nothing: move the offset). maxPoints is the budget of the answer: a span is one, a point is one, a loop written as a polyline is one; the outlines of all bodies are taken first, then the lists of points; what does not fit is left out whole (a body keeps area and loops, a curve count and length), and truncated says how much was listed of how much.',
   args: SECTION_ARGS,
   run(context, args) {
     const base = context.frame(args.plane);
@@ -151,7 +167,10 @@ export const section: (typeof QUERIES)['section'] = {
       budget.shown += count;
       return true;
     };
-    const result: SectionResult = { frame, bodies: [], inPlane: [] };
+    const result: SectionResult = { frame, below: precision, bodies: [], inPlane: [] };
+    // The first round, over the bodies in their order: the cut of each, and its outline (its
+    // spans, or with polylines its loops) against the budget.
+    const outlined: { entry: SectionOfBody; loops: CutLoop[]; spansIn: (loop: CutLoop) => SectionSpan[] }[] = [];
     for (const id of ids) {
       const body = context.bodies[id];
       const flush = body.faces.find((face) => {
@@ -161,25 +180,23 @@ export const section: (typeof QUERIES)['section'] = {
       if (flush) result.inPlane.push({ body: id, face: names[flush.id] }); // at most one per body
       const loops = cut(body.solid, frame, precision);
       if (loops.length === 0) continue;
-      const area = loops.reduce((sum, loop) => sum + loop.area, 0); // holes are negative
+      const entry: SectionOfBody = { body: id, area: loops.reduce((sum, loop) => sum + loop.area, 0), loops: loops.length }; // holes are negative
+      result.bodies.push(entry);
       const spans = new Map(loops.map((loop) => [loop, polylines ? [] : spansOf(loop, (face) => context.surface(id, names[face]), (face) => names[face], frame)]));
       const spansIn = (loop: CutLoop): SectionSpan[] => spans.get(loop) ?? [];
-      // the points a loop would list: its corners, or those of its curves
-      const pointsIn = (loop: CutLoop): number => (polylines ? loop.points.length : spansIn(loop).reduce((sum, span) => sum + (span.kind === 'curve' ? span.count : 0), 0));
-      // first the outline of the body: its spans, or its loops
-      if (!fits(polylines ? loops.length : loops.reduce((sum, loop) => sum + spansIn(loop).length, 0))) {
-        budget.total += loops.reduce((sum, loop) => sum + pointsIn(loop), 0);
-        result.bodies.push({ body: id, area, loops: loops.length });
-        continue;
-      }
-      // then the points, list by list
+      if (fits(polylines ? loops.length : loops.reduce((sum, loop) => sum + spansIn(loop).length, 0))) outlined.push({ entry, loops, spansIn });
+      // a body without its outline lists no points either; they are still counted
+      else budget.total += loops.reduce((sum, loop) => sum + (polylines ? loop.points.length : spansIn(loop).reduce((points, span) => points + (span.kind === 'curve' ? span.count : 0), 0)), 0);
+    }
+    // The second round, in the same order: the lists of points, each whole or not at all. The
+    // points of an early body can no longer cost a later body its outline.
+    for (const { entry, loops, spansIn } of outlined) {
       const write = (loop: CutLoop): SectionLoop => {
-        const head = { area: Math.abs(loop.area), length: lengthOf(loop) };
+        const head = { area: Math.abs(loop.area), length: loop.length };
         if (polylines) return fits(loop.points.length) ? { ...head, points: loop.points } : head;
         return { ...head, spans: spansIn(loop).map((span) => (span.kind === 'curve' && !fits(span.count) ? { ...span, points: undefined } : span)) };
       };
-      const regions = nested(loops).map(({ outer, holes }) => ({ area: outer.area + holes.reduce((sum, hole) => sum + hole.area, 0), outer: write(outer), holes: holes.map(write) }));
-      result.bodies.push({ body: id, area, loops: loops.length, regions });
+      entry.regions = nested(loops).map(({ outer, holes }) => ({ area: outer.area + holes.reduce((sum, hole) => sum + hole.area, 0), outer: write(outer), holes: holes.map(write) }));
     }
     return budget.shown < budget.total ? { ...result, truncated: { shown: budget.shown, total: budget.total } } : result;
   },
@@ -195,16 +212,13 @@ export const FIXTURE: { args: QueryArgs<'section'> } = { args: { plane: XY } };
 // - A cut is filled only from a complete answer. If the answer was truncated, a loop is missing
 //   somewhere, and a region filled without one of its holes would show material across
 //   a cavity. The view then clips the model, fills nothing and says so.
+// - Every fill and every outline names its body, so the scene leaves out those of a body the
+//   user has hidden (1b), as it leaves out the body.
 // - The view gets the arguments of the form (1b), so a step of the offset asks with those and
 //   what `prepare` adds never shows in the form.
 const flat = (list: Vec2[]): number[] => list.flatMap((point) => [point[0], point[1]]);
 const inModel = (frame: Frame, point: Vec2): Vec3 => [0, 1, 2].map((k) => frame.origin[k] + point[0] * frame.x[k] + point[1] * frame.y[k]) as Vec3;
 export const drawnArgs = (args: QueryArgs<'section'>): QueryArgs<'section'> => ({ ...args, outline: 'polylines', maxPoints: 1_000_000 });
-// The regions of a complete answer; undefined when anything was left out.
-export function completeRegions(result: SectionResult): SectionRegion[] | undefined {
-  if (result.truncated) return undefined;
-  return result.bodies.flatMap((body) => body.regions ?? []);
-}
 
 export const sectionView: QueryView<'section'> = {
   prepare: drawnArgs,
@@ -229,12 +243,12 @@ export const sectionView: QueryView<'section'> = {
     const clip = { origin: frame.origin, normal: frame.normal };
     const regions = completeRegions(result);
     if (!regions) return { clip };
-    const loops = regions.flatMap((region) => [region.outer, ...region.holes]);
-    const outline = loops.flatMap((loop) => (loop.points ?? []).flatMap((point, i, list) => [...inModel(frame, point), ...inModel(frame, list[(i + 1) % list.length])]));
+    const loopsOf = (region: SectionRegion): SectionLoop[] => [region.outer, ...region.holes];
+    const outline = (region: SectionRegion): number[] => loopsOf(region).flatMap((loop) => (loop.points ?? []).flatMap((point, i, list) => [...inModel(frame, point), ...inModel(frame, list[(i + 1) % list.length])]));
     return {
       clip,
-      fills: regions.map((region) => ({ frame, loops: [region.outer, ...region.holes].map((loop) => flat(loop.points ?? [])), color: 0x7a8794, opacity: 1 })),
-      lines: [{ segments: outline, color: 0x20262d, width: 1.5 }],
+      fills: regions.map(({ body, region }) => ({ frame, loops: loopsOf(region).map((loop) => flat(loop.points ?? [])), color: 0x7a8794, opacity: 1, body })),
+      lines: regions.map(({ body, region }) => ({ segments: outline(region), color: 0x20262d, width: 1.5, body })),
     };
   },
 };

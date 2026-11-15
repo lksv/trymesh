@@ -1,6 +1,6 @@
 # 1f View image for the AI
 
-**Decision D43. State: designed, not implemented; second version, after one round of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D43. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: pictures of the joint: whole, the gears alone, and cut through the gears.
 
@@ -33,8 +33,8 @@ One operation of the app, `view_image`, and one capability of the host behind it
 
 - `view`: `iso` (the direction the app starts with), `front`, `back`, `left`, `right`, `top`, `bottom`, or `current`. The model has Z up; `front` is seen from −Y with X to the right, `top` from above with Y up in the picture.
 - `bodies`: only these are drawn and the picture is fitted to them. This is how an AI looks inside: the gears without the housing.
-- `section`: a plane, an offset and a flip, as the query `section` takes them. The operation asks that query (with the same state and bodies), which resolves the plane and returns the frame and the loops; the capability clips and fills. So a picture of a cut model and the section view of the app are drawn from one answer, and a plane that is not planar or not there is answered by the query, with its path put under `section`.
-  - A cut is filled only from a complete answer, by the rule and the function of the section view (`completeRegions` of 1a): a region filled without one of its holes would show material where there is a cavity. A section that does not fit the budget the operation asks with (a million points) is answered as `failed` with the path `['section']`.
+- `section`: a plane, an offset and a flip, as the query `section` takes them: the three descriptions of `SECTION_ARGS` themselves, with their titles and the default of the offset. The operation asks that query (with the same state and bodies), which resolves the plane and returns the frame and the loops; the capability clips and fills. So a picture of a cut model and the section view of the app are drawn from one answer, and a plane that is not planar or not there is answered by the query, with its path put under `section`.
+  - A cut is filled only from a complete answer, by the rule and the function of 1a (`completeRegions`, a function of the engine next to the query, so `packages/mcp` can import it): a region filled without one of its holes would show material where there is a cavity. A section that does not fit the budget the operation asks with (a million points) is answered as `failed` with the path `['section']`.
 - `at`: the model as it was after a feature. An operation of the host has no `at` of its own (the tool `query` has), so it is an argument here; see "Needs".
 - `width`, `height`: 800 by 600 by default, 64 to 1600 each.
 - A body or a feature that is not in the state is `notAvailable` with the path of the argument, as for a query. The operation looks them up itself; see "Needs".
@@ -64,7 +64,9 @@ packages/app/src/
   app.ts               the host of the app with `view`; the button that saves a picture
 ```
 
-`operations.ts` is in `packages/mcp` because the server and the app share it, as they share `tools.ts`; it uses nothing of Node or of the browser. The picture is made in the app; the server only passes it on as image content.
+`operations.ts` is in `packages/mcp` because the server and the app share it, as they share `tools.ts`; it uses nothing of Node, of the browser or of the app (the app depends on `packages/mcp`, not the other way round). The picture is made in the app; the server only passes it on as image content.
+
+The implementation of the preparatory step, begun on `master` after this branch was cut, keeps the registry and the entry of an operation in `packages/mcp/src/host.ts` (`HOST_OPERATIONS`, `callHostOperation`). The operation goes next to them, and `callHostOperation` takes the place of the stand-in `callOperation` of this design; what it checks before `run` has to be compared with the second need below when this package is implemented.
 
 ## What it adds
 
@@ -82,7 +84,8 @@ packages/app/src/
 
 Nothing changes on the screen when the AI takes a picture: it is drawn off the screen, and the status bar says that a picture was taken. For a person the same capability is behind one toolbar button, "Save picture of the model", that saves a PNG from the camera of the view at a fixed size (`calls.ts`, `saveImage`): the app's half of the rule that a function is reachable both ways, and a use of its own (a picture for a note or an issue).
 
-- While the section view of 1a shows a cut, the saved picture is cut the same way: the button hands the capability the answer the view is drawn from. Bodies the user has hidden are left out of the picture as well.
+- While the section view of 1a shows a cut, the saved picture is cut the same way: the button hands the capability the answer the view is drawn from. Bodies the user has hidden are left out of the picture, and so are the fills of their cuts (a region of the section knows its body).
+- When the section shown is not complete (the view then clips without a fill and says so), nothing is saved and the status bar says why. A picture without the cut, of a view that shows one, would be the wrong picture; it is the answer `failed` of the operation, for a person.
 - The picture is of the model, as every picture of the capability is: without the selection, the sketches, the planes and the labels. The label of the button says so.
 - The other arguments of the operation (a named view, some bodies, an earlier state) are not behind the button. The view of the app already does each of them for a person: turn the camera, hide bodies, move the marker.
 
@@ -92,7 +95,7 @@ Nothing changes on the screen when the AI takes a picture: it is drawn off the s
 - **Who checks the arguments of an operation.** `HostOperation.run` gets `RunArgsOf`, so something fills in the defaults before it, and with them presumably checks shape and range. For a query the engine also looks up every ID in the state asked about; an operation has no such state. The case: `view_image` with `bodies: ['nope']`, or with a `section.plane` on a body that is gone. Proposed: the path of an operation checks shape and range and fills in defaults, and IDs are the operation's own to look up, because only it knows which state it means. This design is written that way (`requestOf`).
 - **Data next to a picture.** `ToolAnswer` of the kind `image` is a media type and the bytes. The capability knows the scale of the picture in millimetres per pixel and which colour is which body, and has no way to send them: an AI that sees a red part cannot be told it is the carrier. Proposed: an optional `about` on the image answer, as a file of an export has, printed as text next to the picture. Until then the operation drops both.
 - **The state an operation works on.** The tool `query` takes `at` and `after`, and the engine takes a previewed state; an operation gets its host and its arguments, and the kinds of arguments have none for a command, so `after` cannot be written as an argument either. The case that cannot be written: a picture of the joint with the backlash stepped to 0.2 without writing the change down, and, with 5a, a picture of a posed mechanism, which is where a picture says most. Proposed: the path of an operation takes `at` and `after` as the tool `query` does and hands `run` the state to work on. `at` then leaves the arguments of `view_image`.
-- It shares one need of 1b: an entry of `fields` cannot carry a title, so the three arguments of `section` are written again here without the titles and summaries they have in the query.
+- It touches one need of 1b: the type of an entry of `fields` has no title. The three arguments of `section` are the descriptions of the query reused as values, so they carry their titles; a form built from the declared type still cannot read them.
 
 ## Rejected
 
@@ -129,5 +132,18 @@ Two independent reviewers, read-only, at commit `b2fdf2d`: `codex` (gpt-6-astra,
 | "Gears only" from the top shows the disc of the carrier | codex | Yes (`scenario9.test.ts`: radius 30 at z 46.5 to 51.5; the gears end at 46) | The carrier is left out of that picture |
 | 1f needs 1a, which the plan shows only as a shared file | both | Yes | Stated at the top; the table is in 1b |
 | Factual: the line material "is given the resolution of the canvas today" | internal | Yes: no resolution is set (`viewport.ts:175-184`) | Corrected, with what follows for a picture of another size |
+
+Nothing was left without action.
+
+### Round 2 (2026-11-15): the fixes of round 1
+
+`codex` and a new internal subagent, on what the fix commit `7f03434` changed; `agy` did not take part (out of quota). The round as a whole is recorded in [1b](../1b-measure/design.md). Both found the mapping of the errors of `section` into errors of the operation right, the statements about the light and the line material true, and the new need (the state an operation works on) a real gap. Nothing was run in a browser in this round either. The findings on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The saved picture leaves hidden bodies out but fills their cuts: `completeRegions` dropped the body of a region | both (codex: major) | Yes | A region comes with its body; `cutOf` takes the bodies that are drawn and leaves out the fills of the others |
+| With a section that is not complete, the button silently saves a picture without any cut, while its comment says "the app says so" | both | Yes | Nothing is saved then, and the function returns what the status bar says |
+| The three arguments of `section` need not be written again: a description that exists as a value can be a nested field | both (factual) | Yes (adopted; the drafts type-check, and the offset keeps its default) | `SECTION_ARGS.plane`, `.offset`, `.flip`; the need is narrowed |
+| `completeRegions` was view code of the app, which `packages/mcp` cannot import | internal | Yes | It is a function of the engine (1a) |
 
 Nothing was left without action.

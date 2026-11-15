@@ -2,7 +2,7 @@
 // the AI and as the section view of the app. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Solid, Vec2, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
@@ -18,7 +18,8 @@ import type { ResultUnits } from '../1b-measure/contract';
 //   reversed (after the offset). It decides which side the app cuts away. The section is taken
 //   just below the plane (see `cut`), and "below" turns with the normal: a body that ends in the
 //   plane shows its face as its section one way and is absent the other way. For a body the
-//   plane goes through, the loops are the same, seen from the other side.
+//   plane goes through, the loops are those of the other side of the plane, the precision of
+//   the coordinates away: the same shape within that precision, seen from the other side.
 // - `bodies`: only these; without it all bodies of the state.
 // - `outline`: how a loop is written. `spans` (the default) is for reading: lines and arcs
 //   rebuilt from the surfaces, and what has no such form as a curve. `polylines` is for drawing:
@@ -32,7 +33,7 @@ export const SECTION_ARGS = {
   flip: { kind: 'flag', title: 'From the other side', optional: true },
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Without it all bodies.', optional: true },
   outline: { kind: 'choice', options: ['spans', 'polylines'], title: 'Form of a loop', summary: 'spans: lines, arcs and curves with the face each lies on (the default). polylines: the points of every loop, for drawing.', optional: true },
-  maxPoints: { kind: 'number', title: 'Most points', summary: 'The budget of the answer: spans and points together.', optional: true, spec: { title: 'Most spans and points to return', unit: 'count', integer: true, min: { value: 0 }, default: 500 } },
+  maxPoints: { kind: 'number', title: 'Budget', summary: 'The budget of the answer: spans, loops of polylines and points together.', optional: true, spec: { title: 'Most spans, loops and points to return', unit: 'count', integer: true, min: { value: 0 }, default: 500 } },
 } as const satisfies ArgSpecs;
 
 // ---------------------------------------------------------------- the result
@@ -53,16 +54,21 @@ export const SECTION_ARGS = {
 // - `from` and `to` are corners of the polygon the mesh gives, so the spans of a loop join
 //   exactly: each starts where the one before it ends.
 // - `arc`: `center` and `radius` are those of the exact surface. The two ends are points of the
-//   mesh: on the circle where the arc ends in a vertex of its polygon, and up to one chord
-//   tolerance inside it where another face cuts the round face between two vertices. `sweep` is
-//   the angle from `from` to `to` about `center` along the loop, positive counter-clockwise;
-//   a whole circle has `from` equal to `to` and a sweep of 2π or −2π.
-// - `curve`: `count` points from `from` to `to`, both included, `length` along them. `points`
-//   are there only while they fit the budget.
+//   mesh: on the circle, within the precision of the coordinates, where the arc ends in a vertex
+//   of its polygon; inside it by up to the sagitta of a side of the polygon where another face
+//   cuts the round face between two vertices. That sagitta is within the chord tolerance of the
+//   document except above the caps on the number of segments (design.md of 1b). `sweep` is the
+//   angle from `from` to `to` about `center` along the loop, positive counter-clockwise; a whole
+//   circle has `from` equal to `to` and a sweep of 2π or −2π.
+// - `curve`: `count` points from `from` to `to`, both included, `length` along them. A curve
+//   that is a whole loop has `from` equal to `to`; its points are the corners of the loop once,
+//   the first not repeated (as in a polyline), `count` is their number, and `length` includes
+//   the closing segment. `points` are there only while they fit the budget.
 export type SectionSpan = { face: FaceNameAfter; from: Vec2; to: Vec2 } & ({ kind: 'line' } | { kind: 'arc'; center: Vec2; radius: number; sweep: number } | { kind: 'curve'; count: number; length: number; points?: Vec2[] });
 
-// A closed loop. `area` and `length` are of the polygon the mesh gives, so a circle of radius r
-// has a little less than πr² (the polygon is inscribed).
+// A closed loop. `area` and `length` are of the polygon the mesh gives (taken before the points
+// that are not corners are dropped), so a circle of radius r has a little less than πr² (the
+// polygon is inscribed).
 // - With `spans`: the spans in order.
 // - With `polylines`: the corners of the polygon in order, the first not repeated; left out when
 //   they do not fit the budget.
@@ -93,6 +99,9 @@ export interface SectionOfBody {
 
 // - `frame`: the cutting plane as it was asked for: after the offset and the flip. The points of
 //   the loops are in its x and y; `origin + x·u + y·v` is the point in the model.
+// - `below`: how far under that plane, against its normal, the section was really taken: the
+//   precision of the coordinates (see `cut`). The loops are those of the plane through
+//   `origin − below·normal`, laid into the frame.
 // - `bodies`: the bodies the plane cuts, in the order of the model. A body the plane misses is
 //   not listed.
 // - `inPlane`: bodies with a planar face that lies in the cutting plane (parallel within
@@ -101,13 +110,16 @@ export interface SectionOfBody {
 //   when it lies below the plane and nothing when it lies above; with an entry here the offset
 //   is better moved a little.
 // - `truncated`: `total` items there were to list and `shown` of them listed, in the units of
-//   `maxPoints`. The bodies are taken in their order, and within a body first its outline, then
-//   the points of its curves or loops; a list that does not fit is left out whole and a later,
-//   smaller one may still fit.
+//   `maxPoints`. The budget is spent in two rounds, each over the bodies in their order: first
+//   the outlines (the spans of a body, or with `polylines` its loops), then the lists of points
+//   (a curve, or a loop of a polyline). A list that does not fit is left out whole and a later,
+//   smaller one may still fit. So the points of an early body never cost a later one its
+//   outline.
 // The size of the answer is therefore bounded by `maxPoints` and by the number of bodies asked
 // about (a body has three numbers and at most one face in `inPlane`).
 export interface SectionResult extends Truncated {
   frame: Frame;
+  below: number; // mm
   bodies: SectionOfBody[];
   inPlane: { body: Id; face: FaceNameAfter }[];
 }
@@ -117,7 +129,7 @@ declare module '../00-prep/contract' {
     section: { spec: typeof SECTION_ARGS; result: SectionResult };
   }
 }
-export const SECTION_UNITS = { area: 'mm2', length: 'mm', radius: 'mm', sweep: 'rad' } as const satisfies ResultUnits;
+export const SECTION_UNITS = { area: 'mm2', length: 'mm', radius: 'mm', sweep: 'rad', below: 'mm' } as const satisfies ResultUnits;
 
 // ---------------------------------------------------------------- the pass over triangles
 
@@ -135,15 +147,22 @@ export const SECTION_UNITS = { area: 'mm2', length: 'mm', radius: 'mm', sweep: '
 //   segments are chained by the edges they end on, not by comparing coordinates.
 // - The mesh of a body is a closed surface (every edge in exactly two triangles, once each way:
 //   guarantee 1 of the kernel port and the check of its adapter), so every chain closes.
-// - A segment without length is dropped, and a point that lies in line between its two
-//   neighbours on the same face is dropped (both within `LENGTH_TOLERANCE`): the points of
-//   a loop are the corners of the polygon and do not depend on how a face is divided into
-//   triangles. A loop without area is dropped.
+// - After the chains are closed, a segment shorter than `below` is dropped, and a point that
+//   lies between its two neighbours on the same face, nearer than `below` to the line through
+//   them, is dropped: the points of a loop are the corners of the polygon and do not depend on
+//   how a face is divided into triangles. The measure is the precision of the coordinates, not
+//   a fixed length: on a body that is not aligned with the axes the point on the diagonal of
+//   a side quad is off the line by the noise of float32. What is a corner is therefore decided
+//   to that precision; a model whose coordinates are so large that it nears the chord tolerance
+//   loses real corners of fine curves (measured: 987 corners instead of 1059 for the housing
+//   moved 2000 mm away). A loop without area is dropped.
+// - `area` and `length` are of the loop before points are dropped.
 // - The material is on the left of a loop seen against the normal of the plane.
 export interface CutLoop {
   points: Vec2[];
   faces: number[]; // faces[i]: the face of the segment from points[i] to the next point
   area: number; // signed: positive for a loop that runs counter-clockwise
+  length: number;
 }
 export declare function cut(solid: Solid, frame: Frame, below: number): CutLoop[];
 

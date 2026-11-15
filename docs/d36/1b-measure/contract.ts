@@ -3,7 +3,7 @@
 // (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the engine and the shared
 // contract of the preparatory step, and states what the package adds. The design is design.md.
 //
-// Second version, after the first round of reviews (design.md, "Reviews").
+// Third version, after the second round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgKind, ArgPath, ArgSpecs, BodyEdge, BodyResultAfter, EdgeNameAfter, EngineAfter, EntityRef, FaceNameAfter, QuantityUnit, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, StateAfter } from '../00-prep/contract';
@@ -262,12 +262,15 @@ export declare function takeSelection(panel: QueryPanelState, selection: Selecti
 // What a view adds to the scene while its answer is shown. The first five are the fields of
 // `SceneModel` in packages/app/src/viewport.ts as they are today, with a face given by its name
 // (the scene resolves the mesh). `bodies`: bodies drawn in a colour of the view's choice, as the
-// two bodies of a picked collision are drawn in two colours today. A package that needs more of
-// the scene (the section of 1a clips it) adds a field by declaration merging.
+// two bodies of a picked collision are drawn in two colours today. What an addition says about
+// a body the user has hidden is not drawn, as today's highlight of a collision is not: a face,
+// a coloured body, and a fill or a line that names its `body` (the cut of a section and its
+// outline). A package that needs
+// more of the scene (the section of 1a clips it) adds a field by declaration merging.
 export interface SceneAdditions {
-  lines: { segments: ArrayLike<number>; color: number; width: number; dashed?: boolean; onTop?: boolean }[];
+  lines: { segments: ArrayLike<number>; color: number; width: number; dashed?: boolean; onTop?: boolean; body?: Id }[];
   points: { positions: number[]; color: number; size: number }[];
-  fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[];
+  fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean; body?: Id }[];
   faces: { body: Id; face: FaceNameAfter; color: number; opacity: number }[];
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
   bodies: { body: Id; color: number }[];

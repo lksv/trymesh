@@ -20,7 +20,8 @@ const circle = (sketch: Id, id: Id, x: string, y: string, radius: string): Comma
 // height of the box.
 export const UNDER_LID: PlaneRefAfter = { kind: 'face', body: 'lid', face: { feature: 'lid', role: 'startCap' } };
 export const POST_TOP: FaceNameAfter = { feature: 'posts', role: 'endCap' };
-const INSET = 'wall + clearance + lipT + postR + 1';
+// How far the centre of a post is from the outer faces of the box.
+export const INSET = 'wall + clearance + lipT + postR + 1';
 
 // Two posts on the floor of the cavity, in the corners of one long side, added to the box up to
 // the lid. The other two are copies turned about the middle of the box.

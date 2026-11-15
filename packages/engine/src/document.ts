@@ -1,7 +1,6 @@
 // Dokument: validace a provedení příkazů. Vše pracuje jen se strukturou dokumentu, bez přepočtu.
 // Pravidla jsou v docs/architecture.md, sekce Příkazy.
 import type {
-  AxisRef,
   Check,
   Command,
   Constraint,
@@ -10,7 +9,6 @@ import type {
   Expr,
   ExternalRef,
   ExtrudeFeature,
-  FaceName,
   Feature,
   FieldPath,
   GeneratorName,
@@ -19,7 +17,6 @@ import type {
   Parameter,
   PatternFeature,
   PlaneFeature,
-  PlaneRef,
   ProfileSource,
   Projected,
   RegionRef,
@@ -38,11 +35,13 @@ import {
   type FieldMode,
   Fields,
   REF_LABEL,
+  type RefContext,
+  type ValidationContext,
+  axisRef,
   axisRefs,
   base,
   boolean,
   edgeName,
-  faceName,
   faceRefs,
   fail,
   finite,
@@ -52,7 +51,9 @@ import {
   oneOf,
   onlyFields,
   plain,
+  planeRef,
   planeRefs,
+  requireFace,
   string,
 } from './validation';
 
@@ -96,12 +97,6 @@ export const MAX_PATTERN_COUNT = 200;
 const PATTERN_COUNT: NumberSpec = { title: 'Count', unit: 'count', integer: true, min: { value: 1 }, max: { value: MAX_PATTERN_COUNT } };
 const PATTERN_ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
 
-// A face exists only after the feature that named it and after every pattern that copied it.
-function requireFace(doc: Document, before: number | undefined, face: FaceName, what: string): void {
-  requireRef(doc, before, { id: face.feature, kind: 'faceSource' }, what);
-  for (const tag of face.copy ?? []) requireRef(doc, before, { id: tag.pattern, kind: 'pattern' }, what);
-}
-
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
 // odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
@@ -133,29 +128,17 @@ function requireRef(doc: Document, before: number | undefined, ref: Omit<Feature
   if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
 }
 
-function planeRef(doc: Document, before: number | undefined, v: unknown, what: string): PlaneRef {
-  const o = object(v, what);
-  const kind = oneOf(o.kind, ['base', 'plane', 'face'] as const, `${what}.kind`);
-  if (kind === 'base') return { kind, plane: oneOf(o.plane, ['XY', 'XZ', 'YZ'] as const, `${what}.plane`) };
-  if (kind === 'plane') {
-    const feature = string(o.feature, `${what}.feature`);
-    requireRef(doc, before, { id: feature, kind: 'plane' }, what);
-    return { kind, feature };
-  }
-  const body = string(o.body, `${what}.body`);
-  requireRef(doc, before, { id: body, kind: 'body' }, what);
-  const face = faceName(o.face, `${what}.face`);
-  requireFace(doc, before, face, `${what}.face`);
-  return { kind, body, face };
-}
+// The context of a validator or of a command that checks a reference: `requireRef` bound to the
+// document and to the place of the referring feature.
+const refContext = (doc: Document, before: number | undefined): RefContext => ({ doc, before, requireRef: (ref, what) => requireRef(doc, before, ref, what) });
 
-function externalRef(doc: Document, before: number | undefined, v: unknown, what: string): ExternalRef {
+function externalRef(context: RefContext, v: unknown, what: string): ExternalRef {
   const o = object(v, what);
   if (o.type !== 'edge') fail(`${what}: promítnout jde jen hranu`);
   const body = string(o.body, `${what}.body`);
-  requireRef(doc, before, { id: body, kind: 'body' }, what);
+  context.requireRef({ id: body, kind: 'body' }, what);
   const edge = edgeName(o.edge, `${what}.edge`);
-  for (const face of [edge.a, edge.b]) requireFace(doc, before, face, `${what}.edge`);
+  for (const face of [edge.a, edge.b]) requireFace(context, face, `${what}.edge`);
   return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
 }
 
@@ -267,8 +250,8 @@ function projected(v: unknown, what: string): Projected {
 
 // ---------------------------------------------------------------- features
 
-function planeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PlaneFeature {
-  return { ...base(o, what), type: 'plane', base: planeRef(doc, before, o.base, `${what}.base`), offset: fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
+function planeFeature(o: Dict, what: string, context: ValidationContext): PlaneFeature {
+  return { ...base(o, what), type: 'plane', base: planeRef(context, o.base, `${what}.base`), offset: context.fields.number(o.offset, 'offset', OFFSET, `${what}.offset`) };
 }
 
 const PROFILE_FIELDS: Record<ProfileSource['type'], readonly string[]> = { regions: ['type', 'sketch', 'regions'], generated: ['type', 'generator', 'sketch', 'operands', 'params', 'refs'] };
@@ -289,14 +272,15 @@ function removableFromProfile(profile: ProfileSource, path: string[]): boolean {
 
 // The profile source of an extrusion. A generated profile follows the generator catalog: operands
 // and references by its names, parameters with its ranges and defaults, in the order of the catalog.
-function profileSource(doc: Document, before: number | undefined, v: unknown, what: string, fields: Fields): ProfileSource {
+function profileSource(context: ValidationContext, v: unknown, what: string): ProfileSource {
+  const { fields } = context;
   const profile = object(v, what);
   const type = oneOf(profile.type, ['regions', 'generated'] as const, `${what}.type`);
   // A field of the other variant is a mistake: a profile of regions with generator parameters would
   // otherwise be accepted as plain regions.
   for (const key of Object.keys(profile)) if (!PROFILE_FIELDS[type].includes(key)) fail(`${what}.${key}: a profile of the type ${type} has no such field`);
   const sketch = string(profile.sketch, `${what}.sketch`);
-  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
   if (type === 'regions') return { type, sketch, regions: regions(profile.regions, `${what}.regions`) };
   const generator = oneOf(profile.generator, Object.keys(GENERATORS) as GeneratorName[], `${what}.generator`);
   const spec = GENERATORS[generator];
@@ -311,7 +295,7 @@ function profileSource(doc: Document, before: number | undefined, v: unknown, wh
   const operands: Record<string, Id> = {};
   for (const { field, kinds } of spec.operands) {
     operands[field] = string(givenOperands[field], `${what}.operands.${field}`);
-    requireRef(doc, before, { id: operands[field], kind: 'entity', sketch, accepts: kinds }, `${what}.operands.${field}`);
+    context.requireRef({ id: operands[field], kind: 'entity', sketch, accepts: kinds }, `${what}.operands.${field}`);
   }
   const givenParams = dictionary('params', spec.params);
   const params: Record<string, number | boolean | string> = {};
@@ -327,7 +311,7 @@ function profileSource(doc: Document, before: number | undefined, v: unknown, wh
   for (const [name, ref] of Object.entries(spec.refs)) {
     if (givenRefs[name] === undefined) continue;
     refs[name] = string(givenRefs[name], `${what}.refs.${name}`);
-    requireRef(doc, before, { id: refs[name], kind: 'generated', accepts: ref.generators }, `${what}.refs.${name}`);
+    context.requireRef({ id: refs[name], kind: 'generated', accepts: ref.generators }, `${what}.refs.${name}`);
   }
   return { type, generator, sketch, operands, params, ...(Object.keys(refs).length ? { refs } : {}) };
 }
@@ -344,8 +328,9 @@ function profileRefs(profile: ProfileSource): FeatureRef[] {
   ];
 }
 
-function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): ExtrudeFeature {
-  const profile = profileSource(doc, before, o.profile, `${what}.profile`, fields);
+function extrudeFeature(o: Dict, what: string, context: ValidationContext): ExtrudeFeature {
+  const { fields } = context;
+  const profile = profileSource(context, o.profile, `${what}.profile`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
   const given = object(o.extent, `${what}.extent`);
   let extent: ExtrudeFeature['extent'];
@@ -375,23 +360,12 @@ function extrudeFeature(doc: Document, before: number | undefined, o: Dict, what
   }
   const targets = (o.targets as unknown[]).map((target, i) => string(target, `${what}.targets[${i}]`));
   if (new Set(targets).size < targets.length) fail(`${what}.targets: a target body is listed twice`);
-  for (const target of targets) requireRef(doc, before, { id: target, kind: 'body' }, `${what}.targets`);
+  for (const target of targets) context.requireRef({ id: target, kind: 'body' }, `${what}.targets`);
   return { ...feature, targets };
 }
 
-function axisRef(doc: Document, before: number | undefined, v: unknown, what: string): AxisRef {
-  const o = object(v, what);
-  const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
-  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : ['kind', 'sketch', 'point'], what, `an axis of the kind ${kind}`);
-  if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
-  const sketch = string(o.sketch, `${what}.sketch`);
-  requireRef(doc, before, { id: sketch, kind: 'sketch' }, `${what}.sketch`);
-  const point = string(o.point, `${what}.point`);
-  requireRef(doc, before, { id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
-  return { kind, sketch, point };
-}
-
-function patternFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): PatternFeature {
+function patternFeature(o: Dict, what: string, context: ValidationContext): PatternFeature {
+  const { fields } = context;
   const given = object(o.source, `${what}.source`);
   let source: PatternFeature['source'];
   const sourceType = oneOf(given.type, ['features', 'body'] as const, `${what}.source.type`);
@@ -400,17 +374,17 @@ function patternFeature(doc: Document, before: number | undefined, o: Dict, what
     if (!Array.isArray(given.features) || given.features.length === 0) return fail(`${what}.source.features: a non-empty list of feature IDs is expected`);
     const features = (given.features as unknown[]).map((id, i) => string(id, `${what}.source.features[${i}]`));
     if (new Set(features).size < features.length) fail(`${what}.source.features: a feature is listed twice`);
-    for (const id of features) requireRef(doc, before, { id, kind: 'tool' }, `${what}.source.features`);
+    for (const id of features) context.requireRef({ id, kind: 'tool' }, `${what}.source.features`);
     source = { type: 'features', features };
   } else {
     const body = string(given.body, `${what}.source.body`);
-    requireRef(doc, before, { id: body, kind: 'body' }, `${what}.source.body`);
+    context.requireRef({ id: body, kind: 'body' }, `${what}.source.body`);
     source = { type: 'body', body };
   }
   const transform = object(o.transform, `${what}.transform`);
   const type = oneOf(transform.type, ['circular'] as const, `${what}.transform.type`);
   onlyFields(transform, ['type', 'axis', 'count', 'span'], `${what}.transform`, `a transform of the type ${type}`);
-  const axis = axisRef(doc, before, transform.axis, `${what}.transform.axis`);
+  const axis = axisRef(context, transform.axis, `${what}.transform.axis`);
   const count = fields.number(transform.count, 'transform/count', PATTERN_COUNT, `${what}.transform.count`);
   const span = object(transform.span, `${what}.transform.span`);
   const full = oneOf(span.type, ['full', 'angle'] as const, `${what}.transform.span.type`) === 'full';
@@ -423,8 +397,9 @@ function patternFeature(doc: Document, before: number | undefined, o: Dict, what
   };
 }
 
-function sketchFeature(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): SketchFeature {
-  const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(doc, before, o.plane, `${what}.plane`));
+function sketchFeature(o: Dict, what: string, context: ValidationContext): SketchFeature {
+  const { fields } = context;
+  const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(context, o.plane, `${what}.plane`));
   sketch.suppressed = boolean(o.suppressed, `${what}.suppressed`);
   const seen = new Set<Id>();
   const entries = (v: unknown, name: string): [Id, unknown][] =>
@@ -438,7 +413,7 @@ function sketchFeature(doc: Document, before: number | undefined, o: Dict, what:
     const p = object(value, `${what}.points.${id}`);
     sketch.points[id] = { x: finite(p.x, `${what}.points.${id}.x`), y: finite(p.y, `${what}.points.${id}.y`) };
   }
-  for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(doc, before, value, `${what}.external.${id}`);
+  for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(context, value, `${what}.external.${id}`);
   for (const [id, value] of entries(o.curves, 'curves')) sketch.curves[id] = curve(sketch, value, `${what}.curves.${id}`);
   for (const [id, value] of Object.entries(object(o.radii, `${what}.radii`))) {
     if (!has(sketch.curves, id) || sketch.curves[id].type !== 'circle') fail(`${what}.radii: "${id}" není kružnice`);
@@ -478,9 +453,10 @@ export interface FeatureTypeInfo {
 // je v evaluate.ts; úplnost obou míst hlídá překladač (záznam podle `Feature['type']`).
 interface FeatureTypeSpec<F extends Feature> {
   info: Omit<FeatureTypeInfo, 'updatable'>;
-  // Ověří feature a vrátí její kanonickou kopii. `before`: viz requireRef.
-  // Numeric fields are read through `fields`.
-  validate(doc: Document, before: number | undefined, o: Dict, what: string, fields: Fields): F;
+  // Ověří feature a vrátí její kanonickou kopii. What needs the registry (is the target of
+  // a reference there, of the right kind and before this feature) and the reader of numeric fields
+  // come in the context.
+  validate(o: Dict, what: string, context: ValidationContext): F;
   // Odkazy na jiné features s místem, kde ve feature leží.
   refs(f: F): FeatureRef[];
   // Vytváří feature těleso s tímto ID? `local` je část ID za lomítkem (bez lomítka chybí).
@@ -584,7 +560,7 @@ function feature(doc: Document, before: number | undefined, v: unknown, what: st
 
 function validated(spec: FeatureTypeSpec<Feature>, doc: Document, before: number | undefined, o: Dict, what: string, mode: FieldMode): Feature {
   const fields = new Fields(mode, expressionsOf(o, what), () => evaluateParameters(doc.parameters));
-  const checked = spec.validate(doc, before, o, what, fields);
+  const checked = spec.validate(o, what, { ...refContext(doc, before), fields });
   const expressions = fields.expressions(what);
   return expressions ? { ...checked, expressions } : checked;
 }
@@ -599,7 +575,7 @@ export function fieldsOf(f: Feature): FieldInfo[] {
   let found = fieldCache.get(f);
   if (!found) {
     const fields = new Fields('load', f.expressions ?? {}, NO_ENVIRONMENT);
-    specOf(f).validate(EMPTY, undefined, f as unknown as Dict, 'feature', fields);
+    specOf(f).validate(f as unknown as Dict, 'feature', { ...refContext(EMPTY, undefined), fields });
     fieldCache.set(f, (found = fields.found));
   }
   return found;
@@ -1009,7 +985,7 @@ export function applyCommand(doc: Document, command: Command): Document {
     }
 
     case 'setSketchPlane':
-      return editSketch(doc, cmd.sketch, (s, index) => ({ ...s, plane: planeRef(doc, index, cmd.plane, 'setSketchPlane.plane') }));
+      return editSketch(doc, cmd.sketch, (s, index) => ({ ...s, plane: planeRef(refContext(doc, index), cmd.plane, 'setSketchPlane.plane') }));
 
     case 'addPoint':
       return editSketch(doc, cmd.sketch, (s) => ({
@@ -1106,14 +1082,14 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addExternal':
       return editSketch(doc, cmd.sketch, (s, index) => ({
         ...s,
-        external: { ...s.external, [unique(doc, cmd.id, 'addExternal.id')]: externalRef(doc, index, cmd.ref, 'addExternal.ref') },
+        external: { ...s.external, [unique(doc, cmd.id, 'addExternal.id')]: externalRef(refContext(doc, index), cmd.ref, 'addExternal.ref') },
       }));
 
     case 'updateExternal':
       return editSketch(doc, cmd.sketch, (s, index) => {
         const id = string(cmd.id, 'updateExternal.id');
         if (!has(s.external, id)) fail(`updateExternal: promítnutí "${id}" ve skice není`);
-        const ref = externalRef(doc, index, cmd.ref, 'updateExternal.ref');
+        const ref = externalRef(refContext(doc, index), cmd.ref, 'updateExternal.ref');
         // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
         if (ref.kind !== s.external[id].kind) fail('updateExternal: druh promítnutí změnit nejde');
         // Zmrazené hodnoty patřily původní hraně.

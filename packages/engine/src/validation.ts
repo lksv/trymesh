@@ -1,9 +1,9 @@
 // What the validators of commands and documents share: the error, the basic checks, the reader of
 // numeric fields, names of faces and edges, and references between features. Nothing here reads the
-// registry of feature types; what needs it reaches a validator through its context.
+// registry of feature types; what needs it reaches a validator through its context (`RefContext`).
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { type Environment, analyzeExpression, evaluateNumber } from './expression';
-import type { AxisRef, CommandResult, CopyTag, EdgeName, Expr, FaceName, FieldPath, Id, PlaneRef } from './types';
+import type { AxisRef, CommandResult, CopyTag, Document, EdgeName, Expr, FaceName, FieldPath, Id, PlaneRef } from './types';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
 // Neplatný příkaz nebo dokument. `commandIndex` říká, který příkaz dávky to byl.
@@ -179,9 +179,56 @@ export interface FeatureRef {
 }
 export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude', pattern: 'pole (pattern)' };
 
+// What a helper that checks a reference needs. Whether the target of a reference exists, is of the
+// right kind and lies before the referring feature is a question for the registry of feature types
+// (`requireRef`, next to the registry). It reaches a validator through this context, so that no
+// validator and no feature module imports the registry.
+export interface RefContext {
+  doc: Document;
+  before: number | undefined; // the index of the referring feature; absent when a document is loaded, see requireRef
+  requireRef(ref: Omit<FeatureRef, 'path'>, what: string): void;
+}
+// What the validator of a feature gets.
+export interface ValidationContext extends RefContext {
+  fields: Fields; // the reader of numeric fields
+}
+
+// A face exists only after the feature that named it and after every pattern that copied it.
+export function requireFace(context: RefContext, face: FaceName, what: string): void {
+  context.requireRef({ id: face.feature, kind: 'faceSource' }, what);
+  for (const tag of face.copy ?? []) context.requireRef({ id: tag.pattern, kind: 'pattern' }, what);
+}
+
+export function planeRef(context: RefContext, v: unknown, what: string): PlaneRef {
+  const o = object(v, what);
+  const kind = oneOf(o.kind, ['base', 'plane', 'face'] as const, `${what}.kind`);
+  if (kind === 'base') return { kind, plane: oneOf(o.plane, ['XY', 'XZ', 'YZ'] as const, `${what}.plane`) };
+  if (kind === 'plane') {
+    const feature = string(o.feature, `${what}.feature`);
+    context.requireRef({ id: feature, kind: 'plane' }, what);
+    return { kind, feature };
+  }
+  const body = string(o.body, `${what}.body`);
+  context.requireRef({ id: body, kind: 'body' }, what);
+  const face = faceName(o.face, `${what}.face`);
+  requireFace(context, face, `${what}.face`);
+  return { kind, body, face };
+}
+
 export const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
   ref.kind === 'plane' ? [{ path, id: ref.feature, kind: 'plane' }] : ref.kind === 'face' ? [{ path, id: ref.body, kind: 'body' }, ...faceRefs(ref.face, path)] : [];
 
+export function axisRef(context: RefContext, v: unknown, what: string): AxisRef {
+  const o = object(v, what);
+  const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
+  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : ['kind', 'sketch', 'point'], what, `an axis of the kind ${kind}`);
+  if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
+  const sketch = string(o.sketch, `${what}.sketch`);
+  context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  const point = string(o.point, `${what}.point`);
+  context.requireRef({ id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
+  return { kind, sketch, point };
+}
 export const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
   axis.kind === 'base'
     ? []

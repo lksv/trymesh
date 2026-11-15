@@ -17,3 +17,9 @@ export function download(name: string, data: BlobPart, type: string): void {
 
 // Číslo pro zobrazení: nejvýš tři desetinná místa, bez koncových nul.
 export const fmt = (value: number): string => String(Math.round(value * 1000) / 1000);
+
+// Marks a field whose content is not valid, with the reason as its title.
+export function markProblem(input: HTMLInputElement, problem: string | undefined): void {
+  input.classList.toggle('invalid', problem !== undefined);
+  input.title = problem ?? '';
+}

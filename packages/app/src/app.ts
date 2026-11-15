@@ -6,7 +6,6 @@ import {
   type Constraint,
   type ConstraintExplanation,
   type EdgeKind,
-  type EdgeName,
   type Engine,
   type EngineState,
   type Expr,
@@ -16,8 +15,6 @@ import {
   type FeatureResult,
   type Frame,
   type Id,
-  type Interference,
-  type InterferenceReport,
   type Issue,
   type PatternFeature,
   type PlaneFeature,
@@ -35,7 +32,6 @@ import {
   FEATURE_TYPE_INFO,
   GENERATORS,
   type GeneratorName,
-  bodyFileName,
   bodyOwner,
   constraintKey,
   constraintPath,
@@ -50,8 +46,12 @@ import {
   producesTool,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
-import { byId, download, fmt, h } from './dom';
-import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from './fields';
+import { byId, download, fmt, h, markProblem } from './dom';
+import type { Note, PanelHost, ViewPick } from './host';
+import { FEATURE_TYPES, OPERATIONS, SIDES, factsText } from './labels';
+import { type Collisions, checkCollisions, followCollisions, pickedPair, shownCollisions } from './panels/collisions';
+import { modelPanel } from './panels/model';
+import { expressionProblem, fieldNote, fieldText, parseField, valueText } from './fields';
 import {
   type Anchor,
   type AxisKind,
@@ -76,7 +76,6 @@ import {
   patternIncomplete,
   patternSource,
   rememberedProfile,
-  generatedProfile,
   profileKind,
   circleCommands,
   deleteCommands,
@@ -100,10 +99,7 @@ import { angleProblem, bodyName, faceLabel, featureName, issueText } from './iss
 
 type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
 
-type Pick =
-  | { kind: 'face'; body: Id; faceId: number; name: FaceName; planar: boolean }
-  | { kind: 'edge'; body: Id; index: number; name: EdgeName; edgeKind: EdgeKind }
-  | { kind: 'plane'; key: string; ref: PlaneRef; frame: Frame };
+type Pick = ViewPick;
 
 interface SketchMode {
   kind: 'sketch';
@@ -184,21 +180,7 @@ const TOOLS: [Tool, string, string][] = [
   ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
   ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
 ];
-const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
-const CHECK_STATUS = { ok: '✓ holds', failed: '✗ fails', error: '! cannot be evaluated' };
-const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
-// Facts of a generated profile shown below the form and at the selected feature, with their units.
-const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Unit][]> = {
-  involuteGear: [
-    ['module', 'module', 'mm'],
-    ['pitchDiameter', 'pitch ⌀', 'mm'],
-    ['tipDiameter', 'tip ⌀', 'mm'],
-    ['rootDiameter', 'root ⌀', 'mm'],
-    ['rotation', 'rotation', 'rad'],
-  ],
-};
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all' };
-const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
 const PICK_REACH = 7; // px
 const SLOW_PREVIEW = 150; // ms; a preview slower than this is not recomputed on every keystroke
@@ -213,22 +195,19 @@ const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
 const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 const pickKey = (pick: Pick | undefined): string => (!pick ? '' : pick.kind === 'face' ? `f/${pick.body}/${pick.faceId}` : pick.kind === 'edge' ? `e/${pick.body}/${pick.index}` : `p/${pick.key}`);
 
-export class App {
+export class App implements PanelHost {
   private readonly viewport: View;
   private mode: Mode = { kind: 'model' };
-  private selected?: Pick; // výběr v pohledu (režim modelu)
+  selected?: Pick; // výběr v pohledu (režim modelu)
   private hover?: Pick;
-  private selectedFeature?: Id; // výběr na časové ose
-  private marker: Id | null = null; // feature, za kterou se vkládá; null = konec osy
+  selectedFeature?: Id; // výběr na časové ose
+  marker: Id | null = null; // feature, za kterou se vkládá; null = konec osy
   private markerIndex = 0; // kde značka naposledy ležela, pro případ, že její feature zmizí
   private readonly hidden = new Set<Id>();
   private showBasePlanes = true;
-  private pending?: 'sketch' | 'plane'; // čeká se na výběr roviny
-  // The last answer to "which bodies collide", for the state after `at` (null = the whole model);
-  // `picked` is the pair highlighted in the view. A change of the document throws it away.
-  private collisions?: { at: Id | null; report: InterferenceReport; picked?: number };
-  private note = { text: '', error: false };
-  private collisionNote?: { text: string; error: boolean }; // the note of the last collision check, while it is the one shown
+  pending?: 'sketch' | 'plane'; // čeká se na výběr roviny
+  private readonly collisions: Collisions = {};
+  note: Note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   private previewCost = 0; // ms the last preview of a draft took
@@ -240,10 +219,10 @@ export class App {
   private readonly boxes = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
 
   // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
-  constructor(private readonly engine: Engine, view?: View) {
+  constructor(readonly engine: Engine, view?: View) {
     this.viewport = view ?? new Viewport(byId('viewport'));
     engine.subscribe(() => {
-      this.collisions = undefined; // the answer belonged to the document as it was
+      this.collisions.answer = undefined; // the answer belonged to the document as it was
       this.refresh();
     });
     const canvas = this.viewport.element;
@@ -260,18 +239,18 @@ export class App {
 
   // ---------------------------------------------------------------- stav
 
-  private get doc() {
+  get doc() {
     return this.engine.getState().document;
   }
-  private feature(id: Id | undefined | null): Feature | undefined {
+  feature(id: Id | undefined | null): Feature | undefined {
     return id == null ? undefined : this.doc.features.find((f) => f.id === id);
   }
   // Names for a human: see issue-text.ts.
   private readonly featureNames = (id: Id): string | undefined => this.feature(id)?.name;
-  private nameOf(id: Id): string {
+  nameOf(id: Id): string {
     return featureName(id, this.featureNames);
   }
-  private bodyName(body: Id): string {
+  bodyName(body: Id): string {
     return bodyName(body, this.featureNames);
   }
   // A body is hidden at the feature that created it; the copies of a pattern all at once.
@@ -280,7 +259,7 @@ export class App {
   }
 
   // Stav, který se právě zobrazuje: model po značce pozice, po upravované feature, nebo náhled.
-  private view(): EngineState {
+  view(): EngineState {
     if (this.cache) return this.cache;
     const m = this.mode;
     if (m.kind === 'sketch') this.cache = m.preview ?? this.engine.getState(m.id);
@@ -365,7 +344,7 @@ export class App {
     });
   }
 
-  private say(text: string, error = false): void {
+  say(text: string, error = false): void {
     this.note = { text, error };
     const bar = byId('status');
     bar.textContent = text;
@@ -373,7 +352,7 @@ export class App {
   }
 
   // Provede příkaz; neplatný příkaz dokument nezmění a zpráva se ukáže ve stavovém řádku.
-  private run(command: Command, done?: string): boolean {
+  run(command: Command, done?: string): boolean {
     const before = this.failedChecks(this.engine.getState());
     const result = this.engine.execute(command);
     if (!result.ok) return this.say(result.error.message, true), false;
@@ -390,7 +369,7 @@ export class App {
 
   // ---------------------------------------------------------------- překreslení
 
-  private refresh(): void {
+  refresh(): void {
     this.cancelDrag(); // dokument se mohl změnit pod rozpracovaným tažením
     this.invalidate();
     const m = this.mode;
@@ -400,12 +379,7 @@ export class App {
     if (this.marker && at < 0) this.marker = features[Math.min(this.markerIndex, features.length) - 1]?.id ?? null;
     if (this.marker && this.marker === features[features.length - 1]?.id) this.marker = null;
     this.markerIndex = features.findIndex((f) => f.id === this.marker);
-    // The note of a collision check goes with its answer: when the document changed, the marker
-    // moved to another state or the section was closed.
-    if (this.collisionNote && !this.shownCollisions()) {
-      if (this.note === this.collisionNote) this.say('');
-      this.collisionNote = undefined;
-    }
+    followCollisions(this.collisions, this);
     if (this.selectedFeature && !this.feature(this.selectedFeature)) this.selectedFeature = undefined;
     if (m.kind === 'sketch' && this.feature(m.id)?.type !== 'sketch') this.mode = { kind: 'model' };
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
@@ -498,7 +472,7 @@ export class App {
           button('Rovina', () => this.startOnPlane('plane'), { title: 'Rovina posunutá od roviny nebo rovinné stěny', active: this.pending === 'plane' }),
           button('Pattern', () => this.startPattern(), { title: 'Repeat extrusions that add or cut, or a body, around an axis' }),
         ),
-        group(button('Collisions', () => this.checkCollisions(), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: this.shownCollisions() !== undefined })),
+        group(button('Collisions', () => checkCollisions(this.collisions, this), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: shownCollisions(this.collisions, this) !== undefined })),
       );
     } else if (m.kind === 'sketch') {
       groups.push(
@@ -628,7 +602,7 @@ export class App {
     byId('timeline').replaceChildren(...rows);
   }
 
-  private edit(id: Id): void {
+  edit(id: Id): void {
     const f = this.feature(id);
     if (!f) return;
     if (f.type === 'sketch') this.enterSketch(id);
@@ -639,14 +613,14 @@ export class App {
 
   // ---------------------------------------------------------------- pravý panel
 
-  private renderPanel(): void {
+  renderPanel(): void {
     const m = this.mode;
     const panel = byId('panel');
     if (m.kind === 'sketch') panel.replaceChildren(...this.sketchPanel(m));
     else if (m.kind === 'extrude') panel.replaceChildren(...this.extrudePanel(m));
     else if (m.kind === 'plane') panel.replaceChildren(...this.planePanel(m));
     else if (m.kind === 'pattern') panel.replaceChildren(...this.patternPanel(m));
-    else panel.replaceChildren(...this.modelPanel());
+    else panel.replaceChildren(...modelPanel(this, this.collisions));
   }
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
@@ -654,7 +628,7 @@ export class App {
     return issueText(issue, this.featureNames);
   }
 
-  private issues(result: FeatureResult | undefined): HTMLElement[] {
+  issues(result: FeatureResult | undefined): HTMLElement[] {
     if (!result) return [];
     const out: HTMLElement[] = [];
     if (result.error) out.push(h('p', { className: 'issue error' }, this.issueText(result.error)));
@@ -664,7 +638,7 @@ export class App {
     return out;
   }
 
-  private describe(pick: Pick): string {
+  describe(pick: Pick): string {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
     const face = (name: FaceName) => faceLabel(name, this.featureNames);
     if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
@@ -672,223 +646,10 @@ export class App {
     return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
   }
 
-  private planeRefOf(pick: Pick | undefined): PlaneRef | undefined {
+  planeRefOf(pick: Pick | undefined): PlaneRef | undefined {
     if (pick?.kind === 'plane') return pick.ref;
     if (pick?.kind === 'face' && pick.planar) return { kind: 'face', body: pick.body, face: pick.name };
     return undefined;
-  }
-
-  private modelPanel(): HTMLElement[] {
-    const out: HTMLElement[] = [];
-    if (this.pending) {
-      out.push(
-        h('h2', {}, this.pending === 'sketch' ? 'Nová skica' : 'Nová rovina'),
-        h('p', { className: 'hint' }, 'Klikněte v pohledu na rovinu nebo rovinnou stěnu, nebo zvolte základní rovinu:'),
-        h('div', { className: 'buttons' }, ...(['XY', 'XZ', 'YZ'] as const).map((plane) => h('button', { textContent: plane, onclick: () => this.usePlane({ kind: 'base', plane }) }))),
-        h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit', onclick: () => ((this.pending = undefined), this.refresh()) })),
-      );
-      return out;
-    }
-    const f = this.feature(this.selectedFeature);
-    if (f) {
-      const result = this.engine.getState().evaluation.features[f.id];
-      const ref = this.planeRefOf(this.selected);
-      out.push(
-        h('h2', {}, FEATURE_TYPES[f.type]),
-        h('label', {}, 'Název', h('input', { value: f.name, onchange: (event: Event) => this.run({ type: 'renameFeature', id: f.id, name: (event.target as HTMLInputElement).value }) })),
-        ...this.issues(result),
-        h(
-          'div',
-          { className: 'buttons' },
-          h('button', { textContent: 'Upravit', className: 'primary', onclick: () => this.edit(f.id) }),
-          h('button', { textContent: f.suppressed ? 'Obnovit' : 'Potlačit', onclick: () => this.run({ type: 'setSuppressed', id: f.id, suppressed: !f.suppressed }) }),
-          h('button', { textContent: 'Smazat', onclick: () => this.run({ type: 'removeFeature', id: f.id }, `Smazáno: ${f.name}. Závislé prvky zůstávají a hlásí chybu.`) }),
-        ),
-      );
-      if (f.type === 'sketch') {
-        out.push(
-          h('button', { textContent: 'Přenést skicu na vybranou rovinu', disabled: !ref, title: 'Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu', onclick: () => ref && this.run({ type: 'setSketchPlane', sketch: f.id, plane: ref }, 'Rovina skici změněna.') }),
-        );
-      }
-      const shown = (path: string, value: number): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${fmt(value)}` : fmt(value));
-      if (f.type === 'extrude') {
-        const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shown('extent/start', f.extent.start)} mm` : '';
-        const extent = f.extent.type === 'distance' ? `distance ${shown('extent/distance', f.extent.distance)} mm${start}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
-        const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => this.bodyName(id)).join(', ')}` : '';
-        const profile = f.profile.type === 'regions' ? `regions: ${f.profile.regions.length}` : `${GENERATORS[f.profile.generator].title.toLowerCase()} over ${Object.values(f.profile.operands).join(', ')}`;
-        out.push(h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, ${profile}${targets}.`));
-        const facts = this.factsText(f, this.view().evaluation.features[f.id]);
-        if (facts) out.push(h('p', { className: 'hint' }, facts));
-      }
-      if (f.type === 'plane') out.push(h('p', { className: 'hint' }, `Posun ${shown('offset', f.offset)} mm.`));
-      if (f.type === 'pattern') {
-        const { axis, count, span } = f.transform;
-        const field = (path: string, value: number, unit: Unit): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${valueText(value, unit)}` : valueText(value, unit));
-        const source = f.source.type === 'features' ? `features: ${f.source.features.map((id) => this.nameOf(id)).join(', ')}` : `body: ${this.bodyName(f.source.body)}`;
-        const around = axis.kind === 'base' ? `axis ${axis.axis}` : `the point ${axis.point} of ${this.nameOf(axis.sketch)}`;
-        const extent = span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', span.angle, 'rad')}`;
-        out.push(h('p', { className: 'hint' }, `Count ${field('transform/count', count, 'count')} with the original, around ${around}, ${extent}; ${source}.`));
-      }
-      // the bodies the feature created, each with its volume, size and its own export
-      out.push(...this.bodyRows(result?.bodies ?? []));
-    } else {
-      out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
-    }
-    if (this.selected) {
-      out.push(h('h2', {}, 'Výběr'), h('p', {}, this.describe(this.selected)));
-      if (this.selected.kind !== 'plane') out.push(...this.bodyRows([this.selected.body]));
-    }
-    out.push(...this.collisionsPanel());
-    out.push(...this.parametersPanel());
-    return out;
-  }
-
-  // A line per body: name, volume, size of its box, and the export of that body alone. The file
-  // is named by the body ID (a copy of a pattern: `planets%2F1.stl`).
-  private bodyRows(ids: Id[]): HTMLElement[] {
-    const bodies = this.view().evaluation.bodies;
-    return ids
-      .filter((id) => Object.prototype.hasOwnProperty.call(bodies, id))
-      .map((id) => {
-        const { volume, bounds } = bodies[id];
-        const size = bounds.max.map((high, axis) => fmt(high - bounds.min[axis])).join(' × ');
-        const exportable = Object.prototype.hasOwnProperty.call(this.engine.getState().evaluation.bodies, id);
-        return h(
-          'p',
-          { className: 'hint body' },
-          `${this.bodyName(id)}: ${fmt(volume)} mm³, ${size} mm `,
-          h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, as it is at the end of the timeline', onclick: () => download(`${bodyFileName(id)}.stl`, new Uint8Array(this.engine.exportMesh('stl', [id])), 'model/stl') }),
-        );
-      });
-  }
-
-  // ---------------------------------------------------------------- collisions
-
-  // The answer is shown only for the state it was computed for.
-  private shownCollisions() {
-    return this.collisions && this.collisions.at === this.marker ? this.collisions : undefined;
-  }
-
-  private checkCollisions(): void {
-    const report = this.engine.interference(this.marker ? { at: this.marker } : {});
-    this.collisions = { at: this.marker, report };
-    const failed = report.failed.length ? ` ${report.failed.length} pair(s) could not be computed.` : '';
-    const fits = report.fits.length ? ` ${report.fits.length} fit(s) within the chord tolerance.` : '';
-    if (report.pairs.length) this.say(`Collisions: ${report.pairs.length} pair(s) of bodies share a volume.${fits}${failed}`, true);
-    else this.say(`No collisions: ${report.checked} pair(s) checked.${fits}${failed}`, report.failed.length > 0);
-    this.collisionNote = this.note; // the note states a fact about the model: it goes when the model changes
-    this.refresh();
-  }
-
-  // The colliding pairs; a click on one highlights its two bodies in the view.
-  private collisionsPanel(): HTMLElement[] {
-    const shown = this.shownCollisions();
-    if (!shown) return [];
-    const { report } = shown;
-    const pick = (index: number) => {
-      shown.picked = shown.picked === index ? undefined : index;
-      this.renderPanel();
-      this.renderScene();
-    };
-    // collisions first, then the fits; `picked` counts through both lists
-    const row = (pair: Interference, index: number, fit: boolean) =>
-      h(
-        'div',
-        { className: `row ${shown.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${fmt(pair.depth)} mm into the other`, onclick: () => pick(index) },
-        h('span', { className: 'name', textContent: `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}` }),
-        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³`),
-      );
-    const rows: (HTMLElement | null)[] = [
-      h('h2', {}, `Collisions (${report.pairs.length})`),
-      report.pairs.length === 0 && report.failed.length === 0 ? h('p', { className: 'hint' }, `No two bodies collide; ${report.checked} pair(s) checked. Bodies that only touch do not count.`) : null,
-      ...report.pairs.map((pair, index) => row(pair, index, false)),
-      report.fits.length ? h('p', { className: 'hint' }, 'Fits: round faces that reach into each other by no more than the chord tolerance. Round faces are polygons, so a pin in a hole of the same diameter overlaps its wall by slivers; that is not a collision of the design.') : null,
-      ...report.fits.map((pair, index) => row(pair, report.pairs.length + index, true)),
-      ...report.failed.map((pair) => h('p', { className: 'issue warning' }, `${this.bodyName(pair.a)} × ${this.bodyName(pair.b)}: could not be computed (${pair.message})`)),
-      h('div', { className: 'buttons' }, h('button', { textContent: 'Check again', onclick: () => this.checkCollisions() }), h('button', { textContent: 'Close', onclick: () => ((this.collisions = undefined), this.refresh()) })),
-    ];
-    return rows.filter((element): element is HTMLElement => element !== null);
-  }
-
-  // The parameter table and checks. An expression is only checked while typing; the command is sent once the field is committed.
-  private parametersPanel(): HTMLElement[] {
-    const { document: doc, evaluation } = this.engine.getState();
-    const expr = (value: string, kind: 'number' | 'check', commit: (text: string) => boolean): HTMLInputElement => {
-      const input = h('input', {
-        className: 'expr',
-        value,
-        placeholder: kind === 'number' ? 'expression, e.g. 2 * a' : 'condition, e.g. a < b',
-        oninput: () => this.markProblem(input, input.value.trim() === '' ? undefined : expressionProblem(input.value, kind)),
-        onchange: () => {
-          if (input.value.trim() === value || !commit(input.value)) this.refresh();
-        },
-      });
-      return input;
-    };
-    const rename = (value: string, title: string, commit: (text: string) => boolean): HTMLInputElement => {
-      const input = h('input', { className: 'pname', value, title, onchange: () => (input.value.trim() === value || !commit(input.value.trim())) && this.refresh() });
-      return input;
-    };
-    const adder = (label: string, kind: 'number' | 'check', add: (name: string, text: string) => boolean): HTMLElement => {
-      const name = h('input', { className: 'pname', placeholder: 'name' });
-      const value = expr('', kind, () => true);
-      value.onchange = null;
-      const submit = () => {
-        if (name.value.trim() === '' || value.value.trim() === '') return this.say(`${label}: fill in both the name and the expression.`, true);
-        add(name.value.trim(), value.value);
-      };
-      for (const input of [name, value]) input.onkeydown = (event: KeyboardEvent) => event.key === 'Enter' && submit();
-      return h('div', { className: 'constraint' }, name, value, h('button', { textContent: 'Add', onclick: submit }));
-    };
-
-    const out: HTMLElement[] = [h('h2', {}, `Parameters (${doc.parameters.length})`)];
-    for (const p of doc.parameters) {
-      const result = evaluation.parameters[p.name];
-      out.push(
-        h(
-          'div',
-          { className: `constraint ${result && !result.ok ? 'conflict' : ''}`, title: result && !result.ok ? result.error.message : '' },
-          rename(p.name, 'Parameter name; renaming also rewrites the expressions that use it', (to) => this.run({ type: 'renameParameter', name: p.name, to }, 'Parameter renamed.')),
-          expr(p.expr, 'number', (text) => this.run({ type: 'setParameter', name: p.name, expr: text })),
-          h('small', { className: 'computed' }, result?.ok ? `= ${plainNumber(result.value)}` : 'error'),
-          h('button', { className: 'icon', textContent: '✕', title: 'Delete parameter', onclick: () => this.run({ type: 'removeParameter', name: p.name }, `Parameter ${p.name} deleted. Expressions that use it report an error.`) }),
-        ),
-      );
-    }
-    out.push(
-      adder('Parameter', 'number', (name, text) => {
-        if (doc.parameters.some((p) => p.name === name)) return this.say(`Parameter ${name} already exists.`, true), false;
-        return this.run({ type: 'setParameter', name, expr: text }, `Parameter ${name} added.`);
-      }),
-      h('p', { className: 'hint' }, 'An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30).'),
-      h('h2', {}, `Checks (${doc.checks.length})`),
-    );
-    for (const c of doc.checks) {
-      const result = evaluation.checks[c.name];
-      const status = result?.status ?? 'error';
-      out.push(
-        h(
-          'div',
-          { className: `constraint ${status === 'ok' ? '' : status === 'failed' ? 'redundant' : 'conflict'}`, title: result?.error?.message ?? '' },
-          rename(c.name, 'Check name', (to) => this.run({ type: 'renameCheck', name: c.name, to })),
-          expr(c.expr, 'check', (text) => this.run({ type: 'setCheck', name: c.name, expr: text })),
-          h('small', { className: 'computed' }, CHECK_STATUS[status]),
-          h('button', { className: 'icon', textContent: '✕', title: 'Delete check', onclick: () => this.run({ type: 'removeCheck', name: c.name }) }),
-        ),
-      );
-    }
-    out.push(
-      adder('Check', 'check', (name, text) => {
-        if (doc.checks.some((c) => c.name === name)) return this.say(`Check "${name}" already exists.`, true), false;
-        return this.run({ type: 'setCheck', name, expr: text }, 'Check added.');
-      }),
-    );
-    return out;
-  }
-
-  private markProblem(input: HTMLInputElement, problem: string | undefined): void {
-    input.classList.toggle('invalid', problem !== undefined);
-    input.title = problem ?? '';
   }
 
   // ---------------------------------------------------------------- výběr v pohledu
@@ -1148,7 +909,12 @@ export class App {
     this.refresh();
   }
 
-  private usePlane(ref: PlaneRef): boolean {
+  cancelPending(): void {
+    this.pending = undefined;
+    this.refresh();
+  }
+
+  usePlane(ref: PlaneRef): boolean {
     const what = this.pending;
     this.pending = undefined;
     if (what === 'plane') {
@@ -1544,7 +1310,7 @@ export class App {
           title: expression ? `= ${valueText(shown, unit)}` : unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : 'mm, or an expression',
           oninput: () => {
             const parsed = parseField(input.value, unit);
-            this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
+            markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
           },
           onchange: () => {
             // an empty field does not change the value; an angle number is wrapped into the range the engine accepts
@@ -1580,7 +1346,7 @@ export class App {
             title: expression ? `= ${valueText(current, spec.unit)}` : `${spec.unit === 'rad' ? 'degrees, or an expression in radians (deg(30))' : `${spec.unit}, or an expression`}`,
             oninput: () => {
               const parsed = parseField(input.value, spec.unit);
-              this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
+              markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', parameterNames) : undefined);
             },
             onchange: () => {
               // an empty field does not change the value
@@ -1761,7 +1527,7 @@ export class App {
       // expression values next to the fields
       for (const note of Array.from(document.querySelectorAll<HTMLElement>('#panel [data-field]'))) note.textContent = this.draftNote(m, note.dataset.field as string, note.dataset.unit as Unit);
       const facts = document.getElementById('draft-facts');
-      if (facts && m.kind === 'extrude') facts.textContent = this.factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
+      if (facts && m.kind === 'extrude') facts.textContent = factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
       const bodies = document.getElementById('draft-bodies');
       if (bodies && m.kind === 'pattern') bodies.textContent = this.patternBodies(m);
     }
@@ -1813,13 +1579,6 @@ export class App {
   private defaultOperands(generator: GeneratorName, sketch: Id): Record<string, Id> {
     return Object.fromEntries(GENERATORS[generator].operands.flatMap((operand) => this.operandChoices(sketch, operand.kinds).slice(0, 1).map((choice) => [operand.field, choice.id])));
   }
-  // What the generator of a feature published, for a human: "module 0.9 mm, pitch ⌀ 16.2 mm, …".
-  private factsText(f: { profile: ExtrudeDraft['profile'] }, result: FeatureResult | undefined): string {
-    if (f.profile.type !== 'generated' || !result?.facts) return '';
-    const facts = result.facts;
-    return FACTS_SHOWN[f.profile.generator].filter(([name]) => typeof facts[name] === 'number').map(([name, label, unit]) => `${label} ${valueText(facts[name] as number, unit)}`).join(', ');
-  }
-
   // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
   private draftField(m: DraftMode, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
     const unit = FEATURE_TYPE_INFO[m.draft.type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
@@ -1828,7 +1587,7 @@ export class App {
       value: fieldText(this.draftValue(m, path), unit),
       oninput: () => {
         const parsed = parseField(input.value, unit);
-        this.markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
+        markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
         change(parsed ?? NaN); // the engine rejects an empty field and the preview says so
       },
     });
@@ -2015,7 +1774,7 @@ export class App {
           ),
         );
       }),
-      h('p', { id: 'draft-facts', className: 'hint' }, this.factsText(m.draft, m.preview?.evaluation.features[m.draft.id])),
+      h('p', { id: 'draft-facts', className: 'hint' }, factsText(m.draft, m.preview?.evaluation.features[m.draft.id])),
     ];
   }
 
@@ -2111,7 +1870,7 @@ export class App {
 
   // ---------------------------------------------------------------- scéna
 
-  private renderScene(): void {
+  renderScene(): void {
     const state = this.view();
     const { evaluation, document: doc } = state;
     const m = this.mode;
@@ -2132,8 +1891,7 @@ export class App {
     }
     model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
     // the two bodies of the picked collision
-    const collisions = m.kind === 'model' ? this.shownCollisions() : undefined;
-    const clash = collisions?.picked === undefined ? undefined : [...collisions.report.pairs, ...collisions.report.fits][collisions.picked];
+    const clash = m.kind === 'model' ? pickedPair(this.collisions, this) : undefined;
     for (const [id, color] of clash ? ([[clash.a, COLOR.select], [clash.b, COLOR.clash]] as [Id, number][]) : []) {
       const body = evaluation.bodies[id];
       if (body && !this.bodyHidden(id)) for (const face of body.faces) model.faces.push({ solid: body.solid, faceId: face.id, color, opacity: 0.45 });

@@ -3090,7 +3090,7 @@
     +   small: "overhang 62.79 mm²"
     + p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 1 face."
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    +   span.name: "Vysunutí 2 · on Deska – protější víko"
+    +   span.name: "Vysunutí 2 · up 0, 0, -1"
     +   small: "no overhang"
     + p.hint: "Height 10 mm; 78.33 mm² on the bed on 1 face."
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3098,7 +3098,7 @@
     +   small: "overhang 195 mm²"
     + p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 1 face."
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    +   span.name: "Vysunutí 3 · on Deska – protější víko"
+    +   span.name: "Vysunutí 3 · up 0, 0, -1"
     +   small: "no overhang"
     + p.hint: "Height 13 mm; 450 mm² on the bed on 1 face."
   status: Print check: 3 bodies in 2 orientations. 1 of 6 do not fit the bed. Pick a row to see its faces.
@@ -3131,9 +3131,11 @@
     + face e1 #1 #0ea5e9 opacity 0.6
     - face e1 #5 #dc2626 opacity 0.6
 
-=== 81. overhangs from 20°, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
-  engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]}},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200},"overhang":0.3490658503988659,"minArea":100,"maxFaces":1}, {}) -> ok
+=== 81. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
+  engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]},"turn":0.5235987755982988},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200},"overhang":0.3490658503988659,"minArea":100,"maxFaces":1}, {}) -> ok
   panel:
+    +           input.value value="30" placeholder="0"
+    -           input.value value="" placeholder="0"
     +     input.value value="20" placeholder="45"
     -     input.value value="" placeholder="45"
     +     input.value value="100" placeholder="1"
@@ -3141,9 +3143,10 @@
     +     input.value value="1" placeholder="20"
     -     input.value value="" placeholder="20"
     + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    +   span.name: "Deska · up 0.89, 0, 0.45"
+    +   span.name: "Deska · up 0.89, 0, 0.45, turned 30°"
     +   small: "overhang 1500 mm²"
     + p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 2 faces."
+    + p.issue.warning: "Does not fit the bed: 39.4 mm × 38.24 mm × 40.25 mm."
     + div.tree
     +   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
     +   p.answer: "Deska – víko ve skice: 1200 mm², from the bed"
@@ -3154,15 +3157,20 @@
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.tree
     -   p.hint: "Painted in the view: on the bed blue. They look away from what is up, so they may be on the far side of the model."
+    +   span.name: "Vysunutí 2 · up 0.89, 0, 0.45, turned 30°"
     +   small: "overhang 191.36 mm²"
     + p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 2 faces."
+    -   span.name: "Vysunutí 2 · up 0.89, 0, 0.45"
     -   small: "overhang 62.79 mm²"
     - p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 1 face."
+    +   span.name: "Vysunutí 3 · up 0.89, 0, 0.45, turned 30°"
     +   small: "overhang 645 mm²"
     + p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 2 faces."
+    -   span.name: "Vysunutí 3 · up 0.89, 0, 0.45"
     -   small: "overhang 195 mm²"
     - p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 1 face."
-    + p.hint: "Listed: 6 of 8 faces. Raise "Most faces" to see the rest."
+    + p.hint: "Listed: 6 of 8 faces on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest."
+  status: Print check: 3 bodies in 2 orientations. 2 of 6 do not fit the bed. Pick a row to see its faces.
   view: 2 scene(s) set
   scene:
     + face e1 #0 #dc2626 opacity 0.6
@@ -3210,7 +3218,7 @@
     -       label
     -         "Turn (optional)"
     -         span.field
-    -           input.value value="" placeholder="0"
+    -           input.value value="30" placeholder="0"
     -           span.unit: "°"
     -     button.icon title="Remove": "✕"
     -   div.item
@@ -3279,16 +3287,17 @@
     -   button.primary: "Ask again"
     -   button: "Close"
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    -   span.name: "Deska · up 0.89, 0, 0.45"
+    -   span.name: "Deska · up 0.89, 0, 0.45, turned 30°"
     -   small: "overhang 1500 mm²"
     - p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 2 faces."
+    - p.issue.warning: "Does not fit the bed: 39.4 mm × 38.24 mm × 40.25 mm."
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     -   span.name: "Deska · on Deska – protější víko"
     -   small: "no overhang"
     - p.hint: "Height 10 mm; 1200 mm² on the bed on 1 face."
     - p.issue.warning: "Does not fit the bed: 40 mm × 30 mm × 10 mm."
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    -   span.name: "Vysunutí 2 · up 0.89, 0, 0.45"
+    -   span.name: "Vysunutí 2 · up 0.89, 0, 0.45, turned 30°"
     -   small: "overhang 191.36 mm²"
     - p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 2 faces."
     - div.tree
@@ -3296,18 +3305,18 @@
     -   p.answer: "Vysunutí 2 – bok: 113.02 mm², from the bed"
     -   p.hint: "1 overhang below the smallest area listed."
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    -   span.name: "Vysunutí 2 · on Deska – protější víko"
+    -   span.name: "Vysunutí 2 · up 0, 0, -1"
     -   small: "no overhang"
     - p.hint: "Height 10 mm; 78.33 mm² on the bed on 1 face."
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    -   span.name: "Vysunutí 3 · up 0.89, 0, 0.45"
+    -   span.name: "Vysunutí 3 · up 0.89, 0, 0.45, turned 30°"
     -   small: "overhang 645 mm²"
     - p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 2 faces."
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
-    -   span.name: "Vysunutí 3 · on Deska – protější víko"
+    -   span.name: "Vysunutí 3 · up 0, 0, -1"
     -   small: "no overhang"
     - p.hint: "Height 13 mm; 450 mm² on the bed on 1 face."
-    - p.hint: "Listed: 6 of 8 faces. Raise "Most faces" to see the rest."
+    - p.hint: "Listed: 6 of 8 faces on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest."
   status: 
   view: 1 scene(s) set
   scene:

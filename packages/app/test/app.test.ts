@@ -773,12 +773,13 @@ describe('the app, driven as a user drives it', () => {
     printRows()[1].click();
     h.record('the row of the other orientation picked: the face on the bed is painted, nothing overhangs');
     // a stricter printer, a smallest overhang and one face a list
+    h.type(h.field('Turn (optional)'), '30', true);
     h.type(h.field('Overhang angle (optional)'), '20', true);
     h.type(h.field('Smallest overhang listed (optional)'), '100', true);
     h.type(h.field('Most faces (optional)'), '1', true);
     h.press('panel', 'Ask again');
     printRows()[0].click();
-    h.record('overhangs from 20°, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all');
+    h.record('overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all');
     printRows()[2].click();
     h.record('a row with an overhang below the smallest area listed: counted, not listed and not painted');
     h.press('panel', 'Close');

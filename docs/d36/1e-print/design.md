@@ -211,3 +211,16 @@ No second round: one serious finding, and the fix is a change of one rule with t
 - The nested arguments have titles (see the engine side), so the form reads "What is up", "Direction", "Face on the bed", "Turn".
 
 Tested by seven recorded steps of the model case of `packages/app/test/app.test.ts` (the form filled with a direction, a face from the lists of its body and a bed; the rows with one that does not fit; a row with an overhang picked; a row on its face picked; a stricter angle with a list cut; an overhang below the smallest area; closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").
+
+### Review of the app side (2026-11-15)
+
+One light review, by the rule of the project for a view: a subagent with a cheaper model read the diff of the view, read-only. Nothing serious. It checked the line that says what the lists leave out against the description of the result, the index of a picked row against the rows of the scene, and the recorded steps against their descriptions.
+
+| Finding | Held | What was done |
+|---|---|---|
+| "on" the face named was written on the rows of all bodies, also of those the face does not belong to; for them the face only gives the direction and nothing lies on it | Yes | The face is named on the row of its body only; the other rows say "up" with the direction |
+| The note of an answer without bodies offered a row to pick | Yes | It does not |
+| The line under all rows did not say that its count leaves out the overhangs below the smallest area | Yes | It says what is counted |
+| The docs said "how many faces the limit cut" where the panel writes how many of how many | Yes | Reworded |
+| No step for the faces on the bed cut by the limit, for a face named that does not lie on the bed, for a turn, and for an answer without bodies; the model of the recorded steps has no body for the first two | Yes | `packages/app/test/query-print.test.ts` drives the view over answers written by hand; the recorded steps got a turn |
+

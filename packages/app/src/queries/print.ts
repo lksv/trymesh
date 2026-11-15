@@ -25,10 +25,11 @@ const CONTACT = { color: COLOR.hover, name: 'blue' };
 const OVERHANG = { color: COLOR.clash, name: 'red' };
 
 // An orientation as its argument says it: the face that lies on the bed, or the direction that
-// is up (the unit vector of the answer, to two places).
-function wayText(way: Way | undefined, orientation: PrintOrientation, panel: ViewPanel<'print'>): string {
+// is up (the unit vector of the answer, to two places). A face is named only on the row of the
+// body it belongs to: for another body it gives the direction and nothing lies on it.
+function wayText(body: Id, way: Way | undefined, orientation: PrintOrientation, panel: ViewPanel<'print'>): string {
   const turn = typeof way?.turn === 'number' && way.turn !== 0 ? `, turned ${panel.number(way.turn, 'rad')}` : '';
-  if (way && 'onBed' in way.by && way.by.onBed) return `on ${panel.faceLabel(way.by.onBed.face)}${turn}`;
+  if (way && 'onBed' in way.by && way.by.onBed && way.by.onBed.body === body) return `on ${panel.faceLabel(way.by.onBed.face)}${turn}`;
   return `up ${orientation.up.map((part) => Math.round(part * 100) / 100 + 0).join(', ')}${turn}`;
 }
 
@@ -42,7 +43,7 @@ export const printView: QueryView<'print'> = {
       const line = h(
         'div',
         { className: `row ${picked ? 'selected' : ''}`, title: 'Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs', onclick: () => panel.pick(picked ? undefined : index) },
-        h('span', { className: 'name', textContent: `${panel.bodyName(body)} · ${wayText(args.orientations[way], orientation, panel)}` }),
+        h('span', { className: 'name', textContent: `${panel.bodyName(body)} · ${wayText(body, args.orientations[way], orientation, panel)}` }),
         h('small', {}, overhang.count ? `overhang ${area(overhang.area)}` : 'no overhang'),
       );
       const summary = h(
@@ -76,7 +77,7 @@ export const printView: QueryView<'print'> = {
     return [
       ...(result.bodies.length === 0 ? [h('p', { className: 'hint' }, 'The model has no body to print.')] : []),
       ...rowsOf(result).flatMap(row),
-      ...(result.truncated ? [h('p', { className: 'hint' }, `Listed: ${result.truncated.shown} of ${count(result.truncated.total, 'face')}. Raise "Most faces" to see the rest.`)] : []),
+      ...(result.truncated ? [h('p', { className: 'hint' }, `Listed: ${result.truncated.shown} of ${count(result.truncated.total, 'face')} on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest.`)] : []),
     ];
   },
   scene(result, _args, panel) {
@@ -89,6 +90,6 @@ export const printView: QueryView<'print'> = {
     const rows = rowsOf(result);
     const misfits = rows.filter((row) => row.orientation.fits === false).length;
     const ways = result.bodies[0]?.orientations.length ?? 0;
-    return { text: `Print check: ${count(result.bodies.length, 'body', 'bodies')} in ${count(ways, 'orientation')}.${misfits ? ` ${misfits} of ${rows.length} do not fit the bed.` : ''} Pick a row to see its faces.`, error: false };
+    return { text: `Print check: ${count(result.bodies.length, 'body', 'bodies')} in ${count(ways, 'orientation')}.${misfits ? ` ${misfits} of ${rows.length} do not fit the bed.` : ''}${rows.length ? ' Pick a row to see its faces.' : ''}`, error: false };
   },
 };

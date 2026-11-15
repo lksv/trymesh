@@ -4,6 +4,10 @@
 // A step that cannot be written here is a hole in the contract. Lines marked `@ts-expect-error`
 // are calls that must not compile.
 //
+// As implemented (design.md, "As implemented"): the entry is packages/engine/src/query/print.ts and
+// part a is the test in packages/scenarios/test/scenario11.test.ts; the two errors of part a have
+// other codes (`notAvailable` for a round face, `invalidArguments` for a direction of no length).
+//
 // The numbers in the comments were measured by a prototype of the pass over the model of
 // scenario 9 (chord tolerance 0.01 mm); they become the expectations of the test in
 // packages/scenarios.

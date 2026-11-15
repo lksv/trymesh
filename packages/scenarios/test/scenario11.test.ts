@@ -3,8 +3,9 @@
 // - 1b (D39), measuring: the wall between the root circle of the ring gear and the bolt holes;
 // - 1a (D38), a section through the gears;
 // - 1c (D40), the gap between a planet and the carrier, and the tight places of the whole joint;
-// - 1d (D41), the mass of what turns with the output.
-import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, MassProperties, Measurement, PlaneRef, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
+// - 1d (D41), the mass of what turns with the output;
+// - 1e (D42), the printability of the housing in two orientations.
+import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, MassProperties, Measurement, PlaneRef, PrintOrientation, PrintReport, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bodiesAndHoles, parametersAndGearSketch } from './joint';
 import { expectAllOk, newEngine } from './kit';
@@ -30,6 +31,14 @@ function mass(engine: Engine, args: QueryArgs<'mass'>, options: QueryOptions = {
   return answer.result;
 }
 const PLA = 1.24; // g/cm3
+function print(engine: Engine, args: QueryArgs<'print'>, options: QueryOptions = {}): PrintReport {
+  const answer = engine.query('print', args, options);
+  if (!answer.ok) throw new Error(`${answer.error.code}: ${answer.error.message}`);
+  return answer.result;
+}
+const cap = (feature: Id, role: 'startCap' | 'endCap', copy?: { pattern: Id; index: number }): FaceName => ({ feature, role, ...(copy ? { copy: [copy] } : {}) });
+const onBed = (body: Id, name: FaceName): { onBed: { kind: 'face'; body: Id; face: FaceName } } => ({ onBed: { kind: 'face', body, face: name } });
+const BED = { x: 220, y: 220, height: 250 };
 function gap(engine: Engine, args: QueryArgs<'gap'> = {}, options: QueryOptions = {}): GapReport {
   const answer = engine.query('gap', args, options);
   if (!answer.ok) throw new Error(`${answer.error.code}: ${answer.error.message}`);
@@ -365,5 +374,102 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     expect(engine.query('mass', { bodies: ['motor'], densities: { motor: 2.9 }, fill: 0.4 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['fill'] } });
     expect(engine.query('mass', { bodies: ['carrier'] })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['density'] } });
     expect(engine.query('mass', { bodies: ['carrier'], densities: { nope: 1 } })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['densities', 'nope'] } });
+  });
+
+  it('1e: the housing on its seating face and on its front face: the front face goes on the bed, and the faces that overhang are named', () => {
+    const started = performance.now();
+    const report = print(engine, { bodies: ['housing'], orientations: [{ by: onBed('housing', cap('housing', 'startCap')) }, { by: onBed('housing', cap('housing', 'endCap')) }], bed: BED });
+    const took = performance.now() - started;
+    expect(report.angle).toBe(Math.PI / 4);
+    expect(report.truncated).toBeUndefined();
+    expect(report.bodies.map((body) => body.body)).toEqual(['housing']);
+    const [seating, front]: PrintOrientation[] = report.bodies[0].orientations;
+    // on the seating face: up is +Z; the polygon of the outer wall is a little under 110 across
+    expect(seating.up).toEqual([0, 0, 1]);
+    expect(seating.size[0]).toBeGreaterThan(109.9);
+    expect(seating.size[0]).toBeLessThanOrEqual(110);
+    expect(seating.size[1]).toBeGreaterThan(109.9);
+    expect(seating.size[2]).toBeCloseTo(46, 4);
+    expect(seating).toMatchObject({ fits: true, onBed: true });
+    // the ring around the motor recess less six bolt holes
+    expect(seating.contact).toEqual({ area: expect.closeTo(2801.28, 2), count: 1, faces: [{ face: cap('housing', 'startCap'), area: expect.closeTo(2801.28, 2) }] });
+    // all of the overhang is the ceiling of the motor recess, 28 mm up
+    expect(seating.overhang).toEqual({ area: expect.closeTo(3330.69, 2), count: 1, small: 0, faces: [{ face: cap('motorBore', 'endCap'), area: expect.closeTo(3330.69, 2), from: expect.closeTo(28, 4) }] });
+    // on the front face: up is −Z; the overhang is the floors of the six nut pockets, 3 mm up
+    expect(front.up).toEqual([0, 0, -1]);
+    expect(front).toMatchObject({ fits: true, onBed: true });
+    expect(front.contact.area).toBeCloseTo(6028.84, 2);
+    expect(front.overhang).toMatchObject({ area: expect.closeTo(103.13, 2), count: 6, small: 0 });
+    expect(front.overhang.faces.map((entry) => [entry.face.feature, entry.face.role])).toEqual(Array.from({ length: 6 }, () => ['nutPocket', 'startCap']));
+    for (const entry of front.overhang.faces) expect(entry).toMatchObject({ area: expect.closeTo(17.19, 2), from: expect.closeTo(3, 4) });
+    expect(front.overhang.faces.map((entry) => entry.face.copy?.[0]?.index ?? 0).sort()).toEqual([0, 1, 2, 3, 4, 5]);
+    // so the front face goes on the bed
+    expect(front.overhang.area).toBeLessThan(seating.overhang.area / 30);
+    // a body of some 5000 triangles twice: milliseconds, well under two seconds on a loaded machine
+    expect(took).toBeLessThan(2000);
+  });
+
+  it('1e: a face named to lie on the bed that does not; the housing on its side; every part both ways along the axis', () => {
+    // The carrier "on" the face of its disc the pins stand on: the pins reach below that face, so
+    // the body rests on their ends. The direction is still the one the face gives.
+    const carrier = print(engine, { bodies: ['carrier'], orientations: [{ by: onBed('carrier', cap('carrier', 'startCap')) }] }).bodies[0].orientations[0];
+    expect(carrier.onBed).toBe(false);
+    expect(carrier.fits).toBeUndefined(); // no bed was given
+    expect(carrier.up).toEqual([0, 0, 1]);
+    expect(carrier.contact.faces.map((entry) => [entry.face.feature, entry.face.role])).toEqual([['carrierPin', 'startCap'], ['carrierPin', 'startCap'], ['carrierPin', 'startCap']]);
+    // the same face gives the direction for another body, which has no `onBed`
+    const other = print(engine, { bodies: ['sun'], orientations: [{ by: onBed('carrier', cap('carrier', 'startCap')) }] }).bodies[0].orientations[0];
+    expect(other.onBed).toBeUndefined();
+    expect(other.up).toEqual([0, 0, 1]);
+    // by a direction: on its side a cylinder touches the bed in a line
+    const side = print(engine, { bodies: ['housing'], orientations: [{ by: { up: [1, 0, 0] } }] }).bodies[0].orientations[0];
+    expect(side.contact).toEqual({ area: 0, count: 0, faces: [] });
+    expect(side.overhang).toMatchObject({ area: expect.closeTo(8612.84, 1), count: 21 });
+    expect(side.overhang.faces[0]).toMatchObject({ face: { feature: 'housing', role: 'side', curve: 'ho' }, area: expect.closeTo(3949.79, 1), from: expect.closeTo(0, 3) });
+    // all printed parts both ways along the axis, in one call
+    const report = print(engine, { bodies: ['sun', 'planet', 'housing', 'plate', 'carrier'], orientations: [{ by: { up: [0, 0, 1] } }, { by: { up: [0, 0, -1] } }], bed: BED });
+    expect(report.bodies.map((body) => body.body)).toEqual(['sun', 'planet', 'housing', 'plate', 'carrier']);
+    const of = (id: Id): PrintOrientation[] => report.bodies.find((body) => body.body === id)?.orientations ?? [];
+    // the carrier: pins up it lies on its disc with no overhang; pins down the disc overhangs from the height of the pins
+    expect(of('carrier')[1]).toMatchObject({ contact: { area: expect.closeTo(2826.18, 1) }, overhang: { area: 0, count: 0 } });
+    expect(of('carrier')[0].overhang).toMatchObject({ area: expect.closeTo(2767.58, 1), count: 1, faces: [{ from: expect.closeTo(12.5, 4) }] });
+    // the sun: flange down nothing overhangs; teeth down the flange does, from the length of the teeth
+    expect(of('sun')[0].overhang.area).toBe(0);
+    expect(of('sun')[1].overhang).toMatchObject({ area: expect.closeTo(1021.44, 1), faces: [{ from: expect.closeTo(15.5, 4) }] });
+    // a planet is a prism: flat on either end
+    for (const way of of('planet')) expect(way.overhang.area).toBe(0);
+    expect(report.bodies.every((body) => body.orientations.every((way) => way.fits === true))).toBe(true);
+  });
+
+  it('1e: a stricter printer, a turn about the vertical, the limits of the answer, and the errors', () => {
+    const front = { by: { up: [0, 0, -1] as [number, number, number] } };
+    const usual = print(engine, { bodies: ['housing'], orientations: [front] }).bodies[0].orientations[0];
+    // overhangs from 30°: the floors of the pockets are still the only ones (the rest of the housing is walls)
+    const stricter = print(engine, { bodies: ['housing'], orientations: [{ ...front, turn: Math.PI / 4 }], overhang: Math.PI / 6, minArea: 5 });
+    expect(stricter.angle).toBeCloseTo(Math.PI / 6, 12);
+    const turned = stricter.bodies[0].orientations[0];
+    expect(turned.overhang.area).toBeCloseTo(usual.overhang.area, 6);
+    expect(turned.contact.area).toBeCloseTo(usual.contact.area, 6);
+    // a turn changes only the box: a circle of 110 stays 110 across, whatever the turn
+    expect(turned.size[2]).toBeCloseTo(usual.size[2], 6);
+    expect(turned.size[0]).toBeGreaterThan(109.9);
+    expect(turned.size[0]).toBeLessThanOrEqual(110.001);
+    // a bed too small, and one too low
+    expect(print(engine, { bodies: ['housing'], orientations: [front], bed: { x: 100, y: 220, height: 250 } }).bodies[0].orientations[0].fits).toBe(false);
+    expect(print(engine, { bodies: ['housing'], orientations: [front], bed: { x: 220, y: 220, height: 40 } }).bodies[0].orientations[0].fits).toBe(false);
+    // every overhang below the smallest area listed: counted, not listed
+    const hidden = print(engine, { bodies: ['housing'], orientations: [front], minArea: 20 }).bodies[0].orientations[0];
+    expect(hidden.overhang).toMatchObject({ area: expect.closeTo(103.13, 2), count: 6, small: 6, faces: [] });
+    // at most two faces a list: the lists are cut and the answer says how much there was
+    const cut = print(engine, { bodies: ['housing'], orientations: [front], maxFaces: 2 });
+    expect(cut.bodies[0].orientations[0].overhang).toMatchObject({ count: 6, small: 0 });
+    expect(cut.bodies[0].orientations[0].overhang.faces).toHaveLength(2);
+    expect(cut.truncated).toEqual({ shown: 3, total: 7 }); // one face on the bed and two of six overhangs
+    // a face that is not planar cannot lie on the bed; the path names the orientation
+    const round = engine.query('print', { bodies: ['housing'], orientations: [{ by: { up: [0, 0, 1] } }, { by: onBed('housing', side('housing', 'ho')) }] });
+    expect(round).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['orientations', 1, 'by', 'onBed'] } });
+    // a bed with a length of zero is refused by the description
+    expect(engine.query('print', { bodies: ['housing'], orientations: [front], bed: { x: 220, y: 220, height: 0 } })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['bed', 'height'] } });
+    expect(engine.query('print', { bodies: ['housing'], orientations: [{ by: { up: [0, 0, 0] } }] })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['orientations', 0, 'by', 'up'] } });
   });
 });

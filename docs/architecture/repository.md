@@ -67,6 +67,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/section.ts` | the query `section`: the cut of a body by a plane (`cut`), the corners of a loop, the regions, the spans read from the surfaces and the budget; `takenAt` and `completeRegions` for whoever draws a cut |
 | `query/gap.ts` | the query `gap`: the smallest distance of every pair of bodies within a search distance, from the pass over the meshes, with `interference` for the kind of a zero and for a body inside another |
 | `query/mass.ts` | the query `mass`: the integrals of a mesh (`massIntegrals`), where the density of a body comes from (`massSourceOf`, the seam with body properties), the bodies put together, the tensor and the moment about an axis |
+| `query/print.ts` | the query `print`: the print frame of an orientation (`frameOfDirection`, `turned`), the pass over the triangles (`printPass`: the box, the faces on the bed, the overhangs), the lists and their limits |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

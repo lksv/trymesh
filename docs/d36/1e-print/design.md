@@ -1,6 +1,6 @@
 # 1e Print queries
 
-**Decision D42. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D42. State: the engine side (the query `print`) is implemented on the branch `d36/1e`; the view of the app follows. See "As implemented" at the end, which says where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the printability of the housing in two orientations.
 
@@ -150,3 +150,30 @@ Nothing was left without action.
 | `normalOf` is undefined also for a planar face the context gives no frame for | internal | Yes (`faceFrame` answers `brokenReference` when the normals of a face sum to nothing) | Said in the contract: such a face is judged by its triangles |
 
 Nothing was left without action. Not reviewed by anyone: the rule "a planar face is contact as a whole", which is the fix of this round.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/print.ts`: the entry `print` in `QUERIES`, the pass `printPass`, and the frames `frameOfDirection` and `turned`; the types, `printPass` and `frameOfDirection` are exported from the index of the engine. Tests: `packages/engine/test/print.test.ts` (the frame of an orientation and the pass on meshes written by hand: a box on three of its sides, tilted, at exactly the overhang angle, turned with a direction typed with five digits, with a bent bottom, thinner than the precision; a face that looks down above the bed; a cylinder on its side), `packages/scenarios/test/print.test.ts` (the query against the real adapters on a plate with a hole and a pin: by a direction and by a face, `onBed`, the bed, the angle, the limits of the answer, `at`, the errors), three cases of scenario 11 in `scenario11.test.ts`, and the rows of the query in `packages/mcp/test/queries.test.ts`.
+
+**The numbers of the design hold on the joint**, all of them as measured by the prototype: the housing on its seating face has a contact of 2801.28 mm² and an overhang of 3330.69 mm², all of it the ceiling of the motor recess, 28 mm up; on its front face a contact of 6028.84 and an overhang of 103.13 on the floors of the six nut pockets (17.19 each), 3 mm up; on its side no contact and 8612.84 on 21 faces, the largest the outer wall (3949.79, from the bed up). The carrier named to lie on the face its pins stand on rests on the three pin ends (`onBed` false). The carrier pins up: 2826.18 on the bed and no overhang; pins down: the disc overhangs, 2767.58 from 12.5. The sun teeth down: the flange overhangs, 1021.44 from 15.5. (The prototype of the design measured 3 to 6 ms for the housing in one orientation; the test only asks for well under two seconds.)
+
+What differs from the design and from `contract.ts`:
+
+- **A face that is not planar is `notAvailable`**, not `failed`, with the path of its orientation (`['orientations', 1, 'by', 'onBed']`): `QueryFailure` of the engine names that very case under `notAvailable`, as the section does for its plane. **A direction without a length is `invalidArguments`**, the code `QueryFailure` got with 1b; the design wrote `failed`, the stand-in of that time.
+- **A planar face that is not contact overhangs as a whole**, by the normal of its face, with all its area and from its lowest corner. The design says the same of its triangles one by one ("a triangle of a planar face looks where its face looks"); the result is the same, and the face is summed once. Only the triangles of a face that is not planar are judged and summed one by one, and `from` of such a face is the lowest corner of the triangles that overhang.
+- **How far a face leans** is the angle of its normal below the horizontal: nothing for a wall, a right angle for a ceiling. It is an overhang when that is more than the overhang angle plus `ANGLE_TOLERANCE`. So an angle of a right angle lists nothing, and an angle of zero everything that looks down.
+- **`fits` allows the precision of the coordinates**: a body exactly as large as the bed fits.
+- **Faces of one area are listed in the order of their numbers**, so the lists do not depend on the order of the triangles.
+- **A body named twice is judged once**, and the bodies come in the order they were asked about (without `bodies`, the order of the model).
+- **The nested arguments have titles** (`What is up`, `Direction`, `Face on the bed`, `Turn`, the three lengths of the bed): the description can give them since 1b. The design expected them to be labelled by their keys.
+- **`units`** are on the entry: `angle` in radians (a form shows degrees), `size` and `from` in millimetres, `area` in mm².
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+
+**Known limits** (those of the design, and what the implementation adds).
+
+- An overhang held at both ends (a bridge), the floor of a horizontal hole and the underside of a chamfer are all overhangs of their faces: the query does not know what a printer bridges.
+- A round face is judged by its facets, so its overhang is that of the polygon: at the chord tolerance 0.01 mm the overhang of a horizontal hole of 8 mm is within a tenth of π·d·t/4 (the test).
+- A planar face for which the engine has no frame (the normals of its triangles sum to nothing) is judged by its triangles and never counts as contact.
+- The body is put on the bed at its lowest point whatever is there: a body that would fall over is not noticed.

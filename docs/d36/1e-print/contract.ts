@@ -2,6 +2,10 @@
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
 // Fourth version, after the third and last round of reviews (design.md, "Reviews").
+//
+// As implemented (design.md, "As implemented"): the types and the pass are in
+// packages/engine/src/query/print.ts; a face that is not planar is `notAvailable`, a direction
+// without a length `invalidArguments`, and the nested arguments have titles.
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, QuantitySpec, Truncated } from '../00-prep/contract';

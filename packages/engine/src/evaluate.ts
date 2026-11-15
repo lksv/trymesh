@@ -1,30 +1,15 @@
 // Přepočet: přehrání časové osy s memoizací. Pravidla jsou v docs/architecture.md, sekce Přepočet.
-import { SketchAnalysis } from './analysis';
 import { checkNumber } from './catalog';
-import { atPath, constraintOperands, fieldsOf, withPath } from './document';
+import { atPath, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { extrude } from './features/extrude';
 import { pattern } from './features/pattern';
 import { plane } from './features/plane';
-import { frame as frameOf, issue, lookup } from './recompute/services';
-import type { Deps, Done, DragTarget, Failed, SketchState, SolvedSketch, State, Step, StepContext, WriteBack } from './recompute/state';
-import { type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from './sketch';
-import { analyzeBody, projectEdge } from './solid';
-import type {
-  Document,
-  Evaluation,
-  ExpressionError,
-  Feature,
-  FeatureResult,
-  FieldPath,
-  Id,
-  Issue,
-  IssueCode,
-  Projected,
-  SketchFeature,
-  SolveInput,
-  SolveResult,
-} from './types';
+import { sketch } from './features/sketch';
+import { issue, lookup } from './recompute/services';
+import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, StepContext, WriteBack } from './recompute/state';
+import { analyzeBody } from './solid';
+import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id } from './types';
 
 // The types of the state moved to recompute/state.ts; what the engine and the contracts import from
 // here keeps its path.
@@ -161,14 +146,13 @@ export class Evaluator {
     // last valid value and reports a warning, so that it stays visible, can be fixed and everything
     // built on it does not fail.
     if (errors && feature.type !== 'sketch') return failed('invalidExpression', Object.keys(errors));
-    const { chordTolerance } = settings;
     const context: StepContext = { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [] };
     // Krok podle typu feature; úplnost hlídá překladač (viz registr typů v document.ts).
     switch (feature.type) {
       case 'plane':
         return plane.step(feature, context);
       case 'sketch':
-        return this.sketch(feature, state, chordTolerance, drag, done, failed, errors ? Object.keys(errors) : []);
+        return sketch.step(feature, context);
       case 'extrude':
         return extrude.step(feature, context);
       case 'pattern':
@@ -178,77 +162,6 @@ export class Evaluator {
         throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
       }
     }
-  }
-
-  private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed, badFields: FieldPath[]): Step {
-    const frame = frameOf(feature.plane, state);
-    if (typeof frame === 'string') return failed(frame, [feature.plane]);
-    const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the field keeps its last valid value')] : [];
-
-    // 1. promítnutá geometrie ze stavu těles před skicou
-    const external: Record<Id, Projected> = {};
-    const lost: [Id, IssueCode][] = [];
-    for (const id of Object.keys(feature.external).sort()) {
-      const ref = feature.external[id];
-      const solid = lookup(state.bodies, ref.body);
-      const projected = solid ? projectEdge(analyzeBody(solid, state.faceNames, state.faceInfos), ref.edge, ref.kind, frame, state.faceInfos) : 'brokenProjection';
-      if (typeof projected !== 'string') external[id] = projected;
-      else {
-        // Promítnutí, které nejde vyhodnotit, skicu neshodí: křivka zůstane na posledních platných hodnotách.
-        const frozen = lookup(feature.solved.external, id);
-        if (frozen && frozen.kind === ref.kind) external[id] = frozen;
-        lost.push([id, projected]);
-      }
-    }
-    const setup = solverSetup(feature, external);
-    for (const [id, code] of lost) {
-      const skipped = setup.skipped.filter((c) => constraintOperands(feature.constraints[c]).some((operand) => operand === id || operand.startsWith(`${id}/`)));
-      warnings.push(issue(code, [id, ...skipped], skipped.length ? 'vazby na ni se při řešení vynechaly' : undefined));
-    }
-
-    // 2.–4. řešení: uložené proměnné platí, když se otisk vstupů shoduje s razítkem a netáhne se
-    const stored: SketchGeometry = { points: setup.input.points, radii: setup.input.radii };
-    const mustSolve = setup.stamp !== feature.solved.inputs || drag !== undefined;
-    let result: SolveResult;
-    try {
-      result = this.deps.solver.solve(drag ? { ...setup.input, drag: { point: drag.point, target: drag.target } } : setup.input);
-    } catch (error) {
-      result = { status: 'failed', points: stored.points, radii: stored.radii, degreesOfFreedom: 0, conflicting: [], redundant: [] };
-      warnings.push(issue('sketchConflict', undefined, error instanceof Error ? error.message : String(error)));
-    }
-    let geometry = stored;
-    let writeBack: SolvedSketch | undefined;
-    if (result.status === 'solved') {
-      if (mustSolve) {
-        geometry = { points: result.points, radii: result.radii };
-        writeBack = { ...ownVariables(feature, geometry), solved: { inputs: setup.stamp, external } };
-      }
-    } else if (warnings.every((w) => w.code !== 'sketchConflict')) warnings.push(issue('sketchConflict', result.conflicting));
-
-    // Stupně volnosti počítá engine z vlastního rozboru; počet ze solveru není spolehlivý.
-    // Polohy v pořadí dokumentu (solver je vrací seřazené podle ID), aby i rozbor šel v tomto pořadí.
-    const inOrder = <T>(order: Record<Id, T>, values: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.keys(order).map((id) => [id, values[id]]));
-    const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
-    const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;
-    const profile = detectProfile(feature, geometry, chordTolerance);
-    const sketchResult: FeatureResult = {
-      status: warnings.length ? 'warning' : 'ok',
-      warnings,
-      bodies: [],
-      plane: frame,
-      sketch: {
-        points: geometry.points,
-        radii: geometry.radii,
-        degreesOfFreedom: analysis?.degreesOfFreedom ?? 0,
-        conflicting: result.conflicting,
-        redundant: result.redundant,
-        measurements: measure(feature, setup.input.curves, geometry),
-        valid: profile.valid,
-        regions: profile.regions.map((region) => ({ ref: region.ref, loops: [region.outer, ...region.holes].map((loop) => Float64Array.from(loop.xy)) })),
-      },
-    };
-    const solve = { status: result.status, conflicting: result.conflicting };
-    return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, profile, input, solve, analysis } } }), writeBack };
   }
 
 }

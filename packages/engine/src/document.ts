@@ -7,20 +7,17 @@ import type {
   Curve,
   Document,
   Expr,
-  ExternalRef,
   Feature,
   FieldPath,
   Id,
   Input,
   Parameter,
-  Projected,
   SketchFeature,
 } from './types';
-import { CONSTRAINTS, type EntityKind } from './catalog';
-import { GENERATORS, isFlag } from './generators';
+import { CONSTRAINTS } from './catalog';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
-import { bodyOwner, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptySketch, entityOf, isDimension, isDriving } from './sketch-content';
-import { ORIGIN, has } from './util';
+import { bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, isDimension, isDriving } from './sketch-content';
+import { has } from './util';
 import {
   CommandError,
   type Dict,
@@ -32,24 +29,20 @@ import {
   type RefContext,
   type ValidationContext,
   boolean,
-  edgeName,
-  faceRefs,
   fail,
   finite,
   isObject,
   newId,
   object,
   oneOf,
-  plain,
   planeRef,
-  planeRefs,
-  requireFace,
   string,
 } from './validation';
 import type { FeatureTypeInfo } from './features/module';
 import { extrude } from './features/extrude';
 import { pattern } from './features/pattern';
 import { plane } from './features/plane';
+import { constraint, curve, externalRef, sketch } from './features/sketch';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -119,16 +112,6 @@ function requireRef(doc: Document, before: number | undefined, ref: Omit<Feature
 // document and to the place of the referring feature.
 const refContext = (doc: Document, before: number | undefined): RefContext => ({ doc, before, requireRef: (ref, what) => requireRef(doc, before, ref, what) });
 
-function externalRef(context: RefContext, v: unknown, what: string): ExternalRef {
-  const o = object(v, what);
-  if (o.type !== 'edge') fail(`${what}: promítnout jde jen hranu`);
-  const body = string(o.body, `${what}.body`);
-  context.requireRef({ id: body, kind: 'body' }, what);
-  const edge = edgeName(o.edge, `${what}.edge`);
-  for (const face of [edge.a, edge.b]) requireFace(context, face, `${what}.edge`);
-  return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
-}
-
 // ---------------------------------------------------------------- entity skici
 
 // A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
@@ -141,121 +124,7 @@ function withPosition(sketch: SketchFeature, given: unknown): unknown {
   return { ...given, x: given.x === undefined ? at.x : given.x, y: given.y === undefined ? at.y : given.y };
 }
 
-// Křivka smí odkazovat jen na vlastní body skici a na počátek.
-function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
-  const o = object(v, what);
-  const type = oneOf(o.type, ['line', 'circle', 'arc'] as const, `${what}.type`);
-  const point = (field: string): Id => {
-    const id = string(o[field], `${what}.${field}`);
-    if (id !== ORIGIN && !has(sketch.points, id)) fail(`${what}.${field}: "${id}" není vlastní bod skici ani počátek`);
-    return id;
-  };
-  const construction = o.construction === undefined ? {} : { construction: boolean(o.construction, `${what}.construction`) };
-  if (type === 'line') {
-    const [a, b] = [point('a'), point('b')];
-    if (a === b) fail(`${what}: úsečka potřebuje dva různé body`);
-    return { ...construction, type, a, b };
-  }
-  if (type === 'circle') return { ...construction, type, center: point('center') };
-  const [center, start, end] = [point('center'), point('start'), point('end')];
-  if (center === start || center === end || start === end) fail(`${what}: oblouk potřebuje tři různé body`);
-  return { ...construction, type, center, start, end };
-}
-
-// Vazba podle katalogu: operandy existují, mají správný druh a jsou navzájem různé, hodnota
-// splňuje konvenci znamének a aspoň jedním operandem může solver hýbat (řídicí vazbu jen mezi
-// pevnými entitami solver tiše ignoruje).
-function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fields, id: Id): Constraint {
-  const o = object(v, what);
-  const type = string(o.type, `${what}.type`);
-  if (!has(CONSTRAINTS, type)) return fail(`${what}.type: neznámá vazba "${type}"`);
-  const spec = CONSTRAINTS[type as Constraint['type']];
-  const operands: Record<string, Id> = {};
-  const kinds: EntityKind[] = [];
-  for (const { field, kinds: accepted } of spec.operands) {
-    const id = string(o[field], `${what}.${field}`);
-    const entity = entityOf(sketch, id);
-    if (!entity) return fail(`${what}.${field}: entita "${id}" ve skice není`);
-    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" je ${entity.kind}, čeká se ${accepted.join(' nebo ')}`);
-    operands[field] = id;
-    kinds.push(entity.kind);
-  }
-  if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: vazba potřebuje ${spec.operands.length === 2 ? 'dvě' : spec.operands.length} různé entity`);
-  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
-  const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
-  if (problem) fail(`${what}: ${problem}`);
-  const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
-  const onlyFixed = (): never => fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
-  // said before the values are read: a fixed point on the origin has no coordinates to complain about
-  if (!spec.dimension && !movable) onlyFixed();
-  let values: Record<string, number | boolean> = {};
-  if (spec.dimension && spec.values) {
-    // A driving dimension is a numeric field and may have an expression; a reference one only measures.
-    const driving = boolean(o.driving, `${what}.driving`);
-    if (!driving && typeof o.value === 'string') fail(`${what}.value: a reference dimension cannot have an expression`);
-    const value = driving ? fields.number(o.value, constraintPath(id), spec.values.value, `${what}.value`) : plain(finite(o.value, `${what}.value`), spec.values.value, `${what}.value`);
-    values = { value, driving };
-  } else if (spec.values) {
-    // values of a constraint that is not a dimension (the coordinates of a fixed point): numeric fields
-    for (const [name, number] of Object.entries(spec.values)) values[name] = fields.number(o[name], constraintPath(id, name), number, `${what}.${name}`);
-  }
-  const result = { type, ...operands, ...values } as Constraint;
-  if (isDriving(result) && !movable) onlyFixed();
-  return result;
-}
-
-function projected(v: unknown, what: string): Projected {
-  const o = object(v, what);
-  const vec2 = (value: unknown, name: string): [number, number] => {
-    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: čeká se dvojice čísel`);
-    const pair = value as unknown[];
-    return [finite(pair[0], `${what}.${name}`), finite(pair[1], `${what}.${name}`)];
-  };
-  if (o.kind === 'line') return { kind: 'line', a: vec2(o.a, 'a'), b: vec2(o.b, 'b') };
-  if (o.kind === 'circle') {
-    const radius = finite(o.radius, `${what}.radius`);
-    if (radius <= 0) fail(`${what}.radius: poloměr musí být kladný`);
-    return { kind: 'circle', center: vec2(o.center, 'center'), radius };
-  }
-  return fail(`${what}.kind: čeká se line nebo circle`);
-}
-
 // ---------------------------------------------------------------- features
-
-function sketchFeature(o: Dict, what: string, context: ValidationContext): SketchFeature {
-  const { fields } = context;
-  const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(context, o.plane, `${what}.plane`));
-  sketch.suppressed = boolean(o.suppressed, `${what}.suppressed`);
-  const seen = new Set<Id>();
-  const entries = (v: unknown, name: string): [Id, unknown][] =>
-    Object.entries(object(v, `${what}.${name}`)).map(([key, value]) => {
-      const id = newId(key, `${what}.${name}`);
-      if (seen.has(id)) fail(`${what}.${name}: ID "${id}" je ve skice dvakrát`);
-      seen.add(id);
-      return [id, value];
-    });
-  for (const [id, value] of entries(o.points, 'points')) {
-    const p = object(value, `${what}.points.${id}`);
-    sketch.points[id] = { x: finite(p.x, `${what}.points.${id}.x`), y: finite(p.y, `${what}.points.${id}.y`) };
-  }
-  for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(context, value, `${what}.external.${id}`);
-  for (const [id, value] of entries(o.curves, 'curves')) sketch.curves[id] = curve(sketch, value, `${what}.curves.${id}`);
-  for (const [id, value] of Object.entries(object(o.radii, `${what}.radii`))) {
-    if (!has(sketch.curves, id) || sketch.curves[id].type !== 'circle') fail(`${what}.radii: "${id}" není kružnice`);
-    sketch.radii[id] = finite(value, `${what}.radii.${id}`);
-    if (sketch.radii[id] <= 0) fail(`${what}.radii.${id}: poloměr musí být kladný`);
-  }
-  for (const [id, c] of Object.entries(sketch.curves)) if (c.type === 'circle' && !has(sketch.radii, id)) fail(`${what}.radii: kružnice "${id}" nemá poloměr`);
-  for (const [id, value] of entries(o.constraints, 'constraints')) sketch.constraints[id] = constraint(sketch, value, `${what}.constraints.${id}`, fields, id);
-  const solved = object(o.solved, `${what}.solved`);
-  sketch.solved.inputs = string(solved.inputs, `${what}.solved.inputs`);
-  for (const [id, value] of Object.entries(object(solved.external, `${what}.solved.external`))) {
-    const stored = projected(value, `${what}.solved.external.${id}`);
-    if (!has(sketch.external, id) || sketch.external[id].kind !== stored.kind) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
-    sketch.solved.external[id] = stored;
-  }
-  return sketch;
-}
 
 // ---------------------------------------------------------------- registr typů features
 
@@ -280,22 +149,9 @@ interface FeatureTypeSpec<F extends Feature> {
 
 const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
   plane,
+  sketch,
   extrude,
   pattern,
-  sketch: {
-    info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
-    validate: sketchFeature,
-    refs: (f) => [
-      ...planeRefs(f.plane, 'plane'),
-      ...Object.entries(f.external).flatMap(([id, ref]): FeatureRef[] => [
-        { path: `external/${id}`, id: ref.body, kind: 'body' },
-        ...faceRefs(ref.edge.a, `external/${id}`),
-        ...faceRefs(ref.edge.b, `external/${id}`),
-      ]),
-    ],
-    createsBody: () => false,
-    namesFaces: false,
-  },
 };
 
 // Veřejná část registru.

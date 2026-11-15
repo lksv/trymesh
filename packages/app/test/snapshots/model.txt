@@ -2776,7 +2776,17 @@
     - face e3 #13 #dc2626 opacity 0.45
     - face e3 #14 #dc2626 opacity 0.45
 
-=== 74. at most one pair listed: the panel says how many there are
+=== 74. a picture saved while another answer is shown: the model alone, not cut and without what the answer highlights
+  status: Picture of the model saved (1600 × 1200): the bodies shown, without the selection, sketches, planes and dimensions.
+  view: 0 scene(s) set
+  view: image 1600 × 1200, camera current, 3 bodies #4e79a7 #f28e2b #e15759, 124 segments
+  download: model.png
+
+=== 75. a picture the view cannot draw: nothing is saved and the status bar says why
+  status: The picture could not be drawn: no WebGL  [error]
+  view: 0 scene(s) set
+
+=== 76. at most one pair listed: the panel says how many there are
   engine: query("gap", {"within":100,"maxPairs":1}, {}) -> ok
   panel:
     +     input.value value="1" placeholder="50"
@@ -2789,6 +2799,7 @@
     -   span.name: "Deska × Vysunutí 2"
     -   small: "45 mm ± 0.01 mm"
     - p.hint: "Between Deska – bok and Vysunutí 2 – bok."
+  status: Gaps: 3 pair(s) of bodies within 100 mm of each other.
   view: 1 scene(s) set
   scene:
     - line #0ea5e9 width 2 onTop: 6 numbers, sum 485
@@ -2806,7 +2817,7 @@
     - face e2 #8 #0ea5e9 opacity 0.4
     - label "45 mm" reference at [62.5, 15, 0]
 
-=== 75. the gaps closed
+=== 77. the gaps closed
   panel:
     - h2 title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     - label title="Only pairs among these; without it all bodies. Two bodies ask about one pair."
@@ -2832,7 +2843,7 @@
   status: 
   view: 1 scene(s) set
 
-=== 76. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
+=== 78. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
   panel:
     + h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     + label title="Taken together as one rigid piece."
@@ -2887,7 +2898,7 @@
     +   button: "Close"
   view: 1 scene(s) set
 
-=== 77. asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor
+=== 79. asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor
   engine: query("mass", {"bodies":["e1","e2"],"density":1.24,"densities":{"e2":7.8}}, {}) -> ok
   panel:
     +   button.primary: "Ask again"
@@ -2920,7 +2931,7 @@
     +     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
   view: 1 scene(s) set
 
-=== 78. asked without the density for all: refused at the density for the body that has none, its row marked
+=== 80. asked without the density for all: refused at the density for the body that has none, its row marked
   engine: query("mass", {"bodies":["e1","e2"],"densities":{"e2":7.8}}, {}) -> invalidArguments: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`
   panel:
     + label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
@@ -2957,7 +2968,7 @@
   status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`  [error]
   view: 1 scene(s) set
 
-=== 79. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
+=== 81. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
   panel:
     + h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     + label title="Each is a print of its own; without it all bodies."
@@ -3081,7 +3092,7 @@
   status: 
   view: 2 scene(s) set
 
-=== 80. asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so
+=== 82. asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so
   engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]}},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200}}, {}) -> ok
   panel:
     +   button.primary: "Ask again"
@@ -3114,7 +3125,7 @@
   status: Print check: 3 bodies in 2 orientations. 1 of 6 do not fit the bed. Pick a row to see its faces.
   view: 1 scene(s) set
 
-=== 81. a row picked: the overhanging faces are listed with their areas and heights and painted on the model
+=== 83. a row picked: the overhanging faces are listed with their areas and heights and painted on the model
   panel:
     + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3125,7 +3136,7 @@
   scene:
     + face e1 #5 #dc2626 opacity 0.6
 
-=== 82. the row of the other orientation picked: the face on the bed is painted, nothing overhangs
+=== 84. the row of the other orientation picked: the face on the bed is painted, nothing overhangs
   panel:
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3141,7 +3152,7 @@
     + face e1 #1 #0ea5e9 opacity 0.6
     - face e1 #5 #dc2626 opacity 0.6
 
-=== 83. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
+=== 85. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
   engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]},"turn":0.5235987755982988},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200},"overhang":0.3490658503988659,"minArea":100,"maxFaces":1}, {}) -> ok
   panel:
     +           input.value value="30" placeholder="0"
@@ -3186,7 +3197,7 @@
     + face e1 #0 #dc2626 opacity 0.6
     - face e1 #1 #0ea5e9 opacity 0.6
 
-=== 84. a row with an overhang below the smallest area listed: counted, not listed and not painted
+=== 86. a row with an overhang below the smallest area listed: counted, not listed and not painted
   panel:
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3205,7 +3216,7 @@
     + face e2 #8 #dc2626 opacity 0.6
     - face e1 #0 #dc2626 opacity 0.6
 
-=== 85. the print check closed
+=== 87. the print check closed
   panel:
     - h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     - label title="Each is a print of its own; without it all bodies."
@@ -3332,7 +3343,7 @@
   scene:
     - face e2 #8 #dc2626 opacity 0.6
 
-=== 86. a change of the document throws the answer away
+=== 88. a change of the document throws the answer away
   engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
@@ -3356,11 +3367,11 @@
     +   button: "Close"
   view: 2 scene(s) set
 
-=== 87. waiting for a plane cancelled
+=== 89. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 88. a new document
+=== 90. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

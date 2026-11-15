@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { currentScale, fittedCamera, keptSide, topDown } from './camera';
 
 export interface LineSet {
   segments: ArrayLike<number>; // úsečky ve světových souřadnicích, 6 čísel na úsečku
@@ -74,7 +75,6 @@ export interface View {
 const DISTANCE = 5000; // kamera stojí daleko, aby žádná část modelu nebyla za ní
 const BACKGROUND = 0xf2f4f7;
 const BODY_MATERIAL = { roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
-const MARGIN = 0.05; // of a picture fitted to its bodies, on every side
 // The light of a camera: it hangs on the camera, so the model is lit from where it is seen.
 function lit(camera: THREE.Camera): void {
   const light = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -83,9 +83,12 @@ function lit(camera: THREE.Camera): void {
   light.target.position.set(0, 0, -1);
 }
 // A cut model in three.js: it keeps what lies on the side the normal of a clipping plane points
-// to, so the plane is the half-space turned round.
-const clippingOf = (clip: HalfSpace | undefined): THREE.Plane[] | null =>
-  clip ? [new THREE.Plane(new THREE.Vector3(...clip.normal).negate(), new THREE.Vector3(...clip.normal).dot(new THREE.Vector3(...clip.origin)))] : null;
+// to (`keptSide`).
+function clippingOf(clip: HalfSpace | undefined): THREE.Plane[] | null {
+  if (!clip) return null;
+  const { normal, constant } = keptSide(clip);
+  return [new THREE.Plane(new THREE.Vector3(...normal), constant)];
+}
 
 export class Viewport implements View {
   private readonly renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -357,34 +360,14 @@ export class Viewport implements View {
         this.camera.updateMatrixWorld();
         eye.position.copy(this.camera.position);
         eye.quaternion.copy(this.camera.quaternion);
-        scale = Math.max(Math.max(1, this.container.clientWidth) / width, Math.max(1, this.container.clientHeight) / height) / this.camera.zoom;
+        scale = currentScale(this.camera.zoom, this.container.clientWidth, this.container.clientHeight, width, height);
       } else {
-        // fitted to the bodies: their extent across the view and up it, with a margin
-        const back = new THREE.Vector3(...camera.from).normalize();
-        const right = new THREE.Vector3(...camera.up).cross(back).normalize();
-        const up = new THREE.Vector3().crossVectors(back, right);
-        const [low, high] = [new THREE.Vector3(Infinity, Infinity, Infinity), new THREE.Vector3(-Infinity, -Infinity, -Infinity)];
-        const point = new THREE.Vector3();
-        const across = new THREE.Vector3();
-        for (const { solid } of model.bodies) {
-          for (let i = 0; i < solid.positions.length; i += 3) {
-            point.fromArray(solid.positions, i);
-            across.set(point.dot(right), point.dot(up), point.dot(back));
-            low.min(across);
-            high.max(across);
-          }
-        }
-        if (!(low.x <= high.x)) {
-          // nothing to draw: 40 mm of nothing
-          low.setScalar(-20);
-          high.setScalar(20);
-        }
-        const middle = new THREE.Vector3().addVectors(low, high).multiplyScalar(0.5);
-        const center = new THREE.Vector3().addScaledVector(right, middle.x).addScaledVector(up, middle.y).addScaledVector(back, middle.z);
-        scale = Math.max((high.x - low.x) / (width * (1 - 2 * MARGIN)), (high.y - low.y) / (height * (1 - 2 * MARGIN)), 1e-6);
-        eye.position.copy(center).addScaledVector(back, DISTANCE);
-        eye.up.copy(up);
-        eye.lookAt(center);
+        // fitted to the bodies, and turned as the three vectors of the fitted camera say
+        const fitted = fittedCamera(camera.from, camera.up, model.bodies.map((body) => body.solid), width, height);
+        const back = new THREE.Vector3(...fitted.back);
+        eye.position.set(...fitted.center).addScaledVector(back, DISTANCE);
+        eye.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...fitted.right), new THREE.Vector3(...fitted.up), back));
+        scale = fitted.scale;
       }
       eye.zoom = 1 / scale;
       eye.updateProjectionMatrix();
@@ -405,13 +388,12 @@ export class Viewport implements View {
       } finally {
         this.renderer.setRenderTarget(before);
       }
-      // the rows of a target run from the bottom up, those of an image from the top down
       const canvas = document.createElement('canvas');
       Object.assign(canvas, { width, height });
       const context = canvas.getContext('2d');
       if (!context) throw new Error('the browser gave no canvas to encode the picture with');
       const data = context.createImageData(width, height);
-      for (let row = 0; row < height; row++) data.data.set(pixels.subarray(4 * width * (height - 1 - row), 4 * width * (height - row)), 4 * width * row);
+      data.data.set(topDown(pixels, width, height));
       context.putImageData(data, 0, 0);
       return { base64: canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''), scale };
     } finally {

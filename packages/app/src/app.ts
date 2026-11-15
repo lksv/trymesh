@@ -184,8 +184,11 @@ export class App implements SketchHost, SceneHost {
         if (changesDocument(this.engine, name, args)) this.setMode({ kind: 'model' });
       },
       onCall: (name, outcome) => {
-        // a picture is drawn off the screen: nothing shows that one was taken but this line
-        if (name === 'view_image') return this.say(outcome.ok ? 'AI: a picture of the model was taken.' : `AI: view_image failed: ${outcome.error}`, !outcome.ok);
+        // A picture is drawn off the screen: nothing shows that one was taken but this line. It
+        // is a question, like the others the AI asks without a word here: one that is refused
+        // says nothing (the AI has the reason), and one that is taken does not replace an error
+        // the user has not dealt with.
+        if (name === 'view_image') return outcome.ok && !this.note.error ? this.say('AI: a picture of the model was taken.') : undefined;
         if (!MUTATING.includes(name)) return;
         if (name === '_load') {
           if (!outcome.ok) restore?.();

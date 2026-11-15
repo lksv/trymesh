@@ -8,8 +8,8 @@ import { COLOR, keptSegments, loopSegments } from './draw';
 import type { PictureModel, View } from './viewport';
 
 // The colours of bodies, in the order of the bodies of the state; after the last the first
-// again. Of one lightness, so that the dark edges show on all of them, and named, so that an
-// answer can say which body is which to a reader who sees "the orange part".
+// again. None is dark, so that the dark edges show on all of them, and each has a name, so that
+// an answer can say which body is which to a reader who sees "the orange part".
 export const PALETTE: readonly { color: number; name: string }[] = [
   { color: 0x4e79a7, name: 'blue' },
   { color: 0xf28e2b, name: 'orange' },
@@ -28,12 +28,23 @@ const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 
 // What a request draws: the bodies asked for (all without `bodies`) in the order of the state,
 // their edges, and the cut: the bodies and their edges clipped, the regions filled and outlined.
-// A body keeps its colour whatever else is drawn: the colour goes by its place in the state.
-export function pictureModel(request: ImageRequest): { model: PictureModel; bodies: RenderedImage['bodies'] } {
+// - A body keeps its colour whatever else is drawn: the colour goes by its place in the state.
+// - A body the cut leaves nothing of (its box lies in the half-space that is cut away) is not
+//   drawn and is listed in `cutAway`, so that an answer does not name a colour nobody can see.
+export function pictureModel(request: ImageRequest): { model: PictureModel; bodies: RenderedImage['bodies']; cutAway: Id[] } {
   const all = Object.keys(request.state.evaluation.bodies);
-  const drawn = request.bodies ? all.filter((id) => request.bodies?.includes(id)) : all;
+  const asked = request.bodies ? all.filter((id) => request.bodies?.includes(id)) : all;
   const colorOf = (id: Id): { color: number; name: string } => PALETTE[Math.max(0, all.indexOf(id)) % PALETTE.length];
   const clip = request.cut ? { origin: request.cut.frame.origin, normal: request.cut.frame.normal } : undefined;
+  // the lowest corner of the box of a body above the plane of the cut, along its normal
+  const gone = (id: Id): boolean => {
+    if (!clip) return false;
+    const { min, max } = request.state.evaluation.bodies[id].bounds;
+    const lowest = [0, 1, 2].reduce((sum, axis) => sum + clip.normal[axis] * ((clip.normal[axis] > 0 ? min[axis] : max[axis]) - clip.origin[axis]), 0);
+    return lowest >= 0;
+  };
+  const cutAway = asked.filter(gone);
+  const drawn = asked.filter((id) => !cutAway.includes(id));
   const edges: number[] = [];
   for (const id of drawn) for (const edge of request.state.evaluation.bodies[id].edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) edges.push(edge.segments[i]);
   const regions = request.cut?.regions ?? [];
@@ -47,14 +58,15 @@ export function pictureModel(request: ImageRequest): { model: PictureModel; bodi
     fills: frame ? regions.map((region) => ({ frame, loops: region.loops, color: shaded(colorOf(region.body).color), opacity: 1 })) : [],
     ...(clip ? { clip } : {}),
   };
-  return { model, bodies: drawn.map((id) => ({ body: id, color: hex(colorOf(id).color), colorName: colorOf(id).name })) };
+  const cut = new Set(regions.map((region) => region.body));
+  return { model, bodies: drawn.map((id) => ({ body: id, color: hex(colorOf(id).color), colorName: colorOf(id).name, ...(cut.has(id) ? { cutColor: hex(shaded(colorOf(id).color)) } : {}) })), cutAway };
 }
 
 export const viewCapability = (view: View): ViewCapability => ({
   async image(request) {
-    const { model, bodies } = pictureModel(request);
+    const { model, bodies, cutAway } = pictureModel(request);
     const { base64, scale } = await view.image(model, request.camera, request.width, request.height);
-    return { base64, width: request.width, height: request.height, scale, bodies };
+    return { base64, width: request.width, height: request.height, scale, bodies, cutAway };
   },
 });
 

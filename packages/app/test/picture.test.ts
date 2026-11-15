@@ -7,9 +7,10 @@ import { COLOR } from '../src/draw';
 import { PALETTE, SAVED, pictureModel, savePicture } from '../src/picture';
 
 // A state of `count` bodies named b0, b1, …: each has one edge along X at the height of its
-// number, from y = −1 to y = 1, and one edge that is coplanar and is not drawn.
+// number, from y = −1 to y = 1, and one edge that is coplanar and is not drawn. Its box is that
+// edge; `boxes` gives a body another one.
 const SOLIDS: Solid[] = [];
-function stateOf(count: number): EngineState {
+function stateOf(count: number, boxes: { [body: string]: { min: number[]; max: number[] } } = {}): EngineState {
   const bodies = Object.fromEntries(
     Array.from({ length: count }, (_, index) => {
       const solid: Solid = (SOLIDS[index] ??= { positions: new Float32Array(), triangles: new Uint32Array(), faceIds: new Uint32Array() });
@@ -17,7 +18,7 @@ function stateOf(count: number): EngineState {
         { kind: 'sharp', segments: Float64Array.from([0, -1, index, 0, 1, index]) },
         { kind: 'coplanar', segments: Float64Array.from([5, 5, index, 6, 6, index]) },
       ];
-      return [`b${index}`, { solid, edges }];
+      return [`b${index}`, { solid, edges, bounds: boxes[`b${index}`] ?? { min: [0, -1, index], max: [0, 1, index] } }];
     }),
   );
   return { evaluation: { bodies } } as unknown as EngineState;
@@ -28,7 +29,8 @@ const FRAME: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1], normal: [0
 
 describe('what a picture draws', () => {
   it('every body in its own colour, by its place in the state; its edges without the coplanar ones', () => {
-    const { model, bodies } = pictureModel(request({}));
+    const { model, bodies, cutAway } = pictureModel(request({}));
+    expect(cutAway).toEqual([]);
     expect(model.bodies).toEqual([{ solid: SOLIDS[0], color: PALETTE[0].color }, { solid: SOLIDS[1], color: PALETTE[1].color }, { solid: SOLIDS[2], color: PALETTE[2].color }]);
     expect(bodies).toEqual([{ body: 'b0', color: '#4e79a7', colorName: 'blue' }, { body: 'b1', color: '#f28e2b', colorName: 'orange' }, { body: 'b2', color: '#e15759', colorName: 'red' }]);
     expect(model.lines).toEqual([{ segments: [0, -1, 0, 0, 1, 0, 0, -1, 1, 0, 1, 1, 0, -1, 2, 0, 1, 2], color: COLOR.edge, width: 1.5 }]);
@@ -45,14 +47,21 @@ describe('what a picture draws', () => {
     const many = pictureModel(request({ state: stateOf(12) }));
     expect(many.bodies.map((entry) => entry.colorName)).toEqual([...PALETTE.map((entry) => entry.name), 'blue', 'orange']);
     expect(new Set(PALETTE.map((entry) => entry.color)).size).toBe(PALETTE.length);
-    expect(pictureModel(request({ state: stateOf(0) }))).toEqual({ model: { bodies: [], lines: [{ segments: [], color: COLOR.edge, width: 1.5 }], fills: [] }, bodies: [] });
+    expect(pictureModel(request({ state: stateOf(0) }))).toEqual({ model: { bodies: [], lines: [{ segments: [], color: COLOR.edge, width: 1.5 }], fills: [] }, bodies: [], cutAway: [] });
   });
 
   it('a cut: the edges end at the plane, each region is filled in the shade of its body and outlined over the fills', () => {
     const square = [0, 0, 2, 0, 2, 2, 0, 2];
     const hole = [0.5, 0.5, 1.5, 0.5, 1.5, 1.5, 0.5, 1.5];
-    const { model } = pictureModel(request({ cut: { frame: FRAME, regions: [{ body: 'b1', loops: [square, hole] }, { body: 'b0', loops: [square] }] } }));
+    const { model, bodies, cutAway } = pictureModel(request({ cut: { frame: FRAME, regions: [{ body: 'b1', loops: [square, hole] }, { body: 'b0', loops: [square] }] } }));
     expect(model.clip).toEqual({ origin: [0, 0, 0], normal: [0, -1, 0] });
+    // a body the cut goes through says the colour of its cut; one it does not go through has none
+    expect(bodies).toEqual([
+      { body: 'b0', color: '#4e79a7', colorName: 'blue', cutColor: '#375575' },
+      { body: 'b1', color: '#f28e2b', colorName: 'orange', cutColor: '#a9631e' },
+      { body: 'b2', color: '#e15759', colorName: 'red' },
+    ]);
+    expect(cutAway).toEqual([]);
     // what lies on the side the normal points to (y < 0) is cut away: every edge keeps its half
     expect(Array.from(model.lines[0].segments)).toEqual([0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 2, 0, 1, 2]);
     // blue 4e79a7 and orange f28e2b, seven tenths as light
@@ -65,11 +74,38 @@ describe('what a picture draws', () => {
   });
 });
 
+describe('a body the cut leaves nothing of', () => {
+  // the cut takes away y < 0 (the normal of the frame is −Y)
+  const cut = { frame: FRAME, regions: [] };
+  const at = (low: number, high: number) => ({ min: [0, low, 0], max: [1, high, 1] });
+
+  it('is not drawn and not in the legend, and is named as cut away; a body that reaches the plane stays', () => {
+    const state = stateOf(4, { b0: at(-5, -1), b1: at(-5, 0), b2: at(-5, 0.001), b3: at(1, 5) });
+    const { model, bodies, cutAway } = pictureModel(request({ state, cut }));
+    expect(cutAway).toEqual(['b0', 'b1']); // wholly on the side that is cut away, or only touching the plane from it
+    expect(bodies.map((entry) => entry.body)).toEqual(['b2', 'b3']);
+    expect(bodies.map((entry) => entry.colorName)).toEqual(['red', 'teal']); // each keeps the colour of its place
+    expect(model.bodies.map((body) => body.color)).toEqual([PALETTE[2].color, PALETTE[3].color]);
+    // of the bodies asked for only
+    expect(pictureModel(request({ state, cut, bodies: ['b0', 'b3'] })).cutAway).toEqual(['b0']);
+    // without a cut nothing is cut away
+    expect(pictureModel(request({ state })).cutAway).toEqual([]);
+  });
+
+  it('a plane that leans: the lowest corner of the box along its normal decides', () => {
+    const lean: Frame = { origin: [0, 0, 0], x: [0, 1, 0], y: [Math.SQRT1_2, 0, -Math.SQRT1_2], normal: [Math.SQRT1_2, 0, Math.SQRT1_2] };
+    const box = (min: number[], max: number[]) => ({ min, max });
+    const state = stateOf(3, { b0: box([1, 0, 1], [2, 1, 2]), b1: box([-1, 0, -1], [2, 1, 2]), b2: box([-3, 0, 1], [-2, 1, 2.5]) });
+    // b0 lies above the plane x + z = 0; b1 crosses it; the box of b2 reaches below it at (−3, 1)
+    expect(pictureModel(request({ state, cut: { frame: lean, regions: [] } })).cutAway).toEqual(['b0']);
+  });
+});
+
 describe('the button that saves a picture', () => {
   const capability = (asked: ImageRequest[]): ViewCapability => ({
     async image(given): Promise<RenderedImage> {
       asked.push(given);
-      return { base64: 'UE5H', width: given.width, height: given.height, scale: 1, bodies: [] };
+      return { base64: 'UE5H', width: given.width, height: given.height, scale: 1, bodies: [], cutAway: [] };
     },
   });
   const section = (parts: Partial<SectionResult>): SectionResult => ({ frame: FRAME, below: 0.001, bodies: [], inPlane: [], ...parts });

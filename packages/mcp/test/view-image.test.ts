@@ -8,7 +8,7 @@ import { type Bridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { HOST_OPERATIONS, type Host, callHostOperation } from '../src/host';
 import type { ToolAnswer } from '../src/tools';
-import { type ImageRequest, MAX_IMAGE_BASE64, type RenderedImage, VIEWS, cutOf } from '../src/view-image';
+import { type ImageRequest, MAX_IMAGE_BASE64, type RenderedImage, VIEWS, cutOf, imageRequest } from '../src/view-image';
 import { connect, newEngine } from './kit';
 
 // A disc of radius 5 and height 10 at the origin (`disc`), a pin of radius 3 and height 20 at
@@ -47,14 +47,16 @@ function model(): Engine {
   return engine;
 }
 
-// A host whose view writes down every request and answers with a picture of `base64`.
-function hostOf(engine: Engine, base64 = 'UE5H'): { host: Host; requests: ImageRequest[] } {
+// A host whose view writes down every request and answers with a picture of `base64`. It says
+// that a cut removes `gone` whole.
+function hostOf(engine: Engine, base64 = 'UE5H', gone: string[] = []): { host: Host; requests: ImageRequest[] } {
   const requests: ImageRequest[] = [];
   const view = {
     async image(request: ImageRequest): Promise<RenderedImage> {
       requests.push(request);
       const drawn = Object.keys(request.state.evaluation.bodies).filter((id) => !request.bodies || request.bodies.includes(id));
-      return { base64, width: request.width, height: request.height, scale: 0.123456789, bodies: drawn.map((body, index) => ({ body, color: `#00000${index}`, colorName: `colour ${index}` })) };
+      const shown = drawn.filter((body) => !request.cut || !gone.includes(body));
+      return { base64, width: request.width, height: request.height, scale: 0.123456789, bodies: shown.map((body, index) => ({ body, color: `#00000${index}`, colorName: `colour ${index}` })), cutAway: request.cut ? drawn.filter((body) => gone.includes(body)) : [] };
     },
   };
   return { host: { engine, view }, requests };
@@ -109,7 +111,7 @@ describe('the operation view_image', () => {
     expect(Object.keys(requests[0].state.evaluation.bodies)).toEqual(['disc', 'pin']);
     expect((picture.about?.bodies as { body: string }[]).map((entry) => entry.body)).toEqual(['disc', 'pin']);
     // a body of the document that the earlier state does not have yet
-    expect(await ask(host, { at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies: the body "late" is not in the state after "pin"' });
+    expect(await ask(host, { at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[1]: the body "late" is not in the state after "pin"' });
     expect(requests).toHaveLength(1);
   });
 
@@ -132,15 +134,51 @@ describe('the operation view_image', () => {
     const [low, high] = [Math.min(...(cut?.regions[1].loops[0].filter((_, index) => index % 2 === 1) ?? [])), Math.max(...(cut?.regions[1].loops[0].filter((_, index) => index % 2 === 1) ?? []))];
     expect([low, high]).toEqual([expect.closeTo(0, 6), expect.closeTo(20, 6)]); // the pin is 20 high
     expect(cut).toEqual(cutOf(asked.result));
-    // seen from the other side, and only of the bodies drawn
+    // seen from the other side, and only of the bodies drawn: the section is asked of those bodies,
+    // so the far block does not move the plane it is taken at
     await pictureOf(host, { section: { plane: XZ, offset: -1, flip: true }, bodies: ['pin'] });
     expect(requests[1].cut?.frame.normal).toEqual([expect.closeTo(0, 12), 1, expect.closeTo(0, 12)]);
     expect(requests[1].cut?.regions.map((region) => region.body)).toEqual(['pin']);
+    const ofThePin = engine.query('section', { plane: { kind: 'base', plane: 'XZ' }, offset: -1, flip: true, bodies: ['pin'], outline: 'polylines', maxPoints: 1_000_000 });
+    const ofAll = engine.query('section', { plane: { kind: 'base', plane: 'XZ' }, offset: -1, flip: true, outline: 'polylines', maxPoints: 1_000_000 });
+    if (!ofThePin.ok || !ofAll.ok) throw new Error('the section failed');
+    expect(requests[1].cut).toEqual(cutOf(ofThePin.result));
+    expect(ofAll.result.below).toBeGreaterThan(ofThePin.result.below);
+    expect(requests[1].cut?.frame.origin).not.toEqual(takenAt(ofAll.result).origin);
     // in an earlier state the plane cuts what was there then
     await pictureOf(host, { section: { plane: XZ, offset: -52 }, at: 'pin' });
     expect(requests[2].cut?.regions).toEqual([]);
     await pictureOf(host, { section: { plane: XZ, offset: -52 } });
     expect(requests[3].cut?.regions.map((region) => region.body)).toEqual(['late']);
+  });
+
+  it('the answer says which bodies the plane goes through and which it removes whole', async () => {
+    // the plane z = −5 under the model, the normal up: everything is cut away and nothing is cut
+    const { host, requests } = hostOf(engine, 'UE5H', ['disc', 'pin', 'late']);
+    const empty = await pictureOf(host, { section: { plane: { kind: 'base', plane: 'XY' }, offset: -5 } });
+    expect(requests[0].cut?.regions).toEqual([]);
+    expect(empty.about).toMatchObject({ bodies: [], section: { cut: [], cutAway: ['disc', 'pin', 'late'] } });
+    // the plane y = 1: the disc and the pin are cut, a region each, and the view says the block is gone
+    const partly = hostOf(engine, 'UE5H', ['late']);
+    const cut = await pictureOf(partly.host, { section: { plane: XZ, offset: -1, flip: true } });
+    expect(cut.about?.section).toEqual({ cut: ['disc', 'pin'], cutAway: ['late'] });
+    expect((cut.about?.bodies as { body: string }[]).map((entry) => entry.body)).toEqual(['disc', 'pin']);
+    // without a section the answer has no such part
+    expect((await pictureOf(host, {})).about).not.toHaveProperty('section');
+  });
+
+  it('a section that does not fit its budget is refused, not drawn half filled; a refusal names its argument as the check does', () => {
+    const { host } = hostOf(engine);
+    const args = { width: 800, height: 600, section: { plane: { kind: 'base' as const, plane: 'XZ' as const }, offset: -1 } };
+    expect(imageRequest(host, args, 5)).toEqual({ ok: false, error: { code: 'failed', message: 'section: the section has 10 loops and points, too many to draw; name fewer bodies', arg: ['section'] } });
+    expect(imageRequest(host, args, 10)).toMatchObject({ cut: { regions: [{ body: 'disc' }, { body: 'pin' }] } });
+    // the plane of the section, under `section`; the bodies and the state are the operation's own
+    const round = imageRequest(host, { width: 800, height: 600, section: { plane: { kind: 'face', body: 'disc', face: { feature: 'disc', role: 'side', curve: 'k' } }, offset: 0 } });
+    expect(round).toEqual({ ok: false, error: { code: 'notAvailable', message: 'section.plane: the face is not planar, so it gives no cutting plane', arg: ['section', 'plane'] } });
+    // a face of a body that the earlier state does not have: the query checks the plane in that state
+    const early = imageRequest(host, { width: 800, height: 600, at: 'pin', section: { plane: { kind: 'face', body: 'late', face: { feature: 'late', role: 'endCap' } }, offset: 0 } });
+    expect(early).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['section', 'plane', 'body'], message: expect.stringMatching(/^section\.plane\.body: /) } });
+    expect(imageRequest(host, { width: 800, height: 600, at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: { code: 'notAvailable', message: 'bodies[1]: the body "late" is not in the state after "pin"', arg: ['bodies', 1] } });
   });
 
   it('a cut is taken only from a complete answer, and only of the bodies named', () => {
@@ -169,7 +207,7 @@ describe('the operation view_image', () => {
     expect(await ask(host, { bodies: [] })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidArguments: view_image: bodies: /) });
     // the round wall of the disc is no plane: the query section says so, and the operation passes it on
     const round = await ask(host, { section: { plane: { kind: 'face', body: 'disc', face: { feature: 'disc', role: 'side', curve: 'k' } } } });
-    expect(round).toMatchObject({ ok: false, error: expect.stringMatching(/^notAvailable: view_image: section: the face is not planar/) });
+    expect(round).toEqual({ ok: false, error: 'notAvailable: view_image: section.plane: the face is not planar, so it gives no cutting plane' });
     expect(requests).toEqual([]);
     // a picture over the limit is not sent
     const large = hostOf(engine, 'A'.repeat(MAX_IMAGE_BASE64 + 1));
@@ -223,7 +261,7 @@ describe('a picture on its way to a client', () => {
     const content = answer.content as { type: string; data?: string; mimeType?: string; text?: string }[];
     expect(content).toHaveLength(2);
     expect(content[0]).toEqual({ type: 'image', data: 'UE5H', mimeType: 'image/png' });
-    expect(JSON.parse(content[1].text ?? '')).toEqual({ width: 320, height: 240, scale: 0.123457, bodies: [{ body: 'pin', color: '#000000', colorName: 'colour 0' }] });
+    expect(JSON.parse(content[1].text ?? '')).toEqual({ width: 320, height: 240, scale: 0.123457, bodies: [{ body: 'pin', color: '#000000', colorName: 'colour 0' }], section: { cut: ['pin'], cutAway: [] } });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ camera: VIEWS.front, bodies: ['pin'], width: 320, height: 240 });
     expect(requests[0].cut?.regions.map((region) => region.body)).toEqual(['pin']);

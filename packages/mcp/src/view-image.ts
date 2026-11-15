@@ -7,10 +7,10 @@
 //   of a cut model and the section view of the app are drawn from one answer.
 //
 // This module has no dependency on Node or on a browser: the server and the app share it.
-import { type EngineState, type Frame, type Id, type QueryOutcome, type RunArgsOf, SECTION_ARGS, type SectionResult, type Vec3, completeRegions, takenAt } from '@trymesh/engine';
+import { type EngineState, type Frame, type Id, type QueryOutcome, type RunArgsOf, SECTION_ARGS, type SectionResult, type Vec3, argText, completeRegions, takenAt } from '@trymesh/engine';
 import type { ArgSpecs } from '@trymesh/engine';
 import type { Host, HostOperation } from './host';
-import type { ToolAnswer } from './tools';
+import type { Json, ToolAnswer } from './tools';
 
 // ---------------------------------------------------------------- the views
 
@@ -50,9 +50,14 @@ export const VIEWS = {
 //   x and y of that frame, the outer one first. The regions are all of them: a caller that has
 //   only a part of a section does not ask for a cut.
 // The answer says what it drew, so that a caller can relate pixels to millimetres and colours to
-// bodies: `scale` is millimetres per pixel; every body has its own colour, from a fixed palette
-// in the order of the bodies of the state (so a body keeps its colour when others are left out),
-// and the cut of a body is filled with a darker shade of its colour.
+// bodies:
+// - `scale` is millimetres per pixel;
+// - `bodies`: the bodies of which something is drawn. Every body has its own colour, from
+//   a fixed palette by its place among the bodies of the state (so a body keeps its colour when
+//   others are left out, and the legend belongs to the state of its picture). The cut of a body
+//   is filled with a darker shade of its colour, `cutColor`, given for a body the cut goes
+//   through;
+// - `cutAway`: the bodies asked for of which the cut leaves nothing.
 export interface ImageCut {
   frame: Frame;
   regions: { body: Id; loops: number[][] }[];
@@ -70,7 +75,8 @@ export interface RenderedImage {
   width: number;
   height: number;
   scale: number; // mm per pixel
-  bodies: { body: Id; color: string; colorName: string }[]; // `#rrggbb` and what a person calls it
+  bodies: ({ body: Id; color: string; colorName: string } | { body: Id; color: string; colorName: string; cutColor: string })[]; // `#rrggbb` and what a person calls it
+  cutAway: Id[];
 }
 export interface ViewCapability {
   image(request: ImageRequest): Promise<RenderedImage>;
@@ -99,12 +105,12 @@ declare module './host' {
 //   operation has no `at` of its own (the tool `query` has).
 // - `width`, `height`: the size of the picture in pixels.
 export const VIEW_IMAGE_ARGS = {
-  view: { kind: 'choice', options: ['iso', 'front', 'back', 'left', 'right', 'top', 'bottom', 'current'], title: 'View', summary: 'iso without it. front is seen from −Y, left from −X, top from above; current is the camera of the app as the user left it.', optional: true },
-  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Only these are drawn, and the picture is fitted to them; without it all bodies.', optional: true },
+  view: { kind: 'choice', options: ['iso', 'front', 'back', 'left', 'right', 'top', 'bottom', 'current'], title: 'View', summary: 'iso without it. front is seen from −Y, left from −X, top from above. current is the camera of the app as the user left it, and only the camera: the picture is not fitted to the bodies, bodies hidden in the app are drawn, and a section shown in the app is not applied.', optional: true },
+  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Only these are drawn, and a named view is fitted to them; without it all bodies.', optional: true },
   section: {
     kind: 'fields',
     title: 'Section',
-    summary: 'Cuts the model by a plane; what lies on the side its normal points to is not drawn, and the cut is filled.',
+    summary: 'Cuts the model by a plane; what lies on the side its normal points to is not drawn, and the cut is filled. The cut is seen from the side that is removed: a base plane without a flip from the top (XY), from the front (XZ) or from the right (YZ). The answer says which bodies the plane goes through and which it removes whole.',
     optional: true,
     fields: { plane: SECTION_ARGS.plane, offset: SECTION_ARGS.offset, flip: SECTION_ARGS.flip },
   },
@@ -142,18 +148,29 @@ export function cutOf(section: SectionResult, only?: readonly Id[]): ImageCut | 
 // - The arguments were checked against the state of the document now (the path of an operation
 //   has no other state). With `at` the bodies are looked up again here, in the state they are
 //   drawn from.
-function requestOf(host: Host, args: ViewImageArgs): ImageRequest | Refusal {
+// - A refusal names its argument as the check of the arguments does (`bodies[1]`,
+//   `section.plane`): a tool answers with a text, and the text is what a caller reads.
+// - `budget`: the points the section is asked with.
+export function imageRequest(host: Host, args: ViewImageArgs, budget = SECTION_POINTS): ImageRequest | Refusal {
   const { engine } = host;
   const state = engine.getState(args.at);
   const missing = (args.bodies ?? []).findIndex((id) => !Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id));
-  if (missing >= 0) return refused('notAvailable', `bodies: the body "${args.bodies?.[missing]}" is not in the state after "${args.at}"`, ['bodies', missing]);
+  if (missing >= 0) return refused('notAvailable', `bodies[${missing}]: the body "${args.bodies?.[missing]}" is not in the state after "${args.at}"`, ['bodies', missing]);
   const camera = args.view === undefined ? VIEWS.iso : args.view === 'current' ? 'current' : VIEWS[args.view];
   const request: ImageRequest = { state, camera, width: args.width, height: args.height, ...(args.bodies ? { bodies: args.bodies } : {}) };
   if (!args.section) return request;
   const { plane, offset, flip } = args.section;
-  const section = engine.query('section', { plane, offset, ...(flip ? { flip } : {}), ...(args.bodies ? { bodies: [...args.bodies] } : {}), outline: 'polylines', maxPoints: SECTION_POINTS }, args.at === undefined ? {} : { at: args.at });
-  // an error of the query names its own argument; here that argument sits under `section`
-  if (!section.ok) return refused(section.error.code, section.error.message, section.error.arg?.[0] === 'bodies' ? [...section.error.arg] : ['section', ...(section.error.arg ?? [])]);
+  const section = engine.query('section', { plane, offset, ...(flip ? { flip } : {}), ...(args.bodies ? { bodies: [...args.bodies] } : {}), outline: 'polylines', maxPoints: budget }, args.at === undefined ? {} : { at: args.at });
+  if (!section.ok) {
+    // An error of the query names its own argument, and its text starts with the name of the
+    // query and often with that argument. Here the plane, the offset and the flip sit under
+    // `section`; `bodies` and `at` are arguments of the operation as well.
+    const { code, message, arg = [] } = section.error;
+    const path = arg[0] === 'bodies' || arg[0] === 'at' ? [...arg] : ['section', ...arg];
+    const said = message.replace(/^section: /, '');
+    const own = arg.length && said.startsWith(`${argText(arg)}: `) ? said.slice(argText(arg).length + 2) : said;
+    return refused(code, `${argText(path)}: ${own}`, path);
+  }
   // a section with more points than the budget is not drawn half filled
   const cut = cutOf(section.result);
   if (!cut) return refused('failed', `section: the section has ${section.result.truncated?.total} loops and points, too many to draw; name fewer bodies`, ['section']);
@@ -163,17 +180,20 @@ function requestOf(host: Host, args: ViewImageArgs): ImageRequest | Refusal {
 export const viewImage: HostOperation<typeof VIEW_IMAGE_ARGS> = {
   title: 'View image',
   summary:
-    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane, optionally the model as it was after a feature. Every body has its own colour. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
+    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane, optionally the model as it was after a feature. Every body has its own colour, listed with the picture. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
   returns:
-    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`, the colour of every body drawn (`color` as #rrggbb and `colorName`). The edges of the bodies are drawn; a cut is filled with a darker shade of the colour of its body.',
+    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`: the bodies of which something is drawn, each with its colour (`color` as #rrggbb and `colorName`) and, when the section goes through it, the colour its cut is filled with (`cutColor`, a darker shade of its colour). The edges of the bodies are drawn. With a section also `section.cut`, the bodies the plane goes through, and `section.cutAway`, the bodies it removes whole: a picture with nothing in it usually has the offset or the flip the wrong way round. A body has the colour of its place among the bodies of the state drawn, so a legend belongs to its own picture.',
   args: VIEW_IMAGE_ARGS,
   async run(host, args) {
     if (!host.view) return refused('notAvailable', 'the app that is connected has no view to draw a picture with. The queries section and body describe the shape in numbers without it.');
-    const request = requestOf(host, args);
+    const request = imageRequest(host, args);
     if ('ok' in request) return request;
     const image = await host.view.image(request);
     if (image.base64.length > MAX_IMAGE_BASE64) return refused('failed', `the picture is too large to send (${image.base64.length} characters of ${MAX_IMAGE_BASE64}); ask for a smaller width and height`, ['width']);
     const round = (value: number): number => Number(value.toPrecision(6));
-    return { ok: true, result: { kind: 'image', mediaType: 'image/png', base64: image.base64, about: { width: image.width, height: image.height, scale: round(image.scale), bodies: image.bodies } } };
+    const about: { [key: string]: Json } = { width: image.width, height: image.height, scale: round(image.scale), bodies: image.bodies.map((entry) => ({ ...entry })) };
+    // which bodies the plane goes through is in the answer of the section; which it removes whole, the view knows
+    if (request.cut) about.section = { cut: [...new Set(request.cut.regions.map((region) => region.body))], cutAway: image.cutAway };
+    return { ok: true, result: { kind: 'image', mediaType: 'image/png', base64: image.base64, about } };
   },
 };

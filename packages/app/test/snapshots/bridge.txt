@@ -291,8 +291,7 @@
   view: 0 scene(s) set
   view: image 320 × 240, camera from [0, 0, 1] up [0, 1, 0], 1 bodies #4e79a7, 12 segments
 
-=== 5. a picture of a body that is not there is refused, and the status bar says why
-  status: AI: view_image failed: notAvailable: view_image: bodies[0]: the body "nope" is not in the state asked about  [error]
+=== 5. a picture of a body that is not there is refused: the AI has the reason, and the app says nothing, as for any question
   view: 0 scene(s) set
 
 === 6. a question of the AI leaves the form alone

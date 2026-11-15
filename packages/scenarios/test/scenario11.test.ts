@@ -482,13 +482,13 @@ describe('scenario 11: the queries asked about the robot joint', () => {
   });
 
   // ----- 1f: the pictures. A picture is drawn by the view of the app (run in a browser, see
-  // docs/ui/queries.md); here the view writes down what it was asked to draw.
+  // docs/ui/model.md); here the view writes down what it was asked to draw.
   const pictures = (): { ask: (args: unknown) => ReturnType<typeof callHostOperation>; requests: ImageRequest[] } => {
     const requests: ImageRequest[] = [];
     const view = {
       async image(request: ImageRequest): Promise<RenderedImage> {
         requests.push(request);
-        return { base64: 'UE5H', width: request.width, height: request.height, scale: 0.2, bodies: (request.bodies ?? Object.keys(request.state.evaluation.bodies)).map((body) => ({ body, color: '#000000', colorName: 'black' })) };
+        return { base64: 'UE5H', width: request.width, height: request.height, scale: 0.2, bodies: (request.bodies ?? Object.keys(request.state.evaluation.bodies)).map((body) => ({ body, color: '#000000', colorName: 'black' })), cutAway: [] };
       },
     };
     return { ask: (args) => callHostOperation({ engine, view }, 'view_image', args), requests };
@@ -534,7 +534,7 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     expect(requests[1].camera).toBe('current');
     // what is named and is not in the model is answered like for a query, with the argument
     expect(await ask({ bodies: ['housing', 'nope'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[1]: the body "nope" is not in the state asked about' });
-    expect(await ask({ section: { plane: { kind: 'face', body: 'housing', face: side('housing', 'ho') } } })).toMatchObject({ ok: false, error: expect.stringMatching(/^notAvailable: view_image: section: /) });
+    expect(await ask({ section: { plane: { kind: 'face', body: 'housing', face: side('housing', 'ho') } } })).toMatchObject({ ok: false, error: expect.stringMatching(/^notAvailable: view_image: section\.plane: the face is not planar/) });
     expect(await ask({ view: 'isometric' })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidArguments: view_image: view: /) });
     expect(requests).toHaveLength(2);
     // without a view (a server over a document from a file has none) there is no picture

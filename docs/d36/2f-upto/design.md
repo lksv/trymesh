@@ -1,6 +1,6 @@
 # 2f Extent up to a planar face (D47)
 
-**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
+**State: design, third version, after three rounds of reviews, the last allowed ("Reviews"; the third had no finding here, and what is still open is listed there as known limits).** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the variant, the issue code, the facts), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -91,7 +91,7 @@ The plane is resolved once per recompute of the feature, in the state before it,
    A sketch can stand on it. Its edges with the sides of lines are lines; with a cylinder it is a circle only when the plane is across the axis, otherwise `other` (an ellipse), which is what `edgeKind` answers for those surfaces already.
 6. **The facts.** `lengthMin`, `lengthMax` (positive) and `forward`, for the tool of the feature itself, not for its copies.
 
-**A build that fails with its own code.** For the feature itself the lengths are computed in its step, and a refusal is the error of the step. A copy of a pattern points another way and may meet the same plane differently: parallel to it, or through it. That is found in `build`, which may throw `ToolProblem(code, refs?, detail?)`, a small class in `recompute/state.ts`. The two places that call `build` (`applyTool`, and the step of an extrusion with the operation `new`) turn it into the error of the feature with that code; every other exception stays `kernelFailure`. A pattern prefixes `refs` with the copy, as for any failed copy. Package 2c needs the same class for one case of its own; if it is implemented first, it adds the class as described here.
+**A build that fails with its own code.** For the feature itself the lengths are computed in its step, and a refusal is the error of the step. A copy of a pattern points another way and may meet the same plane differently: parallel to it, or through it. That is found in `build`, which may throw `ToolProblem(code, refs?, detail?)`, a small class in `recompute/state.ts`. The two places that call `build` (`applyTool`, and the step of an extrusion with the operation `new`) turn it into the error of the feature with that code; every other exception stays `kernelFailure`. A pattern prefixes `refs` with the copy, as for any failed copy. (Package 2c used the class for one case until its third round of reviews; it now decides that case by what the cut did, with a mark on the built tool, and does not need the class.)
 
 **Flush ends.** A cut up to a face of its target ends exactly on that face, and an addition up to a face of another body touches it. Flush planar faces, tilted ones included, are what the kernel port guarantees (architecture.md, SolidKernel, guarantee 3); the spike ran a cut and an addition that end flush on a tilted floor.
 
@@ -203,3 +203,18 @@ The reviewers are in the record of [2a](../2a-offset/design.md). The findings on
 Found holding by both: the kept plane (nothing else is needed in `ToolRecipe`: the plane lives in the closure of `build`, as the profile does; the memoisation holds, because a moved face means another state object before the feature, so the step and a pattern after it recompute); `build` is called from two places; the order of the tests of the gap, and that a negative gap only lengthens.
 
 Not acted on: nothing.
+
+### Round 3 (2026-11-15), the last: the diff of the fixes of round 2, at `e4056d1`
+
+The reviewers and the rule of three rounds are in the record of [2a](../2a-offset/design.md). Neither had a finding on this package.
+
+Found holding: the bound of the angle (`1 / sin(0.01)` is 100.002; by both); the brace of the scenario meets its plane at `cos 3°` and is not refused; a post about a metre long on an 80 mm box, 0.011 rad off the direction, goes through the kernel adapter with its volume right to 1e-8 (run by the internal reviewer); the one length is consistent in its sign, with the gap, in `facts` and in the frame of the cap, and the assertion of the scenario that `lengthMin === lengthMax` holds for the posts (read by both); the description of the cap and the mesh can differ only below the resolution of float32.
+
+Codex adds, rightly: the angle is a policy that keeps the length in proportion, not a guarantee of the accuracy of the kernel for every model.
+
+Changed in this round, read by no reviewer: one sentence, which says that 2c no longer uses `ToolProblem` (2c, "Reviews", round 3).
+
+Still open, as known limits:
+
+- Nothing of the package was run in the engine; a copy of a pattern that gets one length was checked by reading only.
+- The value 0.01 rad is a choice; no model has tested it.

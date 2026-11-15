@@ -72,7 +72,7 @@ export const HOLE_FIELDS = {
 // What the result of the feature publishes in `facts`.
 export const HOLE_FACTS = {
   headDepth: 'the depth of the head along the hole in mm: given for a counterbore and a nut pocket, computed for a countersink; absent for a plain hole',
-  depth: 'the depth of the whole hole in mm for the feature itself, not for its copies (for "through all": how far the targets reach from the mouth, without the overshoot of the tool; measured on the mesh, so exact to about 1e-7 of its coordinates)',
+  depth: 'the depth of the whole hole in mm for the feature itself, not for its copies (for "through all": how far the targets reach from the mouth, without the overshoot of the tool; measured on the meshes of the targets, so with their float32 rounding)',
 } as const;
 
 // ================================================================ the unions
@@ -103,10 +103,11 @@ declare module '../00-prep/contract' {
   // `invalidHole`, an error: the dimensions do not make a hole.
   // - the head is not wider than the bore (for a nut pocket: the bore does not fit between the flats);
   // - the head is as deep as the hole or deeper. For "through all" the hole is as deep as the
-  //   targets reach from the mouth, and the overshoot of the tool does not count. Targets that
-  //   do not reach past the mouth at all (within the resolution of their meshes) are not this
-  //   error: the tool is built, cuts nothing and the feature has the warning `noEffect`, as
-  //   a cut that misses.
+  //   targets reach from the mouth, and the overshoot of the tool does not count; the bore has
+  //   to be left more than the resolution of the kernel (1e-4 of the largest coordinate) of
+  //   that reach. Whether a head that is too deep is this error is decided by what its tool
+  //   did: if it cut a target, it is; if it changed none (the targets do not pass the mouth),
+  //   the feature has the warning `noEffect`, as a cut that misses.
   //   The reach is that of the whole targets, not of the material under each point: a head that
   //   passes through a thin plate of a body that reaches deeper elsewhere is not detected.
   // - two points are so close that their holes would overlap; `refs` name the points.

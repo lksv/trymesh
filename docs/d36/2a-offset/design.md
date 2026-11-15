@@ -1,6 +1,6 @@
 # 2a Profile offset and a wall from a line (D44)
 
-**State: design, third version, after two rounds of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
+**State: design, fourth version, after three rounds of reviews, the last allowed ("Reviews"; what is still open is listed there as known limits).** Written against the sixth version of the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts)) and against the code at `0dc424b`. Nothing here was run as engine code; statements about today's code name the function they were read in.
 
 Files: [contract.ts](contract.ts) (what the package adds, and the one declaration of the changed extrusion that track B shares), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -125,13 +125,13 @@ Then the moved outline is tested. First as a sketch profile is, by the two check
 
 Those two are not enough, for a moved outline or for a sketch (the reviews found the cases in today's `detectProfile`; "Reviews"): `soundTessellation` looks for proper crossings only, where the ends of each edge lie strictly on opposite sides of the other. An edge that ends on another one, passes through its end or runs along it is not a crossing to it. So the polylines that will be built get three more tests, in this order:
 
-- **clearance:** any two tessellated edges that have no vertex in common are farther apart than `LENGTH_TOLERANCE` (the distance of two segments, which is zero when they meet in any way: at an end of one of them and along a common stretch too); and of two edges that share a vertex, the other end of each is farther than the tolerance from the other edge, so neither folds back onto its neighbour. It runs in the sweep `soundTessellation` has, with the distance in place of the test of sides. The loops of a moved outline have keys of their own and share no vertex, so after this test every loop is a simple polygon and no two loops have a point in common;
+- **clearance:** any two tessellated edges that do not follow each other in one loop are farther apart than `LENGTH_TOLERANCE` (the distance of two segments, which is zero when they meet in any way: at an end of one of them and along a common stretch too); and of two edges that do follow each other (the last and the first of a loop included), the other end of each is farther than the tolerance from the other edge, so neither folds back onto its neighbour. "Follow each other" is by position in the loop, not by a common vertex key: every corner of a moved outline is a vertex of its own, also where the outline of the sketch passes twice through one point (two regions that meet in a corner give a loop that does), so a loop that returns to a place it has been is refused here, and two different loops share no vertex. It runs as the sweep of `soundTessellation` does, with the distance in place of the test of sides and with the boxes that prune its pairs widened by the tolerance (the sweep of today compares only edges whose boxes overlap). After this test every loop is a simple polygon and no two loops have a point in common. An edge shorter than the tolerance fails it as well; only an arc of a radius within about 1.3 tolerances has such edges;
 - **area:** every tessellated loop has the sign of area of its exact loop, and an area above `LENGTH_TOLERANCE` times its length. A sliver between an arc and its chord tessellates into points on one line, which the clearance refuses already (its edges fold back); the test stays for the sign, which a loop that is simple can still have lost against its exact loop;
 - **nesting:** for every pair of tessellated loops "lies inside" is what it was for the exact loops before the offset, tested with one vertex of the one against the polygon of the other. One vertex decides because of the clearance: two simple polygons without a common point are either nested or apart. (The second version of this design relied on "they do not cross" from `soundTessellation`; a review built a hole that passes through an edge of its outer polygon at two of its own vertices, with one vertex inside.) This catches a hole that grew past its outer loop without touching it (the outer loop shrank inside it), and a small hole that lies inside an exact circle and outside its polygon, between two of its corners.
 
 A profile that fails any of them is `invalidProfile`. What passes hands `buildPrism` simple polygons, none without area, none touching another, and every hole inside its outer loop.
 
-The moved outline is tessellated with the rule of today (`segments` of `sketch.ts`, by the new radius), each loop with keys of its own, and handed to `buildPrism` as regions with their holes. `sideOf` answers with the moved curves in the direction of the sketch curve, so the surfaces are exact: the plane of a moved line, a cylinder with the new radius.
+The moved outline is tessellated with the rule of today (`segments` of `sketch.ts`, by the new radius), every vertex with a key of its own, and handed to `buildPrism` as regions with their holes. `sideOf` answers with the moved curves in the direction of the sketch curve, so the surfaces are exact: the plane of a moved line, a cylinder with the new radius.
 
 One consequence to state in the docs: the frame of a sketch on a side face has its origin at the start point of the line (`faceFrame`, architecture.md, "Rovina skici na stěně"). For a moved line that is the mitred corner, so it moves with the offset.
 
@@ -180,7 +180,7 @@ After the preparatory step ([part2-feature-modules.md](../00-prep/part2-feature-
 | `recompute/profile.ts` | the branches for an offset and for a wall; `sideOf`; `outline` |
 | `recompute/tool-prism.ts` | new, by a move (above); `sideOf` in place of `curveOf` |
 | `recompute/state.ts` | `Prism` becomes `BuiltTool`; the two new members of `ResolvedProfile` |
-| `sketch.ts` | `Loop.exact`; the joining of points, `segments` and the checks of an outline exported, with the two new ones |
+| `sketch.ts` | `Loop.exact`; the joining of points, `segments` and the checks of an outline exported, with the three new ones |
 | `validation.ts` | `notProjected` on a reference to an entity; the two entries of `FACE_ROLES` |
 | `features/index.ts` | `requireRef` checks `notProjected` |
 | `document.ts` | the `setField` branch of `applyCommand` |
@@ -292,3 +292,20 @@ The same two reviewers, read-only, asked for blockers, majors and factual errors
 Found holding by both: the signed sweep of an arc for both senses and for outer loops and holes; the area test for the sliver; `notProjected` where it is enforced; the widened pre-check of `setField` with `Fields`, `fieldsOf` and a patch (no existing test changes its message). The internal reviewer worked five cases through the two tests of round 1 and found each refused; what it named as remaining ("a vertex exactly on an edge of another loop") is the finding above.
 
 Not checked by either: a numeric search for counterexamples to the tests on the polylines; they were reasoned through, not fuzzed. The implementation owes a property test (a random outline that passes hands the kernel a mesh it accepts).
+
+### Round 3 (2026-11-15), the last: the diff of the fixes of round 2, at `e4056d1`
+
+The owner's rule allows three rounds, and the third reads only the diff of the fix. The same two reviewers, read-only: `codex` (two majors and three factual errors over the four packages) and a fresh internal subagent (one major, two factual errors, two leftovers; with probes against the real engine and kernel and numeric scripts). `agy` did not take part: its account is out of quota. Neither found a blocker. Every finding was checked against the code. The ones on this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The exception of the clearance test for "two edges that share a vertex" covers any two edges with a common key, not only neighbours. A loop of two squares that touch in one vertex with one key passes every test and is not simple; `detectProfile` returns such a loop for a hole around two regions that meet in a corner (`sketch.ts` keeps repeated keys) | codex, major (run) | Yes | The exception is for edges that follow each other in a loop, by position; every corner of a moved outline has a key of its own, so a loop that returns to a point is refused |
+| "It runs in the sweep `soundTessellation` has": that sweep compares only edges whose boxes overlap, so two edges nearer than the tolerance with disjoint boxes are never measured. It cannot hide a contact | internal, factual (read) | Yes | The boxes are widened by the tolerance |
+| The file table still said "the two new ones" | internal | Yes | Three |
+
+Found holding: the clearance claim (the internal reviewer fuzzed 400 000 loops and 400 000 pairs of loops on integer grids against the test as worded with distinct vertices: none passes and is not simple, none passes and meets another, one vertex always decides the nesting); no false refusals (the edges of a tessellated arc are at least 0.77 of its radius, so only radii under 1.3e-6 are hit; tangent joints are obtuse; a straight wall needs about 2e-6 of thickness); the wall and the rings of 2b, by reading.
+
+Still open, as known limits:
+
+- The three tests were not run on real offset outlines, nor near the tolerance in floating point (the fuzz was on integer grids). The property test owed above is where that shows.
+- The wording of this round's fix (neighbours by position, a key per corner, the widened boxes) was read by no reviewer.

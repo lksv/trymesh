@@ -107,7 +107,10 @@ const named = (state: StateAfter, feature: Id, role: FaceNameAfter['role']): Fac
 const sameNames = (a: FaceNameAfter[], b: FaceNameAfter[]): boolean => a.length === b.length && a.every((name) => b.some((other) => sameName(name, other)));
 const about = (value: number, expected: number): boolean => Math.abs(value - expected) < 1e-9;
 
-// What the scenario asserts about them.
+// What the scenario asserts about them. One assumption about the widths of the parts stays, to
+// be checked against the rows when the catalogs are typed in: the heads, with the allowance, fit
+// into the top of the lid around their points, which are INSET from its edges (design.md,
+// "Tests the implementation owes"). If it fails, a parameter of the box changes.
 export function screwChecks(state: StateAfter): boolean {
   // the document holds expressions and numbers and a label, not a size
   const feature = state.document.features.find((f) => f.id === 'screwHoles');
@@ -195,6 +198,8 @@ export function insertHoles(): StateAfter {
 // functions part 2 of the preparatory step adds to the index of the engine; it has no declaration
 // in the contract, so this is a stand-in (design.md, "Needs from the preparatory step").
 declare function producesTool(feature: FeatureAfter): boolean;
+// The other assumption about widths: the hole of the insert, with the allowance, is narrower
+// than a post (`postR`), so that its bore is in the post.
 export function insertChecks(state: StateAfter): boolean {
   const feature = state.document.features.find((f) => f.id === 'inserts');
   const copies = state.evaluation.faceNames.filter((name) => name.feature === 'inserts' && name.role === 'holeBore' && name.copy?.[0]?.pattern === 'insertPattern').length;
@@ -214,8 +219,9 @@ export function refusals(): (string | undefined | boolean)[] {
     // and the hole now runs up from the top of the lid (deeper than the plate is thick, so
     // deeper than its cone, whatever the catalog says)
     done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { targets: ['box'], extent: { type: 'distance', start: 5, distance: 'lidT + 5' } } })).evaluation.features['screwHoles'].warnings[0]?.code, // noEffect
-    // "through all" away from the target: the lid does not reach above its own top, so the
-    // tool is built, cuts nothing and the recipe stays for a pattern; not `invalidHole`
+    // "through all" away from the target: the lid does not reach above its own top. The tool
+    // is built with the mark that it must not change a target; it only touches the lid, so the
+    // feature has the warning and the recipe stays for a pattern; not `invalidHole`
     done(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { extent: { type: 'throughAll', side: 'forward' } } })).evaluation.features['screwHoles'].warnings[0]?.code, // noEffect
   ];
 }

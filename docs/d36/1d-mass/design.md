@@ -143,14 +143,38 @@ Nothing was left without action. What stays open is under "Open": a body whose d
 
 What differs from the design and from `contract.ts`:
 
-- **`massIntegrals` gives the centroid and the second moments about it**, not the first and second moments about the origin of the model. The sums are taken by signed tetrahedra from a vertex of the mesh and the second moments are then moved to the centroid; a group is put together from its bodies by the parallel axis theorem. Summed from the origin, the tensor about the centre of mass is a difference of numbers that grow with the square of the distance of the body from the origin: a box of 10 mm at 4000 m (the test) would keep five digits, and it keeps them all. The answer of the query is the same.
+- **`massIntegrals` gives the centroid and the second moments about it**, not the first and second moments about the origin of the model. The sums are taken by signed tetrahedra from a vertex of the mesh and the second moments are then moved to the centroid; a group is put together from its bodies by the parallel axis theorem. Summed from the origin, the tensor about the centre of mass is a difference of numbers that grow with the square of the distance of the body from the origin: a box of 10 mm some thousands of metres away (the test) would keep no digit of it (the reviewer redid the sum: 521288 where 1000 is right), and it keeps them all. The answer of the query is the same.
 - **A body without a density, and a fill factor that reaches no body, are `invalidArguments`**, with the paths `['density']` and `['fill']`: the code `QueryFailure` got with 1b for arguments that do not go together. The design wrote `failed`, the stand-in of that time. A body without a volume stays `failed`, with the place of the body in `bodies`.
 - **No body can be called `constructor`.** The engine refuses an ID that every object has by inheritance for a feature, and the check of the arguments refuses such a key of a record, so the case of the first review cannot be built. The query still reads `densities` by its own keys only (`has`).
 - **`units` and `significant` are on the entry**: grams, mm³, g/cm³, millimetres and g·mm²; a tool prints the mass, the inertia and the moment to six significant digits. `fill` has no unit.
-- **The messages name the argument** (`density: …`, `fill: …`, `about: …`), as the check of the arguments does.
+- **The messages name the argument** (`bodies: …`, `density: …`, `fill: …`, `about: …`), as the check of the arguments does.
+- **A density has an upper bound**, 1000 g/cm³ (osmium has 22.6), and a mass that comes out zero or beyond the largest number is `failed`: a density or a fill factor at the edge of what a number holds would otherwise answer with numbers that are not numbers, which JSON writes as null.
+- **The centre of mass of a group is summed from the centroid of its first body**, so one body has exactly its own centroid whatever its density.
+- **A density in `densities` for a body that is not listed is allowed** and does nothing: one table of densities can go with several questions. The density each listed body was counted with is in the answer.
 - **The directory is `query/`**, as the preparatory step made it, not `queries/`.
 
 **Known limits.**
 
+- A body with an explicit mass (the second kind of `massSourceOf`) has no test: no body has one until 3a, which brings the test with it.
 - The integrals are those of the mesh: round faces are inscribed polygons, so a body with round faces weighs a little less than its exact shape (0.07 % for the carrier at the chord tolerance 0.01 mm). The answer does not carry an accuracy.
 - A list whose bodies overlap counts the shared volume twice, as designed; the query does not look.
+
+### Review of the engine side (2026-11-15)
+
+One full review by a subagent that did not write the code, read-only, with probes of its own. No serious finding. It derived the integrals over a tetrahedron again and checked them on a general tetrahedron and on an L-shaped prism; it checked the bodies put together, the tensor and the moment about a skew axis through the entry on two boxes turned about general axes, against a quadrature and a sum over voxels; the sign off the diagonal against URDF and MJCF; the units; the rules for the density and the fill factor through the engine; bodies from 1e-44 to 3e37 in size and 8000 m from the origin; the store of results. One round; the fix is small.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The elements of the tensor off the diagonal were pinned by no test: every body tested had none, and no axis was skew. Two mutations passed all tests: the signs flipped, two elements swapped (moderate) | Yes | Tests over a context written by hand: two blocks set diagonally with different densities, against the formulas of a box and with the numbers and signs written out, and mirrored; the moment about a skew axis given by a direction that is not a unit vector, against a formula that does not use the tensor |
+| A density or a fill factor at the edge of what a number holds was answered with NaN (a mass of zero) or with numbers beyond the largest | Yes (five probes) | A density has an upper bound, and a mass that is zero or not finite is `failed` |
+| Three branches had no test: a body without a volume (and its place in the argument), an axis that is not in the state, the copy of the remembered centroid | Yes (three mutations passed) | Tests of all three; the axis also through the engine, on a sketch whose face is gone |
+| The centre of mass of one body could differ from its own centroid in the last digit, and one test passed by the choice of its fill factor | Yes (26 of 100 fill factors) | The centre is summed from the centroid of the first body; the test runs over the fill factors that failed |
+| Negative zeros off the diagonal of the tensor of a block along the axes | Yes | They are zeros |
+| "Would keep five digits" (here and in a test) understates what the sum from the origin loses | Yes: not a digit | Corrected |
+| The message of a body without a volume did not name its argument | Yes | It does |
+| A limit on the time of a few milliseconds of work in scenario 11 | A test with a time limit has failed under load before | Removed |
+
+Not acted on, and why:
+
+- **A density in `densities` for a body that is not listed is ignored** (the reviewer's suspicion: a mistyped but existing ID would take the fallback without a word). Kept, and written down above: a table of densities shared by several questions is the use, and the answer lists the density of every body.
+- **The direction of the axis is made a unit vector although `context.axis` only gives unit vectors.** Kept: it costs nothing and the entry does not depend on that promise; it is tested over a context written by hand.

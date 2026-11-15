@@ -7,7 +7,8 @@ import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 
 // ---------------------------------------------------------------- the arguments
 
-const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true } } as const;
+// Above zero and below anything that is not a mistake: osmium has 22.6 g/cm3.
+const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }, max: { value: 1000 } } as const;
 
 // - `bodies`: the bodies taken as one rigid piece (a link of a mechanism); one body is a list of
 //   one. A body named twice counts once.
@@ -119,17 +120,20 @@ export function massIntegrals(solid: Solid): MassIntegrals {
   };
 }
 
-// Pieces as one: the mass, the centre of mass and the second moments about that centre. A piece
-// is its integrals and what a cubic millimetre of it weighs.
+// Pieces as one (at least one): the mass, the centre of mass and the second moments about that
+// centre. A piece is its integrals and what a cubic millimetre of it weighs.
 function together(pieces: readonly { unit: MassIntegrals; perVolume: number }[]): { mass: number; center: Vec3; central: Second } {
+  // The centre is summed from the centroid of the first piece: one piece then has exactly its
+  // own centroid, and a group far from the origin loses no digits here either.
+  const first = pieces[0].unit.centroid;
   let mass = 0;
   const weighted: Vec3 = [0, 0, 0];
   for (const { unit, perVolume } of pieces) {
     const own = perVolume * unit.volume;
     mass += own;
-    for (let k = 0; k < 3; k++) weighted[k] += own * unit.centroid[k];
+    for (let k = 0; k < 3; k++) weighted[k] += own * (unit.centroid[k] - first[k]);
   }
-  const center: Vec3 = [weighted[0] / mass, weighted[1] / mass, weighted[2] / mass];
+  const center: Vec3 = [first[0] + weighted[0] / mass, first[1] + weighted[1] / mass, first[2] + weighted[2] / mass];
   const central: Second = [0, 0, 0, 0, 0, 0];
   for (const { unit, perVolume } of pieces) {
     const own = perVolume * unit.volume;
@@ -144,10 +148,11 @@ function together(pieces: readonly { unit: MassIntegrals; perVolume: number }[])
 // The inertia tensor from the second moments about the same point: the moment about X is what
 // lies away from X (y·y + z·z), and off the diagonal stands the negative product.
 function tensor([xx, yy, zz, xy, yz, zx]: Second): [Vec3, Vec3, Vec3] {
+  // `0 - xy`, not `-xy`: a product of zero stays zero, not negative zero
   return [
-    [yy + zz, -xy, -zx],
-    [-xy, zz + xx, -yz],
-    [-zx, -yz, xx + yy],
+    [yy + zz, 0 - xy, 0 - zx],
+    [0 - xy, zz + xx, 0 - yz],
+    [0 - zx, 0 - yz, xx + yy],
   ];
 }
 
@@ -187,7 +192,7 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       const solid = context.bodies[id].solid; // from the context: the same code answers for a pose
       // one pass over the triangles, remembered by the mesh
       const unit = context.memo([solid], 'integrals', () => massIntegrals(solid));
-      if (!(unit.volume > 0)) throw new QueryFailure('failed', `the body "${id}" has no volume`, ['bodies', args.bodies.indexOf(id)]); // the place in the argument, not in the set
+      if (!(unit.volume > 0)) throw new QueryFailure('failed', `bodies: the body "${id}" has no volume`, ['bodies', args.bodies.indexOf(id)]); // the place in the argument, not in the set
       // Whose density: the call's by body, then the body's own, then the call's for all. An own
       // key of the record only: a body may have an ID that every object has by inheritance.
       const named = args.densities !== undefined && has(args.densities, id) ? { density: args.densities[id] } : undefined;
@@ -205,6 +210,9 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       throw new QueryFailure('invalidArguments', 'fill: the fill factor applies to the bodies that take `density`, and none of the listed bodies does: give their densities as effective ones', ['fill']);
     }
     const whole = together(pieces);
+    // A density or a fill factor at the edge of what a number can hold gives a mass of zero or
+    // beyond the largest number: no answer is better than one with numbers that are not numbers.
+    if (!(whole.mass > 0) || ![whole.mass, ...whole.center, ...whole.central].every(Number.isFinite)) throw new QueryFailure('failed', 'the mass of the bodies is zero or too large to compute with: check the densities and the fill factor');
     const inertia = tensor(whole.central);
     const result: MassProperties = { mass: whole.mass, volume: bodies.reduce((sum, body) => sum + body.volume, 0), centerOfMass: whole.center, inertia, bodies };
     if (!args.about) return result;

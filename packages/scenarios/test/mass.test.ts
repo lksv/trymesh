@@ -120,6 +120,11 @@ describe('the query mass', () => {
     expect(sparse.mass).toBeCloseTo(0.4 * solid.mass, 9);
     expect(sparse.inertia[2][2]).toBeCloseTo(0.4 * solid.inertia[2][2], 6);
     expect(sparse.centerOfMass).toEqual(solid.centerOfMass);
+    // review: an answer changed by its reader does not change the next one (the centre of a body is remembered by its mesh)
+    sparse.bodies[0].centerOfMass[0] = -1;
+    sparse.centerOfMass[1] = -1;
+    sparse.inertia[2][2] = -1;
+    expect(mass(engine, { bodies: ['A'], density: PLA, fill: 0.4 })).toMatchObject({ centerOfMass: solid.centerOfMass, bodies: [{ centerOfMass: solid.centerOfMass }], inertia: [expect.anything(), expect.anything(), near([0, 0, 0.4 * solid.inertia[2][2]], 6)] });
     // every body by `densities`: `density` is not needed
     expect(mass(engine, { bodies: ['A', 'B'], densities: { A: 1, B: 2 } }).mass).toBeCloseTo(12 + 6, 6);
     // a density for a body that is not asked about is allowed and does nothing
@@ -139,10 +144,18 @@ describe('the query mass', () => {
     expect(engine.query('mass', { bodies: ['A', 'nope'], density: 1 })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['bodies', 1] } });
     expect(engine.query('mass', { bodies: [], density: 1 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['bodies'] } });
     expect(engine.query('mass', { bodies: ['A'], density: 0 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['density'] } });
+    expect(engine.query('mass', { bodies: ['A'], density: 1001 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['density'] } });
+    expect(engine.query('mass', { bodies: ['A'], density: 1e-322 })).toMatchObject({ ok: false, error: { code: 'failed' } }); // a mass of zero
     expect(engine.query('mass', { bodies: ['A'], density: 1, fill: 1.5 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['fill'] } });
     expect(engine.query('mass', { bodies: ['A'], density: 1, fill: 0 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['fill'] } });
     expect(engine.query('mass', { bodies: ['A'], densities: { A: -1 } })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['densities', 'A'] } });
     expect(engine.query('mass', { bodies: ['A'], density: 1, about: { kind: 'sketchPoint', sketch: 'sA', point: 'nope' } })).toMatchObject({ ok: false, error: { arg: ['about', 'point'] } });
+    // review: an axis through a point of a sketch whose plane is gone (a face of a body that was removed)
+    run(engine, addSketch('sF', { kind: 'face', body: 'B', face: { feature: 'B', role: 'endCap' } }));
+    expect(engine.query('mass', { bodies: ['A'], density: 1, about: { kind: 'sketchPoint', sketch: 'sF', point: 'origin' } })).toMatchObject({ ok: true });
+    const without = engine.preview({ type: 'removeFeature', id: 'B' });
+    if (!without.ok) throw new Error(without.error.message);
+    expect(engine.query('mass', { bodies: ['A'], density: 1, about: { kind: 'sketchPoint', sketch: 'sF', point: 'origin' } }, { state: without.state })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['about'] } });
     // B is not there yet after A
     expect(engine.query('mass', { bodies: ['B'], density: 1 }, { at: 'A' })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['bodies', 0] } });
   });

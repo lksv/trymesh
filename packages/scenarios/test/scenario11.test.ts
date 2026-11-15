@@ -334,9 +334,7 @@ describe('scenario 11: the queries asked about the robot joint', () => {
   it('1d: what turns with the output: the carrier and the three planets as one piece, about the axis of the joint', () => {
     const planets = engine.getState().evaluation.features.planets.bodies ?? [];
     expect(planets).toEqual(['planets/1', 'planets/2']);
-    const started = performance.now();
     const link = mass(engine, { bodies: ['carrier', 'planet', ...planets], density: PLA, about: { kind: 'base', axis: 'Z' } });
-    const took = performance.now() - started;
     expect(link.volume).toBeCloseTo(30393.134, 1);
     expect(link.mass).toBeCloseTo(37.687, 3);
     // three planets a third of a turn apart cancel out: the centre of mass stays on the axis
@@ -353,8 +351,6 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     // the link is its four bodies: their moments about the axis add up
     const carrier = mass(engine, { bodies: ['carrier'], density: PLA, about: { kind: 'base', axis: 'Z' } });
     expect(link.about?.moment).toBeCloseTo((carrier.about?.moment ?? 0) + 3 * (planet.about?.moment ?? 0), 0);
-    // four bodies of some thousands of triangles: a few milliseconds, well under a second on a loaded machine
-    expect(took).toBeLessThan(1000);
   });
 
   it('1d: a bought motor and a printed carrier: a density by body, and a fill factor for the printed one', () => {

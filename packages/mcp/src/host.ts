@@ -13,8 +13,10 @@
 // This module has no dependency on Node or on a browser: the server and the app share it.
 import { type ArgPath, type ArgSpecs, type ArgsOf, type Engine, type QueryOutcome, type RunArgsOf, checkArgs } from '@trymesh/engine';
 import type { Json, ToolAnswer, ToolOutcome } from './tools';
+import { viewImage } from './view-image';
 
-// What an operation needs of the app besides the engine. Empty until the first operation.
+// What an operation needs of the app besides the engine. The module of an operation adds its
+// member (`view` of view-image.ts).
 export interface AppHost {}
 // The host as the app hands it over: its capabilities and its engine in one object, which an
 // operation gets as it is (not a copy: a host may be an instance of a class).
@@ -48,7 +50,7 @@ export type HostOperationSet = { readonly [name: string]: AnyHostOperation };
 type InvalidSpecs = { [N in keyof HostOperations]: HostOperations[N] extends ArgSpecs ? never : N }[keyof HostOperations];
 export const OPERATIONS_ARE_VALID: [InvalidSpecs] extends [never] ? true : { [N in InvalidSpecs]: 'is not a valid description' } = true;
 
-export const HOST_OPERATIONS: HostCatalog = {};
+export const HOST_OPERATIONS: HostCatalog = { view_image: viewImage };
 
 const own = (set: HostOperationSet, name: string): boolean => Object.prototype.hasOwnProperty.call(set, name);
 

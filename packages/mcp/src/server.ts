@@ -225,7 +225,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   // need a path to be written to, which an operation does not take: the tool `export` is the one
   // that writes.
   const answer = (name: string, value: ToolAnswer) =>
-    value.kind === 'image' ? { content: [{ type: 'image' as const, data: value.base64, mimeType: value.mediaType }] } : value.kind === 'data' ? reply(value.data) : reply(`the operation ${name} answered with files, which this tool has no path to write to`, true);
+    value.kind === 'image' ? { content: [{ type: 'image' as const, data: value.base64, mimeType: value.mediaType }, ...(value.about ? [{ type: 'text' as const, text: print(value.about) }] : [])] } : value.kind === 'data' ? reply(value.data) : reply(`the operation ${name} answered with files, which this tool has no path to write to`, true);
   // An operation of the app as a tool: its arguments are those of its description, checked by the
   // app in the state of its document.
   const operationTools = () =>

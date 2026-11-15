@@ -20,10 +20,8 @@
   engine: getState("s1")  (x6)
   engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
   engine: getState("s1")
-  engine: getState("e1")  (x2)
-  engine: getState("s1")
-  engine: getState("e1")
-  engine: getState("s1")  (x4)
+  engine: getState("e1")  (x3)
+  engine: getState("s1")  (x5)
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -116,6 +114,7 @@
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
         button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
   timeline:
       h2: "Časová osa"
@@ -2472,7 +2471,13 @@
     -     p.answer: "gaps: no"
   view: 1 scene(s) set
 
-=== 60. the query Section: the plane is the top of the plate, taken from a click, 5 mm into the body
+=== 60. a picture of the model saved: every body in its colour, from the camera of the view, drawn off the screen
+  status: Picture of the model saved (1600 × 1200): the bodies shown, without the selection, sketches, planes and dimensions.
+  view: 0 scene(s) set
+  view: image 1600 × 1200, camera current, 3 bodies #4e79a7 #f28e2b #e15759, 124 segments
+  download: model.png
+
+=== 61. the query Section: the plane is the top of the plate, taken from a click, 5 mm into the body
   panel:
     + h2 title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     + label title="A base plane, a plane feature or a planar face."
@@ -2514,7 +2519,7 @@
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
 
-=== 61. asked: the model is cut, the cut of the three bodies filled and outlined, the bodies with their areas
+=== 62. asked: the model is cut, the cut of the three bodies filled and outlined, the bodies with their areas
   engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-5,"outline":"polylines","maxPoints":1000000}, {}) -> ok
   panel:
     +   button.primary: "Ask again"
@@ -2538,10 +2543,10 @@
     + fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 955
     - face e1 #1 #0ea5e9 opacity 0.3
 
-=== 62. a click on the filled cut selects nothing: behind it is the inside of the plate
+=== 63. a click on the filled cut selects nothing: behind it is the inside of the plate
   view: 1 scene(s) set
 
-=== 63. a click on a wall below the cut selects as ever
+=== 64. a click on a wall below the cut selects as ever
   panel:
     + h2: "Výběr"
     + p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
@@ -2553,7 +2558,7 @@
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 160
     + line #f97316 width 4 onTop: 6 numbers, sum 160
 
-=== 64. the rim of the pin that is cut away is not under the pointer; the one below the cut is
+=== 65. the rim of the pin that is cut away is not under the pointer; the one below the cut is
   panel:
     - h2: "Výběr"
     - p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
@@ -2566,7 +2571,7 @@
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 160
     - line #f97316 width 4 onTop: 6 numbers, sum 160
 
-=== 65. the plane stepped along its normal: asked again with the arguments of the form
+=== 66. the plane stepped along its normal: asked again with the arguments of the form
   engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-4,"outline":"polylines","maxPoints":1000000}, {}) -> ok
   panel:
     +     input.value value="-4" placeholder="0"
@@ -2591,7 +2596,7 @@
     - fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 100 numbers, sum 20715.13
     - fill #7a8794 opacity 1 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 955
 
-=== 66. the pin hidden: its fill and its outline go with it
+=== 67. the pin hidden: its fill and its outline go with it
   timeline:
     + div.row.ok.hidden
     - div.row.ok
@@ -2606,7 +2611,12 @@
     - line #26303c width 1.5 overFills: 300 numbers, sum 44135.871
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 100 numbers, sum 20715.13
 
-=== 67. seen from the other side: the other half is cut away
+=== 68. a picture saved while the section is shown: the bodies that are not hidden keep their colours, cut as the view is, each cut filled in the shade of its body
+  view: 0 scene(s) set
+  view: image 1600 × 1200, camera current, 2 bodies #4e79a7 #e15759, 24 segments, cut at [0, 0, 6] normal [0, 0, 1], 2 fill(s) #375575 #9e3d3e
+  download: model.png
+
+=== 69. seen from the other side: the other half is cut away
   engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-4,"flip":true,"outline":"polylines","maxPoints":1000000}, {}) -> ok
   timeline:
     + div.row.ok
@@ -2635,7 +2645,7 @@
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 530
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, 1]: 8 numbers, sum 955
 
-=== 68. the section closed: the model is whole again
+=== 70. the section closed: the model is whole again
   panel:
     - h2 title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     - label title="A base plane, a plane feature or a planar face."
@@ -2691,7 +2701,7 @@
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 100 numbers, sum -14744.87
     - fill #7a8794 opacity 1 at [0, 0, 6] normal [0, 0, -1]: 8 numbers, sum -485
 
-=== 69. the query Smallest gap within 100 mm: a row per pair, the closest first, a pair at zero with its contact
+=== 71. the query Smallest gap within 100 mm: a row per pair, the closest first, a pair at zero with its contact
   engine: query("gap", {"within":100}, {}) -> ok
   panel:
     + h2 title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
@@ -2723,7 +2733,7 @@
   status: Gaps: 3 pair(s) of bodies within 100 mm of each other.
   view: 2 scene(s) set
 
-=== 70. a pair at zero picked: its two bodies are highlighted
+=== 72. a pair at zero picked: its two bodies are highlighted
   panel:
     + div.row.selected title="Highlight the two bodies. The two bodies share a volume"
     - div.row title="Highlight the two bodies. The two bodies share a volume"
@@ -2742,7 +2752,7 @@
     + face e3 #13 #dc2626 opacity 0.45
     + face e3 #14 #dc2626 opacity 0.45
 
-=== 71. a pair with a gap picked: the two faces named and highlighted, the two points joined by a line with its length
+=== 73. a pair with a gap picked: the two faces named and highlighted, the two points joined by a line with its length
   panel:
     + div.row title="Highlight the two bodies. The two bodies share a volume"
     - div.row.selected title="Highlight the two bodies. The two bodies share a volume"
@@ -2766,7 +2776,7 @@
     - face e3 #13 #dc2626 opacity 0.45
     - face e3 #14 #dc2626 opacity 0.45
 
-=== 72. at most one pair listed: the panel says how many there are
+=== 74. at most one pair listed: the panel says how many there are
   engine: query("gap", {"within":100,"maxPairs":1}, {}) -> ok
   panel:
     +     input.value value="1" placeholder="50"
@@ -2796,7 +2806,7 @@
     - face e2 #8 #0ea5e9 opacity 0.4
     - label "45 mm" reference at [62.5, 15, 0]
 
-=== 73. the gaps closed
+=== 75. the gaps closed
   panel:
     - h2 title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     - label title="Only pairs among these; without it all bodies. Two bodies ask about one pair."
@@ -2822,7 +2832,7 @@
   status: 
   view: 1 scene(s) set
 
-=== 74. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
+=== 76. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
   panel:
     + h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     + label title="Taken together as one rigid piece."
@@ -2877,7 +2887,7 @@
     +   button: "Close"
   view: 1 scene(s) set
 
-=== 75. asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor
+=== 77. asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor
   engine: query("mass", {"bodies":["e1","e2"],"density":1.24,"densities":{"e2":7.8}}, {}) -> ok
   panel:
     +   button.primary: "Ask again"
@@ -2910,7 +2920,7 @@
     +     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
   view: 1 scene(s) set
 
-=== 76. asked without the density for all: refused at the density for the body that has none, its row marked
+=== 78. asked without the density for all: refused at the density for the body that has none, its row marked
   engine: query("mass", {"bodies":["e1","e2"],"densities":{"e2":7.8}}, {}) -> invalidArguments: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`
   panel:
     + label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
@@ -2947,7 +2957,7 @@
   status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`  [error]
   view: 1 scene(s) set
 
-=== 77. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
+=== 79. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
   panel:
     + h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     + label title="Each is a print of its own; without it all bodies."
@@ -3071,7 +3081,7 @@
   status: 
   view: 2 scene(s) set
 
-=== 78. asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so
+=== 80. asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so
   engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]}},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200}}, {}) -> ok
   panel:
     +   button.primary: "Ask again"
@@ -3104,7 +3114,7 @@
   status: Print check: 3 bodies in 2 orientations. 1 of 6 do not fit the bed. Pick a row to see its faces.
   view: 1 scene(s) set
 
-=== 79. a row picked: the overhanging faces are listed with their areas and heights and painted on the model
+=== 81. a row picked: the overhanging faces are listed with their areas and heights and painted on the model
   panel:
     + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3115,7 +3125,7 @@
   scene:
     + face e1 #5 #dc2626 opacity 0.6
 
-=== 80. the row of the other orientation picked: the face on the bed is painted, nothing overhangs
+=== 82. the row of the other orientation picked: the face on the bed is painted, nothing overhangs
   panel:
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3131,7 +3141,7 @@
     + face e1 #1 #0ea5e9 opacity 0.6
     - face e1 #5 #dc2626 opacity 0.6
 
-=== 81. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
+=== 83. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
   engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]},"turn":0.5235987755982988},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200},"overhang":0.3490658503988659,"minArea":100,"maxFaces":1}, {}) -> ok
   panel:
     +           input.value value="30" placeholder="0"
@@ -3176,7 +3186,7 @@
     + face e1 #0 #dc2626 opacity 0.6
     - face e1 #1 #0ea5e9 opacity 0.6
 
-=== 82. a row with an overhang below the smallest area listed: counted, not listed and not painted
+=== 84. a row with an overhang below the smallest area listed: counted, not listed and not painted
   panel:
     + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
     - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
@@ -3195,7 +3205,7 @@
     + face e2 #8 #dc2626 opacity 0.6
     - face e1 #0 #dc2626 opacity 0.6
 
-=== 83. the print check closed
+=== 85. the print check closed
   panel:
     - h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     - label title="Each is a print of its own; without it all bodies."
@@ -3322,7 +3332,7 @@
   scene:
     - face e2 #8 #dc2626 opacity 0.6
 
-=== 84. a change of the document throws the answer away
+=== 86. a change of the document throws the answer away
   engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
@@ -3346,11 +3356,11 @@
     +   button: "Close"
   view: 2 scene(s) set
 
-=== 85. waiting for a plane cancelled
+=== 87. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 86. a new document
+=== 88. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
@@ -3361,6 +3371,8 @@
     -   button title="Ctrl+Z": "↶ Zpět"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     -   button title="Check which bodies share a volume": "Collisions"
+    +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
     + p.hint: "Zatím prázdná. Nové prvky se objeví zde."
     - div.row.ok

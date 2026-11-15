@@ -14,10 +14,14 @@ import { connect, newEngine } from './kit';
 
 // Arguments of every operation, of the operation's own type, that are valid over `model()` below.
 // The test checks them against the description; the operation itself needs the app to run, so
-// its package tests it there.
-const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {};
+// its package tests it there (`view_image`: view-image.test.ts).
+const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {
+  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, at: 'disc', width: 640, height: 480 },
+};
 // Every argument of every operation and whether a caller may leave it out, as the type says.
-const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {};
+const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {
+  view_image: { view: 'optional', bodies: 'optional', section: 'optional', at: 'optional', width: 'optional', height: 'optional' },
+};
 const ENTRIES = Object.entries(HOST_OPERATIONS as Record<string, AnyHostOperation>);
 
 describe('the registry of operations of the app', () => {
@@ -217,10 +221,11 @@ describe('an operation of the app', () => {
     expect(await callHostOperation(host, 'view_image', { body: 'disc' }, OPERATIONS)).toEqual({ ok: true, result: { kind: 'image', mediaType: 'image/png', base64: 'AAAA' } });
     expect(await callHostOperation(host, 'nope', {}, OPERATIONS)).toEqual({ ok: false, error: 'there is no operation "nope"' });
     expect(await callHostOperation(host, 'constructor', {}, OPERATIONS)).toEqual({ ok: false, error: 'there is no operation "constructor"' });
-    expect(await callHostOperation(host, 'count_bodies', {})).toEqual({ ok: false, error: 'there is no operation "count_bodies"' }); // the registry has none yet
+    expect(await callHostOperation(host, 'count_bodies', {})).toEqual({ ok: false, error: 'there is no operation "count_bodies"' }); // not one of the registry
     await expect(callHostOperation(host, 'broken', {}, OPERATIONS)).rejects.toThrow('no canvas');
     expect(isHostOperation('view_image', OPERATIONS)).toBe(true);
     expect(isHostOperation('toString', OPERATIONS)).toBe(false);
-    expect(isHostOperation('view_image')).toBe(false);
+    expect(isHostOperation('view_image')).toBe(true); // the one operation of the registry
+    expect(isHostOperation('count_bodies')).toBe(false);
   });
 });

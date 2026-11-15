@@ -1,6 +1,6 @@
 # 1f View image for the AI
 
-**Decision D43. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D43. State: implemented on the branch `d36/1f` (the operation `view_image`, the capability of the view of the app, the button that saves a picture). See "As implemented" at the end, which says where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the operation as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: pictures of the joint: whole, the gears alone, and cut through the gears.
 
@@ -158,3 +158,43 @@ Nothing was left without action.
 | The message of a section that is too large says "N points"; the number counts loops and points | internal | Yes | The message |
 
 Nothing was left without action. Not reviewed by anyone: the change of this round (`takenAt` in `cutOf`). Still true after three rounds: nothing of this package was run in a browser.
+
+## As implemented
+
+### The operation and the view (2026-11-15)
+
+`packages/mcp/src/view-image.ts`: the views (`VIEWS`), the capability (`ViewCapability`, `ImageRequest`, `RenderedImage`), the arguments, `cutOf` and the operation `viewImage`, which `host.ts` puts into `HOST_OPERATIONS`. `packages/app/src/picture.ts`: what a request draws (`pictureModel`), the capability over a view (`viewCapability`), the palette, and `savePicture` behind the button. `packages/app/src/viewport.ts`: `View.image(model, camera, width, height)`, the picture drawn off the screen. `app.ts` hands the host its `view` and has the button.
+
+Tests: `packages/mcp/test/view-image.test.ts` (what the operation asks of a view that writes its requests down: the state, the bodies, the camera of every named view, `at`, the cut against the answer of the query `section`; the refusals; and a picture on its way from the app through a real bridge and the server to a client, as image content with its text), the rows of the operation in `host-operations.test.ts`, `packages/app/test/picture.test.ts` (what a request draws and what the button asks for, over states written by hand), four recorded steps of `packages/app/test/app.test.ts` (the button, the button while a section is shown and a body is hidden, a picture taken by the AI over the bridge, one refused) and two cases of scenario 11 on the joint.
+
+What differs from the design and from `contract.ts`:
+
+- **Next to the picture the answer says what pixels do not** (the need "Data next to a picture" of the design, taken up): a `ToolAnswer` of the kind `image` may carry `about`, and the server returns it as a text next to the image content. `view_image` puts there the size, the scale in millimetres per pixel and, for every body drawn, its colour as `#rrggbb` and as a word. So an AI that sees an orange part is told it is the plate.
+- **A cut is filled with a darker shade of the colour of its body**, not with one grey as in the app, and a region of the cut therefore comes with its body (`ImageCut.regions[i].body`; the contract dropped it). Seen from above, a model cut across its axis is nothing but fills: in one grey the gears of the joint would run into each other again, which is what the colours are for.
+- **The module is `view-image.ts`**, next to `host.ts`, where the preparatory step put the registry (the design wrote `operations.ts`); the app imports it as `@trymesh/mcp/view-image`. What a request draws is in `picture.ts` of the app, not in `scene.ts`: it shares nothing with the scene of the user's view but the helpers of `draw.ts`.
+- **Who checks what.** `callHostOperation` checks the arguments against the description in the state of the document now, as the preparatory step built it: the shape, the ranges, and every body, feature and plane named. The operation then looks the bodies up again in the state after `at`, which is the state it draws. So a body that the document has and the earlier state does not is refused by the operation (`bodies: the body "late" is not in the state after "pin"`), and a body that only an earlier state had cannot be named at all (see the limits).
+- **The codes of the query `section` pass through as they are**: a plane that is not planar is `notAvailable`, as the query answers since 1b. The design mapped them to `failed`, the stand-in of its time. The path of the argument gets `section` in front.
+- **Without an app the server answers before the operation runs** (`noAppText` of the preparatory step: "the operation runs in the app and no app is connected"). The refusal of the operation itself is for a host without a view, which only a test has.
+- **The camera.** A named view is fitted to the whole of the bodies drawn, with a margin of a twentieth on every side, also when most of them is cut away: two pictures of the same bodies with and without a cut then line up. `current` is where the user's camera stands and looks, at a scale that shows at least all the window shows, whatever the shape of the picture.
+- **The button** is labelled *Save picture* (its tooltip says that it is of the model, and what is left out) and saves `model.png` at 1600 by 1200.
+- **The status bar says when the AI took a picture**, and why not when it was refused: nothing else on the screen shows it.
+- **The palette** has ten named colours of one lightness; an eleventh body gets the first again.
+
+**Run in a browser** (the list under "Open"), on a plate with a ledge and a pin and on the joint of scenario 9:
+
+- A picture is drawn into a render target of its own size with four samples and read back; nothing waits for a frame. The first picture of a session took 850 ms (the shaders are compiled then), the others 20 to 115 ms.
+- The width of the edges is right at every size: the material of a line is told the size of the picture before each draw (three.js tells it the size of the canvas otherwise).
+- The colours are those of the canvas once the texture of the target is marked sRGB.
+- The size of a picture of the joint, as the length of its base64 text: 101 948 characters at 800 by 600 (the whole joint), 72 584 cut through the gears from above, 351 880 at 1600 by 1200, 245 032 cut at 1600 by 1600. The guard is 2 000 000.
+- The three pictures of the scenario show what they are for: the whole joint with its parts in their colours, the gears from above, and the cut through the gears with the sun, the planets, the pins of the carrier and the ring gear each in its own shade. A cut along the axis from the front shows the motor recess, the flange of the sun and the pins.
+- The button with a section shown saves the picture the view shows, in colours, without the planes and the sketches.
+- Not run: a tab in the background, and a call from a real client of the server to the app in a browser (the port of the bridge was taken by another session; the tests go that way with a real bridge and a view that does not draw, and with a real server).
+
+**Known limits.**
+
+- A picture of a previewed change (`after`) or of a pose is not possible: the path of an operation has no state but the document (the need of the design stands).
+- A body that only an earlier state had (one that a later feature merged into another) cannot be named with `at`: the arguments are checked in the state of the document now first.
+- `view: 'current'` takes only the camera of the user: not the bodies the user has hidden, and not a section the app shows. The button of the app takes both.
+- More than ten bodies share colours.
+- The picture is of bodies only: no sketches, planes, dimensions or highlighted faces.
+

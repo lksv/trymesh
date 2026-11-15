@@ -1,6 +1,6 @@
 # 00 Preparatory step, part 2: a module per feature type
 
-**State: fifth version, after four rounds of reviews.** Written from reading `packages/engine/src/evaluate.ts` and `document.ts`; both are unchanged between `cedc825` and `371bcd7`. The part changes no public type, so it has no `contract.ts`; the interfaces below are internal and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 2; the reviews that led to this version are recorded there under "Reviews", rounds 2 to 5.
+**State: implemented (commits `9f3eeb5` to `354501e`); the design below is its fifth version, after four rounds of reviews. What differs is under "As implemented".** Written from reading `packages/engine/src/evaluate.ts` and `document.ts`; both are unchanged between `cedc825` and `371bcd7`. The part changes no public type, so it has no `contract.ts`; the interfaces below are internal and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 2; the reviews that led to this version are recorded there under "Reviews", rounds 2 to 5.
 
 ## What is there today
 
@@ -170,6 +170,19 @@ Checks:
 - The cache is not touched: the `Resolution` and the previous state stay its keys, the initial state stays per settings object, a drag still bypasses it, and `Step.writeBack` and `rehang` are as they were.
 
 This is the most delicate file of the engine, so the part gets its own independent review before part 1 (the registry of queries) starts on `engine.ts`.
+
+## As implemented
+
+The six steps were done in the order above, one commit each and four for step 4. Every commit passed all the tests untouched, both type checks, the spikes and the MCP build. What differs from the text above:
+
+- **The test of commit 1 checks more.** Besides loading every module as the first one, `packages/engine/test/modules.test.ts` reads the imports that exist at run time and fails on any cycle among them. Loading alone would not show a cycle whose modules read each other only inside functions.
+- **No field description is shared by types**, so `validation.ts` holds none: `OFFSET`, the two of the extent and the two of the pattern live with their types.
+- **`refContext(doc, before)`** (the `RefContext` over `requireRef`) is exported by `features/index.ts` next to `requireRef`; `document.ts` uses it for `validated`, `fieldsOf` and the three commands.
+- **`frame` of the services** is imported by the modules under another name (`frameOf`), because the steps call their result `frame`.
+- **The fields a profile brings from the catalog of generators** are exported by `features/profile.ts` as `PROFILE_FIELD_SPECS`, and the extrusion lists them in its entry.
+- **`featureSummary` lost its three branches**, not only gained a default: the fields `updatable` lists, in their order, plus the facts are exactly what the branches of the plane, the pattern and the extrusion returned.
+- **`StepContext` came with the first module** (commit 4a), not with commit 3.
+- **An unknown feature type in the recompute** used to throw from the `default` of the `switch`; now `specOf` gives no module and the call fails. Neither can be reached: a document is validated before it is replayed.
 
 ## Open
 

@@ -6,7 +6,7 @@
 |---|---|
 | 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); reviewed five times, see "Reviews" |
 | 4 Shared vocabulary | same |
-| 2 A module per feature type | designed in [part2-feature-modules.md](part2-feature-modules.md); reviewed four times |
+| 2 A module per feature type | implemented in six steps (nine commits, `9f3eeb5` to `354501e`) as designed in [part2-feature-modules.md](part2-feature-modules.md); what differs from the design is listed there under "As implemented" |
 | 3 Panels and forms of the app | designed in [part3-app-panels.md](part3-app-panels.md); reviewed twice; afterwards its check became a test of the class, see below |
 | 5, 6 Documents by area, several trees | proposal below; no code |
 

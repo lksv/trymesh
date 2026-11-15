@@ -48,7 +48,28 @@ packages/
 
 Moduly aplikace (`packages/app/src`): `viewport.ts` (three.js: vykreslení popisu scény, paprsek pod kurzorem, zásah tělesa), `sketch-view.ts` (geometrie skici pro vykreslení, test zásahu a měření), `sketch-commands.ts` (příkazy kreslicích nástrojů, vazby a kóty z výběru), `app.ts` (stav UI, režimy, časová osa, panely). Spouští se `pnpm dev`.
 
-Moduly enginu (`packages/engine/src`): `catalog.ts` (katalog vazeb), `document.ts` (registr typů features, validace a provedení příkazů, načtení a převod starších verzí dokumentu), `analysis.ts` a `diagnose.ts` (rozbor určenosti skici a diagnostika), `sketch.ts` (vstup solveru a razítko, referenční kóty, profily a oblasti), `solid.ts` (síť extrude, stěny a hrany tělesa, rovina na stěně, promítnutí hrany, STL), `evaluate.ts` (přepočet s cache), `engine.ts` (fasáda), `sketch-tools.ts` (sketch tools: whole shapes as batches of commands, shared by the app and MCP; D35, point 7).
+Modules of the engine (`packages/engine/src`), after the preparatory step of D36 (D37):
+
+| Module | Content |
+|---|---|
+| `catalog.ts`, `generators.ts`, `expression.ts`, `util.ts` | the catalogs (constraints, numeric fields, profile generators), expressions, utilities |
+| `sketch-content.ts` | what the content of a sketch is, without validation: entities, operands and keys of constraints, the IDs of a document, the owner of a body ID |
+| `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
+| `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
+| `solid.ts`, `interference.ts` | the mesh of a prism, faces and edges of a body, the plane on a face, the projection of an edge, STL; interference of bodies |
+| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `SketchState`) |
+| `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
+| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
+| `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
+| `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |
+| `features/profile.ts` | the document half of a profile source: validation, references, fields |
+| `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
+| `document.ts` | commands, `validateDocument`, the upgrade of older documents, `fieldsOf`, `featureInput`, `featureRefs` |
+| `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
+| `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
+| `engine.ts` | the facade |
+
+The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` checks that the imports that exist at run time have no cycle and loads every module as the first one.
 
 Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
@@ -178,7 +199,7 @@ The profile source and the extent are variants distinguished by the field `type`
 
 ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). An extrusion creates only a body without a local name; a pattern of a body creates the bodies `<pattern>/<number>` (D35, point 4). Délky jsou v milimetrech, úhly v radiánech.
 
-**Registr typů features** (`FEATURE_TYPES` v `document.ts`) drží pro každý typ vše, co o něm potřebuje vědět dokument: validaci a kanonický tvar, odkazy na jiné features s cestou, kde ve feature leží, zda feature vytváří těleso a pojmenovává stěny, a která pole smí měnit `updateFeature`. Validace odkazů, pořadí na časové ose, `moveFeature` i popis API pro AI se řídí registrem, takže nový typ feature je jedna položka registru a jedna větev kroku přepočtu v `evaluate.ts`; úplnost obou míst hlídá překladač. Veřejná část registru je `FEATURE_TYPE_INFO`. It also lists the numeric fields of each type (`fields`); validators read them through the field reader described in Parameters and expressions.
+**The registry of feature types** (`FEATURE_TYPES` in `features/index.ts`) holds a module per type (`FeatureModule` in `features/module.ts`): the validation and the canonical form, the references to other features with the place inside the feature where each lies, whether the feature creates a body and names faces, whether it leaves a tool that a pattern can repeat (`producesTool`), the generator of its profile (`generator`), whether a failed expression is only a warning (`keepsLastValidValues`, the sketch), which fields `updateFeature` may change, and the step of the recompute. Validation of references, the order on the timeline, `moveFeature`, the recompute and the description of the API for the AI all read the registry. A new feature type is its interface and one member of `Feature` and of `FeaturePatch` in `types.ts`, a module in `features/` and one line of the registry. The registry is a mapped type over `Feature['type']` and an entry needs a step, so it is the one guard of completeness (until D37 a `switch` in `evaluate.ts` was the second). The public part of the registry is `FEATURE_TYPE_INFO`; the engine also exports `producesTool(feature)` and `generatorOf(feature)`, which the app uses to offer the sources of a pattern and the mates of a generated profile. It also lists the numeric fields of each type (`fields`); validators read them through the field reader described in Parameters and expressions.
 
 Konvence:
 - **ID** generuje volající a posílá je v příkazech (viz API). Musí být v dokumentu jedinečná, nesmí obsahovat znak `/` (ten je vyhrazený pro odvozená ID promítnuté geometrie) a nesmí být `origin`.
@@ -573,7 +594,7 @@ Výsledky, které nejsou běžné:
 
 ## Pattern (D35, point 4)
 
-A pattern repeats its source by a list of rigid transforms. The step asks one function for the transforms of the copies (`transforms` in `evaluate.ts`, by the kind of `transform`; today `circular`) and the rest does not know the kind, so a linear pattern or a mirror is another kind and nothing else.
+A pattern repeats its source by a list of rigid transforms. The step asks one function for the transforms of the copies (`transformsOf` in `features/pattern.ts`, by the kind of `transform`; today `circular`) and the rest does not know the kind, so a linear pattern or a mirror is another kind and nothing else.
 
 ```ts
 interface PatternFeature extends FeatureBase {
@@ -745,7 +766,7 @@ Omezení:
 
 ## Přepočet
 
-V kódu je přepočet metodou třídy `Evaluator` (`evaluate.ts`), která drží cache; adaptéry dostane při vytvoření. Signatura popisuje vstupy a výstup:
+V kódu je přepočet metodou třídy `Evaluator` (`evaluate.ts`), která drží cache; adaptéry dostane při vytvoření. The class does what every feature type shares (the cache, the values of expressions, a suppressed feature, a failed expression) and calls the step of the type through the registry: `specOf(feature).step(feature, context)`, where the context (`StepContext`) carries the state before the feature, the settings, the adapters, the callbacks `done` and `failed`, and for the sketch the drag target and the fields whose expression failed. Signatura popisuje vstupy a výstup:
 
 ```ts
 function evaluate(doc: Document, deps: { solver; kernel }, opts?: {

@@ -17,7 +17,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed five times), part 2 a design (four times), part 3 a design (twice; its check then became a test of the class) |
+| 00 | Preparatory step (D37) | | | D35 closed | parts 1 and 4 have a contract (reviewed five times); part 2 is implemented; part 3 has a design (reviewed twice; its check then became a test of the class) |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
 | 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them. Also the generic form of a query in the app, which the app side of 1a, 1c, 1d and 1e builds on | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |
@@ -111,5 +111,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D36 | D37 for the preparatory step, then by package |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A, and the numbers the briefs of tracks B and E give | by package |
 | Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35 | 11 |

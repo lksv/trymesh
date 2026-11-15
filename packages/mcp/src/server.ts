@@ -8,12 +8,15 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { EXPORT_FORMATS, type Engine, exportPathProblem } from '@trymesh/engine';
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
+import { hostOperations } from './api';
+import { HOST_OPERATIONS, type HostOperationSet, isHostOperation, noAppText } from './host';
 import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
 
 export interface TrymeshServerOptions {
   engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
   bridge?: Bridge;
   file?: string; // soubor, ze kterého je dokument vlastního enginu
+  operations?: HostOperationSet; // the operations of the app offered as tools; the registry by default (tests give their own)
 }
 
 interface FileTool {
@@ -38,6 +41,7 @@ const COMPACT_FROM = 20_000; // znaků
 
 export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const { engine, bridge } = options;
+  const operations = options.operations ?? HOST_OPERATIONS;
   // Každý dokument má svůj soubor: vlastní dokument serveru jeden, dokument v aplikaci druhý.
   // Soubor aplikace platí jen po dobu jednoho připojení a jen pro dokument, který v ní byl
   // otevřený, když se do souboru ukládalo nebo z něj načítalo: po Nový nebo Otevřít v aplikaci
@@ -209,9 +213,27 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     return compact.length > COMPACT_FROM ? compact : JSON.stringify(value, null, 1);
   };
   const reply = (value: Json, isError = false) => ({ content: [{ type: 'text' as const, text: print(value) }], ...(isError ? { isError: true } : {}) });
+  // The answer of an operation of the app is a `ToolAnswer`, and the server acts on its kind. Files
+  // need a path to be written to, which an operation does not take: the tool `export` is the one
+  // that writes.
+  const answer = (name: string, value: ToolAnswer) =>
+    value.kind === 'image' ? { content: [{ type: 'image' as const, data: value.base64, mimeType: value.mediaType }] } : value.kind === 'data' ? reply(value.data) : reply(`the operation ${name} answered with files, which this tool has no path to write to`, true);
+  // An operation of the app as a tool: its arguments are those of its description, checked by the
+  // app in the state of its document.
+  const operationTools = () =>
+    hostOperations(operations).map((entry) => ({
+      name: entry.query,
+      description: `${entry.summary} Returns ${entry.returns} It runs in the app: without a connected app it answers notAvailable.`,
+      inputSchema: {
+        type: 'object',
+        properties: Object.fromEntries(entry.args.map((arg) => [arg.name, { description: arg.description }])),
+        required: entry.args.filter((arg) => arg.required).map((arg) => arg.name),
+        additionalProperties: false,
+      } as JsonSchema,
+    }));
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...tools().filter((tool) => !tool.hidden), ...fileTools].map(({ name, description, inputSchema }) => ({ name, description, inputSchema: inputSchema as { type: 'object' } })),
+    tools: [...tools().filter((tool) => !tool.hidden), ...fileTools, ...operationTools()].map(({ name, description, inputSchema }) => ({ name, description, inputSchema: inputSchema as { type: 'object' } })),
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -222,6 +244,12 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       if (fileTool) {
         const problem = argumentProblem(fileTool.inputSchema, args);
         return problem ? reply(problem, true) : reply(await fileTool.run(args));
+      }
+      if (isHostOperation(name, operations)) {
+        const session = bridge?.session();
+        if (session === undefined) return reply(noAppText(name), true);
+        const outcome = await call(session, name, args);
+        return outcome.ok ? answer(name, outcome.result as ToolAnswer) : reply(outcome.error, true);
       }
       if (name.startsWith('_')) return reply(`neznámý nástroj "${name}"`, true);
       const outcome = await call(bridge?.session(), name, args);

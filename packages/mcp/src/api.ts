@@ -23,6 +23,7 @@ import {
   rangeText,
 } from '@trymesh/engine';
 import typesSource from '../../engine/src/types.ts?raw';
+import { HOST_OPERATIONS, type HostOperationSet } from './host';
 
 const CONVENTIONS = [
   'Délky jsou v milimetrech, úhly v radiánech. Souřadnice skici jsou v její rovině (osy X a Y skici), počátek skici je pevný bod s ID `origin`.',
@@ -162,6 +163,7 @@ export function apiDescription(): {
   numericFields: ReturnType<typeof numericFields>;
   sketchTools: SketchToolDescription[];
   queries: QueryDescription[];
+  operations: QueryDescription[];
   catalogs: ReturnType<typeof dataCatalogs>;
   exports: ReturnType<typeof exportFormats>;
   types: string;
@@ -175,6 +177,7 @@ export function apiDescription(): {
     numericFields: numericFields(),
     sketchTools: sketchToolCatalog(),
     queries: queryCatalog(),
+    operations: hostOperations(),
     catalogs: dataCatalogs(),
     exports: exportFormats(),
     types: engineTypes(),
@@ -283,6 +286,17 @@ export function dataCatalogs(): { catalog: string; title: string; summary: strin
   return Object.entries(DATA_CATALOGS as Record<string, { title: string; summary: string }>).map(([catalog, table]) => ({ catalog, title: table.title, summary: table.summary }));
 }
 
+// The operations of the app (host.ts), each a tool of its own: arguments and what each returns.
+export function hostOperations(operations: HostOperationSet = HOST_OPERATIONS): QueryDescription[] {
+  return Object.entries(operations).map(([query, spec]) => ({
+    query,
+    title: spec.title,
+    summary: spec.summary,
+    args: Object.entries(spec.args).map(([name, arg]) => ({ name, description: `${argumentText(arg)}${arg.summary ? `. ${arg.summary}` : ''}`, required: !arg.optional })),
+    returns: spec.returns,
+  }));
+}
+
 // The export formats of the engine's catalog (the tool export writes them) with their options.
 export function exportFormats(): { format: string; title: string; summary: string; options: { name: string; description: string }[] }[] {
   return Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>).map(([format, spec]) => ({
@@ -295,7 +309,7 @@ export function exportFormats(): { format: string; title: string; summary: strin
 
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, catalogs, exports, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -364,6 +378,10 @@ export function apiText(): string {
     'A query reads the model and changes nothing; ask it with the tool query `{ query, args, at?, after? }`. `at` is a feature ID (the state after it); `after` is a command to preview first, so that a change can be asked about without being written. ' +
       'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
     ...queries.map(queryText),
+    '',
+    '# Operations of the app',
+    'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable.',
+    ...(operations.length ? operations.map((entry) => [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  arguments:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  arguments: none']), `  returns: ${entry.returns}`].join('\n')) : ['(none yet)']),
     '',
     '# Catalogs',
     'Tables of data the engine carries; read one with the query `catalog` `{ name, key? }`. A catalog fills in fields: the document stores the numbers, not a reference to a row.',

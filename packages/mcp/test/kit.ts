@@ -5,6 +5,7 @@ import { type Engine, createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import type { Bridge } from '../src/bridge';
+import type { HostOperationSet } from '../src/host';
 import { createTrymeshServer } from '../src/server';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -19,9 +20,9 @@ export interface Session {
   close(): Promise<void>;
 }
 
-export async function connect(options: { engine?: Engine; bridge?: Bridge; file?: string } = {}): Promise<Session> {
+export async function connect(options: { engine?: Engine; bridge?: Bridge; file?: string; operations?: HostOperationSet } = {}): Promise<Session> {
   const engine = options.engine ?? newEngine();
-  const server = createTrymeshServer({ engine, bridge: options.bridge, file: options.file });
+  const server = createTrymeshServer({ engine, bridge: options.bridge, file: options.file, operations: options.operations });
   const client = new Client({ name: 'test', version: '0' });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(a), client.connect(b)]);

@@ -1,7 +1,8 @@
 // Strana aplikace: připojí engine k mostu MCP serveru a obsluhuje jeho požadavky. Běží v prohlížeči
 // i v Node (testy), proto čte proud událostí přes fetch a ne přes EventSource.
 import type { Engine } from '@trymesh/engine';
-import { type ToolOutcome, callProblem, callTool } from './tools';
+import { type AppHost, HOST_OPERATIONS, type HostOperationSet, callHostOperation, isHostOperation } from './host';
+import { MUTATING, type ToolOutcome, callProblem, callTool } from './tools';
 
 export { MUTATING, changesDocument } from './tools';
 
@@ -25,6 +26,10 @@ export interface BridgeClientOptions {
   onDisplaced?: () => void; // k serveru se připojila jiná aplikace; tahle se už sama znovu nepřipojí
   beforeCall?: (name: string, args: Record<string, unknown>) => void; // před provedením nástroje: aplikace si může uklidit rozpracovaný stav
   onCall?: (name: string, outcome: ToolOutcome) => void; // po každém obslouženém požadavku
+  // What the operations of the app need of it besides the engine (host.ts). Without it an operation
+  // answers `notAvailable`.
+  host?: AppHost;
+  operations?: HostOperationSet; // the operations served; the registry by default (tests give their own)
 }
 
 export function connectBridge(engine: Engine, options: BridgeClientOptions = {}): BridgeConnection {
@@ -32,6 +37,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
   const abort = new AbortController();
   let stopped = false;
   let document = 0; // pořadové číslo dokumentu; server ho dostává s každou odpovědí
+  const operations = options.operations ?? HOST_OPERATIONS;
   let status: BridgeStatus | undefined;
   const report = (next: BridgeStatus) => {
     if (status !== next) options.onStatus?.((status = next));
@@ -40,14 +46,21 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
   const serve = async (session: number, call: { id: number; name: string; args: Record<string, unknown> }) => {
     let outcome: ToolOutcome;
     try {
-      // a call the tools refuse outright (an argument outside the schema) must not cancel what the user is doing
-      const refused = callProblem(call.name, call.args ?? {});
-      if (refused === undefined) options.beforeCall?.(call.name, call.args ?? {});
-      outcome = refused === undefined ? callTool(engine, call.name, call.args) : { ok: false, error: refused };
-      if (call.name === '_load' && outcome.ok) document += 1;
+      if (isHostOperation(call.name, operations)) {
+        // an operation of the app changes nothing in the document, so the app has nothing to tidy up before it
+        outcome = await callHostOperation(options.host === undefined ? undefined : { ...options.host, engine }, call.name, call.args ?? {}, operations);
+      } else {
+        // a call the tools refuse outright (an argument outside the schema) must not cancel what the user is doing
+        const refused = callProblem(call.name, call.args ?? {});
+        if (refused === undefined) options.beforeCall?.(call.name, call.args ?? {});
+        outcome = refused === undefined ? callTool(engine, call.name, call.args) : { ok: false, error: refused };
+        if (call.name === '_load' && outcome.ok) document += 1;
+      }
     } catch (error) {
-      // Výjimka může přijít i z posluchače enginu až po zapsání změny, proto ta výhrada.
-      outcome = { ok: false, error: `v aplikaci nastala chyba (změna už mohla být provedena, ověř stav): ${error instanceof Error ? error.message : String(error)}` };
+      const text = error instanceof Error ? error.message : String(error);
+      // Výjimka může přijít i z posluchače enginu až po zapsání změny, proto ta výhrada. A question
+      // (a query, a read, an operation of the app) wrote nothing, and says so instead.
+      outcome = { ok: false, error: MUTATING.includes(call.name) ? `v aplikaci nastala chyba (změna už mohla být provedena, ověř stav): ${text}` : `the app failed to answer ${call.name} (nothing was changed): ${text}` };
     }
     try {
       options.onCall?.(call.name, outcome);

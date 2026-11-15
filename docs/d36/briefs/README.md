@@ -2,7 +2,7 @@
 
 Three sessions write the designs of the first packages of [the plan](../README.md) at the same time. Each has a brief here. This file holds what is common to all three; a session reads it and then its own brief.
 
-**State: draft.** The briefs are valid once the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts), parts 1 and 4; fifth version, four rounds of reviews) is merged. Until then they may change.
+**State: valid for the sixth version of the contract of the preparatory step** ([00-prep/contract.ts](../00-prep/contract.ts), parts 1 and 4), which has been through five rounds of reviews; the last one found no blocker. The preparatory step itself is not implemented yet: the sessions write designs against its contract, not code.
 
 | Brief | Packages | Branch |
 |---|---|---|
@@ -32,5 +32,6 @@ For every package of its brief a directory `docs/d36/<id>-<name>/` with `design.
   - `codex exec -m gpt-6-astra -c model_reasoning_effort="high" -s read-only -o <answer file> - < <brief file>`
   - `agy --print "$(cat <brief file>)" --model gemini-4-argon-high --effort high --mode plan > <answer file>`
   - Assess every finding against the code before acting on it, fix, and record in `design.md` what was found, whether it held and what changed. Run the three again after the fixes when the findings were many or serious.
+  - A reviewer that cannot run (an account out of quota, a network error that repeats) is left out and named in the record; the round goes on with the others.
 - **Commits:** one per package on the branch of the session, docs only, in English. Do not merge into `master`; the session that owns the preparatory step merges the branches after a review across all packages.
 - New text is English. The conversation with the owner is in Czech.

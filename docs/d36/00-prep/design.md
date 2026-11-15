@@ -1,13 +1,13 @@
 # 00 Preparatory step
 
-**State: scope approved; parts 1 and 4 have a contract in its fifth version, part 2 a design in its fourth and part 3 a design in its second, after four rounds of reviews.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees).
+**State: scope approved; parts 1 and 4 have a contract in its sixth version, part 2 a design in its fifth and part 3 a design in its third, after five rounds of reviews.** The owner approved all six parts on 2026-11-14: first the registry of queries and the split of `app.ts`, then the four parts Claude added from reading the code (a module per feature type, the shared vocabulary, documents by area, working in several trees).
 
 | Part | State |
 |---|---|
-| 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); reviewed four times, see "Reviews" |
+| 1 Registry of queries | signatures in [contract.ts](contract.ts), written out as calls in [calls.ts](calls.ts); reviewed five times, see "Reviews" |
 | 4 Shared vocabulary | same |
-| 2 A module per feature type | designed in [part2-feature-modules.md](part2-feature-modules.md); reviewed three times |
-| 3 Panels and forms of the app | designed in [part3-app-panels.md](part3-app-panels.md); reviewed once |
+| 2 A module per feature type | designed in [part2-feature-modules.md](part2-feature-modules.md); reviewed four times |
+| 3 Panels and forms of the app | designed in [part3-app-panels.md](part3-app-panels.md); reviewed twice |
 | 5, 6 Documents by area, several trees | proposal below; no code |
 
 The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type (part 2 adds two functions to the index of the engine), so they get a design and no contract.
@@ -24,7 +24,7 @@ It is done by one session, not in parallel, after D35 is closed, and it follows 
 - The three methods throw for a wrong argument (`interference.ts` checks the threshold, the shape of the list and that the bodies exist; `engine.ts` throws for an unknown sketch or constraint). The MCP tools check the arguments themselves first and answer with their own error (`check_interference` also wants at least two different bodies when a list is given); an exception of the engine that gets past those checks is passed on as a failure of the tool. The app calls `interference` and `diagnoseSketch` without catching.
 - Part of what the AI is told is computed in the MCP package and the app cannot use it: `bodyDetail` and `edgeShape` (area and normal of a face, length, ends, centre and radius of an edge), `sketchDetail` (areas of regions, advice on what to constrain). That is the mirror image of the rule that the app must not compute.
 
-**Design** (`contract.ts`, fifth version).
+**Design** (`contract.ts`, sixth version).
 
 - **A catalog `QUERIES` in the engine**, built like the registry of feature types. An entry has a title, a summary and a description of what it returns (all three go to the description for the AI), a description of its arguments, and a function over a context. `Engine.query(name, args, options)` is the way in for everything new.
 - **The four methods of today stay.** `diagnoseSketch`, `explainConstraint`, `interference` and `exportMesh` keep their signatures, their own checks of their arguments and their own texts (tests match them, Czech ones included), and keep throwing, as D35 decided and as about two hundred calls in the tests expect. Then they call `run` of the same entry that `query` calls: the computation is shared, the messages are not. No further method of this kind is added to `Engine`.
@@ -112,7 +112,7 @@ Designed in full in [part3-app-panels.md](part3-app-panels.md); this is the summ
 
 - One draft mode instead of one per type; what a form remembers beyond its draft is its own.
 - Panels are functions over an interface of the app (`PanelHost`), in files of their own; no framework and no library.
-- A query is reachable from the app without work there: a form is built from the description of its arguments, and a query may add a view of its own, as the collisions have. An answer belongs to the document and the place on the timeline it was asked at, as the collisions do today. The generic form is designed in full with package 1b.
+- A query is reachable from the app without work there: a form is built from the description of its arguments, and a query may add a view of its own, as the collisions have. An answer belongs to the document and the place on the timeline it was asked at, as the collisions do today. The generic form is not part of this step: package 1b designs and builds it, and the app side of the other queries of step 1 builds on it.
 - State that belongs to one panel (the collisions, the options of the polygon tool) moves with it.
 - The class has no test. The split is checked by a fixed script of clicks in a fresh instance of the running app, run before and after each commit; the calls the app makes on the engine and the document after every step are compared.
 
@@ -131,12 +131,12 @@ Things that several packages need and that must be the same in all of them. They
 | Placement of a body | 3b, 3c, 5a | A frame and offsets with expressions, for an imported mesh, an inserted part and the links of a mechanism. `RigidTransform` (a matrix and a translation) exists since the pattern; `Placement` in `evaluate.ts` is already the name of something else (the transform and the copy tag of a pattern copy) |
 | Export | 2g, 5b | `exportMesh(format, bodies)` returns one array of bytes. A format becomes an entry of a registry and returns a list of files, because a robot description is several. One MCP tool with a format; `export_stl` stays as a name for the first format |
 | Data catalogs | 2c (hardware), 3a (materials), 7 (threads) | One shape for a table of data in the engine and one way it reaches the description for the AI. The rule is already decided: a catalog fills fields, the document stores numbers |
-| Version of the document schema | 3a, 5a | `SCHEMA_VERSION` is 2 and `upgrade` is one function from version 1. Two branches cannot both raise the version. A new feature type needs no step; a change of what older documents hold does |
+| Version of the document schema | 3a, 5a, and track B where it adds a field that would be dropped (the taper of an extent) | `SCHEMA_VERSION` is 2 and `upgrade` is one function from version 1. Two branches cannot both raise the version. A new feature type needs no step; a change of what older documents hold does |
 | Issue codes | most packages | `IssueCode` only grows. A package states the codes it adds in its design |
 
-What `contract.ts` proposes (fifth version):
+What `contract.ts` proposes (sixth version):
 
-- **Additions to the unions** (`FeatureTypes`, `FeaturePatches`, `Commands`, `DocumentSections`, `FaceRoles`, `IssueCodes`): six maps that a contract extends by declaration merging, standing for the one line a package adds to a union of `types.ts`. Everything a scenario touches is built from them: the document, the commands of `execute`, `preview` and `after` (a batch of them included), the patch of `updateFeature`, the results of features with their warnings, the names of faces in the evaluation, in the bodies and in a reference to a plane. So the scenario of a package can add its feature, change it, set its section, ask a query over the preview and assert its own warning, and two packages that add the same name differently do not compile. A package that changes an existing type (the extrusion) merges the changed interface under the name of the type; the packages of one track share that declaration. This is a device of the drafts; the code adds the member to the union.
+- **Additions to the unions** (`FeatureTypes`, `FeaturePatches`, `Commands`, `DocumentSections`, `FaceRoles`, `IssueCodes`): six maps that a contract extends by declaration merging, standing for the one line a package adds to a union of `types.ts`. Everything a scenario touches is built from them: the document, the commands of `execute`, `preview` and `after` (a batch of them included), the patch of `updateFeature`, the results of features with their warnings, the names of faces in the evaluation, in the bodies and in a reference to a plane. So the scenario of a package can add its feature, change it, set its section, ask a query over the preview and assert its own warning, and two packages that add the same name differently do not compile. A package that changes an existing type (the extrusion) merges the changed interface under the name of the type, where it stands in place of the interface of today; the packages of one track share that declaration. This is a device of the drafts; the code adds the member to the union.
 - **Units** (`QuantityUnit`): `Unit` grows by area, volume, mass and density. The threshold of the interference query is a volume already; mass properties and body properties need the rest. A numeric field of the document and an argument of a query use the same description.
 - **Surfaces** (`Surface`): plane, cylinder, cone, swept, general. A sketch stands only on a plane. `FaceInfo` stays internal and keeps what only the engine needs (the `y` direction of a planar face, from which the frame of a sketch on the face is built); `Surface` is derived from it and published in the evaluation next to the names of the faces (`faceSurfaces`), so every state the engine returns has it. A general surface says nothing more; a package that needs the rim of a revolved arc as a circle adds a kind that identifies the surface (a sphere, a torus).
 - **Sides.** A surface has no side; the axis of a cone is the exception, because a cone has two halves. Which side the material is on belongs to the face of a body: the normal of a planar face, and for a cylinder or a cone whether it is a pin or a hole (`BodyFace.convex`). Directions that have a sign are frames: the frame of a face points out of the body and the base planes have fixed normals. A query that takes a face as a direction resolves its frame.
@@ -146,7 +146,7 @@ What `contract.ts` proposes (fifth version):
 - **Export** (`ExportFormats`, `EXPORT_FORMATS`, `Exported`): a format is an entry that returns files and says whether they are one file or a folder; a file has a relative path, so a robot description can have a folder of meshes, and may say what it holds (bodies and triangles for STL). `Engine.export(format, options)` is added; `exportMesh` stays, with its own checks, and shares `run` of the format with it. One MCP tool `export` checks the options against the chosen format, takes `at` and `after` like `query`, and writes with the guarantees `export_stl` has today; `export_stl` stays as it is and uses the same writer. The engine guarantees the form of a path; what depends on the disk (the length of a name, names that differ only in case) is the writer's to refuse, as today. No body to export is not an error of a format (`exportMesh` of an empty list gives a file without triangles today); the tools refuse it. The writer of today knows only files directly in the target folder: creating folders, and removing them again on a failure, is work of the first format with folders (5b) and is stated in the contract.
 - **Data catalogs** (`DataCatalog`, `Catalogs`, `DATA_CATALOGS`): a title, a source, columns with units, rows by key. Every catalog has its own columns. Code reads the table with its row type, so a column that does not exist does not compile, and a column of numbers has a unit; an untyped caller uses the query `catalog`, which answers with the table without its row type; the description for the AI lists catalogs by name only.
 - **Schema version** (`UPGRADES`, `SCHEMA_PENDING`): a list of named upgrade steps; on `master` the version is its length plus one.
-  - A step is needed for a change of what older documents hold, and for anything a build without the package would drop without a word: loading rebuilds a document from the fields it knows, so an unknown section or field of a feature is not refused, it is gone. Such an addition gets a step even when there is nothing to convert. A new feature type needs none: a build that does not know it refuses it.
+  - A step is needed for a change of what older documents hold, and for anything a build without the package would drop without a word: loading rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are not refused, they are gone. Such an addition gets a step even when there is nothing to convert. No step is needed where a build without the package refuses by itself: a new feature type, a new variant, and a field where the validator lists what it allows (a profile source, the parts of a pattern).
   - A step reads and changes only what its package owns, or what is on `master` already, so steps of different packages give the same document in either order; a test runs the pending steps before and after the steps merged meanwhile and compares.
   - A branch appends its steps and counts them as pending; a build with pending steps saves the version of the `master` it started from and the names of the pending steps the document has. Loading takes the steps from the version of the document on, leaves out the ones it names and runs the rest; a name the build does not have, or a version above the one the build saves, is refused.
   - So a document saved on a branch loads on that branch after a rebase and on `master` after the merge, and is refused by another branch. (The third version marked such a document with the name of its branch, which kept it from being misread and left it unreadable after the merge.)
@@ -169,7 +169,7 @@ A short description of how a package gets its tree: a branch `d36/<id>`, a git w
 4. Panels and forms (part 3).
 5. Documents by area (part 5) and the trees (part 6).
 
-Parts 2, 3 and 4 touch different packages of code and could be three commits of one point or three points; to be decided when the step is designed in full.
+Each part is a point of work of its own, with the procedure of CLAUDE.md. Parts 2 and 3 fix their own order of commits in their designs (six and eight), and part 2 also touches `packages/mcp` and `packages/app` in its last one.
 
 ## Reviews
 
@@ -296,4 +296,22 @@ Not acted on:
 
 - The generic form of a query in full (codex, internal): it is designed with package 1b; this round only fixed what part 3 says about it (a control for every kind, a sketch point from lists).
 - `applyCommand` and `validateDocument` stay places that 2d, 3a and 5a all edit (internal, note): added to the table of shared places of the plan, not split.
+
+### Round 5 (2026-11-15), narrow: the fixes of round 4 and a second reading of part 3
+
+Two reviewers, read-only, at commit `1eff310`: `codex` (six findings) and the internal subagent (six and five factual errors), who again merged a second package contract into every map and this time compiled `validateDocument` to see what a load drops. `agy` did not take part: its account ran out of quota. They were asked for blockers, majors and factual errors only. Neither found a blocker; both found the fixes of round 4 holding, with two remainders (the interface of the app and the click script).
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| A changed existing feature type can be added and patched but its new fields cannot be read back: the interface of today stays in the union beside it | both | Yes (probes of both) | The redeclared type stands in place of the old one, and so does a redeclared face role |
+| The rule for upgrade steps reaches track B (the taper of an extent would be dropped) and nobody told it; the sentence it rests on is half true: profile sources and the parts of a pattern refuse unknown fields | internal | Yes (run by the reviewer) | The sentence says what is dropped and what is refused; the table, the plan and the brief of track B name the track |
+| Part 3: `PanelHost` still lacks members (`invalidate`, the current mode, `enterSketch`, the note of an answer), hands out what the app guards (undo and load through the engine, a writable marker and preview), and "`App` implements it" proves nothing | both | Yes (probe of the reviewer) | The members; the engine as the part a panel may call; a method for an inserted feature; `say` returns its note; every moving method is annotated with `this: PanelHost` in the first commit |
+| Part 3: the click script does not compare the toolbar, the timeline or the state of controls, two runs can differ by the measured time of a preview, and it walks neither the remembered values of the forms nor the paths of cancelling | both | Yes | What a user sees and can do in the four areas is compared; the time is pinned; the paths are listed |
+| Part 3: the commit of the draft code needs the registry of the commit after it, the mode does not narrow in between, and no commit creates `panels/query.ts` | both | Yes | The registry comes with the draft code, complete, with entries that call the class; the mode is a union until the forms move; `query.ts` is package 1b's |
+| Who builds the generic form of a query is said in two files and missing from the plan and the brief of track A | internal | Yes | Package 1b, named in both, with the dependency of the other queries on it for their app side |
+| Factual: a new issue code needs no text in the app; the collisions are not the only query the app asks; an invalid role is "named" only when it is one; `SolvedSketch` has no home; the panel that waits for a plane has a header per type; a sentence on the order of the step was out of date | both | Yes | Corrected; the two guards list the names |
+
+Not acted on:
+
+- The result of a section in the evaluation has no map of its own (internal, as a note): a contract merges it into `EvaluationAfter`, which is an interface; said in the contract.
 

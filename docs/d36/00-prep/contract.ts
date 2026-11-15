@@ -5,7 +5,7 @@
 // public type and have no contract; their designs are part2-feature-modules.md and
 // part3-app-panels.md.
 //
-// Fifth version, after four rounds of reviews (design.md, "Reviews").
+// Sixth version, after five rounds of reviews (design.md, "Reviews").
 //
 // Where the types will live: what a caller of the engine or an AI reads goes to `types.ts`
 // (`Surface`, `EntityRef`, `QueryOutcome`, the additions to `Evaluation` and `Engine`), because
@@ -26,17 +26,20 @@ import type { SketchState } from '../../../packages/engine/src/evaluate';
 // packages that add the same name differently do not compile. calls.ts, section j, shows one of
 // each.
 // - A package that changes an existing feature type (the extrusion gets an offset, a taper,
-//   a new extent) merges the changed interface under the name of the type: `extrude`. A name is
-//   taken once, so the packages of one track share that declaration: the first one owns it and
-//   the others add to it there.
+//   a new extent) merges the changed interface under the name of the type: `extrude`. It then
+//   stands in place of the interface of today, so a field it adds can be read from a feature of
+//   the state. A name is taken once, so the packages of one track share that declaration: the
+//   first one owns it and the others add to it there. The same holds for a face role.
+// - What a section of the document adds to the result of the recompute (as `parameters` and
+//   `checks` are there today) is merged into the interface `EvaluationAfter` below.
 export interface FeatureTypes {} // type of the feature → its interface
 export interface FeaturePatches {} // type of the feature → what `updateFeature` may change of it
 export interface Commands {} // type of the command → the command
 export interface DocumentSections {} // field of the document → its type
 export interface FaceRoles {} // role → the fields of a face name beyond `feature`, `role` and `copy`
 export interface IssueCodes {} // code → true
-export type FeatureAfter = Feature | FeatureTypes[keyof FeatureTypes];
-export type FaceNameAfter = FaceName | { [R in keyof FaceRoles]: { feature: Id; role: R; copy?: CopyTag[] } & FaceRoles[R] }[keyof FaceRoles];
+export type FeatureAfter = Exclude<Feature, { type: keyof FeatureTypes }> | FeatureTypes[keyof FeatureTypes];
+export type FaceNameAfter = Exclude<FaceName, { role: keyof FaceRoles }> | { [R in keyof FaceRoles]: { feature: Id; role: R; copy?: CopyTag[] } & FaceRoles[R] }[keyof FaceRoles];
 export interface EdgeNameAfter {
   a: FaceNameAfter;
   b: FaceNameAfter;
@@ -162,7 +165,8 @@ export type CommandResultAfter = { ok: true; state: StateAfter } | Extract<Comma
 //   check it; it is what `faceName` in document.ts checks by hand today.
 // - The compiler ties the union and the catalog: a role without an entry does not compile, nor
 //   an entry that leaves out a field of the name or gives it the other kind. A role whose name
-//   has a field of another type, or an optional one, stops the type check here and is named.
+//   has a field of another type, or an optional one, stops the type check here; the message
+//   lists the roles.
 // - The key of a face is `<feature>/<role>`, then the values of those fields in the alphabetical
 //   order of their names, then the copy tags as today. For the three roles of today it is the
 //   key of today, which fingerprints of solved sketches and the face table depend on.
@@ -176,7 +180,7 @@ export interface FaceRoleSpec<R extends FaceNameAfter['role']> {
 export declare const FACE_ROLES: { [R in FaceNameAfter['role']]: FaceRoleSpec<R> };
 type BadParts<X> = { [P in keyof X]-?: [X[P]] extends [string] ? never : [X[P]] extends [number] ? never : P }[keyof X];
 type InvalidRoles = { [R in keyof FaceRoles]: [BadParts<FaceRoles[R]>] extends [never] ? never : R }[keyof FaceRoles];
-export const ROLES_ARE_VALID: [InvalidRoles] extends [never] ? true : { invalid: InvalidRoles } = true;
+export const ROLES_ARE_VALID: [InvalidRoles] extends [never] ? true : { [R in InvalidRoles]: 'is not a valid role' } = true;
 
 // ---------------------------------------------------------------- references to named entities
 
@@ -234,11 +238,14 @@ export declare const DATA_CATALOGS: { [N in keyof Catalogs]: Catalogs[N] extends
 // a list of named steps; on `master` the version of a document is the length of the list plus
 // one, as a number, as today.
 // - A step is needed for a change of the shape of what older documents hold, and for anything
-//   a build without the package would drop without a word: `validateDocument` rebuilds
-//   a document from the fields it knows, so an unknown section or an unknown field of a feature
-//   is not refused, it is gone after the load. Such an addition gets a step even when the step
-//   has nothing to convert; a build that does not have it then refuses the document.
-//   A new feature type needs no step: a build that does not know the type refuses it already.
+//   a build without the package would drop without a word. `validateDocument` rebuilds
+//   a document from the fields it knows: an unknown section, an unknown field directly on
+//   a feature and an unknown field of an extent (a taper) are not refused, they are gone after
+//   the load. Such an addition gets a step even when the step has nothing to convert; a build
+//   that does not have it then refuses the document.
+//   No step is needed where a build without the package refuses by itself: a new feature type,
+//   a new variant (an extent of a new type), and a field where the validator lists the fields it
+//   allows (a profile source, the source, the transform, the span and the axis of a pattern).
 // - A step reads and changes only what its package owns (its section, its fields), or what is on
 //   `master` already. Steps of different packages therefore give the same document in either
 //   order, which the rule below relies on; a test runs the pending steps of a branch before and
@@ -449,11 +456,11 @@ export interface Queries {
   catalog: { spec: typeof CATALOG_ARGS; result: CatalogTable };
 }
 // A description in one of the maps that is not a valid `ArgSpecs` (a kind that does not exist)
-// stops the type check here and is named in the message. The registries themselves are not
+// stops the type check here; the message lists the names. The registries themselves are not
 // constrained this way: with a constraint on their entries the engine could not call `run` of
 // an entry picked by name without a cast.
 type InvalidSpecs = { [N in keyof Queries]: Queries[N]['spec'] extends ArgSpecs ? never : N }[keyof Queries] | { [F in keyof ExportFormats]: ExportFormats[F] extends ArgSpecs ? never : F }[keyof ExportFormats] | { [O in keyof HostOperations]: HostOperations[O] extends ArgSpecs ? never : O }[keyof HostOperations];
-export const SPECS_ARE_VALID: [InvalidSpecs] extends [never] ? true : { invalid: InvalidSpecs } = true;
+export const SPECS_ARE_VALID: [InvalidSpecs] extends [never] ? true : { [N in InvalidSpecs]: 'is not a valid description' } = true;
 export type QueryName = keyof Queries;
 export type QueryArgs<N extends QueryName> = ArgsOf<Queries[N]['spec']>;
 export type QueryResult<N extends QueryName> = Queries[N]['result'];

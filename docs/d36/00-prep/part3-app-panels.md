@@ -1,6 +1,6 @@
 # 00 Preparatory step, part 3: panels and forms of the app as modules
 
-**State: second version, after one round of reviews.** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the review that led to this version is recorded there under "Reviews", round 4.
+**State: third version, after two rounds of reviews.** Written from reading `packages/app/src/app.ts` at commit `371bcd7`. It changes no public type of the engine, so it has no `contract.ts`; the interfaces below are internal to the app and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 3; the reviews that led to this version are recorded there under "Reviews", rounds 4 and 5.
 
 ## What is there today
 
@@ -14,7 +14,7 @@
 |---|---|
 | the union `Mode` and `isDraft` | a mode interface per type, with what the form remembers (the last distance extent, the last profile of each kind, the hovered region; the last angle) |
 | `renderToolbar` | a button |
-| `pending`, `startOnPlane`, `usePlane`, `createSketch`, the header in `modelPanel` | the features that start by picking a plane: the sketch (created at once by a batch, then entered) and the plane (a draft on the picked base) |
+| `pending`, `startOnPlane`, `usePlane`, `createSketch`, the header in `modelPanel` | the features that start by picking a plane: the sketch (created at once by a batch, then entered) and the plane (a draft on the picked base); the panel that waits for the pick has a header per type ("Nová skica", "Nová rovina") |
 | `edit` | what opens an existing feature |
 | `startExtrude`, `startPlane`, `startPattern` | a new draft with defaults, or the draft of an existing feature |
 | `renderPanel` | which panel is shown |
@@ -42,8 +42,12 @@ That is fifteen places for one new type. D36 adds forms for the hole, the import
 - the shown state and names: `doc`, `view`, `stateBefore`, `feature`, `nameOf`, `bodyName`, `featureNames`, `issueText`, `issues`, `describe`;
 - the selection: the feature selected on the timeline, the pick selected in the view and `planeRefOf`, `pending` and `usePlane`, the marker and `insertIndex`, `bodyHidden`;
 - the view: `planePoint` (a pointer event to a point of a plane), `planeSize`, `sketchContext`;
-- actions: `say`, `run`, `refresh`, `renderPanel`, `renderScene`, `setMode`, `edit`, `setTool`, `draftChanged`, `newId`;
+- the mode: the current one is read (the timer of a delayed preview asks whether a draft is still open), `setMode`, `enterSketch` (it also turns the camera to the sketch and fits the view);
+- the cache of the shown state: `invalidate`, called by the preview of a draft before and after it replaces the preview, and by the drag of a point, both without a refresh;
+- actions: `say` and the note it leaves (the collisions keep the very note object of their answer, and a refresh compares it by identity), `run`, `refresh`, `renderPanel`, `renderScene`, `edit`, `setTool`, `draftChanged`, `newId`;
 - helpers of fields: `draftField`, `markProblem`.
+
+The sketch mode and the scene use more than the panels: the viewport, the pick under the pointer, the pointer state, the hidden features, the base planes switch, `fit`.
 
 ## Proposal
 
@@ -65,7 +69,6 @@ packages/app/src/
     model.ts        the selected feature and the bodies
     parameters.ts   parameters and checks
     collisions.ts   the collisions, with the state they own
-    query.ts        a form and an answer for any query of the catalog (see below)
     sketch.ts       status, diagnosis, constraints, options of the drawing tools
   sketch-mode.ts    the sketch mode: tools, clicks, the drag of a point, its scene
   scene.ts          the scene of the model: bodies, outlines, planes, highlights
@@ -78,10 +81,11 @@ An entry of the registry:
 interface FeatureUi<F extends Feature, Extra = unknown> {
   // every type
   button?: { label: string; title: string };
-  // How a new feature starts. `plane: true`: a plane or a planar face is picked first and handed
-  // over. The sketch creates itself with a batch and enters its mode; the others open their form.
-  // `run` answers false when it refused the picked plane; the app then keeps waiting for another.
-  create?: { plane?: true; run(host: PanelHost, at: { index: number; plane?: PlaneRef }): boolean };
+  // How a new feature starts. `plane`: a plane or a planar face is picked first and handed over;
+  // `header` is the title of the panel that waits for the pick. The sketch creates itself with
+  // a batch and enters its mode; the others open their form. `run` answers false when it refused
+  // the picked plane; the app then keeps waiting for another.
+  create?: { plane?: { header: string }; run(host: PanelHost, at: { index: number; plane?: PlaneRef }): boolean };
   edit(host: PanelHost, feature: F): void;                       // the sketch enters its mode, the others open their form
   summary(host: PanelHost, feature: F, result: FeatureResult | undefined): HTMLElement[];   // lines of the model panel
   ownsFace?(feature: F, name: FaceName): boolean;                // the faces a selected feature highlights
@@ -113,6 +117,7 @@ interface DraftMode<F extends Feature, Extra> {
   warning?: boolean;
 }
 const FEATURE_UI: { [K in Feature['type']]: FeatureUi<Extract<Feature, { type: K }>, any> } = { plane, sketch, extrude, pattern };
+const TOOLBAR: readonly Feature['type'][] = ['sketch', 'extrude', 'plane', 'pattern'];   // the order of the buttons, as today
 ```
 
 Decisions inside the proposal:
@@ -124,26 +129,31 @@ Decisions inside the proposal:
 - **A form gets its events from the app; it does not listen itself.** `App` keeps the pointer handlers and the rules that are the same for every form (a drag of the view is not a click). It picks in the view only what the open form asks for, so no face lights up under the pointer while regions of a sketch are being chosen, as today.
 - **A panel is a function, not a class.** `panel(mode, host) => HTMLElement[]`, as the methods are today; the DOM helper `h` stays. No component framework and no library.
 - **State that belongs to one panel moves with it.** The collisions, the options of the polygon tool and the explanation shown last become objects that the app holds and only their panel reads and writes; the app calls the panel for what it needs of them (is an answer shown, which bodies to highlight).
-- **`PanelHost` is an interface that `App` implements**, with the members listed under "What the panels use of the class" and the engine as a read-only member. The members become public for it; that is the content of the first commit, which is therefore not empty. A panel imports the interface, never `app.ts`, so the modules do not import each other in a circle. The interface is written and type-checked in that first commit, before anything moves, so that what is missing shows before the extraction and not during it.
+- **`PanelHost` is an interface that `App` implements**, with the members listed under "What the panels use of the class". A panel imports the interface, never `app.ts`, so the modules do not import each other in a circle.
+  - **It is checked before anything moves.** In the first commit every method that will move gets `this: PanelHost` as its first parameter, where it stands. The compiler then lists every member such a method uses and the interface lacks. (That `App` implements the interface shows nothing: a class may implement an interface and still use more of itself.)
+  - **The host does not hand out what the app guards.** The engine on it is the part a panel may call: `getState`, `preview`, `execute`, the queries and `exportMesh`. Undo, redo and load stay with the app, which blocks them while a draft is open and tells the bridge about a replaced document.
+  - **Nothing on it can leave the cached view stale.** The marker is read-only; a feature inserted at it is reported by one method that the app follows with its refresh. A form does not write the preview of its mode: it reports a changed draft, and the code of `features/draft.ts` replaces the preview and invalidates the cache.
+  - **The note of an answer.** `say` returns the note it left, so that the panel of the collisions can keep it and the app can tell whether it is still the one shown.
+  - The sketch mode and the scene get interfaces of their own that extend it (the viewport, the pick, the pointer state), written and checked the same way in their commit.
 - **What a user sees and what is saved stay the same**: the prefixes of generated IDs (`e`, `r`, `n` and the others), the default names of new features and the texts are those of today. The click script compares documents, so a changed prefix would show.
 - **What the engine knows is asked of the engine**: the sources a pattern accepts and the earlier features with a profile from a generator (`producesTool` and `generatorOf` of part 2). Whether the eye of a feature is enabled is not the engine's question (a sketch has no body and can be hidden) and belongs to the entry.
 
 ### Queries in the app
 
-The collisions are the one query the app asks today, with a panel written by hand. Step 1 of D36 adds five more and the later steps more again.
+The collisions are the one query of the model with a panel of its own today, written by hand (the sketch panel also asks the diagnosis of a sketch and the explanation of a constraint). Step 1 of D36 adds five more and the later steps more again.
 
-- **`panels/query.ts` builds a form from the description of the arguments of a query** (`ArgSpecs` of part 1; `QUERIES` is exported from the index of the engine), the way the form of a profile generator is built from its catalog entry today. Every kind has a control: a number field with its unit and range (`fields.ts`), a flag, a text, a choice, a body, a feature or a sketch from a list, a constraint from the list of its sketch, a face or an edge by a click in the view, a sketch point from two lists (the view picks points only inside the sketch mode), a plane by a click or from the base planes, an axis from the base axes or as a sketch point, a vector as three numbers, a list by adding rows, alternatives as a choice of one sub-form, fields as a group, a record as rows by key. The answer is shown as a tree of names and values, with numbers in the units `returns` states.
+- **A form is built from the description of the arguments of a query** (`ArgSpecs` of part 1; `QUERIES` is exported from the index of the engine), the way the form of a profile generator is built from its catalog entry today. Every kind has a control: a number field with its unit and range (`fields.ts`), a flag, a text, a choice, a body, a feature or a sketch from a list, a constraint from the list of its sketch, a face or an edge by a click in the view, a sketch point from two lists (the view picks points only inside the sketch mode), a plane by a click or from the base planes, an axis from the base axes or as a sketch point, a vector as three numbers, a list by adding rows, alternatives as a choice of one sub-form, fields as a group, a record as rows by key. The answer is shown as a tree of names and values, with numbers in the units `returns` states.
 - **A query may have a view of its own** (`QUERY_VIEWS`, by query name, optional): what it draws into the scene and how it lists its answer. The collisions panel becomes the view of `interference`. A section, a gap and a print query will want one; a mass or a catalog lookup will not.
 - **Every query is reachable from the app by construction**: the generic form needs no entry. A toolbar menu lists the queries of the catalog.
 - **An answer belongs to the document and the place on the timeline it was asked at**, as the collisions do today: shown while the marker is that place, hidden while it is another, dropped when the engine reports a change of the document. The identity of the evaluation cannot be the key: `getState` with a feature computes a new evaluation on every call, and the view is asked for again after every refresh.
 
-The generic form is designed in full with package 1b (the first query with arguments worth a form); this step only makes the place for it: `panels/query.ts` with the view of the collisions, which keeps calling `engine.interference` until then.
+The generic form is not part of this step. Package 1b designs and builds it (`panels/query.ts`, `QUERY_VIEWS`), as the first query with arguments worth a form, and the app side of the other queries of step 1 builds on it; the plan and the brief of track A say so. This step leaves the collisions as a panel of its own in `panels/collisions.ts`, calling `engine.interference`; it becomes the view of `interference` when the form exists.
 
 ## What a new feature type costs in the app afterwards
 
 1. `features/<type>.ts`: the entry with its form.
 2. `features/index.ts`: one line.
-3. Texts of new issue codes and face roles in `issue-text.ts` (one line each; the compiler asks for them, the tables are typed by the unions of the engine).
+3. The text of a new face role in `issue-text.ts`: one line, and the compiler asks for it (the table is typed by the union of the engine). A new issue code needs nothing in the app: the app shows the message of the engine. Only an issue whose references are bodies or features that should be named is added to a short list there.
 
 A new field of an existing form (offset, taper) is an edit of that form's file only. A new query costs nothing, or one file for its view.
 
@@ -155,30 +165,36 @@ The class has no test, and the split moves event handling and DOM building, whic
 
 What the script does:
 
-- a sketch with a rectangle, a circle and two dimensions; the drag of a point; a projected edge;
-- an extrusion; a sketch on a face and a cut through all; a plane; a pattern of the cut; a gear from the generator; each opened again and changed, one cancelled;
+- a sketch with a rectangle, a chain of lines with an inferred constraint, a circle, an arc, a polygon with its options, a construction curve, two dimensions and a reference one; a selection with Shift; the drag of a point; a projected edge and the repair of one; the focus and the explanation of a constraint;
+- an extrusion; a sketch on a face and a cut through all; a plane; a pattern of the cut; a gear from the generator; each opened again and changed, one cancelled, one confirm refused by the engine;
+- in the forms, every remembered value there and back: the extent from a distance to through all and back, the profile from regions to a generator and back, the span of a pattern from an angle to the full circle and back; an angle out of range typed in degrees; the base of a plane changed by a click, and a click on a face that is not planar; the body of a pattern picked by a click;
+- a sketch and a plane started with a plane selected beforehand, and started by a pick that is refused first;
+- in the model: a face and an edge selected, a feature renamed, suppressed and deleted, a sketch moved to a selected plane, one body exported;
 - a feature added at a marker in the middle of the timeline; move, hide and show on the timeline;
-- a parameter and a check; the collisions, asked, hidden by moving the marker and shown again;
-- the keys: Escape through its chain (a shape in progress, a tool, a draft), Delete in a sketch, undo while a draft is open (it must do nothing) and after;
-- a confirmation while a delayed preview is pending, with the slow-preview branch forced;
-- a command and a load arriving over the bridge to MCP while a draft is open.
+- a parameter and a check; the collisions asked, a pair picked, hidden by moving the marker and shown again, checked again and closed;
+- the keys: Escape through its chain (a shape in progress, a tool, a draft, a drag), Delete in a sketch, undo while a draft is open (it must do nothing) and after;
+- a drag ended by `pointercancel`, and by a change of the document under it;
+- a confirmation while a delayed preview is pending;
+- over the bridge to MCP while a draft is open: a command, a command the engine refuses, a load, and a load that fails.
+
+Whether a typed change is previewed at once depends on how long the last preview took, so two runs of the same code could differ. The script pins the time: it replaces `performance.now` in the page with a clock it steps itself, and takes both branches on purpose.
 
 What is compared between the two runs:
 
-- the calls the app makes on the engine, in order, with their arguments (`execute`, `preview`, `getState`, the queries). The app instance is on `window.trymesh` in development already; the script wraps the engine there. This is what catches a preview computed twice or a command sent in another order, which leave the document the same;
+- the calls the app makes on the engine, in order, with their arguments (`execute`, `preview`, `getState`, the queries). The app instance is on `window.trymesh`; the script wraps the engine there. This is what catches a preview computed twice or a command sent in another order, which leave the document the same;
 - the document after every step, read from the engine (saving is a download);
-- the text of the panel and of the status line after every step;
+- after every step, the toolbar, the timeline, the panel and the status line, each written out with what a user sees and can do: the text, the value of every control, whether it is disabled, its class and its title. That covers the order of the buttons, the eye of a feature, the OK of an incomplete draft and the marks of a warning, an error or a selected row;
 - a screenshot of the view at fixed steps.
 
 The script is kept in `packages/app/test/smoke/` as a list of steps that a session replays; it is not part of `npx vitest run`.
 
 Order, one commit each:
 
-1. `host.ts`: the interface, the members of `App` it names made public, `App` declared to implement it. No code moves.
+1. `host.ts`: the interface; the members of `App` it names made public; every method that will move annotated with `this: PanelHost`. No code moves.
 2. `panels/parameters.ts`, `panels/collisions.ts` with its state, `panels/model.ts`: the panels that are not forms.
-3. `features/draft.ts`: the one draft mode; the three mode interfaces become `DraftMode` with `extra`. This is the commit with real edits, not moves.
-4. `features/plane.ts`, `features/pattern.ts`, `features/extrude.ts`, `features/sketch.ts`, one commit each, and `features/index.ts` in place of the chains of conditions.
-5. `scene.ts` and `sketch-mode.ts` with `panels/sketch.ts`.
+3. `features/draft.ts` and the registry. The three mode interfaces become one `DraftMode` with `extra`; while the forms still live in the class, the mode is the union of its three instantiations, so the code there narrows it by `type` as before. `FEATURE_UI` exists from this commit, complete, with entries whose members call the methods still in the class; the shared draft code asks the entries. This is the commit with real edits, not moves.
+4. `features/plane.ts`, `features/pattern.ts`, `features/extrude.ts`, `features/sketch.ts`, one commit each: the bodies move into the entries, and the chains of conditions over the type go.
+5. `scene.ts` and `sketch-mode.ts` with `panels/sketch.ts`, behind interfaces of their own.
 
 Checks after each: the type check, the four test files of the app, the click script, and `git diff --color-moved=dimmed-zebra --color-moved-ws=allow-indentation-change` read for what is not a move.
 

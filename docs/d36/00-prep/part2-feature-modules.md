@@ -1,6 +1,6 @@
 # 00 Preparatory step, part 2: a module per feature type
 
-**State: fourth version, after three rounds of reviews.** Written from reading `packages/engine/src/evaluate.ts` and `document.ts`; both are unchanged between `cedc825` and `371bcd7`. The part changes no public type, so it has no `contract.ts`; the interfaces below are internal and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 2; the reviews that led to this version are recorded there under "Reviews", rounds 2 to 4.
+**State: fifth version, after four rounds of reviews.** Written from reading `packages/engine/src/evaluate.ts` and `document.ts`; both are unchanged between `cedc825` and `371bcd7`. The part changes no public type, so it has no `contract.ts`; the interfaces below are internal and are shown as a sketch that is not type-checked. The scope is in [design.md](design.md), part 2; the reviews that led to this version are recorded there under "Reviews", rounds 2 to 5.
 
 ## What is there today
 
@@ -51,7 +51,7 @@ packages/engine/src/
                       and ValidationContext
   recompute/
     state.ts          State, Step, StepContext, Model, ToolRecipe, Placement, ResolvedProfile, Applied,
-                      SketchState, Deps, DragTarget, WriteBack, Done, Failed
+                      SketchState, SolvedSketch, Deps, DragTarget, WriteBack, Done, Failed
     services.ts       frame with BASE, axis, applyTool, withFaces, lookup, reach, issue and MESSAGE
     profile.ts        a profile source to a ResolvedProfile (regions of a sketch, a generator)
     extent.ts         toolSpan
@@ -135,7 +135,7 @@ One line or one entry in a shared place:
 
 4. `types.ts`: the interface, one member of `Feature`, one of `FeaturePatch`.
 5. `features/index.ts`: one line.
-6. `IssueCode` in `types.ts` and its text in `MESSAGE` (`recompute/services.ts`) and in the app (`issue-text.ts`), for every new code.
+6. `IssueCode` in `types.ts` and its text in `MESSAGE` (`recompute/services.ts`), for every new code. The app shows that text and needs nothing, unless the references of the issue are bodies or features that it should name.
 7. The roles of the faces it names, when it needs a new one: a member of `FaceName`, an entry of `FACE_ROLES` (part 4, "Roles of faces") and a text in the app.
 8. The registry of the app (part 3): one line. Until part 3 is done that is fifteen places of the app, listed in [part3-app-panels.md](part3-app-panels.md).
 9. `CONVENTIONS` in `packages/mcp/src/api.ts`, when the AI has to be told how the type is used. The fields, their ranges and the shape of the feature reach `describe_api` without it.
@@ -149,7 +149,7 @@ Only when the type brings something new in kind:
 Not needed:
 
 - `packages/mcp/src/tools.ts`: the default summary covers it; a branch is added only for a better summary.
-- A step of `UPGRADES`: a step is for a change of the shape of what older documents hold. A new type changes nothing in them.
+- A step of `UPGRADES`, for a new type: a build that does not know the type refuses a document with it. (A new field of an existing type is another matter: where a build without it would drop the field without a word, the package adds a step. Part 4 of design.md, "Schema version".)
 
 ## How it is done without changing behaviour
 

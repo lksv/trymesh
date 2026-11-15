@@ -17,9 +17,9 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed four times), part 2 a design (three times), part 3 a design (once) |
+| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed five times), part 2 a design (four times), part 3 a design (twice) |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
-| 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them | 1 | A | 00 | full |
+| 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them. Also the generic form of a query in the app, which the app side of 1a, 1c, 1d and 1e builds on | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |
 | 1d | Mass properties | 1 | A | 00; the density comes as an argument until 3a | full |
 | 1e | Print queries | 1 | A | 00 | full |

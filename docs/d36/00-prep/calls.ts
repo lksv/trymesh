@@ -2,12 +2,19 @@
 // query, an export format, an operation of the app and the MCP server do with it. Only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). A step that cannot be written here is
 // a hole in the contract. Lines marked `@ts-expect-error` are calls that must not compile.
+//
+// The examples add entries to the shared maps under names that start with `example`, so that
+// the contract of a real package (which is type-checked together with this file) can use the
+// real names.
 
 import type { Command, EngineState, Id, InterferenceReport, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, ArgsOf, BodyDescription, EngineAfter, ExportFile, Exported, HostOperation, QueryContext, QueryName, QueryArgs, QueryOutcome, QuerySpec, QuantitySpec, ToolAnswer, Truncated } from './contract';
-import { DATA_CATALOGS, QUERIES, QueryFailure, UPGRADES, describedQueries, queryTools } from './contract';
+import type { ArgSpecs, ArgsOf, BodyDescription, EngineAfter, ExportFile, ExportToolInput, Exported, HostOperation, QuantitySpec, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, QuerySpec, QueryToolInput, RunArgsOf, Queries, Truncated } from './contract';
+import { DATA_CATALOGS, EXPORT_FORMATS, FACE_ROLES, QUERIES, QueryFailure, UPGRADES, describedQueries } from './contract';
+// Internal modules of the engine, as a query module inside the engine imports them.
+import { UNAVAILABLE, diagnose, explain } from '../../../packages/engine/src/diagnose';
 
 declare const engine: EngineAfter;
+declare const context: QueryContext;
 declare function fail(message: string): never;
 const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result : fail(`${outcome.error.code}: ${outcome.error.message}`));
 
@@ -23,12 +30,15 @@ export function nothingToCheck(): number {
   return unwrap(engine.query('interference', { bodies: ['housing'] })).checked; // 0
 }
 
-// A body that does not exist was an exception; it is an answer now.
+// A body that does not exist: the engine finds it before the query runs and names the argument.
 export function unknownBody(): string {
   const outcome = engine.query('interference', { bodies: ['housing', 'nope'] });
   if (outcome.ok) return fail('expected an error');
   return `${outcome.error.code} in "${outcome.error.arg}": ${outcome.error.message}`; // notAvailable in "bodies"
 }
+
+// The methods of today stay and throw as today; they are callers of `query`.
+export const asToday = (): InterferenceReport => engine.interference({ bodies: ['housing', 'lid'] });
 
 // The sketch diagnosis and the explanation of one constraint, as the sketch panel uses them.
 // A sketch that did not evaluate still answers, with the status `unavailable`.
@@ -44,6 +54,38 @@ engine.query('nope', {});
 engine.query('interference', { body: 'housing' });
 // @ts-expect-error a list of bodies, not a flag
 engine.query('interference', { bodies: true });
+
+// The entries of the registry can be called, and the engine's own `query` needs no cast to
+// dispatch by name.
+export const direct: InterferenceReport = QUERIES.interference.run(context, { bodies: ['a', 'b'] });
+export const directExport: Exported = EXPORT_FORMATS.stl.run(context, {});
+export function dispatch<N extends QueryName>(name: N, args: RunArgsOf<Queries[N]['spec']>): QueryResult<N> {
+  return QUERIES[name].run(context, args);
+}
+
+// The two sketch queries as entries: what `diagnoseSketch` and `explainConstraint` of engine.ts
+// do today, over the context. The diagnosis of one solved sketch is computed once.
+export const sketchDiagnosis: (typeof QUERIES)['sketchDiagnosis'] = {
+  title: 'Sketch diagnosis',
+  summary: 'Redundant and conflicting constraints of a sketch and what is still free in it.',
+  returns: 'status, degreesOfFreedom and lists of constraint and entity IDs; status `unavailable` when the sketch did not evaluate.',
+  args: { sketch: { kind: 'sketch', title: 'Sketch' } },
+  run(context, args) {
+    const sketch = context.sketch(args.sketch);
+    return sketch ? context.memo([sketch], 'diagnosis', () => diagnose(sketch)) : UNAVAILABLE;
+  },
+};
+export const constraintExplanation: (typeof QUERIES)['constraintExplanation'] = {
+  title: 'Explanation of a constraint',
+  summary: 'The constraints a redundant constraint follows from.',
+  returns: 'redundant and impliedBy, a list of constraint IDs.',
+  args: { sketch: { kind: 'sketch', title: 'Sketch' }, constraint: { kind: 'constraint', of: 'sketch', title: 'Constraint' } },
+  run(context, args) {
+    // That the constraint is in the sketch was checked before `run`.
+    const sketch = context.sketch(args.sketch);
+    return sketch ? explain(sketch, args.constraint) : { redundant: false, impliedBy: [] };
+  },
+};
 
 // ---------------------------------------------------------------- b. a body, described by the engine
 
@@ -70,10 +112,21 @@ export function countersinkRims(body: Id): { radius: number; center: Vec3 }[] {
   return rims;
 }
 
-// The surfaces are in the evaluation as well, next to the names of the faces.
-export function surfaceKinds(context: QueryContext): string[] {
-  return context.state.evaluation.faceSurfaces.map((surface) => surface.kind);
+// The catalog of face roles knows which field of a name tells the faces of a role apart.
+export const sidePart: 'curve' = FACE_ROLES.side.part;
+export const capPart: undefined = FACE_ROLES.startCap.part;
+export const faceKeyOf = (name: { feature: Id; role: keyof typeof FACE_ROLES } & Record<string, unknown>): string => {
+  const part = FACE_ROLES[name.role].part;
+  return part === undefined ? `${name.feature}/${name.role}` : `${name.feature}/${name.role}/${String(name[part])}`;
+};
+
+// The surfaces are in every state the engine returns, next to the names of the faces.
+export const fromState = (): string[] => engine.getState().evaluation.faceSurfaces.map((surface) => surface.kind);
+export function fromPreview(command: Command): number {
+  const preview = engine.preview(command);
+  return preview.ok ? preview.state.evaluation.faceSurfaces.length : 0;
 }
+export const fromSubscription = engine.subscribe((state) => void state.evaluation.faceSurfaces);
 
 // ---------------------------------------------------------------- c. a query over a previewed state
 
@@ -114,26 +167,32 @@ export const gap: QuerySpec<typeof gapArgs, GapResult> = {
   title: 'Smallest gap',
   summary: 'The smallest distance between two bodies that do not intersect.',
   returns: 'distance in mm and the two closest points; distance null when the bodies are farther apart than `within`.',
-  tool: 'check_gap',
   args: gapArgs,
   run(context, args) {
-    const bodies = context.state.evaluation.bodies;
-    const [a, b] = [bodies[args.a], bodies[args.b]];
-    if (!a || !b) throw new QueryFailure('notAvailable', 'a body does not exist');
+    // The bodies exist: the engine checked the arguments. They come from the context, so the
+    // same code answers for a pose. `within` has its default filled in.
+    const [a, b] = [context.bodies[args.a], context.bodies[args.b]];
+    if (a.volume === 0 || b.volume === 0) throw new QueryFailure('failed', 'a body is empty');
+    const searched: number = args.within;
     // Both solids own the answer: it is forgotten when either body changes.
-    return context.memo([a.solid, b.solid], `gap:${args.within ?? LENGTH.default}`, () => ({ distance: null }));
+    return context.memo([a.solid, b.solid], `within:${searched}`, () => ({ distance: null }));
   },
 };
 declare module './contract' {
   interface Queries {
-    gap: { spec: typeof gapArgs; result: GapResult };
+    exampleGap: { spec: typeof gapArgs; result: GapResult };
   }
 }
+// The entry goes into the registry as it is; an entry that disagrees with the map does not.
+export const registered: Pick<typeof QUERIES, 'exampleGap'> = { exampleGap: gap };
+// @ts-expect-error the entry of another query
+export const misplaced: Pick<typeof QUERIES, 'exampleGap'> = { exampleGap: QUERIES.body };
+
 export function clearance(a: Id, b: Id): number | null {
-  return unwrap(engine.query('gap', { a, b, within: 2 })).distance;
+  return unwrap(engine.query('exampleGap', { a, b })).distance; // `within` may be left out by a caller
 }
 // @ts-expect-error `within` is a number
-engine.query('gap', { a: 'a', b: 'b', within: '2' });
+engine.query('exampleGap', { a: 'a', b: 'b', within: '2' });
 
 // ---------------------------------------------------------------- e. arguments with structure
 
@@ -168,21 +227,35 @@ interface SectionResult extends Truncated {
 export const sectionExample: ArgsOf<typeof sectionArgs> = { plane: { kind: 'base', plane: 'XZ' }, offset: 12, maxPoints: 500 };
 export const cutShort = (result: SectionResult): boolean => result.truncated !== undefined && result.truncated.shown < result.truncated.total;
 
-// Print queries (1e, shortened): several orientations in one call, each a direction or a face
-// that lies on the bed; the size of the bed is a vector.
+// Print queries (1e, shortened): several orientations in one call. Each says what is up or
+// which face lies on the bed, and may add a turn about the vertical; the size of the bed is
+// a vector.
 const printArgs = {
   bodies: { kind: 'list', of: { kind: 'body' }, title: 'Bodies', optional: true },
   orientations: {
     kind: 'list',
     min: 1,
+    max: 12,
     title: 'Orientations to compare',
-    of: { kind: 'oneOf', options: { up: { kind: 'vector' }, onBed: { kind: 'entity', accepts: ['face'] } } },
+    of: {
+      kind: 'fields',
+      fields: {
+        by: { kind: 'oneOf', options: { up: { kind: 'vector' }, onBed: { kind: 'entity', accepts: ['face'] } } },
+        turn: { kind: 'number', optional: true, spec: { title: 'Turn about the vertical', unit: 'rad', default: 0 } },
+      },
+    },
   },
   bed: { kind: 'vector', title: 'Size of the bed in mm' },
   overhang: { kind: 'number', title: 'Overhang angle from the vertical', optional: true, spec: { title: 'Overhang', unit: 'rad', min: { value: 0 }, max: { value: Math.PI / 2 }, default: Math.PI / 4 } },
 } as const satisfies ArgSpecs;
-export const printExample: ArgsOf<typeof printArgs> = {
-  orientations: [{ up: [0, 0, 1] }, { onBed: { kind: 'face', body: 'housing', face: { feature: 'housing', role: 'startCap' } } }],
+type PrintArgs = ArgsOf<typeof printArgs>;
+export const printExample: PrintArgs = {
+  orientations: [{ by: { up: [0, 0, 1] } }, { by: { onBed: { kind: 'face', body: 'housing', face: { feature: 'housing', role: 'startCap' } } }, turn: 0.5 }],
+  bed: [220, 220, 250],
+};
+export const twoAtOnce: PrintArgs = {
+  // @ts-expect-error one of the alternatives, not both
+  orientations: [{ by: { up: [0, 0, 1], onBed: { kind: 'face', body: 'housing', face: { feature: 'housing', role: 'startCap' } } } }],
   bed: [220, 220, 250],
 };
 
@@ -193,7 +266,7 @@ export const poseExample: ArgsOf<typeof poseArgs> = { joints: { shoulder: 0.5, e
 // Mass properties (1d, shortened): a density, in a unit the numeric fields did not have.
 const massArgs = {
   bodies: { kind: 'list', of: { kind: 'body' }, title: 'Bodies taken as one piece' },
-  density: { kind: 'number', title: 'Density', spec: { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }, default: 1.24 } },
+  density: { kind: 'number', title: 'Density', spec: { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true } } },
 } as const satisfies ArgSpecs;
 export const massExample: ArgsOf<typeof massArgs> = { bodies: ['carrier', 'pins/1'], density: 1.27 };
 
@@ -210,11 +283,11 @@ export function printFiles(bodies: Id[]): ExportFile[] {
 const urdfOptions = { name: { kind: 'text', title: 'Name of the robot' } } as const satisfies ArgSpecs;
 declare module './contract' {
   interface ExportFormats {
-    urdf: typeof urdfOptions;
+    exampleUrdf: typeof urdfOptions;
   }
 }
 export function robotFiles(): string[] {
-  return unwrap(engine.export('urdf', { name: 'arm' })).files.map((file) => file.path); // ['arm.urdf', 'meshes/base.stl', ...]
+  return unwrap(engine.export('exampleUrdf', { name: 'arm' })).files.map((file) => file.path); // ['arm.urdf', 'meshes/base.stl', ...]
 }
 // @ts-expect-error a format that does not exist
 engine.export('step', {});
@@ -223,26 +296,31 @@ engine.export('step', {});
 
 // A catalog added by a package (the hardware of 2c, shortened). Code reads the table with its
 // own row type; an untyped caller asks the query.
-interface ScrewRow extends Record<string, number | string> {
+interface ScrewRow {
   clearanceHole: number;
   headDiameter: number;
   headHeight: number;
 }
 declare module './contract' {
   interface Catalogs {
-    socketHeadScrews: ScrewRow;
+    exampleScrews: ScrewRow;
   }
 }
-export const clearanceHole = (size: string): number => DATA_CATALOGS.socketHeadScrews.rows[size].clearanceHole;
-export const catalogForAi = (size: string) => unwrap(engine.query('catalog', { name: 'socketHeadScrews', key: size })).rows[size];
+export const clearanceHole = (size: string): number => DATA_CATALOGS.exampleScrews.rows[size].clearanceHole;
+// @ts-expect-error a column the catalog does not have
+export const typo = (size: string): number => DATA_CATALOGS.exampleScrews.rows[size].clearenceHole;
+export const catalogForAi = (size: string) => unwrap(engine.query('catalog', { name: 'exampleScrews', key: size })).rows[size];
 
 // ---------------------------------------------------------------- h. an operation of the app
 
 // The view image of 1f, shortened. The capability it needs is added to the host by the package;
-// the operation is asynchronous and answers with an image, not with data.
+// the operation is asynchronous and answers with an image, or with the reason why it cannot.
 declare module './contract' {
   interface AppHost {
-    viewport: { image(view: 'front' | 'top' | 'iso', width: number): Promise<string> }; // base64 PNG
+    exampleViewport?: { image(view: 'front' | 'top' | 'iso', width: number): Promise<string> }; // base64 PNG
+  }
+  interface HostOperations {
+    example_view_image: typeof imageArgs;
   }
 }
 const imageArgs = {
@@ -250,38 +328,41 @@ const imageArgs = {
   width: { kind: 'number', title: 'Width in pixels', optional: true, spec: { title: 'Width', unit: 'count', integer: true, min: { value: 64 }, max: { value: 2048 }, default: 800 } },
 } as const satisfies ArgSpecs;
 export const viewImage: HostOperation<typeof imageArgs> = {
-  tool: 'view_image',
   title: 'View image',
   summary: 'A picture of the model as the app shows it. Needs a connected app.',
   returns: 'A PNG image.',
   args: imageArgs,
-  async run(host, args): Promise<ToolAnswer> {
-    return { kind: 'image', mediaType: 'image/png', base64: await host.viewport.image(args.view, args.width ?? 800) };
+  async run(host, args) {
+    if (!host.exampleViewport) return { ok: false, error: { code: 'notAvailable', message: 'no app is connected' } };
+    return { ok: true, result: { kind: 'image', mediaType: 'image/png', base64: await host.exampleViewport.image(args.view, args.width) } };
   },
 };
 
 // ---------------------------------------------------------------- i. MCP and the guards
 
-// The server offers one tool per query that names one. An AI steps a parameter through the tool
-// by giving the command to preview.
-export const toolNames = (): string[] => queryTools().map((tool) => tool.name);
-export const steppedCall = { name: 'check_gap', arguments: { a: 'planet', b: 'carrier', after: { type: 'setParameter', name: 'backlash', expr: '0.2' } satisfies Command } };
+// One tool reaches every query. An AI steps a parameter by giving the command to preview; that
+// works for the existing queries as well.
+export const steppedCall: QueryToolInput = { query: 'interference', args: { bodies: ['planet', 'carrier'] }, after: { type: 'setParameter', name: 'backlash', expr: '0.2' } };
+export const anotherCall: QueryToolInput = { query: 'exampleGap', args: { a: 'planet', b: 'carrier' }, at: 'carrier' };
+// The export tool takes the same two: the files of the model as it was after a feature.
+export const earlierExport: ExportToolInput = { format: 'stl', path: 'out/housing.stl', options: { bodies: ['housing'] }, at: 'housing' };
 
-// Every query has a fixture in the tests, by name, with arguments of its own type and the tool
-// call that reaches it: a query added without one does not compile. (The same trick as the table
-// over the methods of `Engine` in packages/mcp/test/coverage.test.ts.)
-export const FIXTURES: { [N in QueryName]: { args: QueryArgs<N>; through: { tool: string; arguments: Record<string, unknown> } } } = {
-  interference: { args: {}, through: { tool: 'check_interference', arguments: {} } },
-  sketchDiagnosis: { args: { sketch: 's' }, through: { tool: 'get_sketch', arguments: { sketch: 's' } } },
-  constraintExplanation: { args: { sketch: 's', constraint: 'r' }, through: { tool: 'explain_constraint', arguments: { sketch: 's', constraint: 'r' } } },
-  body: { args: { body: 'a' }, through: { tool: 'get_body', arguments: { body: 'a' } } },
-  catalog: { args: { name: 'socketHeadScrews' }, through: { tool: 'get_catalog', arguments: { name: 'socketHeadScrews' } } },
-  gap: { args: { a: 'a', b: 'b' }, through: { tool: 'check_gap', arguments: { a: 'a', b: 'b' } } },
+// A fixture per query in the tests, with arguments of the query's own type: the real table is
+// over all of `QueryName`, so a query added without a fixture does not compile (the same trick
+// as the table over the methods of `Engine` in packages/mcp/test/coverage.test.ts). Here it is
+// over the names of this file only, so that the contracts of the packages do not have to edit it.
+type Shown = 'interference' | 'sketchDiagnosis' | 'constraintExplanation' | 'body' | 'catalog' | 'exampleGap';
+export const FIXTURES: { [N in Shown]: { args: QueryArgs<N> } } = {
+  interference: { args: {} },
+  sketchDiagnosis: { args: { sketch: 's' } },
+  constraintExplanation: { args: { sketch: 's', constraint: 'r' } },
+  body: { args: { body: 'a' } },
+  catalog: { args: { name: 'exampleScrews' } },
+  exampleGap: { args: { a: 'a', b: 'b' } },
 };
 
 // The description for the AI lists the queries from the catalog.
-export const describedForAi: string[] = describedQueries().map((query) => `${query.tool ?? query.name}: ${query.summary} Returns: ${query.returns}`);
-export const titles: string[] = Object.values(QUERIES).map((spec) => spec.title);
+export const describedForAi: string[] = describedQueries().map((query) => `${query.name}: ${query.summary} Returns: ${query.returns}`);
 
 // The version of the schema follows from the list of upgrade steps.
 export const SCHEMA_VERSION: number = UPGRADES.length + 1;

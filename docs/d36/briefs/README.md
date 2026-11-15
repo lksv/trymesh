@@ -2,7 +2,7 @@
 
 Three sessions write the designs of the first packages of [the plan](../README.md) at the same time. Each has a brief here. This file holds what is common to all three; a session reads it and then its own brief.
 
-**State: draft.** The briefs are valid once the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts), parts 1 and 4) has been through its review and the fixes are merged. Until then they may change.
+**State: draft.** The briefs are valid once the contract of the preparatory step ([00-prep/contract.ts](../00-prep/contract.ts), parts 1 and 4; third version, two rounds of reviews) has been through its third review and the fixes are merged. Until then they may change.
 
 | Brief | Packages | Branch |
 |---|---|---|
@@ -16,7 +16,7 @@ Designs only. No file under `packages/` changes.
 
 For every package of its brief a directory `docs/d36/<id>-<name>/` with `design.md`, `contract.ts` and `calls.ts`, as described in the plan under "A package". The decision number and the validation scenario of each package are in the brief.
 
-- `contract.ts` imports the real types of the engine by a relative path and the shared types from `../00-prep/contract`, and states only what the package adds. A query is added to the map `Queries` by declaration merging; `../00-prep/calls.ts`, section d, shows how.
+- `contract.ts` imports the real types of the engine by a relative path and the shared types from `../00-prep/contract`, and states only what the package adds. A query is added to the map `Queries` by declaration merging; `../00-prep/calls.ts`, section d, shows how, and sections f, g and h show an export format, a data catalog and an operation of the app. All contracts are type-checked together, so a name in a shared map is taken once: the names that start with `example` belong to `00-prep/calls.ts`, and a package uses the real ones (`gap`, `section`, `urdf`).
 - `calls.ts` writes the validation scenario of the package as calls against the contract. A step that cannot be written is a hole in the contract: fix the contract, or record the hole.
 - `design.md` starts from what [backlog.md](../../backlog.md), part "Direction after D35", says about the package, checks it against the code and decides what the backlog left open. It names the cheap variant and what is deferred, where the code will live, what the package adds to the document, the commands and the queries, the issue codes it adds, the rejected alternatives with reasons, and the open questions.
 

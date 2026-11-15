@@ -282,3 +282,11 @@ Not acted on, and why:
 Tested by five recorded steps of the model case of `packages/app/test/app.test.ts` (the rows, a pair at zero picked, a gap picked, the list cut, closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").
 
 **Not done:** a zoom to the picked gap; the view over a preview or while a form of a feature is open (the generic form is not shown then).
+
+### Review of the app side (2026-11-15)
+
+One light review (forms and UI: the diff only, a cheaper model). It found the rows and the picked row to agree (the line under a picked row and the pairs that could not be measured shift no index), the two kinds of a pair told apart, each face on its own body, the rounding, an answer with nothing in it or with failures only, the recorded steps and the documents right. One finding, minor; no second round.
+
+| Finding | Held | What was done |
+|---|---|---|
+| The line that says a list was cut names both lists whenever either was cut, so it could read "3 of 3 pair(s) within the search distance and 5 of 9 that could not be measured" | Yes | Each list is named only when it was cut |

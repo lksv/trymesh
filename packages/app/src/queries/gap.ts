@@ -36,11 +36,16 @@ export const gapView: QueryView<'gap'> = {
       // where the gap is: the two faces are the features to change, in the order of the two bodies
       return picked && open ? [line, h('p', { className: 'hint' }, `Between ${panel.faceLabel(pair.between.faceA)} and ${panel.faceLabel(pair.between.faceB)}.`)] : [line];
     };
+    // each of the two lists says that it was cut only when it was
+    const cut = [
+      ...(result.pairs.length < result.close ? [`${result.pairs.length} of ${result.close} pair(s) within the search distance`] : []),
+      ...(result.failed.length < result.refused ? [`${result.failed.length} of ${result.refused} pair(s) that could not be measured`] : []),
+    ];
     return [
       ...(result.close === 0 && result.refused === 0 ? [h('p', { className: 'hint' }, `No two bodies are within ${panel.number(result.within, 'mm')} of each other; ${result.checked} pair(s) checked.`)] : []),
       ...result.pairs.flatMap(row),
       ...result.failed.map((pair) => h('p', { className: 'issue warning' }, `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: could not be measured (${pair.message})`)),
-      ...(result.truncated ? [h('p', { className: 'hint' }, `Listed: ${result.pairs.length} of ${result.close} pair(s) within the search distance${result.refused ? ` and ${result.failed.length} of ${result.refused} that could not be measured` : ''}. Raise "Most pairs" to see the rest.`)] : []),
+      ...(cut.length ? [h('p', { className: 'hint' }, `Listed: ${cut.join(' and ')}. Raise "Most pairs" to see the rest.`)] : []),
     ];
   },
   scene(result, _args, panel) {

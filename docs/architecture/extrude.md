@@ -1,12 +1,12 @@
 # Architecture: the extrusion
 
-Part of [architecture.md](../architecture.md), the design as implemented. The extrusion, its extent and targets, profile generators.
+Part of [architecture.md](../architecture.md), the design as implemented. The extrusion, its extent and targets, the offset of a profile and a wall along curves, profile generators.
 
 ## Extrude
 
 Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá později vyměnit nebo zopakovat samostatně:
 
-1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. A generated profile comes from its generator (below). U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
+1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. A generated profile comes from its generator (below); regions with an offset and a wall along curves come from an exact outline ("Profile offset and a wall", below). U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží).
 2. **Tool.** The engine builds the closed mesh of a prism over an interval along the normal of the sketch plane: two caps (triangulated by the kernel) and the side faces. For the extent `distance` the interval is `start` to `start + distance`; for `throughAll` it is measured against the targets (below). Every triangle gets a face number by name; `startCap` is the cap at the start of the interval and `endCap` at its end, whichever way the interval points.
 3. **Application.** `new` stores the tool as a body. `add` and `cut` hand a tool recipe to `applyTool`, which runs one boolean per target body.
 
@@ -24,6 +24,73 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 - The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern measures it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
 - The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
+
+### Profile offset and a wall (D44)
+
+Two ways to a profile besides plain regions, both in the profile service (`recompute/profile.ts`, `recompute/outline.ts`), so every feature that takes a profile gets them. The design with its alternatives and reviews is [d36/2a-offset/design.md](../d36/2a-offset/design.md).
+
+```ts
+type ProfileSource =
+  | { type: 'regions'; sketch: Id; regions: RegionRef[]; offset?: number }   // `profile/offset`, mm, either sign
+  | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number }            // `profile/thickness`, mm, positive
+  | { type: 'generated'; ... };                                              // no offset
+```
+
+**What a profile hands to a tool build** (`ResolvedProfile`, `recompute/state.ts`): the regions as polylines, the frame, `sideOf(key)` and `outline()`.
+
+- `sideOf(key)` answers for what `Loop.curves` holds for an edge: the name of the side face without its feature (`{ role: 'side', curve }` for regions and a generated profile; a wall names its sides itself) and its shape (a line, a round, a general curve). `buildPrism` builds the name and the surface of a side face from it and knows no role.
+- `outline()` is the exact outline the regions were divided from, after the offset: closed loops of `OutlineCurve` (`sketch.ts`: a line, an arc with a signed sweep, a circle; each with the key of its side, the direction it is passed in and, for a line and an arc, its two end points and the keys of its two vertices), the material on the left of every loop, an outer loop and its holes per region. A tool build that has to move the outline again asks for it (the taper of 2b); a generated profile has none.
+- `detectProfile` keeps the exact curves of every loop it builds (`Loop.exact`), for the loops of half-edges and for the loops of circles.
+
+**Unchanged when not used.** A profile of regions whose offset is absent, or zero after its expression is evaluated, takes the path it always took: the regions of the sketch, by reference. The meshes of a document that does not use the offset are byte for byte what they were (pinned by a hash in `packages/scenarios/test/review.test.ts`).
+
+**The outline of the selection** (`selectionOutline`). The offset moves the selected regions together, as the prism takes them for side faces:
+
+1. Of the curves of all loops of all selected regions, a curve that occurs twice (once from each of two selected regions) is dropped. A rectangle with circles inside it, all selected, is the plain rectangle.
+2. The rest is chained by vertex keys. Where several curves leave a vertex (regions that meet in a point), the chain goes on along the loop it came by, so two squares that share a corner are two loops; when that curve was dropped as well, the profile is refused.
+3. A loop with a positive area (the polygon of its corners plus the circular segments of its arcs) is an outer loop; the others are holes of the smallest outer loop that contains them.
+
+**The move of a loop** (`movedChain`). Every curve moves to the right of its travel by `d`; the material is on the left, so a positive offset grows the profile and shrinks its holes.
+
+- A line becomes the parallel line. An arc and a circle keep their centre; the radius grows by `d` on a counter-clockwise pass and shrinks by `d` on a clockwise one.
+- The corner between two moved neighbours: tangent neighbours (directions equal within `ANGLE_TOLERANCE`) get the old corner moved along the common normal, with no intersection computed (a tangent contact is a double root); two lines get the intersection of the moved lines (a mitre, so a sharp corner moves by `d / sin(half the corner angle)`, without a limit); a line and a circle, and two circles, get the one of the two intersections of the moved carriers that lies on the branch of the old corner (the same one in the order along the line; the one on the same side of the line of centres).
+- Refused: a radius not above `LENGTH_TOLERANCE`; neighbours whose moved carriers do not meet; a curve that turned round or has no length left (a line whose new ends are not in its old direction by more than the tolerance; an arc whose new sweep, the old one plus the changes of its two end angles each taken within half a turn, has lost its sign, is not longer than the tolerance along the arc, or exceeds a full turn).
+- The topology never changes: every curve maps to one curve, so side faces keep their names and their exact surfaces (the plane of the moved line, the cylinder of the new radius). A curve that vanishes is an error, not a reason to join its neighbours (decided by the owner, D44; the narrow case of a corner arc that drops out is in the [backlog](../backlog.md)).
+
+**The polylines** (`outlineRegions`). The moved outline is divided by the rule of a sketch profile (`segments`, by the new radius), every vertex with a key of its own, and tested in this order:
+
+1. on the exact curves, two curves touch only at a corner they share (`touchingCurves`, the check `compatible` of a sketch profile);
+2. **clearance** (`polygonProblem`): any two edges that do not follow each other in one loop are farther apart than `LENGTH_TOLERANCE` (the distance of two segments, zero when they meet in any way), and of two edges that do follow each other the other end of each is farther than the tolerance from the other edge. Edges follow each other by position in the loop, not by a common key, so a loop that returns to a point is refused. The sweep is the one of `soundTessellation` with the boxes widened by the tolerance. What passes is simple polygons with no point in common;
+3. **area**: every loop has the sign of area of its exact loop and an area above the tolerance times its length (a sliver between an arc and its chord that the division flattens fails here or as a loop of fewer than three points);
+4. no two edges cross (`soundTessellation`, the second check of a sketch profile; the clearance covers it and names the curves, so it finds nothing new);
+5. **nesting**: for every pair of loops "lies inside" is what it was for the exact loops before the move (`nestingOf`: the middle of a curve against the exact curves of the other loop), tested with one vertex against the polygon of the other loop (`polygonNesting`). It catches a hole that grew past its outer loop without touching it, and a small hole that lies inside an exact circle and outside its polygon.
+
+The crossing test of a sketch profile alone would not do: it sees only edges whose ends lie strictly on opposite sides of each other, so an edge that ends on another, passes through its end or runs along it is no crossing to it.
+
+**A wall** (`wallOutline`) is a chain of own curves of the sketch moved by half the thickness to each side.
+
+1. The curves are looked up among the own curves of the solved sketch; one that is not there is a `brokenReference` that names it. A command verifies each curve it adds: an own line, arc or circle of the sketch, construction or not; projected geometry is refused (the reference has the flag `notProjected`, checked in `requireRef`), because the ends of a wall are named by sketch points. The list is stored sorted and without duplicates.
+2. They are chained by joined end points, by the rule of a sketch profile (`pointJoins` of `sketch.ts`: the same point, or points held by a `coincident` that is satisfied). Refused as `invalidProfile`, with the curves named: a curve without length, three curves at a point, curves that are not connected, a circle together with anything else.
+3. An open chain is walked from the free end with the smaller vertex key, a closed one counter-clockwise. It is moved by `+thickness / 2` and by `−thickness / 2`; the free ends of an open chain move along their own normals.
+4. Open: the right side forwards, a straight end, the left side backwards, a straight end. Closed (a loop of curves, a circle): the right side is the outer loop and the left side, reversed, its hole.
+5. The same tests of the polylines as for the offset. A chain that crosses itself, or whose two sides cross at a tight bend, is refused there.
+
+The source reads the solved curves only. It needs neither regions nor a valid profile of the sketch, so the centre line of a rib may be a construction line, or a line that ends on the wall it stiffens.
+
+**Faces of a wall.** Every curve of the chain makes two side faces, so `side` with the curve would name both:
+
+| Face | Name | Surface |
+|---|---|---|
+| a side from a line | `{ role: 'wallSide', curve, side }` | plane; its origin is the moved start of the line in the direction of the sketch curve |
+| a side from an arc or a circle | the same | cylinder |
+| a free end of an open chain | `{ role: 'wallEnd', point }` | plane; its origin is the corner on the left of the end curve |
+| caps | `startCap`, `endCap` | plane |
+
+`side` is `left` or `right` of the curve in its own direction: a line from its point `a` to `b`; an arc and a circle counter-clockwise, so `left` is the side of the centre. `point` is the point the end curve names there (`a`, `b`, `start` or `end`). The names depend on the sketch curve alone, not on the order of `curves` or on the end the chain is walked from, and a curve added to the chain renames nothing but the end it extends.
+
+**Errors.** No new code. `invalidProfile` for an offset or a wall that cannot be built carries a message of its own, like a generator's: it starts with what moved the outline ("The offset of -3 mm", "The wall 2 mm thick"), names the curves (also in `refs`) and ends with what to do (a smaller offset or a larger corner radius, or the moved outline drawn in the sketch; a thinner wall or wider bends).
+
+**An optional numeric field.** `profile/offset` is the first numeric field of a feature that may be absent ([document.md](document.md), "Catalog of numeric fields").
 
 ### Profile generators (D35, point 3)
 

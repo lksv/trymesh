@@ -149,8 +149,39 @@ export interface ExtrudeFeature extends FeatureBase {
   targets?: Id[]; // target bodies: none for new, exactly one for add, one or more for cut
 }
 
-// Where an extrusion takes its profile from: regions of a sketch, or a profile generator.
-// `generated`: an entry of the generator catalog (GENERATORS) builds the loops.
+// Where an extrusion takes its profile from: regions of a sketch, a profile generator, or a wall
+// along curves of a sketch.
+// `regions`: closed regions of the sketch, each named by the curves of its outer loop.
+// - `offset` (numeric field `profile/offset`, millimetres, either sign, optional): the outline of
+//   the selected regions moved by that much. Positive grows the profile: outer loops move outwards
+//   and holes shrink. Absent means no offset. The field may be left out of a command and of the
+//   document; `setField` reaches it also while the feature does not have it, and
+//   `updateFeature` with `{ profile: { offset: null } }` removes it.
+// - The outline is the boundary of the selected regions taken together: a curve shared by two
+//   selected regions is not part of it, so a rectangle with circles inside it, all selected, is
+//   offset as the plain rectangle.
+// - Every curve of the outline maps to one curve: a line to a parallel line, an arc or a circle to
+//   one with the same centre and another radius, joined to its neighbours where the two moved
+//   curves meet (a mitre). Side faces keep their names (`side` with the curve) and their exact
+//   surfaces; the origin of a sketch on a moved side face is the moved start of its line.
+// - The topology of the outline never changes. The feature ends in the error `invalidProfile`,
+//   with a message that names the curves and says what to do, when a curve vanishes or turns round
+//   (an inward offset not smaller than a corner radius), when two moved neighbours do not meet,
+//   when loops touch or cross after the offset or their nesting changes.
+// `wall`: own curves of the sketch (lines, arcs, or one circle; construction curves included) that
+// form one chain, moved by half the `thickness` to each side.
+// - `curves` is stored sorted; the order of the chain follows from the joins: each curve joined to
+//   the next at an end point (the same point, or points held together by a satisfied coincident
+//   constraint), without a branch. An open chain gives one loop with a straight end at each free
+//   end; a closed chain (a circle, a closed loop of lines and arcs) gives a band with a hole.
+// - `thickness` is the numeric field `profile/thickness`, positive.
+// - The source reads the solved curves only. It needs neither closed regions nor a valid profile
+//   of the sketch, so the centre line of a rib is a construction line.
+// - Corners are mitres and the errors are those of the offset (`invalidProfile`); curves that do
+//   not form one chain are `invalidProfile` too, and a curve that is no longer in the sketch is
+//   a `brokenReference`. A command verifies that each curve it adds is an own curve of the sketch.
+// - Its faces are `wallSide` and `wallEnd` (see FaceName) and the two caps.
+// `generated`: an entry of the generator catalog (GENERATORS) builds the loops. It has no offset.
 // - `operands` are entities of the sketch by the names of the catalog (a gear: `circle`, the pitch
 //   circle; it may be a construction circle or a projected one). A command verifies the operands the
 //   feature did not have before; an operand removed later is a broken reference in the recompute.
@@ -159,7 +190,8 @@ export interface ExtrudeFeature extends FeatureBase {
 //   stored. A number without a default (the tooth count) is required.
 // - `refs` are references to earlier features by the names of the catalog (a gear: `meshWith`).
 export type ProfileSource =
-  | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+  | { type: 'regions'; sketch: Id; regions: RegionRef[]; offset?: number }
+  | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number }
   | { type: 'generated'; generator: GeneratorName; sketch: Id; operands: Record<string, Id>; params: Record<string, number | boolean | string>; refs?: Record<string, Id> };
 
 export type GeneratorName = 'involuteGear'; // entries of the generator catalog
@@ -205,10 +237,19 @@ export type Extent = { type: 'distance'; start: number; distance: number } | { t
 // A face of a copy made by a pattern carries `copy`: the pattern and the number of the copy (from
 // 1); for a pattern of a pattern the list grows, the latest pattern last. Faces of the original
 // have no `copy`. A reference to a face of a copy is also a reference to every pattern in the list.
+// The faces of a wall (a profile of the type `wall`): every curve of the chain makes two side
+// faces, so `side` with the curve would name both.
+// - `wallSide`: `side` is the side of the curve in the curve's own direction: a line from its point
+//   `a` to `b`; an arc and a circle counter-clockwise, so `left` is the side of the centre. It does
+//   not depend on the order of `curves` or on the end the chain is walked from.
+// - `wallEnd`: the straight end of an open chain; `point` is the sketch point the chain ends at, as
+//   the end curve names it (`a`, `b`, `start` or `end` of the curve).
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
   | { feature: Id; role: 'endCap' } // protější víko
+  | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }
+  | { feature: Id; role: 'wallEnd'; point: Id }
 ) & { copy?: CopyTag[] };
 
 export interface CopyTag {

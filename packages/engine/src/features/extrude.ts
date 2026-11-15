@@ -43,7 +43,7 @@ function extrudeFeature(o: Dict, what: string, context: ValidationContext): Extr
 // (nové těleso, nebo booleovská operace s cílem).
 function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, failed }: StepContext): Step {
   const profile = resolveProfile(feature.id, feature.profile, state, settings.chordTolerance);
-  // a generator explains its failure itself; the general text of the code is about sketch curves
+  // a generator, an offset and a wall explain their failure themselves; the general text of the code is about sketch curves
   if ('code' in profile) return profile.message === undefined ? failed(profile.code, profile.refs) : { state: finish({ status: 'error', error: { code: profile.code, message: profile.message, refs: profile.refs }, warnings: [] }) };
   // What the profile generator published and warned about belongs to the result whatever the
   // application of the tool ends with, short of an error.
@@ -56,7 +56,7 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   const triangulation = new Map<Region, Uint32Array>();
   const build: ToolRecipe['build'] = (targets, firstFaceId, placement) => {
     const frame = placement ? transformFrame(placement.transform, profile.frame) : profile.frame;
-    const prism = buildPrism(feature.id, profile.regions, frame, toolSpan(feature.extent, frame, targets), profile.curveOf, firstFaceId, deps.kernel, triangulation);
+    const prism = buildPrism(feature.id, profile.regions, frame, toolSpan(feature.extent, frame, targets), profile.sideOf, firstFaceId, deps.kernel, triangulation);
     return placement ? { ...prism, faces: prism.faces.map((face) => ({ ...face, name: { ...face.name, copy: [placement.copy] } })) } : prism;
   };
   if (feature.operation !== 'new') {

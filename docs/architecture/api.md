@@ -233,7 +233,7 @@ type Command =
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
   // rovina, extrude (skica má vlastní příkazy níže)
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
-  | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }   // one numeric field by its address
+  | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }   // one numeric field by its address; adds an optional field the feature does not have
   // parameters and checks
   | { type: 'setParameter'; name: string; expr: Expr; index?: number }         // creates or changes
   | { type: 'renameParameter'; name: string; to: string }                      // rewrites expressions too
@@ -262,6 +262,7 @@ type Command =
 
 - Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná. A generated profile with another `generator` is another variant too.
 - The dictionaries of a generated profile (`operands`, `params`, `refs`) merge by entry: `{ profile: { params: { rotation: 'deg(5)' } } }` leaves the other parameters with their expressions. `null` removes an entry: a parameter returns to its default and loses its expression (a required one cannot be removed), a reference ceases to exist. Removing an entry that is not there is not an error.
+- A profile of regions takes its offset the same way: `{ profile: { offset: 2 } }` sets it and `{ profile: { offset: null } }` removes it, also from a feature that did not have it (an optional numeric field, D44). The curves of a wall are a list and are replaced whole; each curve the feature did not have before is verified as an own curve of the sketch.
 - Odkaz (objekt s polem `kind`: `PlaneRef`, or the `AxisRef` of a pattern) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
 - `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
 - Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.

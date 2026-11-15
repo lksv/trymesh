@@ -4,7 +4,9 @@ import { type FaceName, type Id, type Issue, type IssueCode, type NumberSpec, bo
 // The name of a feature of the document; undefined when the document has no such feature.
 export type NameOf = (feature: Id) => string | undefined;
 
-export const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko' };
+export const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko', wallSide: 'side of a wall', wallEnd: 'end of a wall' };
+// What tells apart the faces of a wall: the side of its curve, the point of its end.
+const wallPart = (name: FaceName): string => (name.role === 'wallSide' ? ` (${name.side} of ${name.curve})` : name.role === 'wallEnd' ? ` (at ${name.point})` : '');
 
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;
@@ -17,7 +19,7 @@ export function bodyName(body: Id, nameOf: NameOf): string {
 
 // A face by the feature that made it and its role; a face of a copy names the copy and its pattern.
 export const faceLabel = (name: FaceName, nameOf: NameOf): string =>
-  `${featureName(name.feature, nameOf)} – ${ROLES[name.role]}${(name.copy ?? []).map((tag) => `, copy ${tag.index} of ${featureName(tag.pattern, nameOf)}`).join('')}`;
+  `${featureName(name.feature, nameOf)} – ${ROLES[name.role]}${wallPart(name)}${(name.copy ?? []).map((tag) => `, copy ${tag.index} of ${featureName(tag.pattern, nameOf)}`).join('')}`;
 
 // A string in `refs`: a feature or a body the document has is named; anything else (a feature that
 // is gone, a point of a sketch such as `x1/center`) stays the ID it is.

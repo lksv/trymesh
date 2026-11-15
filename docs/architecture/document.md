@@ -107,7 +107,10 @@ interface ExtrudeFeature extends FeatureBase {
 }
 
 type ProfileSource =
-  | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+  | { type: 'regions'; sketch: Id; regions: RegionRef[];
+      offset?: number }                                    // the outline moved by this much; an optional numeric field (D44)
+  // a wall along own curves of the sketch that form one chain (see Extrude, Profile offset and a wall)
+  | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number }
   // a profile generator from the catalog (see Extrude, Profile generators)
   | { type: 'generated'; generator: GeneratorName; sketch: Id;
       operands: Record<string, Id>;                        // entities of the sketch by catalog name
@@ -175,6 +178,11 @@ Angles are in radians both as numbers and in expressions; `deg(x)` converts degr
 **Catalog of numeric fields** (`catalog.ts`, `document.ts`). A field is described by `NumberSpec`: title, unit (`mm`, `rad`, `count`, `none`), optional `min` and `max` with an `open` flag, `nonZero`, `integer` (within 1e-9 of an integer, then rounded) and `default`. `checkNumber` verifies a value against it; plain numbers in commands and values of expressions go through the same function.
 
 - Static description: `FEATURE_TYPE_INFO[type].fields` (`FieldSpec`: address, spec, the variant that has the field) and `CONSTRAINTS[type].values` (named values of a constraint; a dimension has `value` and the flag `dimension`, a fixed point has `x` and `y`, at the addresses `constraints/<id>/x` and `constraints/<id>/y`). The API description for AI and the forms of the app read these.
+- **An optional field of a feature (D44).** A field of a feature whose description has a `default` may be absent: `profile/offset` of a profile of regions is the first (the taper and the gap of track B follow).
+  - Absent means the default, and the default is not stored: storing `offset: 0` in every profile of regions would rewrite every extrusion of every document on load. What a command gives is kept, also a zero; the two spellings of "no offset" compute the same.
+  - `fieldsOf` lists the field only while the feature has it, and `expressions` may hold its address only then.
+  - `setField` reaches it also while the feature does not have it: besides the fields `fieldsOf` lists, it accepts the address of a field of the registry whose description has a default and whose `when` holds for the feature, and then adds the field. `updateFeature` sets it by a patch and removes it with `null`, also from a feature that did not have it.
+  - `default` has two readings, by where the field is: for a parameter of a generator (a dictionary the catalog describes) the default is stored when the parameter is left out; for a field of a feature it is what an absent field means.
 - Fields of a concrete feature: `fieldsOf(feature)` returns address, spec, value and expression. It is not a second list: feature validators read every numeric field through one reader (`Fields.number(value, path, spec)`), and `fieldsOf` is a validation pass that collects what the reader saw. What commands accept and what `fieldsOf` reports therefore cannot drift apart.
 - Only driving inputs are fields. Coordinates and radii computed by the solver and values of reference dimensions are not; a string there is an invalid command.
 

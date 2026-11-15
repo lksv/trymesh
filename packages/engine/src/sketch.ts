@@ -113,11 +113,27 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
 
 // Uzavřená lomená čára v souřadnicích skici. Bod i má klíč keys[i]; hrana z bodu i do bodu i + 1
 // pochází z křivky curves[i]. Vnější smyčka jde proti směru hodin, díra po směru.
+// `exact`: the curves the polyline was divided from, in the order and direction the loop passes
+// them (the loops of a sketch and of a moved outline have them; a generated loop has none).
 export interface Loop {
   xy: number[];
   keys: string[];
   curves: Id[];
+  exact?: OutlineCurve[];
 }
+// One curve of a closed loop as the loop passes it; the material is on the left of the travel.
+// - `key` is what `Loop.curves` holds for its edges (the ID of the sketch curve for a region);
+//   `forward` says that the loop passes the curve in its own direction (a line from `a` to `b`, an
+//   arc and a circle counter-clockwise).
+// - A line and an arc go `from` a point `to` a point; `ends` are the keys of the two vertices, by
+//   which curves are chained. An arc starts at the angle `start` and turns by `sweep`, which is
+//   signed: positive is counter-clockwise.
+// - A circle is a loop by itself.
+export type OutlineCurve = { key: string; forward: boolean } & (
+  | { type: 'line'; from: Vec2; to: Vec2; ends: [string, string] }
+  | { type: 'arc'; from: Vec2; to: Vec2; ends: [string, string]; center: Vec2; radius: number; start: number; sweep: number }
+  | { type: 'circle'; center: Vec2; radius: number; ccw: boolean }
+);
 export interface Region {
   ref: RegionRef;
   outer: Loop;
@@ -227,7 +243,7 @@ function compatible(A: Shape, B: Shape, tol: number): boolean {
 // vyžádaly milióny úseček (pro r/tolerance nad 1e16 vychází krok nula); nad ním už dělení
 // toleranci nedodrží.
 const MAX_SEGMENTS = 4096;
-function segments(sweep: number, radius: number, chordTolerance: number): number {
+export function segments(sweep: number, radius: number, chordTolerance: number): number {
   const step = Math.min(2 * Math.acos(1 - Math.min(chordTolerance / radius, 1)), Math.PI / 4);
   return Math.min(MAX_SEGMENTS, Math.max(1, Math.ceil(sweep / step - 1e-9)));
 }
@@ -236,7 +252,7 @@ function segments(sweep: number, radius: number, chordTolerance: number): number
 // křivkách, ale těleso vzniká z lomených čar, které se od oblouku liší až o toleranci dělení.
 // Křivka, která oblouk těsně míjí, pak jeho lomenou čáru protne, a oblast tenčí než tolerance
 // splaskne do dvou bodů. Z takových smyček by nevzniklo uzavřené těleso.
-function soundTessellation(regions: Region[]): boolean {
+export function soundTessellation(regions: Region[]): boolean {
   interface Segment {
     a: string;
     b: string;
@@ -279,11 +295,11 @@ function soundTessellation(regions: Region[]): boolean {
   return true;
 }
 
-// Projde skicu a najde oblasti. Konstrukční a promítnuté křivky se ignorují.
-export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, chordTolerance: number): Profile {
-  const tol = LENGTH_TOLERANCE;
-  // Spojování bodů: tentýž bod, nebo vazba coincident, která je v použitých polohách splněná.
-  // Tranzitivní, jde i přes počátek a promítnuté body. Vrchol nese polohu bodu s nejmenším ID.
+// Spojování bodů: tentýž bod, nebo vazba coincident, která je v použitých polohách splněná.
+// Tranzitivní, jde i přes počátek a promítnuté body. Vrchol nese polohu bodu s nejmenším ID.
+// The answer is the vertex of a point: the point with the smallest ID of those it is joined with.
+// The profile of a sketch and the chain of a wall (recompute/outline.ts) join points by this rule.
+export function pointJoins(sketch: SketchFeature, geometry: SketchGeometry): (id: Id) => Id {
   const parent = new Map<Id, Id>(Object.keys(geometry.points).map((id) => [id, id]));
   const find = (id: Id): Id => {
     let root = id;
@@ -292,10 +308,17 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
   };
   for (const c of Object.values(sketch.constraints)) {
     if (c.type !== 'coincident' || !parent.has(c.a) || !parent.has(c.b)) continue;
-    if (dist2(xy(geometry.points[c.a]), xy(geometry.points[c.b])) > tol) continue;
+    if (dist2(xy(geometry.points[c.a]), xy(geometry.points[c.b])) > LENGTH_TOLERANCE) continue;
     const [ra, rb] = [find(c.a), find(c.b)];
     if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
   }
+  return find;
+}
+
+// Projde skicu a najde oblasti. Konstrukční a promítnuté křivky se ignorují.
+export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, chordTolerance: number): Profile {
+  const tol = LENGTH_TOLERANCE;
+  const find = pointJoins(sketch, geometry);
   const vertex = (id: Id): { key: string; p: Vec2 } => ({ key: find(id), p: xy(geometry.points[find(id)]) });
 
   const shapes: Shape[] = [];
@@ -405,15 +428,21 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
 
   // Lomená čára smyčky. Dělení oblouku nezávisí na směru průchodu, takže sousední oblasti sdílejí vrcholy.
   const polyline = (loop: number[]): Loop => {
-    const out: Loop = { xy: [], keys: [], curves: [] };
+    const exact: OutlineCurve[] = [];
+    const out: Loop = { xy: [], keys: [], curves: [], exact };
     for (const i of loop) {
       const h = halves[i];
       const s = h.shape;
-      const start = position.get(h.from) as Vec2;
+      const [start, end] = [position.get(h.from) as Vec2, position.get(h.to) as Vec2];
       out.xy.push(start[0], start[1]);
       out.keys.push(`v:${h.from}`);
       out.curves.push(s.id);
-      if (s.kind !== 'arc') continue;
+      const travel = { key: s.id, forward: h.forward, from: start, to: end, ends: [h.from, h.to] as [string, string] };
+      if (s.kind !== 'arc') {
+        exact.push({ ...travel, type: 'line' });
+        continue;
+      }
+      exact.push({ ...travel, type: 'arc', center: s.c, radius: s.r, start: h.forward ? s.start : s.start + s.sweep, sweep: h.forward ? s.sweep : -s.sweep });
       const n = segments(s.sweep, s.r, chordTolerance);
       for (let step = 1; step < n; step++) {
         const k = h.forward ? step : n - step;
@@ -427,7 +456,7 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
   };
   const circleLoop = (s: Extract<Shape, { kind: 'circle' }>, clockwise: boolean): Loop => {
     const n = segments(TAU, s.r, chordTolerance);
-    const out: Loop = { xy: [], keys: [], curves: [] };
+    const out: Loop = { xy: [], keys: [], curves: [], exact: [{ key: s.id, forward: !clockwise, type: 'circle', center: s.c, radius: s.r, ccw: !clockwise }] };
     for (let step = 0; step < n; step++) {
       const k = clockwise ? (n - step) % n : step;
       const angle = (TAU * k) / n;
@@ -522,6 +551,132 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
   const regions = faces.map((f) => f.region).sort((p, q) => (p.ref.outerLoop.join('|') < q.ref.outerLoop.join('|') ? -1 : 1));
   if (!soundTessellation(regions)) return { valid: false, regions: [] };
   return { valid: true, regions };
+}
+
+// ---------------------------------------------------------------- checks of an outline
+
+// The checks of loops that did not come from `detectProfile`: an outline moved by an offset and the
+// outline of a wall (recompute/outline.ts). The first two are the checks of a sketch profile (curves
+// touch only where they are joined; the polylines do not cross). They are not enough: the crossing
+// test of `soundTessellation` sees only edges whose ends lie strictly on opposite sides of each
+// other, so an edge that ends on another, passes through its end or runs along it is no crossing
+// to it. The polylines therefore get three more tests (clearance, area, nesting).
+
+// Two curves of the loops that touch where they are not joined, if there are any. A corner is
+// a vertex of its own in every loop: curves are joined only where they follow each other.
+export function touchingCurves(loops: OutlineCurve[][]): [OutlineCurve, OutlineCurve] | undefined {
+  const shapes: { shape: Shape; curve: OutlineCurve }[] = [];
+  loops.forEach((loop, l) => {
+    loop.forEach((curve, i) => {
+      const id = `${l}:${i}`;
+      const [a, b] = [`${l}:${i}`, `${l}:${(i + 1) % loop.length}`];
+      if (curve.type === 'circle') shapes.push({ curve, shape: { id, kind: 'circle', c: curve.center, r: curve.radius } });
+      else if (curve.type === 'line') shapes.push({ curve, shape: { id, kind: 'line', a, b, pa: curve.from, pb: curve.to } });
+      // a shape runs counter-clockwise from `a` to `b`
+      else if (curve.sweep > 0) shapes.push({ curve, shape: { id, kind: 'arc', a, b, pa: curve.from, pb: curve.to, c: curve.center, r: curve.radius, start: curve.start, sweep: curve.sweep } });
+      else shapes.push({ curve, shape: { id, kind: 'arc', a: b, b: a, pa: curve.to, pb: curve.from, c: curve.center, r: curve.radius, start: curve.start + curve.sweep, sweep: -curve.sweep } });
+    });
+  });
+  for (let i = 0; i < shapes.length; i++) for (let j = i + 1; j < shapes.length; j++) if (!compatible(shapes[i].shape, shapes[j].shape, LENGTH_TOLERANCE)) return [shapes[i].curve, shapes[j].curve];
+  return undefined;
+}
+
+// The distance of a point from a segment, and of two segments (zero when they meet in any way).
+function pointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const [dx, dy] = [bx - ax, by - ay];
+  const length = dx * dx + dy * dy;
+  const t = length > 0 ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / length)) : 0;
+  return Math.hypot(px - ax - dx * t, py - ay - dy * t);
+}
+function segmentToSegment(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
+  const side = (px: number, py: number, qx: number, qy: number, x: number, y: number): number => (qx - px) * (y - py) - (qy - py) * (x - px);
+  const [c, d, a, b] = [side(ax, ay, bx, by, cx, cy), side(ax, ay, bx, by, dx, dy), side(cx, cy, dx, dy, ax, ay), side(cx, cy, dx, dy, bx, by)];
+  if (c * d < 0 && a * b < 0) return 0;
+  return Math.min(pointToSegment(ax, ay, cx, cy, dx, dy), pointToSegment(bx, by, cx, cy, dx, dy), pointToSegment(cx, cy, ax, ay, bx, by), pointToSegment(dx, dy, ax, ay, bx, by));
+}
+
+// What is wrong with the polylines of loops, if anything; `curves` are the keys of the curves the
+// place belongs to. `signs[i]` is the sign of the area loop i has to have (an outer loop positive,
+// a hole negative).
+// - `points`: a loop has fewer than three points.
+// - `clearance`: two edges that do not follow each other in one loop are nearer than the length
+//   tolerance, or an edge folds back onto the one it follows (its other end is nearer than the
+//   tolerance to that edge). Edges follow each other by position in the loop, not by a common key:
+//   a loop that returns to a point it has been at is refused. What passes is simple polygons with
+//   no point in common.
+// - `area`: a loop has lost the sign of its area, or has an area not above the tolerance times
+//   its length.
+export interface PolygonProblem {
+  what: 'points' | 'clearance' | 'area';
+  curves: Id[];
+}
+export function polygonProblem(loops: Loop[], signs: number[]): PolygonProblem | undefined {
+  const tol = LENGTH_TOLERANCE;
+  interface Edge {
+    loop: number;
+    index: number;
+    count: number;
+    curve: Id;
+    ax: number;
+    ay: number;
+    bx: number;
+    by: number;
+    minX: number;
+    maxX: number;
+  }
+  const list: Edge[] = [];
+  for (const [l, loop] of loops.entries()) {
+    const count = loop.keys.length;
+    if (count < 3) return { what: 'points', curves: [...new Set(loop.curves)] };
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      const [ax, ay, bx, by] = [loop.xy[2 * i], loop.xy[2 * i + 1], loop.xy[2 * j], loop.xy[2 * j + 1]];
+      list.push({ loop: l, index: i, count, curve: loop.curves[i], ax, ay, bx, by, minX: Math.min(ax, bx), maxX: Math.max(ax, bx) });
+    }
+  }
+  // the sweep of `soundTessellation`, with the boxes widened by the tolerance
+  list.sort((p, q) => p.minX - q.minX);
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    for (let j = i + 1; j < list.length && list[j].minX <= p.maxX + tol; j++) {
+      const q = list[j];
+      if (Math.max(q.ay, q.by) < Math.min(p.ay, p.by) - tol || Math.min(q.ay, q.by) > Math.max(p.ay, p.by) + tol) continue;
+      const [first, second] = p.loop !== q.loop ? [undefined, undefined] : (p.index + 1) % p.count === q.index ? [p, q] : (q.index + 1) % q.count === p.index ? [q, p] : [undefined, undefined];
+      const near =
+        first && second
+          ? pointToSegment(first.ax, first.ay, second.ax, second.ay, second.bx, second.by) <= tol || pointToSegment(second.bx, second.by, first.ax, first.ay, first.bx, first.by) <= tol
+          : segmentToSegment(p.ax, p.ay, p.bx, p.by, q.ax, q.ay, q.bx, q.by) <= tol;
+      if (near) return { what: 'clearance', curves: [...new Set([p.curve, q.curve])] };
+    }
+  }
+  for (const [l, loop] of loops.entries()) {
+    const count = loop.keys.length;
+    let [area, length] = [0, 0];
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      area += (loop.xy[2 * i] * loop.xy[2 * j + 1] - loop.xy[2 * j] * loop.xy[2 * i + 1]) / 2;
+      length += Math.hypot(loop.xy[2 * j] - loop.xy[2 * i], loop.xy[2 * j + 1] - loop.xy[2 * i + 1]);
+    }
+    if (Math.sign(area) !== signs[l] || !(Math.abs(area) > tol * length)) return { what: 'area', curves: [...new Set(loop.curves)] };
+  }
+  return undefined;
+}
+
+// Which polyline lies inside which: `[i][j]` says that loop i lies inside loop j, decided by the
+// first vertex of i against the polygon of j. One vertex decides for loops that passed the
+// clearance: two simple polygons without a common point are either nested or apart.
+export function polygonNesting(loops: Loop[]): boolean[][] {
+  const inside = (x: number, y: number, loop: Loop): boolean => {
+    const count = loop.keys.length;
+    let odd = false;
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      const [ax, ay, bx, by] = [loop.xy[2 * i], loop.xy[2 * i + 1], loop.xy[2 * j], loop.xy[2 * j + 1]];
+      if (ay > y !== by > y && ax + ((y - ay) / (by - ay)) * (bx - ax) > x) odd = !odd;
+    }
+    return odd;
+  };
+  return loops.map((loop, i) => loops.map((other, j) => i !== j && inside(loop.xy[0], loop.xy[1], other)));
 }
 
 export const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);

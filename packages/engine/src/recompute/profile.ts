@@ -2,19 +2,19 @@
 // recompute, not a part of the extrusion: every feature that builds a tool over a profile uses it.
 import { GENERATORS, type ResolvedOperand, generateProfile } from '../generators';
 import { type Loop, type Region, sameRegion } from '../sketch';
-import type { Id, IssueCode, ProfileSource } from '../types';
+import type { Id, ProfileSource } from '../types';
+import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, shown, sideShape, wallOutline } from './outline';
 import { issue, lookup } from './services';
-import type { ResolvedProfile, SideCurve, SketchState, State } from './state';
+import type { ProfileProblem, ResolvedProfile, SideCurve, SketchState, State } from './state';
 
-// Why a profile could not be resolved. A generator explains its failure itself (`message`); the
-// general text of the code is about sketch curves.
-export type ProfileProblem = { code: IssueCode; refs: unknown[]; message?: string };
+export type { ProfileProblem } from './state';
 
 // The profile of a feature by its source. `id` is the feature, named in the references of an error.
 export function profile(id: Id, source: ProfileSource, state: State, chordTolerance: number): ResolvedProfile | ProfileProblem {
   const sketch = lookup(state.sketches, source.sketch);
   if (!sketch) return { code: 'brokenReference', refs: [source.sketch] };
   if (source.type === 'generated') return generated(id, source, sketch, state, chordTolerance);
+  if (source.type === 'wall') return wall(source, sketch, chordTolerance);
   if (!sketch.profile.valid) return { code: 'invalidProfile', refs: [source.sketch] };
   const regions = source.regions.map((ref) => sketch.profile.regions.find((region) => sameRegion(region.ref, ref)));
   const missing = source.regions.filter((_, i) => !regions[i]);
@@ -27,7 +27,34 @@ export function profile(id: Id, source: ProfileSource, state: State, chordTolera
     const center = at(curve.center);
     return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
   };
-  return { regions: regions as Region[], frame: sketch.frame, curveOf };
+  const selected = regions as Region[];
+  // Without an offset (the field absent, or zero) the regions are those of the sketch, as they
+  // always were: the mesh of a document that does not use the offset does not change.
+  if (!source.offset) return { regions: selected, frame: sketch.frame, sideOf: (curve) => ({ name: { role: 'side', curve }, shape: curveOf(curve) }), outline: () => selectionOutline(selected) };
+  const move: Move = {
+    subject: `The offset of ${shown(source.offset)} mm`,
+    cure: 'Use a smaller offset or give the corners a radius larger than the offset, or draw the moved outline in the sketch and extrude that.',
+  };
+  const outline = selectionOutline(selected);
+  if ('code' in outline) return outline;
+  const moved = movedOutline(outline, source.offset, move);
+  if ('code' in moved) return moved;
+  const built = outlineRegions(moved, nestingOf(outline), chordTolerance, move);
+  if ('code' in built) return built;
+  // every curve of the outline is there once, so its ID still names its side
+  const shapes = new Map(moved.regions.flatMap((region) => [region.outer, ...region.holes]).flatMap((loop) => loop.map((curve): [string, SideCurve] => [curve.key, sideShape(curve)])));
+  return { regions: built, frame: sketch.frame, sideOf: (curve) => ({ name: { role: 'side', curve }, shape: shapes.get(curve) as SideCurve }), outline: () => moved };
+}
+
+// A wall along curves of the sketch. It reads the solved curves only, so it does not depend on the
+// sketch profile being valid: the centre line of a rib ends on the wall it stiffens.
+function wall(source: Extract<ProfileSource, { type: 'wall' }>, sketch: SketchState, chordTolerance: number): ResolvedProfile | ProfileProblem {
+  const move: Move = { subject: `The wall ${shown(source.thickness)} mm thick`, cure: 'Make the wall thinner or its bends wider, or draw its outline in the sketch and extrude that.' };
+  const found = wallOutline(sketch.feature, sketch.geometry, source.curves, source.thickness, move);
+  if ('code' in found) return found;
+  const built = outlineRegions(found.outline, found.nesting, chordTolerance, move);
+  if ('code' in built) return built;
+  return { regions: built, frame: sketch.frame, sideOf: (key) => found.sides.get(key) as { name: ReturnType<ResolvedProfile['sideOf']>['name']; shape: SideCurve }, outline: () => found.outline };
 }
 
 // A profile from a generator. The generator reads only the solved operands, so it does not depend
@@ -63,5 +90,5 @@ function generated(id: Id, source: Extract<ProfileSource, { type: 'generated' }>
   };
   const regions = result.regions.map((region, r): Region => ({ ref: { outerLoop: [region.outer.side] }, outer: loop(region.outer, `${r}`), holes: region.holes.map((hole, h) => loop(hole, `${r}:${h}`)) }));
   const warnings = result.warnings.map((warning) => issue(warning.code, warning.refs, warning.detail));
-  return { regions, frame: sketch.frame, curveOf: () => ({ type: 'general' }), facts: result.facts, warnings };
+  return { regions, frame: sketch.frame, sideOf: (curve) => ({ name: { role: 'side', curve }, shape: { type: 'general' } }), facts: result.facts, warnings };
 }

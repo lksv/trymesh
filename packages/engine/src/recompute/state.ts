@@ -1,6 +1,6 @@
 // The state of the recompute between features and the types a step of a feature works with.
 import type { SketchAnalysis } from '../analysis';
-import type { Profile, Region, SketchGeometry } from '../sketch';
+import type { OutlineCurve, Profile, Region, SketchGeometry } from '../sketch';
 import type { FaceInfo, RigidTransform } from '../solid';
 import type { CopyTag, Document, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, Vec2 } from '../types';
 
@@ -58,12 +58,29 @@ export type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false;
 // Křivka skici, ze které vzniká boční stěna. `general`: a side of a generated profile.
 export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number } | { type: 'general' };
 
+// The exact outline of a profile: closed loops of curves with the material on their left, an outer
+// loop and its holes per region (recompute/outline.ts).
+export interface Outline {
+  regions: { outer: OutlineCurve[]; holes: OutlineCurve[][] }[];
+}
+// Why a profile could not be resolved. A generator, an offset and a wall explain their failure
+// themselves (`message`); the general text of the code is about sketch curves.
+export type ProfileProblem = { code: IssueCode; refs: unknown[]; message?: string };
+// The name of a face without what the tool build adds (the feature, the tag of a copy).
+export type FaceRole = FaceName extends infer Name ? (Name extends FaceName ? Omit<Name, 'feature' | 'copy'> : never) : never;
+
 // Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
+// - `sideOf`: the side face an edge of a loop belongs to, by what `Loop.curves` holds for the edge.
+//   For regions that is the curve ID and the name is `{ role: 'side', curve }`; a wall names its
+//   sides itself.
+// - `outline`: the exact outline the regions were divided from, after an offset. Asked for by
+//   a tool build that has to move it again. A generated profile has none.
 // A generated profile adds what its generator published and warned about.
 export interface ResolvedProfile {
   regions: Region[];
   frame: Frame;
-  curveOf: (id: Id) => SideCurve;
+  sideOf: (key: string) => { name: FaceRole; shape: SideCurve };
+  outline?: () => Outline | ProfileProblem;
   facts?: Facts;
   warnings?: Issue[];
 }

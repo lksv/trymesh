@@ -64,6 +64,8 @@ const START = 'Start (mm or an expression; offset from the sketch plane along it
 const COUNT = 'Count with the original (a whole number or an expression)';
 const ANGLE = 'Angle (° or an expression in radians)';
 const OFFSET = 'Offset along the normal (mm or an expression)';
+const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
+const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
 // The name field, the expression field and the button of the row that adds a parameter (0) or a check (1).
 const adder = (h: Harness, which: number): { name: HTMLInputElement; value: HTMLInputElement; add: HTMLButtonElement } => {
   const row = h.button('panel', 'Add', which).parentElement as HTMLElement;
@@ -486,6 +488,70 @@ describe('the app, driven as a user drives it', () => {
     h.record('the top of the cylinder: the sketch is created with its rim projected');
     h.press('toolbar', 'Dokončit skicu');
     await matches(h, 'features');
+  });
+
+  it('an offset of a profile and a wall along curves of a sketch (D44)', async () => {
+    const h = await start();
+    // a rectangle and, inside it, a chain of two construction lines
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Konstrukčně');
+    h.press('toolbar', 'Úsečka');
+    h.click(at(10, 10));
+    h.click(at(30, 10));
+    h.click(at(30, 20));
+    h.key('Escape');
+    h.press('toolbar', 'Dokončit skicu');
+
+    // ----- the offset of a profile of regions
+    h.press('toolbar', 'Vysunutí');
+    h.record('a new extrusion: the offset is empty, the draft has none');
+    h.type(h.field(PROFILE_OFFSET), '-2');
+    h.record('an offset typed: the profile shrinks in the preview, the draft has the field');
+    h.type(h.field(PROFILE_OFFSET), '-20');
+    h.record('an offset the outline does not survive: the preview says which curves vanish and what to do');
+    h.type(h.field(PROFILE_OFFSET), '-2');
+    h.press('panel', 'OK');
+    h.record('OK: the extrusion with its offset is in the document');
+    doubleClick(h, 'Vysunutí 1');
+    h.record('editing: the field shows the offset');
+    h.type(h.field(PROFILE_OFFSET), '');
+    h.record('the field emptied: the draft has no offset and the preview is the plain outline');
+    h.press('panel', 'OK');
+    h.record('OK: the offset is removed from the feature');
+
+    // ----- a wall along curves picked in the view
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'wall');
+    h.record('the source of the profile is a wall: no curve yet, nothing to compute or confirm');
+    h.move(at(20, 10));
+    h.record('the curve under the pointer');
+    h.click(at(20, 10));
+    h.record('a click takes the curve: the engine previews a wall along it');
+    h.click(at(30, 15));
+    h.record('a second curve joined to the first: an L');
+    h.click(at(30, 15));
+    h.record('a click on a chosen curve drops it');
+    h.click(at(20, 22));
+    h.record('a click away from every curve chooses nothing');
+    h.type(h.field(THICKNESS), '3');
+    h.record('the thickness typed: the preview follows');
+    h.choose('Profile', 'regions');
+    h.record('to regions and');
+    h.choose('Profile', 'wall');
+    h.record('back: the wall is as it was');
+    h.press('panel', 'Clear the curves');
+    h.record('the curves dropped by the button');
+    h.click(at(20, 10));
+    h.click(at(30, 15));
+    h.press('panel', 'OK');
+    h.record('OK: the wall is a body of its own');
+    h.row('Vysunutí 2').click();
+    h.record('the wall selected: its summary names the thickness and the curves');
+    await matches(h, 'offset');
   });
 
   // A plate, a pin apart from it and a block that reaches into the plate, drawn through the app.

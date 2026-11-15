@@ -54,6 +54,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
 | `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
+| `recompute/outline.ts` | exact outlines of profiles (D44): the outline of selected regions, an outline moved by an offset, the outline of a wall along a chain of curves, and their division into the polylines of regions with the tests of those polylines |
 | `recompute/tool-prism.ts` | a tool build: the mesh of a prism over regions and its faces (`buildPrism`). Every tool build is a module `recompute/tool-*.ts` and returns a `BuiltTool` |
 | `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
 | `features/profile.ts`, `features/extent.ts` | the document halves of a profile source and of an extent: validation, references, fields |

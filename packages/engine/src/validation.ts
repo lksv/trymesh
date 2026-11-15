@@ -172,8 +172,10 @@ export function edgeName(v: unknown, what: string): EdgeName {
 }
 
 // Odkaz jedné feature na jinou. `path` je místo odkazu uvnitř feature (cesta oddělená lomítky).
-// - `entity` is a reference to an entity of a sketch (an operand of a profile generator): `id` is the
-//   entity, `sketch` its sketch and `accepts` the entity kinds allowed.
+// - `entity` is a reference to an entity of a sketch (an operand of a profile generator, a curve of
+//   a wall): `id` is the entity, `sketch` its sketch and `accepts` the entity kinds allowed. With
+//   `notProjected` the entity must not be projected geometry: an own curve; for a point, an own
+//   point or the origin.
 // - `generated` is a reference to an extrusion whose profile comes from one of the generators in
 //   `accepts` (a gear in mesh with another gear).
 // - `tool` is a reference to a feature that applies a tool to bodies and can be repeated by
@@ -186,6 +188,7 @@ export interface FeatureRef {
   kind: RefKind;
   sketch?: Id;
   accepts?: readonly string[];
+  notProjected?: boolean;
 }
 export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude', pattern: 'pole (pattern)' };
 

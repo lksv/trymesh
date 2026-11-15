@@ -1,9 +1,9 @@
 // The tool of an extrusion without a taper: a prism over regions of a sketch plane.
 import type { Region } from '../sketch';
 import { toWorld } from '../solid';
-import type { Frame, Id, SolidKernel } from '../types';
+import type { FaceName, Frame, Id, SolidKernel } from '../types';
 import { cross3, sub3, unit3 } from '../util';
-import type { BuiltTool, SideCurve } from './state';
+import type { BuiltTool, ResolvedProfile } from './state';
 
 // Postaví uzavřenou síť nad vybranými oblastmi: dvě víka a boční stěny. Boční stěna vznikne jen
 // z křivky na hranici právě jedné vybrané oblasti; křivka sdílená dvěma oblastmi se vyruší.
@@ -11,7 +11,7 @@ import type { BuiltTool, SideCurve } from './state';
 // startCap leží na začátku, endCap na konci.
 // `triangulation`: a cache of the planar triangulation by region. A tool that is built again and
 // again (for every copy of a pattern) passes the same map, so the profile is triangulated once.
-export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], curveOf: (id: Id) => SideCurve, firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {
+export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], sideOf: ResolvedProfile['sideOf'], firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {
   const [start, end] = span;
   // 2D síť sjednocení oblastí. Vrcholy se sdílejí podle klíče, takže sousední oblasti na sebe navazují.
   const index = new Map<string, number>();
@@ -85,14 +85,15 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [
   const sideId = new Map<Id, number>();
   for (const curve of [...new Set(boundary.map((edge) => edge[2]))].sort()) {
     sideId.set(curve, firstFaceId + faces.length);
-    const shape = curveOf(curve);
+    const { name: role, shape } = sideOf(curve);
+    const name = { feature, ...role } as FaceName;
     if (shape.type === 'line') {
       const direction = sub3(toWorld(frame, shape.b[0], shape.b[1]), toWorld(frame, shape.a[0], shape.a[1]));
-      faces.push({ name: { feature, role: 'side', curve }, info: { planar: true, origin: toWorld(frame, shape.a[0], shape.a[1]), y: frame.normal, normal: unit3(cross3(direction, frame.normal)) } });
+      faces.push({ name, info: { planar: true, origin: toWorld(frame, shape.a[0], shape.a[1]), y: frame.normal, normal: unit3(cross3(direction, frame.normal)) } });
     } else if (shape.type === 'round') {
-      faces.push({ name: { feature, role: 'side', curve }, info: { planar: false, surface: 'cylinder', center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius } });
+      faces.push({ name, info: { planar: false, surface: 'cylinder', center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius } });
     } else {
-      faces.push({ name: { feature, role: 'side', curve }, info: { planar: false, surface: 'swept', axis: frame.normal } });
+      faces.push({ name, info: { planar: false, surface: 'swept', axis: frame.normal } });
     }
   }
 

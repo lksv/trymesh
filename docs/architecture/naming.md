@@ -13,8 +13,12 @@ type FaceName = (
   | { feature: Id; role: 'side'; curve: Id }     // z křivky skici; for a generated profile the side name of the catalog (`teeth`)
   | { feature: Id; role: 'startCap' }            // víko na začátku rozsahu (při nulovém `start` v rovině skici)
   | { feature: Id; role: 'endCap' }              // protější víko
+  | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }   // a side of a wall along curves (D44)
+  | { feature: Id; role: 'wallEnd'; point: Id }                            // a straight end of such a wall
 ) & { copy?: { pattern: Id; index: number }[] }; // a face of a copy made by a pattern, see Pattern
 ```
+
+The faces of a wall (a profile of the type `wall`, [extrude.md](extrude.md), "Profile offset and a wall"): every curve of the chain makes two sides, told apart by the side of the curve in its own direction, and every free end of an open chain makes an end named by the sketch point the chain ends at. A profile of regions with an offset adds no role: its side faces keep `side` with their curve.
 
 Víko nenese označení oblasti. Všechna víka jedné extrude leží v jedné rovině, takže tvoří jednu logickou stěnu, i když je extrude složená z více oblastí. Nový výběr profilu tak víko nepřejmenuje a skici na něm se nerozbijí.
 
@@ -75,6 +79,8 @@ Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. S
 |---|---|---|---|
 | víko | počátek rodičovské skici promítnutý do roviny víka | osa Y rodičovské skici | ven z tělesa |
 | boční stěna z úsečky | počáteční bod úsečky (`a`) v rovině rodičovské skici | normála rodičovské skici | ven z tělesa |
+| a side from a line moved by an offset, a side of a wall from a line | the start of the moved line in the direction of the sketch curve: the mitred corner, so it moves with the offset or the thickness | the normal of the parent sketch | out of the body |
+| an end of a wall | its corner on the left of the end curve (in the direction of the curve) | the normal of the parent sketch | out of the body |
 | boční stěna z kružnice nebo oblouku | není rovinná → chyba `nonPlanarFace` | | |
 | the side of a generated profile | not planar → error `nonPlanarFace` | | |
 

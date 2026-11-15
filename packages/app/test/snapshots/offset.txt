@@ -1,0 +1,944 @@
+
+=== 1. a new extrusion: the offset is empty, the draft has none
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":10,"y":10},{"type":"addPoint","sketch":"s1","id":"p5","x":30,"y":10},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"line","a":"p4","b":"p5","construction":true}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"horizontal","line":"c5"}}]}) -> ok
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p6","x":30,"y":20},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6","construction":true}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"vertical","line":"c6"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  features: s1
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":10,"y":10}
+      point p5: {"x":30,"y":10}
+      point p6: {"x":30,"y":20}
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"construction":true,"type":"line","a":"p4","b":"p5"}
+      curve c6: {"construction":true,"type":"line","a":"p5","b":"p6"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+      constraint k5: {"type":"horizontal","line":"c5"}
+      constraint k6: {"type":"vertical","line":"c6"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button disabled title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok.selected
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon disabled title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Nové vysunutí"
+      label
+        "Profile"
+        select value="regions"
+          option selected value="regions": "Sketch regions"
+          option value="wall": "Wall along curves"
+          option value="involuteGear": "Involute gear"
+      label
+        "Skica"
+        select value="s1"
+          option selected value="s1": "Skica 1"
+      p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+      div.buttons
+        button: "Zrušit výběr oblastí"
+      label
+        "Offset (mm or an expression; positive grows the profile; empty = none)"
+        span.field
+          input value=""
+          small.computed data-field="profile/offset" data-unit="mm"
+      label
+        "Operace"
+        select value="new"
+          option selected value="new": "Nové těleso"
+          option value="add": "Přidat k tělesu"
+          option value="cut": "Odebrat z tělesa"
+      label
+        "Extent"
+        select value="distance"
+          option selected value="distance": "Distance"
+          option value="throughAll" disabled: "Through all (a cut only)"
+      label
+        "Start (mm or an expression; offset from the sketch plane along its normal)"
+        span.field
+          input value="0"
+          small.computed data-field="extent/start" data-unit="mm"
+      label
+        "Distance (mm or an expression; negative = against the normal)"
+        span.field
+          input value="10"
+          small.computed data-field="extent/distance" data-unit="mm"
+      p#draft-problem.issue.warning
+      div.buttons
+        button.primary: "OK"
+        button: "Zrušit"
+  status: Klikáním v pohledu vyberte oblasti skici.
+  view: 23 scene(s) set
+  scene:
+      bodies: e1
+      line #26303c width 1.5: 72 numbers, sum 4060
+      line #8b9bb4 width 1: 24 numbers, sum 374.778
+      line #8b9bb4 width 1: 24 numbers, sum 249.852
+      line #8b9bb4 width 1: 24 numbers, sum 124.926
+      line #f97316 width 2.5: 24 numbers, sum 1400
+      line #f97316 width 1 dashed: 12 numbers, sum 590
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+      fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. an offset typed: the profile shrinks in the preview, the draft has the field
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")
+  panel:
+    +     input value="-2"
+    -     input value=""
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4028
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 3. an offset the outline does not survive: the preview says which curves vanish and what to do
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-20},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")
+  panel:
+    +     input value="-20"
+    -     input value="-2"
+    + p#draft-problem.issue.error: "The offset of -20 mm leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller offset or give the corners a radius larger than the offset, or draw the moved outline in the sketch and extrude that."
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + bodies: (none)
+    + line #8b9bb4 width 1: 24 numbers, sum 367.5
+    + line #8b9bb4 width 1: 24 numbers, sum 245
+    + line #8b9bb4 width 1: 24 numbers, sum 122.5
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4028
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+
+=== 4. OK: the extrusion with its offset is in the document
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"operation":"new"},"index":1}) -> ok
+  features: s1, e1
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button: "Export STL"
+    -   button disabled: "Export STL"
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    + div.row.ok
+    - div.row.ok.selected
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Vysunutí 1"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Nové vysunutí"
+    - label
+    -   "Profile"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
+    -     option value="involuteGear": "Involute gear"
+    - label
+    -   "Skica"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value="-20"
+    -     small.computed data-field="profile/offset" data-unit="mm"
+    - label
+    -   "Operace"
+    -   select value="new"
+    -     option selected value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    - label
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - p#draft-problem.issue.error: "The offset of -20 mm leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller offset or give the corners a radius larger than the offset, or draw the moved outline in the sketch and extrude that."
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Vysunutí přidáno.
+  view: 3 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 72 numbers, sum 4028
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + line #5b7aa8 width 1.5: 24 numbers, sum 1400
+    + line #5b7aa8 width 1 dashed: 12 numbers, sum 590
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - bodies: (none)
+    - line #8b9bb4 width 1: 24 numbers, sum 367.5
+    - line #8b9bb4 width 1: 24 numbers, sum 245
+    - line #8b9bb4 width 1: 24 numbers, sum 122.5
+    - line #f97316 width 2.5: 24 numbers, sum 1400
+    - line #f97316 width 1 dashed: 12 numbers, sum 590
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+
+=== 5. editing: the field shows the offset
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.editing
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Úprava: Vysunutí 1"
+    + label
+    +   "Profile"
+    +   select value="regions"
+    +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
+    +     option value="involuteGear": "Involute gear"
+    + label
+    +   "Skica"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    + div.buttons
+    +   button: "Zrušit výběr oblastí"
+    + label
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
+    +     input value="-2"
+    +     small.computed data-field="profile/offset" data-unit="mm"
+    + label
+    +   "Operace"
+    +   select value="new"
+    +     option selected value="new": "Nové těleso"
+    +     option value="add": "Přidat k tělesu"
+    +     option value="cut": "Odebrat z tělesa"
+    + label
+    +   "Extent"
+    +   select value="distance"
+    +     option selected value="distance": "Distance"
+    +     option value="throughAll" disabled: "Through all (a cut only)"
+    + label
+    +   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Distance (mm or an expression; negative = against the normal)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    + p#draft-problem.issue.warning
+    + div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  view: 1 scene(s) set
+  scene:
+    + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+
+=== 6. the field emptied: the draft has no offset and the preview is the plain outline
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}, "e1") -> ok
+  engine: getState("s1")
+  panel:
+    +     input value=""
+    -     input value="-2"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 72 numbers, sum 4028
+
+=== 7. OK: the offset is removed from the feature
+  engine: getState("s1")  (x3)
+  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}) -> ok
+  feature e1:
+    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.editing
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Úprava: Vysunutí 1"
+    - label
+    -   "Profile"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
+    -     option value="involuteGear": "Involute gear"
+    - label
+    -   "Skica"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
+    - label
+    -   "Operace"
+    -   select value="new"
+    -     option selected value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    - label
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Změna uložena.
+  view: 2 scene(s) set
+  scene:
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+
+=== 8. the source of the profile is a wall: no curve yet, nothing to compute or confirm
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: getState("e1")
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Nové vysunutí"
+    + label
+    +   "Profile"
+    +   select value="wall"
+    +     option value="regions": "Sketch regions"
+    +     option selected value="wall": "Wall along curves"
+    +     option value="involuteGear": "Involute gear"
+    + label
+    +   "Skica"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + p.hint: "Curves of the wall: 0. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    + div.buttons
+    +   button disabled: "Clear the curves"
+    + label
+    +   "Thickness (mm or an expression; half of it to each side of the curves)"
+    +   span.field
+    +     input value="2"
+    +     small.computed data-field="profile/thickness" data-unit="mm"
+    + label
+    +   "Operace"
+    +   select value="new"
+    +     option selected value="new": "Nové těleso"
+    +     option value="add": "Přidat k tělesu"
+    +     option value="cut": "Odebrat z tělesa"
+    + label
+    +   "Extent"
+    +   select value="distance"
+    +     option selected value="distance": "Distance"
+    +     option value="throughAll" disabled: "Through all (a cut only)"
+    + label
+    +   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Distance (mm or an expression; negative = against the normal)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    + p#draft-problem.issue.error
+    + div.buttons
+    +   button.primary disabled: "OK"
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: Click curves of the sketch in the view: the wall follows them.
+  view: 2 scene(s) set
+  scene:
+    + line #64748b width 2 onTop: 36 numbers, sum 2160
+
+=== 9. the curve under the pointer
+  engine: getState("s1")  (x3)
+  view: 1 scene(s) set
+  scene:
+    + line #64748b width 2 onTop: 30 numbers, sum 1800
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 200
+    - line #64748b width 2 onTop: 36 numbers, sum 2160
+
+=== 10. a click takes the curve: the engine previews a wall along it
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":2},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  panel:
+    + p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - p.hint: "Curves of the wall: 0. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    +   button: "Clear the curves"
+    -   button disabled: "Clear the curves"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2
+    + line #26303c width 1.5: 144 numbers, sum 7432
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 11. a second curve joined to the first: an L
+  engine: getState("s1")  (x4)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5","c6"],"thickness":2},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  panel:
+    + p.hint: "Curves of the wall: 2. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 180 numbers, sum 9958
+    - line #26303c width 1.5: 144 numbers, sum 7432
+    + line #64748b width 2 onTop: 24 numbers, sum 1400
+    + line #2563eb width 4 onTop: 6 numbers, sum 200
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 270
+    - line #64748b width 2 onTop: 30 numbers, sum 1800
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 200
+
+=== 12. a click on a chosen curve drops it
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":2},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  panel:
+    + p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - p.hint: "Curves of the wall: 2. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 144 numbers, sum 7432
+    - line #26303c width 1.5: 180 numbers, sum 9958
+
+=== 13. a click away from every curve chooses nothing
+  engine: getState("s1")  (x4)
+  view: 1 scene(s) set
+  scene:
+    + line #64748b width 2 onTop: 30 numbers, sum 1800
+    - line #64748b width 2 onTop: 24 numbers, sum 1400
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 270
+
+=== 14. the thickness typed: the preview follows
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":3},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("s1")  (x2)
+  panel:
+    +     input value="3"
+    -     input value="2"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 144 numbers, sum 7428
+    - line #26303c width 1.5: 144 numbers, sum 7432
+
+=== 15. to regions and
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   select value="regions"
+    +     option selected value="regions": "Sketch regions"
+    +     option value="wall": "Wall along curves"
+    -   select value="wall"
+    -     option value="regions": "Sketch regions"
+    -     option selected value="wall": "Wall along curves"
+    + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    +   button: "Zrušit výběr oblastí"
+    -   button: "Clear the curves"
+    +   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   "Thickness (mm or an expression; half of it to each side of the curves)"
+    +     input value=""
+    +     small.computed data-field="profile/offset" data-unit="mm"
+    -     input value="3"
+    -     small.computed data-field="profile/thickness" data-unit="mm"
+  status: Klikáním v pohledu vyberte oblasti skici.
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 144 numbers, sum 8080
+    - line #26303c width 1.5: 144 numbers, sum 7428
+    - line #64748b width 2 onTop: 30 numbers, sum 1800
+    - line #2563eb width 4 onTop: 6 numbers, sum 200
+    + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+
+=== 16. back: the wall is as it was
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":3},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  panel:
+    +   select value="wall"
+    +     option value="regions": "Sketch regions"
+    +     option selected value="wall": "Wall along curves"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
+    + p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    +   button: "Clear the curves"
+    -   button: "Zrušit výběr oblastí"
+    +   "Thickness (mm or an expression; half of it to each side of the curves)"
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +     input value="3"
+    +     small.computed data-field="profile/thickness" data-unit="mm"
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
+  status: Click curves of the sketch in the view: the wall follows them.
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 144 numbers, sum 7428
+    - line #26303c width 1.5: 144 numbers, sum 8080
+    + line #64748b width 2 onTop: 30 numbers, sum 1800
+    + line #2563eb width 4 onTop: 6 numbers, sum 200
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+
+=== 17. the curves dropped by the button
+  engine: getState("e1")
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    + p.hint: "Curves of the wall: 0. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - p.hint: "Curves of the wall: 1. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    +   button disabled: "Clear the curves"
+    -   button: "Clear the curves"
+    + p#draft-problem.issue.error
+    - p#draft-problem.issue.warning
+    +   button.primary disabled: "OK"
+    -   button.primary: "OK"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - bodies: e1, e2
+    - line #26303c width 1.5: 144 numbers, sum 7428
+    + line #64748b width 2 onTop: 36 numbers, sum 2160
+    - line #64748b width 2 onTop: 30 numbers, sum 1800
+    - line #2563eb width 4 onTop: 6 numbers, sum 200
+
+=== 18. OK: the wall is a body of its own
+  engine: getState("s1")  (x4)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":3},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x7)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5","c6"],"thickness":3},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5","c6"],"thickness":3},"operation":"new"},"index":2}) -> ok
+  features: s1, e1, e2
+  feature e2:
+      {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"wall","sketch":"s1","curves":["c5","c6"],"thickness":3},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Vysunutí 2"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Nové vysunutí"
+    - label
+    -   "Profile"
+    -   select value="wall"
+    -     option value="regions": "Sketch regions"
+    -     option selected value="wall": "Wall along curves"
+    -     option value="involuteGear": "Involute gear"
+    - label
+    -   "Skica"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - p.hint: "Curves of the wall: 0. Click curves of the sketch in the view (construction curves too); they have to form one chain."
+    - div.buttons
+    -   button disabled: "Clear the curves"
+    - label
+    -   "Thickness (mm or an expression; half of it to each side of the curves)"
+    -   span.field
+    -     input value="3"
+    -     small.computed data-field="profile/thickness" data-unit="mm"
+    - label
+    -   "Operace"
+    -   select value="new"
+    -     option selected value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    - label
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - p#draft-problem.issue.error
+    - div.buttons
+    -   button.primary disabled: "OK"
+    -   button: "Zrušit"
+  status: Vysunutí přidáno.
+  view: 6 scene(s) set
+  scene:
+    + bodies: e1, e2
+    + line #26303c width 1.5: 180 numbers, sum 9957
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #64748b width 2 onTop: 36 numbers, sum 2160
+
+=== 19. the wall selected: its summary names the thickness and the curves
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Vysunutí"
+    + label
+    +   "Název"
+    +   input value="Vysunutí 2"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Nové těleso, distance 10 mm, a wall 3 mm thick along the curves c5, c6."
+    + p.hint.body
+    +   "Vysunutí 2: 900 mm³, 21.5 × 11.5 × 10 mm"
+    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face e2 #6 #f97316 opacity 0.3
+    + face e2 #7 #f97316 opacity 0.3
+    + face e2 #8 #f97316 opacity 0.3
+    + face e2 #9 #f97316 opacity 0.3
+    + face e2 #10 #f97316 opacity 0.3
+    + face e2 #11 #f97316 opacity 0.3
+    + face e2 #12 #f97316 opacity 0.3
+    + face e2 #13 #f97316 opacity 0.3

@@ -17,6 +17,15 @@ Part of [architecture.md](../architecture.md), the design as implemented. The de
 | 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`, i když je jeho bok vedle roviny o chybu float32. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. Po odříznutém nálitku nezůstanou zbytky jeho stěn, takže reference na ně se rozbijí. |
 
 
+## The offset of a profile and a wall (D44)
+
+- `packages/engine/test/outline.test.ts`, without adapters, on sketches given with their solved positions: the outline of a selection (a shared curve, an island in a hole, regions that meet in a point), the offset of a rectangle, a triangle, a rounded rectangle, a D shape on both branches, a lens of two arcs and an outline with a hole, with areas against the exact formulas; an offset and its opposite on 200 random convex and L-shaped outlines; every refusal with its curves and its text (a corner radius used up, a line its neighbours meet before, a hole that closes, a hole that runs into the outer loop, a hole that grows past it, the sliver, the small hole between two corners of a polygon); the tests of the polylines on hand-made loops (a hole through an edge at its own vertices, a loop that returns to a point, loops nearer than the tolerance with boxes apart, a fold, a loop walked the other way); walls of a line, an L, a chain joined by a constraint, an arc, a circle, a closed loop, and what is not one chain.
+- `packages/engine/test/offset.test.ts`, at the document level: the optional field (absent, given, zero, an expression, `setField` on a feature without it, a patch that sets, changes and removes it), which variant has it, the wall (own curves only, sorted, the thickness), its references and the names of its faces.
+- `packages/scenarios/test/offset.test.ts`, against the real adapters: volumes, face names, surfaces and boxes of faces of moved profiles and of walls; a sketch on a moved side face, on a side and on an end of a wall; a wall added to a body and repeated by a pattern; the errors as the engine reports them; 24 random rounded rectangles with a hole, each either refused for a reason the test names or built with the volume of the moved outline and then cut by the kernel.
+- `packages/scenarios/test/review.test.ts`: the meshes, the face numbers and the face names of a model without an offset are, by a hash, what the code before D44 built (computed with both and equal).
+- `packages/scenarios/test/scenario12.test.ts`: validation scenario 12, the part of 2a.
+- Not measured: an outline near the length tolerance in floating point beyond the cases above (the tests of the polylines were fuzzed on integer grids by a reviewer of the design, not on real moved outlines).
+
 ## Výsledky spiků
 
 Provedeno 2026-11-13 v Node 25. Skripty ověřující samotné knihovny jsou ve složce `spikes/` a jdou spustit znovu (`npm install`, pak `node <skript>`). Adaptéry, které ze spiků vzešly, jsou od 2026-11-14 v balíčcích `kernel-manifold` a `solver-planegcs` a jejich případy běží jako testy.

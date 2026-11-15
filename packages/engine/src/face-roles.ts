@@ -21,6 +21,8 @@ export const FACE_ROLES: { [R in FaceName['role']]: FaceRoleSpec<R> } = {
   side: { title: 'side', parts: { curve: { title: 'curve of the profile', kind: 'text' } } },
   startCap: { title: 'start cap', parts: {} },
   endCap: { title: 'end cap', parts: {} },
+  wallSide: { title: 'side of a wall', parts: { curve: { title: 'curve of the chain', kind: 'text' }, side: { title: 'side of the curve (left or right)', kind: 'text' } } },
+  wallEnd: { title: 'end of a wall', parts: { point: { title: 'point the chain ends at', kind: 'text' } } },
 };
 
 // A catalog of roles as code that handles any role reads it. The functions below take one so that

@@ -1,7 +1,7 @@
 // The sketch tools of the engine (D35, point 7) against the real solver: what a tool draws must
 // be accepted by the engine and be the shape the tool promises.
 import { describe, expect, it } from 'vitest';
-import { type Anchor, type Command, type Engine, type Id, MAX_POLYGON_SIDES, SKETCH_TOOLS, type SketchFeature, type SketchResult, type SketchToolInputs, type SketchToolName, type SketchToolResult, freshIds, sketchTool } from '@trymesh/engine';
+import { type Anchor, type Command, type Engine, type Id, MAX_POLYGON_SIDES, SKETCH_TOOLS, type SketchFeature, type SketchResult, type SketchToolInputs, type SketchToolName, type SketchToolResult, anchorPosition, freshIds, sketchTool } from '@trymesh/engine';
 import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, newEngine, onFace, rectLoop, rectangle, run, status, volume } from './kit';
 
 type Made = Extract<SketchToolResult, { ok: true }>;
@@ -123,7 +123,7 @@ describe('the polygon tool', () => {
     expect(solved(engine, 'S').regions.map((region) => region.ref)).toEqual([{ outerLoop: [...made.ids.lines].sort() }]);
   });
 
-  it('stays regular when it is dragged, turned and resized', () => {
+  it('stays regular when it is dragged, held in a direction and given a size', () => {
     const engine = sketched();
     const made = draw(engine, 'polygon', { center: free(0, 0), vertex: free(10, 0), sides: 6 });
     run(engine, { type: 'dragPoint', sketch: 'S', point: made.ids.points[2], x: 4, y: 19 });
@@ -134,6 +134,127 @@ describe('the polygon tool', () => {
     run(engine, constrain('S', 'fc', { type: 'coincident', a: made.ids.center[0], b: 'origin' }), constrain('S', 'flat', { type: 'horizontal', line: made.ids.lines[1] }), dimension('S', 'd', { type: 'diameter', curve: made.ids.circle[0] }, 24));
     expect(engine.diagnoseSketch('S')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [] });
     expect(length(engine, made.ids.points[0], made.ids.points[1])).toBeCloseTo(12, 6); // the side of a hexagon is its circumradius
+  });
+
+  it('what holds and what does not: the regular polygon is one solution of its constraints among folded ones', () => {
+    const regular = (engine: Engine, made: Made, what: string): void => {
+      for (const step of steps(engine, made)) expect(step, what).toBeCloseTo(1 / made.ids.points.length, 4);
+      expect(solved(engine, 'S').regions, what).toHaveLength(1);
+    };
+    // a side held horizontal or vertical when it is within 25° of that direction: every count, every side
+    for (const sides of [3, 4, 5, 6, 8, 12]) {
+      for (const turn of [-25, -10, 10, 25]) {
+        const engine = sketched();
+        const direction = (turn * Math.PI) / 180;
+        const made = draw(engine, 'polygon', { center: onPoint('origin'), vertex: free(10 * Math.cos(direction), 10 * Math.sin(direction)), sides });
+        // the side whose direction is nearest to an axis after the turn
+        const at = (i: number) => solved(engine, 'S').points[made.ids.points[i % sides]];
+        const off = made.ids.lines.map((_, i) => {
+          const angle = Math.atan2(at(i + 1).y - at(i).y, at(i + 1).x - at(i).x);
+          const toAxis = Math.abs(((angle + Math.PI / 4) % (Math.PI / 2) + Math.PI / 2) % (Math.PI / 2) - Math.PI / 4);
+          return { i, toAxis, horizontal: Math.abs(Math.sin(angle)) < Math.abs(Math.cos(angle)) };
+        });
+        const side = off.reduce((best, one) => (one.toAxis < best.toAxis ? one : best));
+        run(engine, constrain('S', 'hold', { type: side.horizontal ? 'horizontal' : 'vertical', line: made.ids.lines[side.i] }));
+        regular(engine, made, `${sides} sides turned by ${turn}°`);
+        expect(solved(engine, 'S').degreesOfFreedom).toBe(1);
+      }
+    }
+    // the diameter of the circumscribed circle takes any change of size
+    for (const sides of [3, 6, 16, 64]) {
+      const engine = sketched();
+      const made = draw(engine, 'polygon', { center: free(3, 4), vertex: free(13, 4), sides, sizeKind: 'circumscribed', size: 20 });
+      for (const size of [2000, 0.2, 55, 1]) {
+        run(engine, { type: 'setConstraintValue', sketch: 'S', id: made.ids.size[0], value: size });
+        regular(engine, made, `${sides} sides, diameter ${size}`);
+      }
+    }
+    // the size across flats in the range of wrench sizes, step by step, by a parameter
+    const nut = sketched();
+    run(nut, { type: 'setParameter', name: 'w', expr: '5.5' });
+    const hexagon = draw(nut, 'polygon', { center: onPoint('origin'), vertex: free(3.2, 0.1), sides: 6, sizeKind: 'acrossFlats', size: 'w' });
+    run(nut, constrain('S', 'hold', { type: 'horizontal', line: hexagon.ids.lines[1] }));
+    for (const size of [7, 8, 10, 13, 17, 19, 24, 13, 5.5]) {
+      run(nut, { type: 'setParameter', name: 'w', expr: String(size) });
+      regular(nut, hexagon, `a nut of ${size}`);
+      expect(length(nut, hexagon.ids.points[1], hexagon.ids.points[5])).toBeCloseTo(size, 5);
+    }
+    // The limit, so that it is known and not a surprise: a constraint that has to turn the
+    // polygon far, here a triangle by 60°, may leave it folded. The sketch is "solved" and has
+    // no region, which is how the fold shows.
+    const folded = sketched();
+    const triangle = draw(folded, 'polygon', { center: onPoint('origin'), vertex: free(10, 0), sides: 3 });
+    run(folded, constrain('S', 'hold', { type: 'horizontal', line: triangle.ids.lines[0] }));
+    expect(status(folded.getState()).S).toBe('ok');
+    if (solved(folded, 'S').regions.length === 1) for (const step of steps(folded, triangle)) expect(step).toBeCloseTo(1 / 3, 4);
+    else expect(solved(folded, 'S').regions).toHaveLength(0);
+  });
+
+  it('a size given is the size drawn, also for an expression and with a vertex that snaps; a size as drawn is not rounded against a snapped vertex', () => {
+    // an expression: with the parameters of the document the polygon is drawn at its value, far from where the vertex was clicked
+    const engine = sketched();
+    run(engine, { type: 'setParameter', name: 'w', expr: '5.5' });
+    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), parameters: engine.getState().evaluation.parameters };
+    const made = sketchTool('polygon', context, { center: onPoint('origin'), vertex: free(0.4, 0.3), sides: 12, sizeKind: 'acrossFlats', size: 'w' }, freshIds(engine.getState().document)) as Made;
+    const drawn = made.commands.filter((command) => command.type === 'addPoint').map((command) => Math.hypot((command as { x: number }).x, (command as { y: number }).y));
+    for (const radius of drawn) expect(radius).toBeCloseTo(5.5 / (2 * Math.cos(Math.PI / 12)), 9);
+    run(engine, batch(...made.commands));
+    for (const step of steps(engine, made)) expect(step).toBeCloseTo(1 / 12, 5);
+    expect(solved(engine, 'S').regions).toHaveLength(1);
+    // without the parameters, or with an expression that has no value, it is drawn as clicked
+    const blind = sketchTool('polygon', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') }, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'w' }, freshIds(engine.getState().document)) as Made;
+    expect((blind.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
+    const unknown = sketchTool('polygon', context, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'nowhere * 2' }, freshIds(engine.getState().document)) as Made;
+    expect((unknown.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
+
+    // a vertex that snaps to a free point: the other vertices are drawn at the size and the point comes to them
+    const snapped = sketched();
+    run(snapped, { type: 'addPoint', sketch: 'S', id: 'v', x: 0.5, y: 0.1 });
+    const pulled = draw(snapped, 'polygon', { center: onPoint('origin'), vertex: onPoint('v'), sides: 12, sizeKind: 'acrossFlats', size: 5.5 });
+    expect(pulled.ids.points[0]).toBe('v');
+    for (const step of steps(snapped, pulled)) expect(step).toBeCloseTo(1 / 12, 5);
+    expect(solved(snapped, 'S').regions).toHaveLength(1);
+    expect(Math.hypot(...at(snapped, 'v'))).toBeCloseTo(5.5 / (2 * Math.cos(Math.PI / 12)), 6);
+
+    // a size as drawn against a vertex that cannot move: the dimension is the size as it is, so nothing is in conflict
+    for (const sizeKind of ['circumscribed', 'acrossFlats'] as const) {
+      const fixed = sketched();
+      run(fixed, { type: 'addPoint', sketch: 'S', id: 'v', x: 7.0037, y: 0 }, constrain('S', 'fx', { type: 'fixed', point: 'v', x: 7.0037, y: 0 }));
+      const held = draw(fixed, 'polygon', { center: onPoint('origin'), vertex: onPoint('v'), sides: 6, sizeKind });
+      expect(status(fixed.getState()).S, sizeKind).toBe('ok');
+      const value = (sketchOf(fixed, 'S').constraints[held.ids.size[0]] as { value: number }).value;
+      expect(value).toBeCloseTo(sizeKind === 'circumscribed' ? 14.0074 : 14.0074 * Math.cos(Math.PI / 6), 9);
+      for (const step of steps(fixed, held)) expect(step).toBeCloseTo(1 / 6, 5);
+    }
+    // with a free vertex the size as drawn is still rounded and the polygon drawn at the rounded size
+    const rounded = sketched();
+    const round = draw(rounded, 'polygon', { center: free(0, 0), vertex: free(7.0037, 0), sides: 6, sizeKind: 'circumscribed' });
+    expect(sketchOf(rounded, 'S').constraints[round.ids.size[0]]).toMatchObject({ type: 'diameter', value: 14.01 });
+  });
+
+  it('snapping to a line stays on the segment, to an arc within its sweep', () => {
+    const engine = sketched();
+    run(
+      engine,
+      { type: 'addPoint', sketch: 'S', id: 'la', x: 0, y: 0 },
+      { type: 'addPoint', sketch: 'S', id: 'lb', x: 10, y: 0 },
+      { type: 'addCurve', sketch: 'S', id: 'l', curve: { type: 'line', a: 'la', b: 'lb' } },
+      { type: 'addPoint', sketch: 'S', id: 'ac', x: 0, y: 20 },
+      { type: 'addPoint', sketch: 'S', id: 'as', x: 5, y: 20 },
+      { type: 'addPoint', sketch: 'S', id: 'ae', x: 0, y: 25 },
+      { type: 'addCurve', sketch: 'S', id: 'arc', curve: { type: 'arc', center: 'ac', start: 'as', end: 'ae' } }, // a quarter, from 0° to 90°
+    );
+    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') };
+    const on = (id: Id, x: number, y: number) => anchorPosition(context, { at: [x, y], snap: { kind: 'curve', id } });
+    expect(on('l', 4, 3)).toEqual([expect.closeTo(4, 9), expect.closeTo(0, 9)]);
+    expect(on('l', 14, 3)).toEqual([expect.closeTo(10, 9), expect.closeTo(0, 9)]); // beyond the end: the end
+    expect(on('l', -6, -2)).toEqual([expect.closeTo(0, 9), expect.closeTo(0, 9)]);
+    expect(on('arc', 10, 30)).toEqual([expect.closeTo(5 * Math.SQRT1_2, 9), expect.closeTo(20 + 5 * Math.SQRT1_2, 9)]); // inside the sweep
+    expect(on('arc', 4, 17)).toEqual([expect.closeTo(5, 9), expect.closeTo(20, 9)]); // just before the start: the start, not the far end
+    expect(on('arc', -3, 24)).toEqual([expect.closeTo(0, 9), expect.closeTo(25, 9)]); // just after the end: the end
+    // a point snaps to where it is, whatever `at` says; an unknown entity leaves the place as given
+    expect(anchorPosition(context, { at: [99, 99], snap: { kind: 'point', id: 'lb' } })).toEqual([expect.closeTo(10, 9), expect.closeTo(0, 9)]);
+    expect(anchorPosition(context, { at: [99, 98], snap: { kind: 'curve', id: 'nowhere' } })).toEqual([99, 98]);
   });
 
   it('a size as the diameter of the circumscribed circle or across flats; a number is drawn at that size', () => {

@@ -2,9 +2,10 @@
 // commands. The app calls them from its drawing tools and the MCP server offers them as one tool
 // whose description is generated from the catalog below, so a tool added here is at both places.
 // Nothing here touches the recompute: a tool only reads the sketch and its solved positions.
-import { type NumberSpec, checkNumber } from './catalog';
+import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds, entityOf } from './document';
-import type { Command, Document, Expr, Id, SketchFeature, SketchResult, Vec2 } from './types';
+import { evaluateNumber } from './expression';
+import type { Command, Document, Expr, Id, ParameterResult, SketchFeature, SketchResult, Vec2 } from './types';
 import { ORIGIN, dist2, has } from './util';
 
 // A place in a sketch and what it should snap to. The app passes a click after snapping, an AI
@@ -16,9 +17,12 @@ export interface Anchor {
 
 // The sketch a tool draws into, with its solved state: positions of points come from the result
 // (projected geometry has them only there), otherwise from the document.
+// `parameters` are the values of the parameters of the document (`evaluation.parameters`): with
+// them a size given as an expression is drawn at its value, without them as clicked.
 export interface SketchToolContext {
   sketch: SketchFeature;
   result?: SketchResult;
+  parameters?: Record<string, ParameterResult>;
 }
 
 // Supplies IDs for new entities by a kind prefix (`p` point, `c` curve, `k` constraint). It must
@@ -67,7 +71,7 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   polygon: {
     title: 'Regular polygon',
     summary:
-      'A regular polygon: a construction circle around it, the vertices on the circle and all sides of the same length. Position, size and rotation stay free (4 degrees of freedom) unless the anchors snap or a size is given. `sizeKind` with `size` adds a dimension: the diameter of the circumscribed circle, or the size across flats (the wrench size of a nut; an even number of sides only). `sizeKind` alone dimensions the size as drawn.',
+      'A regular polygon: a construction circle around it, the vertices on the circle and all sides of the same length. Position, size and rotation stay free (4 degrees of freedom) unless the anchors snap or a size is given. `sizeKind` with `size` adds a dimension: the diameter of the circumscribed circle, or the size across flats (the wrench size of a nut; an even number of sides only). `sizeKind` alone dimensions the size as drawn. The direction from `center` to `vertex` is the rotation: draw the polygon turned as it should be (with `vertex` straight right of the centre, `lines[1]` of a hexagon is horizontal) and add a constraint on a side only to hold it there. The same constraints also hold for folded polygons, and the solver may end in one when a later constraint or a change of the size asks for a big jump (a turn over about 30°, the size across flats several times larger or smaller): the sketch then has no region (`regions: 0`); undo the step and make it smaller. The dimension of the circumscribed circle takes any change.',
     inputs: {
       center: { kind: 'anchor' },
       vertex: { kind: 'anchor' },
@@ -190,10 +194,11 @@ function anchorProblem(context: SketchToolContext, v: unknown): string | undefin
   if (!isObject(v)) return 'an anchor `{ at: [x, y], snap? }` is expected';
   for (const key of Object.keys(v)) if (key !== 'at' && key !== 'snap') return `an anchor has no field "${key}"`;
   const at = v.at;
-  if (!Array.isArray(at) || at.length !== 2 || !at.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 1e9)) return '`at` must be two finite numbers `[x, y]`';
+  if (!Array.isArray(at) || at.length !== 2 || !at.every((n) => typeof n === 'number' && Number.isFinite(n))) return '`at` must be two finite numbers `[x, y]`';
+  if (!at.every((n) => Math.abs(n) <= MAX_NUMBER)) return `\`at\` is out of the range ±${MAX_NUMBER}`;
   if (v.snap === undefined) return undefined;
   const snap = v.snap;
-  if (!isObject(snap) || (snap.kind !== 'point' && snap.kind !== 'curve') || typeof snap.id !== 'string') return '`snap` must be `{ kind: "point" | "curve", id }`';
+  if (!isObject(snap) || (snap.kind !== 'point' && snap.kind !== 'curve') || typeof snap.id !== 'string' || Object.keys(snap).some((key) => key !== 'kind' && key !== 'id')) return '`snap` must be `{ kind: "point" | "curve", id }`';
   const entity = entityOf(context.sketch, snap.id);
   if (!entity) return `the sketch has no entity "${snap.id}" to snap to`;
   if ((entity.kind === 'point') !== (snap.kind === 'point')) return `"${snap.id}" is a ${entity.kind}, not a ${snap.kind}`;
@@ -263,15 +268,27 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
   if (!(radius > SAME_PLACE)) return failed('the centre and the vertex are at the same place');
   // The size across flats of the polygon with the circumradius 1.
   const flats = 2 * Math.cos(Math.PI / sides);
-  // The value of the dimension. A number also sets the drawn size, so that the solver has nothing
-  // to do; a vertex that snaps keeps its place and the solver reconciles the two.
+  // The value of the dimension and the size the polygon is drawn at.
+  // - A size that is given (a number, or an expression the parameters give a value to) is also
+  //   the drawn size: the solver then starts from a polygon that already holds, and a start far
+  //   from the dimension is what folds a polygon. A vertex that snaps keeps its place; the solver
+  //   brings it and the rest together, or reports the conflict when the vertex cannot move.
+  // - Without a size the dimension takes the size as drawn. With a free vertex it is rounded and
+  //   the polygon drawn at the rounded size; a vertex that snaps is where it is, so the dimension
+  //   is not rounded (a rounded one would contradict a vertex that cannot move).
   let value: number | Expr | undefined;
   if (sizeKind) {
-    const drawn = sizeKind === 'circumscribed' ? 2 * radius : flats * radius;
+    const across = sizeKind === 'circumscribed' ? 2 : flats;
+    const drawn = across * radius;
     const rounded = Math.round(drawn * 100) / 100;
-    value = input.size ?? (rounded > 0 ? rounded : drawn);
-    if (typeof value === 'number' && !input.vertex.snap) radius = sizeKind === 'circumscribed' ? value / 2 : value / flats;
+    value = input.size ?? (input.vertex.snap || !(rounded > 0) ? drawn : rounded);
+    const known = typeof value === 'number' ? value : context.parameters ? evaluateNumber(value, context.parameters) : undefined;
+    const size = typeof known === 'number' ? known : known?.ok ? known.value : undefined;
+    if (size !== undefined && size > 0) radius = size / across;
   }
+  // a side shorter than what counts as one place would be a line without length
+  if (!(2 * radius * Math.sin(Math.PI / sides) > SAME_PLACE)) return failed('the polygon is too small: its sides would have no length');
+  if (Math.abs(pc[0]) + radius > MAX_NUMBER || Math.abs(pc[1]) + radius > MAX_NUMBER) return failed(`the polygon reaches out of the range ±${MAX_NUMBER}`);
   const direction = Math.atan2(pv[1] - pc[1], pv[0] - pc[0]);
   const corner = (i: number): Vec2 => [pc[0] + radius * Math.cos(direction + (TAU * i) / sides), pc[1] + radius * Math.sin(direction + (TAU * i) / sides)];
 
@@ -282,7 +299,6 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
     const id = newId('p');
     first = { id, commands: [{ type: 'addPoint', sketch, id, x: corner(0)[0], y: corner(0)[1] }], constraints: [] };
   }
-  if (center.id === first.id) return failed('the centre and the vertex are the same point');
   const commands: Command[] = [...center.commands, ...first.commands];
   const points: Id[] = [first.id];
   for (let i = 1; i < sides; i++) {
@@ -320,10 +336,27 @@ export function sketchTool<K extends SketchToolName>(tool: K, context: SketchToo
   return tool === 'rectangle' ? rectangle(context, input as SketchToolInputs['rectangle'], newId) : polygon(context, input as SketchToolInputs['polygon'], newId);
 }
 
+// Every text in a document: IDs, and also references to entities that are gone. A feature may
+// refer to a removed entity on purpose (it is then in error until the reference is repaired); an
+// entity made anew under that ID would quietly take the reference over.
+function textsOf(value: unknown, into: Set<string>): Set<string> {
+  if (typeof value === 'string') into.add(value);
+  else if (Array.isArray(value)) for (const item of value) textsOf(item, into);
+  else if (typeof value === 'object' && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      into.add(key);
+      textsOf(item, into);
+    }
+  }
+  return into;
+}
+
 // A supplier of IDs the document does not have: `<prefix><kind><number>`, counted up from 1 for
-// every kind. IDs it has handed out are not handed out again.
+// every kind. IDs it has handed out are not handed out again, and neither is any text the
+// features of the document contain: an ID that a region of a profile still names, though its
+// curve was removed, stays taken.
 export function freshIds(doc: Document, prefix = ''): NewId {
-  const used = documentIds(doc);
+  const used = textsOf(doc.features, documentIds(doc));
   const counters = new Map<string, number>();
   return (kind) => {
     let n = counters.get(kind) ?? 1;

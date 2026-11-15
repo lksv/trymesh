@@ -23,11 +23,12 @@ import {
   type Placed,
   type SketchToolInputs,
   type Vec2,
+  anchorPosition,
   isFlag,
   placeAnchor,
   sketchTool,
 } from '@trymesh/engine';
-import { type EntityKind, ORIGIN, type PointView, type SketchView, closestOn, dist, kindOf, measure } from './sketch-view';
+import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure } from './sketch-view';
 
 // The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
 // are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
@@ -41,11 +42,6 @@ const SAME_PLACE = 1e-6;
 // origin are used again, a projected point gets a new point with a coincident constraint, a curve
 // a point-on-curve constraint). The view carries the sketch it was made of.
 export const place = (_sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Placed => placeAnchor(view.source, anchor, newId);
-
-const closestOnCurve = (view: SketchView, curve: Id, p: Vec2): Vec2 => {
-  const shape = view.curves.get(curve)?.shape;
-  return shape ? closestOn(shape, p) : p;
-};
 
 export function pointCommands(sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Command[] | undefined {
   if (anchor.snap?.kind === 'point') return undefined; // bod tam už je
@@ -114,12 +110,8 @@ export function arcCommands(sketch: Id, view: SketchView, center: Anchor, start:
   return [...c.commands, ...s.commands, ...e.commands, { type: 'addCurve', sketch, id: newId('c'), curve: { type: 'arc', center: c.id, start: s.id, end: e.id } }];
 }
 
-// Kde přichycené kliknutí skutečně leží.
-export function positionOf(view: SketchView, anchor: Anchor): Vec2 {
-  if (anchor.snap?.kind === 'point') return view.points.get(anchor.snap.id)?.at ?? anchor.at;
-  if (anchor.snap?.kind === 'curve') return closestOnCurve(view, anchor.snap.id, anchor.at);
-  return anchor.at;
-}
+// Kde přichycené kliknutí skutečně leží: the rule of the engine's sketch tools.
+export const positionOf = (view: SketchView, anchor: Anchor): Vec2 => anchorPosition(view.source, anchor);
 
 // ---------------------------------------------------------------- vazby z výběru
 

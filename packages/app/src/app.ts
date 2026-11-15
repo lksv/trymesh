@@ -1370,7 +1370,7 @@ export class App {
       h('h2', {}, 'Polygon'),
       h('label', {}, `Sides (3 to ${MAX_POLYGON_SIDES})`, sides),
       h('label', {}, 'Dimension of the size', size),
-      h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints.'),
+      h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded.'),
     ];
   }
 

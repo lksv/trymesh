@@ -383,14 +383,19 @@ const command = (args: Record<string, unknown>): Command => {
 // none of them is in the document: `<prefix><kind><number>` with the kinds `p` (point), `c`
 // (curve) and `k` (constraint).
 function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { command: Command; ids: Record<string, Id[]> } {
-  const sketch = sketchOf(engine, text(args, 'sketch'));
-  const tool = text(args, 'tool');
-  const prefix = optionalText(args, 'prefix') ?? '';
+  for (const name of ['sketch', 'tool']) if (typeof args[name] !== 'string' || args[name] === '') throw new ToolError(`argument "${name}": a text that is not empty is expected`);
+  const tool = args.tool as string;
+  const found = engine.getState().document.features.find((feature) => feature.id === args.sketch);
+  if (found?.type !== 'sketch') throw new ToolError(`the document has no sketch "${String(args.sketch)}"`);
+  const sketch = found;
+  // an empty prefix is the default, said aloud
+  const prefix = typeof args.prefix === 'string' ? args.prefix : '';
   if (prefix.includes('/')) throw new ToolError('argument "prefix": an ID must not contain "/"');
   const input = args.input;
   if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new ToolError('argument "input": an object with the inputs of the tool is expected, see describe_api');
   const state = engine.getState();
-  const made = sketchTool(tool as SketchToolName, { sketch, result: state.evaluation.features[sketch.id]?.sketch }, input as never, freshIds(state.document, prefix));
+  const context = { sketch, result: state.evaluation.features[sketch.id]?.sketch, parameters: state.evaluation.parameters };
+  const made = sketchTool(tool as SketchToolName, context, input as never, freshIds(state.document, prefix));
   if (!made.ok) throw new ToolError(`${tool}: ${made.message}`);
   return { command: { type: 'batch', commands: made.commands }, ids: made.ids };
 }
@@ -398,20 +403,26 @@ function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { comma
 // Whether the call of a tool from MUTATING would change the document now. The app asks before the
 // call, to cancel an operation in progress only when the document really changes.
 export function changesDocument(engine: Engine, name: string, args: Record<string, unknown>): boolean {
+  if (!MUTATING.includes(name) || callProblem(name, args) !== undefined) return false;
   const state = engine.getState();
+  // a command that is accepted and leaves the document as it is (an empty batch) changes nothing
+  const changes = (command: Command): boolean => {
+    const result = engine.preview(command);
+    return result.ok && result.state.document !== state.document;
+  };
   if (name === 'undo') return state.canUndo;
   if (name === 'redo') return state.canRedo;
-  if (name === 'execute') return typeof args.command === 'object' && args.command !== null && engine.preview(args.command as Command).ok;
+  if (name === 'execute') return typeof args.command === 'object' && args.command !== null && changes(args.command as Command);
   if (name === 'sketch_tool') {
     if (args.preview === true) return false;
     try {
-      return engine.preview(sketchToolBatch(engine, args).command).ok;
+      return changes(sketchToolBatch(engine, args).command);
     } catch (error) {
       if (error instanceof ToolError) return false;
       throw error;
     }
   }
-  return MUTATING.includes(name);
+  return true;
 }
 
 const NONE: JsonSchema = { type: 'object', properties: {}, additionalProperties: false };

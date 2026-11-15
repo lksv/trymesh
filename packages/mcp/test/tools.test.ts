@@ -3,7 +3,7 @@
 import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { apiDescription, apiText, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
-import { callTool, changesDocument, tools } from '../src/tools';
+import { MUTATING, callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
 const ok = (engine: Engine, name: string, args: Record<string, unknown> = {}): any => {
@@ -215,7 +215,15 @@ describe('sketch tools', () => {
       return outcome.ok ? '' : outcome.error;
     };
     expect(error({ tool: 'polygon', input: hexagon })).toMatch(/argument "sketch"/);
-    expect(error({ sketch: 'nic', tool: 'polygon', input: hexagon })).toMatch(/skica "nic"/);
+    expect(error({ sketch: 'nic', tool: 'polygon', input: hexagon })).toBe('the document has no sketch "nic"');
+    expect(error({ sketch: '', tool: 'polygon', input: hexagon })).toBe('argument "sketch": a text that is not empty is expected');
+    // what an anchor and a size may be
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, center: { at: [0, 0], snap: { kind: 'point', id: 'origin', extra: 1 } } } })).toMatch(/center: `snap` must be/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, center: { snap: { kind: 'point', id: 'origin' } } } })).toMatch(/center: `at` must be two finite numbers/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, vertex: { at: [1e9 + 1, 0] } } })).toMatch(/vertex: `at` is out of the range ±1000000000/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, size: 1e-9 } })).toBe('polygon: the polygon is too small: its sides would have no length');
+    expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [0, 0] }, vertex: { at: [2e-6, 0] }, sides: 64 } })).toMatch(/too small/);
+    expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [9e8, 9e8] }, vertex: { at: [-1e9, -1e9] }, sides: 6 } })).toMatch(/reaches out of the range/);
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
     expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
@@ -241,6 +249,36 @@ describe('sketch tools', () => {
     expect(engine.getState().canUndo).toBe(false);
   });
 
+  it('an ID that a feature still refers to is not handed out again, though its entity is gone', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    const first = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: '', input: { first: { at: [0, 0] }, opposite: { at: [40, 30] } } });
+    expect(first.ids.lines).toEqual(['c1', 'c2', 'c3', 'c4']); // an empty prefix is the default
+    execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: first.ids.lines }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    expect(ok(engine, 'get_model').bodies[0].volume).toBeCloseTo(12000, 2);
+    // the rectangle is removed; the extrusion keeps the names of its lines and is in error
+    execute(engine, { type: 'batch', commands: [...first.ids.lines, ...first.ids.points].map((id: string): Command => ({ type: 'removeEntity', sketch: 's', id })) });
+    expect(ok(engine, 'get_model').bodies).toEqual([]);
+    // a new rectangle elsewhere must not become the profile of that extrusion
+    const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [100, 100] }, opposite: { at: [105, 103] } } });
+    expect(second.ids.lines).toEqual(['c5', 'c6', 'c7', 'c8']);
+    expect(second.ids.points).toEqual(['p1', 'p3', 'p2', 'p4']); // nothing refers to the removed points, their IDs are free
+    expect(second.problems).toEqual([expect.objectContaining({ id: 'e' })]);
+    expect(ok(engine, 'get_model').bodies).toEqual([]);
+  });
+
+  it('a size given as an expression is drawn at its value', () => {
+    const engine = newEngine();
+    execute(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'nut', expr: '5.5' }, sketch('s')] });
+    // the vertex is clicked eight times too far out: the drawn size comes from the parameter
+    const made = ok(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [25, 1] }, sides: 12, sizeKind: 'acrossFlats', size: 'nut' } });
+    expect(made).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true, degreesOfFreedom: 1, profileValid: true, regions: 1 }] });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    // a regular dodecagon 5.5 across flats: area = 3 · s² · tan(15°)
+    expect(detail.regions[0].area).toBeCloseTo(3 * 5.5 ** 2 * Math.tan(Math.PI / 12), 4);
+    expect(detail.constraints.find((c: { id: string }) => c.id === made.ids.size[0])).toMatchObject({ value: 5.5, expressions: { value: 'nut' } });
+  });
+
   it('changesDocument: only a call that would be written counts', () => {
     const engine = newEngine();
     expect(changesDocument(engine, 'undo', {})).toBe(false);
@@ -258,6 +296,12 @@ describe('sketch tools', () => {
     expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: { ...hexagon, size: 'nut' } })).toBe(false);
     expect(changesDocument(engine, '_load', {})).toBe(true);
     expect(changesDocument(engine, 'get_model', {})).toBe(false);
+    // accepted, and nothing to write; refused before it runs
+    expect(changesDocument(engine, 'execute', { command: { type: 'batch', commands: [] } })).toBe(false);
+    expect(changesDocument(engine, 'execute', { command: sketch('other'), extra: 1 })).toBe(false);
+    expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, dryRun: true })).toBe(false);
+    expect(changesDocument(engine, 'undo', { steps: 2 })).toBe(false);
+    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load']);
     expect(engine.save()).toBe(before);
   });
 });

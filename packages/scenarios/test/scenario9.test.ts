@@ -312,6 +312,9 @@ describe('scenario 9: robot joint', () => {
     expect(corners.hex_p3.y).toBeCloseTo(NUT / 2, 6);
     expect(holeFaces(state, 'housing', 'nutPocket')).toEqual([...hexLines.flatMap((line) => copies(`nutPocket/side/${line}`, 'bolts', 6)), ...copies('nutPocket/startCap', 'bolts', 6)].sort());
     expect(holeFaces(state, 'plate', 'nutPocket')).toEqual([]);
+    // against the housing as it is after the first screw hole: five more holes through its 46 mm
+    // and six pockets of 3 mm, each the hexagon without the hole
+    expect(bodyVolume(engine.getState('boltHole'), 'housing') - bodyVolume(state, 'housing')).toBeCloseTo(5 * disc(3.4) * 46 + 6 * (HEXAGON - disc(3.4)) * 3, 1);
     // a deeper pocket takes exactly the hexagon without the screw hole, six times
     const deeper = run(engine, { type: 'updateFeature', id: 'nutPocket', patch: { extent: { start: 41, distance: 5 } } });
     expectAllOk(deeper);

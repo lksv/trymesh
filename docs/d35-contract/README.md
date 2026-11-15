@@ -364,11 +364,11 @@ Point 6 is in the code (`docs/decisions.md`, D35, point 6, "Status: done"). The 
 
 Point 7 is in the code (`docs/decisions.md`, D35, point 7, "Status: done"), which completes D35. `sketchTool`, `SKETCH_TOOLS`, `Anchor` and the MCP tool `sketch_tool` live as this draft has them, in the engine package (`sketch-tools.ts`). Differences and notes:
 
-- The context of a tool is the named type `SketchToolContext`; the supplier of IDs is `NewId`. The engine also exports `placeAnchor`, `anchorPosition` (the snapping the app's other drawing tools use), `freshIds(document, prefix?)` and `MAX_POLYGON_SIDES` (64).
+- The context of a tool is the named type `SketchToolContext`; besides the sketch and its solved state it may carry the values of the parameters (`parameters`), with which a size given as an expression is drawn at its value. The supplier of IDs is `NewId`. The engine also exports `placeAnchor`, `anchorPosition` (the snapping the app's other drawing tools use), `freshIds(document, prefix?)` and `MAX_POLYGON_SIDES` (64).
 - A number input of the catalog may carry `expression: true` (the `size` of a polygon takes an expression); `options` is a readonly list.
-- `sketchTool` checks the input against the catalog and refuses what it cannot draw with a message: an input that is missing or not of the tool, `sides` outside 3 to 64, across flats with an odd number of sides, a centre and a vertex at one place.
-- A polygon returns `center` in `ids` as well; `size` is there only when a dimension was asked for. `size` without `sizeKind` means `circumscribed`; `sizeKind` without `size` dimensions the size as drawn, rounded to 0.01.
-- `sketch_tool` returns `ids` together with everything `execute` returns (not only `problems`); `prefix` must not contain `/`.
+- `sketchTool` checks the input against the catalog and refuses what it cannot draw with a message: an input that is missing or not of the tool, `sides` outside 3 to 64, across flats with an odd number of sides, a centre and a vertex at one place, sides too short to be lines, a polygon out of the range of coordinates.
+- A polygon returns `center` in `ids` as well; `size` is there only when a dimension was asked for. `size` without `sizeKind` means `circumscribed`; `sizeKind` without `size` dimensions the size as drawn, rounded to 0.01 unless the vertex snaps. The construction has folded solutions besides the regular polygon (architecture.md, Sketch tools, the limit of this construction).
+- `sketch_tool` returns `ids` together with everything `execute` returns (not only `problems`); `prefix` must not contain `/`. The IDs avoid every text in the features of the document, so an ID a profile still names is not reused after its curve was removed.
 - The scenario test has the nut pockets as `scenario9.ts` does; it takes its IDs from `freshIds(document, 'hex_')` where the script has a counter of its own, so the IDs differ (`hex_c2` to `hex_c7` are the sides).
 
 ## Co kontrakt neřeší

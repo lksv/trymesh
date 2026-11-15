@@ -14,7 +14,8 @@ export interface Point2 {
 // ---------------------------------------------------------------- dokument
 
 export interface Document {
-  schemaVersion: number; // 2; dokument verze 1 se při načtení převede
+  schemaVersion: number; // 3; `load` upgrades an older document
+  schemaSteps?: string[]; // written only by a build of a branch that is not merged yet; never send it
   settings: {
     chordTolerance: number; // dělení oblouků na segmenty
   };

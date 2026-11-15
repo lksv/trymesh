@@ -66,7 +66,8 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `features/profile.ts` | the document half of a profile source: validation, references, fields |
 | `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |
 | `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
-| `document.ts` | commands, `validateDocument`, the upgrade of older documents, `fieldsOf`, `featureInput`, `featureRefs` |
+| `schema.ts` | the schema of the document as named upgrade steps: `UPGRADES`, `SCHEMA_PENDING`, the version a build saves and the runner |
+| `document.ts` | commands, `validateDocument`, `fieldsOf`, `featureInput`, `featureRefs` |
 | `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
 | `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
 | `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
@@ -76,7 +77,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
 | `engine.ts` | the facade |
 
-The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `query/*` and `export/*`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
+The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation`, `schema` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `query/*` and `export/*`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
 
 Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `host.ts` (the registry of operations of the app and the entry that runs one, shared by the server and the app), `export-writer.ts` (the writer of exported files, for the server), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
 
@@ -105,6 +106,7 @@ type Vec3 = [number, number, number];
 
 interface Document {
   schemaVersion: number;
+  schemaSteps?: string[];       // only from a build of a branch, see `load`
   settings: {
     chordTolerance: number;               // dělení oblouků na segmenty
   };
@@ -1069,7 +1071,22 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** ověří verzi schématu a tatáž pravidla nad celým dokumentem. Současná verze schématu je 2. Dokument verze 1 se před validací převede (`upgrade` v `document.ts`): vysunutí dostane `profile`, `extent` s nulovým začátkem a seznam `targets`, dokument prázdné `parameters` a `checks`. Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Dokument s neprázdnými `parameters` nebo `checks` engine zatím odmítne, aby je tiše nezahodil; platí to i pro dokument verze 1, který je kdovíproč má. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
+**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 3.
+
+**The schema is a list of named upgrade steps (D37, `schema.ts`).** `UPGRADES` holds the steps in order; on `master` the version a build saves is their number plus one. A step changes only the shape of the raw document, before the validation, which judges the content.
+
+| Step | Version | What it does |
+|---|---|---|
+| `d35-profiles-and-parameters` | 1 → 2 | An extrusion gets `profile`, `extent` with a zero start and the list `targets`; the document gets `parameters` and `checks` (what is there anyway is kept for the validation to judge) |
+| `d37-schema-steps` | 2 → 3 | Converts nothing. A build from before the list accepts version 2 and rebuilds the document from the fields it knows, so it would strip a document of a branch without a word; from version 3 on it refuses |
+
+- **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
+- **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.
+- **Branches.** Two branches cannot both raise the version. A branch appends its steps and counts them in `SCHEMA_PENDING` (the steps at the end of the list that `master` does not have yet). A build with pending steps saves the version of the `master` it started from and the names of its pending steps in `Document.schemaSteps`; the merge sets the count to zero, and `master` never writes the field.
+- **Loading, in every build:** take the steps from the version of the document on, leave out the ones the document names, run the rest in the order of the list. Refused, with a message that says which: a version above the one this build saves, and a name that is not among the steps after the version of the document. So a document saved on a branch loads on that branch after a rebase over another merged step (the other step runs, its own does not run twice) and on `master` once the branch is merged; `master` before the merge and a build of another branch refuse it.
+- A test (`packages/engine/test/schema.test.ts`) runs these cases with lists made up for it, and checks the real list (`schemaProblems`: unique names, a count of pending steps that fits).
+
+Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Dokument s neprázdnými `parameters` nebo `checks` engine zatím odmítne, aby je tiše nezahodil; platí to i pro dokument verze 1, který je kdovíproč má. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
 
 ### Co z API vzešlo z návrhu UI (D24)
 

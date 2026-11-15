@@ -17,6 +17,7 @@ import type {
 import { CONSTRAINTS } from './catalog';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
 import { bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, isDimension, isDriving } from './sketch-content';
+import { schemaHeader, upgradeDocument } from './schema';
 import { has } from './util';
 import {
   CommandError,
@@ -62,9 +63,9 @@ export { FEATURE_TYPE_INFO } from './features/index';
 export type { FeatureTypeInfo } from './features/module';
 export { MAX_PATTERN_COUNT } from './features/pattern';
 
-export const SCHEMA_VERSION = 2;
+export { SCHEMA_VERSION } from './schema';
 
-export const emptyDocument = (): Document => ({ schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] });
+export const emptyDocument = (): Document => ({ ...schemaHeader(), settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] });
 
 const sketchIds = (s: SketchFeature): Id[] => [s.points, s.curves, s.constraints, s.external].flatMap((group) => Object.keys(group));
 
@@ -103,7 +104,7 @@ function validated(spec: FeatureModule<Feature>, doc: Document, before: number |
   return expressions ? { ...checked, expressions } : checked;
 }
 
-const EMPTY: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] };
+const EMPTY: Document = { ...schemaHeader(), settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] };
 const fieldCache = new WeakMap<Feature, FieldInfo[]>();
 
 // Numeric fields of a feature that accept an expression: driving inputs only, not the coordinates
@@ -225,8 +226,8 @@ const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, 
 // Ověří celý dokument stejnými pravidly jako příkazy. Odkazy na features, které v dokumentu nejsou
 // nebo leží jinde, jsou přípustné: projeví se až při přepočtu.
 export function validateDocument(value: unknown): Document {
-  const o = upgrade(object(value, 'dokument'));
-  if (o.schemaVersion !== SCHEMA_VERSION) fail(`dokument: verze schématu ${String(o.schemaVersion)} není podporovaná (čeká se ${SCHEMA_VERSION})`);
+  // older documents are brought to the schema of this build first (schema.ts); it changes only the shape
+  const o = upgradeDocument(object(value, 'dokument'));
   const chordTolerance = finite(object(o.settings, 'dokument.settings').chordTolerance, 'dokument.settings.chordTolerance');
   if (chordTolerance <= 0) fail('dokument.settings.chordTolerance: musí být kladná');
   // Parameters and checks: names and expression syntax. Values, unknown names and cycles are up to the recompute.
@@ -244,7 +245,7 @@ export function validateDocument(value: unknown): Document {
   const parameters = named<Parameter>(o.parameters, 'document.parameters', 'number', parameterName);
   const checks = named<Check>(o.checks, 'document.checks', 'check', checkName);
   if (!Array.isArray(o.features)) fail('dokument.features: čeká se seznam');
-  const doc: Document = { schemaVersion: SCHEMA_VERSION, settings: { chordTolerance }, parameters, checks, features: [] };
+  const doc: Document = { ...schemaHeader(), settings: { chordTolerance }, parameters, checks, features: [] };
   const ids = new Set<Id>();
   (o.features as unknown[]).forEach((item, i) => {
     const f = feature(doc, undefined, item, `features[${i}]`, 'load');
@@ -255,24 +256,6 @@ export function validateDocument(value: unknown): Document {
     doc.features.push(f);
   });
   return doc;
-}
-
-// Převod staršího dokumentu na současné schéma. Mění jen tvar; obsah ověří validace po něm.
-// Verze 1 → 2: vysunutí má zdroj profilu, rozsah a seznam cílů; dokument má parametry a kontroly.
-function upgrade(o: Dict): Dict {
-  if (o.schemaVersion !== 1) return o;
-  const extrude = (f: Dict): Dict => {
-    const { sketch, regions: list, distance, target, ...rest } = f;
-    return {
-      ...rest,
-      profile: { type: 'regions', sketch, regions: list },
-      extent: { type: 'distance', start: 0, distance },
-      ...(target === undefined ? {} : { targets: [target] }),
-    };
-  };
-  const features = Array.isArray(o.features) ? o.features.map((f: unknown) => (isObject(f) && f.type === 'extrude' ? extrude(f) : f)) : o.features;
-  // parametry a kontroly verze 1 neměla; co tam přesto je, se nezahodí a posoudí to validace
-  return { ...o, schemaVersion: 2, parameters: o.parameters ?? [], checks: o.checks ?? [], features };
 }
 
 // ---------------------------------------------------------------- parameters and checks

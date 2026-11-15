@@ -14,7 +14,7 @@ const FIXTURE_STL = { bytes: 28384, sha256: '58c340068c782b14df2d97a9980e3529b13
 describe('krok 0: dokument verze 1', () => {
   // Soubor uložil engine před změnou schématu: deska s kapsou, nálitkem na vlastní rovině a druhým
   // tělesem. Objemy, jména stěn a otisk exportu spočítal tentýž engine.
-  it('načte se, přepočte se na stejný model a uloží se ve verzi 2', () => {
+  it('načte se, přepočte se na stejný model a uloží se v současné verzi', () => {
     const engine = newEngine();
     expect(JSON.parse(FIXTURE).schemaVersion).toBe(1);
     expect(engine.load(FIXTURE).ok).toBe(true);
@@ -30,7 +30,8 @@ describe('krok 0: dokument verze 1', () => {
 
     const old = JSON.parse(FIXTURE) as { features: Record<string, unknown>[] };
     const saved = JSON.parse(engine.save()) as Document;
-    expect(saved).toMatchObject({ schemaVersion: 2, parameters: [], checks: [] });
+    expect(saved).toMatchObject({ schemaVersion: 3, parameters: [], checks: [] });
+    expect(saved).not.toHaveProperty('schemaSteps'); // only a build of a branch writes it
     saved.features.forEach((f, i) => {
       const before = old.features[i];
       if (f.type !== 'extrude') return expect(f).toEqual(before); // skici se neřešily znovu

@@ -2,7 +2,7 @@
 
 The working plan for [D36](../decisions/D36-order-after-d35.md), the order of work after D35. D36 decides the order of seven steps; this file cuts them into work packages and says which package needs which, where they write to the same places, and what can run at the same time.
 
-Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, parts 5 and 6 are ahead; the designs of tracks A, B and E are being written from the [briefs](briefs/README.md) on the branches `d36/design-a`, `d36/design-b` and `d36/design-e`.
+Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, and parts 5 and 6 (documents by area, working in several trees) are done, so the preparatory step is complete; the designs of tracks A, B and E are being written from the [briefs](briefs/README.md) on the branches `d36/design-a`, `d36/design-b` and `d36/design-e`.
 
 ## How the work goes
 
@@ -80,7 +80,7 @@ Where packages collide although they do not depend on each other. The preparator
 | `applyCommand` and `validateDocument` in `document.ts` | every package with a command or a section of the document (2d, 3a, 5a) | one function each | stay shared: a branch of the command, a line of the document; small and in different places |
 | Export: `exportMesh`, the tool `export_stl`, the export in the app | 2g, 5b | one format | formats as a registry; one tool with a format |
 | Sections of the document and `SCHEMA_VERSION` | 3a (body properties), 5a (mechanism) | version 2; `upgrade` is one function | a rule who raises the version, see the preparatory step |
-| `docs/architecture.md`, `docs/ui.md` | everything | one file each | split by area; a package writes its part in its own `design.md` until it is merged |
+| `docs/architecture.md`, `docs/ui.md` | everything | one file each | split by area into `docs/architecture/` and `docs/ui/` (done); a package writes its part in its own `design.md` until it is merged |
 | Numbers of decisions and of validation scenarios | everything | | assigned here, see below |
 
 ## Rules for work at the same time
@@ -89,7 +89,7 @@ Where packages collide although they do not depend on each other. The preparator
 - **Merging in the order of the dependencies**, by one session at a time. The merge updates the indexes (the table of `docs/decisions.md`, the table above, the scenario list of `docs/requirements.md`) and runs all the checks of CLAUDE.md on the merged tree.
 - **A package writes its own files.** Shared files get the smallest possible change: one line in a registry, one entry in a catalog.
 - **What two packages both need is settled before either starts**, in the shared vocabulary of the preparatory step, not by whichever is merged first.
-- **Each worktree builds its own MCP bundle.** `.mcp.json` points at `packages/mcp/dist/server.js` relative to the tree. The bridge between the server and the app has one default port (4517), so two trees that both run a server and an app need `--port`.
+- **Each worktree builds its own MCP bundle.** `.mcp.json` points at `packages/mcp/dist/server.js` relative to the tree. The bridge between the server and the app has one default port (4517); a server takes another with `--port`, but the app always connects to 4517, so the app of one tree is bridged at a time. The steps are in CLAUDE.md, "Working in several trees".
 
 ## A package
 

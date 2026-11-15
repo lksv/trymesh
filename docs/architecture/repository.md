@@ -1,0 +1,72 @@
+# Architecture: the repository
+
+Part of [architecture.md](../architecture.md), the design as implemented. Packages, the modules of the engine and of the app, and which may import which.
+
+## Struktura repozitáře
+
+pnpm workspace. Hranice jsou tím vynucené fyzicky: `engine` nemá v `package.json` žádnou závislost.
+
+```
+packages/
+  engine/            jádro, čistý TS
+  solver-planegcs/   adaptér SketchSolver
+  kernel-manifold/   adaptér SolidKernel
+  scenarios/         validační scénáře proti skutečným adaptérům (jen testy)
+  app/               ukázkové UI + renderer (three.js)
+  mcp/               rozhraní pro AI: MCP server a most do běžící aplikace
+```
+
+Modules of the app (`packages/app/src`), run by `pnpm dev`:
+
+| File | What it holds |
+|---|---|
+| `app.ts` | The class `App`: the state of the UI (the mode, the selection, the marker, what is hidden), `refresh`, the toolbar, the timeline, the pointer and key events and their dispatch, the pick in the view, the bridge to MCP. It implements the hosts below |
+| `host.ts` | `PanelHost`: what a panel or a form may use of the app. A module of a panel imports this interface and never `app.ts` |
+| `features/index.ts` | `FEATURE_UI`: one entry per feature type of the engine, complete by the compiler (how the type starts, how it is edited, its lines in the model panel, its faces, its eye on the timeline, its form), and `TOOLBAR`, the order of the buttons |
+| `features/draft.ts` | What the forms share: the mode of a draft (`DraftMode`, which carries its form), the preview and the pause of a slow one, numeric fields, the buttons |
+| `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, what a move and a click mean, what it draws) |
+| `panels/model.ts`, `parameters.ts`, `collisions.ts`, `sketch.ts` | The panels, as functions over the host; a panel that keeps state (the collisions) has it in an object the app holds |
+| `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
+| `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`) |
+| `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. `View` is its interface; a test passes its own |
+| `sketch-view.ts`, `sketch-commands.ts`, `sketch-diagnosis.ts` | The geometry of a sketch for drawing, hit tests and measuring; the commands of the drawing tools, constraints and dimensions from a selection; the texts of the diagnosis |
+| `draw.ts`, `labels.ts`, `fields.ts`, `issue-text.ts`, `dom.ts` | Shared helpers: drawing into a scene, texts, numeric fields with units, issues named for a human, the DOM |
+
+A new feature type costs the app a file in `features/` and a line of `FEATURE_UI`; without the line the app does not compile. The test `packages/app/test/app.test.ts` drives the class as a user does and compares a record of every step with snapshot files (see `docs/d36/00-prep/part3-app-panels.md`).
+
+Modules of the engine (`packages/engine/src`), after the preparatory step of D36 (D37):
+
+| Module | Content |
+|---|---|
+| `catalog.ts`, `generators.ts`, `expression.ts`, `util.ts` | the catalogs (constraints, numeric fields, profile generators), expressions, utilities |
+| `face-roles.ts` | the catalog of the roles of faces (`FACE_ROLES`) and the key of a face built from it |
+| `data-catalogs.ts` | tables of data the engine carries (`DATA_CATALOGS`), typed by row |
+| `sketch-content.ts` | what the content of a sketch is, without validation: entities, operands and keys of constraints, the IDs of a document, the owner of a body ID |
+| `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
+| `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
+| `solid.ts`, `interference.ts` | the mesh of a prism, faces and edges of a body, the plane on a face, the projection of an edge, STL; interference of bodies |
+| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `SketchState`) |
+| `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
+| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
+| `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
+| `features/profile.ts` | the document half of a profile source: validation, references, fields |
+| `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |
+| `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
+| `schema.ts` | the schema of the document as named upgrade steps: `UPGRADES`, `SCHEMA_PENDING`, the version a build saves and the runner |
+| `document.ts` | commands, `validateDocument`, `fieldsOf`, `featureInput`, `featureRefs` |
+| `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
+| `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
+| `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
+| `query/interference.ts`, `query/sketch.ts`, `query/body.ts`, `query/catalog.ts` | the queries, one module each or a few that belong together |
+| `query/index.ts` | the catalog `QUERIES` and the runner |
+| `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
+| `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
+| `engine.ts` | the facade |
+
+The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation`, `schema` and `sketch`, then `recompute/*`, then `features/module` and `features/profile`, then the modules of the types, then `features/index`, then `document.ts` and `evaluate.ts`, then `query/*` and `export/*`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
+
+Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `host.ts` (the registry of operations of the app and the entry that runs one, shared by the server and the app), `export-writer.ts` (the writer of exported files, for the server), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
+
+Testy: Vitest (`pnpm test`), typová kontrola `pnpm typecheck`. Validační scénáře běží v Node proti skutečným adaptérům. Balíčky se neskládají: každý vystavuje přímo zdrojový TypeScript.
+
+Stav 2026-11-14: oba adaptéry a engine jsou hotové včetně testů; všech šest validačních scénářů prochází v Node proti skutečným adaptérům. Ukázková aplikace pokrývá funkce z [ui.md](../ui.md) potřebné k jejich projití v prohlížeči (D31).

@@ -7,8 +7,8 @@
 | 1 Registry of queries | implemented in eight steps (`85a3fe8` to `b563c61`) after the signatures in [contract.ts](contract.ts) and the calls in [calls.ts](calls.ts); where the code is and what differs is in [part1-as-implemented.md](part1-as-implemented.md) |
 | 4 Shared vocabulary | same; the six maps of additions stay a device of the contracts |
 | 2 A module per feature type | implemented in six steps (nine commits, `9f3eeb5` to `354501e`) as designed in [part2-feature-modules.md](part2-feature-modules.md); what differs from the design is listed there under "As implemented" |
-| 3 Panels and forms of the app | implemented in four commits (`52fb3af` to the commit of the scene and the sketch mode) as designed in [part3-app-panels.md](part3-app-panels.md); what differs is listed there under "As implemented" |
-| 5, 6 Documents by area, several trees | proposal below; no code |
+| 3 Panels and forms of the app | implemented in four commits (`52fb3af` to `157b2fe`) as designed in [part3-app-panels.md](part3-app-panels.md); what differs is listed there under "As implemented" |
+| 5, 6 Documents by area, several trees | done 2026-11-15 as proposed below; what was done is said with each proposal |
 
 The contract is checked by `npx tsc -p docs/d36/tsconfig.json`. Parts 2 and 3 change no public type (part 2 adds two functions to the index of the engine), so they get a design and no contract.
 
@@ -155,9 +155,13 @@ What `contract.ts` proposes (sixth version):
 
 `docs/architecture.md` (1091 lines) and `docs/ui.md` are written by every package. Proposed: a file per area in `docs/architecture/` (document, sketch, naming, extrusion, pattern, ports, recompute, API, interface for AI) and a file per panel for the UI, with the present files as their tables of contents. `docs/decisions.md` is already split by the rule of D36.
 
+**Done.** `docs/architecture/` has eleven files (repository, document, sketch, naming, extrude, pattern, ports, recompute, api, ai, verification) and `docs/ui/` eight (model, plane, sketch, extrude, pattern, bodies, parameters, errors). The text moved unchanged, section by section; only the headings of the sketch rose by a level, and links got the path of the new place. `architecture.md` keeps the overview and a table of the files with the sections each holds, so a reference "architecture.md, section X" in the code or in an older document still leads to its text. `ui.md` keeps how the tables are read, the gaps found, what is left out and a table of the files; the implementation status of the app went to the end of the file of each area. No review: text moved, nothing rewritten.
+
 ## 6. Working in several trees
 
 A short description of how a package gets its tree: a branch `d36/<id>`, a git worktree, the install, the build of the MCP bundle of that tree, the ports of the bridge and of the development server. No code; it is a section of CLAUDE.md.
+
+**Done.** The section is "Working in several trees" of CLAUDE.md. Writing it showed one limit: the server takes another port of the bridge (`--port`, `TRYMESH_BRIDGE_PORT`), but the app always connects to 4517, so only the app of one tree can be bridged at a time. A setting of the app for the address is a small change and is left until two trees need a bridged app at once.
 
 ## Order inside the step
 

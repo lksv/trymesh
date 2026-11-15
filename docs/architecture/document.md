@@ -1,0 +1,204 @@
+# Architecture: the document
+
+Part of [architecture.md](../architecture.md), the design as implemented. The two histories, the types of the document, parameters and expressions.
+
+## Dvě různé historie
+
+- **Časová osa (feature log)** je recept na model: uspořádaný seznam features (`Plane`, `Sketch`, `Extrude`, `Pattern`). Je součástí dokumentu. Úprava feature uprostřed vyvolá přepočet.
+- **Historie příkazů** je záznam uživatelských úprav dokumentu kvůli undo/redo. Není receptem na model.
+
+Skica je **jedna feature** na časové ose. Její obsah (body, křivky, vazby) je stav, ne log. Přidání úsečky do skici je příkaz (jde vrátit přes undo), ale není to nová položka časové osy.
+
+
+## Dokument
+
+Dokument je neměnná (immutable) datová struktura serializovatelná do JSON. Každý příkaz vrací nový dokument, nezměněné části se sdílejí.
+
+- **Undo/redo** je zásobník předchozích dokumentů.
+- **Cache přepočtu** je memoizace podle identity objektů (viz Přepočet).
+- **Round-trip**: dokument je jediný zdroj pravdy.
+
+```ts
+type Id = string;                    // trvalé, nikdy se nerecykluje
+type Vec3 = [number, number, number];
+
+interface Document {
+  schemaVersion: number;
+  schemaSteps?: string[];       // only from a build of a branch, see `load`
+  settings: {
+    chordTolerance: number;               // dělení oblouků na segmenty
+  };
+  parameters: Parameter[];                // named parameters, see Parameters and expressions
+  checks: Check[];                        // expressions that are supposed to hold
+  features: Feature[];                    // časová osa
+}
+
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
+
+interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
+
+interface PlaneFeature extends FeatureBase {
+  type: 'plane';
+  base: PlaneRef;
+  offset: number;                   // posun ve směru normály základu
+}
+
+interface SketchFeature extends FeatureBase {
+  type: 'sketch';
+  plane: PlaneRef;
+  points: Record<Id, { x: number; y: number }>;   // řešené proměnné: polohy bodů
+  radii: Record<Id, number>;                      // řešené proměnné: poloměry kružnic
+  curves: Record<Id, Curve>;
+  constraints: Record<Id, Constraint>;
+  external: Record<Id, ExternalRef>;              // promítnutá geometrie
+  solved: SolveStamp;                             // pro jaké vstupy uložené proměnné platí
+}
+
+interface SolveStamp {
+  inputs: string;                         // otisk křivek, vazeb a hodnot promítnuté geometrie; počítá engine
+  external: Record<Id, Projected>;        // poslední platné hodnoty promítnuté geometrie
+}
+
+type Projected =
+  | { kind: 'line';   a: [number, number]; b: [number, number] }
+  | { kind: 'circle'; center: [number, number]; radius: number };
+
+type Curve = { construction?: boolean } & (
+  | { type: 'line';   a: Id; b: Id }                       // ID bodů
+  | { type: 'circle'; center: Id }                         // poloměr je v `radii`
+  | { type: 'arc';    center: Id; start: Id; end: Id }     // proti směru hodin
+);
+
+type ExternalRef = { type: 'edge'; body: Id; edge: EdgeName; kind: 'line' | 'circle' };   // kind: jako co se hrana promítá
+
+// Každá varianta má pojmenované operandy s pevným významem.
+type Constraint = GeometricConstraint | Dimension;
+
+type GeometricConstraint =
+  | { type: 'coincident';   a: Id; b: Id }            // bod, bod
+  | { type: 'pointOnCurve'; point: Id; curve: Id }
+  | { type: 'horizontal' | 'vertical'; line: Id }
+  | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // úsečky
+  | { type: 'tangent';      a: Id; b: Id }            // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
+  | { type: 'symmetric';    a: Id; b: Id; line: Id }  // body a, b souměrně podle přímky úsečky (osy)
+  | { type: 'midpoint';     point: Id; line: Id }     // bod ve středu úsečky
+  | { type: 'equalRadius';  a: Id; b: Id }            // two circles or arcs, in any combination (D35, point 6)
+  | { type: 'fixed';        point: Id; x: number; y: number };  // an own point at coordinates of the sketch; x, y are numeric fields
+
+type Dimension = { value: number; driving: boolean } & (
+  | { type: 'distance';           a: Id; b: Id }      // bod–bod (délka úsečky = její koncové body)
+  | { type: 'distancePointLine';  point: Id; line: Id }
+  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // bod, bod; orientovaná: b.x − a.x, resp. b.y − a.y
+  | { type: 'angle';              a: Id; b: Id }      // úsečky; úhel od směru `a` ke směru `b`, proti směru hodin, radiány
+  | { type: 'radius' | 'diameter'; curve: Id }
+);
+
+type PlaneRef =
+  | { kind: 'base';  plane: 'XY' | 'XZ' | 'YZ' }
+  | { kind: 'plane'; feature: Id }                    // PlaneFeature
+  | { kind: 'face';  body: Id; face: FaceName };
+
+interface ExtrudeFeature extends FeatureBase {
+  type: 'extrude';
+  profile: ProfileSource;           // odkud se bere průřez
+  extent: Extent;                   // odkud kam se vysouvá
+  operation: 'new' | 'add' | 'cut';
+  targets?: Id[];                   // target bodies: none for new, exactly one for add, one or more for cut
+}
+
+type ProfileSource =
+  | { type: 'regions'; sketch: Id; regions: RegionRef[] }
+  // a profile generator from the catalog (see Extrude, Profile generators)
+  | { type: 'generated'; generator: GeneratorName; sketch: Id;
+      operands: Record<string, Id>;                        // entities of the sketch by catalog name
+      params: Record<string, number | boolean | string>;   // numbers are numeric fields
+      refs?: Record<string, Id> };                         // earlier features by catalog name
+
+// `start` je posun začátku od roviny skici, `distance` se měří od začátku; obojí podél normály
+// roviny skici, kladné ve směru normály. Těleso vyplní interval [start, start + distance].
+// `throughAll` (a cut only): the tool passes through all targets; see Extrude, Extent and targets.
+type Extent =
+  | { type: 'distance'; start: number; distance: number }
+  | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
+```
+
+The profile source and the extent are variants distinguished by the field `type`. Each has two (D35, points 2 and 3); the extent "up to a face" comes later. A generated profile with another `generator` counts as another variant as well.
+
+ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). An extrusion creates only a body without a local name; a pattern of a body creates the bodies `<pattern>/<number>` (D35, point 4). Délky jsou v milimetrech, úhly v radiánech.
+
+**The registry of feature types** (`FEATURE_TYPES` in `features/index.ts`) holds a module per type (`FeatureModule` in `features/module.ts`): the validation and the canonical form, the references to other features with the place inside the feature where each lies, whether the feature creates a body and names faces, whether it leaves a tool that a pattern can repeat (`producesTool`), the generator of its profile (`generator`), whether a failed expression is only a warning (`keepsLastValidValues`, the sketch), which fields `updateFeature` may change, and the step of the recompute. Validation of references, the order on the timeline, `moveFeature`, the recompute and the description of the API for the AI all read the registry. A new feature type is its interface and one member of `Feature` and of `FeaturePatch` in `types.ts`, a module in `features/` and one line of the registry. The registry is a mapped type over `Feature['type']` and an entry needs a step, so it is the one guard of completeness (until D37 a `switch` in `evaluate.ts` was the second). The public part of the registry is `FEATURE_TYPE_INFO`; the engine also exports `producesTool(feature)` and `generatorOf(feature)`, which the app uses to offer the sources of a pattern and the mates of a generated profile. It also lists the numeric fields of each type (`fields`); validators read them through the field reader described in Parameters and expressions.
+
+Konvence:
+- **ID** generuje volající a posílá je v příkazech (viz API). Musí být v dokumentu jedinečná, nesmí obsahovat znak `/` (ten je vyhrazený pro odvozená ID promítnuté geometrie) a nesmí být `origin`.
+- **Směr úsečky** je od bodu `a` k bodu `b`. Úhel kóty `angle` je orientovaný a leží v intervalu (−π, π].
+- **Pořadí** tam, kde se mluví o seřazených nebo kanonicky uspořádaných ID a jménech, je lexikografické pořadí řetězců. Jméno stěny se pro porovnání zapíše jako `feature/role/curve`.
+- **Základní roviny** mají pevné pravotočivé souřadné systémy (osa X skici, osa Y skici, normála): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
+- **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
+- **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
+- **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`) a engine ho po prvním řešení přepíše.
+- **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.
+
+### Parameters and expressions (D35, point 1)
+
+The document carries a table of named parameters and a list of checks. Any numeric field the catalog lists accepts an expression over the parameters instead of a number.
+
+```ts
+type Expr = string;        // 'module * Zs', 'deg(30)', '-h / 2'
+type FieldPath = string;   // address of a numeric field in a feature: 'offset', 'extent/distance', 'constraints/<id>/value'
+
+interface Parameter { name: string; expr: Expr }   // name is an identifier
+interface Check { name: string; expr: Expr }       // name is free text; expr is a comparison
+
+interface FeatureBase {
+  // ...
+  expressions?: Record<FieldPath, Expr>;   // expressions of numeric fields, sorted by address
+}
+```
+
+**Where an expression lives.** A numeric field always holds a number. The expression is in the `expressions` map of the feature, keyed by the field address; the number next to it is the last valid value. Commands use a different shape: the expression is written straight into the field as a string (type `Input<T>`). `featureInput(feature)` converts the stored form to that input form, and `addFeature(featureInput(f))` gives `f` back. A form that sends a whole feature when editing must start from the input form, because a number sent to a field removes its expression.
+
+**Expression language** (`expression.ts`, own parser, no library).
+
+| Element | Rule |
+|---|---|
+| Numbers | `1.5`, `.5`, `2e-3`; the decimal separator is a dot |
+| Operators | `+ - * / %` (remainder, sign of the dividend; 0 when the quotient is within the equality tolerance of an integer, so `(0.3 / 0.1) % 3 == 0` holds), `^` (power, right-associative, binds tighter than the sign: `-2 ^ 2` is −4), parentheses |
+| Names | Parameter names: letters of any alphabet, digits, underscore. A dot is reserved (a syntax error today) for values produced by the recompute |
+| Functions | `deg sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round`. A name followed by `(` is a function, so a parameter may be called `min`; a function added later does not break older documents |
+| Constants | `pi`; constant names are the only reserved names |
+| Checks | Comparisons `== != < <= > >=` and connectives `&& \|\| !`. `a == b` when they differ by at most 1e-9 · max(1, \|a\|, \|b\|); `<` means less than and not equal. Both sides of `&&` and `\|\|` are always evaluated, so an unknown name is an error of the check whichever side decides. Comparing a non-finite number (division by zero) is an error, not a result |
+| Limits | At most 1000 characters and 100 levels of nesting; beyond that a syntax error. The parser and the evaluator are recursive and must stay off the stack limit |
+| Types | An expression is a number or a truth value, decided statically. A field and a parameter expect a number, a check expects a truth value; the wrong kind is rejected like a syntax error |
+
+Angles are in radians both as numbers and in expressions; `deg(x)` converts degrees. Angle fields have ranges in radians, so a value entered in degrees by mistake is rejected.
+
+**Catalog of numeric fields** (`catalog.ts`, `document.ts`). A field is described by `NumberSpec`: title, unit (`mm`, `rad`, `count`, `none`), optional `min` and `max` with an `open` flag, `nonZero`, `integer` (within 1e-9 of an integer, then rounded) and `default`. `checkNumber` verifies a value against it; plain numbers in commands and values of expressions go through the same function.
+
+- Static description: `FEATURE_TYPE_INFO[type].fields` (`FieldSpec`: address, spec, the variant that has the field) and `CONSTRAINTS[type].values` (named values of a constraint; a dimension has `value` and the flag `dimension`, a fixed point has `x` and `y`, at the addresses `constraints/<id>/x` and `constraints/<id>/y`). The API description for AI and the forms of the app read these.
+- Fields of a concrete feature: `fieldsOf(feature)` returns address, spec, value and expression. It is not a second list: feature validators read every numeric field through one reader (`Fields.number(value, path, spec)`), and `fieldsOf` is a validation pass that collects what the reader saw. What commands accept and what `fieldsOf` reports therefore cannot drift apart.
+- Only driving inputs are fields. Coordinates and radii computed by the solver and values of reference dimensions are not; a string there is an invalid command.
+
+**Validation of expressions** has three modes:
+
+| Mode | When | Expression in a field (string) | Entry in `expressions` |
+|---|---|---|---|
+| load | `load`, `fieldsOf` | invalid | syntax is checked, the number is kept as the last valid value; an entry for an address that is not a field is an invalid document |
+| add | `addFeature`, `addConstraint` | evaluated, the number filled in | evaluated as well; both for one address is an invalid command |
+| update | `updateFeature`, `setField`, `setConstraintValue` | evaluated | entries of fields the change does not touch are kept without evaluation; entries of fields that ceased to exist are dropped |
+
+An expression set by a command must evaluate against the parameter table at that moment and its value must be in the range of the field; otherwise the command is invalid and `error.expression` says which field or parameter and why (code, message, position in the text). It can become an error later (a removed parameter, a value out of range); that is a state of the feature, not of the command.
+
+`updateFeature` removes the expressions at and below every address the patch overwrites as a whole (a leaf, a list, a reference, another variant, a removed field). One exception keeps forms usable: a string equal to the expression the field already has is not a change. The field keeps its number and its expression and nothing is evaluated, even if the expression no longer evaluates. A form sends the whole feature in the input form, and without this a broken expression in one field would block a change of any other field (the same rule as a repeated broken reference). `setField` and `setConstraintValue` set one field on purpose and stay strict. `setConstraintValue` without `value` leaves the expression alone; switching a dimension to reference removes it; removing a constraint (also by the cascade of `removeEntity` and `removeExternal`) removes it.
+
+**Parameters and checks** are changed by `setParameter`, `renameParameter`, `removeParameter`, `setCheck`, `renameCheck` and `removeCheck`. Only a syntax error (including the wrong kind of expression) and a disallowed name make these commands invalid. An unknown name and a cycle are accepted and show up in `Evaluation.parameters`; otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`. `renameParameter` rewrites the name in the expressions of parameters, checks and fields (identifier tokens that are not followed by a parenthesis). A parameter may refer to any other one regardless of order; every parameter on a cycle (one that can be reached from itself) gets the error `cycle` and what depends on a parameter in error gets `dependsOnError`. The table is evaluated dependencies first with an explicit stack, so a long chain of parameters is not a recursion.
+
+**Evaluation and cache** (`evaluate.ts`). Before the step of a feature the recompute resolves it: each expression is evaluated against the environment (today the parameter table) and checked against the range of its field. The result is a `Resolution`: the feature with the values substituted, the values, and the errors by field. A field in error keeps its last valid number.
+
+- The resolution is memoised by the original feature object and by the values and errors its expressions gave, not by the identity of the parameter table. The step cache is keyed by the resolution and the previous state. Changing a parameter therefore recomputes the model from the first feature whose values changed; a parameter no feature uses recomputes nothing.
+- The environment is an argument of the resolution. Names whose values come from the recompute (reference dimensions) can extend it later without touching the cache.
+- An error is an error of the feature (`invalidExpression`, details in `FeatureResult.fieldErrors`). A sketch is the exception: it is computed with the last valid values and reports `invalidExpression` as a warning, because a sketch in error has no plane and no solved geometry, could not be opened and fixed, and everything built on it would fail.
+- `FeatureResult.values` holds the values used in this recompute. A preview does not write to the document, so this is where a form reads the value of an expression being typed.
+
+**Write-back.** After `execute` and `load` the engine writes the substituted numbers into the document, for every feature type and regardless of whether a sketch solved, in the same undo step and through the same path as solved sketch variables. The cache entry is re-hung onto the new feature object. The number in the document is therefore always the last valid value, and a document saved with a broken expression loads again.
+
+**Checks** are evaluated in every recompute into `Evaluation.checks` (`ok`, `failed`, `error`). A failed check does not stop anything.

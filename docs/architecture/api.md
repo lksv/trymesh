@@ -1,0 +1,243 @@
+# Architecture: the API of the engine
+
+Part of [architecture.md](../architecture.md), the design as implemented. The facade, queries, export formats, bodies, the commands and their validation.
+
+## API enginu
+
+```ts
+interface Engine {
+  execute(cmd: Command): CommandResult;          // změní dokument, jeden krok undo
+  preview(cmd: Command, at?: Id): CommandResult; // spočítá, ale nezapíše; at = jen po danou feature
+  undo(): void;
+  redo(): void;
+  getState(at?: Id): EngineState;                // at = stav modelu po dané feature, dál se nepočítá
+  diagnoseSketch(sketch: Id): SketchDiagnosis;   // viz Diagnostika skici
+  explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation;
+  load(json: string): CommandResult;
+  save(): string;
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // all bodies without a list; '3mf' později
+  interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below
+  query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;   // see Queries below
+  export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;   // see Export formats below
+  subscribe(listener: (state: EngineState) => void): () => void;
+}
+
+interface EngineState {
+  document: Document;
+  evaluation: Evaluation;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+type CommandResult =
+  | { ok: true; state: EngineState }
+  | { ok: false; error: { code: 'invalidCommand' | 'invalidDocument'; message: string; commandIndex?: number;
+      expression?: { path?: FieldPath; parameter?: string; check?: string; error: ExpressionError } } };   // a rejected expression: where and why
+```
+
+### Queries (D37)
+
+A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation`, `body` and `catalog`.
+
+```ts
+type QueryOptions = { at?: Id } | { state: EngineState };   // now, after a feature, or a state this engine handed out
+type QueryOutcome<Result> =
+  | { ok: true; result: Result }
+  | { ok: false; error: { code: 'invalidArguments' | 'notAvailable' | 'failed'; message: string; arg?: ArgPath } };
+type EntityRef =                                            // "this thing of the model" in the arguments of a query
+  | { kind: 'body'; body: Id }
+  | { kind: 'face'; body: Id; face: FaceName }
+  | { kind: 'edge'; body: Id; edge: EdgeName }
+  | { kind: 'sketchPoint'; sketch: Id; point: Id };
+```
+
+**An entry** (`QuerySpec` in `query/spec.ts`) has a title, a summary and a text on what it returns (all three go to the description for the AI), the description of its arguments, optionally the keys of its result that a tool prints to significant digits (`significant`), and `run(context, args)`. Its result is plain JSON. The types of the queries are a map by name, `Queries`, that a query module extends by declaration merging (`declare module './spec' { interface Queries { … } }`), so a new query edits no shared type; the catalog is typed by the map.
+
+**Arguments** (`query/args.ts`) are named and described, and the checks, the description for the AI and a form in the app come from the description: a number with unit and range, a flag, a text, a choice, the ID of a body, a feature or a sketch, a constraint of the sketch named next to it, a reference to an entity with the kinds it accepts, a plane (`PlaneRef`), an axis (`AxisRef`), a vector, and four ways to build structure: a list with a least and a greatest count, exactly one of several named alternatives (`{ up: [0, 0, 1] }`), a record by key (IDs of bodies or features, or free names) and named fields. The type of the arguments is derived from the description (`ArgsOf`), so the two cannot disagree; `run` gets the same type with the defaults of optional numbers filled in at every depth (`RunArgsOf`). A description is written `as const satisfies ArgSpecs`.
+
+**Before `run`** the engine checks every argument against its description and fills in the defaults (`checkArgs` in `query/check.ts`). An error names the argument by its path, a list of names and indexes (`['orientations', 1, 'by', 'onBed']`).
+
+| Code | When |
+|---|---|
+| `invalidArguments` | the shape or the range is wrong, or the query has no such argument; `state` is not a state this engine handed out; there is no such query |
+| `notAvailable` | something named is not in the state asked about. One rule for every ID wherever it sits: a body, a face, an edge is looked up in the bodies of the state; a feature, a sketch, a constraint, a sketch point among the features the state evaluated. A mistyped ID and one that comes after `at` are the same answer. Also `at` that names no feature |
+| `failed` | the computation gave up: `run` threw `QueryFailure`, or the kernel threw inside a query |
+
+A number is checked against its own description only: the limit of ±1e9 on numbers of the document does not apply. A sketch that did not evaluate is in the document, so it is a valid argument, and its diagnosis is `unavailable`: what was a successful answer stays one. An exception of another kind inside `run` is a defect and passes through, as it does for commands.
+
+**The state.** A query answers for one state and never recomputes it: the current one, the one after a feature (`at`), or one that `preview` or `getState` returned (`state`), so a parameter can be stepped by previews and each step asked about with nothing written. The engine keeps, for every evaluation it hands out, the state of the recompute it was made from and the document it belongs to, by the identity of the evaluation and weakly. A state put together by a caller, or one of another engine, is refused, and the document is the one the engine kept, so an evaluation cannot be paired with another document. A drag preview is diagnosed as dragged.
+
+**The context** (`QueryContext`) is what `run` reads:
+
+| Member | What it gives |
+|---|---|
+| `state` | the document and the evaluation, without the bodies and the surfaces |
+| `bodies`, `surface(body, face)` | the geometry of bodies. A query reads it nowhere else, so that it answers for bodies moved to a pose once the mechanism of step 5 exists; a surface is asked by body and face because one face number can lie in two bodies |
+| `frame(ref)`, `axis(ref)` | the frame of a `PlaneRef` (for a face the normal points out of the body) and the line of an `AxisRef`, or the code the recompute gives for the same reference (`brokenReference`, `nonPlanarFace`) |
+| `face(name)`, `sketch(id)` | the number of a named face; what the recompute kept about a sketch (`SketchState`), undefined when it did not evaluate |
+| `kernel` | the geometric kernel; an exception of it becomes the answer `failed` |
+| `memo(owners, key, compute)` | a result kept for as long as all its owners live (both solids for a pair of bodies, the evaluated sketch for a diagnosis). Owners that live across recomputes are a solid, an evaluated sketch, the document, a section or a feature of it; the order of the owners does not matter, and the keys of different queries are kept apart |
+
+What does not belong to a body is never posed: a sketch and its points, an axis through a sketch point, a plane feature, a base plane or axis.
+
+**The description of a body** (`body`, `query/body.ts`) is what the MCP tool `get_body` used to compute for itself, moved into the engine so that the app and other queries can use it: for every face its name, its surface, its area, for a planar face the unit normal out of the body (`meshNormal`, the sum of the normals of its triangles) and for a cylinder or a cone whether the material is on the side of the axis (`convex`: a pin, or a hole; one more pass over the triangles, because the normals of a full cylinder sum to zero); for every edge its name, its length, the number of its segments and its shape: the two ends of a line and whether a cut interrupts it, the centre and the radius of a circle fitted to its vertices, which may be missing. The description is kept by the mesh. `get_body` keeps its own check that the body exists and its text, and prints the faces and the edges of the query with its own rounding and labels.
+
+**Data catalogs** (`data-catalogs.ts`) are tables of data the engine carries: hardware, materials, threads. A catalog has a title, a source (the standard or the data sheet), columns with units and rows by key; every catalog has its own columns. Code reads `DATA_CATALOGS` and gets the row type of the catalog it names, so a column that does not exist does not compile; a caller that is not typed asks the query `catalog` (`name`, optionally `key`), which answers with the table without its row type. The rule of D36 holds: a catalog fills in fields, the document stores the numbers. `describe_api` lists the catalogs by name and summary only. The engine has no catalog yet: a package adds one as a module with its row type, a line in the map `Catalogs` and an entry of `DATA_CATALOGS`.
+
+**Guards.** `packages/mcp/test/queries.test.ts` has two tables typed by the map of queries, so a query without a row does not compile: arguments of the query's own type, which the test runs through the MCP tool `query`, and every argument with whether a caller may leave it out, which the test compares with the entry (a description handed over in a variable could carry an argument the type does not have). The test also checks that `of` of a constraint names a required sketch next to it.
+
+### Export formats (D37)
+
+An export format is an entry of the catalog `EXPORT_FORMATS` (`export/index.ts`), built like a query: a title, a summary, a description of its options in the vocabulary of query arguments (`ArgSpecs`), and `run` over the context of a query. The type of the options follows from the description, and the map `ExportFormats` is extended by declaration merging in the module of the format. A new format is a module in `export/`, a line of the catalog and its rows in the two typed tables of `packages/mcp/test/export-formats.test.ts`; nothing in `Engine`, in `packages/mcp` or in the description for the AI changes.
+
+```ts
+interface Exported { layout: 'file' | 'directory'; files: ExportFile[]; empty?: string }
+interface ExportFile { path: string; mediaType: string; bytes: Uint8Array; about?: Record<string, unknown> }
+```
+
+- **A format returns files**, because a robot description is several files in folders and an outline is not a mesh. `layout` says what the caller's path is: `file` is exactly one file, written to the path the caller names (the `path` of the file is then only a suggested name); `directory` is a set written under the folder the caller names.
+- **The form of a path is the engine's to guarantee** (`exportPathProblem`): relative, with forward slashes, every segment non-empty and not `.` or `..`, no backslash, no path twice, no path that is also a folder of another. `runExport` checks the result of every format; a format that breaks the form, or returns a `file` layout with another number of files than one, is a defect and throws. What depends on the disk (the length of a name, names that differ only in the case of letters, names a system reserves) is the writer's to refuse.
+- **`about`** says what a file holds, as plain JSON for the answer of a tool (`bodies` and `triangles` for STL).
+- **`empty`**: an export that holds nothing worth writing says why (`the model has no body to export`). It is not an error of the format (`exportMesh` of an empty list gives a file without triangles); a caller that writes files refuses with the text.
+- **`Engine.export(format, options, queryOptions)`** answers like `query`: the state is chosen by `at` or `state`, the options are checked against the description of the format with the same checker (`invalidArguments`, `notAvailable` with the path of the option), a `QueryFailure` of the format becomes the answer, and nothing throws for a wrong input. The context of a format always has the bodies as modelled.
+- **`stl`** (`export/stl.ts`): options `bodies` (each once, in the order of the list; all without it; an empty list is refused) and `perBody`. One file `model.stl`, or with `perBody` a set with a file per body named `bodyFileName(id).stl`. `exportMesh('stl', bodies?)` keeps its checks and its texts and returns the bytes of the same entry.
+
+### Bodies: volume, export and interference (D35, point 5)
+
+**Volume and bounds.** `BodyResult` carries `volume` (mm³) and `bounds` (`min` and `max` of the box along the axes of the model). They are computed with the faces and edges of the body and remembered by the identity of its mesh. A caller that cannot see the model (AI through MCP) checks with them what it built.
+
+**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list all bodies. A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters, names too long for a file system and names a system reserves are left to the caller that writes files.
+
+**Interference.** `interference({ bodies?, threshold?, at? })` answers which bodies share a volume.
+
+```ts
+interface Interference { a: Id; b: Id; volume: number; depth: number }   // `a` is the smaller ID in string order
+interface InterferenceReport {
+  pairs: Interference[];                               // collisions: above the threshold and not a fit
+  fits: Interference[];                                // above the threshold, no deeper than the chord tolerance, with a round face
+  failed: { a: Id; b: Id; message: string }[];        // the kernel could not compute the pair
+  checked: number;                                    // pairs examined
+}
+```
+
+- Every pair of the chosen bodies (all by default) is examined, in the order of the bodies in the model; `at` asks about the state after a feature.
+- The volume is that of the kernel's `intersection` of the two meshes. A pair is reported above the threshold, 0.001 mm³ by default: in the spike flush faces, a pin in the hole cut by the same circle and identical cylinders gave exactly zero, and gears with a negative backlash of 0.05 mm gave 0.5 to 1.7 mm³. The kernel has a floor of its own: an overlap thinner than about a millionth of the size of the two bodies is welded away and counts as touching, whatever the threshold. The size is the larger of the diagonal of the pair and twice its largest coordinate, so planar faces have to overlap by about two millionths of the largest coordinate: 0.006 mm between plates at x = 5000 is nothing, 0.02 mm is a collision.
+- **Collision or fit.** Round faces are polygons. A pin in a hole of the same diameter coincides with the wall only when the two polygons have the same vertices (the same sketch circle, or both turned the same way). A pin drawn on a plane that looks the other way, or a copy turned by a pattern, has its corners between the corners of the hole and shares slivers with the wall: up to a quarter of the chord tolerance times the area of the fit, 0.6 mm³ for a pin of radius 4 and length 10, hundreds of times the threshold. Each reported pair therefore has a `depth`: how deep one body reaches into the other. A pair is a fit (`fits`) when its depth is at most the chord tolerance of the document, what the two bodies share has a face that is not planar, and no planar face of one body reaches into a planar face of the other; every other pair is a collision (`pairs`). A shared volume no deeper than the precision of the coordinates is not a pair at all, whatever its size: large flush faces of turned copies share a fraction of a mm³ at a depth of 0.00001 mm. The corner of a pin of the same diameter is in the wall by the sagitta of the polygon at most, which the chord tolerance bounds. A real overlap of round faces that shallow lands among the fits too: the faceted model cannot tell the two apart (a pin thicker than its hole by less than the tolerance is a fit or a collision by how the two polygons are turned). Planar faces have no polygons to blame, so their overlap is a collision however shallow, also beside a round face: a disc lying 0.005 mm inside the top of a plate, a pin 0.005 mm too long for its blind hole. A round face that reaches into a planar one by less than the tolerance stays a fit. Two round faces that bulge towards each other (two shafts side by side) each lack up to the sagitta of their polygon, so their real overlap may be about twice the tolerance before it is a collision, and under one tolerance the meshes may not meet at all.
+- **The depth** (`depthOf` in `interference.ts`) is the larger of two measures, because each alone misses something (the second review of point 5 found the cases):
+  - *How far one body reaches into the other* (`penetration` in `solid.ts`): every point of the surface of the shared volume lies on the surface of one of the bodies, and its distance to the surface of the other one says how deep it is inside it. The largest such distance over the vertices, the middles of the edges and the centroids of the triangles of the shared mesh is taken. The same over the points of a planar face whose nearest face of the other body is planar too is the planar part of the depth, which a fit must not have. A point does not count for it when a round face of the body it is in lies within the tolerance: the end of a sliver is a point of the cap of a pin inside the plate, exactly as near to the floor of a blind hole (or to the top of the plate under a collar, or to the seat of a counterbore) as to the wall of the hole, and a pin standing out of its hole by less than the sagitta has the top of the plate nearer than the wall. Without this every turned pin that ends on a planar face of the other body was a collision (the fourth review). What it lets through is an overlap of planar faces that lies wholly within the tolerance of a round face, a lip narrower than about twice the tolerance. A key on a pin, a rib between flush blocks or a pin too long for its hole show with their real depth whatever else the pair shares. The measure is zero where the two surfaces coincide all around a volume: two identical bodies.
+  - *The mean thickness* of the thickest connected piece of the shared volume, twice the volume of the piece over its surface, finds that case. It is taken piece by piece (pieces are joined by shared edges; touching at a vertex does not join them) so that a lump both bodies have is not thinned out by the slivers of a fit elsewhere. The kernel leaves sheets without thickness in an intersection where faces of the two bodies coincide (a pin in the hole cut by its own circle gives a shared mesh of zero volume and the area of the wall twice); they are left out of the surface, or they would thin the mean out. Looking for them compares every triangle with every other, so it is done only when the pair would otherwise pass as a fit. The two sides of a sheet have the same coordinates, so a sheet is looked for within a thousandth of the precision of a depth: with the precision itself as the tolerance, real slivers that thin lost their surface and came out forty times too thick (pins of radius 25 whose polygons nearly coincide were a collision).
+  - Alone, the mean thickness hid real overlaps: a key of 1 mm³ next to the wall of a fit or next to coincident faces came out thinner than the tolerance.
+  - Coordinates are single precision, so a depth is known to a millionth of the largest coordinate of the two bodies: that slack is added to the tolerance, and it is the depth below which a pair is not reported.
+  - The cost is the distance from every point looked at to the triangles of both bodies near the shared volume: unnoticeable at the default tolerance, about two seconds for one pair of a pin of radius 4 at a chord tolerance of 0.0001 (3500 triangles shared). The answer is remembered with the pair.
+- The kernel gives no guarantee for an intersection with flush faces and may throw after cleaning and verifying its result. Such a pair goes to `failed`: it is neither colliding nor clear, and the query itself never fails because of one pair. So does a pair whose intersection comes back with a volume that is not a number. Far from the origin the kernel fails more often, also at the default tolerance (a cylinder of radius 5 at x = 5000 that is 0.05 mm inside the side of a plate).
+- Bodies whose boxes do not overlap, or only touch, are not sent to the kernel.
+- Computed pairs are remembered by the identity of the two meshes (`context.memo` of the query, `query/interference.ts`), so a repeated query is free and after a change only pairs with a rebuilt body are computed. Bodies replayed after the changed feature are rebuilt even when their shape is the same.
+- An unknown body, a threshold that is not a non-negative number and an unknown `at` throw.
+- The query reads the model and changes nothing; it is not a command and has no place in undo.
+
+### Příkazy
+
+Příkazy jsou čistá JSON data. ID nových entit generuje volající a posílá je v příkazu, takže dávka může na právě vytvořený bod odkázat hned v dalším příkazu.
+
+```ts
+type Command =
+  // časová osa
+  | { type: 'addFeature'; feature: Input<Feature>; index?: number }   // bez indexu na konec; Input: a numeric field may be an expression
+  | { type: 'removeFeature'; id: Id }
+  | { type: 'moveFeature'; id: Id; index: number }
+  | { type: 'renameFeature'; id: Id; name: string }
+  | { type: 'setSuppressed'; id: Id; suppressed: boolean }
+  // rovina, extrude (skica má vlastní příkazy níže)
+  | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
+  | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }   // one numeric field by its address
+  // parameters and checks
+  | { type: 'setParameter'; name: string; expr: Expr; index?: number }         // creates or changes
+  | { type: 'renameParameter'; name: string; to: string }                      // rewrites expressions too
+  | { type: 'removeParameter'; name: string }
+  | { type: 'setCheck'; name: string; expr: Expr; index?: number }
+  | { type: 'renameCheck'; name: string; to: string }
+  | { type: 'removeCheck'; name: string }
+  // skica
+  | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
+  | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
+  | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number }   // radius u kružnice
+  | { type: 'removeEntity'; sketch: Id; id: Id }                              // bod nebo křivka
+  | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> }
+  | { type: 'removeConstraint'; sketch: Id; id: Id }
+  | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
+  | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
+  | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
+  | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
+  | { type: 'removeExternal'; sketch: Id; id: Id }
+  // složený
+  | { type: 'batch'; commands: Command[] };
+```
+
+**`updateFeature` je slučovací změna.** `patch` obsahuje jen pole, která se mění, ve stejném tvaru jako feature; `{ extent: { distance: 12 } }` změní vzdálenost a začátek nechá být. Pravidla:
+
+- Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná. A generated profile with another `generator` is another variant too.
+- The dictionaries of a generated profile (`operands`, `params`, `refs`) merge by entry: `{ profile: { params: { rotation: 'deg(5)' } } }` leaves the other parameters with their expressions. `null` removes an entry: a parameter returns to its default and loses its expression (a required one cannot be removed), a reference ceases to exist. Removing an entry that is not there is not an error.
+- Odkaz (objekt s polem `kind`: `PlaneRef`, or the `AxisRef` of a pattern) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
+- `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
+- Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.
+- Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`; a pattern `source`, `transform`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
+- Přechod na `operation: 'new'` cíle zahodí, pokud je změna sama neuvádí.
+- Výsledná feature se ověří celá. Odkazy na jiné features se ale ověřují jen ty, které feature dosud neměla (jiné místo, druh nebo ID): oprava rozbitého odkazu na skicu nesmí narazit na rozbitý cíl, který změna nechává být, a změna vzdálenosti projde i u feature, jejíž skica byla smazána. Platí to i tehdy, když změna dosavadní odkaz zopakuje (formulář aplikace posílá vysunutí celé) nebo mění jen operaci.
+
+**Validace.** Každý příkaz se před provedením ověří. Neplatný příkaz dokument nezmění a vrátí `invalidCommand` s popisem. Dávka je atomická: neplatný kterýkoli příkaz zruší celou dávku a `commandIndex` říká, který to byl. Validace pracuje jen se strukturou dokumentu, přepočet k ní není potřeba. Ověřuje se:
+
+- **ID** nových entit jsou jedinečná a splňují konvence: bez `/`, ne `origin`, ne prázdné a ne jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…), protože ID jsou klíče záznamů.
+- **Odkazy uvnitř skici** musí vést na existující entity správného typu (vazba `parallel` dostala dvě úsečky). Křivka odkazuje na vlastní body nebo `origin`. Vazba smí odkazovat i na promítnutou geometrii; její odvozené entity plynou z `kind` (`<id>`, `<id>/a`, `<id>/b` u úsečky, `<id>`, `<id>/center` u kružnice). Protože mazání ve skici kaskáduje, platí toto pravidlo v každém dokumentu.
+- **Odkazy mezi features** se ověřují tam, kde je příkaz nastavuje (`addFeature`, `updateFeature`, `setSketchPlane`, `addExternal`, `updateExternal`): cílová feature existuje, má správný typ a leží před odkazující feature. U stěny a hrany se takto ověřuje těleso i extrude, které stěnu pojmenovalo (stěna existuje až po něm). Odkaz na těleso vede na feature, která ho vytvořila (část ID před lomítkem), a ta musí těleso toho místního jména vytvářet. `moveFeature` nesmí feature přesunout před feature, na kterou odkazuje, ani za feature, která odkazuje na ni.
+- **Odkaz na feature, která v dokumentu není, validaci neporušuje.** Vzniká povoleným `removeFeature` a projeví se až při přepočtu jako `brokenReference`, `noProfile` nebo `brokenProjection`. Totéž platí pro jména stěn a hran a pro ID křivek v `regions`: ta se strukturálně ověřit nedají a rozbíjejí se běžnými úpravami.
+- **Vazba musí mít aspoň jeden operand, kterým solver může hýbat.** Řídicí vazbu jen mezi pevnými entitami (počátek, promítnutá geometrie) solver tiše ignoruje, takže by se nikdy neprojevila ani jako konflikt; je proto neplatná. Referenční kóta mezi pevnými entitami platná je.
+- **Stejná řídicí vazba nesmí být ve skice dvakrát.** `addConstraint` odmítne vazbu se stejným typem a stejnými operandy, jaké už má jiná geometrická vazba nebo řídicí kóta; u vazeb s operandy `a`, `b` na jejich pořadí nezáleží. Platí to i pro kótu s jinou hodnotou (upravit se má ta stávající) a pro přepnutí referenční kóty na řídicí. Referenční kóta smí měřit totéž co řídicí. `load` duplicity přijímá, aby šly otevřít starší dokumenty; ukáže je diagnostika a hodnotu takové kóty jde dál měnit. Druhy operandů, jejich zaměnitelnost a pravidla hodnot jsou v katalogu vazeb (`engine/src/catalog.ts`), kterým se validace řídí.
+- **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `extent.distance` u extrude není nula a `profile.regions` není prázdné (tatáž oblast dvakrát je jedna oblast). `add` has exactly one body in `targets`, `cut` one or more without repeats, `new` none. The extent `throughAll` is accepted only with `cut` and needs `side`. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
+- `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
+
+Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
+
+**Chování fasády:**
+
+- **Krok undo vzniká jen změnou obsahu dokumentu.** Přejmenování na stejné jméno nebo tažení plně určeného bodu historii nezaplní.
+- **Tažení, které solver nevyřeší,** dokument ani stav enginu nezmění; konflikt z neúspěšného pokusu ukáže jen `preview`.
+- **`getState(at)` s neznámou feature vyhodí výjimku; `preview(cmd, at)`** vrátí `invalidCommand`, když `at` v dokumentu po příkazu není. Tichý přepočet celé osy by zakryl chybu volajícího.
+- **Posluchači (`subscribe`)** dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine: vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní o zprávu nepřipraví a vyhodí se až nakonec; stav je v té chvíli už zapsaný.
+- **Nový bod a nová křivka ruší razítko řešení skici,** protože zapisují řešené proměnné přímo. Skica se pak při přepočtu vyřeší znovu, i kdyby se otisk vstupů solveru shodoval.
+
+**Pravidla mazání:**
+
+- `removeEntity` kaskáduje: smazání bodu odstraní křivky, které na něm stojí, a smazání bodu nebo křivky odstraní vazby, které na ně odkazují. Křivky v `regions` pozdějších extrude zůstanou a extrude skončí v `noProfile`.
+- `removeExternal` odstraní vazby na promítnutou křivku a její odvozené body. Vlastní křivky na promítnuté body neodkazují, takže se jich mazání netýká.
+- `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
+- `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
+
+**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 3.
+
+**The schema is a list of named upgrade steps (D37, `schema.ts`).** `UPGRADES` holds the steps in order; on `master` the version a build saves is their number plus one. A step changes only the shape of the raw document, before the validation, which judges the content.
+
+| Step | Version | What it does |
+|---|---|---|
+| `d35-profiles-and-parameters` | 1 → 2 | An extrusion gets `profile`, `extent` with a zero start and the list `targets`; the document gets `parameters` and `checks` (what is there anyway is kept for the validation to judge) |
+| `d37-schema-steps` | 2 → 3 | Converts nothing. A build from before the list accepts version 2 and rebuilds the document from the fields it knows, so it would strip a document of a branch without a word; from version 3 on it refuses |
+
+- **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
+- **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.
+- **The list only grows at its end.** The steps `master` has are never reordered or renamed: the version of a document counts them by position. A branch that is merged puts its steps after everything `master` has by then (a rebase does that; a merge has to be checked). The test pins the names of the steps in their order.
+- **Branches.** Two branches cannot both raise the version. A branch appends its steps and counts them in `SCHEMA_PENDING` (the steps at the end of the list that `master` does not have yet). A build with pending steps saves the version of the `master` it started from and the names of its pending steps in `Document.schemaSteps`; the merge sets the count to zero, and `master` never writes the field.
+- **Loading, in every build:** take the steps from the version of the document on, leave out the ones the document names, run the rest in the order of the list. Refused, with a message that says which: a version above the one this build saves, and a name that is not among the steps after the version of the document. So a document saved on a branch loads on that branch after a rebase over another merged step (the other step runs, its own does not run twice) and on `master` once the branch is merged; `master` before the merge and a build of another branch refuse it.
+- A test (`packages/engine/test/schema.test.ts`) runs these cases with lists made up for it, and checks the real list (`schemaProblems`: unique names, a count of pending steps that fits).
+
+Převod mění jen tvar, takže převedený dokument dává bitově stejný model a vyřešené skici se neřeší znovu; `save` ukládá vždy současnou verzi. Odkazy na neexistující features jsou přípustné (viz výše), takže dokument, který vznikl povolenými příkazy, jde vždy uložit a znovu načíst, i když obsahuje features v chybě. Neplatný dokument se nenačte, stav enginu se nezmění a vrátí se `invalidDocument`. Po načtení se vyřešené skici zapíší do dokumentu stejně jako po `execute` a historie undo se smaže.
+
+### Co z API vzešlo z návrhu UI (D24)
+
+- **`batch`**: nakreslení úsečky s automaticky odvozenými vazbami musí být jeden krok undo.
+- **`addFeature` s pozicí**: vložení feature doprostřed logu.
+- **`getState(at)` a `preview(cmd, at)`**: úprava feature uprostřed logu zobrazuje model v tom okamžiku a nepřepočítává features za ní.
+- **Data pro výběr**: stěny s příznakem rovinnosti, hrany s úsečkami a druhem, oblasti skici se smyčkami.
+
+Výběr myší: renderer zjistí index trojúhelníku, přes `faceIds` číslo stěny a přes `faceNames` jméno, které pošle zpět v příkazu. Hrany a oblasti analogicky.
+
+**Web Worker.** Vše, co přes API prochází, jsou serializovatelná data. API je ale synchronní, takže přesun enginu do Workeru znamená asynchronní obal nad stejnými příkazy a stavem, ne nulovou změnu. V PoC běží engine v hlavním vlákně.

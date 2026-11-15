@@ -4,24 +4,33 @@
 // types of the preparatory step and states what the package adds. The design is design.md; the
 // scenario written as calls is calls.ts.
 //
+// Second version, after the first round of reviews (design.md, "Reviews").
+//
 // Where the types will live: everything a caller of the engine or an AI reads goes to `types.ts`
-// (the section, its entry, the patch, the three commands, the result in the evaluation), between
-// the two markers, so that `describe_api` shows it. `SECTION_INFO` and the catalog are values of
-// the engine and are exported from its index.
+// (the section, its entry, the patch, the three commands, the result in the evaluation), into the
+// parts that `describe_api` prints: the document before the marker `// --- porty`, the result and
+// the commands after the marker `// --- přepočet`. What stands between the two markers is cut
+// out of the description. `SECTION_INFO` and the catalog are values of the engine and are
+// exported from its index.
 
 import type { Expr, ExpressionError, Id, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, QuantitySpec, StateAfter, UpgradeStep } from '../00-prep/contract';
+import type { ArgSpecs, QuantitySpec, UpgradeStep } from '../00-prep/contract';
 
 // ================================================================ the section of the document
 
 // What a body is used as. It decides who reads the body:
 // - `part`: a printed part of the design. The default.
 // - `reference`: a bought or given part (a motor, a bearing, a board), modelled so that the design
-//   fits around it. It is not printed: the print exports and the print queries leave it out. It
-//   has a mass and belongs to the mechanism and to the robot description.
+//   fits around it. It is not printed: the print exports and the print queries leave it out when
+//   they are given no list of bodies. It has a mass and belongs to the mechanism and to the robot
+//   description.
 // - `auxiliary`: not a physical thing (kept-free space, the envelope of a motion, a jig that only
 //   helps the modelling). It takes part in the interference and gap queries, which is what it is
-//   for, and in nothing else: no export, no mass, no robot description, no parts list.
+//   for. It is in no list a reader makes by itself (print, parts, robot description) and it never
+//   has a mass, also when a caller names it.
+// One rule for every reader: a body the caller lists is taken as listed. A print export of a list
+// with a reference or an auxiliary body writes that body; the mass query of such a list counts
+// the reference body and reports the auxiliary one as skipped, because it has no mass to count.
 // "Not printed" and "not part of the mechanism" are the two values next to the default; see
 // design.md, "Two flags or one field".
 export type BodyUse = 'part' | 'reference' | 'auxiliary';
@@ -41,6 +50,10 @@ export type BodyUse = 'part' | 'reference' | 'auxiliary';
 //   density is not used for the mass. A numeric field.
 // - `expressions`: the expressions of the two numeric fields, by the same rule as
 //   `FeatureBase.expressions`: the field holds the last valid number, the recompute rewrites it.
+// Inheritance, field by field, with one exception: `density` and `mass` say together what the
+// body weighs and are inherited together. An entry that states either of the two inherits
+// neither, so a copy given another material is weighed by its own density and not by the mass
+// of its source.
 export interface BodyProperties {
   name?: string;
   color?: string;
@@ -98,30 +111,42 @@ export interface BodyPropertiesCommands {
 // Computed with the parameters and the checks, after the timeline, from the document alone and
 // the volume of the body; no step of a feature reads it, so a change of a property recomputes
 // no geometry.
+//
+// The mass, in this order:
+// 1. An auxiliary body has none.
+// 2. The pair `density` and `mass` is the own one when the entry states either, else the
+//    inherited one.
+// 3. With a `mass` in that pair: the mass, `massFrom: 'mass'`. If its expression is in error
+//    there is no mass; the density does not step in for a weighed value that cannot be read.
+// 4. Else with a `density`: density · volume / 1000, `massFrom: 'density'`; none if it is in error.
+// 5. Else none.
+// A field in error is reported in `fieldErrors` and is left out of the result. Nothing takes its
+// place: not its last number, not the inherited value.
 export interface BodyPropertiesResult {
   name: string; // the own name, else that of the creating feature; a copy adds ` / <number>`, as the app names it today
   color?: string;
   material?: string;
   use: BodyUse;
-  density?: number; // g/cm3; absent: not stated, or its expression is in error
-  // g, the mass of the body: the stated one, else density · volume. Absent: neither is stated,
-  // the one that would be used is in error, or the body is auxiliary.
-  mass?: number;
+  density?: number; // g/cm3
+  mass?: number; // g, by the rule above
   massFrom?: 'mass' | 'density';
-  from?: Id; // the body whose properties stand under the own ones (the source of the pattern)
-  // The expressions of the fields used that could not be evaluated or gave a value out of range,
-  // own or inherited. Such a field counts as not stated; it is not replaced by its last number.
+  // The body this one was copied from (the source of the pattern that made it): the nearest one.
+  // A field may come from further up a chain of patterns; the chain is followed through `from`
+  // of the source.
+  from?: Id;
   fieldErrors?: { density?: ExpressionError; mass?: ExpressionError };
 }
 
 // Entries of the section whose body the state does not have (the feature was removed or
-// suppressed, an extrusion became an addition, the count of a pattern dropped). Meant for the
-// state at the end of the timeline; MCP and the app list them and offer to remove them.
-export declare function bodyPropertiesWithoutBody(state: StateAfter): Id[];
+// suppressed, an extrusion became an addition, the count of a pattern dropped): the keys of the
+// section that are not keys of the result. Meant for the state at the end of the timeline; MCP
+// and the app list them and offer to remove them.
+export declare function bodyPropertiesWithoutBody(section: BodyPropertiesSection, properties: Record<Id, BodyPropertiesResult>): Id[];
 
 // The bodies a print export or a print query takes when the caller names none: those with the
-// use `part`, in the order of the model. A caller that lists bodies gets the ones it lists.
-export declare function printedBodies(state: StateAfter): Id[];
+// use `part`, in the order of the model. It takes the result of the recompute, which the context
+// of a query or of a format has (`context.state.evaluation.bodyProperties`) as well as a state.
+export declare function printedBodies(properties: Record<Id, BodyPropertiesResult>): Id[];
 
 // ================================================================ the catalog of materials
 
@@ -156,12 +181,13 @@ export interface SectionInfo {
 // ================================================================ the upgrade step
 
 // The section is new, so a build without the package would drop it on load without a word; the
-// step makes such a build refuse the document instead. It has nothing to convert: it gives an
-// older document the empty section. What is there already is left for the validation to judge,
-// as the step from version 1 does with `parameters`.
+// step makes such a build refuse the document instead. It has nothing to convert: it gives
+// a document that has no such field the empty section. A field that is there, whatever it holds
+// (`null` included), is left for the validation to judge, as the step from version 1 does with
+// `parameters`.
 export const BODY_PROPERTIES_STEP: UpgradeStep = {
   name: '3a-body-properties',
-  run: (document) => ({ ...document, bodyProperties: document.bodyProperties ?? {} }),
+  run: (document) => ('bodyProperties' in document ? document : { ...document, bodyProperties: {} }),
 };
 
 // ================================================================ a stand-in for the mass query of 1d

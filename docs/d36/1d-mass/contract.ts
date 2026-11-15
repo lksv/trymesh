@@ -1,5 +1,7 @@
 // Contract of package 1d of D36 (decision D41): mass properties of bodies. A draft, only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
+//
+// Second version, after the first round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, QuantitySpec, QueryContext } from '../00-prep/contract';
@@ -11,19 +13,22 @@ const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }
 
 // - `bodies`: the bodies taken as one rigid piece (a link of a mechanism); one body is a list of
 //   one.
-// - `densities`: the density of single bodies, by body ID. It wins over everything else.
+// - `densities`: the density of single bodies, by body ID. It wins over everything else and is
+//   taken as it is (an effective density).
 // - `density`: the density of every listed body that has none of its own: none in `densities`
 //   and, once body properties exist (3a), none in the document.
-// - `fill`: the part of the volume that is material, for a printed part with infill: the mass
-//   and the inertia are multiplied by it. It assumes the material is spread evenly, which a part
-//   with solid shells and a sparse core is not; an effective density measured on a printed
-//   sample is better.
+// - `fill`: the part of the volume that is material, for a printed part with infill. It goes
+//   with `density`: the mass and the inertia of the bodies that take `density` are multiplied by
+//   it, and no other body is touched (a motor given in `densities`, a body with a density or
+//   a mass of its own). It assumes the material is spread evenly, which a part with solid
+//   shells and a sparse core is not; an effective density measured on a printed sample is
+//   better.
 // - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it.
 export const MASS_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece.' },
   density: { kind: 'number', title: 'Density', summary: 'Of every listed body that has none of its own.', optional: true, spec: DENSITY },
   densities: { kind: 'record', keys: 'body', of: { kind: 'number', spec: DENSITY }, title: 'Density by body', optional: true },
-  fill: { kind: 'number', title: 'Fill factor', summary: 'The part of the volume that is material; 1 is solid.', optional: true, spec: { title: 'Fill factor', unit: 'none', min: { value: 0, open: true }, max: { value: 1 }, default: 1 } },
+  fill: { kind: 'number', title: 'Fill factor', summary: 'The part of the volume that is material; 1 is solid. Applies to the bodies that take `density`.', optional: true, spec: { title: 'Fill factor', unit: 'none', min: { value: 0, open: true }, max: { value: 1 }, default: 1 } },
   about: { kind: 'axis', title: 'Axis', summary: 'Adds the moment of inertia about this axis.', optional: true },
 } as const satisfies ArgSpecs;
 
@@ -39,16 +44,20 @@ export const MASS_ARGS = {
 //   Z; an element off the diagonal is the negative product of inertia (row x, column y:
 //   −∫ x·y dm), which is the convention of URDF and MJCF.
 // - `about`, with the argument: `moment` is the moment of inertia about that axis; `distance`
-//   is how far the centre of mass lies from it (the lever of the weight when the axis is
-//   horizontal).
-// - `bodies`: every listed body by itself, with the density that was used for it.
+//   is the perpendicular distance of the centre of mass from it. (It is not the lever of the
+//   weight: that also depends on the direction of gravity. A centre of mass straight above
+//   a horizontal axis is at a distance and has no lever.)
+// - `bodies`: every listed body by itself: its mass, its volume, the density of its material
+//   (before the fill factor; for a body with an explicit mass, that mass over its volume), the
+//   fill factor that was applied to it (1 when none was) and its centre of mass. The mass is
+//   density times fill times volume.
 export interface MassProperties {
   mass: number; // g
   volume: number; // mm3
   centerOfMass: Vec3; // mm
   inertia: [Vec3, Vec3, Vec3]; // g·mm2
   about?: { moment: number; distance: number }; // g·mm2, mm
-  bodies: { body: Id; mass: number; volume: number; density: number; centerOfMass: Vec3 }[];
+  bodies: { body: Id; mass: number; volume: number; density: number; fill: number; centerOfMass: Vec3 }[];
 }
 
 declare module '../00-prep/contract' {
@@ -78,7 +87,8 @@ export declare function massIntegrals(solid: Solid): MassIntegrals;
 // undefined for every body; the package of 3a makes it read its section of the document (a
 // density, or an explicit mass for a bought part with a data sheet). It reads the document, not
 // the geometry of a body, so the state of the context is the right place. With an explicit mass
-// the body counts with the density that gives it that mass, spread evenly, and `fill` does not
-// apply to it.
+// the body counts with the density that gives it that mass, spread evenly. `fill` of the call
+// applies to neither kind: what the document says about a body is taken as it is, and a fill
+// factor of a printed body belongs with its properties (3a).
 export type MassSource = { density: number } | { mass: number };
 export declare function massSourceOf(context: QueryContext, body: Id): MassSource | undefined;

@@ -2,9 +2,11 @@
 // generic form of a query in the app. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the engine and the shared
 // contract of the preparatory step, and states what the package adds. The design is design.md.
+//
+// Second version, after the first round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Solid, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgKind, ArgPath, ArgSpecs, BodyEdge, EdgeNameAfter, EngineAfter, EntityRef, FaceNameAfter, QuantityUnit, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, StateAfter } from '../00-prep/contract';
+import type { ArgKind, ArgPath, ArgSpecs, BodyEdge, BodyResultAfter, EdgeNameAfter, EngineAfter, EntityRef, FaceNameAfter, QuantityUnit, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, StateAfter } from '../00-prep/contract';
 
 // ================================================================ the engine
 
@@ -18,9 +20,11 @@ import type { ArgKind, ArgPath, ArgSpecs, BodyEdge, EdgeNameAfter, EngineAfter, 
 // - `cylinder`, `cone`: a face. `convex`: the material is on the side of the axis (a pin); false
 //   for a hole.
 // - `swept`: a face swept along `axis` (the teeth of a gear): it has a direction and no position.
-// - `line`: a straight edge, the line of its two planes. `from` and `to` are its ends.
-// - `circle`: a circular edge: the circle of its two surfaces (the four pairs of the shared
-//   vocabulary), whole even when the edge is an arc of it.
+// - `line`: an edge of the kind `line`, which today is the edge of two planar faces: the line of
+//   its two planes. `from` and `to` are its ends. A straight edge of a plane and a cylinder (the
+//   side of a slot) has the kind `other` today, and so is `other` here.
+// - `circle`: an edge of the kind `circle`: the circle of its two surfaces (the four pairs of
+//   the shared vocabulary), whole even when the edge is an arc of it.
 // - `point`: a sketch point, where the model has it (a sketch is never posed).
 // - `other`: a general surface, an edge of the kind `coplanar` or `other`. Nothing exact is
 //   known about it; it can still be measured on the mesh.
@@ -34,9 +38,9 @@ export type EntityShape =
   | { is: 'swept'; axis: Vec3 }
   | { is: 'other' };
 
-// The resolver of an entity, for every query that takes one (1e takes a face as an orientation,
-// 5a will take faces and edges of posed bodies). `arg` is the path of the argument the entity
-// came in, for the failure. It throws `QueryFailure`:
+// The resolver of an entity, for every query that takes one and wants to know what it is (this
+// one; the posed queries of 5a). `arg` is the path of the argument the entity came in, for the
+// failure. It throws `QueryFailure`:
 // - `notAvailable` when the sketch of a sketch point did not evaluate (it is in the document, so
 //   the check before `run` let it through);
 // - nothing else: that the body, the face, the edge and the point exist was checked before `run`.
@@ -49,8 +53,30 @@ export declare function entityShape(context: QueryContext, ref: ShapedRef, arg: 
 // to three vertices in the description of a body (`BodyEdge` of the preparatory step, which says
 // that this change belongs here): the member `circle` is always there and gains the axis. The
 // numbers `get_body` prints for a circular edge change in their last digits, and an arc with too
-// few vertices to fit now has its circle. In the code this is a change of `BodyEdge` in place.
+// few vertices to fit now has its circle. In the code this is a change of `BodyEdge` in place;
+// a draft cannot restate a type of the shared contract that is not one of its maps, so the
+// result of the query `body` still has the old member here (design.md, "Needs").
 export type BodyEdgeExact = Exclude<BodyEdge, { kind: 'circle' }> | { name: EdgeNameAfter; length: number; segments: number; kind: 'circle'; circle: { center: Vec3; axis: Vec3; radius: number } };
+
+// ---------------------------------------------------------------- the mesh: precision and accuracy
+
+// How precisely a coordinate of the mesh is known: a millionth of the largest coordinate of the
+// bodies concerned, at least a millionth of a millimetre. It is the measure `interference` uses
+// today (`PRECISION` in interference.ts), exported so that every query of the track means the
+// same thing by "the precision of the coordinates": the section (1a), a gap of zero (1c), the
+// contact with the bed (1e).
+export declare function coordinatePrecision(...bodies: BodyResultAfter[]): number;
+
+// An estimate of how far a distance measured on the mesh may be from the distance of the exact
+// shapes: one chord tolerance of the document for each listed body that has a face which is
+// not planar, plus the precision of the coordinates. A body is listed once per side of the
+// measurement (twice when both entities lie on it).
+// - A body with only planar faces has only straight edges: nothing of it is a polygon of
+//   a curve. A planar face of any other body may end in the polygon of an arc, so it counts.
+// - It is an estimate, not a bound: a circle or a tooth flank above the caps on the number of
+//   segments (4096 an arc in sketch.ts and generators.ts, 256 a flank) no longer keeps the
+//   chord tolerance.
+export declare function meshAccuracy(context: QueryContext, bodies: readonly Id[]): number;
 
 // ---------------------------------------------------------------- the smallest distance on the mesh
 
@@ -61,15 +87,17 @@ export type BodyEdgeExact = Exclude<BodyEdge, { kind: 'circle' }> | { name: Edge
 //   a segment), or the triangles of a solid: all of them or those of one face.
 // - `within`: pairs of triangles or segments whose boxes are further apart are skipped, and
 //   undefined is returned when nothing is closer. The best distance found so far tightens it.
-// - Two triangles that cross (an edge of one goes through the other) are at distance zero, so
-//   two faces of bodies that collide measure zero. A part wholly inside a closed solid without
-//   touching its surface is not found this way: the distance is then to the surface around it.
-//   Whether two bodies share a volume is the question of `interference` and of the kernel (1c).
+// - Two triangles that cross are at distance zero: besides the six corner to triangle and the
+//   nine edge to edge distances, the pass tests whether an edge of one goes through the other
+//   (the same for a segment and a triangle). So two faces of bodies that collide measure zero.
+//   A part wholly inside a closed solid without touching its surface is not found this way: the
+//   distance is then to the surface around it. Whether two bodies share a volume is the
+//   question of `interference` and of the kernel (1c).
 // - `faceA`, `faceB`: the faces of the two closest triangles. Where the closest point lies on an
 //   edge or a corner of a body it belongs to triangles of several faces, all at the same
-//   distance; the face named is the one that faces the other part most directly (the largest
-//   cosine between its normal and the direction to the other point), so the wall of a bore is
-//   named and not the cap it ends in.
+//   distance within `LENGTH_TOLERANCE`; the face named is the one among them that faces the
+//   other part most directly (the largest cosine between its normal and the direction to the
+//   other point), so the wall of a bore is named and not the cap it ends in.
 export type MeshPart = { point: Vec3 } | { segments: Float64Array } | { solid: Solid; face?: number };
 export interface Closest {
   distance: number;
@@ -103,29 +131,29 @@ export const MEASURE_ARGS = {
 // swept     | none           | the direction it was swept along
 // other     | none           | none
 //
-// - `distance`: between the two references, taken without their ends: point to point, point to
-//   line, point to plane, line to line (the common perpendicular; zero when they cross), and for
-//   a line and a plane or two planes only when they are parallel (within `ANGLE_TOLERANCE`),
-//   because otherwise they cross and the number would say nothing. For two cylinders it is the
-//   distance of their axes; for a cylinder and a planar face along its axis, how far the axis is
-//   from the wall. Absent when either entity has no reference.
+// - `distance`: between the two references, taken without their ends, never negative: point to
+//   point, point to line, point to plane, line to line (the common perpendicular; zero when they
+//   cross), and for a line and a plane or two planes only when they are parallel (within
+//   `ANGLE_TOLERANCE`), because otherwise they cross and the number would say nothing. For two
+//   cylinders it is the distance of their axes; for a cylinder and a planar face along its
+//   axis, how far the axis is from the wall. Absent when either entity has no reference.
 // - `angle`: between the two directions; absent when either entity has none.
 //   - Two planes: between the normals out of the bodies, 0 to π. 0: the faces look the same way
 //     (two steps); π: opposite ways (the two sides of a wall, the two walls of a slot).
 //   - A plane and anything else: between the line and the plane, 0 to π/2. 0: the axis runs along
 //     the plane; π/2: it stands on it.
 //   - Otherwise: between the two lines, 0 to π/2.
-// - `facing`: for two planar faces that look opposite ways. `away`: each lies behind the other
-//   (the two sides of a wall; `distance` is its thickness). `towards`: they look at each other
-//   (the two walls of a slot, two bodies with a gap between; `distance` is its width).
+// - `facing`: for two planar faces that look opposite ways and do not lie in one plane. `away`:
+//   each lies behind the other (the two sides of a wall; `distance` is its thickness).
+//   `towards`: they look at each other (the two walls of a slot, two bodies with a gap between;
+//   `distance` is its width). Absent when the two planes coincide within the precision of the
+//   coordinates.
 //
-// The measured part is always there:
+// The measured part:
 // - `smallest`: the smallest distance between the two entities as they are on the bodies, with
 //   their outlines and ends, and the two points it lies between. It is measured on the mesh, so
-//   round shapes are polygons. `accuracy` bounds the difference from the exact shape: the chord
-//   tolerance of the document for each of the two entities that lies on a body (a sketch point
-//   adds nothing). Between two planar faces with straight outlines the value is exact to the
-//   precision of the coordinates.
+//   round shapes are polygons. `accuracy` estimates the difference from the exact shapes
+//   (`meshAccuracy` over the bodies the two entities lie on; a sketch point adds nothing).
 //
 // A pair without an exact answer (a face of gear teeth, a general edge) therefore still gets
 // `smallest`, and `angle` when both have a direction.
@@ -151,7 +179,7 @@ declare module '../00-prep/contract' {
 // of the app shows a result without a view of its own, and the app shows angles in degrees
 // everywhere else. Until the shared contract has it, a query of track A exports this map next to
 // its entry, in the form `significant` has: keys of the result, at any depth. `QUERY_UNITS` is
-// what the generic form reads.
+// what the generic form reads. Like `significant`, the keys are not tied to the result type.
 export type ResultUnit = QuantityUnit | 'g·mm2';
 export type ResultUnits = { readonly [key: string]: ResultUnit };
 export const MEASURE_UNITS = { distance: 'mm', angle: 'rad', accuracy: 'mm', radius: 'mm', halfAngle: 'rad' } as const satisfies ResultUnits;
@@ -172,8 +200,9 @@ export declare const QUERY_UNITS: { readonly [N in QueryName]?: ResultUnits };
 // - `selection`: the control takes what the user selects in the view while it is armed: a face
 //   or an edge of a body for an entity, a planar face or a plane for a plane.
 // - `lists`: a choice from what the shown state has (bodies, features, sketches, the points of
-//   a sketch, the constraints of the sketch chosen in the argument next to it).
-export type ControlName = 'number' | 'checkbox' | 'text' | 'choice' | 'lists' | 'selection' | 'selectionOrLists' | 'vector' | 'rows' | 'alternative' | 'group';
+//   a sketch, the constraints of the sketch chosen in the argument next to it; the faces and
+//   the edges of a chosen body by their labels).
+export type ControlName = 'number' | 'checkbox' | 'text' | 'choice' | 'lists' | 'selectionOrLists' | 'vector' | 'rows' | 'alternative' | 'group';
 export const CONTROLS: { readonly [K in ArgKind['kind']]: ControlName } = {
   number: 'number', // with the unit as a suffix; an angle is typed and shown in degrees; a number only, no expression
   flag: 'checkbox',
@@ -183,7 +212,10 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: ControlName } = {
   feature: 'lists',
   sketch: 'lists',
   constraint: 'lists',
-  entity: 'selectionOrLists', // a face or an edge by a selection, a body by a selection or a list, a sketch point from two lists
+  // A face or an edge by a selection in the view, or from the lists of a chosen body (the view
+  // does not pick an edge of the kind `coplanar`, and a face may be hidden behind others);
+  // a body by a selection or a list; a sketch point from two lists.
+  entity: 'selectionOrLists',
   plane: 'selectionOrLists', // a base plane or a plane feature from a list, a planar face by a selection
   axis: 'lists', // a base axis, or a sketch and its point
   vector: 'vector', // three numbers
@@ -203,13 +235,15 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: ControlName } = {
 // - `armed`: the path of the control that takes the next selection in the view.
 // - `answer`: belongs to the document and to the place on the timeline it was asked at, as the
 //   collisions do today: shown while the marker is `at`, hidden while it is elsewhere, dropped
-//   when the engine reports a change of the document. It keeps the arguments it was asked with,
-//   so that a view draws what was asked and not what the form shows meanwhile.
+//   when the engine reports a change of the document. It keeps the arguments of the form it was
+//   asked from (`args`), so that a view draws what was asked and not what the form shows
+//   meanwhile, and the arguments the engine really got (`asked`: those of the form after
+//   `prepare` of the view).
 export interface QueryPanelState {
   name: QueryName;
   draft: unknown;
   armed?: ArgPath;
-  answer?: { at: Id | null; args: unknown; outcome: QueryOutcome<unknown>; picked?: number };
+  answer?: { at: Id | null; args: unknown; asked: unknown; outcome: QueryOutcome<unknown>; picked?: number };
 }
 
 // Asking a query whose name is known only at run time (the generic form; the MCP tool `query` is
@@ -227,28 +261,29 @@ export declare function takeSelection(panel: QueryPanelState, selection: Selecti
 
 // What a view adds to the scene while its answer is shown. The first five are the fields of
 // `SceneModel` in packages/app/src/viewport.ts as they are today, with a face given by its name
-// (the scene resolves the mesh). `bodies`: bodies drawn highlighted, as the two bodies of
-// a picked collision are today. A package that needs more of the scene (the section of 1a clips
-// it) adds a field by declaration merging.
+// (the scene resolves the mesh). `bodies`: bodies drawn in a colour of the view's choice, as the
+// two bodies of a picked collision are drawn in two colours today. A package that needs more of
+// the scene (the section of 1a clips it) adds a field by declaration merging.
 export interface SceneAdditions {
   lines: { segments: ArrayLike<number>; color: number; width: number; dashed?: boolean; onTop?: boolean }[];
   points: { positions: number[]; color: number; size: number }[];
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[];
   faces: { body: Id; face: FaceNameAfter; color: number; opacity: number }[];
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
-  bodies: Id[];
+  bodies: { body: Id; color: number }[];
 }
 
 // What a view gets of the panel and of the app.
-export interface ViewPanel {
+export interface ViewPanel<N extends QueryName> {
   state: StateAfter; // the state the answer was asked about
   bodyName(body: Id): string;
   faceLabel(name: FaceNameAfter): string;
   number(value: number, unit: ResultUnit): string; // a number with its unit as the app writes it: "16.2 mm", "30°"
   picked: number | undefined; // a row of the answer the user picked; what a row is belongs to the view
   pick(row: number | undefined): void; // redraws the panel and the scene
-  // Ask again with other arguments (a section stepped along its normal). The form follows.
-  ask(args: unknown): void;
+  // Ask again with other arguments of the form (a section stepped along its normal). The form
+  // shows them; `prepare` is applied again.
+  ask(args: QueryArgs<N>): void;
 }
 
 // A view of one query, optional. Without one the answer is a tree of names and values. Every
@@ -257,16 +292,19 @@ export interface ViewPanel {
 //   missing (the collisions: one click, as today).
 // - `prepare`: the arguments the query is asked with, from the arguments of the form. A view
 //   that draws may need more of the answer than a reader would ask for (the section view asks
-//   for the points of every loop). The answer keeps the arguments it was really asked with.
-// - `answer`: the rows of the panel for an answer, in place of the tree.
+//   for the points of every loop). What it adds never reaches the form: the other members get
+//   the arguments of the form, not the prepared ones.
+// - `answer`: the rows of the panel for an answer, in place of the tree. A view that replaces
+//   the tree shows everything the answer has that a reader needs, failures and cut lists
+//   included; nothing else will.
 // - `scene`: what the answer adds to the scene.
 // - `note`: the line for the status bar; it goes when the answer goes, as today's note of the
 //   collisions does.
 export interface QueryView<N extends QueryName> {
   immediate?: boolean;
   prepare?(args: QueryArgs<N>): QueryArgs<N>;
-  answer?(result: QueryResult<N>, args: QueryArgs<N>, panel: ViewPanel): HTMLElement[];
-  scene?(result: QueryResult<N>, args: QueryArgs<N>, panel: ViewPanel): Partial<SceneAdditions>;
-  note?(result: QueryResult<N>, panel: ViewPanel): { text: string; error: boolean };
+  answer?(result: QueryResult<N>, args: QueryArgs<N>, panel: ViewPanel<N>): HTMLElement[];
+  scene?(result: QueryResult<N>, args: QueryArgs<N>, panel: ViewPanel<N>): Partial<SceneAdditions>;
+  note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 export declare const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> };

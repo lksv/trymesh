@@ -12,7 +12,7 @@ import type { Id, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgPath, EdgeNameAfter, EngineAfter, FaceNameAfter, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryToolInput } from '../00-prep/contract';
 import { QUERIES, QueryFailure } from '../00-prep/contract';
 import type { BodyEdgeExact, EntityShape, MeshPart, Measurement, QueryPanelState, QueryView, SceneAdditions, Selection, ShapedRef } from './contract';
-import { CONTROLS, MEASURE_ARGS, MEASURE_UNITS, QUERY_UNITS, QUERY_VIEWS, askQuery, closest, entityShape, takeSelection } from './contract';
+import { CONTROLS, MEASURE_ARGS, MEASURE_UNITS, QUERY_UNITS, QUERY_VIEWS, askQuery, closest, entityShape, meshAccuracy, takeSelection } from './contract';
 
 declare const engine: EngineAfter; // with the joint of scenario 9, as packages/scenarios/test/scenario9.test.ts builds it
 declare function fail(message: string): never;
@@ -27,7 +27,8 @@ const face = (body: Id, name: FaceNameAfter): Extract<ShapedRef, { kind: 'face' 
 // `distance`. It still has the smallest distance on the mesh, with what it is good to.
 export function wallOnTheMesh(): { wall: number; accuracy: number; parallel: boolean } {
   const measured: Measurement = unwrap(engine.query('measure', { from: face('housing', side('ring', 'teeth')), to: face('housing', side('boltHole', 'bh')) }));
-  // smallest.distance 15.2837 between (33.526, 0, 28) and (48.810, 0, 28); accuracy 0.02; angle 0
+  // from.is `swept`, to.is `cylinder`; smallest.distance 15.2837 between (33.526, 0, 28) and
+  // (48.810, 0, 28); accuracy 0.02 (the housing has round faces, and both entities lie on it); angle 0
   return { wall: measured.smallest.distance, accuracy: measured.smallest.accuracy, parallel: measured.angle === 0 && measured.distance === undefined };
 }
 
@@ -59,8 +60,10 @@ export function mouthOfBoltHole(): EntityShape {
   const edge: EdgeNameAfter = { a: side('boltHole', 'bh'), b: { feature: 'housing', role: 'startCap' } };
   return unwrap(engine.query('measure', { from: { kind: 'edge', body: 'housing', edge }, to: { kind: 'sketchPoint', sketch: 'skGears', point: 'origin' } })).from;
 }
-// The description of a body carries the same circle.
-export const circleOfEdge = (edge: BodyEdgeExact): Vec3 | undefined => (edge.kind === 'circle' ? edge.circle.center : undefined);
+// The description of a body carries the same circle. Written over the edge type alone: the
+// result of the query `body` cannot be restated in a draft (design.md, "Needs"). In the test it
+// is `engine.query('body', { body: 'housing' })` and the edge found by its name.
+export const circleOfEdge = (edge: BodyEdgeExact): { center: Vec3; axis: Vec3 } | undefined => (edge.kind === 'circle' ? edge.circle : undefined);
 
 // Through MCP: the general tool, also at a place on the timeline (before the pattern of the bolt
 // holes only the first hole is there).
@@ -100,17 +103,16 @@ function partOf(context: QueryContext, ref: ShapedRef, shape: EntityShape, arg: 
 
 export const measure: (typeof QUERIES)['measure'] = {
   title: 'Measure',
-  summary: 'Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair.',
+  summary: 'Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.',
   returns:
-    'from, to: what each entity is (plane with origin and normal out of the body, cylinder with a point of its axis, axis, radius and convex, circle with center, axis and radius, line with from, to and direction, point). distance (mm, exact): between the plane, the axis, the line, the centre or the point of the two; for two planes or a line and a plane only when parallel. angle (rad, exact): two planes 0 to π between the normals out of the bodies, a plane and an axis or a line 0 to π/2 between the line and the plane, otherwise 0 to π/2. facing: away (the two sides of a wall) or towards (the two walls of a slot), for planes that look opposite ways. smallest: the smallest distance between the two as they are on the bodies, measured on the mesh, with the two points and accuracy (mm).',
+    'from, to: what each entity is, by `is`: plane (origin, normal out of the body), cylinder (origin: a point of its axis, axis, radius, convex: true for a pin, false for a hole), cone (apex, axis, halfAngle, convex), swept (axis: the direction a face of gear teeth was swept along), circle (center, axis, radius), line (from, to, direction), point (at), other (nothing exact is known). distance (mm, exact, never negative): between the plane, the axis, the line, the centre or the point of the two; for two planes or a line and a plane only when parallel; absent for swept and other. angle (rad, exact): two planes 0 to π between the normals out of the bodies, a plane and an axis or a line 0 to π/2 between the line and the plane, otherwise 0 to π/2; absent for a point and for other. facing: away (the two sides of a wall) or towards (the two walls of a slot), for planes that look opposite ways. smallest: the smallest distance between the two as they are on the bodies, measured on the mesh, with the two points (from, to) and accuracy (mm, an estimate of how far the mesh may be from the exact shapes).',
   args: MEASURE_ARGS,
   run(context, args) {
     const [from, to] = [entityShape(context, args.from, ['from']), entityShape(context, args.to, ['to'])];
     const found = closest(partOf(context, args.from, from, ['from']), partOf(context, args.to, to, ['to']));
     if (!found) throw new QueryFailure('failed', 'an entity has no geometry in this state');
-    const onBody = [args.from, args.to].filter((ref) => ref.kind !== 'sketchPoint').length;
-    const accuracy = onBody * context.state.document.settings.chordTolerance;
-    return { from, to, ...exact(from, to), smallest: { distance: found.distance, from: found.a, to: found.b, accuracy } };
+    const bodies = [args.from, args.to].flatMap((ref) => (ref.kind === 'sketchPoint' ? [] : [ref.body]));
+    return { from, to, ...exact(from, to), smallest: { distance: found.distance, from: found.a, to: found.b, accuracy: meshAccuracy(context, bodies) } };
   },
 };
 export const registered: Pick<typeof QUERIES, 'measure'> = { measure };
@@ -142,7 +144,8 @@ export function walk(marker: Id | null): string {
   const second: Selection = { kind: 'face', body: 'housing', face: side('boltHole', 'bh') };
   takeSelection(panel, second);
   // the answer is kept with the place on the timeline it was asked at and with its arguments
-  panel.answer = { at: marker, args: panel.draft, outcome: ask(engine, panel.name, panel.draft, marker) };
+  const asked = panel.draft; // a view with `prepare` would add to them here; `measure` has none
+  panel.answer = { at: marker, args: panel.draft, asked, outcome: ask(engine, panel.name, asked, marker) };
   // an error names the argument by its path; the control at that path is marked
   const marked: ArgPath | undefined = panel.answer.outcome.ok ? undefined : panel.answer.outcome.error.arg;
   // shown while the marker is where it was asked; dropped when the engine reports another document
@@ -170,23 +173,44 @@ export const measureView: QueryView<'measure'> = {
   },
 };
 
-// The collisions panel of today becomes the view of `interference`: the query is asked as soon
-// as the form opens, the pairs are rows, a picked row highlights its two bodies, and the note in
-// the status bar is the one of today.
+// The collisions panel of today becomes the view of `interference`, with everything that panel
+// shows (`collisionsPanel` and `checkCollisions` in app.ts): the query is asked as soon as the
+// form opens; the collisions and then the fits are rows, a fit marked as one, each with its
+// volume and, in its title, how deep one body reaches into the other; the pairs the kernel
+// could not compute are listed with the reason; a picked row draws its two bodies in the two
+// colours of today; and the note in the status bar counts the fits and the failures.
+const SELECT = 0xf97316; // `COLOR.select` and `COLOR.clash` of app.ts
+const CLASH = 0xdc2626;
 export const interferenceView: QueryView<'interference'> = {
   immediate: true,
   answer(result, _args, panel) {
-    return [...result.pairs, ...result.fits].map((pair, index) => {
-      const row = Object.assign(document.createElement('div'), { className: `row ${panel.picked === index ? 'selected' : ''}`, textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: ${panel.number(pair.volume, 'mm3')}` });
-      row.onclick = () => panel.pick(panel.picked === index ? undefined : index);
-      return row;
-    });
+    const line = (className: string, text: string): HTMLElement => Object.assign(document.createElement('p'), { className, textContent: text });
+    const row = (pair: (typeof result.pairs)[number], index: number, fit: boolean): HTMLElement => {
+      const element = Object.assign(document.createElement('div'), {
+        className: `row ${panel.picked === index ? 'selected' : ''}`,
+        title: `Highlight the two bodies. One reaches ${panel.number(pair.depth, 'mm')} into the other`,
+        textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: ${fit ? 'fit, ' : ''}${panel.number(pair.volume, 'mm3')}`,
+      });
+      element.onclick = () => panel.pick(panel.picked === index ? undefined : index);
+      return element;
+    };
+    return [
+      ...(result.pairs.length === 0 && result.failed.length === 0 ? [line('hint', `No two bodies collide; ${result.checked} pair(s) checked. Bodies that only touch do not count.`)] : []),
+      ...result.pairs.map((pair, index) => row(pair, index, false)),
+      ...(result.fits.length ? [line('hint', 'Fits: round faces that reach into each other by no more than the chord tolerance.')] : []),
+      ...result.fits.map((pair, index) => row(pair, result.pairs.length + index, true)), // `picked` counts through both lists
+      ...result.failed.map((pair) => line('issue warning', `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: could not be computed (${pair.message})`)),
+    ];
   },
   scene(result, _args, panel) {
     const pair = panel.picked === undefined ? undefined : [...result.pairs, ...result.fits][panel.picked];
-    return pair ? { bodies: [pair.a, pair.b] } : {};
+    return pair ? { bodies: [{ body: pair.a, color: SELECT }, { body: pair.b, color: CLASH }] } : {};
   },
-  note: (result) => (result.pairs.length ? { text: `Collisions: ${result.pairs.length} pair(s) of bodies share a volume.`, error: true } : { text: `No collisions: ${result.checked} pair(s) checked.`, error: result.failed.length > 0 }),
+  note(result) {
+    const failed = result.failed.length ? ` ${result.failed.length} pair(s) could not be computed.` : '';
+    const fits = result.fits.length ? ` ${result.fits.length} fit(s) within the chord tolerance.` : '';
+    return result.pairs.length ? { text: `Collisions: ${result.pairs.length} pair(s) of bodies share a volume.${fits}${failed}`, error: true } : { text: `No collisions: ${result.checked} pair(s) checked.${fits}${failed}`, error: result.failed.length > 0 };
+  },
 };
 export const views: Pick<typeof QUERY_VIEWS, 'measure' | 'interference'> = { measure: measureView, interference: interferenceView };
 // @ts-expect-error a view is typed by the result of its query

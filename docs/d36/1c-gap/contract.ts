@@ -1,5 +1,7 @@
 // Contract of package 1c of D36 (decision D40): the smallest gap between bodies. A draft, only
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
+//
+// Second version, after the first round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, SolidKernel, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
@@ -7,11 +9,12 @@ import type { ResultUnits } from '../1b-measure/contract';
 
 // ---------------------------------------------------------------- the kernel port
 
-// One method is added to `SolidKernel` in types.ts. A draft cannot edit that file, so the port
-// after this package is written as a type of its own; in the code it is one line of the
-// interface. The ports lie between the section comments `// --- porty` and `// --- přepočet`,
-// the part `describe_api` leaves out: an AI learns what the gap means from the description of
-// the query, not from the port.
+// One method is added to `SolidKernel` in types.ts. A draft cannot edit that file and the shared
+// contract has no map for additions to the port (design.md, "Needs"), so the port after this
+// package is written as a type of its own and the entry casts `context.kernel` to it; in the
+// code it is one line of the interface. The ports lie between the section comments
+// `// --- porty` and `// --- přepočet`, the part `describe_api` leaves out: an AI learns what
+// the gap means from the description of the query, not from the port.
 //
 // What an implementation guarantees:
 // 1. The value is the smallest distance between a point of the surface of `a` and a point of the
@@ -40,7 +43,10 @@ export interface SolidKernelAfter extends SolidKernel {
 // - `within`: the search distance. Pairs further apart are counted, not measured; raising it
 //   costs time (see the port). 5 mm by default: the gaps a printed assembly is checked for are
 //   below that.
-// - `maxPairs`: the most pairs the answer lists, the closest first.
+// - `maxPairs`: the most pairs the answer lists, the closest first; also the most refused pairs
+//   it lists.
+// The work is bounded by these arguments: the number of bodies (every pair of them is examined)
+// and the search distance. The summary of the query says so.
 export const GAP_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 2, title: 'Bodies', summary: 'Only pairs among these; without it all bodies.', optional: true },
   within: { kind: 'number', title: 'Search distance', summary: 'Pairs further apart than this are counted, not measured. A larger distance takes longer.', optional: true, spec: { title: 'Search distance', unit: 'mm', min: { value: 0, open: true }, default: 5 } },
@@ -48,37 +54,41 @@ export const GAP_ARGS = {
 } as const satisfies ArgSpecs;
 
 // A pair of bodies closer than `within`; `a` is the smaller ID in string order, as in the
-// report of collisions.
-// - `distance`: of the two meshes. Zero for a pair that touches or shares a volume; a distance
-//   no larger than the precision of the coordinates (a millionth of the largest coordinate of
-//   the pair, as for collisions) is reported as zero.
+// report of collisions. A pair has either `contact` (distance zero) or `between` and `accuracy`
+// (distance above zero), always one of the two.
+// - `distance`: of the two meshes, as the kernel measured it. Zero for a pair that touches or
+//   shares a volume; a distance no larger than the precision of the coordinates
+//   (`coordinatePrecision` of 1b over the two bodies, the measure of the collisions) is
+//   reported as zero.
 // - `contact`, for a distance of zero, from the query `interference` over the same pair:
 //   `collision` (they share a volume above its threshold), `fit` (round faces within the chord
 //   tolerance of each other), `touching` (neither: flush faces, or less than that query
 //   reports), `unknown` (the kernel could not compute what they share).
 // - `between`, for a distance above zero: the two points the gap lies between, `a` on the body
-//   `a`, and the face each lies on. Where a point lies on an edge or a corner, the face named is
-//   the one that faces the other body most directly.
-// - `accuracy`, with `between`: how far the distance of the meshes may be from that of the
-//   exact shapes: the chord tolerance of the document for each of the two faces that is not
-//   planar.
-export interface Gap {
-  a: Id;
-  b: Id;
-  distance: number; // mm
-  contact?: 'touching' | 'fit' | 'collision' | 'unknown';
-  between?: { a: Vec3; b: Vec3; faceA: FaceNameAfter; faceB: FaceNameAfter };
-  accuracy?: number; // mm
-}
+//   `a`, and the face each lies on, from the pass of 1b over the two meshes. Where a point lies
+//   on an edge or a corner, the face named is the one that faces the other body most directly.
+// - `accuracy`, with `between`: an estimate of how far the distance of the meshes may be from
+//   that of the exact shapes (`meshAccuracy` of 1b over the two bodies: one chord tolerance of
+//   the document for each of them that has a face which is not planar, plus the precision of
+//   the coordinates). An estimate, not a bound.
+export type Gap = { a: Id; b: Id } & (
+  | { distance: 0; contact: 'touching' | 'fit' | 'collision' | 'unknown' }
+  | { distance: number; contact?: never; between: { a: Vec3; b: Vec3; faceA: FaceNameAfter; faceB: FaceNameAfter }; accuracy: number } // mm
+);
 // - `pairs`: the pairs closer than `within`, the closest first, at most `maxPairs` of them.
-// - `apart`: the number of pairs further apart than `within` (not measured beyond that).
-// - `failed`: pairs the kernel refused; they are neither close nor apart.
-// - `checked`: the number of pairs examined: `pairs` before the limit, `apart` and `failed`.
+// - `close`: how many pairs are closer than `within` (all of them, also those not listed).
+// - `apart`: how many pairs are further apart than `within` (not measured beyond that).
+// - `failed`: pairs the kernel refused, with its reason, at most `maxPairs` of them; they are
+//   neither close nor apart. `refused`: how many there are.
+// - `checked`: the number of pairs examined: `close`, `apart` and `refused` together.
+// - `truncated`: when either list was cut; `shown` and `total` count the two lists together.
 export interface GapReport extends Truncated {
   within: number;
   pairs: Gap[];
+  close: number;
   apart: number;
   failed: { a: Id; b: Id; message: string }[];
+  refused: number;
   checked: number;
 }
 

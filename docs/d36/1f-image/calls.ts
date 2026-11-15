@@ -8,6 +8,8 @@
 import type { Id } from '../../../packages/engine/src/index';
 import type { ArgsOf, EngineAfter, HostOperation, QueryOutcome, ToolAnswer } from '../00-prep/contract';
 import { HOST_OPERATIONS } from '../00-prep/contract';
+import type { SectionResult } from '../1a-section/contract';
+import { completeRegions } from '../1a-section/calls';
 import type { ImageRequest, OperationHost, RenderedImage, ViewCapability, ViewImageArgs } from './contract';
 import { MAX_IMAGE_BASE64, VIEWS, VIEW_IMAGE_ARGS, callOperation } from './contract';
 
@@ -20,10 +22,13 @@ const server: OperationHost = { engine }; // a document from a file: no renderer
 // ---------------------------------------------------------------- a. scenario 11: pictures of the joint
 
 type Call = ArgsOf<typeof VIEW_IMAGE_ARGS>;
-// The whole joint as the app starts with it; the gears with the housing, the plate and the
-// motor left out; and the joint cut across the axis through the gears, seen from above.
+// The whole joint as the app starts with it; the gears alone, seen from above; and the joint cut
+// across the axis through the gears, seen from above.
+// - The gears alone: the housing, the plate and the motor are left out, and so is the carrier:
+//   its disc (radius 30, z from 46.5 to 51.5) lies over the gears, which end at z = 46, and
+//   would hide the sun and most of the planets from above.
 export const wholeJoint: Call = {};
-export const gearsOnly: Call = { view: 'top', bodies: ['sun', 'planet', 'planets/1', 'planets/2', 'carrier'], width: 1024, height: 768 };
+export const gearsOnly: Call = { view: 'top', bodies: ['sun', 'planet', 'planets/1', 'planets/2'], width: 1024, height: 768 };
 export const cutThroughTheGears: Call = { view: 'top', section: { plane: { kind: 'base', plane: 'XY' }, offset: 40 } };
 export const beforeTheRing: Call = { view: 'front', section: { plane: { kind: 'base', plane: 'XZ' } }, at: 'motorBore' };
 export const whatTheUserLooksAt: Call = { view: 'current' };
@@ -59,6 +64,15 @@ export const noPlane: Call = { section: { offset: 40 } };
 
 const refused = (code: 'notAvailable' | 'failed', message: string, arg?: (string | number)[]): QueryOutcome<ToolAnswer> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 
+// The cut of a request from an answer of the query `section` asked with polylines: the frame
+// and, per region, its loops. Undefined when the answer is not complete: a region filled without
+// one of its holes would show material across a cavity (the rule of the section view of 1a,
+// and its function).
+export function cutOf(section: SectionResult): ImageRequest['cut'] | undefined {
+  const regions = completeRegions(section);
+  return regions && { frame: section.frame, regions: regions.map((region) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) })) };
+}
+
 // The model to draw: the state after `at`, the bodies checked against it, and the cut taken from
 // the query `section` of 1a, which resolves the plane (in the state asked about) and gives the
 // loops the cut is filled with. So the picture of a cut model and the section view of the app
@@ -76,8 +90,10 @@ function requestOf(host: OperationHost, args: ViewImageArgs): ImageRequest | Que
   const section = engine.query('section', { plane, offset, ...(flip ? { flip } : {}), ...(args.bodies ? { bodies: args.bodies } : {}), outline: 'polylines', maxPoints: 1_000_000 }, args.at === undefined ? {} : { at: args.at });
   // an error of the query names its own argument; here that argument sits under `section`
   if (!section.ok) return refused(section.error.code === 'invalidArguments' ? 'failed' : section.error.code, section.error.message, section.error.arg?.[0] === 'bodies' ? [...section.error.arg] : ['section', ...(section.error.arg ?? [])]);
-  const regions = section.result.bodies.flatMap((body) => body.regions).map((region) => ({ loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flat()) }));
-  return { ...request, cut: { frame: section.result.frame, regions } };
+  // a section with more points than the budget is not drawn half filled
+  const cut = cutOf(section.result);
+  if (!cut) return refused('failed', `the section has ${section.result.truncated?.total} points, too many to draw; name fewer bodies`, ['section']);
+  return { ...request, cut };
 }
 
 export const viewImage: HostOperation<typeof VIEW_IMAGE_ARGS> = {
@@ -100,9 +116,18 @@ export const registered: Pick<typeof HOST_OPERATIONS, 'view_image'> = { view_ima
 
 // ---------------------------------------------------------------- c. the app's own use
 
-// The same capability behind a button of the app: the user saves a picture of what the view
-// shows, at the size they choose. Nothing of this goes through the bridge.
-export async function saveImage(state: ImageRequest['state'], save: (name: string, base64: string) => void): Promise<void> {
-  const image = await viewport.image({ state, camera: 'current', width: 1600, height: 1200 });
+// The same capability behind a button of the app: the user saves a picture of the model from
+// the camera of the view, at a fixed size. Nothing of this goes through the bridge.
+// - `shown`: the answer of the query `section` the query panel shows at the moment, if it shows
+//   one (the answer the section view asked for, with polylines). The picture is then cut as the
+//   view is. An answer that is not complete is not filled in the view either; the picture then
+//   has no cut and the app says so.
+// - `visible`: the bodies the user has not hidden; the others are not in the picture either.
+// - What the picture leaves out is what the capability leaves out: the selection, the sketches,
+//   the planes and the labels. The button is labelled "Save picture of the model", not of the
+//   view.
+export async function saveImage(state: ImageRequest['state'], visible: Id[], shown: SectionResult | undefined, save: (name: string, base64: string) => void): Promise<void> {
+  const cut = shown && cutOf(shown);
+  const image = await viewport.image({ state, bodies: visible, camera: 'current', width: 1600, height: 1200, ...(cut ? { cut } : {}) });
   save('view.png', image.base64);
 }

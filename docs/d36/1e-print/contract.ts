@@ -1,5 +1,7 @@
 // Contract of package 1e of D36 (decision D42): print queries. A draft, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
+//
+// Second version, after the first round of reviews (design.md, "Reviews").
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';
@@ -14,7 +16,8 @@ import type { ResultUnits } from '../1b-measure/contract';
 //   - `onBed`: a planar face: "this face lies on the bed". A surface has no side; the frame of
 //     a face has its normal pointing out of the body, and up is the opposite of it. The face
 //     gives the direction for every body of the call; for the body it belongs to, the answer
-//     shows whether the face really is the contact (something of the body may reach below it).
+//     says whether the face really lies on the bed (`onBed`: something of the body may reach
+//     below it).
 //   `turn` turns the body about the vertical. It changes only the size along x and y, for
 //   a part that fits the bed only one way round.
 // - `bed`: the printable space as three lengths: x, y and the height. Without it nothing is
@@ -22,7 +25,10 @@ import type { ResultUnits } from '../1b-measure/contract';
 // - `overhang`: how far a face that looks down may lean from the vertical before it counts as
 //   an overhang: 45° by default. A face at exactly this angle is not one.
 // - `minArea`: overhangs of a face smaller than this are counted in the totals and not listed.
-// - `maxFaces`: the most faces listed per body and orientation, the largest overhang first.
+// - `maxFaces`: the most faces in each list of a body in an orientation (the faces on the bed,
+//   the overhanging faces), the largest first.
+// The answer is bounded by these arguments: a fixed size and at most twice `maxFaces` faces for
+// every body in every orientation, at most twelve orientations, and the bodies asked about.
 export const PRINT_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Each is a print of its own; without it all bodies.', optional: true },
   orientations: {
@@ -42,7 +48,7 @@ export const PRINT_ARGS = {
   bed: { kind: 'vector', title: 'Bed', summary: 'The printable space in mm: x, y and the height.', optional: true },
   overhang: { kind: 'number', title: 'Overhang angle', summary: 'From the vertical.', optional: true, spec: { title: 'Overhang angle from the vertical', unit: 'rad', min: { value: 0 }, max: { value: Math.PI / 2 }, default: Math.PI / 4 } },
   minArea: { kind: 'number', title: 'Smallest overhang listed', optional: true, spec: { title: 'Smallest overhang of a face that is listed', unit: 'mm2', min: { value: 0 }, default: 1 } },
-  maxFaces: { kind: 'number', title: 'Most faces', optional: true, spec: { title: 'Most faces listed per body and orientation', unit: 'count', integer: true, min: { value: 1 }, default: 20 } },
+  maxFaces: { kind: 'number', title: 'Most faces', optional: true, spec: { title: 'Most faces in a list, per body and orientation', unit: 'count', integer: true, min: { value: 1 }, default: 20 } },
 } as const satisfies ArgSpecs;
 
 // ---------------------------------------------------------------- the result
@@ -53,21 +59,29 @@ export const PRINT_ARGS = {
 // - `size`: the box of the body in the print frame: along x, along y, and the height.
 // - `fits`, with a bed: the height is within the bed's and the footprint within its x and y,
 //   either way round (a quarter turn is free).
-// - `contact`: the area that lies on the bed, per face. Only planar faces count: a cylinder on
-//   its side touches the bed in a line, and the facet its polygon rests on is not a contact.
+// - `onBed`, for an orientation given by a face and the body that face belongs to: whether the
+//   face lies on the bed. False when something of the body reaches below it. It does not depend
+//   on what the list of contact faces shows.
+// - `contact`: the area that lies on the bed. Only planar faces count: a cylinder on its side
+//   touches the bed in a line, and the facet its polygon rests on is not a contact. `area` and
+//   `count` are of all faces on the bed; `faces` lists the largest, at most `maxFaces`.
 // - `overhang`: what looks down and leans more than the overhang angle from the vertical, and is
-//   not contact. `area` and `count` are of all faces; `faces` lists the ones of at least
-//   `minArea`, the largest first, at most `maxFaces`. `from`: the height above the bed where
-//   the overhang of that face starts.
+//   not contact. `area` and `count` are of all overhanging faces; `small` of them are below
+//   `minArea` and not listed for that reason; `faces` lists the others, the largest first, at
+//   most `maxFaces`. `from`: the height above the bed where the overhang of that face starts.
+// A list was cut by `maxFaces` when it is shorter than its count says: `contact.faces` than
+// `contact.count`, `overhang.faces` than `overhang.count − overhang.small`.
 export interface PrintOrientation {
   up: Vec3;
   size: Vec3; // mm
   fits?: boolean;
-  contact: { area: number; faces: { face: FaceNameAfter; area: number }[] }; // mm2
-  overhang: { area: number; count: number; faces: { face: FaceNameAfter; area: number; from: number }[] }; // mm2, mm
+  onBed?: boolean;
+  contact: { area: number; count: number; faces: { face: FaceNameAfter; area: number }[] }; // mm2
+  overhang: { area: number; count: number; small: number; faces: { face: FaceNameAfter; area: number; from: number }[] }; // mm2, mm
 }
 // - `bodies`: every body asked about, with its orientations in the order of the argument.
-// - `truncated`: when `maxFaces` cut a list: faces listed of faces that had at least `minArea`.
+// - `truncated`: when `maxFaces` cut any list: the faces listed of the faces there were to list
+//   (on the bed, and overhanging by at least `minArea`), over all bodies and orientations.
 export interface PrintReport extends Truncated {
   angle: number; // rad: the overhang angle used
   bodies: { body: Id; orientations: PrintOrientation[] }[];
@@ -95,9 +109,14 @@ export interface PrintFrame {
 
 // One pass over the triangles of a body: its box in the frame, and per face the area in contact
 // with the bed and the area that overhangs with the height it starts at.
-// - A triangle is contact when its face is planar (`planar` says which), it looks straight down
-//   within `ANGLE_TOLERANCE`, and all its corners are within the precision of the coordinates
-//   (1e-5 of the largest coordinate of the body, at least 1e-5 mm) of the lowest point.
+// - `normalOf`: the normal of a planar face, out of the body (from `context.frame`); undefined
+//   for a face that is not planar. A triangle of a planar face looks where its face looks; only
+//   a triangle of another face is judged by its own normal. A long thin triangle of a flat face
+//   has a normal that float32 coordinates spoil by more than `ANGLE_TOLERANCE` once the body is
+//   not aligned with the axes of the model, and the face is known exactly.
+// - A triangle is contact when its face is planar and all its corners are within `precision` of
+//   the lowest point of the body. `precision` is the precision of the coordinates
+//   (`coordinatePrecision` of 1b over the body).
 // - Otherwise it overhangs when it looks down and leans from the vertical by more than `angle`
 //   plus `ANGLE_TOLERANCE`.
 export interface PrintPass {
@@ -105,4 +124,4 @@ export interface PrintPass {
   contact: Map<number, number>; // face → mm2
   overhang: Map<number, { area: number; from: number }>;
 }
-export declare function printPass(solid: Solid, frame: PrintFrame, angle: number, planar: (face: number) => boolean): PrintPass;
+export declare function printPass(solid: Solid, frame: PrintFrame, angle: number, normalOf: (face: number) => Vec3 | undefined, precision: number): PrintPass;

@@ -8,11 +8,11 @@
 // scenario 9 (chord tolerance 0.01 mm); they become the expectations of the test in
 // packages/scenarios.
 
-import type { Frame, Vec3 } from '../../../packages/engine/src/index';
+import type { Frame, Id, Vec3 } from '../../../packages/engine/src/index';
 import type { EngineAfter, FaceNameAfter, QueryArgs, QueryContext, QueryOutcome, QueryToolInput, RunArgsOf } from '../00-prep/contract';
 import { QUERIES, QueryFailure } from '../00-prep/contract';
 import type { QueryView, SceneAdditions } from '../1b-measure/contract';
-import { QUERY_VIEWS } from '../1b-measure/contract';
+import { QUERY_VIEWS, coordinatePrecision } from '../1b-measure/contract';
 import type { PrintFrame, PrintOrientation, PrintReport } from './contract';
 import { PRINT_ARGS, printPass } from './contract';
 
@@ -43,9 +43,18 @@ export function housingTwoWays(): { better: 'seating' | 'front'; worst: FaceName
   );
   const [seating, front]: PrintOrientation[] = report.bodies[0].orientations;
   if (seating.fits !== true || front.fits !== true) return fail('110 by 110 by 46 fits a bed of 220');
-  // the face named really is the contact: nothing of the housing reaches below it
-  if (seating.contact.faces[0]?.face.role !== 'startCap') return fail('the seating face lies on the bed');
+  // the face named really lies on the bed: nothing of the housing reaches below it
+  if (seating.onBed !== true || front.onBed !== true) return fail('each of the two faces lies on the bed');
   return { better: front.overhang.area < seating.overhang.area ? 'front' : 'seating', worst: seating.overhang.faces[0]?.face };
+}
+
+// A face that does not end up on the bed: the carrier laid "on" the face of its disc the pins
+// stand on. The pins reach below that face, so the body rests on their ends: `onBed` is false
+// and the contact is the three pin ends. The direction is still the one the face gives.
+export function carrierOnItsPinFace(): { onBed: boolean | undefined; restsOn: FaceNameAfter[] } {
+  const report = unwrap(engine.query('print', { bodies: ['carrier'], orientations: [{ by: { onBed: { kind: 'face', body: 'carrier', face: cap('carrier', 'startCap') } } }] }));
+  const orientation = report.bodies[0].orientations[0];
+  return { onBed: orientation.onBed, restsOn: orientation.contact.faces.map((entry) => entry.face) }; // false; carrierPin/startCap and its two copies
 }
 
 // By a direction: on its side. A cylinder touches the bed in a line: contact 0. Overhang
@@ -89,50 +98,70 @@ type Orientation = RunArgsOf<typeof PRINT_ARGS>['orientations'][number];
 declare function frameOfDirection(up: Vec3): PrintFrame;
 declare function turned(frame: PrintFrame, turn: number): PrintFrame;
 
-// What is up in an orientation. A face is resolved through the context, so its frame is in the
-// pose the query is asked about and its normal points out of the body.
-function frameOf(context: QueryContext, orientation: Orientation, index: number): PrintFrame {
+// What is up in an orientation, and for one given by a face, which face of which body it was.
+// A face is resolved through the context, so its frame is in the pose the query is asked about
+// and its normal points out of the body.
+interface Placed {
+  frame: PrintFrame;
+  onBed?: { body: Id; face: number };
+}
+function placedOf(context: QueryContext, orientation: Orientation, index: number): Placed {
   const { by } = orientation;
   if (by.up) {
     if (!(Math.hypot(...by.up) > 0)) throw new QueryFailure('failed', 'a direction needs a length', ['orientations', index, 'by', 'up']);
-    return turned(frameOfDirection(by.up), orientation.turn);
+    return { frame: turned(frameOfDirection(by.up), orientation.turn) };
   }
   const face: Frame | { problem: string } = context.frame({ kind: 'face', body: by.onBed.body, face: by.onBed.face });
   if ('problem' in face) throw new QueryFailure(face.problem === 'nonPlanarFace' ? 'failed' : 'notAvailable', face.problem === 'nonPlanarFace' ? 'only a planar face can lie on the bed' : 'the face is not in this state', ['orientations', index, 'by', 'onBed']);
   const up: Vec3 = [-face.normal[0], -face.normal[1], -face.normal[2]];
   const y: Vec3 = [up[1] * face.x[2] - up[2] * face.x[1], up[2] * face.x[0] - up[0] * face.x[2], up[0] * face.x[1] - up[1] * face.x[0]];
-  return turned({ x: face.x, y, up }, orientation.turn);
+  return { frame: turned({ x: face.x, y, up }, orientation.turn), onBed: { body: by.onBed.body, face: context.face(by.onBed.face) ?? fail('a face that has a frame has a number') } };
 }
 
 export const print: (typeof QUERIES)['print'] = {
   title: 'Print check',
   summary: 'How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. It does not know bridges, wall thickness or supports.',
   returns:
-    'angle: the overhang angle used (rad). bodies: for every body its orientations in the order asked, each with up (unit vector), size (mm: x, y, height in the print frame), fits (with a bed; the footprint either way round), contact (area in mm2 and the planar faces on the bed with their areas) and overhang (area in mm2 and count of all overhanging faces; faces: those of at least minArea, the largest first, each with area and from, the height in mm above the bed where it starts). truncated when maxFaces cut a list.',
+    'angle: the overhang angle used (rad). bodies: for every body its orientations in the order asked, each with up (unit vector), size (mm: x, y, height in the print frame), fits (with a bed; the footprint either way round), onBed (for an orientation given by a face, on the body of that face: whether the face lies on the bed), contact (area in mm2 and count of all planar faces on the bed; faces: the largest, with their areas) and overhang (area in mm2 and count of all overhanging faces; small: how many of them are below minArea and not listed; faces: the others, the largest first, each with area and from, the height in mm above the bed where it starts). Each list holds at most maxFaces faces, so the answer is at most 2 × maxFaces faces per body and orientation; truncated when maxFaces cut any list.',
   args: PRINT_ARGS,
   run(context, args) {
     if (args.bed && args.bed.some((length) => !(length > 0))) throw new QueryFailure('failed', 'the bed has three lengths above zero', ['bed']);
-    const frames = args.orientations.map((orientation, index) => frameOf(context, orientation, index));
+    const placed = args.orientations.map((orientation, index) => placedOf(context, orientation, index));
     const names = context.state.evaluation.faceNames;
     let [shown, total] = [0, 0];
+    // a list cut to `maxFaces`, counted
+    const listed = <T>(list: T[]): T[] => {
+      shown += Math.min(list.length, args.maxFaces);
+      total += list.length;
+      return list.slice(0, args.maxFaces);
+    };
     const bodies = (args.bodies ?? Object.keys(context.bodies)).map((id) => {
       const body = context.bodies[id]; // from the context: the same code answers for a pose
-      const planar = (face: number): boolean => context.surface(id, names[face])?.kind === 'plane';
-      const orientations = frames.map((frame): PrintOrientation => {
-        const pass = printPass(body.solid, frame, args.overhang, planar);
+      const precision = coordinatePrecision(body);
+      // the normal of a planar face, out of the body; undefined for a face that is not planar
+      const normals = new Map<number, Vec3 | undefined>();
+      const normalOf = (face: number): Vec3 | undefined => {
+        if (!normals.has(face)) {
+          const frame = context.frame({ kind: 'face', body: id, face: names[face] });
+          normals.set(face, 'problem' in frame ? undefined : frame.normal);
+        }
+        return normals.get(face);
+      };
+      const orientations = placed.map(({ frame, onBed }): PrintOrientation => {
+        const pass = printPass(body.solid, frame, args.overhang, normalOf, precision);
         const [width, depth, height] = pass.size;
         const fits = args.bed && height <= args.bed[2] && ((width <= args.bed[0] && depth <= args.bed[1]) || (width <= args.bed[1] && depth <= args.bed[0]));
         const contact = [...pass.contact].map(([face, area]) => ({ face: names[face], area })).sort((a, b) => b.area - a.area);
         const over = [...pass.overhang].map(([face, value]) => ({ face: names[face], ...value })).sort((a, b) => b.area - a.area);
         const large = over.filter((entry) => entry.area >= args.minArea);
-        shown += Math.min(large.length, args.maxFaces);
-        total += large.length;
         return {
           up: frame.up,
           size: pass.size,
           ...(fits === undefined ? {} : { fits }),
-          contact: { area: contact.reduce((sum, entry) => sum + entry.area, 0), faces: contact.slice(0, args.maxFaces) },
-          overhang: { area: over.reduce((sum, entry) => sum + entry.area, 0), count: over.length, faces: large.slice(0, args.maxFaces) },
+          // from the pass, not from the list: the list may be cut
+          ...(onBed?.body === id ? { onBed: pass.contact.has(onBed.face) } : {}),
+          contact: { area: contact.reduce((sum, entry) => sum + entry.area, 0), count: contact.length, faces: listed(contact) },
+          overhang: { area: over.reduce((sum, entry) => sum + entry.area, 0), count: over.length, small: over.length - large.length, faces: listed(large) },
         };
       });
       return { body: id, orientations };
@@ -146,17 +175,23 @@ export const FIXTURE: { args: QueryArgs<'print'> } = { args: { orientations: [{ 
 // ---------------------------------------------------------------- c. the view of the app
 
 // A row per body and orientation with what decides: fits, the height, the contact and the
-// overhang. A picked row paints the overhanging faces of that orientation and its contact faces.
-// Rows are counted through all bodies, in the order of the answer.
+// overhang, and whether a face named to lie on the bed does. A picked row paints the overhanging
+// faces of that orientation and its contact faces, and lists the overhanging faces below it with
+// their areas and heights. A last line says when `maxFaces` cut a list: the view replaces the
+// tree, so nothing else would. Rows are counted through all bodies, in the order of the answer.
 export const printView: QueryView<'print'> = {
   answer(result, _args, panel) {
+    const line = (className: string, textContent: string): HTMLElement => Object.assign(document.createElement('div'), { className, textContent });
     const rows = result.bodies.flatMap((body) => body.orientations.map((orientation) => ({ body: body.body, orientation })));
-    return rows.map(({ body, orientation }, index) => {
-      const text = `${panel.bodyName(body)}, up ${orientation.up.map((value) => Math.round(value * 100) / 100).join(' ')}: ${orientation.fits === false ? 'does not fit, ' : ''}height ${panel.number(orientation.size[2], 'mm')}, on the bed ${panel.number(orientation.contact.area, 'mm2')}, overhang ${panel.number(orientation.overhang.area, 'mm2')} on ${orientation.overhang.count} face(s)`;
-      const row = Object.assign(document.createElement('div'), { className: `row ${panel.picked === index ? 'selected' : ''}`, textContent: text });
+    const out = rows.flatMap(({ body, orientation }, index) => {
+      const text = `${panel.bodyName(body)}, up ${orientation.up.map((value) => Math.round(value * 100) / 100).join(' ')}: ${orientation.fits === false ? 'does not fit, ' : ''}${orientation.onBed === false ? 'the face named is not on the bed, ' : ''}height ${panel.number(orientation.size[2], 'mm')}, on the bed ${panel.number(orientation.contact.area, 'mm2')}, overhang ${panel.number(orientation.overhang.area, 'mm2')} on ${orientation.overhang.count} face(s)`;
+      const row = line(`row ${panel.picked === index ? 'selected' : ''}`, text);
       row.onclick = () => panel.pick(panel.picked === index ? undefined : index);
-      return row;
+      if (panel.picked !== index) return [row];
+      const faces = orientation.overhang.faces.map((entry) => line('hint', `${panel.faceLabel(entry.face)}: ${panel.number(entry.area, 'mm2')} from ${panel.number(entry.from, 'mm')} above the bed`));
+      return [row, ...faces];
     });
+    return result.truncated ? [...out, line('hint', `${result.truncated.shown} of ${result.truncated.total} faces are listed.`)] : out;
   },
   scene(result, _args, panel): Partial<SceneAdditions> {
     const rows = result.bodies.flatMap((body) => body.orientations.map((orientation) => ({ body: body.body, orientation })));

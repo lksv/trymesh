@@ -1,6 +1,8 @@
 // Contract of package 1f of D36 (decision D43): a picture of a view for the AI. An operation of
 // the app (`HostOperation` of the preparatory step), not a query: the engine has no renderer.
 // A draft, only type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
+//
+// Second version, after the first round of reviews (design.md, "Reviews").
 
 import type { Frame, Id, Vec3 } from '../../../packages/engine/src/index';
 import type { AppHost, ArgSpecs, EngineAfter, QueryOutcome, RunArgsOf, StateAfter, ToolAnswer } from '../00-prep/contract';
@@ -30,7 +32,9 @@ export type ViewName = keyof typeof VIEWS | 'current';
 
 // What the viewport of a running app gives to the host: a picture of a model from a camera,
 // without touching what the user sees (it is drawn off the screen, at the size asked for,
-// whatever the size of the window).
+// whatever the size of the window). The picture depends only on the request: the camera of the
+// picture carries its own light, set as the light of the user's camera is, so the same request
+// gives the same picture wherever the user happens to look.
 // - `state`: the model to draw: its bodies with their edges, as the app draws a model, without
 //   the selection, the sketches, the planes and the labels of the user's view.
 // - `bodies`: only these are drawn, and the picture is fitted to them.
@@ -38,7 +42,8 @@ export type ViewName = keyof typeof VIEWS | 'current';
 //   (direction, target and scale).
 // - `cut`: the half-space that is cut away and what fills the cut, as the section view of 1a
 //   draws them: the frame of the cutting plane and, per region of the section, its loops in the
-//   x and y of that frame, the outer one first.
+//   x and y of that frame, the outer one first. The regions are all of them: a caller that has
+//   only a part of a section does not ask for a cut.
 // The answer says what it drew, so that a caller can relate pixels to millimetres and colours to
 // bodies: `scale` is millimetres per pixel; every body has its own colour, from a fixed palette
 // in the order of the bodies of the state.
@@ -76,8 +81,10 @@ declare module '../00-prep/contract' {
 // - `bodies`: only these; the picture is fitted to them. Hiding the housing shows the gears.
 // - `section`: the model cut by a plane, as the query `section` of 1a takes it (a plane, an
 //   offset along its normal, a flip). What lies on the side the normal points to is cut away and
-//   the cut is filled.
-// - `at`: the model as it was after this feature.
+//   the cut is filled. The three arguments are written again here, without the titles they have
+//   in `SECTION_ARGS`: an entry of `fields` cannot carry a title (design.md of 1b, "Needs").
+// - `at`: the model as it was after this feature. An argument here because the path of an
+//   operation has no `at` and no `after` (design.md, "Needs").
 // - `width`, `height`: the size of the picture in pixels.
 export const VIEW_IMAGE_ARGS = {
   view: { kind: 'choice', options: ['iso', 'front', 'back', 'left', 'right', 'top', 'bottom', 'current'], title: 'View', summary: 'iso without it. front is seen from −Y, left from −X, top from above; current is the camera of the app as the user left it.', optional: true },

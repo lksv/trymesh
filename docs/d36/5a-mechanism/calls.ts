@@ -97,10 +97,17 @@ engine.execute({ type: 'setPose', values: { elbow: true } });
 // - The last value may round to a hair above the upper limit; it is within the tolerance of the
 //   limits and is taken as the limit.
 // - A step is clear only when it has no colliding pair and no pair the kernel failed on, so
-//   `failed` is kept. The two pins in their holes are expected among the fits at every step
-//   (the pin of the shoulder as modelled, the pin of the elbow turned in its hole), and the
-//   forearm against the motor and the screws among the pairs beyond about a quarter turn. That
-//   is how the test tells a posed answer from one for the model as modelled, which has no pair.
+//   `failed` is kept.
+// - What the test expects, and how it tells a posed answer from one for the model as modelled:
+//   - the forearm against the motor and the screws is among the pairs beyond about a quarter
+//     turn (the first screw near 90.7°, the motor near 91.2°) and in neither list below it; as
+//     modelled no step has a pair;
+//   - the pin of the elbow in its hole is never among the pairs. Where it is turned against
+//     its hole it may be among the fits (two polygons of one diameter turned differently share
+//     thin slivers); at 0 and at a turn by a whole side of the polygon it shares nothing and
+//     is in no list;
+//   - the pin of the shoulder is in no list at any step: the shoulder stays at 0, and a pin in
+//     the hole it was drawn with shares nothing.
 interface Step {
   value: number;
   pairs: [Id, Id][];
@@ -211,7 +218,8 @@ export function whereTheForearmIs(): { modelled: Vec3; moved: boolean } {
 // A query reads the posed body: its description has the bounds in the pose.
 export const posedBounds = (): Vec3 => unwrap(engine.query('body', { body: 'forearm' })).bounds.min;
 // A state asked for with `at` is posed by the mechanism as it resolves against that state. With
-// the pose at zero that is the model as modelled, at every point of the timeline, as today.
+// the pose at zero, and no joint at fault but for its axis, that is the model as modelled, at
+// every point of the timeline, as today.
 export function duringConstruction(): InterferenceReport {
   run({ type: 'setPose', values: { shoulder: 0, elbow: 0 } });
   return unwrap(engine.query('interference', {}, { at: 'elbowPin' }));
@@ -223,14 +231,22 @@ export const bentAtLayout: QueryToolInput = { query: 'interference', at: 'layout
 // Asked for the point just before the sketch of the axes, the same query fails and names the
 // joint: the forearm is in the query by default, its bent pose cannot be computed there, and no
 // answer is given for another pose. A query about bodies that do not move still answers.
-export function bentBeforeTheAxes(): { all: string; still: Vec3 } {
+export function bentBeforeTheAxes(): { all: string; still: Vec3; atZero: Vec3 } {
   run({ type: 'setPose', values: { shoulder: 0, elbow: 1.2 } });
   const outcome = engine.query('interference', {}, { at: 'elbowPin' });
   const all = outcome.ok ? fail('expected an error') : outcome.error.code; // 'failed'
   // `base` is a root and `upper` hangs on the shoulder, which is at zero: neither is blocked
   const still = unwrap(engine.query('body', { body: 'upper' }, { at: 'elbowPin' })).bounds.min;
-  return { all, still };
+  // The way to the blocked body that writes nothing: the same point with the elbow previewed
+  // at zero. A joint at zero whose only fault is its axis blocks nothing, so the forearm is
+  // read where it is modelled. (It does not help a joint whose limits do not contain zero, or
+  // one with another fault.)
+  const zero = engine.preview({ type: 'setPose', values: { elbow: 0 } }, 'elbowPin');
+  const atZero = zero.ok ? unwrap(engine.query('body', { body: 'forearm' }, { state: zero.state })).bounds.min : fail(zero.error.message);
+  return { all, still, atZero };
 }
+// The same over MCP, as one call.
+export const forearmAtZeroOverMcp: QueryToolInput = { query: 'body', args: { body: 'forearm' }, at: 'elbowPin', after: { type: 'setPose', values: { elbow: 0 } } };
 
 // The entry of the query `mechanism`: the result of the recompute for the state asked about,
 // and on request what hangs on one joint. A joint the section does not have is the caller's to

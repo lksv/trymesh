@@ -35,7 +35,8 @@ function run(...commands: CommandAfter[]): StateAfter {
 // - four screws on top of `upper` around the motor, clear of it by 4.5: the body `screw` and the
 //   pattern `screws` that copies it three times about the centre of the motor (`screws/1` to
 //   `screws/3`).
-// As modelled nothing collides: the plates touch, the pins are fits. Turning the elbow, the
+// As modelled nothing collides: the plates touch, and each pin has the polygon of its hole, so
+// the two share nothing (neither a collision nor a fit of the report). Turning the elbow, the
 // forearm passes over `upper` and runs into the screws and the motor beyond about a quarter turn
 // either way (the distance of its centre from the motor falls below the sum of the two radii).
 const sketch = (id: Id): CommandAfter => ({

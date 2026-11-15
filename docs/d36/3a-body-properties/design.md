@@ -1,6 +1,6 @@
 # 3a Body properties and the catalog of materials (D48)
 
-**State: design, third version, after two rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Not implemented. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
+**State: design, third version, after three rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Not implemented. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
 
 The package adds a section to the document. What is expensive to change later is the shape of that section, its upgrade step and what a build without the package does with it, so those parts are decided in full here; the app and the wording of the MCP answers are described and left to the implementation.
 
@@ -59,7 +59,7 @@ bodyProperties: Record<Id, BodyProperties>   // in Document, always present, {} 
   - the answer of `execute` over MCP, and the status line of the app, name what a command took over (`takenOver`): the features and sketch entities the command adds whose ID a section named before the command. It is read from the document and the command, not from the model: a feature removed and added again inside one batch has its body before and after, and is found all the same; a body made and given properties in one batch is not reported;
   - the list of entries without a body is in every `get_model`, so a caller sees them before it reuses an ID.
 
-  The rule is one of the registry of sections, not of this section: 5a names bodies in its links and sketches and points in its axes, and gets both functions with its entry.
+  The rule is one of the registry of sections, not of this section: 5a names bodies in its links and sketches and points in its axes, and gets both functions with its entry. A derived ID counts with the ID it is derived from, which is the one a caller chooses: the feature of the body `screws/2` here, and in 5a the projected entity `x1` of an axis through its point `x1/center`.
 
   Considered: `addFeature` refuses an ID that an entry still names. Rejected: making a feature again under its ID is the more common case with an AI as the author, and it would then need the properties removed and set again around it.
 - **Strict entries.** The validator of an entry lists the fields it allows (`onlyFields`, as the pattern does for its source) and refuses any other, on a command and on a load. This is what lets later packages add fields without an upgrade step: a build that does not know a field refuses the document instead of dropping the field.
@@ -161,7 +161,7 @@ interface SectionSpec<S, R> {
   validate(value: unknown, what: string): S;       // load: shape and the rules of the section alone, strict
   commands: Record<string, (doc: Document, command: Dict, context: ValidationContext) => S>;
   renameParameter(section: S, from: string, to: string): S;
-  names(section: S): Id[];                         // the IDs of features and sketch entities the section names
+  names(section: S): Id[];                         // the IDs of features and sketch entities the section names, a derived ID with the one it is derived from
   // after the timeline: the result, and the section with the numbers written back when they changed
   evaluate(section: S, doc: Document, model: State, environment: Environment): { result: R; written?: S };
 }
@@ -330,3 +330,16 @@ The same two reviewers, read-only, at commit `5cf6f5b`; the internal one was a f
 | The app does not make its own list for the export of the whole model: it calls `exportMesh('stl')` without one | codex, factual | Yes (`app.ts`, the button "Export STL") | Said as it is; only `_export_stl` makes a list, and the button of the app counts all bodies to enable itself |
 | "As the step from version 1 does with `parameters`": that step takes `null` for missing | codex, factual | Yes (`upgrade` uses `??`) | The comparison says so |
 | The model `build` makes is not the one the calls of 5a describe: the screws reach into the motor, there is no pin and no hole, nothing depends on the pose | internal, factual | Yes (computed by the reviewer) | `build` makes plates with pins in holes of the same diameter at both joints, screws clear of the motor, and a forearm that runs into the screws and the motor beyond about a quarter turn; the numbers are computed by hand, not run through the kernel |
+
+### Round 3 (2026-11-15), narrow: the fixes of round 2
+
+The same two reviewers, read-only, at commit `90033c8`; the internal one was again a fresh subagent. `agy` is still out of quota. Neither found a blocker. `codex` returned three findings (two major, one factual), the internal reviewer three factual errors and no major; most are about 5a and are recorded in its design. The ones that touch this package:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The guard against a reused ID counts the point of an axis and not the projected entity it is derived from: with `x1/center` named, `x1` is free for an unrelated projection, which then becomes the axis | codex, major | Yes (`derivedPoints` and `entityOf` in `document.ts`; `freshIds` and `newId` compare whole strings) | `namedBySections` gives a derived ID together with the ID it is derived from, for a body (`screws/2`) and for a point (`x1/center`); `takenOver` reads the same list and counts projected entities, also inside a sketch added whole |
+| "The pins are fits" reads as the list `fits` of the report, where a pin in the hole it was drawn with is not | both, factual | Yes (`interference.ts`; `bodies.test.ts`: a pin of the same polygon shares nothing) | The comment of `build` says what the pairs share as modelled; what a sweep expects is in the calls of 5a |
+
+Checked and found holding by both: `takenOver` from the document and the command (a batch, a nested batch, a derived body ID, a sketch point, a sketch added with its entities, a feature removed and added again, a body made and given properties in one batch; `updateFeature` and undo add nothing); `fieldErrors` of the pair that is used; that both generators can count the IDs; the two corrected statements about the code; the commands of `build` against the types and the validators; its geometry, computed by both by hand (the plates touch, the screws are 4.5 clear of the motor, the forearm is 36 from the motor as modelled and 15.04 at 1.2 rad, first contact with a screw near 90.7° and with the motor near 91.2°). Nothing was run through the kernel.
+
+No finding of this round was left without a change. With six findings over the two packages, two of them major and none a blocker, and fixes of a few sentences each, no fourth round was run.

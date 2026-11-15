@@ -4,7 +4,7 @@
 // types of the preparatory step and states what the package adds. The design is design.md; the
 // scenario written as calls is calls.ts.
 //
-// Third version, after two rounds of reviews (design.md, "Reviews").
+// Third version, after three rounds of reviews (design.md, "Reviews").
 //
 // Where the types will live: everything a caller of the engine or an AI reads goes to `types.ts`
 // (the section, its entry, the patch, the three commands, the result in the evaluation), into the
@@ -185,10 +185,13 @@ export interface SectionInfo {
 // of every axis. A feature or a sketch entity added under such an ID takes the reference over,
 // which is wanted when the thing is made again and a trap when the ID is reused for something
 // else. Two functions of the engine keep that visible, for every section of the registry:
-// - `namedBySections`: every such ID. The generators of IDs (`freshIds` of the engine, `newId` of
-//   the app) count them as used, as `freshIds` counts every text of the features today.
+// - `namedBySections`: every such ID, and for a derived ID also the ID it is derived from, which
+//   is the one a caller chooses: the feature of the body `screws/2`, the projected entity of
+//   the point `x1/center`. The generators of IDs (`freshIds` of the engine, `newId` of the app)
+//   count them as used, as `freshIds` counts every text of the features today.
 // - `takenOver`: the IDs of the features and sketch entities a command adds (at any depth of
-//   a batch) that a section of the document named before the command. It reads the document and
+//   a batch; points, curves and projected entities, also those inside a sketch that is added
+//   whole) that are among `namedBySections` of the document before the command. It reads the document and
 //   the command, not the model, so a feature removed and added again inside one batch is found.
 //   The answer of `execute` over MCP and the status line of the app list them.
 export declare function namedBySections(document: DocumentAfter): Id[];

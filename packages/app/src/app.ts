@@ -43,8 +43,10 @@ import {
   emptyDocument,
   emptySketch,
   featureInput,
+  generatorOf,
   isDimension,
   isFlag,
+  producesTool,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
 import { byId, download, fmt, h } from './dom';
@@ -1685,7 +1687,7 @@ export class App {
   private patternChoices(index: number): PatternChoices {
     const before = this.doc.features.slice(0, index);
     return {
-      tools: before.filter((f) => f.type === 'extrude' && f.operation !== 'new').map((f) => f.id),
+      tools: before.filter(producesTool).map((f) => f.id),
       bodies: Object.keys(this.stateBefore(index).evaluation.bodies),
       sketches: before.filter((f) => f.type === 'sketch').map((f) => f.id),
     };
@@ -1972,7 +1974,7 @@ export class App {
   private generatorFields(m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
     const spec = GENERATORS[profile.generator];
     const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
-    const earlier = this.doc.features.slice(0, m.index).filter((f): f is ExtrudeFeature => f.type === 'extrude' && f.id !== m.draft.id);
+    const earlier = this.doc.features.slice(0, m.index).filter((f) => f.id !== m.draft.id);
     return [
       ...spec.operands.map((operand) => {
         const choices = this.operandChoices(profile.sketch, operand.kinds);
@@ -1995,7 +1997,7 @@ export class App {
           : this.draftField(m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
       ),
       ...Object.entries(spec.refs).map(([name, ref]) => {
-        const choices = earlier.filter((f) => f.profile.type === 'generated' && ref.generators.includes(f.profile.generator));
+        const choices = earlier.filter((f) => (ref.generators as readonly (string | undefined)[]).includes(generatorOf(f)));
         const chosen = profile.refs?.[name];
         return h(
           'label',

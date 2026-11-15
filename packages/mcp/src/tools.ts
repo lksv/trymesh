@@ -18,6 +18,7 @@ import {
   type Id,
   type Interference,
   type Issue,
+  FEATURE_TYPE_INFO,
   INTERFERENCE_THRESHOLD,
   SKETCH_TOOLS,
   type SketchFeature,
@@ -153,11 +154,9 @@ function featureSummary(feature: Feature, result: FeatureResult | undefined): un
     ...(feature.expressions ? { expressions: feature.expressions } : {}),
     ...(result?.bodies?.length ? { bodies: result.bodies } : {}),
   };
-  if (feature.type === 'plane') return { ...base, base: feature.base as unknown as Json, offset: feature.offset };
-  if (feature.type === 'pattern') return { ...base, source: feature.source as unknown as Json, transform: feature.transform as unknown as Json };
-  if (feature.type === 'extrude') {
-    return { ...base, profile: feature.profile as unknown as Json, extent: feature.extent as unknown as Json, operation: feature.operation, ...(feature.targets === undefined ? {} : { targets: feature.targets }), ...factsInfo(result) };
-  }
+  // A sketch has commands of its own and no updatable fields: its summary counts its content. Any
+  // other type is summarised by its updatable fields and its facts, so a new type needs no branch here.
+  if (feature.type !== 'sketch') return { ...base, ...updatableFields(feature), ...factsInfo(result) };
   const sketch = result?.sketch;
   return {
     ...base,
@@ -167,6 +166,13 @@ function featureSummary(feature: Feature, result: FeatureResult | undefined): un
     constraints: Object.keys(feature.constraints).length,
     ...(sketch ? sketchBrief(result) : {}),
   };
+}
+
+// The fields of a feature that `updateFeature` may change, as the registry of feature types lists
+// them: the summary of every type that has no summary of its own.
+function updatableFields(feature: Feature): Record<string, Json> {
+  const fields = feature as unknown as Record<string, Json | undefined>;
+  return Object.fromEntries(FEATURE_TYPE_INFO[feature.type].updatable.flatMap((field): [string, Json][] => (fields[field] === undefined ? [] : [[field, fields[field] as Json]])));
 }
 
 function modelSummary(state: EngineState): unknown {

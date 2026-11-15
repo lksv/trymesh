@@ -50,10 +50,11 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
 | `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
 | `mesh-distance.ts`, `surfaces.ts` | the smallest distance of two parts of the mesh, the precision of its coordinates and the accuracy of a number measured on it; the circle two surfaces meet in |
-| `solid.ts`, `interference.ts` | the mesh of a prism, faces and edges of a body, the plane on a face, the projection of an edge, STL; interference of bodies |
-| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `SketchState`) |
+| `solid.ts`, `interference.ts` | rigid transforms, faces and edges of a body, the plane on a face, the projection of an edge, measures of a mesh, STL; interference of bodies |
+| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
 | `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
+| `recompute/tool-prism.ts` | a tool build: the mesh of a prism over regions and its faces (`buildPrism`). Every tool build is a module `recompute/tool-*.ts` and returns a `BuiltTool` |
 | `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
 | `features/profile.ts` | the document half of a profile source: validation, references, fields |
 | `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |

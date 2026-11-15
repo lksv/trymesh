@@ -5,7 +5,8 @@ import { test } from 'vitest';
 import { createEngine, emptySketch } from '../packages/engine/src/index';
 import type { Command, Engine, Solid } from '../packages/engine/src/index';
 import type { Region } from '../packages/engine/src/sketch';
-import { buildPrism, volumeOf } from '../packages/engine/src/solid';
+import { buildPrism } from '../packages/engine/src/recompute/tool-prism';
+import { volumeOf } from '../packages/engine/src/solid';
 import { createManifoldKernel } from '../packages/kernel-manifold/src/index';
 import { createPlanegcsSolver } from '../packages/solver-planegcs/src/index';
 

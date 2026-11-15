@@ -2,10 +2,9 @@
 // recompute, not a part of the extrusion: every feature that builds a tool over a profile uses it.
 import { GENERATORS, type ResolvedOperand, generateProfile } from '../generators';
 import { type Loop, type Region, sameRegion } from '../sketch';
-import type { SideCurve } from '../solid';
 import type { Id, IssueCode, ProfileSource } from '../types';
 import { issue, lookup } from './services';
-import type { ResolvedProfile, SketchState, State } from './state';
+import type { ResolvedProfile, SideCurve, SketchState, State } from './state';
 
 // Why a profile could not be resolved. A generator explains its failure itself (`message`); the
 // general text of the code is about sketch curves.

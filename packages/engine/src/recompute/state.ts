@@ -1,8 +1,8 @@
 // The state of the recompute between features and the types a step of a feature works with.
 import type { SketchAnalysis } from '../analysis';
 import type { Profile, Region, SketchGeometry } from '../sketch';
-import type { FaceInfo, Prism, RigidTransform, SideCurve } from '../solid';
-import type { CopyTag, Document, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult } from '../types';
+import type { FaceInfo, RigidTransform } from '../solid';
+import type { CopyTag, Document, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, Vec2 } from '../types';
 
 export interface Deps {
   solver: SketchSolver;
@@ -38,7 +38,12 @@ export interface ToolRecipe {
   // `placement`: where a copy made by a pattern stands and how its faces are tagged. The tool is
   // built there, not moved afterwards, so that what depends on the targets is measured in the
   // direction the copy points in.
-  build(targets: Solid[], firstFaceId: number, placement?: Placement): Prism;
+  build(targets: Solid[], firstFaceId: number, placement?: Placement): BuiltTool;
+}
+// What a tool build returns, whatever the tool is (a prism today; recompute/tool-*.ts).
+export interface BuiltTool {
+  solid: Solid;
+  faces: { name: FaceName; info: FaceInfo }[]; // nové stěny; číslo stěny = firstFaceId + index
 }
 export interface Placement {
   transform: RigidTransform;
@@ -49,6 +54,9 @@ export interface Placement {
 export type Model = Pick<State, 'bodies' | 'faceNames' | 'faceInfos' | 'faceIds'>;
 // The model after a tool was applied and the targets it did not change, or why it could not be applied.
 export type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false; code: IssueCode; refs?: unknown[]; detail?: string };
+
+// Křivka skici, ze které vzniká boční stěna. `general`: a side of a generated profile.
+export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number } | { type: 'general' };
 
 // Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
 // A generated profile adds what its generator published and warned about.

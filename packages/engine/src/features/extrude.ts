@@ -3,9 +3,10 @@ import type { NumberSpec } from '../catalog';
 import { toolSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
 import { applyTool, issue, withFaces } from '../recompute/services';
-import type { Done, Step, StepContext, ToolRecipe } from '../recompute/state';
+import type { BuiltTool, Done, Step, StepContext, ToolRecipe } from '../recompute/state';
+import { buildPrism } from '../recompute/tool-prism';
 import type { Region } from '../sketch';
-import { type Prism, buildPrism, transformFrame } from '../solid';
+import { transformFrame } from '../solid';
 import type { ExtrudeFeature } from '../types';
 import { has } from '../util';
 import { type Dict, type FeatureRef, type ValidationContext, base, fail, object, oneOf, string } from '../validation';
@@ -84,7 +85,7 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
     return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...applied.model, tools }) };
   }
   const first = state.faceNames.length;
-  let tool: Prism;
+  let tool: BuiltTool;
   try {
     tool = build([], first);
   } catch (error) {

@@ -730,6 +730,25 @@ describe('the app, driven as a user drives it', () => {
     h.record('at most one pair listed: the panel says how many there are');
     h.press('panel', 'Close');
     h.record('the gaps closed');
+    // ----- a query without a view whose answer has units at every depth: the mass
+    h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'mass', true);
+    // two bodies: the first is chosen before the second row is added, and stays
+    const item = (index: number): HTMLSelectElement => h.document.querySelectorAll('#panel .item select')[index] as HTMLSelectElement;
+    h.press('panel', 'Add');
+    h.type(item(0), 'e1', true);
+    h.press('panel', 'Add');
+    h.type(item(1), 'e2', true);
+    h.type(h.field('Density (optional)'), '1.24', true);
+    // a density of its own for the second body: a row of the record by body
+    h.type(h.field('Density by body (optional)'), 'e2', true);
+    h.type(h.document.querySelector('#panel label .item input') as HTMLInputElement, '7.8', true);
+    h.record('the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body');
+    h.press('panel', 'Ask');
+    h.record('asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor');
+    h.type(h.field('Density (optional)'), '', true);
+    h.press('panel', 'Ask again');
+    h.record('asked without the density for all: refused at the density for the body that has none, its row marked');
+    h.press('panel', 'Close');
     h.press('toolbar', 'Collisions');
     outside(h, { type: 'renameFeature', id: 'e2', name: 'Kolík' });
     h.record('a change of the document throws the answer away');

@@ -1,6 +1,6 @@
 # 1d Mass properties
 
-**Decision D41. State: the engine side (the query `mass`) is implemented on the branch `d36/1d`; see "As implemented" at the end, which says where the code differs from the text below. The design is in its third version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D41. State: implemented on the branch `d36/1d` (the query `mass`; in the app the generic form of a query); see "As implemented" at the end, which says where the code differs from the text below. The design is in its third version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the mass of the carrier beyond the output.
 
@@ -178,3 +178,14 @@ Not acted on, and why:
 
 - **A density in `densities` for a body that is not listed is ignored** (the reviewer's suspicion: a mistyped but existing ID would take the fallback without a word). Kept, and written down above: a table of densities shared by several questions is the use, and the answer lists the density of every body.
 - **The direction of the axis is made a unit vector although `context.axis` only gives unit vectors.** Kept: it costs nothing and the entry does not depend on that promise; it is tested over a context written by hand.
+
+### The app side (2026-11-15)
+
+No view, as designed: the generic form of a query asks `mass` and shows the answer as a tree. Two things changed in the form itself, both for every query:
+
+- **The items of a list keep the key of the list** for their unit and digits (`tree` in `packages/app/src/panels/query.ts`), as the tool `query` rounds them: the rows of the tensor are written in g·mm² to six significant digits. Before, an item was known by its number in the list and had no unit.
+- **A list and a record read the draft when a button of theirs is pressed** (`Form.get`, `packages/app/src/queries/controls.ts`). Found in a browser with this query, the first whose form a user fills with two bodies and a record: a body chosen in the first row was thrown away by *Add*, because choosing it does not build the panel again and *Add* wrote the list as it was built. The same held for ✕ and for a new key of a record, and for the lists of bodies of `interference`, `gap` and `section`.
+
+Tested by three recorded steps of the model case of `packages/app/test/app.test.ts` (two bodies and a density by body, the answer with its units, a body left without a density) and a case of `packages/app/test/query-controls.test.ts`; run in a browser (`docs/ui/queries.md`, "Implementation status").
+
+**Not done:** the mass in the model panel next to the volume (deferred by the design until bodies have a density); a marker at the centre of mass.

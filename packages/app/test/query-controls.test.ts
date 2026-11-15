@@ -13,7 +13,7 @@ afterEach(() => {
 // A form that only remembers what its controls wrote.
 function recordingForm(): { form: Form; written: unknown[] } {
   const written: unknown[] = [];
-  const form = { armed: undefined, arm: () => undefined, set: (_path: unknown, value: unknown) => void written.push(value), title: (_spec: unknown, name: string) => name } as unknown as Form;
+  const form = { armed: undefined, arm: () => undefined, set: (_path: unknown, value: unknown) => void written.push(value), get: () => written[written.length - 1], title: (_spec: unknown, name: string) => name } as unknown as Form;
   return { form, written };
 }
 
@@ -40,6 +40,29 @@ describe('controls of the form of a query', () => {
     expect(written[0]).toEqual([2, 0, 1]);
     for (const field of fields) h.type(field, '', true);
     expect(written[written.length - 1]).toBeUndefined();
+  });
+
+  // Found in a browser with the first query that takes two bodies and a record (D41): a value
+  // chosen inside a list does not rebuild the panel, and `Add` wrote the list as it was built.
+  it('a list and a record write what the draft holds when they are pressed, not what they were built with', async () => {
+    const h = (harness = await startApp());
+    const { form, written } = recordingForm();
+    // built with one empty item; since then the draft got a body in it
+    const list = CONTROLS.list({ kind: 'list', of: { kind: 'text' } }, [undefined], ['names'], form, {});
+    written.push(['first']);
+    (list[list.length - 1] as HTMLButtonElement).click(); // Add
+    expect(written[written.length - 1]).toEqual(['first', undefined]);
+    written.push(['first', 'second']);
+    (list[0].querySelector('button') as HTMLButtonElement).click(); // remove the first item
+    expect(written[written.length - 1]).toEqual(['second']);
+    // a record built with one key without a value; since then the draft got its value
+    const record = CONTROLS.record({ kind: 'record', keys: 'text', of: { kind: 'text' } }, { a: undefined }, ['byName'], form, {});
+    written.push({ a: 'one' });
+    h.type(record[record.length - 1] as HTMLInputElement, 'b', true);
+    expect(written[written.length - 1]).toEqual({ a: 'one', b: undefined });
+    written.push({ a: 'one', b: 'two' });
+    (record[0].querySelector('button') as HTMLButtonElement).click(); // remove the key a
+    expect(written[written.length - 1]).toEqual({ b: 'two' });
   });
 
   // review of D39, the app side: a field marked as wrong kept the value from before in the draft

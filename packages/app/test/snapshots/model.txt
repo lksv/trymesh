@@ -2817,7 +2817,132 @@
   status: 
   view: 1 scene(s) set
 
-=== 74. a change of the document throws the answer away
+=== 74. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
+  panel:
+    + h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    + label title="Taken together as one rigid piece."
+    +   "Bodies"
+    +   div.item
+    +     select value="e1"
+    +       option value="": "—"
+    +       option selected value="e1": "Deska"
+    +       option value="e2": "Vysunutí 2"
+    +       option value="e3": "Vysunutí 3"
+    +     button.icon title="Remove": "✕"
+    +   div.item
+    +     select value="e2"
+    +       option value="": "—"
+    +       option value="e1": "Deska"
+    +       option selected value="e2": "Vysunutí 2"
+    +       option value="e3": "Vysunutí 3"
+    +     button.icon title="Remove": "✕"
+    +   button.link: "Add"
+    + label title="Of every listed body that has none of its own."
+    +   "Density (optional)"
+    +   span.field
+    +     input.value value="1.24"
+    +     span.unit: "g/cm³"
+    + label title="Of single bodies; taken as it is, before `density`."
+    +   "Density by body (optional)"
+    +   div.item
+    +     span.name: "Vysunutí 2"
+    +     span.field
+    +       input.value value="7.8"
+    +       span.unit: "g/cm³"
+    +     button.icon title="Remove": "✕"
+    +   select value=""
+    +     option selected value="": "Add…"
+    +     option value="e1": "Deska"
+    +     option value="e3": "Vysunutí 3"
+    + label title="The part of the volume that is material; 1 is solid. It applies to the bodies that take `density`, and assumes the material is spread evenly: for a print with solid shells give an effective density instead."
+    +   "Fill factor (optional)"
+    +   span.field
+    +     input.value value="" placeholder="1"
+    +     span.unit
+    + label title="Adds the moment of inertia about this axis."
+    +   "Axis (optional)"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="X": "X"
+    +     option value="Y": "Y"
+    +     option value="Z": "Z"
+    +     option value="point": "Through a sketch point"
+    + div.buttons
+    +   button.primary: "Ask"
+    +   button: "Close"
+  view: 1 scene(s) set
+
+=== 75. asked: the mass, the centre of mass and the rows of the tensor with their units; each body with its density and fill factor
+  engine: query("mass", {"bodies":["e1","e2"],"density":1.24,"densities":{"e2":7.8}}, {}) -> ok
+  panel:
+    +   button.primary: "Ask again"
+    -   button.primary: "Ask"
+    + p.answer: "mass: 20.99 g"
+    + p.answer: "volume: 12783.332471 mm³"
+    + p.answer: "centerOfMass: [40.376354 mm, 15 mm, 5 mm]"
+    + div.tree
+    +   p.answer: "inertia (3)"
+    +   p.answer: "1: [1329 g·mm², -0.0000137778 g·mm², -2.97672e-13 g·mm²]"
+    +   p.answer: "2: [-0.0000137778 g·mm², 23421 g·mm², 8.22675e-16 g·mm²]"
+    +   p.answer: "3: [-2.97672e-13 g·mm², 8.22675e-16 g·mm², 24400.2 g·mm²]"
+    + div.tree
+    +   p.answer: "bodies (2)"
+    +   div.tree
+    +     p.answer: "1"
+    +     p.answer: "body: Deska"
+    +     p.answer: "mass: 14.88 g"
+    +     p.answer: "volume: 12000 mm³"
+    +     p.answer: "density: 1.24 g/cm³"
+    +     p.answer: "fill: 1"
+    +     p.answer: "centerOfMass: [20 mm, 15 mm, 5 mm]"
+    +   div.tree
+    +     p.answer: "2"
+    +     p.answer: "body: Vysunutí 2"
+    +     p.answer: "mass: 6.10999 g"
+    +     p.answer: "volume: 783.332471 mm³"
+    +     p.answer: "density: 7.8 g/cm³"
+    +     p.answer: "fill: 1"
+    +     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
+  view: 1 scene(s) set
+
+=== 76. asked without the density for all: refused at the density for the body that has none, its row marked
+  engine: query("mass", {"bodies":["e1","e2"],"densities":{"e2":7.8}}, {}) -> invalidArguments: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`
+  panel:
+    + label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    - label title="Of every listed body that has none of its own."
+    +     input.value value=""
+    -     input.value value="1.24"
+    + p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    - p.answer: "mass: 20.99 g"
+    - p.answer: "volume: 12783.332471 mm³"
+    - p.answer: "centerOfMass: [40.376354 mm, 15 mm, 5 mm]"
+    - div.tree
+    -   p.answer: "inertia (3)"
+    -   p.answer: "1: [1329 g·mm², -0.0000137778 g·mm², -2.97672e-13 g·mm²]"
+    -   p.answer: "2: [-0.0000137778 g·mm², 23421 g·mm², 8.22675e-16 g·mm²]"
+    -   p.answer: "3: [-2.97672e-13 g·mm², 8.22675e-16 g·mm², 24400.2 g·mm²]"
+    - div.tree
+    -   p.answer: "bodies (2)"
+    -   div.tree
+    -     p.answer: "1"
+    -     p.answer: "body: Deska"
+    -     p.answer: "mass: 14.88 g"
+    -     p.answer: "volume: 12000 mm³"
+    -     p.answer: "density: 1.24 g/cm³"
+    -     p.answer: "fill: 1"
+    -     p.answer: "centerOfMass: [20 mm, 15 mm, 5 mm]"
+    -   div.tree
+    -     p.answer: "2"
+    -     p.answer: "body: Vysunutí 2"
+    -     p.answer: "mass: 6.10999 g"
+    -     p.answer: "volume: 783.332471 mm³"
+    -     p.answer: "density: 7.8 g/cm³"
+    -     p.answer: "fill: 1"
+    -     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
+  status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`  [error]
+  view: 1 scene(s) set
+
+=== 77. a change of the document throws the answer away
   engine: query("interference", {}, {}) -> ok
   engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
   feature e2:
@@ -2830,22 +2955,67 @@
     + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
     + label title="The bodies to check against each other; without it all bodies."
     +   "Bodies (optional)"
-    +   button.link: "Add"
+    - h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    - label title="Taken together as one rigid piece."
+    -   "Bodies"
+    -   div.item
+    -     select value="e1"
+    -       option value="": "—"
+    -       option selected value="e1": "Deska"
+    -       option value="e2": "Vysunutí 2"
+    -       option value="e3": "Vysunutí 3"
+    -     button.icon title="Remove": "✕"
+    -   div.item
+    -     select value="e2"
+    -       option value="": "—"
+    -       option value="e1": "Deska"
+    -       option selected value="e2": "Vysunutí 2"
+    -       option value="e3": "Vysunutí 3"
+    -     button.icon title="Remove": "✕"
     + label title="The smallest shared volume that counts."
     +   "Threshold (optional)"
-    +   span.field
+    - label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    -   "Density (optional)"
     +     input.value value="" placeholder="0.001"
     +     span.unit: "mm³"
-    + div.buttons
+    -     input.value value=""
+    -     span.unit: "g/cm³"
+    - label title="Of single bodies; taken as it is, before `density`."
+    -   "Density by body (optional)"
+    -   div.item
+    -     span.name: "Vysunutí 2"
+    -     span.field
+    -       input.value value="7.8"
+    -       span.unit: "g/cm³"
+    -     button.icon title="Remove": "✕"
+    -   select value=""
+    -     option selected value="": "Add…"
+    -     option value="e1": "Deska"
+    -     option value="e3": "Vysunutí 3"
+    - label title="The part of the volume that is material; 1 is solid. It applies to the bodies that take `density`, and assumes the material is spread evenly: for a print with solid shells give an effective density instead."
+    -   "Fill factor (optional)"
+    -   span.field
+    -     input.value value="" placeholder="1"
+    -     span.unit
+    - label title="Adds the moment of inertia about this axis."
+    -   "Axis (optional)"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="X": "X"
+    -     option value="Y": "Y"
+    -     option value="Z": "Z"
+    -     option value="point": "Through a sketch point"
     +   button.primary: "Ask"
-    +   button: "Close"
-  view: 2 scene(s) set
+    -   button.primary: "Ask again"
+    - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+  status: 
+  view: 3 scene(s) set
 
-=== 75. waiting for a plane cancelled
+=== 78. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 76. a new document
+=== 79. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

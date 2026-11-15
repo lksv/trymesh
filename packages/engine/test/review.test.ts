@@ -12,6 +12,8 @@ import { checkArgs } from '../src/query/check';
 import type { EntityShape } from '../src/query/entity';
 import { exactBetween } from '../src/query/measure';
 import { closest } from '../src/mesh-distance';
+import { type CutLoop, corners, nested } from '../src/query/section';
+import { box, cutOf, moved, planeAt, regular, together, turned } from './section-kit';
 import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
@@ -431,5 +433,104 @@ describe('measuring: the review of D39', () => {
     // three corners in a line
     expect(closest({ point: [3, 0, 2] }, { solid: mesh([[[0, 0, 0], [2, 0, 0], [5, 0, 0]]], [0]) })).toMatchObject({ distance: 2, b: [3, 0, 0] });
     expect(closest({ point: [7, 0, 0] }, { solid: mesh([[[0, 0, 0], [2, 0, 0], [5, 0, 0]]], [0]) })?.distance).toBe(2);
+  });
+});
+
+describe('the section: the review of D38', () => {
+  type Vec2 = [number, number];
+  const cornersOf = (chain: Vec2[], faces: number[], precision: number): Vec2[] | undefined => corners(chain, faces, precision)?.points as Vec2[] | undefined;
+
+  it('a long straight run and a large loop on one face take a time that grows with their points, not with the square', () => {
+    // a square of four faces with 5000 points on every side: 3.4 s before
+    const side = (from: Vec2, to: Vec2): Vec2[] => Array.from({ length: 5000 }, (_, i): Vec2 => [from[0] + ((to[0] - from[0]) * i) / 5000, from[1] + ((to[1] - from[1]) * i) / 5000]);
+    const straight = [...side([0, 0], [90, 0]), ...side([90, 0], [90, 90]), ...side([90, 90], [0, 90]), ...side([0, 90], [0, 0])];
+    let started = performance.now();
+    expect(cornersOf(straight, straight.map((_, i) => Math.floor(i / 5000)), 1e-6)).toEqual([[0, 0], [90, 0], [90, 90], [0, 90]]);
+    expect(performance.now() - started).toBeLessThan(1000);
+    // a loop on one face where every point is a corner (the teeth of a gear): 1.6 s for 20 000 points before
+    const teeth = regular(20000, 100).map(([x, y], i): Vec2 => (i % 2 ? [x * 0.99, y * 0.99] : [x, y]));
+    started = performance.now();
+    expect(cornersOf(teeth, teeth.map(() => 0), 1e-6)).toHaveLength(20000);
+    expect(performance.now() - started).toBeLessThan(1000);
+    // and a loop of more points than a call takes arguments is no exception
+    const fine = regular(130_000, 100);
+    expect(cornersOf(fine, fine.map(() => 0), 1e-6)?.length).toBeGreaterThan(1000);
+  });
+
+  it('a point of the mesh in line beside a corner is never a corner, also where a loop on one face starts', () => {
+    // a polygon of 36 sides with a point on every side just beside its corner: that point is as
+    // far from the middle as the corner within the precision, and was taken as the start and kept
+    const polygon = regular(36, 2.5);
+    const withPointsBeside = (beside: number): Vec2[] =>
+      polygon.flatMap((corner, i): Vec2[] => {
+        const next = polygon[(i + 1) % 36];
+        const length = Math.hypot(next[0] - corner[0], next[1] - corner[1]);
+        return [corner, [corner[0] + ((next[0] - corner[0]) * beside) / length, corner[1] + ((next[1] - corner[1]) * beside) / length]];
+      });
+    // 4.4e-4 beside: a corner is further than the precision from the segment past it, so the
+    // corners are the 36 of the polygon (37 before, with the point the list started at)
+    const chain = withPointsBeside(4.4e-4);
+    for (const by of [0, 1, 17, 40]) {
+      const kept = cornersOf(turned(chain, by), chain.map(() => 0), 5e-5) ?? [];
+      expect(kept).toHaveLength(36);
+      for (const point of kept) expect(polygon).toContainEqual(point);
+    }
+    // 2.2e-4 beside: a corner is within the precision of the segment to the point after it, so
+    // that point may stand for it; still 36, and the same 36 wherever the chain starts
+    const closer = withPointsBeside(2.2e-4);
+    const kept = cornersOf(closer, closer.map(() => 0), 5e-5) ?? [];
+    expect(kept).toHaveLength(36);
+    for (const point of kept) expect(Math.min(...polygon.map((corner) => Math.hypot(corner[0] - point[0], corner[1] - point[1])))).toBeLessThan(2.3e-4);
+    for (const by of [1, 17, 40]) expect(cornersOf(turned(closer, by), closer.map(() => 0), 5e-5)).toEqual(kept);
+    // the start does not follow how a side is divided: a square, and the same with three points on its left side
+    const square: Vec2[] = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+    const divided: Vec2[] = [[1, 1], [-1, 1], [-1, 0.5], [-1, 0], [-1, -0.5], [-1, -1], [1, -1]];
+    expect(cornersOf(square, [0, 0, 0, 0], 1e-6)).toEqual([[-1, -1], [1, -1], [1, 1], [-1, 1]]);
+    expect(cornersOf(divided, divided.map(() => 0), 1e-6)).toEqual([[-1, -1], [1, -1], [1, 1], [-1, 1]]);
+  });
+
+  it('the corners do not depend on where the mesh starts the chain, also where points lie nearer than the precision', () => {
+    // a corner of three points 0.7 of the precision apart, each on a face of its own: four corners
+    // from one start and five from the others before
+    const chain: Vec2[] = [[0, 0], [10, 0], [10.0007, 0], [10.0014, 0], [10, 10], [0, 10]];
+    const faces = [0, 1, 2, 3, 4, 5];
+    const loop = corners(chain, faces, 1e-3) as CutLoop;
+    expect(loop.points).toEqual([[0, 0], [10, 0], [10.0014, 0], [10, 10], [0, 10]]);
+    for (let by = 1; by < 6; by++) expect(corners(turned(chain, by), turned(faces, by), 1e-3)).toEqual(loop); // to the last digit, the area included
+  });
+
+  it('the furthest point is decided by the distances from the segment, not by the first point that fails or by the line', () => {
+    // a later point holds after an earlier one fails
+    expect(cornersOf([[0, 0], [1, 0.0007], [2, -0.0007], [3, 0], [3, 5], [0, 5]], [0, 0, 0, 1, 2, 3], 1e-3)).toEqual([[0, 0], [3, 0], [3, 5], [0, 5]]);
+    // a spike: the point at its tip lies on the line of the segment back, and far from the segment
+    expect(cornersOf([[0, 0], [5, 0], [2, 0.0005], [2, 3], [0, 3]], [0, 0, 1, 2, 3], 1e-3)).toEqual([[0, 0], [5, 0], [2, 0.0005], [2, 3], [0, 3]]);
+    expect(cornersOf([[0, 0], [5, 0], [2, 0.0001], [3, 0.0001], [3, 3], [0, 3]], [0, 0, 0, 1, 2, 3], 1e-3)).toHaveLength(6); // the run doubles back twice
+    // a change of face in line with its neighbours is kept
+    expect(cornersOf([[0, 0], [2, 0], [4, 0], [4, 3], [0, 3]], [0, 1, 2, 3, 4], 1e-6)).toEqual([[0, 0], [2, 0], [4, 0], [4, 3], [0, 3]]);
+    // a point a rounding error over the precision from the kept one: the directions alone ruled
+    // out the point after it, which the distances accept
+    expect(cornersOf([[0, 0], [0.0010000000000000002, 0], [5.4e-11, -0.003], [10, 10], [-10, 10]], [0, 0, 0, 1, 2], 1e-3)).toHaveLength(4);
+  });
+
+  it('what is thinner than the precision is not a loop, and such a chain cannot fail the query as a hole in nothing', () => {
+    // three corners in a line, each a change of face: an area of zero, taken for a hole before
+    expect(corners([[0, 0], [5, 0], [10, 0]], [0, 1, 2], 1e-6)).toBeUndefined();
+    expect(corners([[0, 0], [5, 2e-7], [10, 0], [5, -2e-7]], [0, 1, 2, 3], 1e-6)).toBeUndefined(); // a diamond 4e-7 wide
+    expect(corners([[0, 0], [5, 2e-6], [10, 0], [5, -2e-6]], [0, 1, 2, 3], 1e-6)?.points).toHaveLength(4); // and one 4e-6 wide
+    // a hole whose first point lies a rounding error outside its outer loop still finds it
+    const outer: CutLoop = { points: [[0, 0], [10, 0], [10, 10], [0, 10]], faces: [0, 1, 2, 3], lengths: [10, 10, 10, 10], area: 100 };
+    const hole: CutLoop = { points: [[-1e-12, 5], [3, 7], [3, 3]], faces: [4, 5, 6], lengths: [3.6, 4, 3.6], area: -6 };
+    expect(nested([hole, outer])).toEqual([{ outer, holes: [hole] }]);
+  });
+
+  it('the loops of a body are in one order however the mesh lists them, also where their first points are a hair apart', () => {
+    // three boxes whose first corners differ in u by 0.6 of the precision each, written in the six
+    // possible orders: three different orders came back when two points were compared with a tolerance
+    const boxes = [moved(box(), [0, 20, 0]), moved(box(), [1.8e-5, 10, 0]), moved(box(), [3.6e-5, 0, 0])];
+    const orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    const seen = orders.map((order) => cutOf(together(...order.map((i) => boxes[i])), planeAt(5)).map((loop) => Math.round(loop.points[0][1])));
+    // the precision is 3e-5 (the boxes reach 30 mm): the first two are level in u, so the lower one
+    // comes first; the third is further in u than the precision
+    for (const order of seen) expect(order).toEqual([10, 20, 0]);
   });
 });

@@ -4,99 +4,33 @@
 import { describe, expect, it } from 'vitest';
 import { QueryFailure } from '../src/query/spec';
 import { type CutLoop, type SectionResult, completeRegions, corners, cut, nested, spansOf, takenAt } from '../src/query/section';
-import type { FaceName, Frame, Solid, Surface, Vec2, Vec3 } from '../src/types';
-
-// ---------------------------------------------------------------- meshes
-
-const BOTTOM = 0;
-const TOP = 1;
-// A prism from z = `low` to z = `high` over a polygon that runs counter-clockwise, as a closed
-// mesh with shared vertices. Every side is a quad of two triangles, so a cut across it has
-// a point on every diagonal. `hole` is a polygon with as many corners inside the first; the caps
-// are then the quads between the two. `sideFace(i)` numbers the face of the side `i` of the
-// outer polygon; the sides of the hole are the face `holeFace`.
-function prism(outer: Vec2[], low: number, high: number, sideFace: (side: number) => number, hole?: Vec2[], holeFace = 9): Solid {
-  const n = outer.length;
-  const positions: number[] = [];
-  for (const ring of hole ? [outer, hole] : [outer]) for (const z of [low, high]) for (const [x, y] of ring) positions.push(x, y, z);
-  const triangles: number[] = [];
-  const faces: number[] = [];
-  const add = (face: number, a: number, b: number, c: number): void => {
-    triangles.push(a, b, c);
-    faces.push(face);
-  };
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    // the outer wall looks away from the polygon, the wall of the hole into the hole
-    add(sideFace(i), i, j, n + j);
-    add(sideFace(i), i, n + j, n + i);
-    if (hole) {
-      add(holeFace, 2 * n + i, 3 * n + j, 2 * n + j);
-      add(holeFace, 2 * n + i, 3 * n + i, 3 * n + j);
-      add(TOP, n + i, n + j, 3 * n + j);
-      add(TOP, n + i, 3 * n + j, 3 * n + i);
-      add(BOTTOM, i, 2 * n + j, j);
-      add(BOTTOM, i, 2 * n + i, 2 * n + j);
-    } else if (i > 0 && j > 0) {
-      add(TOP, n, n + i, n + j);
-      add(BOTTOM, 0, j, i);
-    }
-  }
-  return { positions: Float32Array.from(positions), triangles: Uint32Array.from(triangles), faceIds: Uint32Array.from(faces) };
-}
-const regular = (n: number, radius: number, phase = 0): Vec2[] => Array.from({ length: n }, (_, i) => [radius * Math.cos(phase + (2 * Math.PI * i) / n), radius * Math.sin(phase + (2 * Math.PI * i) / n)]);
-const BOX = (): Solid => prism([[0, 0], [4, 0], [4, 3], [0, 3]], 0, 10, (side) => 2 + side);
-
-// Turns about `axis` through the origin by `angle`, then moves by `by`.
-function placement(axis: Vec3, angle: number, by: Vec3 = [0, 0, 0]): { point: (p: Vec3) => Vec3; direction: (d: Vec3) => Vec3 } {
-  const length = Math.hypot(...axis);
-  const [kx, ky, kz] = axis.map((part) => part / length);
-  const [c, s] = [Math.cos(angle), Math.sin(angle)];
-  const direction = ([x, y, z]: Vec3): Vec3 => {
-    const dot = kx * x + ky * y + kz * z;
-    return [x * c + (ky * z - kz * y) * s + kx * dot * (1 - c), y * c + (kz * x - kx * z) * s + ky * dot * (1 - c), z * c + (kx * y - ky * x) * s + kz * dot * (1 - c)];
-  };
-  return { direction, point: (p) => direction(p).map((part, k) => part + by[k]) as Vec3 };
-}
-type Placement = ReturnType<typeof placement>;
-function placed(solid: Solid, at: Placement): Solid {
-  const positions = new Float32Array(solid.positions.length);
-  for (let i = 0; i < positions.length; i += 3) positions.set(at.point([solid.positions[i], solid.positions[i + 1], solid.positions[i + 2]]), i);
-  return { ...solid, positions };
-}
-const planeAt = (z: number, at?: Placement, flip = false): Frame => {
-  const frame: Frame = { origin: [0, 0, z], x: [flip ? -1 : 1, 0, 0], y: [0, 1, 0], normal: [0, 0, flip ? -1 : 1] };
-  return at ? { origin: at.point(frame.origin), x: at.direction(frame.x), y: at.direction(frame.y), normal: at.direction(frame.normal) } : frame;
-};
-// The precision of the coordinates of a mesh, as `coordinatePrecision` gives it for a body.
-const precisionOf = (solid: Solid): number => 1e-6 * Math.max(1, ...Array.from(solid.positions, Math.abs));
-const cutOf = (solid: Solid, frame: Frame): CutLoop[] => cut(solid, frame, precisionOf(solid), precisionOf(solid));
-const lengthOf = (loop: CutLoop): number => loop.lengths.reduce((sum, length) => sum + length, 0);
+import type { FaceName, Frame, Solid, Surface, Vec2 } from '../src/types';
+import { type Placement, box, cutOf, lengthOf, moved, placed, placement, planeAt, precisionOf, prism, regular, together, turned } from './section-kit';
 
 // ---------------------------------------------------------------- the cut
 
 describe('the cut of a closed mesh by a plane', () => {
   it('a box across: four corners from eight crossed triangles, the material on the left, from the first corner in the order of (u, v)', () => {
-    const [loop, ...rest] = cutOf(BOX(), planeAt(5));
+    const [loop, ...rest] = cutOf(box(), planeAt(5));
     expect(rest).toEqual([]);
     expect(loop.points).toEqual([[0, 0], [4, 0], [4, 3], [0, 3]]);
     expect(loop.faces).toEqual([2, 3, 4, 5]); // the side each segment lies on
     expect(loop.lengths).toEqual([4, 3, 4, 3]);
     expect(loop.area).toBeCloseTo(12, 12);
     // seen from the other side the loop still runs counter-clockwise
-    const [turned] = cutOf(BOX(), planeAt(5, undefined, true));
+    const [turned] = cutOf(box(), planeAt(5, undefined, true));
     expect(turned.points).toEqual([[-4, 0], [0, 0], [0, 3], [-4, 3]]);
     expect(turned.faces).toEqual([2, 5, 4, 3]);
     expect(turned.area).toBeCloseTo(12, 12);
   });
 
   it('is taken just below the plane: a body that ends in the plane shows its face from one side and nothing from the other', () => {
-    expect(cutOf(BOX(), planeAt(10)).map((loop) => loop.area)).toEqual([expect.closeTo(12, 9)]); // the top, from above
-    expect(cutOf(BOX(), planeAt(10, undefined, true))).toEqual([]);
-    expect(cutOf(BOX(), planeAt(0))).toEqual([]); // the body starts in the plane
-    expect(cutOf(BOX(), planeAt(0, undefined, true)).map((loop) => loop.area)).toEqual([expect.closeTo(12, 9)]);
-    expect(cutOf(BOX(), planeAt(10.5))).toEqual([]); // the plane misses the body
-    expect(cutOf(BOX(), planeAt(-0.5))).toEqual([]);
+    expect(cutOf(box(), planeAt(10)).map((loop) => loop.area)).toEqual([expect.closeTo(12, 9)]); // the top, from above
+    expect(cutOf(box(), planeAt(10, undefined, true))).toEqual([]);
+    expect(cutOf(box(), planeAt(0))).toEqual([]); // the body starts in the plane
+    expect(cutOf(box(), planeAt(0, undefined, true)).map((loop) => loop.area)).toEqual([expect.closeTo(12, 9)]);
+    expect(cutOf(box(), planeAt(10.5))).toEqual([]); // the plane misses the body
+    expect(cutOf(box(), planeAt(-0.5))).toEqual([]);
   });
 
   // The bodies of the design: turned out of the axes of the model and moved away from its origin.
@@ -136,23 +70,18 @@ describe('the cut of a closed mesh by a plane', () => {
   });
 
   it('a mesh that is not closed is refused, not answered with an open chain', () => {
-    const box = BOX();
-    const holed: Solid = { ...box, triangles: box.triangles.slice(3), faceIds: box.faceIds.slice(1) }; // without one triangle of a side
+    const whole = box();
+    const holed: Solid = { ...whole, triangles: whole.triangles.slice(3), faceIds: whole.faceIds.slice(1) }; // without one triangle of a side
     expect(() => cutOf(holed, planeAt(5))).toThrow(QueryFailure);
     // an edge with a third triangle on it
-    const doubled: Solid = { ...box, triangles: Uint32Array.from([...box.triangles, ...box.triangles.slice(0, 3)]), faceIds: Uint32Array.from([...box.faceIds, box.faceIds[0]]) };
+    const doubled: Solid = { ...whole, triangles: Uint32Array.from([...whole.triangles, ...whole.triangles.slice(0, 3)]), faceIds: Uint32Array.from([...whole.faceIds, whole.faceIds[0]]) };
     expect(() => cutOf(doubled, planeAt(5))).toThrow(QueryFailure);
   });
 
   it('the loops are in the order of their first points, whatever the order of the triangles', () => {
-    // two boxes in one mesh, the second written first
-    const [near, far] = [BOX(), placed(BOX(), placement([0, 0, 1], 0, [-20, 5, 0]))];
-    const both: Solid = {
-      positions: Float32Array.from([...far.positions, ...near.positions]),
-      triangles: Uint32Array.from([...far.triangles, ...Array.from(near.triangles, (index) => index + far.positions.length / 3)]),
-      faceIds: Uint32Array.from([...far.faceIds, ...near.faceIds]),
-    };
-    expect(cutOf(both, planeAt(5)).map((loop) => loop.points[0])).toEqual([[-20, 5], [0, 0]]);
+    // two boxes in one mesh; the one whose first corner comes later is written first
+    const [near, far] = [box(), moved(box(), [-20, 5, 0])];
+    for (const both of [together(near, far), together(far, near)]) expect(cutOf(both, planeAt(5)).map((loop) => loop.points[0])).toEqual([[-20, 5], [0, 0]]);
   });
 });
 
@@ -167,7 +96,6 @@ function deviation(chain: Vec2[], kept: Vec2[]): number {
   };
   return Math.max(...chain.map((point) => Math.min(...kept.map((corner, i) => fromSegment(point, corner, kept[(i + 1) % kept.length])))));
 }
-const turned = <T>(list: T[], by: number): T[] => [...list.slice(by), ...list.slice(0, by)];
 
 describe('the corners of a loop', () => {
   it('a curve that turns slowly keeps its bend: a parabola of 1001 points with a precision of their spacing', () => {

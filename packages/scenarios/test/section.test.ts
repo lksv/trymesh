@@ -166,6 +166,44 @@ describe('the query section', () => {
     expect(completeRegions(section(engine, { plane: XY, offset: 5, outline: 'polylines', maxPoints: 7 }))).toBeUndefined();
   });
 
+  // What the review of the engine side found untested (mutants of the query that passed).
+  it('review: the flip comes after the offset, a face in the plane is told by its direction, and what was not listed is counted', () => {
+    // 4 mm into the plate and seen from the other side: the same plane, turned round
+    const turnedRound = section(engine, { plane: TOP, offset: -4, flip: true });
+    expect(turnedRound.frame).toMatchObject({ origin: near([0, 0, 6], 9), normal: near([0, 0, -1], 9) });
+    expect(turnedRound.bodies.map((body) => [body.body, Math.round(body.area)])).toEqual([['E1', 1150], ['BAR', 300]]);
+    // The base plane XY lies in the bottoms of both bodies. Their sides stand on it and their
+    // surfaces have points in it, but only a face along the plane is named.
+    const bottom = section(engine, { plane: XY });
+    expect(bottom.inPlane).toEqual([{ body: 'E1', face: cap('E1', 'startCap') }, { body: 'BAR', face: cap('BAR', 'startCap') }]);
+    expect(bottom.bodies).toEqual([]); // both bodies start in the plane
+    // the base plane XZ lies in a side of each; the bottoms and the other sides only have points in it
+    expect(section(engine, { plane: { kind: 'base', plane: 'XZ' } }).inPlane).toEqual([{ body: 'E1', face: side('E1', 'ra') }, { body: 'BAR', face: side('BAR', 'qa') }]);
+    expect(section(engine, { plane: XY, flip: true }).bodies.map((body) => body.body)).toEqual(['E1', 'BAR']);
+    // as polylines with a budget of one: the two loops of the plate do not fit, the one of the bar
+    // does; the points of both are counted though none is listed
+    const one = section(engine, { plane: XY, offset: 5, outline: 'polylines', maxPoints: 1 });
+    const hole = section(engine, { plane: XY, offset: 5, outline: 'polylines' }).bodies[0].regions?.[0].holes[0].points?.length ?? 0;
+    expect(one.truncated).toEqual({ shown: 1, total: 3 + 4 + hole + 4 });
+    expect(one.bodies.map((body) => body.regions?.length)).toEqual([undefined, 1]);
+    expect(one.bodies[1].regions?.[0].outer.points).toBeUndefined();
+  });
+
+  it('review: the corners of a body do not depend on a body far away in the same call', () => {
+    // a block 30 m from the origin: the precision of the call is 0.03 mm, above the sagitta of the
+    // hole of the plate, which would lose corners if that precision decided them
+    const far = model();
+    run(far, addSketch('S3', XY), rectangle('S3', 'f', 30000, 0, 10, 10, null), addExtrude('FAR', 'S3', [rectLoop('f')], 10));
+    const alone = section(far, { plane: XY, offset: 5, outline: 'polylines', bodies: ['E1'] });
+    const both = section(far, { plane: XY, offset: 5, outline: 'polylines', bodies: ['E1', 'FAR'] });
+    expect(both.below).toBeGreaterThan(0.03);
+    expect(alone.below).toBeCloseTo(40e-6, 12);
+    const corners = (result: SectionResult): number | undefined => result.bodies[0].regions?.[0].holes[0].points?.length;
+    expect(corners(alone)).toBeGreaterThan(30);
+    expect(corners(both)).toBe(corners(alone));
+    expect(both.bodies.map((body) => body.body)).toEqual(['E1', 'FAR']);
+  });
+
   it('the errors name the argument', () => {
     const refused = (args: unknown) => {
       const answer = engine.query('section', args as QueryArgs<'section'>);

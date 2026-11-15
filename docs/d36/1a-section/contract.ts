@@ -3,6 +3,10 @@
 // (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
 // Fourth version, after the third and last round of reviews (design.md, "Reviews").
+// The query is implemented in packages/engine/src/query/section.ts; where it differs from this
+// draft (the code of a face that is not planar, the order of (u, v), where a loop on one face
+// starts, what counts as a sliver, the order of the bodies) is listed in design.md, "As
+// implemented". The comments there, not here, describe the rule as it runs.
 
 import type { Frame, Id, Solid, Vec2, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, FaceNameAfter, Truncated } from '../00-prep/contract';

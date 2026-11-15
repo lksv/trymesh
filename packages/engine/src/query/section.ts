@@ -161,27 +161,38 @@ declare module './spec' {
 //   a fixed length, because on a body that is not aligned with the axes the point on the
 //   diagonal of a side quad is off the line by the noise of float32. The rule, in this order:
 //   1. A segment shorter than `precision` goes: walking the chain, a point nearer than that to
-//      the last point kept is dropped, and the segment after it starts at the point kept. (At
-//      the end of the walk a point that near to the first one is dropped the same way.)
-//   2. The points where the face changes are kept. A loop on one face keeps the point furthest
-//      from the mean of its points (a corner of its hull, wherever the mesh starts the chain);
-//      of several that far within `precision`, the first in the order of (u, v).
+//      the last point kept is dropped, and the segment after it starts at the point kept. The
+//      walk starts at the point of the chain that is first in the exact order of u, then v, and
+//      at its end a point that near to the first one is dropped the same way.
+//   2. The points where the face changes are kept. A loop on one face has no such point: it
+//      is walked (step 3) from the point furthest from the mean of its points, and then starts
+//      at the corner of that walk furthest from the mean of those corners (of several that far
+//      within `precision`, the first in the order of (u, v)). The point the first walk started
+//      at does not count when it lies in line between its neighbours: a point of the mesh
+//      beside a real corner can be as far as the corner within `precision`.
 //   3. From each kept point the walk goes on along the run on one face: the next point kept is
-//      the furthest one such that every point of the mesh between lies within `precision` of
-//      the straight segment to it. A dropped point is thus judged against the segment that
-//      replaces it, never against a line that later drops have moved: the polygon of the
-//      corners stays within `precision` of the polygon of the mesh, whatever the curve.
-//   4. A loop left with fewer than three corners is dropped (a sliver thinner than the
-//      precision: what a plane cuts just under an edge or a tip that lies in it).
+//      the furthest one such that every point between lies within `precision` of the straight
+//      segment to it. A dropped point is thus judged against the segment that replaces it,
+//      never against a line that later drops have moved: the polygon of the corners stays
+//      within `precision` of the points step 1 left, whatever the curve (and within twice
+//      `precision` of a point step 1 dropped).
+//   4. What is thinner than `precision` is not a loop and is dropped: a loop left with fewer
+//      than three corners, and one whose area is under `precision` times half its length (what
+//      a plane cuts just under an edge or a tip that lies in it).
 //   The loop is listed from the corner of step 2 (of several face changes, the first in the
-//   order of (u, v)), so the list does not depend on where the mesh starts the chain either.
+//   order of (u, v)), so the list does not depend on where the mesh starts the chain.
 //   The order of (u, v) is by u, and by v among the points whose u is the smallest within
 //   `precision`: two corners above each other have the same u only up to the noise of the
 //   coordinates.
+// - What the corners do depend on, besides the shape: on a curve that turns slowly, on where
+//   the list starts, which for a loop on one face follows the points of the mesh; and where
+//   a real corner lies within `precision` of the segment to a point of the mesh just past it,
+//   that point stands for the corner. The number of corners of a polygon does not change.
 // - `area` is of the loop before points are dropped. `lengths[i]` is the length along the mesh
 //   polygon from `points[i]` to the next corner; their sum is the length of the loop.
 // - The material is on the left of a loop seen against the normal of the plane.
-// - The loops are in the order of their first points, by (u, v) in the same sense.
+// - The loops are in the order of their first points: the first of those left in the order of
+//   (u, v), again and again.
 export interface CutLoop {
   points: Vec2[];
   faces: number[]; // faces[i]: the face of the segment from points[i] to the next point
@@ -189,16 +200,18 @@ export interface CutLoop {
   area: number; // signed: positive for a loop that runs counter-clockwise
 }
 
-// The order of (u, v): by u, and by v where the two u are the same within `precision`. Two corners
-// above each other (the two ends of a wall along v) have the same u only up to the noise of the
-// coordinates, and which of them comes first must not depend on that noise.
-const before = (a: Vec2, b: Vec2, precision: number): boolean => a[0] < b[0] - precision || (a[0] <= b[0] + precision && a[1] < b[1]);
-// The first of the listed points in that order: of those whose u is the smallest within
-// `precision`, the one with the smallest v.
+// The first of the listed points in the order of (u, v): of those whose u is the smallest within
+// `precision`, the one with the smallest v (of two with the same v, the one with the smaller u).
+// Two corners above each other (the two ends of a wall along v) have the same u only up to the
+// noise of the coordinates, and which of them comes first must not depend on that noise.
 function first(points: Vec2[], listed: number[], precision: number): number {
-  const least = Math.min(...listed.map((i) => points[i][0]));
+  let least = Infinity;
+  for (const i of listed) least = Math.min(least, points[i][0]);
   let found = -1;
-  for (const i of listed) if (points[i][0] <= least + precision && (found < 0 || points[i][1] < points[found][1])) found = i;
+  for (const i of listed) {
+    if (points[i][0] > least + precision) continue;
+    if (found < 0 || points[i][1] < points[found][1] || (points[i][1] === points[found][1] && points[i][0] < points[found][0])) found = i;
+  }
   return found;
 }
 
@@ -263,7 +276,17 @@ export function cut(solid: Solid, frame: Frame, below: number, precision: number
     const loop = corners(points, onFaces, precision);
     if (loop) loops.push(loop);
   }
-  return loops.sort((a, b) => (before(a.points[0], b.points[0], precision) ? -1 : before(b.points[0], a.points[0], precision) ? 1 : 0));
+  // In the order of their first points: the first of those left, again and again. (Two points
+  // compared with a tolerance are no order to sort by: it would depend on the order they came in.)
+  const firsts = loops.map((loop) => loop.points[0]);
+  const left = loops.map((_, i) => i);
+  const ordered: CutLoop[] = [];
+  while (left.length) {
+    const next = first(firsts, left, precision);
+    ordered.push(loops[next]);
+    left.splice(left.indexOf(next), 1);
+  }
+  return ordered;
 }
 
 // The distance of `p` from the straight segment between `a` and `b`.
@@ -275,25 +298,30 @@ function fromSegment(p: Vec2, a: Vec2, b: Vec2): number {
 }
 
 // The corners of a closed chain of the mesh: steps 1 to 4 of `cut`. Undefined for a chain that
-// is left with fewer than three.
+// is not a loop afterwards.
 export function corners(chain: Vec2[], chainFaces: number[], precision: number): CutLoop | undefined {
   const raw = chain.length;
+  // The walk starts at a point the chain itself fixes (the first in the exact order of u, then
+  // v), so that nothing below depends on where the mesh started the chain.
+  let origin = 0;
+  for (let i = 1; i < raw; i++) if (chain[i][0] < chain[origin][0] || (chain[i][0] === chain[origin][0] && chain[i][1] < chain[origin][1])) origin = i;
+  const link = (i: number): Vec2 => chain[(origin + i) % raw];
   let area = 0;
-  for (let i = 0; i < raw; i++) area += cross2(chain[i], chain[(i + 1) % raw]) / 2;
+  for (let i = 0; i < raw; i++) area += cross2(link(i), link(i + 1)) / 2;
   // 1. no segment shorter than the precision: a point that near to the last one kept goes, and
   // its segment starts at the point kept
   const points: Vec2[] = [];
   const faces: number[] = [];
   const lengths: number[] = [];
   for (let i = 0; i < raw; i++) {
-    const length = dist2(chain[i], chain[(i + 1) % raw]);
+    const length = dist2(link(i), link(i + 1));
     const last = points.length - 1;
-    if (last >= 0 && dist2(chain[i], points[last]) < precision) {
-      faces[last] = chainFaces[i];
+    if (last >= 0 && dist2(link(i), points[last]) < precision) {
+      faces[last] = chainFaces[(origin + i) % raw];
       lengths[last] += length;
     } else {
-      points.push(chain[i]);
-      faces.push(chainFaces[i]);
+      points.push(link(i));
+      faces.push(chainFaces[(origin + i) % raw]);
       lengths.push(length);
     }
   }
@@ -305,61 +333,102 @@ export function corners(chain: Vec2[], chainFaces: number[], precision: number):
     lengths[lengths.length - 1] += short;
   }
   const size = points.length;
-  if (size < 3) return undefined;
-  // 2. where the list starts: the change of face that is first in the order of (u, v); on one
-  // face the point furthest from the mean of the points
-  let anchors = points.flatMap((_, i) => (faces[(i + size - 1) % size] !== faces[i] ? [i] : []));
-  if (anchors.length === 0) {
-    const mean: Vec2 = [points.reduce((sum, point) => sum + point[0], 0) / size, points.reduce((sum, point) => sum + point[1], 0) / size];
-    const away = points.map((point) => dist2(point, mean));
-    const most = Math.max(...away);
-    anchors = away.flatMap((distance, i) => (distance >= most - precision ? [i] : []));
+  // 4. what is thinner than the precision is not a loop: fewer than three points, or an area
+  // under the precision times half the length (a strip that wide on average)
+  let around = 0;
+  for (const length of lengths) around += length;
+  if (size < 3 || Math.abs(area) < (precision * around) / 2) return undefined;
+  const at = (i: number): Vec2 => points[i % size];
+  const faceAt = (i: number): number => faces[i % size];
+  // 3. From `start` round the loop: from each kept point, the furthest point such that every
+  // point between lies within the precision of the straight segment to it. A change of face is
+  // always kept, so the walk goes run by run.
+  const walk = (start: number): number[] => {
+    const kept: number[] = [];
+    for (let from = start; from < start + size; ) {
+      let end = from + 1; // the end of the run on one face
+      while (end < start + size && faceAt(end) === faceAt(from)) end++;
+      for (; from < end; from = furthest(at, from, end, precision)) kept.push(from);
+    }
+    return kept;
+  };
+  // 2. where the list starts: the change of face that is first in the order of (u, v)
+  const changes: number[] = [];
+  for (let i = 0; i < size; i++) if (faceAt(i + size - 1) !== faceAt(i)) changes.push(i);
+  let start: number;
+  if (changes.length) start = first(points, changes, precision);
+  else {
+    // A loop on one face has no corner that is known beforehand. The points furthest from the
+    // mean of the listed ones are corners of its hull; the first of them in the order of (u, v).
+    const furthestOf = (listed: number[]): number => {
+      const mean: Vec2 = [0, 0];
+      for (const i of listed) for (const k of [0, 1]) mean[k] += points[i][k] / listed.length;
+      let most = 0;
+      for (const i of listed) most = Math.max(most, dist2(points[i], mean));
+      return first(points, listed.filter((i) => dist2(points[i], mean) >= most - precision), precision);
+    };
+    // The walk from the point furthest from the mean of all points gives corners. That point
+    // itself may be none (a point of the mesh in line beside a real corner can be as far within
+    // the precision), and the mean of all points follows how the face is divided. So the list
+    // starts at the furthest of those corners from their own mean, the first one left out when it
+    // lies in line between its neighbours.
+    const rough = walk(furthestOf(points.map((_, i) => i)));
+    const inLine = rough.length > 2 && fromSegment(at(rough[0]), at(rough[rough.length - 1]), at(rough[1])) <= precision;
+    start = furthestOf((inLine ? rough.slice(1) : rough).map((i) => i % size));
   }
-  const start = first(points, anchors, precision);
-  const at = (i: number): Vec2 => points[(start + i) % size];
-  const faceAt = (i: number): number => faces[(start + i) % size];
-  // 3. from each kept point, the furthest point such that every point between lies within the
-  // precision of the straight segment to it; a change of face is always kept
-  const kept: CutLoop = { points: [], faces: [], lengths: [], area };
-  for (let from = 0; from < size; ) {
-    let end = from + 1; // the end of the run on one face
-    while (end < size && faceAt(end) === faceAt(from)) end++;
-    const to = furthest(at, from, end, precision);
+  const kept = walk(start);
+  if (kept.length < 3) return undefined;
+  const loop: CutLoop = { points: [], faces: [], lengths: [], area };
+  kept.forEach((from, k) => {
     let length = 0;
-    for (let i = from; i < to; i++) length += lengths[(start + i) % size];
-    kept.points.push(at(from));
-    kept.faces.push(faceAt(from));
-    kept.lengths.push(length);
-    from = to;
-  }
-  // 4. a sliver thinner than the precision is not a loop
-  return kept.points.length < 3 ? undefined : kept;
+    for (let i = from; i < (kept[k + 1] ?? start + size); i++) length += lengths[i % size];
+    loop.points.push(at(from));
+    loop.faces.push(faceAt(from));
+    loop.lengths.push(length);
+  });
+  return loop;
 }
 
-// The furthest point `to` of the run from `from` to `end` (both corners of the run) such that
-// every point between lies within `precision` of the straight segment from `from` to `to`.
-// The points between narrow the directions a segment may still take; once none is left, no
-// point further on can do, and the search stops there. That only saves time: which point is
-// taken is decided by the distances alone.
+// The furthest point `to` of the run from `from` to `end` (both ends of the run) such that every
+// point between lies within `precision` of the straight segment from `from` to `to`.
+// - The points between narrow the directions a segment may still take: a segment has to pass
+//   within the precision of each. A point outside those directions cannot do, and once no
+//   direction is left, no point further on can either: the search stops there.
+// - A point inside those directions that is at least as far from `from` as every point between
+//   does: each point between is within the precision of the line and falls inside the segment.
+// - Any other point is decided by the distances themselves.
+// So a straight run of many points costs one step per point. The directions are angles and the
+// distances are lengths, and the two can disagree in their last digits; the directions that
+// rule a point out are widened by `SLACK`, so only a point that the distances would refuse by
+// less than rounding can be taken on the strength of its direction.
 function furthest(at: (i: number) => Vec2, from: number, end: number, precision: number): number {
-  const SLACK = 1e-9; // rad, so that rounding never rules out a point the distances would accept
+  const SLACK = 1e-7; // rad: above the rounding of the angles near a quarter turn (about 1.5e-8)
   const origin = at(from);
   let best = from + 1;
   let reference: Vec2 | undefined;
-  let [low, high] = [-Infinity, Infinity];
+  let [low, high, reach] = [-Infinity, Infinity, 0];
   const angle = (direction: Vec2): number => (reference ? Math.atan2(cross2(reference, direction), dot2(reference, direction)) : 0);
   for (let to = from + 2; to <= end; to++) {
-    // the point before `to` is between now: a segment has to pass within the precision of it
+    // the point before `to` is between now
     const between = sub2(at(to - 1), origin);
-    const distance = len2(between);
-    if (distance > precision) {
+    const gone = len2(between);
+    if (gone > precision) {
       reference ??= between;
-      const [middle, half] = [angle(between), Math.asin(precision / distance) + SLACK];
+      const [middle, half] = [angle(between), Math.asin(precision / gone)];
       [low, high] = [Math.max(low, middle - half), Math.min(high, middle + half)];
-      if (low > high) break;
+      if (low - SLACK > high + SLACK) break;
     }
+    reach = Math.max(reach, gone);
     const direction = sub2(at(to), origin);
-    if (reference && len2(direction) > 0 && (angle(direction) < low || angle(direction) > high)) continue;
+    const distance = len2(direction);
+    if (reference && distance > 0) {
+      const turn = angle(direction);
+      if (turn < low - SLACK || turn > high + SLACK) continue;
+      if (distance >= reach && turn >= low && turn <= high) {
+        best = to;
+        continue;
+      }
+    }
     let within = true;
     for (let i = from + 1; i < to && within; i++) within = fromSegment(at(i), origin, at(to)) <= precision;
     if (within) best = to;

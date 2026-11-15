@@ -1,8 +1,10 @@
 // The pass behind the query `print` (D42), on meshes written by hand: the print frame of an
-// orientation, the box, what lies on the bed and what overhangs.
+// orientation, the box, what lies on the bed and what overhangs; and the query itself over
+// a context written by hand.
 import { describe, expect, it } from 'vitest';
-import { frameOfDirection, printPass, turned } from '../src/query/print';
-import type { Solid, Vec3 } from '../src/types';
+import { type PrintOrientation, type PrintReport, frameOfDirection, print, printPass, turned } from '../src/query/print';
+import { type QueryContext, QueryFailure } from '../src/query/spec';
+import type { FaceName, PlaneRef, Solid, Vec3 } from '../src/types';
 import { ANGLE_TOLERANCE, cross3, dot3 } from '../src/util';
 import { BOTTOM, TOP, box, moved, placed, placement, prism, regular, together } from './section-kit';
 
@@ -35,6 +37,21 @@ describe('the print frame of an orientation', () => {
     // x is the axis of the model as far as it lies in the bed: no part along Y for a direction in the XZ plane
     expect(frameOfDirection([0.5, 0, 0.866]).x[1]).toBe(0);
     expect(frameOfDirection([0.5, 0, 0.866]).x[0]).toBeGreaterThan(0);
+  });
+
+  it('review: the axis laid into the bed changes at 45° from X; a direction of any length a double holds has a unit vector', () => {
+    expect(frameOfDirection([1, 0, 0.9]).x).toEqual([0, 1, 0]); // 42° from X
+    expect(frameOfDirection([-1, 0.2, 0.9]).x[1]).toBeGreaterThan(0.9); // the same on the other side
+    const beyond = frameOfDirection([0.9, 0, 1]); // 48° from X
+    expect(beyond.x[1]).toBe(0);
+    expect(beyond.x[0]).toBeGreaterThan(0);
+    // the length of these comes out as zero or as infinity when it is computed straight
+    expect(frameOfDirection([1e-320, 0, 0]).up).toEqual([1, 0, 0]);
+    expect(frameOfDirection([0, 0, 5e-324]).up).toEqual([0, 0, 1]);
+    expect(frameOfDirection([1.7e308, 1.7e308, 1.7e308]).up).toEqual(near([Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)]));
+    const mixed = frameOfDirection([3e-310, 0, 4e-310]);
+    expect(mixed.up).toEqual(near([0.6, 0, 0.8], 6));
+    expect(cross3(mixed.x, mixed.y)).toEqual(near(mixed.up));
   });
 
   it('a turn about the vertical turns x and y and leaves up', () => {
@@ -178,5 +195,213 @@ describe('the pass over the triangles of a body', () => {
     expect(pass.size).toEqual(near([4, 3, 0]));
     const empty = printPass({ positions: new Float32Array(), triangles: new Uint32Array(), faceIds: new Uint32Array() }, frameOfDirection([0, 0, 1]), HALF, boxNormal, PRECISION);
     expect(empty).toEqual({ size: [0, 0, 0], contact: new Map(), overhang: new Map() });
+  });
+});
+
+describe('the pass: regressions of the review', () => {
+  const normalOf = (face: number): Vec3 => BOX_NORMALS[face % 10];
+
+  it('review: a body that stands on several faces in one plane keeps them all when the direction is a hair off', () => {
+    // two boxes of one body, 60 apart, on one plane; along a direction 1e-5 rad off the far one
+    // is 6e-4 mm higher, more than the precision
+    const two = together(box(), renumbered(moved(box(), [60, 0, 0]), 10));
+    const off = printPass(two, frameOfDirection([1e-5, 0, 1]), HALF, normalOf, PRECISION);
+    expect(entries(off.contact)).toEqual([[BOTTOM, expect.closeTo(12, 9)], [10 + BOTTOM, expect.closeTo(12, 9)]]);
+    expect(off.overhang.size).toBe(0);
+    // the same body turned by 30° about Y, with the direction typed in five digits
+    const at = placement([0, 1, 0], Math.PI / 6);
+    const typed = printPass(placed(two, at), frameOfDirection([0.5, 0, 0.866]), HALF, (face) => at.direction(normalOf(face)), 1e-4);
+    expect(entries(typed.contact)).toEqual([[BOTTOM, expect.closeTo(12, 4)], [10 + BOTTOM, expect.closeTo(12, 4)]]);
+    expect(typed.overhang.size).toBe(0);
+  });
+
+  it('review: a face is on the bed only when nothing of the body reaches below it by more than the precision', () => {
+    // the second box is a foot 0.005 lower
+    const footed = together(box(), renumbered(moved(box(), [60, 0, -0.005]), 10));
+    const fine = printPass(footed, frameOfDirection([0, 0, 1]), HALF, normalOf, 1e-3);
+    expect(entries(fine.contact)).toEqual([[10 + BOTTOM, expect.closeTo(12, 6)]]);
+    expect(entries(fine.overhang)).toEqual([[BOTTOM, { area: expect.closeTo(12, 9), from: expect.closeTo(0.005, 6) }]]);
+    const coarse = printPass(footed, frameOfDirection([0, 0, 1]), HALF, normalOf, 1e-2);
+    expect([...coarse.contact.keys()].sort((a, b) => a - b)).toEqual([BOTTOM, 10 + BOTTOM]);
+    expect(coarse.overhang.size).toBe(0);
+  });
+
+  it('review: the height an overhanging face starts at is its lowest corner, whichever of its triangles has it', () => {
+    // up leans towards +X and −Y: the lowest corner of the bottom is (0, 3, 0), which only its second triangle has
+    const frame = frameOfDirection([0.3, -0.5, 0.8]);
+    const two = together(box(), renumbered(moved(box(), [0, 0, 20]), 10));
+    const pass = printPass(two, frame, HALF, normalOf, PRECISION);
+    expect(pass.contact.size).toBe(0);
+    expect(entries(pass.overhang)).toEqual([
+      [BOTTOM, { area: expect.closeTo(12, 9), from: expect.closeTo(0, 9) }],
+      [10 + BOTTOM, { area: expect.closeTo(12, 9), from: expect.closeTo(20 * frame.up[2], 9) }],
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------- the query over a context written by hand
+
+// A body of the context: its mesh and what the context knows of its faces.
+interface Part {
+  solid: Solid;
+  normalOf: (face: number) => Vec3 | undefined; // out of the body; undefined: the context has no frame for the face
+  xOf?: (face: number) => Vec3; // the x of the frame of a face
+  round?: number[]; // the faces that are not planar
+}
+// What `print.run` reads of a context: the names of the faces, the bodies with their boxes and
+// their faces, the frame of a face and its number. The faces of all bodies have numbers of their own.
+function contextOf(parts: Record<string, Part>): { context: QueryContext; name: (face: number) => FaceName } {
+  const faceNames: FaceName[] = [];
+  const owner = new Map<FaceName, { part: Part; face: number }>();
+  const bodies = Object.fromEntries(
+    Object.entries(parts).map(([id, part]) => {
+      const faces = [...new Set(part.solid.faceIds)].map((face) => {
+        faceNames[face] = { feature: id, role: 'side', curve: `f${face}` };
+        owner.set(faceNames[face], { part, face });
+        return { id: face, planar: !part.round?.includes(face) };
+      });
+      const along = (k: number): number[] => Array.from(part.solid.positions).filter((_, i) => i % 3 === k);
+      const bounds = { min: [0, 1, 2].map((k) => Math.min(...along(k))), max: [0, 1, 2].map((k) => Math.max(...along(k))) };
+      return [id, { solid: part.solid, faces, bounds }];
+    }),
+  );
+  const frame = (ref: PlaneRef): unknown => {
+    const found = ref.kind === 'face' ? owner.get(ref.face) : undefined;
+    if (found?.part.round?.includes(found.face)) return { problem: 'nonPlanarFace' };
+    const normal = found?.part.normalOf(found.face);
+    if (!found || !normal) return { problem: 'brokenReference' };
+    const x = found.part.xOf?.(found.face) ?? frameOfDirection(normal).x;
+    return { origin: [0, 0, 0], x, y: cross3(normal, x), normal };
+  };
+  const context = { state: { evaluation: { faceNames } }, bodies, frame, face: (name: FaceName) => owner.get(name)?.face } as unknown as QueryContext;
+  return { context, name: (face) => faceNames[face] };
+}
+type Args = Parameters<typeof print.run>[1];
+const up = (direction: Vec3, turn = 0) => ({ by: { up: direction }, turn });
+const lying = (face: FaceName, turn = 0) => ({ by: { onBed: { kind: 'face' as const, body: 'part', face } }, turn });
+// the query with its defaults, as the check of the arguments fills them in
+const ask = (context: QueryContext, args: object): PrintReport => print.run(context, { overhang: HALF, minArea: 1, maxFaces: 20, ...args } as Args);
+const first = (context: QueryContext, args: object): PrintOrientation => ask(context, args).bodies[0].orientations[0];
+const failure = (run: () => unknown): unknown => {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof QueryFailure ? { code: error.code, message: error.message, arg: error.arg } : error;
+  }
+  return 'no failure';
+};
+const wide = (): Solid => prism([[0, 0], [6, 0], [6, 3], [0, 3]], 0, 10, (side) => 2 + side); // 6 × 3 × 10
+
+describe('the query print over a context written by hand', () => {
+  const normalOf = (face: number): Vec3 => BOX_NORMALS[face % 10];
+  // the box and a wider one 60 further along X, on one plane: the bottoms are the faces 0 (12 mm2) and 10 (18 mm2)
+  const pair = together(box(), renumbered(moved(wide(), [60, 0, 0]), 10));
+
+  it('review: a body on two faces in one plane: both are in the totals when the list is cut, and `onBed` does not read the list', () => {
+    const { context, name } = contextOf({ part: { solid: pair, normalOf } });
+    const whole = first(context, { orientations: [up([1e-5, 0, 1])] });
+    expect(whole.contact).toEqual({ area: expect.closeTo(30, 9), count: 2, faces: [{ face: name(10), area: expect.closeTo(18, 9) }, { face: name(BOTTOM), area: expect.closeTo(12, 9) }] });
+    expect(whole.overhang).toEqual({ area: 0, count: 0, small: 0, faces: [] });
+    expect(whole.onBed).toBeUndefined();
+    // the smaller face named to lie on the bed, and only one face listed
+    const cut = ask(context, { orientations: [lying(name(BOTTOM))], maxFaces: 1 });
+    const way = cut.bodies[0].orientations[0];
+    expect(way.onBed).toBe(true);
+    expect(way.contact).toEqual({ area: expect.closeTo(30, 9), count: 2, faces: [{ face: name(10), area: expect.closeTo(18, 9) }] });
+    expect(cut.truncated).toEqual({ shown: 1, total: 2 });
+    // a side of it does not lie on the bed when the other box reaches below it
+    expect(first(context, { orientations: [lying(name(LEFT))] })).toMatchObject({ up: [1, 0, 0], onBed: true });
+    expect(first(context, { orientations: [lying(name(10 + LEFT))] })).toMatchObject({ up: [1, 0, 0], onBed: false });
+  });
+
+  it('review: by a face, x is the x of the frame of the face, and a turn turns it as it turns a direction', () => {
+    const { context, name } = contextOf({ part: { solid: pair, normalOf, xOf: () => [0, 1, 0] } });
+    const [face, quarter, direction] = ask(context, { orientations: [lying(name(BOTTOM)), lying(name(BOTTOM), Math.PI / 2), up([0, 0, 1])] }).bodies[0].orientations;
+    expect(face.up).toEqual([0, 0, 1]);
+    expect(face.size).toEqual(near([3, 66, 10]));
+    expect(quarter.size).toEqual(near([66, 3, 10]));
+    expect(direction.size).toEqual(near([66, 3, 10]));
+    expect(quarter.contact).toEqual(face.contact);
+  });
+
+  it('review: the bed: a body exactly as large as the bed fits, to the precision of its coordinates and no further', () => {
+    const { context } = contextOf({ part: { solid: pair, normalOf } });
+    const fits = (bed: { x: number; y: number; height: number }, turn = 0): boolean | undefined => first(context, { orientations: [up([0, 0, 1], turn)], bed }).fits;
+    expect(fits({ x: 66, y: 3, height: 10 })).toBe(true);
+    // turned by a right angle the box is 3 and a few 1e-15 wide: the cosine of a right angle is not zero
+    expect(fits({ x: 3, y: 66, height: 10 }, Math.PI / 2)).toBe(true);
+    // the precision of coordinates up to 66 is 6.6e-5
+    expect(fits({ x: 66 - 5e-5, y: 3 - 5e-5, height: 10 - 5e-5 })).toBe(true);
+    expect(fits({ x: 66 - 1e-3, y: 3, height: 10 })).toBe(false);
+    expect(fits({ x: 66, y: 3 - 1e-3, height: 10 })).toBe(false);
+    expect(fits({ x: 66, y: 3, height: 10 - 1e-3 })).toBe(false);
+  });
+
+  it('review: the precision of the contact is that of the coordinates of the body', () => {
+    // the second box is a foot lower by `drop`; the whole body is `far` along X
+    const footed = (drop: number, far = 0): Solid => moved(together(box(), renumbered(moved(box(), [60, 0, -drop]), 10)), [far, 0, 0]);
+    const on = (solid: Solid): PrintOrientation => first(contextOf({ part: { solid, normalOf } }).context, { orientations: [up([0, 0, 1])] });
+    // coordinates up to 64: 6.4e-5
+    expect(on(footed(2e-5)).contact.count).toBe(2);
+    const stepped = on(footed(2e-4));
+    expect(stepped.contact).toMatchObject({ count: 1, area: expect.closeTo(12, 6) });
+    expect(stepped.overhang).toMatchObject({ count: 1, small: 0, faces: [{ area: expect.closeTo(12, 6), from: expect.closeTo(2e-4, 6) }] });
+    // the same step 500 further from the origin is within the precision: 5.6e-4
+    expect(on(footed(2e-4, 500)).contact.count).toBe(2);
+  });
+
+  it('review: the lists: faces of one area in the order of their numbers, the smallest area listed, and what a cut is counted of', () => {
+    // above the box, 20 up: a box (face 10), one a hair wider (20: float32 makes it 4.00000048 wide) and the wide one (30)
+    const hair = prism([[0, 0], [4.0000005, 0], [4.0000005, 3], [0, 3]], 0, 10, (side) => 2 + side);
+    const solid = together(box(), renumbered(moved(box(), [10, 0, 20]), 10), renumbered(moved(hair, [0, 0, 20]), 20), renumbered(moved(wide(), [30, 0, 20]), 30));
+    const { context, name } = contextOf({ part: { solid, normalOf } });
+    const listed = (way: PrintOrientation): FaceName[] => way.overhang.faces.map((entry) => entry.face);
+    const all = first(context, { orientations: [up([0, 0, 1])] });
+    expect(all.contact).toEqual({ area: expect.closeTo(12, 9), count: 1, faces: [{ face: name(BOTTOM), area: expect.closeTo(12, 9) }] });
+    expect(all.overhang).toMatchObject({ area: expect.closeTo(42, 5), count: 3, small: 0 });
+    // the face 20 is larger by a part in ten million, which is not a difference: the smaller number goes first
+    expect(all.overhang.faces[2].area).toBeGreaterThan(all.overhang.faces[1].area);
+    expect(listed(all)).toEqual([name(30), name(10), name(20)]);
+    expect(all.overhang.faces.map((entry) => entry.from)).toEqual(near([20, 20, 20]));
+    // a face of exactly the smallest area is listed
+    expect(all.overhang.faces[1].area).toBe(12);
+    expect(first(context, { orientations: [up([0, 0, 1])], minArea: 12 }).overhang).toMatchObject({ count: 3, small: 0 });
+    const large = ask(context, { orientations: [up([0, 0, 1])], minArea: 12.5, maxFaces: 1 });
+    expect(large.bodies[0].orientations[0].overhang).toMatchObject({ area: expect.closeTo(42, 5), count: 3, small: 2 });
+    expect(listed(large.bodies[0].orientations[0])).toEqual([name(30)]);
+    // nothing was cut: the two small ones were not there to list
+    expect(large.truncated).toBeUndefined();
+    // a cut: the totals are of all faces, the count of the cut of what there was to list
+    const one = ask(context, { orientations: [up([0, 0, 1])], minArea: 0, maxFaces: 1 });
+    expect(one.bodies[0].orientations[0].overhang).toMatchObject({ area: expect.closeTo(42, 5), count: 3, small: 0 });
+    expect(listed(one.bodies[0].orientations[0])).toEqual([name(30)]);
+    expect(one.truncated).toEqual({ shown: 2, total: 4 });
+    const two = ask(context, { orientations: [up([0, 0, 1])], maxFaces: 2 });
+    expect(listed(two.bodies[0].orientations[0])).toEqual([name(30), name(10)]);
+    expect(two.truncated).toEqual({ shown: 3, total: 4 });
+  });
+
+  it('review: a face without a frame cannot be put on the bed and is judged by its triangles; a direction needs a direction', () => {
+    // the context has no frame for the top, and the side x = 4 is round
+    const { context, name } = contextOf({ part: { solid: box(), normalOf: (face) => (face === TOP ? undefined : BOX_NORMALS[face]), round: [RIGHT] } });
+    expect(failure(() => ask(context, { orientations: [up([0, 0, 1]), lying(name(TOP))] }))).toEqual({
+      code: 'notAvailable',
+      message: 'orientations[1].by.onBed: the face is not in the state asked about, or it has no side that looks out of the body',
+      arg: ['orientations', 1, 'by', 'onBed'],
+    });
+    expect(failure(() => ask(context, { orientations: [lying(name(RIGHT))] }))).toEqual({ code: 'notAvailable', message: 'orientations[0].by.onBed: the face is not planar: only a planar face can lie on the bed', arg: ['orientations', 0, 'by', 'onBed'] });
+    // upside down the top looks straight down at the bed, and is no contact: like a round face
+    const flipped = first(context, { orientations: [up([0, 0, -1])] });
+    expect(flipped.contact).toEqual({ area: 0, count: 0, faces: [] });
+    expect(flipped.overhang.faces).toEqual([{ face: name(TOP), area: expect.closeTo(12, 9), from: expect.closeTo(0, 9) }]);
+    // directions without a direction, and ones whose length a double cannot hold
+    for (const none of [[0, 0, 0], [Infinity, 0, 0], [0, Number.NaN, 1]] as Vec3[]) {
+      expect(failure(() => ask(context, { orientations: [up([0, 0, 1]), up(none)] }))).toEqual({ code: 'invalidArguments', message: 'orientations[1].by.up: a direction needs a length', arg: ['orientations', 1, 'by', 'up'] });
+    }
+    for (const tiny of [[0, 0, 5e-324], [0, 0, 1.7e308]] as Vec3[]) {
+      const way = first(context, { orientations: [up(tiny)] });
+      expect(way.up).toEqual([0, 0, 1]);
+      expect(way.contact.faces).toEqual([{ face: name(BOTTOM), area: expect.closeTo(12, 9) }]);
+    }
   });
 });

@@ -147,6 +147,44 @@ describe('the query print', () => {
     expect(print(engine, { orientations: [up(0, 1, 0), up(0, 0, 1)], maxFaces: 2 }).truncated).toBeUndefined();
   });
 
+  it('review: a body on two faces in one plane under a direction a hair off; a direction of any length; a turn of a face', () => {
+    // a plate 40 × 30 × 10 and a block 60 × 30 × 20 added beside it from the same plane: one body with two bottom faces
+    const joined = newEngine();
+    run(joined, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), addExtrude('E1', 'S1', [rectLoop('r')], 10), addSketch('S2', XY), rectangle('S2', 'q', 40, 0, 60, 30, null), addExtrude('BLOCK', 'S2', [rectLoop('q')], 20, 'add', 'E1'));
+    expectAllOk(joined.getState());
+    // 5e-6 rad off: along that direction the block starts 2e-4 mm above the lowest corner, twice
+    // the precision of coordinates up to 100; both faces are still on the bed
+    const off = one(joined, { orientations: [up(5e-6, 0, 1)] });
+    expect(off.contact).toEqual({
+      area: expect.closeTo(3000, 3),
+      count: 2,
+      faces: [
+        { face: cap('BLOCK', 'startCap'), area: expect.closeTo(1800, 3) },
+        { face: cap('E1', 'startCap'), area: expect.closeTo(1200, 3) },
+      ],
+    });
+    expect(off.overhang).toEqual({ area: 0, count: 0, small: 0, faces: [] });
+    // the smaller of the two named to lie on the bed, with one face listed: the totals and `onBed` are of all faces
+    const cut = print(joined, { orientations: [lying('E1', cap('E1', 'startCap'))], maxFaces: 1 });
+    expect(cut.bodies[0].orientations[0]).toMatchObject({ onBed: true, contact: { area: expect.closeTo(3000, 3), count: 2 } });
+    expect(cut.bodies[0].orientations[0].contact.faces).toEqual([{ face: cap('BLOCK', 'startCap'), area: expect.closeTo(1800, 3) }]);
+    expect(cut.truncated).toEqual({ shown: 1, total: 2 });
+    // directions whose length a double barely holds. On its end x = 0 the step between the plate
+    // and the block looks straight down, 40 up
+    const onEnd = one(joined, { orientations: [up(1e-320, 0, 0)] });
+    expect(onEnd.up).toEqual([1, 0, 0]);
+    expect(onEnd.contact.faces).toEqual([{ face: side('E1', 'rd'), area: expect.closeTo(300, 3) }]);
+    expect(onEnd.overhang.faces).toEqual([{ face: side('BLOCK', 'qd'), area: expect.closeTo(300, 3), from: expect.closeTo(40, 4) }]);
+    expect(one(joined, { orientations: [up(0, 0, 5e-324)] }).up).toEqual([0, 0, 1]);
+    expect(one(joined, { orientations: [up(1.7e308, 1.7e308, 1.7e308)] }).up).toEqual(near([Math.sqrt(1 / 3), Math.sqrt(1 / 3), Math.sqrt(1 / 3)], 12));
+    // by a face a turn turns the box as it does by a direction, and the body stays on that face
+    const [flat, quarter] = print(joined, { orientations: [lying('E1', side('E1', 'ra')), { ...lying('E1', side('E1', 'ra')), turn: Math.PI / 2 }] }).bodies[0].orientations;
+    expect(flat.size).toEqual(near([100, 20, 30], 4));
+    expect(quarter.size).toEqual(near([20, 100, 30], 4));
+    expect([flat.onBed, quarter.onBed]).toEqual([true, true]);
+    expect(quarter.contact).toEqual(flat.contact);
+  });
+
   it('errors: an orientation that says nothing, a face that cannot lie on the bed, numbers out of their ranges', () => {
     const fails = (args: unknown) => engine.query('print', args as QueryArgs<'print'>);
     expect(fails({ bodies: ['E1'] })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['orientations'] } });

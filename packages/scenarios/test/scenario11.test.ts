@@ -417,6 +417,11 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     expect(carrier.fits).toBeUndefined(); // no bed was given
     expect(carrier.up).toEqual([0, 0, 1]);
     expect(carrier.contact.faces.map((entry) => [entry.face.feature, entry.face.role])).toEqual([['carrierPin', 'startCap'], ['carrierPin', 'startCap'], ['carrierPin', 'startCap']]);
+    // review: a direction a hair off the axis still leaves it on the ends of all three pins
+    // (the ends are 60 apart: along that direction one of them is the lowest by 3e-4 mm)
+    const off = print(engine, { bodies: ['carrier'], orientations: [{ by: { up: [1e-5, 0, 1] } }] }).bodies[0].orientations[0];
+    expect(off.contact).toMatchObject({ area: expect.closeTo(58.61, 2), count: 3 });
+    expect(off.overhang.count).toBe(1);
     // the same face gives the direction for another body, which has no `onBed`
     const other = print(engine, { bodies: ['sun'], orientations: [{ by: onBed('carrier', cap('carrier', 'startCap')) }] }).bodies[0].orientations[0];
     expect(other.onBed).toBeUndefined();

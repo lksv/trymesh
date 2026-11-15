@@ -76,7 +76,7 @@ export const PRINT_ARGS = {
 //   face lies on the bed. False when something of the body reaches below it. It does not depend
 //   on what the list of contact faces shows.
 // - `contact`: the area that lies on the bed: the planar faces that look straight down (within
-//   `ANGLE_TOLERANCE`) and reach the lowest point of the body. Only planar faces count:
+//   `ANGLE_TOLERANCE`) and have nothing of the body below them. Only planar faces count:
 //   a cylinder on its side touches the bed in a line, and the facet its polygon rests on is not
 //   a contact. `area` and `count` are of all faces on the bed; `faces` lists the largest, at
 //   most `maxFaces`.
@@ -122,7 +122,17 @@ export interface PrintFrame {
   y: Vec3;
   up: Vec3;
 }
-const unit = (vector: Vec3): Vec3 => mul3(vector, 1 / len3(vector));
+// The unit vector along `vector`, or undefined when it has no direction. The vector is divided
+// by its largest part first: the length of one whose parts are near the smallest or the largest
+// number a double holds would come out as zero or as infinity.
+function unitOf(vector: Vec3): Vec3 | undefined {
+  const largest = Math.max(Math.abs(vector[0]), Math.abs(vector[1]), Math.abs(vector[2]));
+  if (!(largest > 0) || !Number.isFinite(largest)) return undefined;
+  const scaled: Vec3 = [vector[0] / largest, vector[1] / largest, vector[2] / largest];
+  return mul3(scaled, 1 / len3(scaled));
+}
+const unit = (vector: Vec3): Vec3 => unitOf(vector) ?? [0, 0, 1];
+// `direction` has a length (the entry refuses one that has none).
 export function frameOfDirection(direction: Vec3): PrintFrame {
   const up = unit(direction);
   const axis: Vec3 = Math.abs(up[0]) > Math.SQRT1_2 ? [0, 1, 0] : [1, 0, 0];
@@ -147,20 +157,24 @@ export function turned(frame: PrintFrame, turn: number): PrintFrame {
 //   more than `ANGLE_TOLERANCE` once the body is not aligned with the axes of the model, and
 //   the face is known exactly.
 // - A planar face is contact as a whole, with all its area, when it looks straight down (its
-//   normal against `up` within `ANGLE_TOLERANCE`) and its lowest corner is within `precision`
-//   of the lowest point of the body. `precision` is the precision of the coordinates
-//   (`coordinatePrecision` over the body).
+//   normal against `up` within `ANGLE_TOLERANCE`) and nothing of the body reaches beyond its
+//   plane, measured along the normal of the face and within `precision`. `precision` is the
+//   precision of the coordinates (`coordinatePrecision` over the body).
 //   - The direction is tested as well as the height: on a body thinner than the precision the
 //     top and the sides are that low too.
-//   - The face is judged as a whole, by its lowest corner, and not triangle by triangle with
-//     every corner at the lowest point: that would ask a face of size L to be level within
-//     `precision / L`, some hundred times tighter than `ANGLE_TOLERANCE`, and a direction typed
-//     with five digits would turn the whole bottom face into an overhang.
+//   - What is below a face is measured along the normal of that face, not along `up`. Along
+//     `up` a face of size L would have to be level within `precision / L`, some hundred times
+//     tighter than `ANGLE_TOLERANCE`: a direction typed with five digits would lift the far end
+//     of a large face off the bed, and of a body that stands on several faces in one plane (the
+//     ends of three pins) it would leave the lowest one. A face that looks straight down within
+//     the tolerance is asked the question the caller meant: put on this face, does the body
+//     rest on it?
 // - What is not contact overhangs when it looks down and leans from the vertical by more than
 //   `angle` plus `ANGLE_TOLERANCE`: a planar face as a whole, by its normal; a triangle of
 //   another face by its own. The lean of a face is the angle of its normal below the horizontal:
 //   nothing for a wall, a right angle for a ceiling.
-// - `from`: the lowest corner of what overhangs of a face, above the lowest point of the body.
+// - `from`: the lowest corner of what overhangs of a face, above the lowest point of the body
+//   along `up`.
 // A triangle without an area looks nowhere and adds nothing.
 export interface PrintPass {
   size: Vec3;
@@ -188,8 +202,9 @@ export function printPass(solid: Solid, frame: PrintFrame, angle: number, normal
   const leans = (normal: Vec3): boolean => Math.asin(Math.min(1, Math.max(-1, -dot3(normal, frame.up)))) > angle + ANGLE_TOLERANCE;
   const straightDown = (normal: Vec3): boolean => dot3(normal, frame.up) < 0 && len3(cross3(normal, frame.up)) <= Math.sin(ANGLE_TOLERANCE);
 
-  // per planar face: its area and its lowest corner; per other face: what overhangs of it
-  const planar = new Map<number, { normal: Vec3; area: number; lowest: number }>();
+  // per planar face: its area, its lowest corner and how far it reaches along its own normal;
+  // per other face: what overhangs of it
+  const planar = new Map<number, { normal: Vec3; area: number; lowest: number; reach: number }>();
   const overhang = new Map<number, { area: number; from: number }>();
   const normals = new Map<number, Vec3 | undefined>();
   for (let t = 0; t < faceIds.length; t++) {
@@ -203,18 +218,26 @@ export function printPass(solid: Solid, frame: PrintFrame, angle: number, normal
     if (!normals.has(face)) normals.set(face, normalOf(face));
     const normal = normals.get(face);
     if (normal) {
+      const reach = Math.max(dot3(a, normal), dot3(b, normal), dot3(c, normal));
       const whole = planar.get(face);
-      if (whole) [whole.area, whole.lowest] = [whole.area + area, Math.min(whole.lowest, lowest)];
-      else planar.set(face, { normal, area, lowest });
+      if (whole) [whole.area, whole.lowest, whole.reach] = [whole.area + area, Math.min(whole.lowest, lowest), Math.max(whole.reach, reach)];
+      else planar.set(face, { normal, area, lowest, reach });
     } else if (leans(mul3(own, 1 / doubled))) {
       const part = overhang.get(face);
       if (part) [part.area, part.from] = [part.area + area, Math.min(part.from, lowest - bed)];
       else overhang.set(face, { area, from: lowest - bed });
     }
   }
+  // how far the body reaches along a direction: its furthest point that way
+  const furthest = (along: Vec3): number => {
+    let most = -Infinity;
+    for (let i = 0; i < p.length / 3; i++) most = Math.max(most, dot3(at(i), along));
+    return most;
+  };
   const contact = new Map<number, number>();
   for (const [face, whole] of planar) {
-    if (straightDown(whole.normal) && whole.lowest - bed <= precision) contact.set(face, whole.area);
+    // only a face that looks straight down is measured: there are few of them
+    if (straightDown(whole.normal) && furthest(whole.normal) - whole.reach <= precision) contact.set(face, whole.area);
     else if (leans(whole.normal)) overhang.set(face, { area: whole.area, from: whole.lowest - bed });
   }
   return { size, contact, overhang };
@@ -234,14 +257,14 @@ interface Placed {
 function placedOf(context: QueryContext, orientation: Orientation, index: number): Placed {
   const { by } = orientation;
   if (by.up) {
-    if (!(Math.hypot(...by.up) > 0)) throw new QueryFailure('invalidArguments', `orientations[${index}].by.up: a direction needs a length`, ['orientations', index, 'by', 'up']);
+    if (!unitOf(by.up)) throw new QueryFailure('invalidArguments', `orientations[${index}].by.up: a direction needs a length`, ['orientations', index, 'by', 'up']);
     return { frame: turned(frameOfDirection(by.up), orientation.turn) };
   }
   const at = ['orientations', index, 'by', 'onBed'];
   const face = context.frame({ kind: 'face', body: by.onBed.body, face: by.onBed.face });
   const number = context.face(by.onBed.face);
   if ('problem' in face || number === undefined) {
-    throw new QueryFailure('notAvailable', `orientations[${index}].by.onBed: ${'problem' in face && face.problem === 'nonPlanarFace' ? 'the face is not planar: only a planar face can lie on the bed' : 'the face is not in the state asked about'}`, at);
+    throw new QueryFailure('notAvailable', `orientations[${index}].by.onBed: ${'problem' in face && face.problem === 'nonPlanarFace' ? 'the face is not planar: only a planar face can lie on the bed' : 'the face is not in the state asked about, or it has no side that looks out of the body'}`, at);
   }
   const up: Vec3 = [0 - face.normal[0], 0 - face.normal[1], 0 - face.normal[2]];
   return { frame: turned({ x: face.x, y: cross3(up, face.x), up }, orientation.turn), onBed: { body: by.onBed.body, face: number } };
@@ -254,7 +277,7 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
   returns:
     '`angle`: the overhang angle used (rad). `bodies`: for every body its `orientations` in the order asked, each with `up` (unit vector), `size` (mm: x, y, height in the print frame), `fits` (with a bed; the footprint either way round), ' +
     '`onBed` (for an orientation given by a face, on the body of that face: whether the face lies on the bed; false when something of the body reaches below it), ' +
-    '`contact` (`area` in mm2 and `count` of all planar faces that look straight down and reach the lowest point of the body; `faces`: the largest, with their areas; a round face never counts) and ' +
+    '`contact` (`area` in mm2 and `count` of all planar faces that look straight down and have nothing of the body below them; `faces`: the largest, with their areas; a round face never counts) and ' +
     '`overhang` (`area` in mm2 and `count` of all faces that look down and lean from the vertical by more than the angle; `small`: how many of them are below `minArea` and not listed; `faces`: the others, the largest first, each with `area` and `from`, the height in mm above the bed where it starts). ' +
     'Each list holds at most `maxFaces` faces, so the answer is at most 2 × `maxFaces` faces per body and orientation; `truncated` when `maxFaces` cut any list.',
   args: PRINT_ARGS,
@@ -270,8 +293,13 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
       total += list.length;
       return list.slice(0, args.maxFaces);
     };
-    // the largest first; faces of one area in the order of their numbers
-    const bySize = <T extends { area: number; number: number }>(a: T, b: T): number => b.area - a.area || a.number - b.number;
+    // The largest first; faces of one area in the order of their numbers. One area is one to
+    // six digits, which is what coordinates in float32 give: the copies of a face made by
+    // a pattern differ from the seventh on (17.188932 and 17.188922 mm2 for the floors of the
+    // nut pockets of the joint). Rounded, not compared within a tolerance: an order by
+    // a tolerance is not an order. Two areas that round apart are still listed by their size.
+    const rounded = (area: number): number => Number(area.toPrecision(6));
+    const bySize = <T extends { area: number; number: number }>(a: T, b: T): number => rounded(b.area) - rounded(a.area) || a.number - b.number;
     const bodies = [...new Set(args.bodies ?? Object.keys(context.bodies))].map((id) => {
       const body = context.bodies[id]; // from the context: the same code answers for a pose
       const precision = coordinatePrecision(body);

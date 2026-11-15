@@ -71,7 +71,7 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   polygon: {
     title: 'Regular polygon',
     summary:
-      'A regular polygon: a construction circle around it, the vertices on the circle and all sides of the same length. Position, size and rotation stay free (4 degrees of freedom) unless the anchors snap or a size is given. `sizeKind` with `size` adds a dimension: the diameter of the circumscribed circle, or the size across flats (the wrench size of a nut; an even number of sides only). `sizeKind` alone dimensions the size as drawn. The direction from `center` to `vertex` is the rotation: draw the polygon turned as it should be (with `vertex` straight right of the centre, `lines[1]` of a hexagon is horizontal) and add a constraint on a side only to hold it there. The same constraints also hold for folded polygons, and the solver may end in one when a later constraint or a change of the size asks for a big jump (a turn over about 30°, the size across flats several times larger or smaller): the sketch then has no region (`regions: 0`); undo the step and make it smaller. The dimension of the circumscribed circle takes any change.',
+      'A regular polygon: a construction circle around it, the vertices on the circle and all sides of the same length. Position, size and rotation stay free (4 degrees of freedom) unless the anchors snap or a size is given. `sizeKind` with `size` adds a dimension: the diameter of the circumscribed circle, or the size across flats (the wrench size of a nut; an even number of sides only). `sizeKind` alone dimensions the size as drawn. With a `size` the polygon is drawn at that size around `center`; when `vertex` snaps, the vertex keeps its place and a `center` that does not snap is drawn where the size holds, on the line from the vertex towards it. With both anchors snapped and a size far from their distance (ten times) the polygon may come out folded: give anchors that are about the size apart. The direction from `center` to `vertex` is the rotation: draw the polygon turned as it should be (with `vertex` straight right of the centre, `lines[1]` of a hexagon is horizontal) and add a constraint on a side only to hold it there. The same constraints also hold for folded polygons, and the solver may end in one when a later constraint or a change of the size asks for a big jump (a turn over about 30°, the size across flats several times larger or smaller): the sketch then has no region (`regions: 0`); undo the step and make it smaller. The dimension of the circumscribed circle takes any change.',
     inputs: {
       center: { kind: 'anchor' },
       vertex: { kind: 'anchor' },
@@ -263,7 +263,9 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
   const sides = Math.round(input.sides);
   const sizeKind = input.sizeKind ?? (input.size === undefined ? undefined : 'circumscribed');
   if (sizeKind === 'acrossFlats' && sides % 2 === 1) return failed('the size across flats needs an even number of sides; an odd polygon is sized by its circumscribed circle');
-  const [pc, pv] = [anchorPosition(context, input.center), anchorPosition(context, input.vertex)];
+  let pc = anchorPosition(context, input.center);
+  const pv = anchorPosition(context, input.vertex);
+  let centre = input.center;
   let radius = dist2(pc, pv);
   if (!(radius > SAME_PLACE)) return failed('the centre and the vertex are at the same place');
   // The size across flats of the polygon with the circumradius 1.
@@ -271,8 +273,13 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
   // The value of the dimension and the size the polygon is drawn at.
   // - A size that is given (a number, or an expression the parameters give a value to) is also
   //   the drawn size: the solver then starts from a polygon that already holds, and a start far
-  //   from the dimension is what folds a polygon. A vertex that snaps keeps its place; the solver
-  //   brings it and the rest together, or reports the conflict when the vertex cannot move.
+  //   from the dimension is what folds a polygon.
+  // - A vertex that snaps keeps its place. With a centre that does not snap the centre is drawn
+  //   where the size holds, on the line from the vertex to where it was given. With both
+  //   snapping the start cannot hold: the other vertices are drawn at the larger of the two
+  //   sizes, the given one and the drawn one, which is the start that did not fold in the runs
+  //   of the review; the solver brings the rest together, or reports the conflict when neither
+  //   place can move.
   // - Without a size the dimension takes the size as drawn. With a free vertex it is rounded and
   //   the polygon drawn at the rounded size; a vertex that snaps is where it is, so the dimension
   //   is not rounded (a rounded one would contradict a vertex that cannot move).
@@ -284,7 +291,14 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
     value = input.size ?? (input.vertex.snap || !(rounded > 0) ? drawn : rounded);
     const known = typeof value === 'number' ? value : context.parameters ? evaluateNumber(value, context.parameters) : undefined;
     const size = typeof known === 'number' ? known : known?.ok ? known.value : undefined;
-    if (size !== undefined && size > 0) radius = size / across;
+    if (size !== undefined && size > 0) {
+      const wanted = size / across;
+      if (input.vertex.snap && !input.center.snap) {
+        pc = [pv[0] + (wanted / radius) * (pc[0] - pv[0]), pv[1] + (wanted / radius) * (pc[1] - pv[1])];
+        centre = { at: pc };
+      }
+      if (!input.vertex.snap || !input.center.snap || wanted > radius) radius = wanted;
+    }
   }
   // a side shorter than what counts as one place would be a line without length
   if (!(2 * radius * Math.sin(Math.PI / sides) > SAME_PLACE)) return failed('the polygon is too small: its sides would have no length');
@@ -292,7 +306,7 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
   const direction = Math.atan2(pv[1] - pc[1], pv[0] - pc[0]);
   const corner = (i: number): Vec2 => [pc[0] + radius * Math.cos(direction + (TAU * i) / sides), pc[1] + radius * Math.sin(direction + (TAU * i) / sides)];
 
-  const center = placeAnchor(context, input.center, newId);
+  const center = placeAnchor(context, centre, newId);
   let first: Placed;
   if (input.vertex.snap) first = placeAnchor(context, input.vertex, newId);
   else {
@@ -316,7 +330,8 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
     commands.push({ type: 'addConstraint', sketch, id, constraint });
     return id;
   };
-  // every vertex on the circle and every side as long as the first one: only the regular polygon is left
+  // every vertex on the circle and every side as long as the first one: the regular polygon holds
+  // these, and so do its folded forms (see the summary of the tool)
   for (const point of points) constraints.push(constrain({ type: 'pointOnCurve', point, curve: circle }));
   for (const line of lines.slice(1)) constraints.push(constrain({ type: 'equalLength', a: lines[0], b: line }));
   const ids: Record<string, Id[]> = { center: [center.id], circle: [circle], points, lines, constraints };

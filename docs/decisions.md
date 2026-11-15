@@ -1126,7 +1126,7 @@ type AxisRef =
   - **The module lives in the engine package** (`packages/engine/src/sketch-tools.ts`). The tools work only with types of the engine and return commands; the engine package has no dependency and both the app and MCP depend on it already. A package of its own would add a boundary and nothing else. The engine's behaviour did not change: the tools are functions beside it, not commands.
   - **The catalog `SKETCH_TOOLS`** describes the inputs (anchor, number with its range, option; optional or not) and the lists of IDs a tool returns. `sketchTool` checks the input against it, so a wrong input from an AI gets a message that names the input and what the tool takes. A number input may be marked as taking an expression (`size`).
   - **Snapping moved with the rectangle.** `placeAnchor` and `anchorPosition`, which every drawing tool of the app uses, are in the module, and the app calls them from the engine (`anchorPosition` since the review below; until then the app kept a copy). The app's rectangle is the engine's.
-  - **The polygon.** 3 to 64 sides. With a numeric `size` and a free vertex it is drawn at that size, so the solver starts from a shape that already holds; `sizeKind` without `size` dimensions the size as drawn, rounded to 0.01; `size` without `sizeKind` means the circumscribed circle; across flats with an odd number of sides is refused. The dimension across flats is `distancePointLine` from the first vertex to the line of the opposite side.
+  - **The polygon.** 3 to 64 sides. With a `size` it is drawn at that size, so the solver starts from a shape that already holds (how that goes with anchors that snap is in architecture.md, Sketch tools); `sizeKind` without `size` dimensions the size as drawn, rounded to 0.01 unless the vertex snaps; `size` without `sizeKind` means the circumscribed circle; across flats with an odd number of sides is refused. The dimension across flats is `distancePointLine` from the first vertex to the line of the opposite side.
   - **IDs.** `freshIds(document, prefix)` hands out `<prefix><kind><number>` the whole document does not have. MCP uses it; the app keeps its counter.
   - **MCP.** The tool `sketch_tool` `{ sketch, tool, input, prefix?, preview? }` writes the batch as one command, so one undo takes the shape back, and returns `ids` with what `execute` returns (the problems and the state of the sketches). `describe_api` has the section *Sketch tools* generated from the catalog, with an example of input for each tool that a test runs. Over the bridge the app asks `changesDocument` whether a call would be written before it cancels an operation in progress.
   - **App.** The tool *Polygon* with its options in the panel (ui.md, Stav implementace).
@@ -1143,12 +1143,24 @@ type AxisRef =
   | `freshIds` handed out the ID of a removed curve that a profile still named: a new rectangle elsewhere silently became the profile of an extrusion that was in error | The supplier leaves alone every text the features of the document contain |
   | Inputs: a polygon with sides shorter than a point, a size of 1e-9, coordinates out of range reported by the engine in Czech, `at` over the limit called "not finite", extra keys in `snap` accepted, an empty `prefix` refused in Czech | Checked by the tool with messages of its own; an empty prefix is the default |
   | `changesDocument` said yes to an empty batch and to a call with arguments outside the schema | It asks the tools first and compares the document a preview returns |
-  | Docs said the app uses the engine's `anchorPosition`; it kept a copy | The app calls the engine's; the copy is gone |
+  | Docs said the app uses the engine's `anchorPosition`; it kept a copy | The app calls the engine's; the copy in `sketch-commands.ts` is gone (`closestOn` of `sketch-view.ts` stays: it serves hit testing over the shapes of the view) |
   | The description said `at` is ignored with a point snap, though it is required | The text says it must be given |
   | Scenario 9 did not check the volume the pockets take (a term of 308 mm³ inside a window of 7400) | The housing is compared with its state after the first hole: five holes and six pockets, to a tenth of a mm³ |
   | Mutations no test caught | Tests of snapping to a line and to an arc, of `at` out of range, of `sketch_tool` among the changing tools, of the size drawn with a snapped vertex |
 
   Left as they are: one drag of a vertex exactly through the centre collapses the polygon; a polygon very far from the origin (1e7 mm) or that large does not solve, as other shapes there do not either.
+
+  **Second review of point 7 (2026-11-15),** of the fixes above only (another instance of the model, read-only): 351 polygons and a matrix of 864 starts against the real solver, 46 calls of `changesDocument` compared with what the call then did, 17 mutations of the new lines.
+
+  | Finding | Fix |
+  |---|---|
+  | A size given with a vertex that snaps still folded polygons: the other vertices were drawn at the size while the first one stayed at the snap place, so the start did not hold. 44 of 864 starts folded where the snap place was four to ten times further than the size, also with the circumscribed circle, which never folded before the first fix | With a centre that does not snap the centre is drawn where the size holds. With both anchors snapped the other vertices are drawn at the larger of the two sizes. A matrix of 3888 starts (eight ways of snapping, ratios 0.1 to 10, 3 to 64 sides, three directions) leaves one fold: twelve sides across flats, both anchors on points ten times further apart than the size |
+  | `changesDocument` said no to a drag of a point: a preview does not write back what the solver finds, so the document it returns is the same object (a regression of the first fix) | An accepted drag counts as a change |
+  | `changesDocument` said yes to accepted commands that leave the content as it is (a rename to the same name, a point added and removed in one batch) | The content is compared as `execute` compares it for an undo step, without the `solved` of a sketch, which a preview does not write |
+  | Docs and a comment still described the size and the construction as before the first fix; the app's `closestOn` was called gone | Corrected |
+  | Mutations no test caught: a size as drawn that rounds to nothing, an expression with a value that is not positive, the range of a polygon on each of its four sides, the parameters handed to the tool by `sketch_tool` | Tests added |
+
+  Left as they are: a polygon of many sides only a few times larger than what counts as one place (12 sides at a size of 0.000005 mm) is accepted and has no region; `changesDocument` runs a preview, so in a draft mode of the app a call of `execute` or `sketch_tool` from the AI is computed twice (0.4 s more on a sketch of 3000 points).
 
 ### Co potvrdil vlastník projektu
 

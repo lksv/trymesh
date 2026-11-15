@@ -206,6 +206,42 @@ describe('the polygon tool', () => {
     expect((blind.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
     const unknown = sketchTool('polygon', context, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'nowhere * 2' }, freshIds(engine.getState().document)) as Made;
     expect((unknown.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
+    // so is a size whose value is not positive: the engine then refuses the dimension, not the tool the polygon
+    const negative = sketchTool('polygon', context, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'w - 10' }, freshIds(engine.getState().document)) as Made;
+    expect(negative.ok).toBe(true);
+    expect((negative.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
+    expect(engine.execute(batch(...negative.commands))).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
+
+    // a size as drawn that would round to nothing is not rounded
+    const small = sketched();
+    const speck = draw(small, 'polygon', { center: free(0, 0), vertex: free(0.002, 0), sides: 3, sizeKind: 'circumscribed' });
+    expect(sketchOf(small, 'S').constraints[speck.ids.size[0]]).toMatchObject({ type: 'diameter', value: 0.004 });
+
+    // A vertex that snaps keeps its place. With a free centre the centre is drawn where the size
+    // holds, so the start is the polygon asked for however far away the centre was given: here
+    // forty times the radius, which used to fold the polygon (the second review).
+    for (const [sides, sizeKind] of [[64, 'circumscribed'], [24, 'acrossFlats'], [6, 'acrossFlats']] as const) {
+      const far = sketched();
+      const made = sketchTool('polygon', { sketch: sketchOf(far, 'S'), result: solved(far, 'S') }, { center: free(193.2, 51.8), vertex: onPoint('origin'), sides, sizeKind, size: 10 }, freshIds(far.getState().document)) as Made;
+      const radius = 10 / (sizeKind === 'circumscribed' ? 2 : 2 * Math.cos(Math.PI / sides));
+      const centre = made.commands[0] as { x: number; y: number };
+      expect(Math.hypot(centre.x, centre.y), `${sides}`).toBeCloseTo(radius, 9);
+      expect(Math.atan2(centre.y, centre.x)).toBeCloseTo(Math.atan2(51.8, 193.2), 9);
+      run(far, batch(...made.commands));
+      expect(status(far.getState()).S).toBe('ok');
+      for (const step of steps(far, made)) expect(step, `${sides}`).toBeCloseTo(1 / sides, 5);
+      expect(solved(far, 'S').regions).toHaveLength(1);
+    }
+    // With both anchors on points the other vertices start at the larger of the two sizes: a point
+    // forty times too far out comes in, and the polygon is regular at the size given.
+    for (const [sides, sizeKind] of [[64, 'circumscribed'], [24, 'circumscribed'], [6, 'acrossFlats']] as const) {
+      const both = sketched();
+      run(both, { type: 'addPoint', sketch: 'S', id: 'v', x: 193.2, y: 51.8 });
+      const made = draw(both, 'polygon', { center: onPoint('origin'), vertex: onPoint('v'), sides, sizeKind, size: 10 });
+      expect(status(both.getState()).S).toBe('ok');
+      for (const step of steps(both, made)) expect(step, `${sides}`).toBeCloseTo(1 / sides, 5);
+      expect(Math.hypot(...at(both, 'v')), `${sides}`).toBeCloseTo(10 / (sizeKind === 'circumscribed' ? 2 : 2 * Math.cos(Math.PI / sides)), 5);
+    }
 
     // a vertex that snaps to a free point: the other vertices are drawn at the size and the point comes to them
     const snapped = sketched();

@@ -405,10 +405,25 @@ function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { comma
 export function changesDocument(engine: Engine, name: string, args: Record<string, unknown>): boolean {
   if (!MUTATING.includes(name) || callProblem(name, args) !== undefined) return false;
   const state = engine.getState();
-  // a command that is accepted and leaves the document as it is (an empty batch) changes nothing
+  // - A command that is accepted and leaves the content of the document as it is changes nothing:
+  //   an empty batch, a rename to the same name, a point added and removed in one batch. The
+  //   engine makes no undo step for it either.
+  // - A preview does not write back what the solver finds, so `solved` of a sketch, which every
+  //   edit of the sketch resets, is left out of the comparison.
+  // - A drag changes the document only through the solver, so an accepted drag counts as
+  //   a change (also the rare one that moves nothing, as the drag of a point that is fixed).
+  const content = (feature: Feature): string => JSON.stringify(feature.type === 'sketch' ? { ...feature, solved: undefined } : feature);
   const changes = (command: Command): boolean => {
     const result = engine.preview(command);
-    return result.ok && result.state.document !== state.document;
+    if (!result.ok) return false;
+    const [next, now] = [result.state.document, state.document];
+    if (command.type === 'dragPoint') return true;
+    if (next === now) return false;
+    return (
+      JSON.stringify({ ...next, features: undefined }) !== JSON.stringify({ ...now, features: undefined }) ||
+      next.features.length !== now.features.length ||
+      next.features.some((feature, i) => feature !== now.features[i] && content(feature) !== content(now.features[i]))
+    );
   };
   if (name === 'undo') return state.canUndo;
   if (name === 'redo') return state.canRedo;

@@ -224,6 +224,10 @@ describe('sketch tools', () => {
     expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, size: 1e-9 } })).toBe('polygon: the polygon is too small: its sides would have no length');
     expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [0, 0] }, vertex: { at: [2e-6, 0] }, sides: 64 } })).toMatch(/too small/);
     expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [9e8, 9e8] }, vertex: { at: [-1e9, -1e9] }, sides: 6 } })).toMatch(/reaches out of the range/);
+    // each of the four sides of the range by itself
+    for (const [x, y] of [[999999999, 0], [-999999999, 0], [0, 999999999], [0, -999999999]]) {
+      expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [x, y] }, vertex: { at: [x * (1 - 1e-9), y * (1 - 1e-9)] }, sides: 6, size: 10 } }), `${x} ${y}`).toMatch(/reaches out of the range/);
+    }
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
     expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
@@ -277,6 +281,9 @@ describe('sketch tools', () => {
     // a regular dodecagon 5.5 across flats: area = 3 · s² · tan(15°)
     expect(detail.regions[0].area).toBeCloseTo(3 * 5.5 ** 2 * Math.tan(Math.PI / 12), 4);
     expect(detail.constraints.find((c: { id: string }) => c.id === made.ids.size[0])).toMatchObject({ value: 5.5, expressions: { value: 'nut' } });
+    // the tool knows the value of the expression: it refuses a size too small to draw by itself
+    const tiny = callTool(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', prefix: 't', input: { center: { at: [50, 0] }, vertex: { at: [52, 0] }, sides: 6, size: 'nut * 1e-9' } });
+    expect(tiny).toEqual({ ok: false, error: 'polygon: the polygon is too small: its sides would have no length' });
   });
 
   it('changesDocument: only a call that would be written counts', () => {
@@ -303,6 +310,34 @@ describe('sketch tools', () => {
     expect(changesDocument(engine, 'undo', { steps: 2 })).toBe(false);
     expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load']);
     expect(engine.save()).toBe(before);
+  });
+
+  it('changesDocument answers as the call then does: a drag changes, a command that leaves the content does not', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, { type: 'addPoint', sketch: 's', id: 'q', x: 1, y: 2 });
+    const would = (command: Command): boolean => changesDocument(engine, 'execute', { command });
+    // what the call does: whether the saved document is another one afterwards
+    const does = (command: Command): boolean => {
+      const before = engine.save();
+      expect(engine.execute(command).ok).toBe(true);
+      return engine.save() !== before;
+    };
+    // a drag moves the point through the solver, which a preview does not write into the document
+    const drag: Command = { type: 'dragPoint', sketch: 's', point: 'q', x: 50, y: 60 };
+    expect(would(drag)).toBe(true);
+    expect(does(drag)).toBe(true);
+    // accepted commands that leave the content as it is
+    const name = engine.getState().document.features[0].name;
+    for (const same of [
+      { type: 'renameFeature', id: 's', name },
+      { type: 'setSuppressed', id: 's', suppressed: false },
+      { type: 'batch', commands: [{ type: 'addPoint', sketch: 's', id: 'gone', x: 0, y: 0 }, { type: 'removeEntity', sketch: 's', id: 'gone' }] },
+    ] as Command[]) {
+      expect(would(same), JSON.stringify(same)).toBe(false);
+      expect(does(same), JSON.stringify(same)).toBe(false);
+    }
+    expect(would({ type: 'renameFeature', id: 's', name: 'another' })).toBe(true);
   });
 });
 

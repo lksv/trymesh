@@ -2,9 +2,10 @@
 // A draft for review, not code that runs: it is only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the engine and states what
 // is added or changed. Parts 2 and 3 (a module per feature type, panels of the app) change no
-// public type and have no contract; their design is in part2-feature-modules.md and design.md.
+// public type and have no contract; their designs are part2-feature-modules.md and
+// part3-app-panels.md.
 //
-// Fourth version, after three rounds of reviews (design.md, "Reviews").
+// Fifth version, after four rounds of reviews (design.md, "Reviews").
 //
 // Where the types will live: what a caller of the engine or an AI reads goes to `types.ts`
 // (`Surface`, `EntityRef`, `QueryOutcome`, the additions to `Evaluation` and `Engine`), because
@@ -12,32 +13,54 @@
 // `ValueOf`, `ArgsOf`, `QuerySpec`, the registries) goes to modules of its own, so that it does
 // not reach that description.
 
-import type { AxisRef, BodyResult, Command, CommandResult, ConstraintExplanation, CopyTag, Document, Engine, EngineState, Evaluation, FaceName, Feature, Frame, Id, Input, InterferenceReport, NumberSpec, PlaneRef, SketchDiagnosis, SolidKernel, Unit, Vec3 } from '../../../packages/engine/src/index';
+import type { AxisRef, BodyResult, Command, CommandResult, ConstraintExplanation, CopyTag, Document, Engine, ExternalRef, EngineState, Evaluation, FaceName, Feature, FeaturePatch, FeatureResult, Frame, Id, Input, InterferenceReport, Issue, IssueCode, NumberSpec, PlaneRef, SketchDiagnosis, SolidKernel, Unit, Vec3 } from '../../../packages/engine/src/index';
 // Internal to the engine, not exported from its index: what the recompute keeps about a sketch.
 import type { SketchState } from '../../../packages/engine/src/evaluate';
 
 // ================================================================ what a package adds to the unions
 
-// In the code a package adds a member to a union of types.ts (`Feature`, `Command`, `FaceName`)
-// or a field to `Document`. A draft cannot edit that file, so these four maps stand for that one
-// line: a contract merges its addition into a map, and the types below are the unions with every
-// addition. All contracts are type-checked together, so two packages that add the same name
-// differently do not compile. calls.ts, section j, shows one of each.
+// In the code a package adds a member to a union of types.ts (`Feature`, `FeaturePatch`,
+// `Command`, `FaceName`, `IssueCode`) or a field to `Document`. A draft cannot edit that file, so
+// these maps stand for that one line: a contract merges its addition into a map, and the types
+// below are the unions with every addition. All contracts are type-checked together, so two
+// packages that add the same name differently do not compile. calls.ts, section j, shows one of
+// each.
+// - A package that changes an existing feature type (the extrusion gets an offset, a taper,
+//   a new extent) merges the changed interface under the name of the type: `extrude`. A name is
+//   taken once, so the packages of one track share that declaration: the first one owns it and
+//   the others add to it there.
 export interface FeatureTypes {} // type of the feature → its interface
+export interface FeaturePatches {} // type of the feature → what `updateFeature` may change of it
 export interface Commands {} // type of the command → the command
 export interface DocumentSections {} // field of the document → its type
 export interface FaceRoles {} // role → the fields of a face name beyond `feature`, `role` and `copy`
+export interface IssueCodes {} // code → true
 export type FeatureAfter = Feature | FeatureTypes[keyof FeatureTypes];
 export type FaceNameAfter = FaceName | { [R in keyof FaceRoles]: { feature: Id; role: R; copy?: CopyTag[] } & FaceRoles[R] }[keyof FaceRoles];
 export interface EdgeNameAfter {
   a: FaceNameAfter;
   b: FaceNameAfter;
 }
-export type CommandAfter = Command | { type: 'addFeature'; feature: Input<FeatureTypes[keyof FeatureTypes]>; index?: number } | Commands[keyof Commands];
+export type PlaneRefAfter = Exclude<PlaneRef, { kind: 'face' }> | { kind: 'face'; body: Id; face: FaceNameAfter };
+export type ExternalRefAfter = Omit<ExternalRef, 'edge'> & { edge: EdgeNameAfter };
+export type CommandAfter =
+  | Exclude<Command, { type: 'batch' }>
+  | { type: 'batch'; commands: CommandAfter[] }
+  | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRefAfter } // a sketch on a face in a role of a package
+  | { type: 'addExternal' | 'updateExternal'; sketch: Id; id: Id; ref: ExternalRefAfter } // an edge of such a face, projected
+  | { type: 'addFeature'; feature: Input<FeatureTypes[keyof FeatureTypes]>; index?: number }
+  | { type: 'updateFeature'; id: Id; patch: FeaturePatches[keyof FeaturePatches] }
+  | Commands[keyof Commands];
 export type DocumentAfter = Omit<Document, 'features'> & { features: FeatureAfter[] } & DocumentSections;
-// Not rewritten by the draft: `BodyResult` and the evaluation keep `FaceName` and `EdgeName`,
-// `PlaneRef` keeps `FaceName`, `FeaturePatch` keeps its members. A contract that needs one of
-// them wider says so in its design.
+export type IssueAfter = Omit<Issue, 'code'> & { code: IssueCode | keyof IssueCodes };
+export type FeatureResultAfter = Omit<FeatureResult, 'error' | 'warnings'> & { error?: IssueAfter; warnings: IssueAfter[] };
+export type BodyResultAfter = Omit<BodyResult, 'edges'> & { edges: (Omit<BodyResult['edges'][number], 'name'> & { name: EdgeNameAfter })[] };
+// Not rewritten by the draft: a reference inside a feature of today as `addFeature` sends it and
+// as the document holds it (the plane of a sketch, the base of a plane feature) and the patches
+// of today's types (`FeaturePatch`), beyond what `FeatureTypes` and `FeaturePatches` restate.
+// A sketch is moved onto a face in a new role by `setSketchPlane`; a contract that needs more
+// restates that feature type.
+export type { FeaturePatch };
 
 // ================================================================ shared vocabulary
 
@@ -87,7 +110,10 @@ export type Surface =
 //   it asks its context (`QueryContext.surface`), which answers in the pose it was asked about.
 // - One number of a face can lie in two bodies: a cut through two targets leaves the faces of
 //   the one tool in both. That is why a surface in a pose is asked by body and face.
-export interface EvaluationAfter extends Evaluation {
+export interface EvaluationAfter extends Omit<Evaluation, 'features' | 'bodies' | 'faceNames'> {
+  features: Record<Id, FeatureResultAfter>;
+  bodies: Record<Id, BodyResultAfter>;
+  faceNames: FaceNameAfter[];
   faceSurfaces: Surface[]; // index = number of the face, like `faceNames`
 }
 export interface StateAfter extends Omit<EngineState, 'document' | 'evaluation'> {
@@ -130,9 +156,13 @@ export type CommandResultAfter = { ok: true; state: StateAfter } | Extract<Comma
 //   called and names every field that tells apart the faces of that role within one feature, with
 //   how that field is called (`curve` for `side`; none for a cap; the point and the step of
 //   a counterbore for the wall of a hole). A package adds one member to the union and one entry.
-// - The compiler ties the two: a role without an entry does not compile, nor an entry that leaves
-//   out a field of the name, nor a name with a field that is not a text or a number (a key cannot
-//   be built from an object).
+// - A field that tells faces apart is a text (an ID) or a whole number, and is always there:
+//   a key cannot be built from an object, and a field that may be missing would give two faces
+//   one key. The entry says which of the two a field is, so the validator of a face name can
+//   check it; it is what `faceName` in document.ts checks by hand today.
+// - The compiler ties the union and the catalog: a role without an entry does not compile, nor
+//   an entry that leaves out a field of the name or gives it the other kind. A role whose name
+//   has a field of another type, or an optional one, stops the type check here and is named.
 // - The key of a face is `<feature>/<role>`, then the values of those fields in the alphabetical
 //   order of their names, then the copy tags as today. For the three roles of today it is the
 //   key of today, which fingerprints of solved sketches and the face table depend on.
@@ -141,9 +171,12 @@ export type CommandResultAfter = { ok: true; state: StateAfter } | Extract<Comma
 type FaceParts<R extends FaceNameAfter['role']> = Omit<Extract<FaceNameAfter, { role: R }>, 'feature' | 'role' | 'copy'>;
 export interface FaceRoleSpec<R extends FaceNameAfter['role']> {
   title: string;
-  parts: { readonly [P in keyof FaceParts<R>]: FaceParts<R>[P] extends string | number ? string : never };
+  parts: { readonly [P in keyof FaceParts<R>]-?: { title: string; kind: FaceParts<R>[P] extends string ? 'text' : FaceParts<R>[P] extends number ? 'integer' : never } };
 }
 export declare const FACE_ROLES: { [R in FaceNameAfter['role']]: FaceRoleSpec<R> };
+type BadParts<X> = { [P in keyof X]-?: [X[P]] extends [string] ? never : [X[P]] extends [number] ? never : P }[keyof X];
+type InvalidRoles = { [R in keyof FaceRoles]: [BadParts<FaceRoles[R]>] extends [never] ? never : R }[keyof FaceRoles];
+export const ROLES_ARE_VALID: [InvalidRoles] extends [never] ? true : { invalid: InvalidRoles } = true;
 
 // ---------------------------------------------------------------- references to named entities
 
@@ -200,18 +233,27 @@ export declare const DATA_CATALOGS: { [N in keyof Catalogs]: Catalogs[N] extends
 // Today `SCHEMA_VERSION` is a constant and `upgrade` one function from version 1. It becomes
 // a list of named steps; on `master` the version of a document is the length of the list plus
 // one, as a number, as today.
-// - A new feature type needs no step: a step is for a change of the shape of what older
-//   documents hold.
-// - A step changes only what its package owns (its section, its fields). Steps of different
-//   packages therefore give the same document in either order, which the rule below relies on.
+// - A step is needed for a change of the shape of what older documents hold, and for anything
+//   a build without the package would drop without a word: `validateDocument` rebuilds
+//   a document from the fields it knows, so an unknown section or an unknown field of a feature
+//   is not refused, it is gone after the load. Such an addition gets a step even when the step
+//   has nothing to convert; a build that does not have it then refuses the document.
+//   A new feature type needs no step: a build that does not know the type refuses it already.
+// - A step reads and changes only what its package owns (its section, its fields), or what is on
+//   `master` already. Steps of different packages therefore give the same document in either
+//   order, which the rule below relies on; a test runs the pending steps of a branch before and
+//   after the steps merged since it started and compares. A step that has to read what another
+//   pending package adds waits for that package to be merged.
 // - A branch of a package appends its steps and counts them in `SCHEMA_PENDING`: the steps at
 //   the end of the list that `master` does not have yet. A build with pending steps saves
 //   `schemaVersion` of the `master` it started from and the names of the pending steps the
 //   document has, in a new optional field of `Document`, `schemaSteps`. The merge sets the
 //   count to zero; `master` never writes the field.
 // - Loading, in every build: take the steps from the version of the document on, leave out the
-//   ones the document names, and run the rest in the order of the list. A name this build does
-//   not have, or a version above its own, is refused with a message that says which.
+//   ones the document names, and run the rest in the order of the list. Refused, with a message
+//   that says which: a version above the one this build saves (the length of the list plus one,
+//   less the pending steps), and a name that is not among the steps after the version of the
+//   document (a step this build does not have, or one the version already counts).
 //   So a document saved on a branch loads on that branch after a rebase over another merged step
 //   (the other step runs, its own does not run twice), and on `master` once the branch is merged.
 //   A build of another branch, or `master` before the merge, refuses it.
@@ -232,7 +274,9 @@ export declare const SCHEMA_PENDING: number;
 // - `list`: values of one kind, with an optional least and greatest count.
 // - `oneOf`: exactly one of the named alternatives, written as an object with that one key:
 //   `{ up: [0, 0, 1] }` or `{ onBed: { kind: 'face', ... } }`.
-// - `record`: values by ID or name, such as joint values of a pose.
+// - `record`: values by key, such as densities by body. The description says what the keys are
+//   (IDs of bodies or of features, or free names), so that a mistyped ID is found by the same
+//   rule as anywhere else and a form can offer the keys.
 // - `fields`: named values of different kinds, for an element of a list or an alternative that
 //   is more than one value (an orientation with a spin, a pair to measure).
 // `of` of a constraint names a required argument of the kind `sketch` next to it: at the top
@@ -250,12 +294,12 @@ export type ArgKind =
   | { kind: 'body' | 'feature' | 'sketch' } // an ID of that kind
   | { kind: 'constraint'; of: string } // a constraint of the sketch named by the argument `of`
   | { kind: 'entity'; accepts: readonly EntityRef['kind'][] }
-  | { kind: 'plane' } // PlaneRef
+  | { kind: 'plane' } // PlaneRef, with the face names of every package
   | { kind: 'axis' } // AxisRef
   | { kind: 'vector' } // three numbers
   | { kind: 'list'; of: ArgKind; min?: number; max?: number }
   | { kind: 'oneOf'; options: { readonly [name: string]: ArgKind } }
-  | { kind: 'record'; of: ArgKind }
+  | { kind: 'record'; keys: 'body' | 'feature' | 'text'; of: ArgKind }
   | { kind: 'fields'; fields: { readonly [name: string]: ArgKind & { optional?: boolean } } };
 export type ArgSpec = ArgKind & { title: string; summary?: string; optional?: boolean };
 export type ArgSpecs = { readonly [name: string]: ArgSpec };
@@ -278,7 +322,7 @@ export type ValueOf<K> = K extends { kind: 'number' }
           : K extends { kind: 'entity'; accepts: readonly (infer A)[] }
             ? Extract<EntityRef, { kind: A }>
             : K extends { kind: 'plane' }
-              ? PlaneRef
+              ? PlaneRefAfter
               : K extends { kind: 'axis' }
                 ? AxisRef
                 : K extends { kind: 'vector' }
@@ -319,18 +363,26 @@ export type RunArgsOf<S> = { -readonly [K in Exclude<keyof S, OptionalKeys<S>> |
 // expressions and failed projections are as the recompute saw them.
 //
 // The pose. With a mechanism (step 5) a query is asked about bodies moved to a pose, while the
-// evaluation keeps them where they were modelled. Everything the context says about a body is in
-// the pose asked about: `bodies`, `surface`, the frame of a face, an entity. A query reads
-// geometry nowhere else, and then it answers for a pose without a change. An export is the
-// opposite: its context always has the bodies as modelled (a robot description writes the joints,
-// not one pose of them).
+// evaluation keeps them where they were modelled.
+// - What belongs to a body is in the pose asked about: `bodies`, `surface`, the frame of a face,
+//   a face or an edge given as an entity. A query reads the geometry of bodies nowhere else (the
+//   state of the context has neither the bodies nor the surfaces), and then it answers for
+//   a pose without a change.
+// - What does not belong to a body is never posed: a sketch and its points, an axis through
+//   a sketch point, a plane feature, a base plane or axis. They are where the model has them,
+//   also for a sketch that stands on a face of a body that moved. A mechanism that needs
+//   a point or an axis that moves with a link takes it from a face or an edge of a body, or
+//   package 5a adds a reference of its own.
+// - An export is the opposite of a query: its context always has the bodies as modelled (a robot
+//   description writes the joints, not one pose of them).
 export interface QueryContext {
-  state: StateAfter; // the document and the evaluation as modelled
-  bodies: Readonly<Record<Id, BodyResult>>;
+  // The document and the evaluation as modelled, without the geometry of bodies.
+  state: { document: DocumentAfter; evaluation: Omit<EvaluationAfter, 'bodies' | 'faceSurfaces'> };
+  bodies: Readonly<Record<Id, BodyResultAfter>>;
   surface(body: Id, face: FaceNameAfter): Surface | undefined; // undefined: the body has no such face
   // Directed: for a face the normal points out of the body. The problem is the code the recompute
   // gives for the same reference, so `run` can tell "not in this state" from "not a plane".
-  frame(ref: PlaneRef): Frame | RefProblem;
+  frame(ref: PlaneRefAfter): Frame | RefProblem;
   axis(ref: AxisRef): { origin: Vec3; direction: Vec3 } | RefProblem;
   // The number of a named face: the index into `faceNames`, and `id` of a face of a body.
   face(name: FaceNameAfter): number | undefined;
@@ -348,7 +400,7 @@ export interface QueryContext {
   //   `interference` does today), the object of a section of the document for an answer that
   //   reads it. A body ID in `key` is not enough: the body behind an ID changes.
   // - Owners that live across recomputes: a `Solid`, a solved sketch, the document, a section or
-  //   a feature of it. `state`, `state.evaluation` and the map of bodies are new objects on every
+  //   a feature of it. The state, its evaluation and the map of bodies are new objects on every
   //   recompute and never hit.
   // - At least one owner; their order does not matter. Keys of different queries do not meet:
   //   the engine keeps them apart.
@@ -358,6 +410,8 @@ export interface RefProblem {
   problem: 'brokenReference' | 'nonPlanarFace';
 }
 
+// `Result` is plain JSON (numbers, texts, lists, objects): it goes through the tool `query`, the
+// bridge to the app and the generic form as it is. A query that has bytes is an export.
 export interface QuerySpec<S, Result> {
   title: string;
   summary: string; // what it is for; goes to the description for the AI
@@ -418,7 +472,8 @@ export declare const QUERIES: { [N in QueryName]: QuerySpec<Queries[N]['spec'], 
 // A query does not throw for anything its caller can cause; it answers with a result or with
 // a reason, like a command.
 // - Before `run`, the engine checks every argument against its description and fills in the
-//   defaults. An error from here names the argument by its path (`orientations/1/by/onBed`).
+//   defaults. An error from here names the argument by its path, a list of names and indexes
+//   (`['orientations', 1, 'by', 'onBed']`; a key of a record is one segment, whatever it holds).
 //   - `invalidArguments`: the shape or the range is wrong, or the query has no such argument.
 //   - `notAvailable`: something named is not in the state asked about. One rule for every ID,
 //     wherever it sits (an argument, an entity, a plane, an axis): a body, a face, an edge is
@@ -446,11 +501,12 @@ export type QueryOutcome<Result> =
         // failed: the computation gave up (the kernel, a limit)
         code: 'invalidArguments' | 'notAvailable' | 'failed';
         message: string;
-        arg?: string; // the path of the argument concerned; `at` and `state` for the options
+        arg?: ArgPath; // the argument concerned; `['at']` and `['state']` for the options
       };
     };
+export type ArgPath = readonly (string | number)[];
 export declare class QueryFailure extends Error {
-  constructor(code: 'notAvailable' | 'failed', message: string, arg?: string);
+  constructor(code: 'notAvailable' | 'failed', message: string, arg?: ArgPath);
 }
 
 // An answer that can be large says so. A query with such an answer has an argument that limits
@@ -577,19 +633,24 @@ export declare const EXPORT_FORMATS: { [F in ExportFormat]: ExportFormatSpec<Exp
 // - Both: `engine.preview(after, at)`, the previewed document evaluated up to `at`, and the query
 //   over that state. A command that does not apply answers with the error of the preview.
 // - The answer is the result with numbers rounded to six decimal places, as the tools round
-//   geometry today, and the keys an entry lists in `significant` to six significant digits; or
-//   the text of the error.
+//   geometry today, and the keys an entry lists in `significant` to the significant digits it
+//   gives; or the text of the error.
 //
 // No existing tool changes its name, its schema or its answers.
 // - `check_interference`, `get_sketch`, `explain_constraint` and `export_stl` keep calling the
 //   four methods of `Engine`, with their own checks and texts. The guard over the methods of
-//   `Engine` (packages/mcp/test/coverage.test.ts) records which method a tool calls, and its
+//   `Engine` (packages/mcp/test/coverage.test.ts) records which method a tool calls, and those
 //   rows stay true.
-// - `get_body` had no method of the engine to call; it calls `query('body')` and prints what it
-//   prints today.
-// What does change in the tests is the guards: the exact lists of tools in
-// packages/mcp/test/tools.test.ts and server.test.ts get `query` and `export`, and the table of
-// coverage gets rows for the two new methods.
+// - `get_body` had no method of the engine to call. It keeps its own check that the body exists
+//   and its text (a test matches it), reads the state as today, and takes the faces and edges
+//   from `query('body')`.
+// What does change in the tests is the guards:
+// - the exact list of tools in packages/mcp/test/tools.test.ts gets `query`, the one in
+//   server.test.ts gets `query` and `export` (`export` writes files, so it is a tool of the
+//   server like `export_stl`);
+// - the table of coverage gets rows for `query` (reached by `query` and by `get_body`) and for
+//   `export`.
+// `QUERIES` is exported from the index of the engine: the tool and the app's form read it.
 export interface QueryToolInput {
   query: QueryName;
   args?: Record<string, unknown>; // checked by the engine against the description of the query

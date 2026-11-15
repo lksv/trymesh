@@ -7,8 +7,8 @@
 // the contract of a real package (which is type-checked together with this file) can use the
 // real names.
 
-import type { Id, InterferenceReport, PlaneRef, Vec3 } from '../../../packages/engine/src/index';
-import type { ArgSpecs, ArgsOf, BodyDescription, CatalogTable, CommandAfter, DataCatalog, EngineAfter, ExportFile, ExportToolInput, Exported, FaceNameAfter, HostOperation, QuantitySpec, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, QuerySpec, QueryToolInput, RunArgsOf, Queries, StateAfter, Surface, Truncated } from './contract';
+import type { Id, InterferenceReport, Vec3 } from '../../../packages/engine/src/index';
+import type { ArgSpecs, ArgsOf, BodyDescription, CatalogTable, CommandAfter, PlaneRefAfter, DataCatalog, EngineAfter, ExportFile, ExportToolInput, Exported, FaceNameAfter, HostOperation, QuantitySpec, QueryArgs, QueryContext, QueryName, QueryOutcome, QueryResult, QuerySpec, QueryToolInput, RunArgsOf, Queries, StateAfter, Surface, Truncated } from './contract';
 import { CONSTRAINT_ARGS, DATA_CATALOGS, EXPORT_FORMATS, FACE_ROLES, INTERFERENCE_ARGS, QUERIES, QueryFailure, SCHEMA_PENDING, SKETCH_ARGS, UPGRADES, describedQueries } from './contract';
 // Internal modules of the engine, as a query module inside the engine imports them.
 import { UNAVAILABLE, diagnose, explain } from '../../../packages/engine/src/diagnose';
@@ -37,7 +37,8 @@ export function unknownBody(): string {
   return `${outcome.error.code} in "${outcome.error.arg}": ${outcome.error.message}`; // notAvailable in "bodies"
 }
 
-// The methods of today stay and throw as today; they are callers of `query`.
+// The methods of today stay, with their own checks and texts, and throw as today; they share
+// `run` of the entry with `query`.
 export const asToday = (): InterferenceReport => engine.interference({ bodies: ['housing', 'lid'] });
 
 // The sketch diagnosis and the explanation of one constraint, as the sketch panel uses them.
@@ -126,7 +127,7 @@ export function countersinkRims(body: Id): { radius: number; center: Vec3 }[] {
 
 // The key of a face, built from the catalog of roles: the feature, the role, the fields that
 // tell the faces of the role apart in the alphabetical order of their names, and the copy tags.
-export const sideParts: { readonly curve: string } = FACE_ROLES.side.parts;
+export const sideParts: { readonly curve: { title: string; kind: 'text' } } = FACE_ROLES.side.parts;
 export function faceKeyOf(name: FaceNameAfter): string {
   const fields = name as unknown as Record<string, string | number>;
   const parts = Object.keys(FACE_ROLES[name.role].parts).sort().map((part) => String(fields[part]));
@@ -137,12 +138,12 @@ export function faceKeyOf(name: FaceNameAfter): string {
 // and it learns from the context why a plane does not resolve.
 export function axisOfHole(context: QueryContext, body: Id, face: FaceNameAfter): Vec3 {
   const surface: Surface | undefined = context.surface(body, face);
-  if (surface?.kind !== 'cylinder') throw new QueryFailure('failed', 'the face is not a cylinder', 'face');
+  if (surface?.kind !== 'cylinder') throw new QueryFailure('failed', 'the face is not a cylinder', ['face']);
   return surface.axis;
 }
-export function normalOf(context: QueryContext, plane: PlaneRef): Vec3 {
+export function normalOf(context: QueryContext, plane: PlaneRefAfter): Vec3 {
   const frame = context.frame(plane);
-  if ('problem' in frame) throw new QueryFailure(frame.problem === 'nonPlanarFace' ? 'failed' : 'notAvailable', frame.problem === 'nonPlanarFace' ? 'the face is not planar' : 'the plane is not in this state', 'plane');
+  if ('problem' in frame) throw new QueryFailure(frame.problem === 'nonPlanarFace' ? 'failed' : 'notAvailable', frame.problem === 'nonPlanarFace' ? 'the face is not planar' : 'the plane is not in this state', ['plane']);
   return frame.normal;
 }
 
@@ -291,7 +292,7 @@ export const twoAtOnce: PrintArgs = {
 
 // Values by ID (mass properties with a density per body, shortened). A pose is not asked this
 // way: it is a state of the document, asked with `after` (section j).
-const densityArgs = { densities: { kind: 'record', of: { kind: 'number', spec: { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true } } }, title: 'Density by body' } } as const satisfies ArgSpecs;
+const densityArgs = { densities: { kind: 'record', keys: 'body', of: { kind: 'number', spec: { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true } } }, title: 'Density by body' } } as const satisfies ArgSpecs;
 export const densityExample: ArgsOf<typeof densityArgs> = { densities: { carrier: 1.27, 'pins/1': 7.85 } };
 
 // Mass properties (1d, shortened): a density, in a unit the numeric fields did not have.
@@ -424,8 +425,14 @@ declare module './contract' {
   interface FeatureTypes {
     exampleHole: ExampleHole;
   }
+  interface FeaturePatches {
+    exampleHole: { points?: Id[]; diameter?: number | string; targets?: Id[] };
+  }
   interface FaceRoles {
     exampleWall: { point: Id; step: number };
+  }
+  interface IssueCodes {
+    exampleHoleMissesBody: true;
   }
   // a command and a section of the document (the body properties of 3a, shortened)
   interface Commands {
@@ -435,16 +442,38 @@ declare module './contract' {
     exampleDensities?: Record<Id, number>;
   }
 }
-export const wallParts: { readonly point: string; readonly step: string } = FACE_ROLES.exampleWall.parts;
+export const wallParts: { readonly point: { kind: 'text' }; readonly step: { kind: 'integer' } } = FACE_ROLES.exampleWall.parts;
 export const wallKey = faceKeyOf({ feature: 'h1', role: 'exampleWall', point: 'p3', step: 2 }); // h1/exampleWall/p3/2
 // @ts-expect-error an entry that leaves out a field of the name
-export const halfWall: (typeof FACE_ROLES)['exampleWall'] = { title: 'Wall of a hole', parts: { point: 'point' } };
+export const halfWall: (typeof FACE_ROLES)['exampleWall'] = { title: 'Wall of a hole', parts: { point: { title: 'Point', kind: 'text' } } };
+export const wrongKind: (typeof FACE_ROLES)['exampleWall'] = {
+  title: 'Wall of a hole',
+  // @ts-expect-error the step is a number, not a text
+  parts: { point: { title: 'Point', kind: 'text' }, step: { title: 'Step', kind: 'text' } },
+};
 
 export function addHole(): boolean {
   const added = engine.execute({ type: 'addFeature', feature: { id: 'h1', name: 'Holes', suppressed: false, type: 'exampleHole', sketch: 's', points: ['p1', 'p2'], diameter: 'clearance', targets: ['lid'] } });
   return added.ok && added.state.document.features.some((feature) => feature.type === 'exampleHole');
 }
 export const densityOf = (body: Id): number | undefined => engine.getState().document.exampleDensities?.[body];
+// The patch of the new type, its own warning in the result, and its faces in the state.
+export function widenHoles(): boolean {
+  const changed = engine.execute({ type: 'updateFeature', id: 'h1', patch: { diameter: 6 } });
+  if (!changed.ok) return false;
+  const missed = changed.state.evaluation.features['h1'].warnings.some((warning) => warning.code === 'exampleHoleMissesBody');
+  const walls = changed.state.evaluation.faceNames.filter((name) => name.role === 'exampleWall').length;
+  return !missed && walls > 0;
+}
+// Commands of packages go into a batch like any other, also in `after` of the query tool.
+export const twoAtOnceInBatch = (): boolean => engine.execute({ type: 'batch', commands: [{ type: 'exampleSetDensity', body: 'carrier', density: 1.27 }, { type: 'exampleSetDensity', body: 'lid', density: '1.2' }] }).ok;
+// A sketch is put on a face in a role of a package like on any other.
+export const sketchOnFloor = (): boolean => engine.execute({ type: 'setSketchPlane', sketch: 's2', plane: { kind: 'face', body: 'lid', face: { feature: 'h1', role: 'exampleWall', point: 'p1', step: 1 } } }).ok;
+// A face in a role of a package is a plane to a query like any other: the floor of a counterbore
+// given as an entity, turned into a frame.
+export function floorNormal(context: QueryContext, floor: Extract<ArgsOf<typeof measureArgs>['from'], { kind: 'face' }>): Vec3 {
+  return normalOf(context, { kind: 'face', body: floor.body, face: floor.face });
+}
 
 // A pose is a state of the document, so stepping it is a preview of the command that sets it
 // and a query over the previewed state; over MCP the same command goes into `after`.
@@ -455,6 +484,6 @@ export function sweepDensity(body: Id, values: number[]): number[] {
     return unwrap(engine.query('interference', {}, { state: preview.state })).pairs.length;
   });
 }
-export const steppedOverMcp: QueryToolInput = { query: 'interference', after: { type: 'exampleSetDensity', body: 'carrier', density: 1.27 } };
+export const steppedOverMcp: QueryToolInput = { query: 'interference', after: { type: 'batch', commands: [{ type: 'exampleSetDensity', body: 'carrier', density: 1.27 }] } };
 // @ts-expect-error a command no package added
 engine.execute({ type: 'exampleNope' });

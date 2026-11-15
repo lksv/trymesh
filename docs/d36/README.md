@@ -17,7 +17,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 
 | ID | Package | Step | Track | Needs | Design now |
 |---|---|---|---|---|---|
-| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract and part 2 a design, both reviewed three times; part 3 has a first design |
+| 00 | Preparatory step | | | D35 closed | parts 1 and 4 have a contract (reviewed four times), part 2 a design (three times), part 3 a design (once) |
 | 1a | Section: the query (loops with areas and face names) and the section view in the app | 1 | A | 00 | full |
 | 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them | 1 | A | 00 | full |
 | 1c | Smallest gap between bodies | 1 | A | 00 | full |
@@ -77,6 +77,7 @@ Where packages collide although they do not depend on each other. The preparator
 | Kernel port (`SolidKernel` in `types.ts`, `kernel-manifold`) | 1c (gap), 3d (split, offset) | `boolean`, `triangulate` | stays shared; small additions, the guarantee text needs care |
 | Pattern: transform kinds, the `pattern` step | 2e | one kind | one package, no collision |
 | Sketch commands and `sketch.ts` | 2d, later step 6 | | one package for now |
+| `applyCommand` and `validateDocument` in `document.ts` | every package with a command or a section of the document (2d, 3a, 5a) | one function each | stay shared: a branch of the command, a line of the document; small and in different places |
 | Export: `exportMesh`, the tool `export_stl`, the export in the app | 2g, 5b | one format | formats as a registry; one tool with a format |
 | Sections of the document and `SCHEMA_VERSION` | 3a (body properties), 5a (mechanism) | version 2; `upgrade` is one function | a rule who raises the version, see the preparatory step |
 | `docs/architecture.md`, `docs/ui.md` | everything | one file each | split by area; a package writes its part in its own `design.md` until it is merged |

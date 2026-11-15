@@ -22,7 +22,7 @@ describe('controls of the form of a query', () => {
   it('a vector: its three fields share what was typed, in any order', async () => {
     const h = (harness = await startApp());
     const { form, written } = recordingForm();
-    const fields = CONTROLS.vector({ kind: 'vector' }, undefined, ['direction'], form, {}) as HTMLInputElement[];
+    const fields = Array.from(CONTROLS.vector({ kind: 'vector' }, undefined, ['direction'], form, {})[0].querySelectorAll('input'));
     h.type(fields[2], '3', true);
     h.type(fields[0], '1', true);
     h.type(fields[1], '-2.5', true);
@@ -34,7 +34,7 @@ describe('controls of the form of a query', () => {
   it('a vector: starts from the value of the draft, and is not given once all three fields are empty', async () => {
     const h = (harness = await startApp());
     const { form, written } = recordingForm();
-    const fields = CONTROLS.vector({ kind: 'vector' }, [0, 0, 1], ['direction'], form, {}) as HTMLInputElement[];
+    const fields = Array.from(CONTROLS.vector({ kind: 'vector' }, [0, 0, 1], ['direction'], form, {})[0].querySelectorAll('input'));
     expect(fields.map((field) => field.value)).toEqual(['0', '0', '1']);
     h.type(fields[0], '2', true);
     expect(written[0]).toEqual([2, 0, 1]);
@@ -46,7 +46,7 @@ describe('controls of the form of a query', () => {
   it('a number: what was typed is written also when it is marked as wrong', async () => {
     const h = (harness = await startApp());
     const { form, written } = recordingForm();
-    const [field] = CONTROLS.number({ kind: 'number', spec: { title: 'Width', unit: 'mm', min: { value: 0 } } }, undefined, ['width'], form, {}) as HTMLInputElement[];
+    const field = CONTROLS.number({ kind: 'number', spec: { title: 'Width', unit: 'mm', min: { value: 0 } } }, undefined, ['width'], form, {})[0].querySelector('input') as HTMLInputElement;
     h.type(field, '4', true);
     h.type(field, '-1', true);
     h.type(field, 'a + 1', true);

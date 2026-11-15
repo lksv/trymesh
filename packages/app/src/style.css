@@ -314,6 +314,35 @@ select {
 .field input {
   flex: 1;
 }
+.field .unit {
+  white-space: nowrap;
+}
+/* the form of a query: a checkbox keeps its size, an item of a list is one row, the fields of
+   a group and the answer as a tree are set in from what they belong to */
+label > input[type='checkbox'],
+label > button.link {
+  align-self: flex-start;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.item > select,
+.item > input,
+.item > .field {
+  flex: 1;
+}
+.fields,
+.tree {
+  margin: 2px 0 2px 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+p.answer {
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
 input.invalid {
   border-color: var(--error);
   background: #fdecea;

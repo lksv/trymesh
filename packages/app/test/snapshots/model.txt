@@ -1494,8 +1494,9 @@
     +   button.link: "Add"
     + label title="The smallest shared volume that counts."
     +   "Threshold (optional)"
-    +   input.value value="" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
     + div.buttons
     +   button.primary: "Ask again"
     +   button: "Close"
@@ -1664,8 +1665,9 @@
     -   button.link: "Add"
     - label title="The smallest shared volume that counts."
     -   "Threshold (optional)"
-    -   input.value value="" placeholder="0.001"
-    -   span.unit: "mm³"
+    -   span.field
+    -     input.value value="" placeholder="0.001"
+    -     span.unit: "mm³"
     - div.buttons
     -   button.primary: "Ask again"
     -   button: "Close"
@@ -1931,8 +1933,9 @@
     +   button.link: "Add"
     + label.invalid title="interference: threshold: the value must not be negative"
     +   "Threshold (optional)"
-    +   input.value value="-1" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="-1" placeholder="0.001"
+    +     span.unit: "mm³"
     - h2 title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     - label title="A face or an edge of a body, or a sketch point."
     -   "From"
@@ -2004,216 +2007,217 @@
     -   button.link: "Add"
     - label.invalid title="interference: threshold: the value must not be negative"
     -   "Threshold (optional)"
-    -   input.value value="-1" placeholder="0.001"
-    -   span.unit: "mm³"
+    -   span.field
+    -     input.value value="-1" placeholder="0.001"
+    -     span.unit: "mm³"
     + p.answer: "body: Deska"
     + p.answer: "volume: 12000 mm³"
-    + div.group
+    + div.tree
     +   p.answer: "bounds"
     +   p.answer: "min: [0, 0, 0]"
     +   p.answer: "max: [40, 30, 10]"
-    + div.group
+    + div.tree
     +   p.answer: "faces (6)"
-    +   div.group
+    +   div.tree
     +     p.answer: "1"
-    +     p.answer: "name: Deska – víko ve skice"
-    +     div.group
+    +     p.answer: "name: Deska – víko ve skice · e1/startCap"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 0]"
     +       p.answer: "normal: [0, 0, 1]"
     +     p.answer: "area: 1200 mm²"
     +     p.answer: "meshNormal: [0, 0, -1]"
-    +   div.group
+    +   div.tree
     +     p.answer: "2"
-    +     p.answer: "name: Deska – protější víko"
-    +     div.group
+    +     p.answer: "name: Deska – protější víko · e1/endCap"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 10]"
     +       p.answer: "normal: [0, 0, 1]"
     +     p.answer: "area: 1200 mm²"
     +     p.answer: "meshNormal: [0, 0, 1]"
-    +   div.group
+    +   div.tree
     +     p.answer: "3"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c1"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 0, 0]"
     +       p.answer: "normal: [0, -1, 0]"
     +     p.answer: "area: 400 mm²"
     +     p.answer: "meshNormal: [0, -1, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "4"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c2"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [40, 0, 0]"
     +       p.answer: "normal: [1, 0, 0]"
     +     p.answer: "area: 300 mm²"
     +     p.answer: "meshNormal: [1, 0, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "5"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c3"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [40, 30, 0]"
     +       p.answer: "normal: [0, 1, 0]"
     +     p.answer: "area: 400 mm²"
     +     p.answer: "meshNormal: [0, 1, 0]"
-    +   div.group
+    +   div.tree
     +     p.answer: "6"
-    +     p.answer: "name: Deska – bok"
-    +     div.group
+    +     p.answer: "name: Deska – bok · e1/side/c4"
+    +     div.tree
     +       p.answer: "surface"
     +       p.answer: "kind: plane"
     +       p.answer: "origin: [0, 30, 0]"
     +       p.answer: "normal: [-1, 0, 0]"
     +     p.answer: "area: 300 mm²"
     +     p.answer: "meshNormal: [-1, 0, 0]"
-    + div.group
+    + div.tree
     +   p.answer: "edges (12)"
-    +   div.group
+    +   div.tree
     +     p.answer: "1"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c1"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 10]"
     +     p.answer: "to: [40, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "2"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c2"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 10]"
     +     p.answer: "to: [40, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "3"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c3"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 10]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "4"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – protější víko"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – protější víko · e1/endCap"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 10]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "5"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – bok · e1/side/c2"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 0]"
     +     p.answer: "to: [40, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "6"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 0]"
     +     p.answer: "to: [0, 0, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "7"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c1"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 0, 0]"
     +     p.answer: "to: [40, 0, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "8"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c2"
+    +       p.answer: "b: Deska – bok · e1/side/c3"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 0]"
     +     p.answer: "to: [40, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "9"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c2"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 0, 0]"
     +     p.answer: "to: [40, 30, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "10"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – bok"
+    +       p.answer: "a: Deska – bok · e1/side/c3"
+    +       p.answer: "b: Deska – bok · e1/side/c4"
     +     p.answer: "length: 10 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [0, 30, 0]"
     +     p.answer: "to: [0, 30, 10]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "11"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c3"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 40 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
     +     p.answer: "from: [40, 30, 0]"
     +     p.answer: "to: [0, 30, 0]"
     +     p.answer: "gaps: no"
-    +   div.group
+    +   div.tree
     +     p.answer: "12"
-    +     div.group
+    +     div.tree
     +       p.answer: "name"
-    +       p.answer: "a: Deska – bok"
-    +       p.answer: "b: Deska – víko ve skice"
+    +       p.answer: "a: Deska – bok · e1/side/c4"
+    +       p.answer: "b: Deska – víko ve skice · e1/startCap"
     +     p.answer: "length: 30 mm"
     +     p.answer: "segments: 1"
     +     p.answer: "kind: line"
@@ -2239,212 +2243,212 @@
     -   button: "Close"
     - p.answer: "body: Deska"
     - p.answer: "volume: 12000 mm³"
-    - div.group
+    - div.tree
     -   p.answer: "bounds"
     -   p.answer: "min: [0, 0, 0]"
     -   p.answer: "max: [40, 30, 10]"
-    - div.group
+    - div.tree
     -   p.answer: "faces (6)"
-    -   div.group
+    -   div.tree
     -     p.answer: "1"
-    -     p.answer: "name: Deska – víko ve skice"
-    -     div.group
+    -     p.answer: "name: Deska – víko ve skice · e1/startCap"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 0]"
     -       p.answer: "normal: [0, 0, 1]"
     -     p.answer: "area: 1200 mm²"
     -     p.answer: "meshNormal: [0, 0, -1]"
-    -   div.group
+    -   div.tree
     -     p.answer: "2"
-    -     p.answer: "name: Deska – protější víko"
-    -     div.group
+    -     p.answer: "name: Deska – protější víko · e1/endCap"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 10]"
     -       p.answer: "normal: [0, 0, 1]"
     -     p.answer: "area: 1200 mm²"
     -     p.answer: "meshNormal: [0, 0, 1]"
-    -   div.group
+    -   div.tree
     -     p.answer: "3"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c1"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 0, 0]"
     -       p.answer: "normal: [0, -1, 0]"
     -     p.answer: "area: 400 mm²"
     -     p.answer: "meshNormal: [0, -1, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "4"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c2"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [40, 0, 0]"
     -       p.answer: "normal: [1, 0, 0]"
     -     p.answer: "area: 300 mm²"
     -     p.answer: "meshNormal: [1, 0, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "5"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c3"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [40, 30, 0]"
     -       p.answer: "normal: [0, 1, 0]"
     -     p.answer: "area: 400 mm²"
     -     p.answer: "meshNormal: [0, 1, 0]"
-    -   div.group
+    -   div.tree
     -     p.answer: "6"
-    -     p.answer: "name: Deska – bok"
-    -     div.group
+    -     p.answer: "name: Deska – bok · e1/side/c4"
+    -     div.tree
     -       p.answer: "surface"
     -       p.answer: "kind: plane"
     -       p.answer: "origin: [0, 30, 0]"
     -       p.answer: "normal: [-1, 0, 0]"
     -     p.answer: "area: 300 mm²"
     -     p.answer: "meshNormal: [-1, 0, 0]"
-    - div.group
+    - div.tree
     -   p.answer: "edges (12)"
-    -   div.group
+    -   div.tree
     -     p.answer: "1"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c1"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 10]"
     -     p.answer: "to: [40, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "2"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c2"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 10]"
     -     p.answer: "to: [40, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "3"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c3"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 10]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "4"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – protější víko"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – protější víko · e1/endCap"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 10]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "5"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – bok · e1/side/c2"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 0]"
     -     p.answer: "to: [40, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "6"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 0]"
     -     p.answer: "to: [0, 0, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "7"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c1"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 0, 0]"
     -     p.answer: "to: [40, 0, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "8"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c2"
+    -       p.answer: "b: Deska – bok · e1/side/c3"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 0]"
     -     p.answer: "to: [40, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "9"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c2"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 0, 0]"
     -     p.answer: "to: [40, 30, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "10"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – bok"
+    -       p.answer: "a: Deska – bok · e1/side/c3"
+    -       p.answer: "b: Deska – bok · e1/side/c4"
     -     p.answer: "length: 10 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [0, 30, 0]"
     -     p.answer: "to: [0, 30, 10]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "11"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c3"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 40 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
     -     p.answer: "from: [40, 30, 0]"
     -     p.answer: "to: [0, 30, 0]"
     -     p.answer: "gaps: no"
-    -   div.group
+    -   div.tree
     -     p.answer: "12"
-    -     div.group
+    -     div.tree
     -       p.answer: "name"
-    -       p.answer: "a: Deska – bok"
-    -       p.answer: "b: Deska – víko ve skice"
+    -       p.answer: "a: Deska – bok · e1/side/c4"
+    -       p.answer: "b: Deska – víko ve skice · e1/startCap"
     -     p.answer: "length: 30 mm"
     -     p.answer: "segments: 1"
     -     p.answer: "kind: line"
@@ -2469,8 +2473,9 @@
     +   button.link: "Add"
     + label title="The smallest shared volume that counts."
     +   "Threshold (optional)"
-    +   input.value value="" placeholder="0.001"
-    +   span.unit: "mm³"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
     + div.buttons
     +   button.primary: "Ask"
     +   button: "Close"

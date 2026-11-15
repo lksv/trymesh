@@ -749,6 +749,40 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'Ask again');
     h.record('asked without the density for all: refused at the density for the body that has none, its row marked');
     h.press('panel', 'Close');
+    // ----- the print view: a row per body and orientation, and the faces of a picked one
+    h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'print', true);
+    // the first orientation by a direction that leans, the second by the face that lies on the bed
+    const way = (index: number): HTMLElement => h.field('What is up', index).parentElement as HTMLElement;
+    h.press('panel', 'Add', 1);
+    h.type(h.field('What is up'), 'up', true);
+    ['1', '0', '0.5'].forEach((part, axis) => h.type(way(0).querySelectorAll('input')[axis], part, true));
+    h.press('panel', 'Add', 1);
+    h.type(h.field('What is up', 1), 'onBed', true);
+    h.type(way(1).querySelectorAll('select')[1], 'e1', true);
+    const faces = way(1).querySelectorAll('select')[2];
+    h.type(faces, Array.from(faces.options).find((option) => option.value.includes('endCap'))?.value ?? '', true);
+    h.type(h.field('x'), '35', true);
+    h.type(h.field('y'), '35', true);
+    h.type(h.field('Height'), '200', true);
+    h.record('the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed');
+    h.press('panel', 'Ask');
+    h.record('asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so');
+    const printRows = (): HTMLElement[] => Array.from(h.document.querySelectorAll('#panel .row')) as HTMLElement[];
+    printRows()[0].click();
+    h.record('a row picked: the overhanging faces are listed with their areas and heights and painted on the model');
+    printRows()[1].click();
+    h.record('the row of the other orientation picked: the face on the bed is painted, nothing overhangs');
+    // a stricter printer, a smallest overhang and one face a list
+    h.type(h.field('Overhang angle (optional)'), '20', true);
+    h.type(h.field('Smallest overhang listed (optional)'), '100', true);
+    h.type(h.field('Most faces (optional)'), '1', true);
+    h.press('panel', 'Ask again');
+    printRows()[0].click();
+    h.record('overhangs from 20°, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all');
+    printRows()[2].click();
+    h.record('a row with an overhang below the smallest area listed: counted, not listed and not painted');
+    h.press('panel', 'Close');
+    h.record('the print check closed');
     h.press('toolbar', 'Collisions');
     outside(h, { type: 'renameFeature', id: 'e2', name: 'Kolík' });
     h.record('a change of the document throws the answer away');

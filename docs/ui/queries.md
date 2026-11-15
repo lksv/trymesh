@@ -1,6 +1,6 @@
 # UI: queries
 
-Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38); the gap view (D40).
+Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38); the gap view (D40); the print view (D42).
 
 ## Queries (D39)
 
@@ -66,8 +66,21 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **A picked row** draws its two bodies in the two colours of a picked collision. For a gap it also highlights the two faces the gap lies between, names them under the row (the features to change), and joins the two points of the gap by a line with its length. A click on the picked row drops the pick.
 - **The note** in the status bar counts the pairs within the search distance, those further apart and those that could not be measured.
 
+## The print view (D42)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| Judge how bodies print in given orientations | `engine.query('print', { bodies, orientations, bed, overhang, minArea, maxFaces }, { at })` | `bodies` (per body its orientations: `up`, `size`, `fits`, `onBed`, `contact` and `overhang` with their areas, counts and faces), `truncated` |
+
+- **The form** is the generic one: the bodies (all of them when the list is empty); the orientations as rows, each a choice between a direction (three numbers) and a face (chosen from the lists of its body or picked in the view), with a turn in degrees; the bed as three lengths; the overhang angle in degrees; the smallest overhang listed and the most faces in a list.
+- **The panel** has a row per body and orientation, in the order of the answer: the name of the body and the orientation as it was asked (*on* the face named, or *up* with the direction to two places, and the turn when there is one), and the overhang area or *no overhang*. Under each row a line gives the height, the area on the bed with the number of its faces (*nothing flat on the bed* for a body that rests on a round face or on an edge) and the number of overhanging faces. An orientation that does not fit the bed says so with its three sizes, and a face named to lie on the bed that does not (something of the body reaches below it) says that. Areas and lengths are shown to a hundredth.
+- **A picked row** paints the faces of that orientation on the model as it stands: those on the bed in the colour of a hover, the overhanging ones in the colour of a collision. Under the row it says which colour is which, and that the faces look away from what is up, so they may be on the far side of the model; then the overhanging faces, the largest first, each with its area and the height above the bed where it starts (*from the bed* when that is nothing). A last line says what the lists leave out and why: how many faces on the bed and how many overhanging faces the limit cut, and how many overhangs are below the smallest area listed. A click on the picked row drops the pick. The view does not turn the model onto a bed.
+- **Under all rows** a line says how many faces were listed of how many, when the limit cut any list.
+- **The note** in the status bar counts the bodies and the orientations, and the rows that do not fit the bed.
+
 ## Implementation status
 
+- The print view was run in a browser on 2026-11-15 on a plate with a wider ledge on its top and a pin on the ledge, and a bar beside it: three orientations (as modelled, on the top of the ledge, on a side), a bed too small. The rows, the two warnings (the pin reaches below the top of the ledge), the picked rows. What it showed and the tests of the app could not: as modelled, the painted faces are underneath and nothing is seen until the model is turned; the line under a picked row now says so.
 - The form of `mass` (D41), which has no view, was run in a browser on 2026-11-15 on two blocks: two bodies in the list, a density for all with a fill factor, a density by body, an axis; the answer as a tree with its units. What it showed and the tests of the app could not, because they added one item only: a body chosen in a list was thrown away when *Add* was pressed after it (a value chosen inside a list or a record does not build the panel again, and *Add*, ✕ and the list of keys wrote the list as it was when the panel was built). The form of `interference`, `gap` and `section` had the same defect for a second body. The controls now read the draft when they are pressed.
 - The gap view was run in a browser on 2026-11-15 on a plate with a pin in a larger hole, a bar 2 mm beside it, a block flush with the bar and a block that reaches into the plate: the rows, the three kinds of a picked row, the limit of the list. What it showed: `± 0 mm` after the gap of two bodies of planar faces, which is now left out. A gap of half a millimetre is not seen at the size of the model; its label and the two highlighted faces show where it is.
 - Run in a browser on 2026-11-15 (the form of `measure`, of `interference` and of `section`, the lists, the picks in the view, a number out of its range, the marker moved). What it showed and the tests of the app could not: the tree was laid out as a row, the unit of a number wrapped under its field, an angle was rounded in radians before it was converted, and the sides of a body were listed under one label. All four are fixed.
@@ -75,4 +88,5 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - Not offered: asking over a preview or while a form of a feature is open (the model panel is not shown then), several answers at once, a question saved with the document.
 - The section view, not offered: a section by more than one plane, hatching and a colour per body, measuring inside the section, a click on the filled cut that selects its body, a step other than 1 mm, dragging the plane.
 - The gap view, not offered: a zoom to the picked gap, the gap of two groups of bodies, a sweep of a parameter.
+- The print view, not offered: the model turned onto a bed, a view from below at a click, the faces on the bed listed by name (they are painted and counted), a comparison that names the best orientation.
 - The labels of the tree are the keys of the result, in English.

@@ -1,6 +1,6 @@
 # 1e Print queries
 
-**Decision D42. State: the engine side (the query `print`) is implemented on the branch `d36/1e`; the view of the app follows. See "As implemented" at the end, which says where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D42. State: implemented on the branch `d36/1e`, the engine side (the query `print`) and the view of the app. See "As implemented" at the end, which says where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the printability of the housing in two orientations.
 
@@ -196,3 +196,18 @@ One full review by a subagent that did not write the code, read-only, with probe
 After the fix twenty mutations of `print.ts` were run against the test of the engine (the old rule of the contact, the ones above, the unit vector): nineteen fail. The one that passes takes the reach of a planar face along its normal from its first triangle only, which is the same number on a face that is planar.
 
 No second round: one serious finding, and the fix is a change of one rule with the tests of the cases it was found on.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/print.ts`, one line in `QUERY_VIEWS`. The view is the one of "What the app shows" and of `calls.ts`, with these differences:
+
+- **A row is two lines**: the row itself (the body, the orientation, the overhang area) and a line under it with the height, the area on the bed and the number of faces. The row of `calls.ts` held all of it in one text, which the panel cuts off at its width.
+- **The orientation is worded as it was asked**: "on" the face named, or "up" with the direction; `calls.ts` wrote the direction for both.
+- **What does not fit the bed, and a face named that does not lie on it, are warnings under the row**, the first with the three sizes.
+- **The legend of the two colours** is under a picked row, and names only what is painted. It also says that the faces look away from what is up: as modelled they are underneath, and the browser showed a picked row that seemed to paint nothing.
+- **Areas and lengths are shown to a hundredth**: they are sums over a mesh.
+- **The colours** are those of the app (`COLOR.hover` for the faces on the bed, `COLOR.clash` for the overhangs), not the two numbers of `calls.ts`.
+- **A note** in the status bar, which `calls.ts` did not have: the bodies, the orientations and how many rows do not fit.
+- The nested arguments have titles (see the engine side), so the form reads "What is up", "Direction", "Face on the bed", "Turn".
+
+Tested by seven recorded steps of the model case of `packages/app/test/app.test.ts` (the form filled with a direction, a face from the lists of its body and a bed; the rows with one that does not fit; a row with an overhang picked; a row on its face picked; a stricter angle with a list cut; an overhang below the smallest area; closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").

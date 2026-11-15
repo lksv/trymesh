@@ -103,7 +103,20 @@ function pierce(p: Vec3, q: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 | undefined {
 
 // A point, a segment or a triangle, by the number of its corners.
 type Simplex = readonly Vec3[];
-const closestOn = (p: Vec3, simplex: Simplex): Vec3 => (simplex.length === 1 ? simplex[0] : simplex.length === 2 ? closestOnSegment(p, simplex[0], simplex[1]) : closestOnTriangle(p, simplex[0], simplex[1], simplex[2]));
+// A triangle without an area (two corners in one place, three in a line) has no inside, and the
+// barycentric form divides by its area: the closest point is then that of its nearest side.
+function flat(a: Vec3, b: Vec3, c: Vec3): boolean {
+  const [ab, ac] = [sub3(b, a), sub3(c, a)];
+  return len3(cross3(ab, ac)) <= 1e-9 * len3(ab) * len3(ac);
+}
+function closestOn(p: Vec3, simplex: Simplex): Vec3 {
+  if (simplex.length === 1) return simplex[0];
+  if (simplex.length === 2) return closestOnSegment(p, simplex[0], simplex[1]);
+  const [a, b, c] = simplex;
+  if (!flat(a, b, c)) return closestOnTriangle(p, a, b, c);
+  const onSides = [closestOnSegment(p, a, b), closestOnSegment(p, b, c), closestOnSegment(p, c, a)];
+  return onSides.reduce((best, one) => (len3(sub3(p, one)) < len3(sub3(p, best)) ? one : best));
+}
 const sides = (simplex: Simplex): [Vec3, Vec3][] => (simplex.length === 1 ? [] : simplex.length === 2 ? [[simplex[0], simplex[1]]] : [[simplex[0], simplex[1]], [simplex[1], simplex[2]], [simplex[2], simplex[0]]]);
 
 // The closest points of two simplices: the least of every corner against the other simplex and
@@ -203,61 +216,57 @@ function boxOf(pieces: Piece[]): { min: Vec3; max: Vec3 } {
 }
 
 const SAMPLE = 50; // pieces of each part the first, coarse step looks at
+const KEPT = 4096; // pairs remembered for the choice of the faces before the list is thinned
 
 // The smallest distance between two parts of the mesh, with the two points it lies between.
-// - `within`: pieces whose boxes are further apart are skipped, and undefined is returned when
-//   nothing is that close. The best distance found so far tightens it.
+// - `within`: undefined is returned when nothing is that close (a pair exactly that far apart is
+//   found). Pieces whose boxes are further apart are skipped; the best distance found so far
+//   tightens the bound.
 // - Two triangles that cross are at distance zero (and a segment that goes through a triangle),
 //   so two faces of bodies that collide measure zero. A part wholly inside a closed solid without
 //   touching its surface is not found this way: the distance is then to the surface around it.
 //   Whether two bodies share a volume is the question of `interference`.
 // - `faceA`, `faceB`: the faces of the two closest triangles. Where the closest point lies on an
-//   edge or a corner of a body, triangles of several faces are equally close (within
-//   `LENGTH_TOLERANCE`); the face named is the one among them that faces the other part most
-//   directly, so the wall of a bore is named and not the cap it ends in.
+//   edge or a corner of a body, triangles of several faces are equally close; among the pairs
+//   within `LENGTH_TOLERANCE` of the smallest distance the face named is the one that faces the
+//   other part most directly, so the wall of a bore is named and not the cap it ends in. Faces
+//   that face it equally are decided by the smaller number, not by the order of the triangles.
+// - Parts that touch or cross: the pass stops at the first distance of zero, and the faces named
+//   are those of that pair of pieces.
 // - The pass is quadratic in the worst case. It starts from a bound (the smallest distance among
 //   a coarse sample of each part, or `within`), drops every piece whose box is further than that
 //   from the box of the whole other part, and then walks the rest along the longest axis, so
 //   that a piece meets only the pieces near it on that axis.
-// - Parts that touch or cross: the pass stops at the first distance of zero, and the faces named
-//   are those of that pair of pieces.
 // - Undefined also when a part has nothing in it (a face the solid does not have).
 export function closest(partA: MeshPart, partB: MeshPart, within?: number): Closest | undefined {
   let [a, b] = [piecesOf(partA), piecesOf(partB)];
   if (a.length === 0 || b.length === 0) return undefined;
-  let limit = within ?? Infinity; // nothing further than this is of interest
-  let best: { distance: number; a: Vec3; b: Vec3 } | undefined;
-  // the face that faces the other part most directly among the pairs as close as the best one
-  const facing = { a: { score: -Infinity, face: undefined as number | undefined }, b: { score: -Infinity, face: undefined as number | undefined } };
-  let touching = false; // a distance of zero cannot be improved on: the pass stops there
+  const bound = within ?? Infinity;
+  let limit = bound; // nothing further than this can be the answer
+  let best: { distance: number; a: Vec3; b: Vec3; faceA?: number; faceB?: number } | undefined;
+  // the pairs about as close as the best one, each with how directly its two faces look at the other part
+  let near: { distance: number; faceA?: number; scoreA: number; faceB?: number; scoreB: number }[] = [];
+  const named = a[0].face !== undefined || b[0].face !== undefined;
   const offer = (one: Piece, other: Piece): void => {
     if (boxDistance(one.min, one.max, other.min, other.max) > limit + LENGTH_TOLERANCE) return;
     const found = closestOfSimplices(one.corners, other.corners);
-    if (found.distance > limit + LENGTH_TOLERANCE) return;
-    if (!best || found.distance < best.distance - LENGTH_TOLERANCE) {
-      // closer than everything seen: the faces seen so far are no longer the closest
-      facing.a = { score: -Infinity, face: undefined };
-      facing.b = { score: -Infinity, face: undefined };
-    }
+    if (!(found.distance <= bound) || found.distance > limit + LENGTH_TOLERANCE) return;
     if (!best || found.distance < best.distance) {
-      best = found;
-      limit = Math.min(limit, found.distance);
-      touching = found.distance === 0;
+      best = { ...found, faceA: one.face, faceB: other.face };
+      limit = found.distance;
     }
+    if (!named || found.distance === 0) return;
     const direction = sub3(found.b, found.a);
     const length = len3(direction);
-    for (const [side, own, sign] of [[facing.a, one, 1], [facing.b, other, -1]] as const) {
-      if (own.face === undefined) continue;
-      // touching parts have no direction between them: any of the faces will do
-      const score = length > 0 && own.normal ? (sign * dot3(own.normal, direction)) / length : 0;
-      if (score > side.score) Object.assign(side, { score, face: own.face });
-    }
+    const score = (own: Piece, sign: number): number => (own.normal ? (sign * dot3(own.normal, direction)) / length : 0);
+    near.push({ distance: found.distance, faceA: one.face, scoreA: score(one, 1), faceB: other.face, scoreB: score(other, -1) });
+    if (near.length > KEPT) near = near.filter((pair) => pair.distance <= limit + LENGTH_TOLERANCE);
   };
+  const touching = (): boolean => best?.distance === 0; // a distance of zero cannot be improved on: the pass stops there
 
   // 1. a bound from a coarse sample of both parts
   const sample = (pieces: Piece[]): Piece[] => pieces.filter((_, i) => i % Math.ceil(pieces.length / SAMPLE) === 0);
-  for (const one of sample(a)) for (const other of sample(b)) if (!touching) offer(one, other);
-  if (limit === Infinity) return undefined; // not reached: both parts have pieces, so the sample found a distance
+  for (const one of sample(a)) for (const other of sample(b)) if (!touching()) offer(one, other);
 
   // 2. pieces too far from the whole other part cannot hold the answer
   const [boxA, boxB] = [boxOf(a), boxOf(b)];
@@ -271,7 +280,7 @@ export function closest(partA: MeshPart, partB: MeshPart, within?: number): Clos
   b.sort((one, other) => one.min[axis] - other.min[axis]);
   const longest = b.reduce((most, other) => Math.max(most, other.max[axis] - other.min[axis]), 0);
   for (const one of a) {
-    if (touching) break;
+    if (touching()) break;
     // the first piece of `b` that can reach back to `one`: it starts no earlier than this
     const from = one.min[axis] - limit - LENGTH_TOLERANCE - longest;
     let [low, high] = [0, b.length];
@@ -280,9 +289,24 @@ export function closest(partA: MeshPart, partB: MeshPart, within?: number): Clos
       if (b[middle].min[axis] < from) low = middle + 1;
       else high = middle;
     }
-    for (let i = low; i < b.length && !touching && b[i].min[axis] <= one.max[axis] + limit + LENGTH_TOLERANCE; i++) offer(one, b[i]);
+    for (let i = low; i < b.length && !touching() && b[i].min[axis] <= one.max[axis] + limit + LENGTH_TOLERANCE; i++) offer(one, b[i]);
   }
-  if (!best) return undefined; // `within` was given and nothing is that close
-  const found: { distance: number; a: Vec3; b: Vec3 } = best;
-  return { distance: found.distance, a: found.a, b: found.b, ...(facing.a.face !== undefined ? { faceA: facing.a.face } : {}), ...(facing.b.face !== undefined ? { faceB: facing.b.face } : {}) };
+  const found = best as { distance: number; a: Vec3; b: Vec3; faceA?: number; faceB?: number } | undefined;
+  if (!found) return undefined; // `within` was given and nothing is that close
+  // The faces: of the touching pair; otherwise, among the pairs as close as the answer, the one
+  // that looks at the other part most directly, and of two that do so equally the smaller number.
+  let [faceA, faceB] = [found.faceA, found.faceB];
+  if (found.distance > 0) {
+    const pick = (face: (pair: (typeof near)[number]) => number | undefined, score: (pair: (typeof near)[number]) => number): number | undefined => {
+      let chosen: { face: number; score: number } | undefined;
+      for (const pair of near) {
+        const [number, value] = [face(pair), score(pair)];
+        if (number === undefined || pair.distance > found.distance + LENGTH_TOLERANCE) continue;
+        if (!chosen || value > chosen.score + 1e-9 || (Math.abs(value - chosen.score) <= 1e-9 && number < chosen.face)) chosen = { face: number, score: value };
+      }
+      return chosen?.face;
+    };
+    [faceA, faceB] = [pick((pair) => pair.faceA, (pair) => pair.scoreA), pick((pair) => pair.faceB, (pair) => pair.scoreB)];
+  }
+  return { distance: found.distance, a: found.a, b: found.b, ...(faceA !== undefined ? { faceA } : {}), ...(faceB !== undefined ? { faceB } : {}) };
 }

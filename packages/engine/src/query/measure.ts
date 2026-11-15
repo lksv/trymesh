@@ -3,7 +3,7 @@
 // mesh, which every pair has.
 import { type MeshPart, closest, coordinatePrecision, meshAccuracy } from '../mesh-distance';
 import type { ArgPath, Vec3 } from '../types';
-import { ANGLE_TOLERANCE, cross3, dot3, edgeKey, len3, sub3 } from '../util';
+import { ANGLE_TOLERANCE, add3, cross3, dot3, edgeKey, len3, mul3, sub3, unit3 } from '../util';
 import type { ArgSpecs } from './args';
 import { type EntityShape, type ShapedRef, entityShape } from './entity';
 import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
@@ -97,7 +97,14 @@ const PARALLEL = Math.sin(ANGLE_TOLERANCE);
 const parallel = (a: Vec3, b: Vec3): boolean => len3(cross3(a, b)) <= PARALLEL;
 const across = (a: Vec3, b: Vec3): boolean => Math.abs(dot3(a, b)) <= PARALLEL; // a line along a plane with the normal `b`
 
-// The distance of two references, or undefined when the pair has none.
+// Two directions that count as parallel are still a hair apart (up to `ANGLE_TOLERANCE`). What is
+// measured along them is measured along the direction between the two, so that the answer does
+// not depend on which of the two entities is named first.
+const between2 = (a: Vec3, b: Vec3): Vec3 => unit3(add3(a, mul3(b, dot3(a, b) < 0 ? -1 : 1)));
+
+// The distance of two references, or undefined when the pair has none. For a line and a plane
+// that are parallel only within the tolerance it is taken at the point the line is given by, so
+// it is exact to the tolerance times the length of the line.
 function distanceOf(a: Reference, b: Reference): number | undefined {
   if (a.is === 'point' && b.is === 'point') return len3(sub3(a.at, b.at));
   if (a.is === 'plane' && b.is !== 'plane') return distanceOf(b, a);
@@ -108,10 +115,10 @@ function distanceOf(a: Reference, b: Reference): number | undefined {
     // parallel lines: the distance of a point of one from the other; otherwise the common perpendicular
     const normal = cross3(a.along, b.along);
     const sine = len3(normal);
-    return sine <= PARALLEL ? len3(cross3(between, a.along)) : Math.abs(dot3(between, normal)) / sine;
+    return sine <= PARALLEL ? len3(cross3(between, between2(a.along, b.along))) : Math.abs(dot3(between, normal)) / sine;
   }
   if (a.is === 'line' && b.is === 'plane') return across(a.along, b.normal) ? Math.abs(dot3(between, b.normal)) : undefined;
-  if (a.is === 'plane' && b.is === 'plane') return parallel(a.normal, b.normal) ? Math.abs(dot3(between, a.normal)) : undefined;
+  if (a.is === 'plane' && b.is === 'plane') return parallel(a.normal, b.normal) ? Math.abs(dot3(between, between2(a.normal, b.normal))) : undefined;
   return undefined;
 }
 
@@ -128,7 +135,7 @@ export function exactBetween(from: EntityShape, to: EntityShape, precision: numb
     if (from.is === 'plane' && to.is === 'plane') {
       angle = Math.atan2(sine, cosine);
       // opposite ways: the offset of one plane along the normal out of the other says which
-      const offset = dot3(sub3(to.origin, from.origin), from.normal);
+      const offset = dot3(sub3(to.origin, from.origin), between2(from.normal, to.normal));
       if (cosine < 0 && sine <= PARALLEL && Math.abs(offset) > precision) facing = offset < 0 ? 'away' : 'towards';
     } else if (from.is === 'plane' || to.is === 'plane') angle = Math.atan2(Math.abs(cosine), sine); // between the line and the plane
     else angle = Math.atan2(sine, Math.abs(cosine));

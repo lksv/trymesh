@@ -60,7 +60,7 @@ export function entityShape(context: QueryContext, ref: ShapedRef, arg: ArgPath)
     if (!surface) return missing(`the body "${ref.body}" has no face ${faceKey(ref.face)}`, [...arg, 'face']);
     if (surface.kind === 'plane') {
       const frame = context.frame({ kind: 'face', body: ref.body, face: ref.face });
-      if ('problem' in frame) return missing(`the body "${ref.body}" has no face ${faceKey(ref.face)}`, [...arg, 'face']);
+      if ('problem' in frame) return missing(`the face ${faceKey(ref.face)} of the body "${ref.body}" has no side that can be told to look out of the body`, [...arg, 'face']);
       return { is: 'plane', origin: surface.origin, normal: unit3(frame.normal) };
     }
     if (surface.kind === 'swept') return { is: 'swept', axis: unit3(surface.axis) };

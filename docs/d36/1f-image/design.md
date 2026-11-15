@@ -109,7 +109,7 @@ Nothing changes on the screen when the AI takes a picture: it is drawn off the s
 
 ## Open
 
-- **For the owner: is the app normally connected when the AI works?** If the AI often works over a document from a file with nobody at the app, a picture is not available exactly there, and the rasteriser in the server moves from "deferred" to this package. It is the one question of scope here; no library is involved either way.
+- **Is the app normally connected when the AI works? Decided by the owner on 2026-11-15:** yes. A picture comes only from the connected app; over a document from a file the operation answers that it is not available. The rasteriser in the server stays out of this package.
 - To confirm in the implementation, in a browser:
   - rendering to a target and reading it back works while the tab is in the background (the renderer does not depend on the animation frame, but browsers throttle hidden tabs in their own ways);
   - the line material of the edges draws lines of the right width at the size of the target. The app sets no resolution on it today, and the width of such a line is in pixels of a resolution the material has to be told; a picture of another size than the canvas may need it set for the render and set back;

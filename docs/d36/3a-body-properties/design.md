@@ -276,8 +276,8 @@ Notes for the plan, which this session does not edit:
 
 For the owner:
 
-- **One field `use` in place of two flags.** The design keeps "not printed" and "not part of the mechanism" apart as `reference` and `auxiliary`. If two independent flags are wanted, the change is confined to one field of the entry and one column of the table of readers; it should be made before the implementation, not after documents exist.
-- **The rows of the catalog.** Seven printing materials are proposed, each from the data sheet of one maker. Which makers, and whether metals for bought parts should be there from the start, is a choice of content, not of design.
+- **One field `use` in place of two flags: decided by the owner on 2026-11-15.** One field with the values `part`, `reference` and `auxiliary`, as designed.
+- **The rows of the catalog: decided by the owner on 2026-11-15.** The seven printing materials, each density from the technical data sheet of Prusament, and from that of Bambu Lab where Prusament does not make the material. A material neither makes is reported at the implementation and not filled in from another source. No metals at the start; a row can be added at any time.
 
 For the implementation:
 

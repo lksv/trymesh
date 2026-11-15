@@ -20,6 +20,10 @@ export interface Form {
   armed: ArgPath | undefined; // the control that takes the next selection in the view
   arm(path: ArgPath | undefined): void;
   set(path: ArgPath, value: unknown, rebuild?: boolean): void; // `rebuild`: what follows depends on the value, so the panel is built again
+  // What the draft holds at `path` now. A control that writes a whole list or record reads it
+  // when it is clicked, not when it was built: a value set inside it since then did not rebuild
+  // the panel, and writing the list as it was built would throw that value away.
+  get(path: ArgPath): unknown;
   title(spec: ArgKind, name: string): string; // the title of a nested entry, or its key
 }
 // `value`: what the draft holds at `path`. `siblings`: the named values next to it (the sketch of a constraint).
@@ -196,7 +200,12 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
   // A row per element, added and removed within `min` and `max`.
   list: (spec, value, path, form, siblings) => {
     const items: unknown[] = Array.isArray(value) ? value : [];
-    const without = (index: number): unknown[] | undefined => (items.length === 1 ? undefined : items.filter((_, i) => i !== index));
+    // the list as it is when a button is pressed (see `Form.get`)
+    const now = (): unknown[] => {
+      const held = form.get(path);
+      return Array.isArray(held) ? held : [];
+    };
+    const without = (index: number): unknown[] | undefined => (now().length <= 1 ? undefined : now().filter((_, i) => i !== index));
     const rows = items.map((item, index) =>
       h(
         'div',
@@ -206,7 +215,7 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
       ),
     );
     const full = spec.max !== undefined && items.length >= spec.max;
-    return [...rows, h('button', { className: 'link', textContent: 'Add', disabled: full, onclick: () => form.set(path, [...items, undefined], true) })];
+    return [...rows, h('button', { className: 'link', textContent: 'Add', disabled: full, onclick: () => form.set(path, [...now(), undefined], true) })];
   },
   // A choice of the alternative and the control of the chosen one.
   oneOf: (spec, value, path, form, siblings) => {
@@ -222,8 +231,13 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     const current = isRecord(value) ? value : {};
     const keys = spec.keys === 'body' ? bodies(form) : spec.keys === 'feature' ? features(form) : undefined;
     const label = (key: string): string => keys?.find(([id]) => id === key)?.[1] ?? key;
+    // the record as it is when a button is pressed (see `Form.get`)
+    const now = (): Record<string, unknown> => {
+      const held = form.get(path);
+      return isRecord(held) ? held : {};
+    };
     const without = (key: string): Record<string, unknown> | undefined => {
-      const rest = Object.fromEntries(Object.entries(current).filter(([name]) => name !== key));
+      const rest = Object.fromEntries(Object.entries(now()).filter(([name]) => name !== key));
       return Object.keys(rest).length ? rest : undefined;
     };
     const rows = Object.keys(current).map((key) =>
@@ -236,8 +250,10 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
       ),
     );
     const add = (key: string | undefined): void => {
-      if (key !== undefined && key !== '' && !Object.prototype.hasOwnProperty.call(current, key)) form.set(path, { ...current, [key]: undefined }, true);
+      if (key !== undefined && key !== '' && !Object.prototype.hasOwnProperty.call(now(), key)) form.set(path, { ...now(), [key]: undefined }, true);
     };
+    // The keys still to offer, and the rows above, are those of the record as it was built:
+    // a key is added or removed only here, and both build the panel again.
     const free = (keys ?? []).filter(([id]) => !Object.prototype.hasOwnProperty.call(current, id));
     const text: HTMLInputElement = h('input', { placeholder: 'name', onchange: () => add(text.value.trim()) });
     return [...rows, keys ? choice(free, undefined, add, 'Add…') : text];

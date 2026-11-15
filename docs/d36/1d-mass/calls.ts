@@ -4,6 +4,10 @@
 // written here is a hole in the contract. Lines marked `@ts-expect-error` are calls that must
 // not compile.
 //
+// As implemented (design.md, "As implemented"): the entry is packages/engine/src/query/mass.ts and
+// part a is the test in packages/scenarios/test/scenario11.test.ts; the errors of part a are
+// `invalidArguments`, and no body can have the ID `constructor`.
+//
 // The numbers in the comments were measured by a prototype of the pass over the model of
 // scenario 9 (chord tolerance 0.01 mm); they become the expectations of the test in
 // packages/scenarios.

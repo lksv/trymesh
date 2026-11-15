@@ -222,10 +222,13 @@ const LONG = 30; // items of a list the tree shows before it cuts it
 // rounds them (six decimal places, or the significant digits the entry gives) and get the unit
 // the entry gives for their key; a face name is written as the lists of the form write one (its
 // label and its key, because the sides of a body share a label), a body by its name.
-function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost): HTMLElement[] {
+// `named`: the key that gives the numbers their unit and digits. The items of a list are labelled
+// by their place and keep the key of the list, as the tool does: the rows of a tensor under
+// `inertia` have its unit.
+function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost, named = key): HTMLElement[] {
   const number = (one: number): string => {
-    const digits = entry.significant?.[key];
-    const unit: ResultUnit | undefined = entry.units?.[key];
+    const digits = entry.significant?.[named];
+    const unit: ResultUnit | undefined = entry.units?.[named];
     // rounded once, as it is shown: an angle after it became degrees (a whole turn is 360°, not
     // the 359.999982° of six decimal places of radians), and to the significant digits of the
     // entry where it gives them, not to six decimal places after them
@@ -238,7 +241,7 @@ function tree(value: unknown, key: string, entry: AnyQuery, host: PanelHost): HT
   if (value === null || value === undefined) return [];
   if (Array.isArray(value)) {
     if (value.every((item) => typeof item === 'number')) return [line(`[${value.map((item) => number(item as number)).join(', ')}]`)];
-    const rows = value.slice(0, LONG).flatMap((item, index) => tree(item, `${index + 1}`, entry, host));
+    const rows = value.slice(0, LONG).flatMap((item, index) => tree(item, `${index + 1}`, entry, host, named));
     return [h('div', { className: 'tree' }, h('p', { className: 'answer' }, `${key} (${value.length})`), ...rows, value.length > LONG ? h('p', { className: 'hint' }, `… and ${value.length - LONG} more`) : null)];
   }
   if (isRecord(value)) {
@@ -267,6 +270,7 @@ export function queryPanel(panel: QueryPanel, host: PanelHost): HTMLElement[] {
       open.draft = withValue(open.draft, path, value) as Record<string, unknown>;
       if (rebuild) host.renderPanel();
     },
+    get: (path) => path.reduce<unknown>((held, part) => (Array.isArray(held) && typeof part === 'number' ? held[part] : isRecord(held) && typeof part === 'string' && Object.prototype.hasOwnProperty.call(held, part) ? held[part] : undefined), open.draft),
     title: (spec, name) => (spec as { title?: string }).title ?? name,
   };
   // an error names its argument by its path: the row of that argument is marked

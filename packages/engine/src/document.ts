@@ -25,9 +25,6 @@ import {
   type FieldInfo,
   type FieldMode,
   Fields,
-  REF_LABEL,
-  type RefContext,
-  type ValidationContext,
   boolean,
   fail,
   finite,
@@ -38,11 +35,9 @@ import {
   planeRef,
   string,
 } from './validation';
-import type { FeatureTypeInfo } from './features/module';
-import { extrude } from './features/extrude';
-import { pattern } from './features/pattern';
-import { plane } from './features/plane';
-import { constraint, curve, externalRef, sketch } from './features/sketch';
+import { FEATURE_TYPES, refContext, requireRef, specOf } from './features/index';
+import type { FeatureModule } from './features/module';
+import { constraint, curve, externalRef } from './features/sketch';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -63,6 +58,7 @@ export {
   isDriving,
 } from './sketch-content';
 export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
+export { FEATURE_TYPE_INFO } from './features/index';
 export type { FeatureTypeInfo } from './features/module';
 export { MAX_PATTERN_COUNT } from './features/pattern';
 
@@ -76,41 +72,6 @@ const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
   o.expressions === undefined ? {} : Object.fromEntries(Object.entries(object(o.expressions, `${what}.expressions`)).map(([path, expr]) => [path, string(expr, `${what}.expressions.${path}`)]));
 
 const NO_ENVIRONMENT = (): Environment => ({});
-
-// Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
-// správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
-// odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
-function requireRef(doc: Document, before: number | undefined, ref: Omit<FeatureRef, 'path'>, what: string): void {
-  if (before === undefined) return;
-  if (ref.kind === 'entity') {
-    // The sketch itself is verified by its own reference; here only the entity inside it.
-    const sketch = doc.features.find((f) => f.id === ref.sketch);
-    if (!sketch || sketch.type !== 'sketch') return fail(`${what}: the sketch "${String(ref.sketch)}" of the entity "${ref.id}" does not exist`);
-    const entity = entityOf(sketch, ref.id);
-    if (!entity) return fail(`${what}: the sketch "${sketch.id}" has no entity "${ref.id}"`);
-    if (!ref.accepts?.includes(entity.kind)) fail(`${what}: "${ref.id}" is a ${entity.kind}, expected ${(ref.accepts ?? []).join(' or ')}`);
-    return;
-  }
-  const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };
-  const index = doc.features.findIndex((f) => f.id === feature);
-  if (index < 0) fail(`${what}: feature "${ref.id}" neexistuje`);
-  const target = doc.features[index];
-  const spec = FEATURE_TYPES[target.type] as FeatureTypeSpec<Feature>;
-  if (ref.kind === 'generated') {
-    const generator = target.type === 'extrude' && target.profile.type === 'generated' ? target.profile.generator : undefined;
-    if (generator === undefined || !ref.accepts?.includes(generator)) fail(`${what}: feature "${ref.id}" is not an extrusion with a profile from the generator ${(ref.accepts ?? []).join(' or ')}`);
-  } else if (ref.kind === 'tool') {
-    if (target.type !== 'extrude' || target.operation === 'new') fail(`${what}: feature "${ref.id}" is not an extrusion with the operation add or cut`);
-  } else {
-    const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
-    if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
-  }
-  if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
-}
-
-// The context of a validator or of a command that checks a reference: `requireRef` bound to the
-// document and to the place of the referring feature.
-const refContext = (doc: Document, before: number | undefined): RefContext => ({ doc, before, requireRef: (ref, what) => requireRef(doc, before, ref, what) });
 
 // ---------------------------------------------------------------- entity skici
 
@@ -128,47 +89,14 @@ function withPosition(sketch: SketchFeature, given: unknown): unknown {
 
 // ---------------------------------------------------------------- registr typů features
 
-// Typ feature jako položka registru: vše, co o něm dokument potřebuje vědět. Krok přepočtu typu
-// je v evaluate.ts; úplnost obou míst hlídá překladač (záznam podle `Feature['type']`).
-interface FeatureTypeSpec<F extends Feature> {
-  info: Omit<FeatureTypeInfo, 'updatable'>;
-  // Ověří feature a vrátí její kanonickou kopii. What needs the registry (is the target of
-  // a reference there, of the right kind and before this feature) and the reader of numeric fields
-  // come in the context.
-  validate(o: Dict, what: string, context: ValidationContext): F;
-  // Odkazy na jiné features s místem, kde ve feature leží.
-  refs(f: F): FeatureRef[];
-  // Vytváří feature těleso s tímto ID? `local` je část ID za lomítkem (bez lomítka chybí).
-  createsBody(f: F, local: string | undefined): boolean;
-  namesFaces: boolean; // pojmenovává feature stěny těles?
-  // Pole, která smí měnit updateFeature; bez nich feature tímto příkazem měnit nejde.
-  // `removable`: may `null` in a patch name this path although the feature did not have it? (An
-  // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
-  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
-}
-
-const FEATURE_TYPES: { [K in Feature['type']]: FeatureTypeSpec<Extract<Feature, { type: K }>> } = {
-  plane,
-  sketch,
-  extrude,
-  pattern,
-};
-
-// Veřejná část registru.
-export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(
-  Object.entries(FEATURE_TYPES).map(([type, spec]) => [type, { ...spec.info, updatable: (spec as FeatureTypeSpec<Feature>).patch?.fields ?? [] }]),
-) as Record<Feature['type'], FeatureTypeInfo>;
-
-const specOf = (f: Feature): FeatureTypeSpec<Feature> => FEATURE_TYPES[f.type] as FeatureTypeSpec<Feature>;
-
 // Validates a feature and returns its canonical copy. `before`: see requireRef; `mode`: see FieldMode.
 function feature(doc: Document, before: number | undefined, v: unknown, what: string, mode: FieldMode): Feature {
   const o = object(v, what);
   const type = oneOf(o.type, Object.keys(FEATURE_TYPES) as Feature['type'][], `${what}.type`);
-  return validated(FEATURE_TYPES[type] as FeatureTypeSpec<Feature>, doc, before, o, what, mode);
+  return validated(FEATURE_TYPES[type] as FeatureModule<Feature>, doc, before, o, what, mode);
 }
 
-function validated(spec: FeatureTypeSpec<Feature>, doc: Document, before: number | undefined, o: Dict, what: string, mode: FieldMode): Feature {
+function validated(spec: FeatureModule<Feature>, doc: Document, before: number | undefined, o: Dict, what: string, mode: FieldMode): Feature {
   const fields = new Fields(mode, expressionsOf(o, what), () => evaluateParameters(doc.parameters));
   const checked = spec.validate(o, what, { ...refContext(doc, before), fields });
   const expressions = fields.expressions(what);

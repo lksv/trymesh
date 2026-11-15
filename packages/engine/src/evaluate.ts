@@ -2,12 +2,9 @@
 import { checkNumber } from './catalog';
 import { atPath, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
-import { extrude } from './features/extrude';
-import { pattern } from './features/pattern';
-import { plane } from './features/plane';
-import { sketch } from './features/sketch';
+import { specOf } from './features/index';
 import { issue, lookup } from './recompute/services';
-import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, StepContext, WriteBack } from './recompute/state';
+import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, WriteBack } from './recompute/state';
 import { analyzeBody } from './solid';
 import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id } from './types';
 
@@ -142,26 +139,14 @@ export class Evaluator {
     const failed: Failed = (code, refs, detail) => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
     // Potlačená feature je prázdná operace; co na ní závisí, skončí v chybě.
     if (feature.suppressed) return { state: done({ status: 'suppressed', warnings: [] }) };
-    // A bad expression is an error of the feature. A sketch is the exception: it is computed with the
-    // last valid value and reports a warning, so that it stays visible, can be fixed and everything
-    // built on it does not fail.
-    if (errors && feature.type !== 'sketch') return failed('invalidExpression', Object.keys(errors));
-    const context: StepContext = { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [] };
-    // Krok podle typu feature; úplnost hlídá překladač (viz registr typů v document.ts).
-    switch (feature.type) {
-      case 'plane':
-        return plane.step(feature, context);
-      case 'sketch':
-        return sketch.step(feature, context);
-      case 'extrude':
-        return extrude.step(feature, context);
-      case 'pattern':
-        return pattern.step(feature, context);
-      default: {
-        const unknown: never = feature;
-        throw new Error(`přepočet: neznámý typ feature ${String((unknown as Feature).type)}`);
-      }
-    }
+    const spec = specOf(feature);
+    // A bad expression is an error of the feature. A type that keeps the last valid values (the
+    // sketch) is the exception: it is computed with them and reports a warning, so that it stays
+    // visible, can be fixed and everything built on it does not fail.
+    if (errors && !spec.keepsLastValidValues) return failed('invalidExpression', Object.keys(errors));
+    // The step of the feature type. The registry is the one guard of completeness: an entry without
+    // a step does not compile (features/index.ts).
+    return spec.step(feature, { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [] });
   }
 
 }

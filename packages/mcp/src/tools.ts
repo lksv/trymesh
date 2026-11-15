@@ -5,6 +5,7 @@
 // dostává ze zdrojů enginu: z katalogu vazeb a z typů. Nová vazba nebo příkaz v enginu se tak
 // v nástrojích objeví bez zásahu sem.
 import {
+  type BodyEdge,
   type BodyResult,
   CONSTRAINTS,
   type Command,
@@ -201,82 +202,26 @@ function modelSummary(state: EngineState): unknown {
   };
 }
 
-function bodyDetail(state: EngineState, id: string): unknown {
+// A body as `get_body` prints it. The tool keeps its own check that the body exists and its own
+// text; the faces and the edges come from the query `body` of the engine, which computes them.
+function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown {
+  const state = stateAt(engine, at);
   const body = Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id) ? state.evaluation.bodies[id] : undefined;
   if (!body) throw new ToolError(`the body "${id}" does not exist at this point of the timeline (a body ID is the ID of an extrusion with the operation new, or "<pattern>/<number>" for a copy made by a pattern; get_model lists the bodies)`);
-  const p = body.solid.positions;
-  // plocha a normála stěny ze součtu vektorových součinů jejích trojúhelníků
-  const sums = new Map<number, number[]>();
-  for (let t = 0; t < body.solid.faceIds.length; t++) {
-    const [a, b, c] = [3 * body.solid.triangles[3 * t], 3 * body.solid.triangles[3 * t + 1], 3 * body.solid.triangles[3 * t + 2]];
-    const [u, v] = [[p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]], [p[c] - p[a], p[c + 1] - p[a + 1], p[c + 2] - p[a + 2]]];
-    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    const sum = sums.get(body.solid.faceIds[t]) ?? [0, 0, 0, 0];
-    sums.set(body.solid.faceIds[t], [sum[0] + n[0], sum[1] + n[1], sum[2] + n[2], sum[3] + Math.hypot(n[0], n[1], n[2]) / 2]);
-  }
+  const answer = engine.query('body', { body: id }, at === undefined ? {} : { at });
+  if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
+  const edgeShape = (edge: BodyEdge): Record<string, unknown> => ({
+    segments: edge.segments,
+    length: round(edge.length),
+    ...(edge.kind === 'line' ? { from: edge.from.map(round), to: edge.to.map(round), ...(edge.gaps ? { gaps: true } : {}) } : {}),
+    ...(edge.kind === 'circle' && edge.circle ? { center: edge.circle.center.map(round), radius: round(edge.circle.radius) } : {}),
+  });
   return {
     id,
     ...solidInfo(body),
-    faces: body.faces.map((face) => {
-      const name = state.evaluation.faceNames[face.id];
-      const sum = sums.get(face.id) ?? [0, 0, 0, 0];
-      const length = Math.hypot(sum[0], sum[1], sum[2]) || 1;
-      return { name: name as unknown as Json, label: faceLabel(name), planar: face.planar, area: round(sum[3]), ...(face.planar ? { normal: [sum[0] / length, sum[1] / length, sum[2] / length].map(round) } : {}) };
-    }),
-    edges: body.edges.map((edge) => ({ name: edge.name as unknown as Json, label: `${faceLabel(edge.name.a)} | ${faceLabel(edge.name.b)}`, kind: edge.kind, ...edgeShape(edge.kind, edge.segments) })),
+    faces: answer.result.faces.map((face) => ({ name: face.name as unknown as Json, label: faceLabel(face.name), planar: face.surface.kind === 'plane', area: round(face.area), ...(face.meshNormal ? { normal: face.meshNormal.map(round) } : {}) })),
+    edges: answer.result.edges.map((edge) => ({ name: edge.name as unknown as Json, label: `${faceLabel(edge.name.a)} | ${faceLabel(edge.name.b)}`, kind: edge.kind, ...edgeShape(edge) })),
   };
-}
-
-// Tvar hrany z jejích úseček (6 čísel na úsečku, v libovolném pořadí). Délka vždy; u přímé hrany
-// krajní body podél jejího směru (hrana může mít mezery), u kruhové střed a poloměr.
-function edgeShape(kind: string, s: Float64Array): Record<string, unknown> {
-  const count = s.length / 6;
-  const at = (i: number): number[] => [s[3 * i], s[3 * i + 1], s[3 * i + 2]];
-  const sub = (a: number[], b: number[]): number[] => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-  const dot = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  let length = 0;
-  for (let i = 0; i < count; i++) length += Math.hypot(...sub(at(2 * i + 1), at(2 * i)));
-  const out: Record<string, unknown> = { segments: count, length: round(length) };
-  if (count === 0) return out;
-  if (kind === 'line') {
-    const direction = sub(at(1), at(0));
-    let [low, high] = [0, 0];
-    for (let i = 0; i < 2 * count; i++) {
-      if (dot(sub(at(i), at(0)), direction) < dot(sub(at(low), at(0)), direction)) low = i;
-      if (dot(sub(at(i), at(0)), direction) > dot(sub(at(high), at(0)), direction)) high = i;
-    }
-    const span = Math.hypot(...sub(at(high), at(low)));
-    return { ...out, from: at(low).map(round), to: at(high).map(round), ...(length < span - 1e-6 * Math.max(1, span) ? { gaps: true } : {}) };
-  }
-  if (kind === 'circle' && count >= 3) {
-    // The centre of the circle through three vertices spread along the edge. The segments come in
-    // no particular order, so the three are chosen by geometry: a vertex, the one farthest from it
-    // and the one farthest from the line through those two (three picked by position in the list
-    // can lie next to each other, which gives no centre or an imprecise one). The two ends of an
-    // arc are left out when the arc has enough vertices without them: where another face cuts
-    // the circle short, the end lies on a chord of the polygon, not on the circle.
-    const uses = new Map<string, number>();
-    for (let i = 0; i < 2 * count; i++) uses.set(at(i).join(','), (uses.get(at(i).join(',')) ?? 0) + 1);
-    const inner = Array.from({ length: 2 * count }, (_, i) => at(i)).filter((p) => (uses.get(p.join(',')) as number) > 1);
-    const vertices = new Set(inner.map((p) => p.join(','))).size >= 3 ? inner : Array.from({ length: 2 * count }, (_, i) => at(i));
-    const a = vertices[0];
-    let [b, c] = [a, a];
-    for (const p of vertices) if (Math.hypot(...sub(p, a)) > Math.hypot(...sub(b, a))) b = p;
-    const off = (p: number[]): number => {
-      const [e, f] = [sub(b, a), sub(p, a)];
-      return Math.hypot(e[1] * f[2] - e[2] * f[1], e[2] * f[0] - e[0] * f[2], e[0] * f[1] - e[1] * f[0]);
-    };
-    for (const p of vertices) if (off(p) > off(c)) c = p;
-    const [u, v] = [sub(b, a), sub(c, a)];
-    const [uu, vv, uv] = [dot(u, u), dot(v, v), dot(u, v)];
-    const det = 2 * (uu * vv - uv * uv);
-    if (Math.abs(det) > 1e-12 * uu * vv) {
-      const [p, q] = [(vv * (uu - uv)) / det, (uu * (vv - uv)) / det];
-      const center = [a[0] + p * u[0] + q * v[0], a[1] + p * u[1] + q * v[1], a[2] + p * u[2] + q * v[2]];
-      return { ...out, center: center.map(round), radius: round(Math.hypot(...sub(a, center))) };
-    }
-  }
-  return out;
 }
 
 const plural = (count: number): string => `${count} ${count === 1 ? 'stupeň' : count >= 2 && count <= 4 ? 'stupně' : 'stupňů'} volnosti`;
@@ -550,7 +495,7 @@ export function tools(): Tool[] {
       name: 'get_body',
       description: 'Těleso podrobně: stěny (jméno, rovinnost, plocha, normála) a hrany (jméno, druh, konce). Jména stěn a hran se používají v odkazech: rovina skici na stěně, promítnutí hrany.',
       inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'ID feature; stav po ní' } }, required: ['body'], additionalProperties: false },
-      run: (engine, args) => bodyDetail(stateAt(engine, optionalText(args, 'at')), text(args, 'body')),
+      run: (engine, args) => bodyDetail(engine, optionalText(args, 'at'), text(args, 'body')),
     },
     {
       name: 'check_interference',

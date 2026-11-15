@@ -4,12 +4,13 @@
 import type { ArgPath, Evaluation, QueryOutcome } from '../types';
 import { has } from '../util';
 import { checkArgs } from './check';
+import { body } from './body';
 import { type ContextDeps, type Internals, queryContext } from './context';
 import { interference } from './interference';
 import { constraintExplanation, sketchDiagnosis } from './sketch';
 import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
 
-export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation };
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body };
 
 const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 

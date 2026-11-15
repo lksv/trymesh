@@ -600,6 +600,31 @@ export interface Truncated {
   truncated?: { shown: number; total: number };
 }
 
+// What the query `body` answers with: a body described for a reader that does not hold its mesh.
+export interface BodyDescription {
+  body: Id;
+  volume: number; // mm³
+  bounds: { min: Vec3; max: Vec3 };
+  faces: BodyFace[];
+  edges: BodyEdge[];
+}
+export interface BodyFace {
+  name: FaceName;
+  surface: Surface;
+  area: number; // mm²
+  meshNormal?: Vec3; // a planar face: unit, pointing out of the body (the sum of the normals of its triangles)
+  convex?: boolean; // a cylinder or a cone: true when the material is on the side of the axis (a pin), false for a hole
+}
+// `segments`: the number of straight pieces the edge has in the mesh.
+// - A line has its two ends along its direction; `gaps` says that a cut interrupts it.
+// - The centre and the radius of a circle are fitted to its vertices and may be missing (an arc
+//   too short to fit).
+export type BodyEdge = { name: EdgeName; length: number; segments: number } & (
+  | { kind: 'line'; from: Vec3; to: Vec3; gaps: boolean }
+  | { kind: 'circle'; circle?: { center: Vec3; radius: number } }
+  | { kind: 'coplanar' | 'other' }
+);
+
 // ---------------------------------------------------------------- engine
 
 export interface Engine {

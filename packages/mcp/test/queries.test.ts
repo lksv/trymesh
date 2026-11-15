@@ -43,6 +43,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   interference: { bodies: ['low', 'high'], threshold: 0 },
   sketchDiagnosis: { sketch: 's' },
   constraintExplanation: { sketch: 's', constraint: 'r' },
+  body: { body: 'low' },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -50,6 +51,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   interference: { bodies: 'optional', threshold: 'optional' },
   sketchDiagnosis: { sketch: 'required' },
   constraintExplanation: { sketch: 'required', constraint: 'required' },
+  body: { body: 'required' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 

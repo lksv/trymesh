@@ -69,7 +69,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
 | `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
 | `query/check.ts`, `query/context.ts` | the check of arguments against a state; the context over the state of the recompute, and the store of results kept by their owners |
-| `query/interference.ts`, `query/sketch.ts` | the queries, one module each or a few that belong together |
+| `query/interference.ts`, `query/sketch.ts`, `query/body.ts` | the queries, one module each or a few that belong together |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
 | `engine.ts` | the facade |
@@ -890,7 +890,7 @@ type CommandResult =
 
 ### Queries (D37)
 
-A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation`.
+A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation` and `body`.
 
 ```ts
 type QueryOptions = { at?: Id } | { state: EngineState };   // now, after a feature, or a state this engine handed out
@@ -932,6 +932,8 @@ A number is checked against its own description only: the limit of ±1e9 on numb
 | `memo(owners, key, compute)` | a result kept for as long as all its owners live (both solids for a pair of bodies, the evaluated sketch for a diagnosis). Owners that live across recomputes are a solid, an evaluated sketch, the document, a section or a feature of it; the order of the owners does not matter, and the keys of different queries are kept apart |
 
 What does not belong to a body is never posed: a sketch and its points, an axis through a sketch point, a plane feature, a base plane or axis.
+
+**The description of a body** (`body`, `query/body.ts`) is what the MCP tool `get_body` used to compute for itself, moved into the engine so that the app and other queries can use it: for every face its name, its surface, its area, for a planar face the unit normal out of the body (`meshNormal`, the sum of the normals of its triangles) and for a cylinder or a cone whether the material is on the side of the axis (`convex`: a pin, or a hole; one more pass over the triangles, because the normals of a full cylinder sum to zero); for every edge its name, its length, the number of its segments and its shape: the two ends of a line and whether a cut interrupts it, the centre and the radius of a circle fitted to its vertices, which may be missing. The description is kept by the mesh. `get_body` keeps its own check that the body exists and its text, and prints the faces and the edges of the query with its own rounding and labels.
 
 **Guards.** `packages/mcp/test/queries.test.ts` has two tables typed by the map of queries, so a query without a row does not compile: arguments of the query's own type, which the test runs through the MCP tool `query`, and every argument with whether a caller may leave it out, which the test compares with the entry (a description handed over in a variable could carry an argument the type does not have). The test also checks that `of` of a constraint names a required sketch next to it.
 

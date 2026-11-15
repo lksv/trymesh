@@ -1,6 +1,6 @@
 # 1e Print queries
 
-**Decision D42. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D42. State: implemented and merged into `master` on 2026-11-15, the engine side (the query `print`) and the view of the app. See "As implemented" at the end, which says where the code differs from the text below. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the printability of the housing in two orientations.
 
@@ -150,3 +150,77 @@ Nothing was left without action.
 | `normalOf` is undefined also for a planar face the context gives no frame for | internal | Yes (`faceFrame` answers `brokenReference` when the normals of a face sum to nothing) | Said in the contract: such a face is judged by its triangles |
 
 Nothing was left without action. Not reviewed by anyone: the rule "a planar face is contact as a whole", which is the fix of this round.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/print.ts`: the entry `print` in `QUERIES`, the pass `printPass`, and the frames `frameOfDirection` and `turned`; the types, `printPass` and `frameOfDirection` are exported from the index of the engine. Tests: `packages/engine/test/print.test.ts` (the frame of an orientation and the pass on meshes written by hand: a box on three of its sides, tilted, at exactly the overhang angle, turned with a direction typed with five digits, with a bent bottom, thinner than the precision; a face that looks down above the bed; a cylinder on its side), `packages/scenarios/test/print.test.ts` (the query against the real adapters on a plate with a hole and a pin: by a direction and by a face, `onBed`, the bed, the angle, the limits of the answer, `at`, the errors), three cases of scenario 11 in `scenario11.test.ts`, and the rows of the query in `packages/mcp/test/queries.test.ts`. The review added the tests named `review:`: in the engine the pass on bodies of several boxes and the entry `print.run` over a context written by hand (what the query reads of a context: the names of faces, the boxes of bodies, the frame and the number of a face), and through the real adapters a plate with a block added beside it from the same plane.
+
+**The numbers of the design hold on the joint**, all of them as measured by the prototype: the housing on its seating face has a contact of 2801.28 mm² and an overhang of 3330.69 mm², all of it the ceiling of the motor recess, 28 mm up; on its front face a contact of 6028.84 and an overhang of 103.13 on the floors of the six nut pockets (17.19 each), 3 mm up; on its side no contact and 8612.84 on 21 faces, the largest the outer wall (3949.79, from the bed up). The carrier named to lie on the face its pins stand on rests on the three pin ends (`onBed` false). The carrier pins up: 2826.18 on the bed and no overhang; pins down: the disc overhangs, 2767.58 from 12.5. The sun teeth down: the flange overhangs, 1021.44 from 15.5. (The prototype of the design measured 3 to 6 ms for the housing in one orientation; the test only asks for well under two seconds.)
+
+What differs from the design and from `contract.ts`:
+
+- **A face that is not planar is `notAvailable`**, not `failed`, with the path of its orientation (`['orientations', 1, 'by', 'onBed']`): `QueryFailure` of the engine names that very case under `notAvailable`, as the section does for its plane. **A direction without a length is `invalidArguments`**, the code `QueryFailure` got with 1b; the design wrote `failed`, the stand-in of that time.
+- **A planar face that is not contact overhangs as a whole**, by the normal of its face, with all its area and from its lowest corner. The design says the same of its triangles one by one ("a triangle of a planar face looks where its face looks"); the result is the same, and the face is summed once. Only the triangles of a face that is not planar are judged and summed one by one, and `from` of such a face is the lowest corner of the triangles that overhang.
+- **How far a face leans** is the angle of its normal below the horizontal: nothing for a wall, a right angle for a ceiling. It is an overhang when that is more than the overhang angle plus `ANGLE_TOLERANCE`. So an angle of a right angle lists nothing, and an angle of zero everything that looks down.
+- **`fits` allows the precision of the coordinates**: a body exactly as large as the bed fits.
+- **Contact is measured along the normal of the face, not along `up`** (after the review, below). A planar face that looks straight down within `ANGLE_TOLERANCE` is contact when nothing of the body reaches beyond its plane by more than the precision of the coordinates, the distance taken along the normal of that face. The design compares the lowest corner of the face with the lowest point of the body along `up`; that keeps one large face under a direction typed with five digits, and loses all but the lowest of several faces in one plane (the ends of three pins, two feet). So a face is asked what the caller meant: put on this face, does the body rest on it?
+- **Faces of one area are listed in the order of their numbers**, so the lists do not depend on the order of the triangles. One area is one to six digits, which is what coordinates in float32 give: the copies of a face made by a pattern differ from the seventh digit on (17.188932 and 17.188922 mm² for the floors of the nut pockets). The areas are rounded and then compared, because an order by a tolerance is not an order; two areas that round apart are listed by their size.
+- **A direction of any length a double holds has a unit vector**: it is divided by its largest part before its length is taken, so `[0, 0, 5e-324]` and `[1.7e308, 1.7e308, 1.7e308]` are directions. Only a direction of zeros (or one that is not finite, which the check of the arguments refuses first) has no length.
+- **A body named twice is judged once**, and the bodies come in the order they were asked about (without `bodies`, the order of the model).
+- **The nested arguments have titles** (`What is up`, `Direction`, `Face on the bed`, `Turn`, the three lengths of the bed): the description can give them since 1b. The design expected them to be labelled by their keys.
+- **`units`** are on the entry: `angle` in radians (a form shows degrees), `size` and `from` in millimetres, `area` in mm².
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+
+**Known limits** (those of the design, and what the implementation adds).
+
+- An overhang held at both ends (a bridge), the floor of a horizontal hole and the underside of a chamfer are all overhangs of their faces: the query does not know what a printer bridges.
+- A round face is judged by its facets, so its overhang is that of the polygon: at the chord tolerance 0.01 mm the overhang of a horizontal hole of 8 mm is within a tenth of π·d·t/4 (the test).
+- A planar face for which the engine has no frame (the normals of its triangles sum to nothing) is judged by its triangles and never counts as contact.
+- The body is put on the bed at its lowest point whatever is there: a body that would fall over is not noticed.
+- Every face that looks straight down within `ANGLE_TOLERANCE` is judged in its own plane. Two faces of one body that both pass, in planes up to 1e-4 rad apart, are both counted as contact; a face 100 mm across counted as contact may have its far end 0.01 mm above the bed along `up`. That is the tolerance on the direction, used for the height as well.
+
+### Review of the engine side (2026-11-15)
+
+One full review by a subagent that did not write the code, read-only, with probes and mutations of its own. One serious finding, in the rule of the contact; the rest are small or gaps in the tests.
+
+| Finding | Held | What was done |
+|---|---|---|
+| A body that rests on several named faces in one plane lost all but the lowest of them when the direction was not exact: the height of a face was compared along `up` at the precision of the coordinates, and `up: [1e-5, 0, 1]` puts one pin end of the carrier 3e-4 mm below the others (serious: 58.61 mm² of contact came back as 19.54, and the other two ends as overhangs "from 0") | Yes | The height is measured along the normal of the face (above). Tests: two boxes of one body 60 apart, as modelled and turned by 30° with a direction of five digits; the carrier of the joint; a plate with a block added beside it, through the real adapters |
+| A direction with parts near the smallest or the largest number a double holds gave an `up` of NaN or of zeros, and passed the test of its length | Yes (`[1e-320, 0, 0]`, `[0, 0, 5e-324]`, `[1.7e308, 1.7e308, 1.7e308]`) | The unit vector is taken after a division by the largest part; the entry refuses by the same function |
+| The order of faces of one area was decided by the last digits of the areas, which differ between the copies of a pattern | Yes; and nine digits, the first fix, were not enough: the copies differ at the seventh | Areas are compared rounded to six digits, then by the number of the face |
+| The message for a planar face without a frame said the face is not in the state asked about | Possible (a face whose triangles sum to no normal) | The message names both reasons |
+| Mutations that passed all tests: `onBed` read from the cut list, the totals of the contact taken from the cut list, the precision handed to the pass, the allowance of `fits`, the 45° at which the axis laid into the bed changes, the x of the frame of a face and `turn` with a face, the lowest corner of a face taken from its first triangle, the count of a cut with `minArea`, `>=` at `minArea`, the order of faces of one area | Yes | Tests named `review:`. The entry is run over a context written by hand for what the real adapters cannot tell apart (the x of the frame of a face is the same as that of a direction on every model at hand) |
+
+After the fix twenty mutations of `print.ts` were run against the test of the engine (the old rule of the contact, the ones above, the unit vector): nineteen fail. The one that passes takes the reach of a planar face along its normal from its first triangle only, which is the same number on a face that is planar.
+
+No second round: one serious finding, and the fix is a change of one rule with the tests of the cases it was found on.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/print.ts`, one line in `QUERY_VIEWS`. The view is the one of "What the app shows" and of `calls.ts`, with these differences:
+
+- **A row is two lines**: the row itself (the body, the orientation, the overhang area) and a line under it with the height, the area on the bed and the number of faces. The row of `calls.ts` held all of it in one text, which the panel cuts off at its width.
+- **The orientation is worded as it was asked**: "on" the face named, or "up" with the direction; `calls.ts` wrote the direction for both.
+- **What does not fit the bed, and a face named that does not lie on it, are warnings under the row**, the first with the three sizes.
+- **The legend of the two colours** is under a picked row, and names only what is painted. It also says that the faces look away from what is up: as modelled they are underneath, and the browser showed a picked row that seemed to paint nothing.
+- **Areas and lengths are shown to a hundredth**: they are sums over a mesh.
+- **The colours** are those of the app (`COLOR.hover` for the faces on the bed, `COLOR.clash` for the overhangs), not the two numbers of `calls.ts`.
+- **A note** in the status bar, which `calls.ts` did not have: the bodies, the orientations and how many rows do not fit.
+- The nested arguments have titles (see the engine side), so the form reads "What is up", "Direction", "Face on the bed", "Turn".
+
+Tested by seven recorded steps of the model case of `packages/app/test/app.test.ts` (the form filled with a direction, a face from the lists of its body and a bed; the rows with one that does not fit; a row with an overhang picked; a row on its face picked; a stricter angle with a list cut; an overhang below the smallest area; closed), and run in a browser (`docs/ui/queries.md`, "Implementation status").
+
+### Review of the app side (2026-11-15)
+
+One light review, by the rule of the project for a view: a subagent with a cheaper model read the diff of the view, read-only. Nothing serious. It checked the line that says what the lists leave out against the description of the result, the index of a picked row against the rows of the scene, and the recorded steps against their descriptions.
+
+| Finding | Held | What was done |
+|---|---|---|
+| "on" the face named was written on the rows of all bodies, also of those the face does not belong to; for them the face only gives the direction and nothing lies on it | Yes | The face is named on the row of its body only; the other rows say "up" with the direction |
+| The note of an answer without bodies offered a row to pick | Yes | It does not |
+| The line under all rows did not say that its count leaves out the overhangs below the smallest area | Yes | It says what is counted |
+| The docs said "how many faces the limit cut" where the panel writes how many of how many | Yes | Reworded |
+| No step for the faces on the bed cut by the limit, for a face named that does not lie on the bed, for a turn, and for an answer without bodies; the model of the recorded steps has no body for the first two | Yes | `packages/app/test/query-print.test.ts` drives the view over answers written by hand; the recorded steps got a turn |
+

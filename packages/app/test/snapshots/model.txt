@@ -112,6 +112,7 @@
           option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
           option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
           option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -579,6 +580,7 @@
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -686,6 +688,7 @@
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -989,6 +992,7 @@
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1149,6 +1153,7 @@
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -2942,42 +2947,95 @@
   status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`  [error]
   view: 1 scene(s) set
 
-=== 77. a change of the document throws the answer away
-  engine: query("interference", {}, {}) -> ok
-  engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
-  feature e2:
-    + {"id":"e2","name":"Kolík","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
-    - {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
-  timeline:
-    +   span.name: "Kolík"
-    -   span.name: "Vysunutí 2"
+=== 77. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
   panel:
-    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
-    + label title="The bodies to check against each other; without it all bodies."
+    + h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    + label title="Each is a print of its own; without it all bodies."
     +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="Each says what is up, by a direction or by the face that lies on the bed."
+    +   "Orientations"
     - h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     - label title="Taken together as one rigid piece."
     -   "Bodies"
-    -   div.item
+    +     div.fields
+    +       label
+    +         "What is up"
+    +         select value="up"
+    +           option value="": "—"
+    +           option selected value="up": "Direction"
+    +           option value="onBed": "Face on the bed"
+    +         span.field
+    +           input.value value="1"
+    +           input.value value="0"
+    +           input.value value="0.5"
+    +       label
+    +         "Turn (optional)"
+    +         span.field
+    +           input.value value="" placeholder="0"
+    +           span.unit: "°"
     -     select value="e1"
     -       option value="": "—"
     -       option selected value="e1": "Deska"
     -       option value="e2": "Vysunutí 2"
     -       option value="e3": "Vysunutí 3"
-    -     button.icon title="Remove": "✕"
-    -   div.item
+    +     div.fields
+    +       label
+    +         "What is up"
+    +         select value="onBed"
+    +           option value="": "—"
+    +           option value="up": "Direction"
+    +           option selected value="onBed": "Face on the bed"
+    +         select value="e1"
+    +           option value="": "body"
+    +           option selected value="e1": "Deska"
+    +           option value="e2": "Vysunutí 2"
+    +           option value="e3": "Vysunutí 3"
+    +         select value="{"feature":"e1","role":"endCap"}"
+    +           option value="": "face"
+    +           option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    +           option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    +           option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    +           option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    +           option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    +           option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    +         button title="Take a face selected in the view": "Pick in the view"
+    +       label
+    +         "Turn (optional)"
+    +         span.field
+    +           input.value value="" placeholder="0"
+    +           span.unit: "°"
     -     select value="e2"
     -       option value="": "—"
     -       option value="e1": "Deska"
     -       option selected value="e2": "Vysunutí 2"
     -       option value="e3": "Vysunutí 3"
-    -     button.icon title="Remove": "✕"
-    + label title="The smallest shared volume that counts."
-    +   "Threshold (optional)"
+    + label title="The printable space in mm: x, y and the height."
+    +   "Bed (optional)"
+    +   div.fields
+    +     label
+    +       "x"
+    +       span.field
+    +         input.value value="35"
+    +         span.unit: "mm"
+    +     label
+    +       "y"
+    +       span.field
+    +         input.value value="35"
+    +         span.unit: "mm"
+    +     label
+    +       "Height"
+    +       span.field
+    +         input.value value="200"
+    +         span.unit: "mm"
+    + label title="From the vertical: a face that looks down and leans more than this is an overhang."
+    +   "Overhang angle (optional)"
     - label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
     -   "Density (optional)"
-    +     input.value value="" placeholder="0.001"
-    +     span.unit: "mm³"
+    +     input.value value="" placeholder="45"
+    +     span.unit: "°"
+    + label title="A smaller overhang of a face is counted, not listed."
+    +   "Smallest overhang listed (optional)"
     -     input.value value=""
     -     span.unit: "g/cm³"
     - label title="Of single bodies; taken as it is, before `density`."
@@ -2994,9 +3052,11 @@
     -     option value="e3": "Vysunutí 3"
     - label title="The part of the volume that is material; 1 is solid. It applies to the bodies that take `density`, and assumes the material is spread evenly: for a print with solid shells give an effective density instead."
     -   "Fill factor (optional)"
-    -   span.field
-    -     input.value value="" placeholder="1"
-    -     span.unit
+    +     span.unit: "mm²"
+    + label title="In each list, per body and orientation."
+    +   "Most faces (optional)"
+    +   span.field
+    +     input.value value="" placeholder="20"
     - label title="Adds the moment of inertia about this axis."
     -   "Axis (optional)"
     -   select value=""
@@ -3009,13 +3069,288 @@
     -   button.primary: "Ask again"
     - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
   status: 
-  view: 3 scene(s) set
+  view: 2 scene(s) set
 
-=== 78. waiting for a plane cancelled
+=== 78. asked: a row per body and orientation with its overhang, its height and what lies on the bed; what does not fit the bed says so
+  engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]}},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200}}, {}) -> ok
+  panel:
+    +   button.primary: "Ask again"
+    -   button.primary: "Ask"
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Deska · up 0.89, 0, 0.45"
+    +   small: "overhang 300 mm²"
+    + p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 1 face."
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Deska · on Deska – protější víko"
+    +   small: "no overhang"
+    + p.hint: "Height 10 mm; 1200 mm² on the bed on 1 face."
+    + p.issue.warning: "Does not fit the bed: 40 mm × 30 mm × 10 mm."
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Vysunutí 2 · up 0.89, 0, 0.45"
+    +   small: "overhang 62.79 mm²"
+    + p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 1 face."
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Vysunutí 2 · up 0, 0, -1"
+    +   small: "no overhang"
+    + p.hint: "Height 10 mm; 78.33 mm² on the bed on 1 face."
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Vysunutí 3 · up 0.89, 0, 0.45"
+    +   small: "overhang 195 mm²"
+    + p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 1 face."
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Vysunutí 3 · up 0, 0, -1"
+    +   small: "no overhang"
+    + p.hint: "Height 13 mm; 450 mm² on the bed on 1 face."
+  status: Print check: 3 bodies in 2 orientations. 1 of 6 do not fit the bed. Pick a row to see its faces.
+  view: 1 scene(s) set
+
+=== 79. a row picked: the overhanging faces are listed with their areas and heights and painted on the model
+  panel:
+    + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    + div.tree
+    +   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    +   p.answer: "Deska – bok: 300 mm², from the bed"
+  view: 1 scene(s) set
+  scene:
+    + face e1 #5 #dc2626 opacity 0.6
+
+=== 80. the row of the other orientation picked: the face on the bed is painted, nothing overhangs
+  panel:
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.tree
+    -   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    -   p.answer: "Deska – bok: 300 mm², from the bed"
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    + div.tree
+    +   p.hint: "Painted in the view: on the bed blue. They look away from what is up, so they may be on the far side of the model."
+  view: 1 scene(s) set
+  scene:
+    + face e1 #1 #0ea5e9 opacity 0.6
+    - face e1 #5 #dc2626 opacity 0.6
+
+=== 81. overhangs from 20°, the first orientation turned, at most one face a list: the picked row says what its list leaves out, and the panel how much was listed in all
+  engine: query("print", {"orientations":[{"by":{"up":[1,0,0.5]},"turn":0.5235987755982988},{"by":{"onBed":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}],"bed":{"x":35,"y":35,"height":200},"overhang":0.3490658503988659,"minArea":100,"maxFaces":1}, {}) -> ok
+  panel:
+    +           input.value value="30" placeholder="0"
+    -           input.value value="" placeholder="0"
+    +     input.value value="20" placeholder="45"
+    -     input.value value="" placeholder="45"
+    +     input.value value="100" placeholder="1"
+    -     input.value value="" placeholder="1"
+    +     input.value value="1" placeholder="20"
+    -     input.value value="" placeholder="20"
+    + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    +   span.name: "Deska · up 0.89, 0, 0.45, turned 30°"
+    +   small: "overhang 1500 mm²"
+    + p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 2 faces."
+    + p.issue.warning: "Does not fit the bed: 39.4 mm × 38.24 mm × 40.25 mm."
+    + div.tree
+    +   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    +   p.answer: "Deska – víko ve skice: 1200 mm², from the bed"
+    +   p.hint: "1 of 2 overhanging faces listed."
+    -   span.name: "Deska · up 0.89, 0, 0.45"
+    -   small: "overhang 300 mm²"
+    - p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 1 face."
+    - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.tree
+    -   p.hint: "Painted in the view: on the bed blue. They look away from what is up, so they may be on the far side of the model."
+    +   span.name: "Vysunutí 2 · up 0.89, 0, 0.45, turned 30°"
+    +   small: "overhang 191.36 mm²"
+    + p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 2 faces."
+    -   span.name: "Vysunutí 2 · up 0.89, 0, 0.45"
+    -   small: "overhang 62.79 mm²"
+    - p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 1 face."
+    +   span.name: "Vysunutí 3 · up 0.89, 0, 0.45, turned 30°"
+    +   small: "overhang 645 mm²"
+    + p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 2 faces."
+    -   span.name: "Vysunutí 3 · up 0.89, 0, 0.45"
+    -   small: "overhang 195 mm²"
+    - p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 1 face."
+    + p.hint: "Listed: 6 of 8 faces on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest."
+  status: Print check: 3 bodies in 2 orientations. 2 of 6 do not fit the bed. Pick a row to see its faces.
+  view: 2 scene(s) set
+  scene:
+    + face e1 #0 #dc2626 opacity 0.6
+    - face e1 #1 #0ea5e9 opacity 0.6
+
+=== 82. a row with an overhang below the smallest area listed: counted, not listed and not painted
+  panel:
+    + div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.tree
+    -   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    -   p.answer: "Deska – víko ve skice: 1200 mm², from the bed"
+    -   p.hint: "1 of 2 overhanging faces listed."
+    + div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    + div.tree
+    +   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    +   p.answer: "Vysunutí 2 – bok: 113.02 mm², from the bed"
+    +   p.hint: "1 overhang below the smallest area listed."
+  view: 1 scene(s) set
+  scene:
+    + face e2 #8 #dc2626 opacity 0.6
+    - face e1 #0 #dc2626 opacity 0.6
+
+=== 83. the print check closed
+  panel:
+    - h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    - label title="Each is a print of its own; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="Each says what is up, by a direction or by the face that lies on the bed."
+    -   "Orientations"
+    -   div.item
+    -     div.fields
+    -       label
+    -         "What is up"
+    -         select value="up"
+    -           option value="": "—"
+    -           option selected value="up": "Direction"
+    -           option value="onBed": "Face on the bed"
+    -         span.field
+    -           input.value value="1"
+    -           input.value value="0"
+    -           input.value value="0.5"
+    -       label
+    -         "Turn (optional)"
+    -         span.field
+    -           input.value value="30" placeholder="0"
+    -           span.unit: "°"
+    -     button.icon title="Remove": "✕"
+    -   div.item
+    -     div.fields
+    -       label
+    -         "What is up"
+    -         select value="onBed"
+    -           option value="": "—"
+    -           option value="up": "Direction"
+    -           option selected value="onBed": "Face on the bed"
+    -         select value="e1"
+    -           option value="": "body"
+    -           option selected value="e1": "Deska"
+    -           option value="e2": "Vysunutí 2"
+    -           option value="e3": "Vysunutí 3"
+    -         select value="{"feature":"e1","role":"endCap"}"
+    -           option value="": "face"
+    -           option value="{"feature":"e1","role":"startCap"}": "Deska – víko ve skice · e1/startCap"
+    -           option selected value="{"feature":"e1","role":"endCap"}": "Deska – protější víko · e1/endCap"
+    -           option value="{"feature":"e1","role":"side","curve":"c1"}": "Deska – bok · e1/side/c1"
+    -           option value="{"feature":"e1","role":"side","curve":"c2"}": "Deska – bok · e1/side/c2"
+    -           option value="{"feature":"e1","role":"side","curve":"c3"}": "Deska – bok · e1/side/c3"
+    -           option value="{"feature":"e1","role":"side","curve":"c4"}": "Deska – bok · e1/side/c4"
+    -         button title="Take a face selected in the view": "Pick in the view"
+    -       label
+    -         "Turn (optional)"
+    -         span.field
+    -           input.value value="" placeholder="0"
+    -           span.unit: "°"
+    -     button.icon title="Remove": "✕"
+    -   button.link: "Add"
+    - label title="The printable space in mm: x, y and the height."
+    -   "Bed (optional)"
+    -   div.fields
+    -     label
+    -       "x"
+    -       span.field
+    -         input.value value="35"
+    -         span.unit: "mm"
+    -     label
+    -       "y"
+    -       span.field
+    -         input.value value="35"
+    -         span.unit: "mm"
+    -     label
+    -       "Height"
+    -       span.field
+    -         input.value value="200"
+    -         span.unit: "mm"
+    - label title="From the vertical: a face that looks down and leans more than this is an overhang."
+    -   "Overhang angle (optional)"
+    -   span.field
+    -     input.value value="20" placeholder="45"
+    -     span.unit: "°"
+    - label title="A smaller overhang of a face is counted, not listed."
+    -   "Smallest overhang listed (optional)"
+    -   span.field
+    -     input.value value="100" placeholder="1"
+    -     span.unit: "mm²"
+    - label title="In each list, per body and orientation."
+    -   "Most faces (optional)"
+    -   span.field
+    -     input.value value="1" placeholder="20"
+    -     span.unit
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Deska · up 0.89, 0, 0.45, turned 30°"
+    -   small: "overhang 1500 mm²"
+    - p.hint: "Height 40.25 mm; nothing flat on the bed; overhang on 2 faces."
+    - p.issue.warning: "Does not fit the bed: 39.4 mm × 38.24 mm × 40.25 mm."
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Deska · on Deska – protější víko"
+    -   small: "no overhang"
+    - p.hint: "Height 10 mm; 1200 mm² on the bed on 1 face."
+    - p.issue.warning: "Does not fit the bed: 40 mm × 30 mm × 10 mm."
+    - div.row.selected title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Vysunutí 2 · up 0.89, 0, 0.45, turned 30°"
+    -   small: "overhang 191.36 mm²"
+    - p.hint: "Height 13.42 mm; nothing flat on the bed; overhang on 2 faces."
+    - div.tree
+    -   p.hint: "Painted in the view: overhanging red. They look away from what is up, so they may be on the far side of the model."
+    -   p.answer: "Vysunutí 2 – bok: 113.02 mm², from the bed"
+    -   p.hint: "1 overhang below the smallest area listed."
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Vysunutí 2 · up 0, 0, -1"
+    -   small: "no overhang"
+    - p.hint: "Height 10 mm; 78.33 mm² on the bed on 1 face."
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Vysunutí 3 · up 0.89, 0, 0.45, turned 30°"
+    -   small: "overhang 645 mm²"
+    - p.hint: "Height 32.65 mm; nothing flat on the bed; overhang on 2 faces."
+    - div.row title="Paint the faces on the bed and the overhanging faces of this orientation, and list the overhangs"
+    -   span.name: "Vysunutí 3 · up 0, 0, -1"
+    -   small: "no overhang"
+    - p.hint: "Height 13 mm; 450 mm² on the bed on 1 face."
+    - p.hint: "Listed: 6 of 8 faces on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest."
+  status: 
+  view: 1 scene(s) set
+  scene:
+    - face e2 #8 #dc2626 opacity 0.6
+
+=== 84. a change of the document throws the answer away
+  engine: query("interference", {}, {}) -> ok
+  engine: execute({"type":"renameFeature","id":"e2","name":"Kolík"}) -> ok
+  feature e2:
+    + {"id":"e2","name":"Kolík","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  timeline:
+    +   span.name: "Kolík"
+    -   span.name: "Vysunutí 2"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
+    + div.buttons
+    +   button.primary: "Ask"
+    +   button: "Close"
+  view: 2 scene(s) set
+
+=== 85. waiting for a plane cancelled
   status: Vyberte rovinu nebo rovinnou stěnu.
   view: 2 scene(s) set
 
-=== 79. a new document
+=== 86. a new document
   engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}

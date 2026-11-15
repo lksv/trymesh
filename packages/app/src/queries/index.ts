@@ -5,6 +5,7 @@ import type { EngineState, FaceName, Frame, Id, QueryArgs, QueryName, QueryResul
 import { gapView } from './gap';
 import { interferenceView } from './interference';
 import { measureView } from './measure';
+import { printView } from './print';
 import { sectionView } from './section';
 
 // What a view adds to the scene while its answer is shown: the fields of `SceneModel`, with
@@ -57,4 +58,4 @@ export interface QueryView<N extends QueryName> {
   note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 
-export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView };
+export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView, print: printView };

@@ -2,7 +2,7 @@
 
 The working plan for [D36](../decisions/D36-order-after-d35.md), the order of work after D35. D36 decides the order of seven steps; this file cuts them into work packages and says which package needs which, where they write to the same places, and what can run at the same time.
 
-Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, and parts 5 and 6 (documents by area, working in several trees) are done, so the preparatory step is complete; the full designs of tracks A, B and E (twelve packages) are written, reviewed in three rounds each and merged, and read together in [cross-review.md](cross-review.md). Of the packages, 1b (measuring, with the generic form of a query in the app) and 1a (the section, with the section view of the app) and 1c (the smallest gap, with the gap view of the app; the kernel port stayed as it is) and 1d (mass properties) are implemented and merged; the rest of track A is next (1e, 1f).
+Last change: 2026-11-15. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, and parts 5 and 6 (documents by area, working in several trees) are done, so the preparatory step is complete; the full designs of tracks A, B and E (twelve packages) are written, reviewed in three rounds each and merged, and read together in [cross-review.md](cross-review.md). Of the packages, 1b (measuring, with the generic form of a query in the app) and 1a (the section, with the section view of the app) and 1c (the smallest gap, with the gap view of the app; the kernel port stayed as it is) and 1d (mass properties) and 1e (the print check, with the print view of the app) are implemented and merged; the rest of track A is next (1f).
 
 ## How the work goes
 
@@ -22,7 +22,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 1b | Measuring between two named entities; builds on the description of a body that the preparatory step moves into the engine, and reads circles from the surfaces instead of fitting them. Also the generic form of a query in the app, which the app side of 1a, 1c, 1d and 1e builds on | 1 | A | 00 | implemented and merged 2026-11-15 ([1b-measure/design.md](1b-measure/design.md), "As implemented") |
 | 1c | Smallest gap between bodies | 1 | A | 00 | implemented and merged 2026-11-15 ([1c-gap/design.md](1c-gap/design.md), "As implemented") |
 | 1d | Mass properties | 1 | A | 00; the density comes as an argument until 3a | implemented and merged 2026-11-15 ([1d-mass/design.md](1d-mass/design.md), "As implemented"); 3a fills in `massSourceOf` |
-| 1e | Print queries | 1 | A | 00 | full |
+| 1e | Print queries | 1 | A | 00 | implemented and merged 2026-11-15 ([1e-print/design.md](1e-print/design.md), "As implemented") |
 | 1f | View image for the AI | 1 | A | 00; shares the viewport with the view of 1a | full |
 | 2a | Profile offset and a wall from a line | 2 | B | 00 | full |
 | 2b | Taper on extrusion | 2 | B | 2a | full |

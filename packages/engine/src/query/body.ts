@@ -83,6 +83,7 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
     '`volume` (mm³), `bounds` (`min`, `max`), `faces`: each `{ name, surface, area, meshNormal?, convex? }` (`surface` is a plane, a cylinder, a cone, a swept or a general surface; `meshNormal` of a planar face is its unit normal out of the body; `convex` of a cylinder or a cone is true for a pin and false for a hole), ' +
     '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, axis, radius }`, exact: the circle of the two surfaces, whole even when the edge is an arc of it.',
   args: BODY_ARGS,
+  units: { volume: 'mm3', area: 'mm2', length: 'mm', radius: 'mm' },
   // The description is kept by the mesh: a body that did not change is not walked again.
   run: (context, { body: id }) => {
     const result = context.bodies[id];

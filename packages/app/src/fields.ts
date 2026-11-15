@@ -1,7 +1,7 @@
 // Numeric fields of forms: a number, or an expression over parameters. Pure functions, no DOM.
 // Rule (D35, point 1): the app converts bare numbers only (it shows and accepts an angle in degrees);
 // it shows and sends an expression unchanged, in engine units, and displays its resulting value next to it.
-import { type Expr, type ExprKind, type Unit, analyzeExpression } from '@trymesh/engine';
+import { type Expr, type ExprKind, type ResultUnit, type Unit, analyzeExpression } from '@trymesh/engine';
 
 const NUMBER = /^[+-]?(?:\d+[.,]?\d*|[.,]\d+)(?:[eE][+-]?\d+)?$/;
 const DEGREES = 180 / Math.PI;
@@ -33,6 +33,11 @@ const UNIT_LABEL: Record<Unit, string> = { mm: ' mm', rad: '°', count: '', none
 
 // A value with its unit for a human: "16.2 mm", "30°".
 export const valueText = (value: number, unit: Unit): string => `${plainNumber(unit === 'rad' ? value * DEGREES : value)}${UNIT_LABEL[unit]}`;
+
+// The unit as it is written after a number.
+export const unitLabel = (unit: Unit): string => UNIT_LABEL[unit].trim();
+// A number of the result of a query with its unit, which may be one only a result has.
+export const resultText = (value: number, unit: ResultUnit): string => (unit === 'g·mm2' ? `${plainNumber(value)} g·mm²` : valueText(value, unit));
 
 // The note next to a field with an expression: its resulting value.
 export const fieldNote = (value: number | Expr, computed: number | undefined, unit: Unit): string => (typeof value !== 'string' ? '' : computed === undefined ? '= ?' : `= ${valueText(computed, unit)}`);

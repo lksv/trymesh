@@ -23,6 +23,7 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
     '`failed`: pairs the geometric kernel could not intersect, with its message. `checked`: the number of pairs looked at.',
   args: INTERFERENCE_ARGS,
   significant: { volume: 6, depth: 4 },
+  units: { volume: 'mm3', depth: 'mm' },
   // What a pair shares is kept by its two meshes: after a change of the model only the pairs with
   // a changed body go to the kernel again.
   run: (context, { bodies, threshold }) => {

@@ -1,6 +1,6 @@
 # 1b Measuring between two named entities, and the generic form of a query in the app
 
-**Decision D39. State: the engine side is implemented (the shared pieces and the query `measure`; see "As implemented" at the end); the generic form of a query in the app is not yet. The design is in its third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D39. State: implemented on the branch `d36/1b`: the engine side (the shared pieces and the query `measure`) and the generic form of a query in the app with its two views; see "As implemented" at the end. The design is in its third version, after three rounds of reviews (the third changed one row of a table here and no rule).** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the app side as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the wall between the root circle of the ring gear and the bolt holes.
 
@@ -295,3 +295,17 @@ Left as known limits:
 - **A line and a plane that are parallel only within the tolerance** are measured at the point the line is given by, so the distance is exact to the tolerance times the length of the line (5 against 4.9 for a line a metre long at half the tolerance). Geometry modelled parallel is exactly parallel and is not affected.
 - **A point of projected geometry whose projection is broken** is answered where the sketch last had it: the recompute keeps the last valid position, and the sketch carries the warning. The branch of `entityShape` for a point without a place could not be reached.
 - **The reference of the test "agrees with every pair tried one by one"** is the same function on single pieces, so the test checks the pass, not the distance of two pieces; that one is covered by the cases written by hand and was checked by the reviewer's independent reference.
+
+### The app side (2026-11-15)
+
+`packages/app/src/panels/query.ts` (the panel and its state), `queries/controls.ts` (`CONTROLS`), `queries/index.ts` (`QUERY_VIEWS`, `QueryView`, `ViewPanel`, `SceneAdditions`), `queries/measure.ts` and `queries/interference.ts`. `panels/collisions.ts` is gone. What differs from the design and from the stand-ins of `contract.ts`:
+
+- **The state** is `QueryPanel { open?, note? }` with `OpenQuery` for the open query (`QueryPanelState` of the contract); the note of the answer lives beside it, as the note of the collisions did.
+- **A selection** is the pick of the view as the app has it (`ViewPick`), not a type of its own: `takeSelection(panel, pick)`.
+- **The units** come from `units` of the entry in the engine; `body` and `interference` got theirs with this commit, so the tree writes `12000 mm³`.
+- **A control reports a change with `set(path, value, rebuild)`**: a change that alters what follows (the kind of an entity, a body, a sketch, an alternative, a row added) builds the panel again, a typed number does not.
+- **The numbers of the view of `measure`** measured on the mesh are shown to a thousandth of a millimetre; the exact ones as the app writes any number.
+- **A distance between two faces that look at each other** is labelled *Gap*, beside *Thickness* for two that look away.
+- **Not done:** a control that is armed is not disarmed by Escape (the button toggles it); the draft is not highlighted in the view before the query is asked.
+
+**What the recorded test of the app sees**, as the design listed: `engine.query('interference', …)` where `engine.interference` was called; the menu of queries in the toolbar at every step of the model mode; the heading *Interference* with the two optional arguments of the query in place of "Collisions (N)"; the buttons *Ask again* and *Close*. The rows, the hints, the highlight of a picked pair and the note are unchanged. The case of the model got nine steps for the form (opening `measure` from the menu, a face and an edge taken from clicks, asking, an entity chosen from the lists, asking with nothing given, a query without a view, closing).

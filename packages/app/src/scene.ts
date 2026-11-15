@@ -1,11 +1,12 @@
 // The scene of the model: bodies and their outlines, planes, the sketches that are not being
 // edited, and what is highlighted, hovered and selected. The sketch mode and an open form add
 // theirs afterwards (sketch-mode.ts, `overlay` of a form).
-import type { EngineState, Id, Solid, Vec3 } from '@trymesh/engine';
+import { type EngineState, type Id, type Solid, type Vec3, faceKey } from '@trymesh/engine';
 import { COLOR, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
 import { uiOf } from './features/index';
 import { type PanelHost, type ViewPick, pickKey } from './host';
-import { type Collisions, pickedPair } from './panels/collisions';
+import { type QueryPanel, queryScene } from './panels/query';
+import type { SceneAdditions } from './queries/index';
 import { polyline, sketchView } from './sketch-view';
 import type { SceneModel } from './viewport';
 
@@ -55,9 +56,28 @@ export function modelBounds(state: EngineState): { min: Vec3; max: Vec3 } {
   return { min, max };
 }
 
+// Puts what a view of a query adds into the scene: a face given by its name is resolved to its
+// mesh, a body is drawn in its colour, and what an addition says about a body the user has hidden
+// is left out (a face, a coloured body, a fill or a line that names its body).
+function addToScene(model: SceneModel, additions: Partial<SceneAdditions>, state: EngineState, host: SceneHost): void {
+  const { bodies, faceNames } = state.evaluation;
+  const shown = (id: Id | undefined): boolean => id === undefined || (Object.prototype.hasOwnProperty.call(bodies, id) && !host.bodyHidden(id));
+  for (const { body: id, color } of additions.bodies ?? []) if (shown(id)) for (const face of bodies[id].faces) model.faces.push({ solid: bodies[id].solid, faceId: face.id, color, opacity: 0.45 });
+  for (const { body: id, face, color, opacity } of additions.faces ?? []) {
+    if (!shown(id)) continue;
+    const key = faceKey(face);
+    const number = bodies[id].faces.find((own) => faceKey(faceNames[own.id]) === key)?.id;
+    if (number !== undefined) model.faces.push({ solid: bodies[id].solid, faceId: number, color, opacity });
+  }
+  for (const { body, ...line } of additions.lines ?? []) if (shown(body)) model.lines.push(line);
+  model.points.push(...(additions.points ?? []));
+  for (const { body, ...fill } of additions.fills ?? []) if (shown(body)) model.fills.push(fill);
+  model.labels.push(...(additions.labels ?? []));
+}
+
 // The scene of the model as it is shown. `sketch`: the sketch being edited, which the sketch mode
 // draws itself, and the edge of a body under the pointer of its projection tool.
-export function modelScene(host: SceneHost, collisions: Collisions, sketch: { id: Id; hoverEdge?: ViewPick } | undefined): SceneModel {
+export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: Id; hoverEdge?: ViewPick } | undefined): SceneModel {
   const state = host.view();
   const { evaluation, document: doc } = state;
   const inModel = !sketch && !host.draft;
@@ -75,12 +95,8 @@ export function modelScene(host: SceneHost, collisions: Collisions, sketch: { id
     if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
   }
   model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
-  // the two bodies of the picked collision
-  const clash = inModel ? pickedPair(collisions, host) : undefined;
-  for (const [id, color] of clash ? ([[clash.a, COLOR.select], [clash.b, COLOR.clash]] as [Id, number][]) : []) {
-    const body = evaluation.bodies[id];
-    if (body && !host.bodyHidden(id)) for (const face of body.faces) model.faces.push({ solid: body.solid, faceId: face.id, color, opacity: 0.45 });
-  }
+  // what the shown answer of a query adds: the two bodies of a picked collision, the line of a measured distance
+  if (inModel) addToScene(model, queryScene(queries, host), state, host);
 
   // roviny
   const square = planeSquare(host.planeSize(state));

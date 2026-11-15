@@ -25,7 +25,10 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `features/index.ts` | `FEATURE_UI`: one entry per feature type of the engine, complete by the compiler (how the type starts, how it is edited, its lines in the model panel, its faces, its eye on the timeline, its form), and `TOOLBAR`, the order of the buttons |
 | `features/draft.ts` | What the forms share: the mode of a draft (`DraftMode`, which carries its form), the preview and the pause of a slow one, numeric fields, the buttons |
 | `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, what a move and a click mean, what it draws) |
-| `panels/model.ts`, `parameters.ts`, `collisions.ts`, `sketch.ts` | The panels, as functions over the host; a panel that keeps state (the collisions) has it in an object the app holds |
+| `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
+| `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
+| `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
+| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the two views there are; the collisions are the view of `interference` |
 | `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
 | `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`) |
 | `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. `View` is its interface; a test passes its own |

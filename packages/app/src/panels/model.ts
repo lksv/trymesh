@@ -1,14 +1,14 @@
 // The panel of the model: the plane a new sketch or plane waits for, the selected feature with
-// its bodies, the selection in the view, and below them the collisions and the parameters.
+// its bodies, the selection in the view, and below them the open query and the parameters.
 import { type Id, bodyFileName } from '@trymesh/engine';
 import { download, fmt, h } from '../dom';
 import type { PanelHost } from '../host';
 import { FEATURE_UI, uiOf } from '../features/index';
 import { FEATURE_TYPES } from '../labels';
-import { type Collisions, collisionsPanel } from './collisions';
+import { type QueryPanel, queryPanel } from './query';
 import { parametersPanel } from './parameters';
 
-export function modelPanel(host: PanelHost, collisions: Collisions): HTMLElement[] {
+export function modelPanel(host: PanelHost, queries: QueryPanel): HTMLElement[] {
   const out: HTMLElement[] = [];
   if (host.pending) {
     out.push(
@@ -44,7 +44,7 @@ export function modelPanel(host: PanelHost, collisions: Collisions): HTMLElement
     out.push(h('h2', {}, 'Výběr'), h('p', {}, host.describe(host.selected)));
     if (host.selected.kind !== 'plane') out.push(...bodyRows(host, [host.selected.body]));
   }
-  out.push(...collisionsPanel(collisions, host));
+  out.push(...queryPanel(queries, host));
   out.push(...parametersPanel(host));
   return out;
 }

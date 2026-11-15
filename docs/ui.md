@@ -22,6 +22,7 @@ The functions are split by area (D37, part 5), one file per panel or form, each 
 | [ui/extrude.md](ui/extrude.md) | The form of the extrusion | Extrude |
 | [ui/pattern.md](ui/pattern.md) | The form of the pattern | Pattern (D35, point 4) |
 | [ui/bodies.md](ui/bodies.md) | Collisions, volume and export | Bodies: collisions, volume and export (D35, point 5) |
+| [ui/queries.md](ui/queries.md) | The generic form of a query, measuring, the views of queries | Queries (D39); Implementation status |
 | [ui/parameters.md](ui/parameters.md) | Parameters, checks and fields with an expression | Parameters, checks and expressions (D35, point 1); Implementation status |
 | [ui/errors.md](ui/errors.md) | Errors of features and the repair of references | Chyby a oprava referencí; Implementation status |
 

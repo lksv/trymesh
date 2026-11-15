@@ -85,6 +85,11 @@ describe('the query gap', () => {
     ]);
     // only pairs among the bodies named
     expect(gap(engine, { bodies: ['A', 'B', 'E'] })).toMatchObject({ close: 1, apart: 2, checked: 3 });
+    // the pairs at one distance come in the order of the bodies in the model, whatever the order of the list
+    expect(gap(engine, { bodies: ['D', 'C', 'B'] }).pairs.map((pair) => [pair.a, pair.b, pair.contact])).toEqual([
+      ['B', 'C', 'touching'],
+      ['C', 'D', 'collision'],
+    ]);
     // a list that names a body twice asks about the pairs of the different ones
     expect(gap(engine, { bodies: ['A', 'B', 'A'] })).toMatchObject({ close: 1, apart: 0, checked: 1 });
   });
@@ -123,6 +128,12 @@ describe('the query gap', () => {
     const inCavity = only(gap(engine, { bodies: ['HOLLOW', 'CORE'] }));
     expect(inCavity).toMatchObject({ a: 'CORE', b: 'HOLLOW', distance: expect.closeTo(3, 6) });
     expect('between' in inCavity && Math.hypot(...inCavity.between.a.map((value, axis) => value - inCavity.between.b[axis]))).toBeCloseTo(3, 6);
+    // Review: the search distance is part of what is remembered for a pair. The boxes of these two
+    // overlap, so nothing but the measurement tells that 3 mm is not within 2.
+    expect(gap(engine, { bodies: ['HOLLOW', 'CORE'], within: 2 })).toMatchObject({ pairs: [], close: 0, apart: 1 });
+    expect(gap(engine, { bodies: ['HOLLOW', 'CORE'], within: 5 })).toMatchObject({ close: 1, apart: 0, pairs: [{ distance: expect.closeTo(3, 6) }] });
+    expect(gap(engine, { bodies: ['HOLLOW', 'CORE'], within: 3 })).toMatchObject({ close: 0, apart: 1 }); // exactly that far is not within
+    expect(gap(engine, { bodies: ['HOLLOW', 'CORE'], within: 2 })).toMatchObject({ close: 0, apart: 1 });
     // a body of two pieces: one inside SOLID, the other far outside it, so the box of the whole
     // is not inside the box of SOLID
     run(engine, ...block('SOLID', 55, 0, 20, 20, 0, 20), addSketch('st', XY), rectangle('st', 'p', 63, 8, 4, 4, null), rectangle('st', 'q', 90, 8, 4, 4, null));
@@ -150,6 +161,36 @@ describe('the query gap', () => {
     expect(pair.between.faceB).toEqual(side('THIN', 'k'));
     expect(pair.accuracy).toBeCloseTo(0.02 + 20e-6, 9); // two chord tolerances and the coordinates
     expect(Math.abs(pair.distance - 0.5)).toBeLessThan(pair.accuracy);
+  });
+
+  it('review: a distance within the precision of the coordinates is zero, whatever the search distance', () => {
+    // Two blocks 5 m from the origin and 0.004 mm apart: coordinates there are known to 0.005 mm.
+    const engine = newEngine();
+    run(engine, ...block('P', 5000, 0, 10, 10), ...block('Q', 5010.004, 0, 10, 10));
+    const { P, Q } = engine.getState().evaluation.bodies;
+    const raw = Q.bounds.min[0] - P.bounds.max[0];
+    expect(raw).toBeGreaterThan(0.001); // not zero on the mesh
+    expect(raw).toBeLessThan(0.005);
+    expect(gap(engine).pairs).toEqual([{ a: 'P', b: 'Q', distance: 0, contact: 'touching' }]);
+    // a search distance below that precision does not make the pair apart: zero is within any distance
+    expect(gap(engine, { within: 0.002 })).toMatchObject({ pairs: [{ a: 'P', b: 'Q', distance: 0, contact: 'touching' }], close: 1, apart: 0 });
+    expect(gap(engine, { within: 1e-9 })).toMatchObject({ close: 1, apart: 0 });
+    // the same blocks at the origin are 0.004 mm apart, and that is measured
+    const near = newEngine();
+    run(near, ...block('P', 0, 0, 10, 10), ...block('Q', 10.004, 0, 10, 10));
+    expect(only(gap(near))).toMatchObject({ distance: expect.closeTo(0.004, 5), accuracy: expect.closeTo(20.004e-6, 9) });
+    expect(gap(near, { within: 0.002 })).toMatchObject({ close: 0, apart: 1 });
+  });
+
+  it('review: an answer that is changed by its reader does not change the next one', () => {
+    const engine = blocks();
+    const first = only(gap(engine, { bodies: ['A', 'B'] }));
+    if (!('between' in first)) throw new Error('a gap above zero says where it is');
+    const kept = JSON.parse(JSON.stringify(first));
+    first.distance = 99;
+    first.between.a[0] = -1;
+    first.a = 'Z';
+    expect(only(gap(engine, { bodies: ['A', 'B'] }))).toEqual(kept);
   });
 
   it('answers after a feature and about a change that is not written', () => {
@@ -185,18 +226,26 @@ describe('the query gap', () => {
     const { engine, watch } = await watchedEngine();
     blocks(engine);
     // a pin in a larger hole of F: their boxes overlap, their surfaces do not meet
+    // and the same again further on, G and PIN2
     run(engine, ...block('F', 200, 0, 20, 20), addSketch('sh', XY), circle('sh', 'h', 210, 10, 4), circle('sh', 'k', 210, 10, 3), span('hole', 'sh', [['h'], ['k']], 0, 10, 'cut', ['F']), span('PIN', 'sh', [['k']], 0, 10));
+    run(engine, ...block('G', 300, 0, 20, 20), addSketch('sg', XY), circle('sg', 'm', 310, 10, 4), circle('sg', 'n', 310, 10, 3), span('hole2', 'sg', [['m'], ['n']], 0, 10, 'cut', ['G']), span('PIN2', 'sg', [['n']], 0, 10));
     watch.fail = true;
     const report = gap(engine);
-    expect(report).toMatchObject({ close: 3, refused: 1, apart: 17, checked: 21 });
-    expect(report.failed).toEqual([{ a: 'F', b: 'PIN', message: 'the kernel could not tell whether one body lies inside the other: the kernel gave up' }]);
+    expect(report).toMatchObject({ close: 3, refused: 2, apart: 31, checked: 36 });
+    const message = 'the kernel could not tell whether one body lies inside the other: the kernel gave up';
+    expect(report.failed).toEqual([
+      { a: 'F', b: 'PIN', message },
+      { a: 'G', b: 'PIN2', message },
+    ]);
     expect(report.pairs.map((pair) => [pair.a, pair.b, pair.contact])).toEqual([
       ['B', 'C', 'touching'], // flush: their boxes do not overlap, the kernel is not needed
       ['C', 'D', 'unknown'],
       ['A', 'B', undefined],
     ]);
     // the refused pairs are limited like the close ones, and counted
-    expect(gap(engine, { maxPairs: 1 })).toMatchObject({ close: 3, refused: 1, truncated: { shown: 2, total: 4 } });
+    const cut = gap(engine, { maxPairs: 1 });
+    expect(cut).toMatchObject({ close: 3, refused: 2, truncated: { shown: 2, total: 5 } });
+    expect(cut.failed).toEqual([{ a: 'F', b: 'PIN', message }]);
   });
 
   it('errors: one body is not a pair, a body that is not there, a search distance of zero', () => {

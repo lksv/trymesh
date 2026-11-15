@@ -225,13 +225,13 @@ The first step of the implementation, as the owner decided: the two variants on 
 
 `packages/engine/src/query/gap.ts`: the entry `gap` in `QUERIES`, with `Gap` and `GapReport` exported from the index of the engine. Tests: `packages/scenarios/test/gap.test.ts` (small models against the real adapters: the two points and their faces, the kinds of zero, a body inside the material of another and one in a closed cavity, a body of two pieces, the search distance, the limit of the answer, `at` and a previewed state, how often the kernel is asked, a kernel that fails), the part of scenario 11 in `scenario11.test.ts`, and the rows of the query in `packages/mcp/test/queries.test.ts`.
 
-**The numbers of the design hold on the joint**: 0.140453 between the wall of the bore of the planet (`planetHole/side/ph`, at (17.610, 0, 34)) and the pin of the carrier (`carrierPin/side/pin`, at (17.750, 0, 34)) with an accuracy of 0.0200515; 28 pairs checked, 15 close and 13 apart; three pairs touching (motor and plate, motor and sun, plate and housing), then 0.0497 (each planet and the ring gear), 0.0499 (the sun and each planet), 0.1405 (each planet and the carrier), 0.5, 0.99 and 1.5812; the plate and the carrier 34 apart; the planet made too large collides with the housing. The whole joint takes about 0.6 s the first time and nothing when asked again.
+**The numbers of the design hold on the joint**: 0.140453 between the wall of the bore of the planet (`planetHole/side/ph`, at (17.610, 0, 34)) and the pin of the carrier (`carrierPin/side/pin`, at (17.750, 0, 34)) with an accuracy of 0.0200515; 28 pairs checked, 15 close and 13 apart; three pairs touching (motor and plate, motor and sun, plate and housing), then 0.0497 (each planet and the ring gear), 0.0499 (the sun and each planet), 0.1405 (each planet and the carrier), 0.5, 0.99 and 1.5812; the plate and the carrier 34 apart; the planet made too large collides with the housing. The whole joint takes under a second the first time (0.8 s in the measurement) and nothing when asked again.
 
 What differs from the design and from `contract.ts`:
 
 - **The kernel port is not changed.** There is no `minGap`, no guarantee of seven points and no fake to extend; "The cheap variant" above describes the port method that was not taken. One pair is answered so:
-  1. boxes at least the search distance apart: `apart`, nothing is computed;
-  2. the pass (`closest` over the two solids, within the search distance);
+  1. boxes at least the search distance apart (and further apart than the precision of the coordinates): `apart`, nothing is computed;
+  2. the pass (`closest` over the two solids, within the search distance, and within the precision of the coordinates at least);
   3. a distance no larger than the precision of the coordinates: zero, with the kind of contact from `interference`;
   4. otherwise `interference` is asked whether the pair shares a volume, which finds a body that lies wholly inside the material of the other, however far from its surface (also when the pass found nothing within the search distance); a collision or a fit is a distance of zero with that contact;
   5. otherwise the distance of the pass with its two points and faces, or `apart` when the pass found nothing closer than the search distance.
@@ -242,7 +242,7 @@ What differs from the design and from `contract.ts`:
 - **Nothing is caught**: the pass does not throw for a body of the engine, and `interference` reports a failure of the kernel in its answer.
 - **One body named twice and nothing else is `invalidArguments`**, with the path `['bodies']`: the code `QueryFailure` got with 1b for exactly this. The design wrote `failed`, the stand-in of that time. A list that names a body twice among others asks about the pairs of the different ones.
 - **What a pair shares is kept by its two meshes separately from the gap**, so another search distance measures the pair again but does not ask the kernel again. It is kept apart from what the query `interference` itself keeps (the store keeps the queries apart), so a model asked for both its collisions and its gaps intersects a pair twice.
-- **Pairs at the same distance** come in the order of the bodies in the model; that is what the pairs at zero do. Copies of one body (the three planets) have gaps that differ in their last digits, and their order among themselves follows those digits.
+- **Pairs at the same distance** come in the order of the bodies in the model, whatever the order of `bodies`; that is what the pairs at zero do. Copies of one body (the three planets) have gaps that differ in their last digits, and their order among themselves follows those digits.
 - **`units` and `significant`** are on the entry: `distance`, `accuracy` and `within` are millimetres; a tool prints the distance to six significant digits and the accuracy to three.
 - **The directory is `query/`**, as the preparatory step made it, not `queries/`.
 
@@ -250,3 +250,20 @@ What differs from the design and from `contract.ts`:
 
 - A body inside the material of another that shares less than the threshold of `interference` (0.001 mm³) with it, or no deeper than the precision of the coordinates, is not a collision there and so gets its distance to the surface around it.
 - The time of the whole joint is the pass: some 30 ms a pair on bodies of a few thousand triangles. A model of many large bodies that all lie within the search distance of each other would take long; the fallback under "Open" (a limit on the pairs examined) is not built.
+
+### Review of the engine side (2026-11-15)
+
+One full review by a subagent that did not write the code, read-only, with probes against the real adapters. No serious finding. It checked by probe, and found right: three sets of 26 random blocks against the analytic answer of boxes (class, distance, the points and faces on the right body, the counts and the order), bars that cross with no vertex inside the other, identical bodies in one place, contact along an edge and at a corner, an overlap of 1e-5 and of 5e-4 (as `interference` says), a body inside the material and one in a closed cavity at several search distances, a ring on a shaft, the counts and the type of a pair, the keys of the store, and every mistaken argument. One round; the fix is small.
+
+| Finding | Held | What was done |
+|---|---|---|
+| Two behaviours are pinned by no test: the search distance in the key of what is remembered, and the threshold of zero. Proven by mutation: all tests passed with either changed, while a probe showed the wrong answer (moderate) | Yes: every pair the tests asked with two search distances was cut by the boxes, and every touching pair was at exactly zero on the mesh | Tests: a body in a cavity asked within 2, 5, 3 and 2 again; two blocks 5 m from the origin and 0.004 mm apart are touching, the same blocks at the origin have a gap |
+| Pairs at one distance follow the order of the list `bodies`, not of the model as the comment and this document said | Yes | The bodies are taken in the order of the model, filtered by the list, as `interference` does |
+| With a search distance below the precision of the coordinates a pair that is zero by the query's own rule was counted apart | Yes (three probes) | A pair is looked for within the precision at least; zero is within any search distance |
+| The remembered answer was handed out by reference: a reader that changed it changed the next answer | Yes (probe) | The answer is built anew every time; what is remembered names neither a body nor a face, and says which mesh its first point lies on |
+| "`minGap` is no faster" (the module, the architecture) and "about 0.6 s" (here) do not match the table | Yes | "Not noticeably faster"; "under a second" |
+| The limit of the list of pairs that could not be measured is pinned by no test (reasoned) | Yes | The test of a failing kernel has two such pairs and a limit of one |
+
+Not acted on, and why:
+
+- **A failure of the kernel is remembered for as long as the two meshes live**, as a contact `unknown` or a pair that could not be measured. It is how `interference` keeps its failures; it matters only if the kernel fails on one call and not on the next for the same input, which it does not.

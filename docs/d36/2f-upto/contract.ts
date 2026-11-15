@@ -19,12 +19,16 @@ import type { PlaneRefAfter } from '../00-prep/contract';
 // - `gap` (numeric field `extent/gap`, millimetres, default 0): the plane is taken moved by that
 //   much towards the start, so a positive gap leaves that distance, measured across the plane,
 //   between the end of the tool and the plane; a negative one passes the plane by as much.
-// - The plane is resolved every time the tool is built, in the model the tool is applied to:
-//   the length follows the face when the model changes, and a copy made by a pattern runs from
-//   its own start to the same plane (the plane does not move with the copy).
+//   The gap never turns the tool round: one that reaches the start is an error.
+// - The plane is resolved at every recompute of the feature, in the state before it, so the
+//   length follows the face when the model changes. A copy made by a pattern runs from its own
+//   start to that same plane (the plane does not move with the copy, and the copy does not need
+//   the face to be there still).
+// - A plane parallel to the sketch plane (within the angle tolerance) gives one length for the
+//   whole profile; the tool is then the one a distance extent of that length builds.
 // - For every operation (`new`, `add`, `cut`); it needs no target to measure. No taper.
-// - Errors of the feature: `brokenReference` (the plane or the face is not in the model),
-//   `nonPlanarFace`, and `invalidExtent` below.
+// - Errors of the feature: `brokenReference` (the plane or the face is not in the state before
+//   the feature), `nonPlanarFace`, and `invalidExtent` below.
 declare module '../2a-offset/contract' {
   interface ExtentVariants {
     upTo: { type: 'upTo'; plane: PlaneRefAfter; start: number; gap?: number };
@@ -35,10 +39,14 @@ export const EXTENT_GAP = { title: 'Gap before the plane', unit: 'mm', default: 
 // ================================================================ the issue code
 
 // `invalidExtent`, an error: the tool cannot reach the plane.
-// - the plane is parallel to the direction of the extrusion (within the angle tolerance);
+// - the plane is parallel to the direction of the extrusion (within the angle tolerance), or so
+//   near to it that a length is out of the range of the numbers of a document;
 // - the plane passes through the start of the tool, or touches it: some point of the profile at
 //   the start is on the other side of the plane than the rest, or closer to it than the length
 //   tolerance. (A plane that lies wholly on one side is reached, whichever side it is.)
+// - the gap is as large as the way to the plane somewhere on the profile.
+// "The profile" is the profile as tessellated, which is the tool that is built; an exact arc
+// lies outside its polygon by up to the chord tolerance.
 declare module '../00-prep/contract' {
   interface IssueCodes {
     invalidExtent: true;

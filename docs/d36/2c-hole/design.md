@@ -1,6 +1,6 @@
 # 2c Hole feature and the hardware catalogs (D46)
 
-**State: design, first version, before the reviews.** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, on top of [2a](../2a-offset/design.md) (the extent as a service) and [2b](../2b-taper/design.md) (the stack of sections, the cone, circles between surfaces). The tools of this package (a countersink, a counterbore with its step, a hexagon pocket with its step, four holes in one tool) were run through the real kernel adapter in the spike of 2b ("What was tried"); nothing else was run. **No dimension of a screw, a nut or an insert is written in these files: none was looked up, and none may come from memory.**
+**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It needs [2a](../2a-offset/design.md) (the extent as a service, the flag `notProjected` on a reference, the tool builds as modules), [2b](../2b-taper/design.md) (the stack of sections, the cone, circles between surfaces) and one class of [2f](../2f-upto/design.md) (`ToolProblem`). The tools of this package (a countersink, a counterbore with its step, a hexagon pocket with its step, four holes in one tool) were run through the real kernel adapter in the spike of 2b ("What was tried"); nothing else was run. **No dimension of a screw, a nut or an insert is written in these files: none was looked up, and none may come from memory.** The columns of the catalogs are a proposal for the same reason ("The catalogs").
 
 Files: [contract.ts](contract.ts) (the feature, its patch, the face roles, the issue code, the catalogs' columns, the query), [calls.ts](calls.ts) (its part of validation scenario 12, and the whole scenario in its order).
 
@@ -12,7 +12,7 @@ Files: [contract.ts](contract.ts) (the feature, its patch, the face roles, the i
 |---|---|
 | "A feature type in the registry" | After the preparatory step: a module `features/hole.ts` with its entry and its step, a line in the registry, the interface and two union members in `types.ts`. A build without it refuses the document, so no upgrade step |
 | "It stores a tool recipe, so a pattern repeats it like any cut" | `ToolRecipe` (`evaluate.ts`) is the operation, the targets and `build`; `applyTool` and the pattern know nothing else. But `requireRef` (`document.ts`) accepts as a source of a pattern only "an extrusion with the operation add or cut", by name; the preparatory step turns that into `producesTool` of the registry. Five texts name the extrusion and are reworded by the first other type, which is this one (below) |
-| "An extent and targets like a cut" | The extent of a cut is `distance` with a sign or `throughAll` with a side. Both give a hole its direction without a field of its own. `throughAll` with `both` has no start, so a hole with a head cannot use it |
+| "An extent and targets like a cut" | The extent of a cut is `distance` with a sign or `throughAll` with a side. Both give a hole its direction without a field of its own. `throughAll` with `both` has no start, so a hole with a head cannot use it. `toolSpan` makes the tool of "through all" longer than the targets by an overshoot (`max(1, 1 %)` of the largest coordinate), and returns only the overshoot when no target lies on that side: a hole must not take that length for its depth ("Recompute") |
 | "The tool is a stack of sections along the axis" | `buildPrism` builds one section. The stack of 2b builds several; a step between two sections of different outlines is a planar ring that the kernel triangulates (`triangulate` takes an outer loop and holes) |
 | "The side name has to carry the point and the section; `FaceName.curve` holds one ID today" | The preparatory step answers with `FACE_ROLES`: a role with named parts, each a text or a whole number. A count of sections is the wrong part, though: see "Faces" |
 | "The catalog is data exported by the engine and listed in `describe_api` (and a query for one size), a tool composes the feature from it" | `DataCatalog` and the query `catalog` of the preparatory step are the first two. The third has no place yet: sketch tools draw into a sketch (`SKETCH_TOOLS`), and D33 wants few general MCP tools. A query does it |
@@ -51,13 +51,13 @@ interface HoleFeature extends FeatureBase {
 }
 ```
 
-- **`points`**: at least one; own points of the sketch or `origin`; a point listed twice is an invalid command (as a target listed twice is). The order is kept as given and means nothing.
+- **`points`**: at least one; points of the sketch that are not projected geometry (its own points or `origin`); a point listed twice is an invalid command (as a target listed twice is). The order is kept as given and means nothing.
 - **`shape`** is a variant by `type`, so `updateFeature` merges the same kind by field and replaces another kind whole (`mergePatch` decides by `type`). Every dimension is a numeric field `shape/<name>` and is required; none has a default. The fields, in the registry with `when: shape/type`: `diameter` (all kinds), `headDiameter` (counterbore, countersink), `headDepth` (counterbore, nut pocket), `angle` (countersink; the included angle, between 0 and π), `acrossFlats` and `rotation` (nut pocket).
 - **`extent`**: the validator of `features/extent.ts` with the arguments "no taper", "no `upTo`", "no `both`". `distance` keeps its meaning: `start` moves the mouth off the sketch plane, `distance` is the depth of the whole hole and its sign the direction; for a sketch on a face the normal points out of the body, so a hole into it is negative, as an extruded cut is.
 - **`targets`**: one or more bodies, none twice.
 - **`label`**: an optional text, not empty, at most 200 characters. The engine stores it and never reads a number out of it. The parts list of 3e counts it: once per point and per copy of a pattern.
 - **Updatable** by `updateFeature`: `sketch`, `points`, `shape`, `extent`, `targets`, `label` (`null` removes the label). References are verified as for every feature: only the ones the feature did not have.
-- **References**: the sketch; every point as an entity of the sketch (`accepts: ['point']`, with the flag `own` of 2a: not projected geometry); every target as a body.
+- **References**: the sketch; every point as an entity of the sketch (`accepts: ['point']`, with the flag `notProjected` of 2a, which `requireRef` checks); every target as a body.
 - **Registry**: `createsBody: false`, `namesFaces: true`, `producesTool: true`, `info.bodies: 'none'`.
 
 Relations between the numbers (a head wider than its bore) are not checked by a command: a command is validated structurally, the numbers may be expressions, and the recompute has to check them anyway when a parameter changes.
@@ -71,23 +71,37 @@ The step, in `features/hole.ts`:
    - a head wider than the bore by more than `LENGTH_TOLERANCE`; for a nut pocket the bore has to fit between the flats;
    - for a countersink the depth of the cone, `(headDiameter − diameter) / 2 / tan(angle / 2)`;
    - no two points closer than the largest diameter of the hole (for a hexagon the circle through its corners) plus the tolerance: the holes of one tool must not overlap. `refs` name the two points.
-3. A recipe `{ operation: 'cut', targets, build }`. `build` asks `toolSpan` for the span (so "through all" is measured per build and per copy, as for an extrusion), takes its length as the depth of the hole and builds one stack per point:
+3. A recipe `{ operation: 'cut', targets, build }`. `build` asks `toolSpan` for the span (so "through all" is measured per build and per copy, as for an extrusion), takes the depth of the hole from it ("The depth", below) and builds one stack per point:
 
    | Shape | Sections from the mouth | Faces |
    |---|---|---|
-   | plain | a cylinder to the bottom | `holeWall` |
-   | counterbore | a cylinder `headDiameter` for `headDepth`; a step; the bore | `holeHead`, `holeSeat`, `holeWall` |
-   | countersink | a cone from `headDiameter` to `diameter`; the bore, sharing the ring | `holeHead`, `holeWall` |
-   | nut pocket | a hexagon for `headDepth`; a step; the bore | six `holeFlat`, `holeSeat`, `holeWall` |
+   | plain | a cylinder to the bottom | `holeBore` |
+   | counterbore | a cylinder `headDiameter` for `headDepth`; a step; the bore | `holeHead`, `holeSeat`, `holeBore` |
+   | countersink | a cone from `headDiameter` to `diameter`; the bore, sharing the ring | `holeHead`, `holeBore` |
+   | nut pocket | a hexagon for `headDepth`; a step; the bore | six `holeFlat`, `holeSeat`, `holeBore` |
 
-   A head as deep as the hole or deeper is `invalidHole`; with "through all" that is only known in `build`, which throws it as a `ToolProblem` (2f).
 4. The stacks are put into one solid (their vertices and triangles one after another); the caps and the seat of all points get one face number each, the other faces one per point.
 5. `applyTool`, and the same handling of its answer as an extruded cut has: the recipe is stored also when nothing changed; `noEffect` names the targets the tool missed; `emptyResult` and `kernelFailure` as there. The few lines that turn an `Applied` into the result of a feature are shared with the extrusion instead of copied.
-6. `facts`: `headDepth` and `depth`.
+6. `facts`: `headDepth` and `depth`, for the tool of the feature itself.
+
+**The depth**, and the head against it. The depth of a hole is what the head is compared with, and it is not always the length of the tool:
+
+- **`distance`**: the depth is `|distance|`, known in the step. A head as deep or deeper (within `LENGTH_TOLERANCE`) is `invalidHole`, the error of the step.
+- **`throughAll`**: `toolSpan` of `recompute/extent.ts` answers, next to the span it answers today, the **reach**: how far the targets go from the sketch plane on the side asked for, without the overshoot (`high` or `−low` of its loop; zero when no vertex of a target lies on that side). The depth of the hole is the reach, and `build` decides:
+
+  | Reach | What `build` does |
+  |---|---|
+  | not above `LENGTH_TOLERANCE` | the targets do not pass the mouth. The tool is built, as long as its head and the overshoot; it lies wholly beyond the targets, so `applyTool` reports every target unchanged: the warning `noEffect`, and the recipe stays for a pattern |
+  | above it, and not above the depth of the head plus the tolerance | `invalidHole`, thrown as a `ToolProblem` (2f): the error of the feature, or of the copy of a pattern |
+  | above the depth of the head | the tool is the reach and the overshoot long; the overshoot only lengthens the bore |
+
+  The first version took the length of the span, overshoot included, for the depth. A review showed both ends of that: a head half a millimetre deeper than a plate passed (the overshoot is at least a millimetre), and a hole pointing away from its target got `invalidHole` from a head deeper than the overshoot, where the contract promises `noEffect`.
+- **What is not detected.** The reach is that of the whole targets, not of the material under each point. The lid of scenario 12 is a plate with a lip around it: "through all" from its top reaches to the lower edge of the lip, so a head deeper than the plate and shallower than plate and lip passes, and leaves an opening as wide as the head with no seat in the body. The feature has no error; the face `holeSeat` is then in no body, and a sketch on it is a `brokenReference`. Finding it would need the material along the axis of every hole (a ray through the targets per point and per build); deferred, and the scenario keeps the plate thicker than the head (`calls.ts`, `socketHeadsInstead`).
+- `facts.depth` is `|distance|` or the reach.
 
 **The circles of a hole** all have one number of sides, by its largest radius (`segments` of `sketch.ts` with the chord tolerance), starting at the X axis of the sketch. The hexagon has six; its step to the bore is the hexagon with the circle as a hole, triangulated by the kernel. A step between two circles is triangulated the same way.
 
-**Surfaces.** The bore and the head of a counterbore are cylinders about the normal through the point; the head of a countersink is a cone with the half angle `angle / 2`, its apex below the mouth and its axis pointing from the apex to the mouth; a flat is a plane (its `origin` the corner it starts at, at the mouth; its `y` the normal of the sketch plane); the seat and the caps are planes like the caps of an extrusion (the origin and the Y axis of the sketch, at their level).
+**Surfaces.** The bore and the head of a counterbore are cylinders about the normal through the point; the head of a countersink is a cone with the half angle `angle / 2`, its apex below the mouth and its axis pointing from the apex to the mouth; a flat is a plane (its `origin` the corner it starts at, in the sketch plane and not at the mouth: the rule of the side of an extrusion, whose origin does not move with `start`, so a sketch on a flat stays where it is when the mouth is moved; its `y` the normal of the sketch plane); the seat and the caps are planes like the caps of an extrusion (the origin and the Y axis of the sketch, at their level).
 
 **Edges**, by the rule of 2b: the mouth of a countersink with the face it is cut into (a plane and a cone), its lower rim (the cone and the bore, one ring of one tool), both rims of a counterbore and its seat with the bore are circles and can be projected; the edges of a flat are lines.
 
@@ -97,13 +111,13 @@ The step, in `features/hole.ts`:
 
 | Role | Parts | What |
 |---|---|---|
-| `holeWall` | `point` | the bore at the point |
+| `holeBore` | `point` | the bore at the point |
 | `holeHead` | `point` | the cylinder of a counterbore or the cone of a countersink |
 | `holeFlat` | `point`, `flat` | one side of the hexagon of a nut pocket; `flat` from 1, counter-clockwise from the corner `rotation` points to |
 | `holeSeat` | none | the step between head and bore, for all points |
 | `startCap`, `endCap` | none | the mouths and the bottoms, for all points (the roles of today) |
 
-- **Named by meaning, not by a count.** The brief and the vocabulary suggest "a point and a step". A step number renames the bore when a plain hole (step 1) becomes a counterbore (bore: step 2), and every sketch on it and every projected rim breaks. With `holeWall` the bore keeps its name through every change of the shape (`calls.ts`, `socketHeadsInstead`). The role with two parts the vocabulary provides for is `holeFlat`.
+- **Named by meaning, not by a count.** The brief and the vocabulary suggest "a point and a step". A step number renames the bore when a plain hole (step 1) becomes a counterbore (bore: step 2), and every sketch on it and every projected rim breaks. With `holeBore` the bore keeps its name through every change of the shape (`calls.ts`, `socketHeadsInstead`). The role with two parts the vocabulary provides for is `holeFlat`.
 - **The seat and the caps are one face per feature**, like the caps of an extrusion with several regions (architecture.md, "Stěny"): they lie in one plane, a sketch on one stands on all, and a point added later renames nothing.
 - A flat is a plane and gets a name of its own, so a sketch can stand on it and its edges are lines; one face for the whole hexagon would have to be `swept`.
 
@@ -119,8 +133,9 @@ The step, in `features/hole.ts`:
 | `hexNuts` | `thread`, `acrossFlats`, `thickness` | ISO 4032, hexagon nuts |
 | `heatSetInserts` | `thread`, `holeDiameter`, `holeDepth`, `length` | no standard: the data sheet of one named maker |
 
+- **The columns are a proposal.** They are what a hole needs from each source, written without the sources at hand. Whether ISO 273 has exactly three series under these names, whether a countersunk head has one angle for every size (the column is per row so that it need not), and whether "the largest allowed" is how each standard states a head are confirmed when the texts are read; a column that does not match is changed then, with the branch of `hardwareHole` that reads it. The implementation of the catalogs starts with that reading.
 - **One catalog per standard.** `DataCatalog.source` is one text per catalog, and a row has a value in every column. One catalog of screws with columns from three standards would need three sources and empty cells wherever a standard does not cover a size. (Rejected alternative 6.)
-- **Rows** are keyed by the thread (`M3`). Which sizes: what all four standards cover between M2 and M8; a size missing in one catalog is missing there only, and the query says which catalog lacks it.
+- **Rows** are keyed by the thread (`M3`). Every catalog holds the sizes its own source has, between M2 and M8 as a first range (a guess at what printed parts use), so the catalogs need not cover the same sizes. A size missing in one catalog is missing for the uses that read that catalog only, and the query says which catalog lacks it.
 - **Largest allowed sizes for what has to fit in**: the head diameter, the head height and the size across flats are the upper limits of the standard, because a pocket has to take the largest part. The clearance holes are the values of the series.
 - **Where the numbers are taken from.** The four standards are the ones the backlog names. Their texts are not in the repository and are sold by ISO; this session read none of them. The implementation types the numbers from the text of the standard (if the owner has it), or from a published table that reproduces it, and writes the document it used into `source` with its edition. The review of that commit compares every number with a second, independent table; a difference blocks the commit. A test then pins the rows and checks what can be checked without a source: every column grows with the thread, `fine < medium < coarse`, a head is wider than its thread, a nut wider than its thread.
 - **Heat-set inserts** have no standard, and the hole a maker recommends differs between makers. The catalog holds one maker's data sheet, named in `source` together with the words "typical values; check the data sheet of your inserts". Which maker is a question for the owner.
@@ -131,13 +146,15 @@ The backlog asks for "a tool that composes the feature" from the catalog. It is 
 
 - **Arguments**: `use` (clearance, socketHead, countersunk, nutPocket, heatSetInsert), `size`, `fit` (the clearance series, medium when left out), `allowance` (an expression added to every diameter and to the size across flats).
 - **Answer**: `shape` (in the input form of a hole shape: numbers, or expressions when an allowance was given), `label`, `depth` for an insert, `from` (the catalogs used).
+- **The angle of a countersink is always an expression in degrees** (`deg(…)`, from the radians of the catalog). The tool `query` prints numbers rounded to six decimal places, and an AI passes on what it read: a right angle would arrive in the feature as 1.570796 and differ from the catalog. The expression survives, and the form shows the angle the standard prints. The lengths of the catalogs have few decimals and pass the rounding unchanged.
+- **It looks at `use` first** and asks only the catalogs that use reads: an insert needs no row of `clearanceHoles`. (The first version asked for the clearance hole before anything else.)
 - **What maps to what** is the judgement an AI must not be left to make from memory:
 
   | Use | Shape | From |
   |---|---|---|
   | clearance | plain: the clearance hole of the series | `clearanceHoles` |
   | socketHead | counterbore: the clearance hole; the head diameter; the head height as the depth | `clearanceHoles`, `socketHeadScrews` |
-  | countersunk | countersink: the clearance hole; the head diameter; the head angle | `clearanceHoles`, `countersunkScrews` |
+  | countersunk | countersink: the clearance hole; the head diameter; the head angle, as `deg(…)` | `clearanceHoles`, `countersunkScrews` |
   | nutPocket | nut pocket: the clearance hole; across flats; the thickness as the depth; rotation 0 | `clearanceHoles`, `hexNuts` |
   | heatSetInsert | plain: the hole diameter; `depth`: the hole depth | `heatSetInserts` |
 
@@ -157,7 +174,7 @@ The preparatory step keeps five texts until "the first other type arrives" ([par
 | comment of `PatternFeature` in `types.ts` | the same | the same |
 | error of a generated reference | unchanged: a hole has no generator | |
 
-The test that matches the first one (`pattern.test.ts` of the engine) is updated with it; no test matches the others.
+The first is in `requireRef`, which the preparatory step moves to `features/index.ts`; the label is in `validation.ts`. The test that matches the first one (`pattern.test.ts` of the engine) is updated with it; no test matches the others.
 
 ## Where the code lives
 
@@ -165,9 +182,11 @@ The test that matches the first one (`pattern.test.ts` of the engine) is updated
 |---|---|
 | `types.ts` | `HoleFeature`, `HoleShape`, members of `Feature`, `FeaturePatch`, `FaceName`, `ErrorCode`; the comments above are what the AI reads |
 | `features/hole.ts` | new: the entry of the registry, the validator, the step |
-| `features/index.ts` | one line |
+| `features/index.ts` | one line of the registry; the reworded error of `requireRef` |
 | `features/extent.ts` | the arguments that restrict an extent for a hole |
+| `recompute/extent.ts` | `toolSpan` answers the reach of "through all" next to the span |
 | `recompute/tool-stack.ts` | the step between sections of different outlines (specified by 2b) |
+| `recompute/state.ts` | `ToolProblem`, if 2f has not added it (2f, "A build that fails with its own code") |
 | `recompute/services.ts` | the handling of an `Applied` shared with the extrusion; the text of `invalidHole` |
 | `validation.ts` | four entries of `FACE_ROLES`; the reworded label |
 | `catalogs/hardware.ts` | new: the five tables and their entries of `DATA_CATALOGS` |
@@ -200,7 +219,7 @@ The test that matches the first one (`pattern.test.ts` of the engine) is updated
 ## Shared vocabulary
 
 - **Takes:** `FeatureTypes`, `FeaturePatches`, `FaceRoles` and `FACE_ROLES`, `IssueCodes`, `Catalogs` and `DataCatalog`, `Queries` and the query `catalog`, `Surface` (the cone), `producesTool` of the registry.
-- **Adds:** the feature type `hole` and its patch; the roles `holeWall`, `holeHead`, `holeFlat`, `holeSeat`; the code `invalidHole`; the catalogs `clearanceHoles`, `socketHeadScrews`, `countersunkScrews`, `hexNuts`, `heatSetInserts`; the query `hardwareHole`.
+- **Adds:** the feature type `hole` and its patch; the roles `holeBore`, `holeHead`, `holeFlat`, `holeSeat`; the code `invalidHole`; the catalogs `clearanceHoles`, `socketHeadScrews`, `countersunkScrews`, `hexNuts`, `heatSetInserts`; the query `hardwareHole`.
 
 ## Rejected alternatives
 
@@ -221,22 +240,48 @@ The test that matches the first one (`pattern.test.ts` of the engine) is updated
 - **For the owner: the source of the numbers.** Does the owner have the four standards, or is a named published table acceptable as the source (with the second table for the review)? The design does not pick one.
 - **For the owner: which heat-set inserts.** One maker's data sheet has to be chosen; the hole diameters differ.
 - **For the owner: bearings.** The backlog lists "common bearing sizes" among the catalog content. They are deferred here; say if a link needs them before step 3.
-- Whether the series of ISO 273 are the right three choices for printed parts, where the allowance does most of the work. Kept, because they are what the standard has.
+- Whether the series of clearance holes are the right choices for printed parts, where the allowance does most of the work. Kept as the proposal, to be confirmed against the standard with the other columns.
 - The sizes: M2 to M8 is a guess at what printed parts use.
+- A head through a thin part of a body that reaches deeper elsewhere is not detected with "through all" ("The depth"). Whether the ray per point is worth its cost is left to the first model that trips over it.
 
 ## Needs from the preparatory step
 
-- **Part 4, roles of faces: a part that holds the ID of a derived point.** A hole at the centre of a projected circle would be named `{ role: 'holeWall', point: 'rim/center' }`: the ID of a point of projected geometry contains a slash, and the key of a face separates its parts by slashes. The contract says a part is "a text (an ID)" and does not say whether such an ID is one. Case: the inserts of scenario 12 sit at the centres of the posts; projecting the rim of a post gives that centre as a point, and the hole could use it. Until it is decided the hole takes own points and `origin` only, and the scenario repeats the expressions of the posts. Proposed: the validator of a text part accepts any ID the sketch can have, derived ones included; the key stays unambiguous because a derived ID has exactly one slash and the parts of a role are known.
+- **Part 4, roles of faces: a part that holds the ID of a derived point.** A hole at the centre of a projected circle would be named `{ role: 'holeBore', point: 'rim/center' }`: the ID of a point of projected geometry contains a slash, and the key of a face separates its parts by slashes. The contract says a part is "a text (an ID)" and does not say whether such an ID is one. Case: the inserts of scenario 12 sit at the centres of the posts; projecting the rim of a post gives that centre as a point, and the hole could use it. Until it is decided the hole takes own points and `origin` only, and the scenario repeats the expressions of the posts. Proposed: the validator of a text part accepts any ID the sketch can have, derived ones included; the key stays unambiguous because a derived ID has exactly one slash and the parts of a role are known.
 - **Part 2: the two functions added to the index of the engine have no declaration.** `producesTool` and `generatorOf` are named in the design of part 2 and not in `contract.ts`, so a scenario that asserts "a hole is a source of a pattern" by `producesTool` uses a stand-in (`calls.ts`, `insertChecks`). The behaviour is asserted without it as well (the pattern is added and evaluates).
-- A note for the plan, not a need: the table of packages says "plain and counterbored holes need only 00". In this design every kind is built by the stack of 2b, so 2c needs 2b as a whole.
+
+## For the plan
+
+- **Dependencies.** The table of packages says "plain and counterbored holes need only 00". In this design every kind is built by the stack of 2b, the extent is the service 2a makes of it, the points use the flag `notProjected` of 2a, and one refusal uses `ToolProblem` of 2f (a dozen lines, which 2c adds itself if it is implemented first). So 2c needs 2a and 2b as a whole.
+- **Shared places.** `features/index.ts` (the registry line and the text of `requireRef`), `recompute/extent.ts` (`toolSpan`, which 2f changes as well: both add a member to its answer), `recompute/state.ts` and `recompute/services.ts` have no row in the plan's map of shared places (2a, "For the plan").
+- **Scenario 12** is written across the four `calls.ts`; its order (2a, 2f, 2b, 2c) is in `scenario12` of this package.
 
 ## Tests the implementation owes
 
-- Engine: each kind at one point and at several; the volumes against the formulas; the surfaces; the kinds of the edges and the projection of both rims of a countersink and of a counterbore; a sketch on a seat and on a flat; the names after a change of the kind and after a point is added; every refusal; "through all" with a head deeper than the target; a pattern of a hole and of a hole with a pocket in one list; the patch of every field; `label`.
-- The catalogs: the pinned rows and the checks above. The query: every use, a size missing in one catalog, the allowance as an expression that the feature then accepts.
+- Engine: each kind at one point and at several; the volumes against the formulas; the surfaces; the kinds of the edges and the projection of both rims of a countersink and of a counterbore; a sketch on a seat and on a flat, and a flat's origin with a `start` that is not zero; the names after a change of the kind and after a point is added; every refusal; "through all" with a head half a millimetre deeper than a plate (refused although the overshoot is longer), away from the target (`noEffect`, and a pattern of it that hits), and through the plate of a body with a deeper rim (the case that is not detected, pinned as it behaves); a pattern of a hole and of a hole with a pocket in one list; the patch of every field; `label`.
+- The catalogs: the pinned rows and the checks above. The query: every use, a size missing in one catalog and present in another, the allowance as an expression that the feature then accepts, the angle through the tool `query` and back into a feature.
 - MCP: the fixture of the query in the table of the guard.
-- Scenario 12, from `calls.ts` of the four packages.
+- Scenario 12, from `calls.ts` of the four packages. One assumption of it depends on numbers nobody has read yet: that the cone of the countersunk screw it uses is shallower than the plate of the lid (`screwChecks` asserts it, and says what to change).
 
 ## Reviews
 
-Not yet run.
+### Round 1 (2026-11-15): the four designs of track B together, at `0839139`
+
+The reviewers and the brief are in the record of [2a](../2a-offset/design.md) ("Reviews"). The findings on this package, each checked before it was acted on:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The depth of a hole "through all" was the length of the span, overshoot included: a head deeper than a plate by less than the overshoot passes, and a hole that points away from its target is `invalidHole` instead of `noEffect` | codex, major; internal, major | Yes (`toolSpan` adds `max(1, 1 %)` and returns the overshoot alone when no target lies on that side) | "The depth": `toolSpan` answers the reach; three cases in `build`; `facts.depth` is the reach. What stays undetected (a head through a thin part of a deeper body) is stated |
+| In `socketHeadsInstead` the seat is asserted in a lid whose plate may be no thicker than the head is deep; nothing refuses it, because the lid reaches deeper at its lip | internal, major | Yes (the reach of the lid is the plate and the lip) | The preview sets the plate from the head depth of the preset; the limit is in "The depth" and in the open questions |
+| Numbers that read as dimensions of screws: `"3.4 + holeComp"` in a comment, the size `M7` assumed missing, bare diameters in the calls that must not compile; the columns of the catalogs (three series, one angle, largest sizes) are stated as facts of standards nobody read | codex, major; internal, minor | Yes for all four. None is asserted as a value of a part, but the brief asks that nothing looks like one | The comment is generic; the unknown key is `nope`; the bare diameters are made up and say so; the narrow head of `refusals` no longer depends on a catalog value; the columns are a proposal to confirm at the first reading of the standards. "Rows" contradicted itself about which sizes and is rewritten |
+| The example entry of `hardwareHole` asked for the clearance hole before looking at the use, so an insert needed a row it does not read | codex, minor | Yes | The use first; the entry now has all five uses |
+| The tool `query` rounds numbers to six decimal places, so the angle an AI passes on is not the angle of the catalog, and `screwChecks` compared them exactly | internal, major | Yes (`round` of `tools.ts`; the contract of the preparatory step keeps it for `query`) | The angle comes back as `deg(…)`; the check compares within a tolerance and looks for the expression |
+| The origin of a flat was put at the mouth; the side of an extrusion keeps it in the sketch plane | internal, major (with 2b) | Yes (2b, "Reviews") | In the sketch plane |
+| The calls that must not compile failed against a local type of the scenario, not against the contract | internal, minor | Yes | The helper takes `Input<HoleShape>` and `Input<HoleExtent>`; all four still fail |
+| The design did not say that it needs 2a and one class of 2f; the plan's note was filed under needs of the preparatory step; the reworded error is in `requireRef`, which moves to `features/index.ts` | internal, minor | Yes | The first paragraph, "For the plan", the table of files |
+| Names: the flag `own` (2a renamed it `notProjected`); `holeWall` next to the roles `wallSide` and `wallEnd` of 2a reads as a wall; face names compared by `JSON.stringify` | internal, minor | Yes | `notProjected`; the role is `holeBore`; `sameName` of 2a |
+
+Checked by the reviewers and found sound: the roles are unique per face, and the seat and the caps are planar groups; a hole needs no upgrade step (a build without the package refuses the type); the formulas of the cone of a countersink; the frame of the sketch on the top of the lid (probe of the engine of today). The internal reviewer's probe of a counterbore as deep as the plate of the lid is the source of the second row.
+
+Not acted on:
+
+- Detecting a head that passes through a thin part of a deeper body (raised by the fix, not by a reviewer): stated as a limit, with the test that pins it.

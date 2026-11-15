@@ -30,14 +30,17 @@ export type HoleShape =
 //   `distance` is the depth of the whole hole, head included, and its sign is the direction
 //   (negative goes against the normal, which is into the body for a sketch on a face).
 // - `throughAll`: from the sketch plane through all targets, `forward` or `backward`. Not `both`:
-//   a hole has a mouth.
+//   a hole has a mouth. The depth of the hole is then how far the targets reach from the sketch
+//   plane on that side; the tool is longer by the overshoot of every "through all", which is
+//   not part of the depth.
 // No taper (2b) and no `upTo` (2f, deferred for holes).
 export type HoleExtent = PlainDistanceExtent | { type: 'throughAll'; side: 'forward' | 'backward' };
 
 // One feature makes the same hole at every listed point of one sketch, along the normal of the
 // sketch plane, and cuts it out of the targets.
-// - `points`: own points of the sketch or its `origin`, at least one, none twice. Their order
-//   does not matter to the result; face names carry the point.
+// - `points`: points of the sketch that are not projected geometry (its own points or its
+//   `origin`), at least one, none twice. Their order does not matter to the result; face names
+//   carry the point.
 // - `targets`: one or more bodies, like a cut.
 // - `label`: free text for people and for the parts list ("M3 countersunk screw"); the engine
 //   never reads a dimension from it.
@@ -69,7 +72,7 @@ export const HOLE_FIELDS = {
 // What the result of the feature publishes in `facts`.
 export const HOLE_FACTS = {
   headDepth: 'the depth of the head along the hole in mm: given for a counterbore and a nut pocket, computed for a countersink; absent for a plain hole',
-  depth: 'the depth of the whole hole in mm as built for the feature itself (for "through all": what the targets gave)',
+  depth: 'the depth of the whole hole in mm for the feature itself, not for its copies (for "through all": how far the targets reach from the mouth, without the overshoot of the tool)',
 } as const;
 
 // ================================================================ the unions
@@ -83,7 +86,7 @@ declare module '../00-prep/contract' {
   }
   // The faces of a hole are named by what they are, not by a count of sections, so that the bore
   // keeps its name when a plain hole becomes a counterbore.
-  // - `holeWall`: the bore at the point (a cylinder).
+  // - `holeBore`: the bore at the point (a cylinder).
   // - `holeHead`: the side of the head at the point: the cylinder of a counterbore, the cone of
   //   a countersink.
   // - `holeFlat`: one side of the hexagon of a nut pocket (a plane). `flat` counts from 1,
@@ -92,14 +95,19 @@ declare module '../00-prep/contract' {
   //   lie in one plane and are one face, as the caps of an extrusion are.
   // The mouth and the bottom are `startCap` and `endCap`, one face each for all points.
   interface FaceRoles {
-    holeWall: { point: Id };
+    holeBore: { point: Id };
     holeHead: { point: Id };
     holeFlat: { point: Id; flat: number };
     holeSeat: {};
   }
   // `invalidHole`, an error: the dimensions do not make a hole.
   // - the head is not wider than the bore (for a nut pocket: the bore does not fit between the flats);
-  // - the head is as deep as the hole or deeper (for "through all": deeper than the targets reach);
+  // - the head is as deep as the hole or deeper. For "through all" the hole is as deep as the
+  //   targets reach from the mouth, and the overshoot of the tool does not count. Targets that
+  //   do not reach past the mouth at all are not this error: the tool is built, cuts nothing and
+  //   the feature has the warning `noEffect`, as a cut that misses.
+  //   The reach is that of the whole targets, not of the material under each point: a head that
+  //   passes through a thin plate of a body that reaches deeper elsewhere is not detected.
   // - two points are so close that their holes would overlap; `refs` name the points.
   interface IssueCodes {
     invalidHole: true;
@@ -116,8 +124,8 @@ declare module '../00-prep/contract' {
   }
 }
 
-export const HOLE_ROLES: Pick<typeof FACE_ROLES, 'holeWall' | 'holeHead' | 'holeFlat' | 'holeSeat'> = {
-  holeWall: { title: 'Wall of a hole', parts: { point: { title: 'Point', kind: 'text' } } },
+export const HOLE_ROLES: Pick<typeof FACE_ROLES, 'holeBore' | 'holeHead' | 'holeFlat' | 'holeSeat'> = {
+  holeBore: { title: 'Bore of a hole', parts: { point: { title: 'Point', kind: 'text' } } },
   holeHead: { title: 'Head of a hole', parts: { point: { title: 'Point', kind: 'text' } } },
   holeFlat: { title: 'Flat of a nut pocket', parts: { point: { title: 'Point', kind: 'text' }, flat: { title: 'Flat, from 1', kind: 'integer' } } },
   holeSeat: { title: 'Seat of a hole', parts: {} },
@@ -127,11 +135,16 @@ export const HOLE_ROLES: Pick<typeof FACE_ROLES, 'holeWall' | 'holeHead' | 'hole
 
 // One catalog per standard, so that `source` names one document and no row has an empty cell
 // (the standards do not cover the same sizes). Rows are keyed by the thread, "M3"; `thread` is
-// its nominal diameter. Lengths in millimetres, the angle in radians. The contract fixes the
-// columns; the numbers are typed in from the sources named in design.md, never from memory.
+// its nominal diameter. Lengths in millimetres, the angle in radians. The numbers are typed in
+// from the sources named in design.md, never from memory.
+//
+// The columns are a proposal, written without the standards at hand: what a hole needs from
+// each. Whether a standard has exactly these (three series of clearance holes; one head angle
+// per size; a largest head diameter) is confirmed when its text is read, and a column that
+// does not match is changed then, with the branch of `hardwareHole` that reads it.
 export interface ClearanceHoleRow {
   thread: number;
-  fine: number; // the three series of the standard
+  fine: number; // three series of clearance holes, tightest first; names and count to confirm
   medium: number;
   coarse: number;
 }
@@ -170,7 +183,10 @@ export interface HeatSetInsertRow {
 // - `fit`: the clearance series of the through hole, `medium` when left out.
 // - `allowance`: an expression added to every diameter and to the size across flats, such as the
 //   name of a parameter that compensates the printer. With it those fields come back as
-//   expressions ("3.4 + holeComp"); without it as numbers.
+//   expressions (the number of the catalog, " + ", the allowance); without it as numbers.
+// - The angle of a countersink always comes back as an expression in degrees ("deg(…)"), so
+//   that it survives the rounding of a tool's answer (six decimal places) and a person reads
+//   the angle the standard prints.
 export const HARDWARE_HOLE_ARGS = {
   use: { kind: 'choice', options: ['clearance', 'socketHead', 'countersunk', 'nutPocket', 'heatSetInsert'], title: 'What the hole is for' },
   size: { kind: 'text', title: 'Size', summary: 'A row of the catalogs, such as "M3".' },

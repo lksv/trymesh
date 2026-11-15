@@ -1,6 +1,6 @@
 # 2b Taper on extrusion (D45)
 
-**State: design, first version, before the reviews.** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
+**State: design, second version, after the first round of reviews ("Reviews").** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the field, the upgrade step, the rule for circles as one function), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -71,7 +71,7 @@ function buildStack(feature: Id, sections: Section[], caps: [name, name], frame:
 
 - **Caps.** The first ring and the last are triangulated by the kernel, each on its own (`triangulate` with the outer loop and the holes of each region): the triangulation of the near cap is not valid for the far one once the outline has moved. They are `startCap` and `endCap`, with the rule of today: `startCap` is at the start of the extent.
 - **Sides.** Between two rings every edge of a loop becomes two triangles, with the face of the curve the edge belongs to. Rings pair point by point, so the mesh is closed by construction.
-- **Orientation** follows the sign of `distance`, as in the prism.
+- **Orientation** follows the sign of `distance`, as in the prism. Like the prism, the build assumes a right-handed frame: handed a mirrored one (a copy of the mirror of 2e; `transformFrame` keeps the reflection), both builds give a solid turned inside out. Where the winding is reversed for such a copy, once and for every build, is to be agreed with 2e ("For the plan").
 - **What depends on what.** The rings are computed once per recompute step, in the coordinates of the sketch: they depend on the profile, the distance and the taper, not on the targets or on a placement. `ToolRecipe.build` only puts them into the frame, which for a copy of a pattern is the transformed one. An error of the far profile is therefore an error of the feature's step, found before any tool is built, and a pattern repeats a tapered tool like any other.
 - The planar step between sections of different outlines is specified here and first used and tested by 2c.
 
@@ -79,19 +79,26 @@ function buildStack(feature: Id, sections: Section[], caps: [name, name], frame:
 
 1. The near outline is `outline()` of the resolved profile (2a): exact curves, after `profile/offset`.
 2. The far outline is the near one moved by `|distance| · tan(taper)`, with every check of 2a. A failure is `invalidProfile` and names the curves; the text says that it is the far end.
-3. Every pair of corresponding curves gets one number of points: the larger of what `segments` gives for the near and for the far curve (their radii differ, and their sweeps where a corner slid along the arc).
-4. **Levels.** Between a line and a line, and across a tangent joint, the straight segment from a near corner to its far corner lies in both side faces: the offset keeps a line parallel to itself and keeps a tangent joint tangent, so the side of a line is exactly a plane, the side of an arc exactly a cone, and the corner edge is a ruling of the cone that lies in the plane. Where an arc meets its neighbour at an angle the corner moves along a conic as the offset grows, and the straight segment leaves both surfaces. For such an outline the section gets intermediate rings: the outline moved by `t · |distance| · tan(taper)` at the level `t` of the way. The number of intervals doubles until, for every such corner and every interval, the corner of the exact outline at the middle of the interval lies within the chord tolerance of the middle of the segment; at most 64. Every ring built is checked like the far one. An outline of lines, circles and tangent arcs (a rectangle, a rounded rectangle, a slot, a circle) has one interval.
+3. Every curve gets one number of points for all rings of the section: the largest `segments` gives for it over the rings (its radius differs from ring to ring, and its sweep where a corner slides along the arc).
+4. **Levels.** Between a line and a line, and across a tangent joint, the straight segment from a near corner to its far corner lies in both side faces: the offset keeps a line parallel to itself and keeps a tangent joint tangent, so the side of a line is exactly a plane, the side of an arc exactly a cone, and the corner edge is a ruling of the cone that lies in the plane. An outline of lines, circles and tangent arcs (a rectangle, a rounded rectangle, a slot, a circle) therefore has two rings, and its cones deviate from the true ones by the sagitta the count was chosen for.
 
-Tessellation error: a cone between two rings of the same count deviates from the true cone by at most the sagitta at the larger radius, which is what the count was chosen for.
+   Where an arc meets a neighbour at an angle, its sweep changes from ring to ring, and straight edges between two rings go wrong in two ways. The corner moves along a conic, so the segment between the two corners leaves both surfaces. And the points of the arc, spread evenly over a sweep that differs between the rings, do not lie on common rulings of the cone, so the triangles between them are sheared across it. (The first version of this design tested the corner only; a review computed a triangle 0.011 mm off its cone where the corner passed at 0.004, for a tolerance of 0.01.) Both errors shrink with rings in between: the outline moved by `t · |distance| · tan(taper)` at the level `t` of the way.
+
+   The rule tests the mesh that will be built, not a model of it:
+   - an arc whose sweep changes is divided for half the chord tolerance, so that the shear has the other half;
+   - for every such arc and every interval between two rings, the middle of every edge and of every diagonal between the rings is measured against the exact cone, and the middle of the corner edge against the corner of the exact outline at that level;
+   - the number of intervals doubles until all are within the chord tolerance, at most 64. At 64 the tool is built as it is and the tolerance is no longer kept there, as for an arc at the cap of 4096 segments today; the docs say so.
+
+   Every ring built is checked like the far one.
 
 ### Surfaces of the sides
 
 | Curve | Surface | `FaceInfo` |
 |---|---|---|
-| a line | a plane through the near line and the far line | `origin`: the start point of the line (its point `a`) at the start of the extent; `y`: the unit vector in the plane across the line, on the side of the normal of the sketch plane (for a taper of zero it is that normal, as today); `normal`: across both, without a sign |
+| a line | a plane through the near line and the far line | `origin`: where that plane meets the sketch plane, across the line from its start point `a` (see below); `y`: the unit vector in the plane across the line, on the side of the normal of the sketch plane (for a taper of zero it is that normal, as today); `normal`: across both, without a sign |
 | an arc, a circle | a cone about the normal of the sketch plane through the centre | `apex`: on that axis, where the radius would be zero: at the level `start − r₀ · distance / (r₁ − r₀)` for the radii `r₀` at the start and `r₁` at the end; `axis`: the normal of the sketch plane, signed so that it points from the apex to the face; `halfAngle`: `|taper|` |
 
-- A sketch can stand on the tilted plane of a line, as on a straight side (`calls.ts`, `ribDraft`). With `start` not zero its origin is at the start of the extent, not in the sketch plane; with `start` zero it is the origin of today.
+- A sketch can stand on the tilted plane of a line, as on a straight side (`calls.ts`, `ribDraft`). Its origin stays in the sketch plane, as today: the origin of a straight side is the point `a` in the sketch plane also when `start` is not zero (`buildPrism`; a probe of the review gave `[2, 48, 0]` for a cut that starts at 2). For a tilted side it is `a` moved across the line by `−start · tan(taper)` times the sign of `distance`, the place where the plane, continued beyond the start of the tool, meets the sketch plane. That is `a` for a taper of zero and for a start of zero, so a taper whose expression passes through zero moves no sketch. (The first version put the origin at the start of the extent; adding a taper to an extrusion with a start would then have moved every sketch on its sides by the start.)
 - Both radii are positive (the offset refuses a radius that is not), so the face lies on one half of the cone and the apex is never inside it.
 - A hole of a profile tapers the other way than its outer loop: with a positive taper the outer cone opens towards the end and the cone of a hole closes towards it. Both have the half angle `|taper|`; their axes point opposite ways.
 - `Surface` of the preparatory step is derived from these as it is for the kinds of today.
@@ -133,7 +140,6 @@ The same function is needed by package 1b over `Surface` (the circles of a body 
 | `features/extrude.ts` | one line in `info.fields`; the step picks the stack when the taper is not zero |
 | `recompute/tool-stack.ts` | new: `buildStack` |
 | `recompute/outline.ts` | the rings of a tapered section (the far outline, the counts, the levels) |
-| `recompute/state.ts` | `Prism` becomes `BuiltTool` |
 | `solid.ts` | the cone in `FaceInfo` and `transformFace`; `circleBetween`; `edgeKind`; `projectEdge` |
 | where the preparatory step derives `Surface` and `BodyFace.convex` | the cone |
 | `document.ts` | the step in `UPGRADES` |
@@ -154,10 +160,12 @@ A spike in the scratch directory of the session (not in the repository) built to
 | a countersink in one tool (a cone and a cylinder sharing a ring), the mouth flush with the top of the plate | closed result, the volume as computed, the cone and the cylinder in the result as two faces |
 | four of them as one tool | the same |
 | a tapered square boss added with its base flush on the plate, then a pocket with the opposite draft cut into it | both volumes as computed |
-| the same countersink cut a second time (a copy of a pattern that lands on the original) | no change of the volume; the faces of the second tool take the place of the first, which is the case `applyTool` already reports as `noEffect` for a copy |
+| the same countersink cut a second time (a copy of a pattern that lands on the original) | no exception; the volume changed by 4e-8 mm³ and the faces of the second tool are in the result in place of the first. Whether `applyTool` then reports the copy as `noEffect` (it tests the faces of the tool against the surface the target had, `onSurface`) was not run. Coincident round faces are the case the adapter gives no guarantee for (architecture.md, SolidKernel, "Omezení": the surface may come out wrong without an error), cylinders today and cones with this package |
 | a tapered cut followed by a straight bore of the radius of its lower ring, the bore with 36, 40, 48 and 64 sides against 48 of the cone | passes every time. With another count, slivers of the end cap of the tapered cut stay between the two polygons, so the cone has a third edge. With the same count they do not |
+| for 2c: a counterbore (two cylinders and a planar step between them, blind) and a nut pocket (a hexagon, a step with the circle of the bore as its hole, a bore through) | both volumes as computed; the head, the step, the bore and the bottom (the six flats, the step and the bore) in the result as faces of their own |
+| for 2f: a round post whose far end lies in a tilted plane, added on the plate; a square pocket cut down to a tilted floor; a cut and an addition that end flush on that tilted floor | all four volumes as computed |
 
-One position each and no random placement: it shows that the adapter takes these shapes, not that it is robust for them. The fuzz of the adapter has to get tapered tools (tilted planes flush with tilted faces are the case its coplanar handling has to prove; cones are not planar and it leaves them alone, as it does cylinders).
+One position each and no random placement: it shows that the adapter takes these shapes, not that it is robust for them. The fuzz of the adapter has to get tapered tools (tilted planes flush with tilted faces are the case its coplanar handling has to prove; cones are not planar and it leaves them alone, as it does cylinders). The internal reviewer ran the spike again (nine tests pass) and added the scenario's own sizes: the countersink by hand at three positions, and a round brace that ends flush on a face tilted by three degrees.
 
 The last row is a limit to state in the docs: two features that meet in a circle are two polygons. The lower ring of a cone has the count of its larger ring. A hole feature (2c) builds the cone and the bore as one tool and has no such seam.
 
@@ -174,7 +182,7 @@ The last row is a limit to state in the docs: two features that meet in a circle
 
 ## Open questions
 
-- Whether 64 intervals and the test at the middle of an interval are the right bound for the levels. It is a heuristic: the conic has no inflection between two corners, so the middle is where a chord is furthest from it or close to that.
+- Whether 64 intervals are the right cap for the levels. A review computed 4 to 16 intervals for a D shape of radius 10 under far offsets of 1 to 5 mm at the tolerance 0.01; the middles of edges and diagonals are where a straight piece is furthest from a surface without an inflection, or close to that.
 - The text of the paragraph for the AI. The table of uses is the candidate.
 
 ## Needs from the preparatory step
@@ -182,13 +190,35 @@ The last row is a limit to state in the docs: two features that meet in a circle
 - **A home for the circle of two surfaces.** The vocabulary states the rule in prose; `edgeKind` and `projectEdge` need it over `FaceInfo` (this package) and the body description of 1b over `Surface`. If both packages write it, the rule exists twice. Case: `mouthOf` in `calls.ts` asks the radius of the mouth of a countersink from its two surfaces; today nothing declares that function. Stand-in: `circleBetween` in `contract.ts`. Proposed: the engine has it once, over `Surface` (a `FaceInfo` is turned into one already), and 1b imports it.
 - **Who writes the cone.** The contract says `FaceInfo` "gets the two new kinds" and that `BodyFace.convex` covers "a cylinder and a cone", without saying which package adds the cone to `FaceInfo`, to the derivation of `Surface` and to `convex`. This design takes all three, because no face is a cone before it. If the preparatory step writes them first, 2b only builds the faces.
 
+## For the plan
+
+- **2e, the mirror.** A tool built in a mirrored frame comes out turned inside out, for the prism of today as for the stack (a review built a unit cube with `buildPrism` in a reflected frame: volume −1). `transformSolid` reverses the triangles of a mirrored body; nothing does it for a tool that is built in the frame of a copy. One place has to, once, for every build: the wrapper of `build` that already tags the faces of a copy is the candidate. To be agreed with 2e, which brings the first mirrored copy.
+- **1b.** The circle of two surfaces (above, "Needs").
+- `FaceInfo`, `edgeKind` and `projectEdge` are in the plan's row for this package; nothing to add.
+
 ## Tests the implementation owes
 
-- Engine: the volume of a tapered box and of a frustum of a circle against the formulas; the surfaces (the plane of a line, the cone of a circle and of a hole in a profile, the apex and the direction of the axis for both signs of the taper and of the distance); the kinds of the edges and both projections of a countersink; a sketch on a tilted side; a D shape with levels (the corner within the tolerance); every refusal; a pattern of a tapered cut; `circleBetween` for the four pairs and for what must not be a circle.
+- Engine: the volume of a tapered box and of a frustum of a circle against the formulas; the surfaces (the plane of a line, the cone of a circle and of a hole in a profile, the apex and the direction of the axis for both signs of the taper and of the distance); the kinds of the edges and both projections of a countersink; a sketch on a tilted side, with a start and without, and that its origin does not move when a taper is added; a D shape with levels (every middle of an edge and of a diagonal within the tolerance of its cone, and the half disc of the review);  every refusal; a pattern of a tapered cut; `circleBetween` for the four pairs and for what must not be a circle.
 - The adapter: tapered tools in the fuzz.
 - The upgrade: a document with a taper saved, loaded, and refused by a list of steps without `2b-taper`.
 - Scenario 12.
 
 ## Reviews
 
-Not yet run.
+### Round 1 (2026-11-15): the four designs of track B together, at `0839139`
+
+The reviewers and the brief are in the record of [2a](../2a-offset/design.md) ("Reviews"). The findings on this package, each checked before it was acted on:
+
+| Finding | Who | Holds? | What changed |
+|---|---|---|---|
+| The test of the corner does not bound the error of the side triangles: the points of an arc whose sweep changes do not lie on common rulings. A half disc of radius 10 under 45° passes the corner test at 0.0045 with a diagonal 0.0113 off its cone; a D shape with one interval is 0.41 off against a sagitta of 0.032. "At most the sagitta" was false, and nothing said what happens at 64 intervals | codex (major), internal (factual) | Yes (both computed it) | The levels are tested on the mesh that is built (every edge and diagonal between two rings, and the corner); such arcs are divided for half the tolerance; the count of a curve is the largest over all rings; at the cap the tolerance is not kept and the docs say so |
+| The origin of a sketch on a tilted side was put at the start of the extent, while a straight side has it in the sketch plane also with a start: adding a taper would move every sketch on the sides by the start | internal, major | Yes (probe of the engine: origin `[2, 48, 0]` for a cut with `start: 2`) | The origin stays in the sketch plane, where the tilted plane meets it; 2c uses the same rule for a flat |
+| A tool built in a mirrored frame is turned inside out; "the pattern inherits it without a change" misses that | codex, major | Yes for the mirror of 2e (a unit cube in a reflected frame has the volume −1 today); no copy is mirrored before 2e | Stated under the stack and "For the plan" |
+| The comment of `circleBetween` made every edge without a circle `other`, two planes included | codex, minor | Yes | The comment says what `undefined` means |
+| "What was tried" was cited by 2c and 2f for rows it did not have; "which `applyTool` reports as `noEffect`" was an inference, and coincident round faces are a stated limit of the adapter | internal, minor | Yes | The rows are there; the inference is marked as not run, with the limit |
+| The scenario used the ID `mid` in two sketches (IDs are unique in the document), so it stopped at the countersink by hand; the sizes of that countersink looked like those of a screw | both, major | Yes (reproduced by both) | The point is `lidMid`; the sizes are made up and said to be |
+| The file table renamed `Prism`, and so did the text of 2a | internal, minor | Yes | 2a does it |
+
+Checked by the reviewers and found sound: the apex, the direction of the axis and the half angle for all four combinations of signs and for a hole of a profile (computed); the four pairs of `circleBetween`; that an extent drops an unknown key on load today (a load with `extent.taper` succeeds and the key is gone), so the step is needed; the numbers of the scenario (the rib keeps 0.34 mm at its top under −3°, the lip 0.79 mm under −10°).
+
+Not acted on: nothing.

@@ -45,8 +45,9 @@ export const TAPER_UPGRADE: UpgradeStep = { name: '2b-taper', run: (document) =>
 // - a cylinder and a cone about one axis;
 // - two cones about one axis that differ in the apex or in the half angle.
 // The radius has to be above `LENGTH_TOLERANCE`, and for a cone the circle has to lie on the
-// half the cone's `axis` points along. Anything else, two faces of one surface included, is
-// undefined, and the edge is `other`.
+// half the cone's `axis` points along. For anything else, two faces of one surface included,
+// the function answers undefined: it found no circle. `edgeKind` then answers what it answers
+// today (two planes are a `line` or `coplanar`, the rest `other`).
 //
 // A stand-in: the engine has it over its internal `FaceInfo`, and package 1b needs the same
 // function over `Surface` for the circles of a body description (design.md, "Needs from the

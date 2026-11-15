@@ -1,12 +1,12 @@
 // Validation scenario 12 (a box with a lid and screw posts), the part of package 2b, written as
 // calls against the contract. Only type-checked. It continues the model of 2a-offset/calls.ts:
-// a draft on the rib, a lead-in on the lip of the lid, and one countersunk hole made by hand
-// from a tapered cut and a straight one (the hole feature of 2c makes the other four).
+// a draft on the rib, a lead-in on the lip of the lid, and one countersink made by hand from
+// a tapered cut and a straight one (the hole feature of 2c makes the ones for the screws).
 
 import type { Id } from '../../../packages/engine/src/index';
 import type { CommandAfter, EdgeNameAfter, FaceNameAfter, StateAfter, Surface } from '../00-prep/contract';
 import { UPGRADES } from '../00-prep/contract';
-import { RIB_LEFT, done, engine, onFace, pointAt, run, sketchOn, unwrap, XY } from '../2a-offset/calls';
+import { RIB_LEFT, done, engine, onFace, pointAt, run, sameName, sketchOn, unwrap, XY } from '../2a-offset/calls';
 import { TAPER_UPGRADE, circleBetween } from './contract';
 
 // ---------------------------------------------------------------- a draft and a lead-in
@@ -19,7 +19,7 @@ export function ribDraft(): boolean {
   const rib = state.document.features.find((f) => f.id === 'rib');
   const stored = rib?.type === 'extrude' && rib.extent.type === 'distance' ? rib.extent.taper : undefined; // -0.05236
   // the sides are still planes with the names they had, and a sketch still stands on one
-  const side = state.evaluation.faceNames.findIndex((name) => name.role === 'wallSide' && name.feature === 'rib' && name.side === 'left');
+  const side = state.evaluation.faceNames.findIndex((name) => sameName(name, RIB_LEFT));
   const planar = side >= 0 && state.evaluation.faceSurfaces[side].kind === 'plane';
   const onSide = done(engine.preview({ type: 'batch', commands: sketchOn('onDraft', onFace('box', RIB_LEFT)) }));
   return stored !== undefined && stored < 0 && planar && onSide.evaluation.features['onDraft'].status === 'ok' && state.evaluation.bodies['box'].volume < before;
@@ -31,26 +31,27 @@ export const lipLeadIn = (): StateAfter => run({ type: 'setField', feature: 'lip
 
 // ---------------------------------------------------------------- a countersink by hand
 
-// Two concentric circles on the top of the lid: the head and the bore of a screw in the middle.
+// Two concentric circles on the top of the lid, in its middle. Their sizes are made up for the
+// geometry (8 and 5 mm); they are no screw. Real sizes come from the catalogs of 2c.
 const circle = (sketch: Id, id: Id, radius: string): CommandAfter[] => [
-  { type: 'addCurve', sketch, id, curve: { type: 'circle', center: 'mid' }, radius: 1 },
+  { type: 'addCurve', sketch, id, curve: { type: 'circle', center: 'lidMid' }, radius: 1 },
   { type: 'addConstraint', sketch, id: `${id}r`, constraint: { type: 'radius', curve: id, value: radius, driving: true } },
 ];
 export const LID_TOP: FaceNameAfter = { feature: 'lid', role: 'endCap' };
-const CONE: FaceNameAfter = { feature: 'sink', role: 'side', curve: 'head' };
-const BORE: FaceNameAfter = { feature: 'bore', role: 'side', curve: 'shank' };
+const CONE: FaceNameAfter = { feature: 'sink', role: 'side', curve: 'wide' };
+const BORE: FaceNameAfter = { feature: 'bore', role: 'side', curve: 'narrow' };
 
 export function countersinkByHand(): StateAfter {
   return run(
-    { type: 'setParameter', name: 'headD', expr: '6' },
-    { type: 'setParameter', name: 'shankD', expr: '3.4' },
+    { type: 'setParameter', name: 'wideD', expr: '8' },
+    { type: 'setParameter', name: 'narrowD', expr: '5' },
     ...sketchOn('middle', onFace('lid', LID_TOP)),
-    ...pointAt('middle', 'mid', 'L / 2', 'W / 2'),
-    ...circle('middle', 'head', 'headD / 2'),
-    ...circle('middle', 'shank', 'shankD / 2'),
-    // The cone: the head circle at the mouth, narrowing by 45 degrees down to the bore. The disc
-    // of the head is two regions of the sketch (the ring and the disc of the bore); they are taken
-    // together, so the circle between them is not part of the outline that tapers.
+    ...pointAt('middle', 'lidMid', 'L / 2', 'W / 2'),
+    ...circle('middle', 'wide', 'wideD / 2'),
+    ...circle('middle', 'narrow', 'narrowD / 2'),
+    // The cone: the wide circle at the mouth, narrowing by 45 degrees down to the narrow one. The
+    // disc of the wide circle is two regions of the sketch (the ring and the disc inside it); they
+    // are taken together, so the circle between them is not part of the outline that tapers.
     {
       type: 'addFeature',
       feature: {
@@ -58,19 +59,19 @@ export function countersinkByHand(): StateAfter {
         name: 'sink',
         suppressed: false,
         type: 'extrude',
-        profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['head'] }, { outerLoop: ['shank'] }] },
-        extent: { type: 'distance', start: 0, distance: '-(headD - shankD) / 2', taper: 'deg(-45)' },
+        profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['wide'] }, { outerLoop: ['narrow'] }] },
+        extent: { type: 'distance', start: 0, distance: '-(wideD - narrowD) / 2', taper: 'deg(-45)' },
         operation: 'cut',
         targets: ['lid'],
       },
     },
-    { type: 'addFeature', feature: { id: 'bore', name: 'bore', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['shank'] }] }, extent: { type: 'throughAll', side: 'backward' }, operation: 'cut', targets: ['lid'] } },
+    { type: 'addFeature', feature: { id: 'bore', name: 'bore', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['narrow'] }] }, extent: { type: 'throughAll', side: 'backward' }, operation: 'cut', targets: ['lid'] } },
   );
 }
 
 // The side of the tapered cut is a cone, a hole and not a pin, with the half angle of the taper.
 export function coneOfTheSink(): boolean {
-  const cone = unwrap(engine.query('body', { body: 'lid' })).faces.find((face) => JSON.stringify(face.name) === JSON.stringify(CONE));
+  const cone = unwrap(engine.query('body', { body: 'lid' })).faces.find((face) => sameName(face.name, CONE));
   return cone?.surface.kind === 'cone' && Math.abs(cone.surface.halfAngle - Math.PI / 4) < 1e-9 && cone.convex === false;
 }
 
@@ -88,10 +89,10 @@ export function rims(): boolean {
   // Every edge of the cone is a circle. (There may be a third one: the bore is a polygon with
   // another number of sides than the lower ring of the cone, so slivers of the end cap of the
   // tapered cut can stay between them. The hole feature of 2c builds both in one tool and has none.)
-  const kinds = state.evaluation.bodies['lid'].edges.filter((edge) => JSON.stringify(edge.name.a) === JSON.stringify(CONE) || JSON.stringify(edge.name.b) === JSON.stringify(CONE)).map((edge) => edge.kind);
+  const kinds = state.evaluation.bodies['lid'].edges.filter((edge) => sameName(edge.name.a, CONE) || sameName(edge.name.b, CONE)).map((edge) => edge.kind);
   const radii = state.evaluation.features['rims'].sketch?.radii;
   const projected = state.evaluation.features['rims'].status === 'ok';
-  return kinds.length >= 2 && kinds.every((kind) => kind === 'circle') && projected && radii !== undefined && Math.abs(radii['mouth'] - 3) < 1e-9 && Math.abs(radii['lower'] - 1.7) < 1e-9;
+  return kinds.length >= 2 && kinds.every((kind) => kind === 'circle') && projected && radii !== undefined && Math.abs(radii['mouth'] - 4) < 1e-9 && Math.abs(radii['lower'] - 2.5) < 1e-9;
 }
 // The same circle from the two surfaces, as a query of step 1 will read it.
 export const mouthOf = (top: Surface, cone: Surface): number | undefined => circleBetween(top, cone)?.radius;

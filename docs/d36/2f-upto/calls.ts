@@ -44,8 +44,10 @@ export function postLength(state: StateAfter): number | undefined {
   const facts = state.evaluation.features['posts'].facts;
   const names: string[] = Object.keys(UP_TO_FACTS); // lengthMin, lengthMax, forward
   if (!facts || names.some((name) => !(name in facts))) return undefined;
+  // the lid is parallel to the floor, so there is one length: the two are equal exactly
   return facts['forward'] === true && facts['lengthMin'] === facts['lengthMax'] && typeof facts['lengthMin'] === 'number' ? facts['lengthMin'] : undefined; // 28: H − floor
 }
+const about = (value: number | undefined, expected: number): boolean => value !== undefined && Math.abs(value - expected) < 1e-9;
 
 // The posts follow the lid: a higher box moves the lid, and the posts and their copies grow with
 // it. Nothing about the posts is changed. The lid still does not collide with the box (bodies
@@ -53,8 +55,11 @@ export function postLength(state: StateAfter): number | undefined {
 export function higherBox(): boolean {
   const preview = done(engine.preview({ type: 'setParameter', name: 'H', expr: '40' }));
   const collisions = unwrap(engine.query('interference', { bodies: ['box', 'lid'] }, { state: preview }));
-  return postLength(preview) === 38 && preview.evaluation.features['postPattern'].status === 'ok' && collisions.pairs.length === 0;
+  return about(postLength(preview), 38) && preview.evaluation.features['postPattern'].status === 'ok' && collisions.pairs.length === 0;
 }
+
+// A gap never turns the posts round: one larger than the way to the lid is an error.
+export const gapTooLarge = (): string | undefined => done(engine.preview({ type: 'setField', feature: 'posts', path: 'extent/gap', value: 100 })).evaluation.features['posts'].error?.code; // invalidExtent
 
 // A gap leaves the posts short of the lid by a print layer; the field is optional like the offset.
 export function shortOfTheLid(): number | undefined {
@@ -75,8 +80,10 @@ export const onPostTop = (): StateAfter => run(...sketchOn('tops', onFace('box',
 export function brace(): StateAfter {
   return run(
     ...sketchOn('braceSketch', onFace('box', { feature: 'cavity', role: 'side', curve: 'od' })),
-    // in the frame of that face: x runs along the wall from its corner, y up from the sketch plane of the outline
-    ...circle('braceSketch', 'br', '-(W - 2 * wall - 8)', 'floor + 5', '1.5'),
+    // In the frame of that face x runs along the wall from its corner at y = W - wall, and y up
+    // from the sketch plane of the outline. The brace sits 16 mm from the near wall: beside the
+    // post in that corner and within the length of the rib.
+    ...circle('braceSketch', 'br', '-(W - 2 * wall - 16)', 'floor + 5', '1.5'),
     { type: 'addFeature', feature: { id: 'brace', name: 'brace', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'braceSketch', regions: [{ outerLoop: ['br'] }] }, extent: { type: 'upTo', plane: onFace('box', RIB_LEFT), start: 0 }, operation: 'add', targets: ['box'] } },
   );
 }
@@ -125,8 +132,8 @@ export const wrong = (): void => {
 
 export function scenario12f(): boolean {
   const built = posts();
-  const length = postLength(built) === 28 && built.evaluation.features['postPattern'].status === 'ok';
-  const follows = higherBox() && Math.abs((shortOfTheLid() ?? 0) - 27.8) < 1e-9;
+  const length = about(postLength(built), 28) && built.evaluation.features['postPattern'].status === 'ok';
+  const follows = higherBox() && about(shortOfTheLid(), 27.8) && gapTooLarge() === 'invalidExtent';
   onPostTop();
   const lengths = braceLengths(brace());
   const [parallel, through] = refusals();

@@ -23,6 +23,9 @@ export const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.
 
 export const XY: PlaneRefAfter = { kind: 'base', plane: 'XY' };
 export const onFace = (body: Id, face: FaceNameAfter): PlaneRefAfter => ({ kind: 'face', body, face });
+// Two face names are the same when their fields are, in whatever order an object lists them.
+const nameKey = (name: FaceNameAfter): string => JSON.stringify(Object.entries(name).sort(([a], [b]) => (a < b ? -1 : 1)));
+export const sameName = (a: FaceNameAfter, b: FaceNameAfter): boolean => nameKey(a) === nameKey(b);
 // An empty sketch on a plane or on a face. A face in a role of a package goes through
 // `setSketchPlane` (00-prep/contract.ts: the sketch feature of today is not restated).
 export function sketchOn(id: Id, plane: PlaneRefAfter): CommandAfter[] {
@@ -146,7 +149,7 @@ export function rib(): StateAfter {
   return run(
     ...sketchOn('ribs', onFace('box', FLOOR)),
     ...pointAt('ribs', 'r1a', 'L / 2', 'wall / 2'),
-    ...pointAt('ribs', 'r1b', 'L / 2', 'wall + 14'),
+    ...pointAt('ribs', 'r1b', 'L / 2', 'wall + 20'),
     { type: 'addCurve', sketch: 'ribs', id: 'r1', curve: { type: 'line', a: 'r1a', b: 'r1b', construction: true } },
     { type: 'addFeature', feature: { ...base('rib'), profile: { type: 'wall', sketch: 'ribs', curves: ['r1'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'add', targets: ['box'] } },
   );

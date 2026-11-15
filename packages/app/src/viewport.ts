@@ -13,6 +13,12 @@ export interface LineSet {
   width: number; // v pixelech
   dashed?: boolean;
   onTop?: boolean; // kreslit přes tělesa
+  overFills?: boolean; // drawn after the fills, so that a fill in the plane of the line does not cover it
+}
+// A half-space that is cut away: what lies on the side the normal points to.
+export interface HalfSpace {
+  origin: Vec3;
+  normal: Vec3;
 }
 export interface SceneModel {
   bodies: { id: Id; solid: Solid }[];
@@ -21,6 +27,10 @@ export interface SceneModel {
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // první smyčka obrys, další díry
   faces: { solid: Solid; faceId: number; color: number; opacity: number }[]; // zvýrazněné stěny
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
+  // The model is cut: the bodies and their highlighted faces are not drawn in this half-space,
+  // and a body is not picked there. Lines and fills are drawn as given: who builds the scene cuts
+  // the lines that belong to a body (`keptSegments` of draw.ts).
+  clip?: HalfSpace;
 }
 export interface BodyHit {
   body: Id;
@@ -59,10 +69,12 @@ export class Viewport implements View {
   private labels: { at: THREE.Vector3; element: HTMLElement }[] = [];
   private disposable: { dispose(): void }[] = [];
   private pending = false;
+  private clip: HalfSpace | undefined;
 
   constructor(private readonly container: HTMLElement) {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setClearColor(0xf2f4f7);
+    this.renderer.localClippingEnabled = true; // a material may carry clipping planes (a cut model)
     container.append(this.renderer.domElement, this.labelLayer);
     this.labelLayer.className = 'labels';
 
@@ -113,6 +125,18 @@ export class Viewport implements View {
     for (const item of this.disposable) item.dispose();
     this.disposable = [];
 
+    // A cut model: three.js keeps what lies on the side the normal of a clipping plane points to,
+    // so the plane is the half-space turned round. The bodies are drawn two-sided while they are
+    // cut: a cavity would otherwise show through its back faces, which are not drawn.
+    this.clip = model.clip;
+    const clipping = model.clip ? [new THREE.Plane(new THREE.Vector3(...model.clip.normal).negate(), new THREE.Vector3(...model.clip.normal).dot(new THREE.Vector3(...model.clip.origin)))] : null;
+    const side = clipping ? THREE.DoubleSide : THREE.FrontSide;
+    if (this.bodyMaterial.side !== side) {
+      this.bodyMaterial.side = side;
+      this.bodyMaterial.needsUpdate = true;
+    }
+    this.bodyMaterial.clippingPlanes = clipping;
+
     // Síť tělesa se staví jednou pro každý objekt Solid; engine nezměněná tělesa vrací stejná.
     const meshes = new Map<Solid, THREE.Mesh>();
     this.bodies = model.bodies.map(({ id, solid }) => {
@@ -126,7 +150,7 @@ export class Viewport implements View {
 
     for (const face of model.faces) {
       const geometry = this.own(triangleGeometry(face.solid, face.faceId));
-      const material = this.own(new THREE.MeshBasicMaterial({ color: face.color, transparent: true, opacity: face.opacity, side: THREE.DoubleSide, depthWrite: false }));
+      const material = this.own(new THREE.MeshBasicMaterial({ color: face.color, transparent: true, opacity: face.opacity, side: THREE.DoubleSide, depthWrite: false, clippingPlanes: clipping }));
       this.content.add(new THREE.Mesh(geometry, material));
     }
     for (const fill of model.fills) {
@@ -139,7 +163,7 @@ export class Viewport implements View {
       geometry.setPositions(Float32Array.from(set.segments as ArrayLike<number>));
       const line = new LineSegments2(geometry, this.lineMaterial(set));
       if (set.dashed) line.computeLineDistances();
-      line.renderOrder = set.onTop ? 3 : 1;
+      line.renderOrder = set.onTop ? 3 : set.overFills ? 2.5 : 1; // fills are drawn at 2 and write no depth
       this.content.add(line);
     }
     for (const set of model.points) {
@@ -231,8 +255,11 @@ export class Viewport implements View {
     this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.camera);
     let best: BodyHit | undefined;
+    // what is cut away is not drawn, so it is not hit either: the first hit that is left
+    const clip = this.clip;
+    const cutAway = (point: THREE.Vector3): boolean => clip !== undefined && (point.x - clip.origin[0]) * clip.normal[0] + (point.y - clip.origin[1]) * clip.normal[1] + (point.z - clip.origin[2]) * clip.normal[2] > 0;
     for (const { id, mesh } of this.bodies) {
-      const hit = this.raycaster.intersectObject(mesh, false)[0];
+      const hit = this.raycaster.intersectObject(mesh, false).find((candidate) => !cutAway(candidate.point));
       if (hit && hit.faceIndex != null && (!best || hit.distance < best.depth)) best = { body: id, triangle: hit.faceIndex, point: hit.point.toArray() as Vec3, depth: hit.distance };
     }
     return best;

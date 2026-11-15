@@ -2,13 +2,13 @@
 // edited, and what is highlighted, hovered and selected. The sketch mode and an open form add
 // theirs afterwards (sketch-mode.ts, `overlay` of a form).
 import { type EngineState, type Id, type Solid, type Vec3, faceKey } from '@trymesh/engine';
-import { COLOR, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
+import { COLOR, keptSegments, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
 import { uiOf } from './features/index';
 import { type PanelHost, type ViewPick, pickKey } from './host';
 import { type QueryPanel, queryScene } from './panels/query';
 import type { SceneAdditions } from './queries/index';
 import { polyline, sketchView } from './sketch-view';
-import type { SceneModel } from './viewport';
+import type { HalfSpace, SceneModel } from './viewport';
 
 // What the scene uses of the app beyond what every panel does.
 export interface SceneHost extends PanelHost {
@@ -73,6 +73,15 @@ function addToScene(model: SceneModel, additions: Partial<SceneAdditions>, state
   model.points.push(...(additions.points ?? []));
   for (const { body, ...fill } of additions.fills ?? []) if (shown(body)) model.fills.push(fill);
   model.labels.push(...(additions.labels ?? []));
+  if (additions.clip) model.clip = additions.clip;
+}
+
+// The cut of the model that a shown answer makes: the half-space that is cut away, and the fills
+// of the cut that are drawn (not those of a hidden body). The scene and the pick of the app read
+// it, so that what is not drawn is not picked.
+export function shownCut(additions: Partial<SceneAdditions>, host: SceneHost): { clip: HalfSpace; fills: SceneModel['fills'] } | undefined {
+  if (!additions.clip) return undefined;
+  return { clip: additions.clip, fills: (additions.fills ?? []).filter((fill) => fill.body === undefined || !host.bodyHidden(fill.body)) };
 }
 
 // The scene of the model as it is shown. `sketch`: the sketch being edited, which the sketch mode
@@ -83,6 +92,11 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
   const inModel = !sketch && !host.draft;
   const model: SceneModel = { bodies: [], lines: [], points: [], fills: [], faces: [], labels: [] };
   const highlighted = host.feature(host.selectedFeature);
+  // what the shown answer of a query adds: the two bodies of a picked collision, the line of
+  // a measured distance, a cut of the model. A cut takes away a part of everything that belongs
+  // to a body: the bodies and their highlighted faces in the view, their edges here.
+  const additions = inModel ? queryScene(queries, host) : {};
+  const clip = additions.clip;
 
   // tělesa a jejich obrysy
   const outline: number[] = [];
@@ -94,9 +108,8 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     const owns = highlighted && inModel ? uiOf(highlighted.type).ownsFace : undefined;
     if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
   }
-  model.lines.push({ segments: outline, color: COLOR.edge, width: 1.5 });
-  // what the shown answer of a query adds: the two bodies of a picked collision, the line of a measured distance
-  if (inModel) addToScene(model, queryScene(queries, host), state, host);
+  model.lines.push({ segments: keptSegments(outline, clip), color: COLOR.edge, width: 1.5 });
+  addToScene(model, additions, state, host);
 
   // roviny
   const square = planeSquare(host.planeSize(state));
@@ -123,7 +136,7 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     const body = pick && pick.kind !== 'plane' ? evaluation.bodies[pick.body] : undefined;
     if (!pick || !body) continue;
     if (pick.kind === 'face') model.faces.push({ solid: body.solid, faceId: pick.faceId, color, opacity });
-    else if (pick.kind === 'edge' && body.edges[pick.index]) model.lines.push({ segments: body.edges[pick.index].segments, color, width: 4, onTop: true });
+    else if (pick.kind === 'edge' && body.edges[pick.index]) model.lines.push({ segments: keptSegments(body.edges[pick.index].segments, clip), color, width: 4, onTop: true });
   }
   return model;
 }

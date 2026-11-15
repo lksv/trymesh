@@ -1,6 +1,6 @@
 # 1a Section: the query and the section view in the app
 
-**Decision D38. State: the engine side (the query `section`) is implemented on the branch `d36/1a`, see "As implemented" at the end; the section view of the app is not yet. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D38. State: implemented on the branch `d36/1a`: the query `section` and the section view of the app; see "As implemented" at the end. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: a section through the gears.
 
@@ -283,3 +283,18 @@ Left as known limits:
 - **A hole that touches its island** at a point a rounding error outside the island would go to the loop around both. On the boundary itself it went to the right one; no body produced the case.
 - **A whole loop on a cylinder whose axis lies outside the loop** would get the sign of its sweep from rounding. A loop on one cylinder cut across its axis always winds round the axis.
 - **Not reached by the review:** a pose (the context does not pose bodies yet), a cone or a general surface from a model (none exists), a mesh of the kernel with an edge in four triangles.
+
+### The app side (2026-11-15)
+
+`packages/app/src/queries/section.ts` (the view: `prepare`, the rows, the scene), `SceneModel.clip` and `LineSet.overFills` in `viewport.ts`, `shownCut` in `scene.ts`, `keptSegments` and `insideFill` in `draw.ts`, and the pick of `app.ts`. What differs from the design and from `calls.ts`:
+
+- **The lines of a body are cut by the scene, not by their material.** The design left it open ("if the line material of three.js honours a clipping plane, otherwise the scene builder cuts the segments"). Cut by the builder (`keptSegments`), the lines of a cut model are in the description of the scene, where the recorded test of the app sees them; the pick of edges uses the same function. The bodies and their highlighted faces are clipped by their materials.
+- **The outline of the cut is drawn after the fills** (`overFills`). A fill is pulled towards the eye so that it wins over a face of a body in its plane; a line in the same plane would lose to it as well. The fills write no depth, so a line drawn after them is covered only by what stands in front of it.
+- **Nothing picked through the cut** is decided in the pick of the app, not in `pickBody`: the view skips the hits that are cut away, and the app then asks whether the ray meets a filled region of the cut before that hit (`shownCut` gives the fills that are drawn, without those of hidden bodies). It returns nothing at all in that case; with `pickBody` answering "no body" alone, the pick would have gone on to the edges and the planes behind the fill.
+- **The areas of the panel** are shown to a thousandth of a square millimetre.
+- **A body with a face in the plane** gets a sentence of its own in the panel, with what it means.
+- **What a view adds to a scene is built once per answer**: the pick asks for it on every move of the pointer.
+
+Run in a browser (2026-11-15): the cut model with the fill and the outline, a cavity that shows its walls, a click on the cut (nothing), on a wall below it and into a hole (their faces), the step of the plane, a hidden body. One thing seen there that the design does not cover: a sketch that stands on a face above the cut stays where it is, in the air; sketches belong to no body and are not cut.
+
+**Not done:** the view while a form of a feature is open and over a preview (deferred by the design), a click on the filled cut that selects its body (open in the design), a step other than 1 mm.

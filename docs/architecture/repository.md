@@ -28,10 +28,10 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
 | `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
 | `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
-| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the two views there are; the collisions are the view of `interference` |
+| `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts`, `queries/section.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the three views there are; the collisions are the view of `interference`, the cut model the view of `section` |
 | `sketch-mode.ts` | The sketch mode: its tools, what the events of the view mean in it, the drag of a point, what it draws (`SketchHost`) |
-| `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`) |
-| `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. `View` is its interface; a test passes its own |
+| `scene.ts` | The scene of the model: bodies, outlines, planes, the other sketches, highlights (`SceneHost`); what a view of a query adds, and the cut it may make (`shownCut`, read by the scene and by the pick of the app) |
+| `viewport.ts` | three.js: draws the description of a scene, the ray under the pointer, the hit of a body. A scene may be cut (`SceneModel.clip`): the bodies and their highlighted faces are clipped by their materials and not hit in the half-space that is cut away. `View` is its interface; a test passes its own |
 | `sketch-view.ts`, `sketch-commands.ts`, `sketch-diagnosis.ts` | The geometry of a sketch for drawing, hit tests and measuring; the commands of the drawing tools, constraints and dimensions from a selection; the texts of the diagnosis |
 | `draw.ts`, `labels.ts`, `fields.ts`, `issue-text.ts`, `dom.ts` | Shared helpers: drawing into a scene, texts, numeric fields with units, issues named for a human, the DOM |
 

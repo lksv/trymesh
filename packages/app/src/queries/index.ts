@@ -4,18 +4,24 @@
 import type { EngineState, FaceName, Frame, Id, QueryArgs, QueryName, QueryResult, ResultUnit, Vec3 } from '@trymesh/engine';
 import { interferenceView } from './interference';
 import { measureView } from './measure';
+import { sectionView } from './section';
 
 // What a view adds to the scene while its answer is shown: the fields of `SceneModel`, with
 // a face given by its name (the scene resolves the mesh), and bodies drawn in a colour of the
 // view's choice. What an addition says about a body the user has hidden is not drawn: a face,
 // a coloured body, and a fill or a line that names its `body`.
 export interface SceneAdditions {
-  lines: { segments: ArrayLike<number>; color: number; width: number; dashed?: boolean; onTop?: boolean; body?: Id }[];
+  lines: { segments: ArrayLike<number>; color: number; width: number; dashed?: boolean; onTop?: boolean; overFills?: boolean; body?: Id }[];
   points: { positions: number[]; color: number; size: number }[];
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean; body?: Id }[];
   faces: { body: Id; face: FaceName; color: number; opacity: number }[];
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
   bodies: { body: Id; color: number }[];
+  // The model is cut: what lies on the side the normal points to is neither drawn nor picked
+  // (the bodies, their edges, a highlighted face or edge). The fills given with a cut are the
+  // filled cut: they lie in its plane, and a click that meets one before anything that is drawn
+  // picks nothing, because behind it is the inside of a body.
+  clip: { origin: Vec3; normal: Vec3 };
 }
 
 // What a view gets of the panel and of the app.
@@ -50,4 +56,4 @@ export interface QueryView<N extends QueryName> {
   note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 
-export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView };
+export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView };

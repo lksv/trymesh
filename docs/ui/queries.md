@@ -1,6 +1,6 @@
 # UI: queries
 
-Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39).
+Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38).
 
 ## Queries (D39)
 
@@ -34,13 +34,30 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **Asking** is the button *Ask* (*Ask again* once there is an answer), not a side effect of typing: a query may take seconds. The engine checks the arguments. An error is written under the form and in the status bar, and the row of the argument it names is marked. A number out of its range, or a text that is not a number, is marked while it is typed and still sent as typed, so the form never asks with a value other than the one it shows. Nothing is armed after a question; *Pick in the view* arms an argument again.
 - **The answer** belongs to the document and the place on the timeline it was asked at: it is shown while the insertion marker is there, hidden while it is elsewhere, and dropped when the document changes. The arguments in the form stay. A note in the status bar goes with the answer.
 - **Without a view** the answer is a tree of names and values, each level set in from the one it belongs to: numbers rounded as the MCP tool `query` rounds them, with the unit the query gives for their key (an angle in degrees, rounded after it was converted), a face by its label and its key (the sides of a body share a label), a body by its name. A long list shows its first thirty items.
-- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. Two exist:
+- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. Three exist:
   - **Measure**: the exact distance (labelled *Thickness* for two faces that look away from each other, *Gap* for two that look at each other) and the exact angle, when the pair has them; the smallest distance on the mesh with its accuracy, to a thousandth of a millimetre; the faces asked about highlighted; the two points of the smallest distance joined by a line with its length.
   - **Interference** (the collisions, [bodies.md](bodies.md)): asked as soon as it opens; a row per colliding pair and per fit, a click on a row highlights its two bodies.
+  - **Section**: the model cut by the plane, below.
+
+## The section view (D38)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| Cut the model by a plane | `engine.query('section', { plane, offset, flip, bodies, outline: 'polylines', maxPoints: 1000000 }, { at })` | the frame of the answer and `below` (the plane the section was taken at), the regions of every body as polygons, `inPlane`, `truncated` |
+| Step the plane along its normal | the same, with the offset of the form moved by 1 mm | |
+
+- **The form** is the generic one: the plane (a base plane or a plane feature from the list, or a planar face or a plane picked in the view), the offset, *From the other side*, the bodies. What the view adds to the question (polygons instead of spans, a budget far above any model the app can show) never shows in the form.
+- **While the answer is shown the model is cut.** What lies on the side the normal of the plane points to is not drawn: the bodies (drawn two-sided meanwhile, so that a cavity shows its walls), their edges, and a highlighted face or edge. The cut is filled per region, with its holes, and outlined. The model is cut at the plane the section was taken at (the precision of the coordinates under the plane asked for), and the fills lie in that plane, so the edge of the cut bodies and the outline of the fills meet. Sketches and planes do not belong to a body and are not cut.
+- **The panel** lists the bodies the plane cuts with their areas (to a thousandth of a square millimetre) and the number of their pieces, says which bodies have a face in the plane (such a body shows that face from one side and nothing from the other), and has the buttons *−1 mm* and *+1 mm*, which move the offset of the form and ask again.
+- **Nothing that is cut away is picked**, and nothing is picked through the cut: a click that meets a filled region before anything that is drawn selects nothing, because behind the fill is the inside of a body. A click into a cavity of the cut picks its wall; a click on a wall below the cut picks as ever.
+- **A hidden body** loses its fill and its outline with it.
+- **An answer too large to draw** (one that was truncated) cuts the model and fills nothing, and the panel says so: a region filled without one of its holes would show material across a cavity.
+- The cut ends when the answer goes: on *Close*, when the marker moves elsewhere, on a change of the document.
 
 ## Implementation status
 
 - Run in a browser on 2026-11-15 (the form of `measure`, of `interference` and of `section`, the lists, the picks in the view, a number out of its range, the marker moved). What it showed and the tests of the app could not: the tree was laid out as a row, the unit of a number wrapped under its field, an angle was rounded in radians before it was converted, and the sides of a body were listed under one label. All four are fixed.
 
 - Not offered: asking over a preview or while a form of a feature is open (the model panel is not shown then), several answers at once, a question saved with the document.
+- The section view, not offered: a section by more than one plane, hatching and a colour per body, measuring inside the section, a click on the filled cut that selects its body, a step other than 1 mm, dragging the plane.
 - The labels of the tree are the keys of the result, in English.

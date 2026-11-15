@@ -47,9 +47,12 @@ export class StubView implements View {
   ray(clientX: number, clientY: number): { origin: Vec3; direction: Vec3 } {
     return { origin: [clientX - FAR * LOOK[0], clientY - FAR * LOOK[1], -FAR * LOOK[2]], direction: LOOK };
   }
-  // The nearest triangle of the bodies of the scene under the ray.
+  // The nearest triangle of the bodies of the scene under the ray; of a cut model, the nearest
+  // point that is not cut away (the bodies are then drawn two-sided, and this view hits a triangle
+  // from either side anyway).
   pickBody(clientX: number, clientY: number): BodyHit | undefined {
     const { origin, direction } = this.ray(clientX, clientY);
+    const clip = this.scene.clip;
     let best: BodyHit | undefined;
     const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -68,7 +71,9 @@ export class StubView implements View {
         const v = dot(direction, q) / det;
         const depth = dot(e2, q) / det;
         if (u < 0 || v < 0 || u + v > 1 || depth <= 0 || (best && depth >= best.depth)) continue;
-        best = { body: id, triangle, point: [origin[0] + depth * direction[0], origin[1] + depth * direction[1], origin[2] + depth * direction[2]], depth };
+        const point: Vec3 = [origin[0] + depth * direction[0], origin[1] + depth * direction[1], origin[2] + depth * direction[2]];
+        if (clip && dot(sub(point, clip.origin), clip.normal) > 0) continue;
+        best = { body: id, triangle, point, depth };
       }
     }
     return best;
@@ -102,7 +107,8 @@ function sceneText(scene: SceneModel): string[] {
   const owner = (solid: unknown): string => scene.bodies.find((body) => body.solid === solid)?.id ?? '(a body that is not shown)';
   return [
     `bodies: ${scene.bodies.map((body) => body.id).join(', ') || '(none)'}`,
-    ...scene.lines.filter((set) => set.segments.length > 0).map((set) => `line ${hex(set.color)} width ${set.width}${set.dashed ? ' dashed' : ''}${set.onTop ? ' onTop' : ''}: ${digest(set.segments)}`),
+    ...(scene.clip ? [`clip: cut away above ${numbers(scene.clip.origin)} along ${numbers(scene.clip.normal)}`] : []),
+    ...scene.lines.filter((set) => set.segments.length > 0).map((set) => `line ${hex(set.color)} width ${set.width}${set.dashed ? ' dashed' : ''}${set.onTop ? ' onTop' : ''}${set.overFills ? ' overFills' : ''}: ${digest(set.segments)}`),
     ...scene.points.filter((set) => set.positions.length > 0).map((set) => `points ${hex(set.color)} size ${set.size}: ${digest(set.positions)}`),
     ...scene.fills.map((fill) => `fill ${hex(fill.color)} opacity ${fill.opacity}${fill.onTop ? ' onTop' : ''} at ${numbers(fill.frame.origin)} normal ${numbers(fill.frame.normal)}: ${fill.loops.map((loop) => digest(loop)).join(' | ')}`),
     ...scene.faces.map((face) => `face ${owner(face.solid)} #${face.faceId} ${hex(face.color)} opacity ${face.opacity}`),

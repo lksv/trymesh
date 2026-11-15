@@ -3,17 +3,18 @@ import { SketchAnalysis } from './analysis';
 import { checkNumber } from './catalog';
 import { atPath, constraintOperands, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
-import { GENERATORS, type ResolvedOperand, generateProfile } from './generators';
-import { type Loop, type Profile, type Region, type SketchGeometry, detectProfile, measure, ownVariables, sameRegion, solverSetup } from './sketch';
-import { type FaceInfo, type Prism, type RigidTransform, type SideCurve, analyzeBody, buildPrism, faceFrame, projectEdge, rotation, onSurface, toWorld, transformFace, transformFrame, transformSolid, volumeOf } from './solid';
+import { toolSpan } from './recompute/extent';
+import { profile as resolveProfile } from './recompute/profile';
+import { applyTool, axis, frame as frameOf, issue, lookup, withFaces } from './recompute/services';
+import type { Deps, Done, DragTarget, Failed, Model, Placement, SketchState, SolvedSketch, State, Step, ToolRecipe, WriteBack } from './recompute/state';
+import { type Region, type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from './sketch';
+import { type Prism, type RigidTransform, analyzeBody, buildPrism, projectEdge, rotation, toWorld, transformFace, transformFrame, transformSolid } from './solid';
 import type {
-  CopyTag,
   Document,
   Evaluation,
   ExpressionError,
   ExtrudeFeature,
   FaceName,
-  Facts,
   Feature,
   FeatureResult,
   FieldPath,
@@ -23,108 +24,24 @@ import type {
   IssueCode,
   PatternFeature,
   PlaneFeature,
-  PlaneRef,
-  Point2,
   Projected,
   SketchFeature,
-  SketchSolver,
-  Solid,
-  SolidKernel,
   SolveInput,
   SolveResult,
-  Vec3,
 } from './types';
-import { faceKey, has } from './util';
+import { faceKey } from './util';
 
-export interface Deps {
-  solver: SketchSolver;
-  kernel: SolidKernel;
-}
-export interface DragTarget {
-  sketch: Id;
-  point: Id;
-  target: Point2;
-}
+// The types of the state moved to recompute/state.ts; what the engine and the contracts import from
+// here keeps its path.
+export type { Deps, DragTarget, SketchState, WriteBack } from './recompute/state';
+
 export interface EvaluateOptions {
   upTo?: Id; // skončit u této feature
   drag?: DragTarget; // tažení bodu, viz Řešení skici
 }
 
-// Stav modelu po feature. Neměnný; nezměněné části sdílí s předchozím stavem.
-interface State {
-  features: Record<Id, FeatureResult>;
-  bodies: Record<Id, Solid>;
-  faceNames: FaceName[]; // společná tabulka, index = číslo stěny
-  faceInfos: FaceInfo[];
-  faceIds: Map<string, number>; // jméno stěny → číslo
-  planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
-  sketches: Record<Id, SketchState>;
-  tools: Record<Id, ToolRecipe>; // recepty nástrojů vysunutí s operací add a cut
-}
-
-// Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.
-// Ukládá se do stavu, aby pozdější feature (pole) mohla tentýž nástroj postavit znovu; hotová síť
-// nestačí, protože čísla stěn i poloha nástroje se při opakování liší. Recept zůstává i tehdy, když
-// vysunutí samo skončilo varováním „bez účinku".
-export interface ToolRecipe {
-  operation: 'add' | 'cut';
-  targets: Id[];
-  // `targets`: the bodies the tool is about to be applied to, in the state it is applied in. An
-  // extent that depends on them ("through all") is measured here, every time the tool is built.
-  // `placement`: where a copy made by a pattern stands and how its faces are tagged. The tool is
-  // built there, not moved afterwards, so that what depends on the targets is measured in the
-  // direction the copy points in.
-  build(targets: Solid[], firstFaceId: number, placement?: Placement): Prism;
-}
-export interface Placement {
-  transform: RigidTransform;
-  copy: CopyTag;
-}
-
-// The part of the state a tool changes: bodies and the face table.
-type Model = Pick<State, 'bodies' | 'faceNames' | 'faceInfos' | 'faceIds'>;
-// The model after a tool was applied and the targets it did not change, or why it could not be applied.
-type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false; code: IssueCode; refs?: unknown[]; detail?: string };
-
-// Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
-// A generated profile adds what its generator published and warned about.
-interface ResolvedProfile {
-  regions: Region[];
-  frame: Frame;
-  curveOf: (id: Id) => SideCurve;
-  facts?: Facts;
-  warnings?: Issue[];
-}
-// `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
-// určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
-export interface SketchState {
-  feature: SketchFeature;
-  frame: Frame;
-  geometry: SketchGeometry;
-  profile: Profile;
-  input: SolveInput;
-  solve: { status: SolveResult['status']; conflicting: Id[] };
-  analysis?: SketchAnalysis;
-}
-// Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
-// jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
-const lookup = <T>(record: Record<Id, T>, id: Id): T | undefined => (has(record, id) ? record[id] : undefined);
-
 // The state a feature's step started from and led to, for features whose result is written back to the document.
 export type Trace = Map<Id, { before: State; after: State }>;
-
-// A sketch solved during the recompute: solved variables and the stamp to write back to the document.
-type SolvedSketch = Pick<SketchFeature, 'points' | 'radii' | 'solved'>;
-// What the recompute writes back to the document: the feature with expression values substituted
-// into its fields and, for a sketch, the solved variables.
-export interface WriteBack {
-  feature: Feature;
-  solved?: SolvedSketch;
-}
-interface Step {
-  state: State;
-  writeBack?: SolvedSketch;
-}
 
 // A feature with its expression values substituted. The recompute step works with `feature`; a field
 // whose expression cannot be evaluated or gave a value out of range keeps the last valid number from
@@ -136,33 +53,6 @@ interface Resolution {
   errors?: Record<FieldPath, ExpressionError>;
 }
 const RESOLUTIONS_KEPT = 8; // per feature; a preview while typing alternates between a few values
-
-const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
-  XY: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] },
-  XZ: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1], normal: [0, -1, 0] },
-  YZ: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1], normal: [1, 0, 0] },
-};
-
-const MESSAGE: Record<IssueCode, string> = {
-  brokenReference: 'Odkaz vede na rovinu, stěnu, skicu nebo těleso, které v tomto místě časové osy neexistuje.',
-  noProfile: 'Vybraná oblast ve skice není.',
-  invalidProfile: 'Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky.',
-  nonPlanarFace: 'Stěna není rovinná.',
-  emptyResult: 'Operace by odebrala celé těleso.',
-  kernelFailure: 'Geometrické jádro operaci nezvládlo.',
-  sketchConflict: 'Vazby skici si odporují nebo se skicu nepodařilo vyřešit.',
-  brokenProjection: 'Promítnutá hrana už na tělese není.',
-  degenerateProjection: 'Hrana je kolmá na rovinu skici a nejde promítnout.',
-  unsupportedProjection: 'Hranu nejde promítnout jako zvolený druh křivky.',
-  noEffect: 'Operace těleso nezměnila.',
-  gearMesh: 'The gear cannot be put in mesh with the gear it refers to.',
-  gearInterference: 'The tip of one gear of the pair runs into the root of the other.',
-  invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
-};
-const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
-
-// The largest coordinate of a solid: the scale its float32 positions are precise to.
-const reach = (s: Solid): number => s.positions.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
 
 // Přepočet s cache. Stav po každé feature se pamatuje podle identity objektu feature a identity
 // předchozího stavu, takže nezměněný začátek časové osy se nepočítá znovu.
@@ -293,24 +183,15 @@ export class Evaluator {
     }
   }
 
-  private frame(ref: PlaneRef, state: State): Frame | IssueCode {
-    if (ref.kind === 'base') return BASE[ref.plane];
-    if (ref.kind === 'plane') return lookup(state.planes, ref.feature) ?? 'brokenReference';
-    const solid = lookup(state.bodies, ref.body);
-    const id = state.faceIds.get(faceKey(ref.face));
-    if (!solid || id === undefined) return 'brokenReference';
-    return faceFrame(analyzeBody(solid, state.faceNames, state.faceInfos), id, state.faceInfos[id]);
-  }
-
   private plane(feature: PlaneFeature, state: State, done: Done, failed: Failed): Step {
-    const base = this.frame(feature.base, state);
+    const base = frameOf(feature.base, state);
     if (typeof base === 'string') return failed(base, [feature.base]);
     const frame: Frame = { ...base, origin: toWorld(base, 0, 0, feature.offset) };
     return { state: done({ status: 'ok', warnings: [], plane: frame }, { planes: { ...state.planes, [feature.id]: frame } }) };
   }
 
   private sketch(feature: SketchFeature, state: State, chordTolerance: number, drag: DragTarget | undefined, done: Done, failed: Failed, badFields: FieldPath[]): Step {
-    const frame = this.frame(feature.plane, state);
+    const frame = frameOf(feature.plane, state);
     if (typeof frame === 'string') return failed(frame, [feature.plane]);
     const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the field keeps its last valid value')] : [];
 
@@ -383,7 +264,7 @@ export class Evaluator {
   // Vysunutí má tři části: profil (odkud se bere tvar), nástroj (síť a nové stěny) a použití
   // (nové těleso, nebo booleovská operace s cílem).
   private extrude(feature: ExtrudeFeature, state: State, chordTolerance: number, finish: Done, failed: Failed): Step {
-    const profile = this.profile(feature, state, chordTolerance);
+    const profile = resolveProfile(feature.id, feature.profile, state, chordTolerance);
     // a generator explains its failure itself; the general text of the code is about sketch curves
     if ('code' in profile) return profile.message === undefined ? failed(profile.code, profile.refs) : { state: finish({ status: 'error', error: { code: profile.code, message: profile.message, refs: profile.refs }, warnings: [] }) };
     // What the profile generator published and warned about belongs to the result whatever the
@@ -402,7 +283,7 @@ export class Evaluator {
     };
     if (feature.operation !== 'new') {
       const recipe: ToolRecipe = { operation: feature.operation, targets: feature.targets ?? [], build };
-      const applied = this.applyTool(recipe, state);
+      const applied = applyTool(recipe, state, this.deps.kernel);
       if (!applied.ok) return failed(applied.code, applied.refs, applied.detail);
       // The recipe is stored even when nothing changed: a copy in a pattern can hit what the original missed.
       const tools = { ...state.tools, [feature.id]: recipe };
@@ -420,49 +301,6 @@ export class Evaluator {
       return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
     }
     return { state: done({ status: 'ok', warnings: [], bodies: [feature.id] }, { ...withFaces(state, tool, first), bodies: { ...state.bodies, [feature.id]: tool.solid } }) };
-  }
-
-  // Applies a tool to its targets: a boolean operation with each of them. It works from the recipe
-  // alone, so any feature that produces a tool (an extrusion today) is applied the same way, and
-  // a pattern applies it again in another placement.
-  // - A missing target is a broken reference.
-  // - A cut that would remove a whole target is an error and changes none of them.
-  // - Targets the tool did not change are returned in `unchanged`. When it changed none, its faces
-  //   are in no body and do not enter the face table either.
-  private applyTool(recipe: ToolRecipe, model: Model, placement?: Placement): Applied {
-    const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
-    if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
-    const first = model.faceNames.length;
-    const bodies = { ...model.bodies };
-    const unchanged: Id[] = [];
-    let tool: Prism;
-    try {
-      tool = recipe.build(recipe.targets.map((target) => model.bodies[target]), first, placement);
-      for (const target of recipe.targets) {
-        const before = model.bodies[target];
-        const result = this.deps.kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);
-        if (result.triangles.length === 0) return { ok: false, code: 'emptyResult', refs: [target] };
-        // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
-        // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
-        // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
-        // A cut copy of a pattern has no effect also when faces of its tool are in the result but
-        // the shape is what it was: a copy that lands on what is cut already (five copies over
-        // 360°) would otherwise only take the faces of the original over, silently. The shape is
-        // what it was when every face of the tool in the result lies on the surface the target had;
-        // the volume alone does not say it, because its tolerance grows with the bodies and a copy
-        // that cuts a small corner off a large plate does have an effect.
-        const volume = volumeOf(before);
-        const scale = Math.min(Math.abs(volume), Math.abs(volumeOf(tool.solid)));
-        const sameVolume = Math.abs(volumeOf(result) - volume) <= 1e-6 * Math.max(1, scale);
-        const renamedOnly = () => placement !== undefined && onSurface(result, first, before, 1e-5 * Math.max(1, reach(before)));
-        if (sameVolume && (recipe.operation === 'add' || !result.faceIds.some((face) => face >= first) || renamedOnly())) unchanged.push(target);
-        else bodies[target] = result;
-      }
-    } catch (error) {
-      return { ok: false, code: 'kernelFailure', detail: error instanceof Error ? error.message : String(error) };
-    }
-    if (unchanged.length === recipe.targets.length) return { ok: true, model, unchanged };
-    return { ok: true, model: { ...withFaces(model, tool, first), bodies }, unchanged };
   }
 
   // A pattern: the transforms of its copies, then either the tools of the source features applied
@@ -507,7 +345,7 @@ export class Evaluator {
     const idle: { copy: number; feature: Id; targets: Id[] }[] = [];
     for (const placement of placements) {
       for (const id of source.features) {
-        const applied = this.applyTool(state.tools[id], model, placement);
+        const applied = applyTool(state.tools[id], model, this.deps.kernel, placement);
         // The pattern is atomic: one failed copy and the model stays as it was before the pattern.
         // The copy is named by the first of `refs`, not in the text: a client names it its own way.
         if (!applied.ok) return failed(applied.code, [{ copy: placement.copy.index, feature: id }, ...(applied.refs ?? [])], applied.detail);
@@ -521,116 +359,13 @@ export class Evaluator {
 
   // The transforms of the copies of a pattern, the original excluded: copy 1 first.
   private transforms(transform: PatternFeature['transform'], state: State): RigidTransform[] | { code: IssueCode; refs: unknown[] } {
-    const { axis, count, span } = transform;
-    let point: Vec3 = [0, 0, 0];
-    let direction: Vec3 = axis.kind === 'base' ? [axis.axis === 'X' ? 1 : 0, axis.axis === 'Y' ? 1 : 0, axis.axis === 'Z' ? 1 : 0] : [0, 0, 1];
-    if (axis.kind === 'sketchPoint') {
-      const sketch = lookup(state.sketches, axis.sketch);
-      if (!sketch) return { code: 'brokenReference', refs: [axis.sketch] };
-      const at = lookup(sketch.geometry.points, axis.point);
-      if (!at) return { code: 'brokenReference', refs: [axis.point] };
-      point = toWorld(sketch.frame, at.x, at.y);
-      direction = sketch.frame.normal;
-    }
+    const { count, span } = transform;
+    const line = axis(transform.axis, state);
+    if ('code' in line) return line;
+    const { point, direction } = line;
     // full circle: the copies divide it evenly; an angle: it lies between the first and the last copy
     const step = span.type === 'full' ? (2 * Math.PI) / count : count > 1 ? span.angle / (count - 1) : 0;
     return Array.from({ length: count - 1 }, (_, i) => rotation(point, direction, step * (i + 1)));
   }
-
-  // Profil vysunutí podle jeho zdroje.
-  private profile(feature: ExtrudeFeature, state: State, chordTolerance: number): ResolvedProfile | { code: IssueCode; refs: unknown[]; message?: string } {
-    const source = feature.profile;
-    const sketch = lookup(state.sketches, source.sketch);
-    if (!sketch) return { code: 'brokenReference', refs: [source.sketch] };
-    if (source.type === 'generated') return this.generated(feature.id, source, sketch, state, chordTolerance);
-    if (!sketch.profile.valid) return { code: 'invalidProfile', refs: [source.sketch] };
-    const regions = source.regions.map((ref) => sketch.profile.regions.find((region) => sameRegion(region.ref, ref)));
-    const missing = source.regions.filter((_, i) => !regions[i]);
-    if (missing.length) return { code: 'noProfile', refs: missing };
-    const { points, radii } = sketch.geometry;
-    const curveOf = (id: Id): SideCurve => {
-      const curve = sketch.feature.curves[id];
-      const at = (point: Id): [number, number] => [points[point].x, points[point].y];
-      if (curve.type === 'line') return { type: 'line', a: at(curve.a), b: at(curve.b) };
-      const center = at(curve.center);
-      return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
-    };
-    return { regions: regions as Region[], frame: sketch.frame, curveOf };
-  }
-
-  // A profile from a generator. The generator reads only the solved operands, so it does not depend
-  // on the sketch profile being valid: the pitch circles of gears in mesh touch, which would
-  // invalidate it if they were not construction geometry.
-  private generated(id: Id, source: Extract<ExtrudeFeature['profile'], { type: 'generated' }>, sketch: SketchState, state: State, chordTolerance: number): ResolvedProfile | { code: IssueCode; refs: unknown[]; message?: string } {
-    const spec = GENERATORS[source.generator];
-    const { points, radii } = sketch.geometry;
-    const operands: Record<string, ResolvedOperand> = {};
-    for (const { field } of spec.operands) {
-      // own curves and projected ones; validation let only the kinds of the catalog in (circles today)
-      const entity = source.operands[field];
-      const curve = lookup(sketch.input.curves, entity);
-      const center = curve?.type === 'circle' ? lookup(points, curve.center) : undefined;
-      const radius = lookup(radii, entity);
-      if (!center || radius === undefined) return { code: 'brokenReference', refs: [entity] };
-      operands[field] = { kind: 'circle', center: [center.x, center.y], radius };
-    }
-    // facts of the features referred to; a feature that is missing, suppressed or in error has none
-    const refs = Object.fromEntries(Object.entries(source.refs ?? {}).map(([name, feature]) => [name, lookup(state.features, feature)?.facts]));
-    let result: ReturnType<typeof generateProfile>;
-    try {
-      result = generateProfile(source.generator, { operands, params: source.params, refs, frame: sketch.frame, chordTolerance });
-    } catch (error) {
-      return { code: 'invalidProfile', refs: [id], message: `The profile generator failed: ${error instanceof Error ? error.message : String(error)}` };
-    }
-    if (!result.ok) return { code: 'invalidProfile', refs: [id], message: `The profile generator cannot build the profile: ${result.message}.` };
-    // Regions in the shape the prism builder takes: every vertex has its own key and every edge the
-    // name of its side in place of a curve ID.
-    const loop = (generated: { xy: number[]; side: string }, tag: string): Loop => {
-      const count = generated.xy.length / 2;
-      return { xy: generated.xy, keys: Array.from({ length: count }, (_, i) => `g:${tag}:${i}`), curves: Array.from({ length: count }, () => generated.side) };
-    };
-    const regions = result.regions.map((region, r): Region => ({ ref: { outerLoop: [region.outer.side] }, outer: loop(region.outer, `${r}`), holes: region.holes.map((hole, h) => loop(hole, `${r}:${h}`)) }));
-    const warnings = result.warnings.map((warning) => issue(warning.code, warning.refs, warning.detail));
-    return { regions, frame: sketch.frame, curveOf: () => ({ type: 'general' }), facts: result.facts, warnings };
-  }
 }
 
-// The face tables of a model with the faces of a new tool appended.
-function withFaces(state: Model, tool: Prism, first: number): Pick<State, 'faceNames' | 'faceInfos' | 'faceIds'> {
-  return {
-    faceNames: [...state.faceNames, ...tool.faces.map((f) => f.name)],
-    faceInfos: [...state.faceInfos, ...tool.faces.map((f) => f.info)],
-    faceIds: new Map([...state.faceIds, ...tool.faces.map((f, i): [string, number] => [faceKey(f.name), first + i])]),
-  };
-}
-
-// The interval of the tool along the normal of the sketch plane, measured from the plane: [start,
-// end]. "Through all" takes the extent of all targets together along the normal (their vertices
-// projected onto it) and adds an overshoot, so that the cap of the tool does not lie in a face of
-// a body. The overshoot follows the largest coordinate of the targets and of the sketch plane, so
-// it normally stays far above the resolution of the kernel adapter (about 1e-4 of the largest
-// coordinate of body and tool). Where it does not (a profile much larger than the targets), the
-// adapter takes the cap as flush with the face, which it handles like any flush face.
-// A side on which the targets do not reach gets just the overshoot: the tool then misses them and
-// the feature reports `noEffect`.
-function toolSpan(extent: ExtrudeFeature['extent'], frame: Frame, targets: Solid[]): [number, number] {
-  if (extent.type === 'distance') return [extent.start, extent.start + extent.distance];
-  let [low, high, reach] = [0, 0, Math.max(...frame.origin.map(Math.abs))];
-  for (const solid of targets) {
-    const p = solid.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      const along = (p[i] - frame.origin[0]) * frame.normal[0] + (p[i + 1] - frame.origin[1]) * frame.normal[1] + (p[i + 2] - frame.origin[2]) * frame.normal[2];
-      low = Math.min(low, along);
-      high = Math.max(high, along);
-      reach = Math.max(reach, Math.abs(p[i]), Math.abs(p[i + 1]), Math.abs(p[i + 2]));
-    }
-  }
-  const overshoot = Math.max(1, 0.01 * reach);
-  if (extent.side === 'forward') return [0, high + overshoot];
-  if (extent.side === 'backward') return [0, low - overshoot];
-  return [low - overshoot, high + overshoot];
-}
-
-// `bodies` of a result may be left out: most steps create none.
-type Done = (result: Omit<FeatureResult, 'bodies'> & { bodies?: Id[] }, change?: Partial<State>) => State;
-type Failed = (code: IssueCode, refs?: unknown[], detail?: string) => Step;

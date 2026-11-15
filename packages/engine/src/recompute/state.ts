@@ -1,0 +1,91 @@
+// The state of the recompute between features and the types a step of a feature works with.
+import type { SketchAnalysis } from '../analysis';
+import type { Profile, Region, SketchGeometry } from '../sketch';
+import type { FaceInfo, Prism, RigidTransform, SideCurve } from '../solid';
+import type { CopyTag, FaceName, Facts, Feature, FeatureResult, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult } from '../types';
+
+export interface Deps {
+  solver: SketchSolver;
+  kernel: SolidKernel;
+}
+export interface DragTarget {
+  sketch: Id;
+  point: Id;
+  target: Point2;
+}
+
+// Stav modelu po feature. Neměnný; nezměněné části sdílí s předchozím stavem.
+export interface State {
+  features: Record<Id, FeatureResult>;
+  bodies: Record<Id, Solid>;
+  faceNames: FaceName[]; // společná tabulka, index = číslo stěny
+  faceInfos: FaceInfo[];
+  faceIds: Map<string, number>; // jméno stěny → číslo
+  planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
+  sketches: Record<Id, SketchState>;
+  tools: Record<Id, ToolRecipe>; // recepty nástrojů vysunutí s operací add a cut
+}
+
+// Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.
+// Ukládá se do stavu, aby pozdější feature (pole) mohla tentýž nástroj postavit znovu; hotová síť
+// nestačí, protože čísla stěn i poloha nástroje se při opakování liší. Recept zůstává i tehdy, když
+// vysunutí samo skončilo varováním „bez účinku".
+export interface ToolRecipe {
+  operation: 'add' | 'cut';
+  targets: Id[];
+  // `targets`: the bodies the tool is about to be applied to, in the state it is applied in. An
+  // extent that depends on them ("through all") is measured here, every time the tool is built.
+  // `placement`: where a copy made by a pattern stands and how its faces are tagged. The tool is
+  // built there, not moved afterwards, so that what depends on the targets is measured in the
+  // direction the copy points in.
+  build(targets: Solid[], firstFaceId: number, placement?: Placement): Prism;
+}
+export interface Placement {
+  transform: RigidTransform;
+  copy: CopyTag;
+}
+
+// The part of the state a tool changes: bodies and the face table.
+export type Model = Pick<State, 'bodies' | 'faceNames' | 'faceInfos' | 'faceIds'>;
+// The model after a tool was applied and the targets it did not change, or why it could not be applied.
+export type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false; code: IssueCode; refs?: unknown[]; detail?: string };
+
+// Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
+// A generated profile adds what its generator published and warned about.
+export interface ResolvedProfile {
+  regions: Region[];
+  frame: Frame;
+  curveOf: (id: Id) => SideCurve;
+  facts?: Facts;
+  warnings?: Issue[];
+}
+
+// `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
+// určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
+export interface SketchState {
+  feature: SketchFeature;
+  frame: Frame;
+  geometry: SketchGeometry;
+  profile: Profile;
+  input: SolveInput;
+  solve: { status: SolveResult['status']; conflicting: Id[] };
+  analysis?: SketchAnalysis;
+}
+
+// A sketch solved during the recompute: solved variables and the stamp to write back to the document.
+export type SolvedSketch = Pick<SketchFeature, 'points' | 'radii' | 'solved'>;
+// What the recompute writes back to the document: the feature with expression values substituted
+// into its fields and, for a sketch, the solved variables.
+export interface WriteBack {
+  feature: Feature;
+  solved?: SolvedSketch;
+}
+
+export interface Step {
+  state: State;
+  writeBack?: SolvedSketch;
+}
+
+// `bodies` of a result may be left out: most steps create none.
+export type Done = (result: Omit<FeatureResult, 'bodies'> & { bodies?: Id[] }, change?: Partial<State>) => State;
+export type Failed = (code: IssueCode, refs?: unknown[], detail?: string) => Step;

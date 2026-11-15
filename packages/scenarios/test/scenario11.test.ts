@@ -2,8 +2,9 @@
 // robot joint of scenario 9. Each package of track A adds its part:
 // - 1b (D39), measuring: the wall between the root circle of the ring gear and the bolt holes;
 // - 1a (D38), a section through the gears;
-// - 1c (D40), the gap between a planet and the carrier, and the tight places of the whole joint.
-import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, Measurement, PlaneRef, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
+// - 1c (D40), the gap between a planet and the carrier, and the tight places of the whole joint;
+// - 1d (D41), the mass of what turns with the output.
+import type { EdgeName, Engine, EntityRef, FaceName, GapReport, Id, MassProperties, Measurement, PlaneRef, QueryArgs, QueryOptions, SectionLoop, SectionResult, SectionSpan } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bodiesAndHoles, parametersAndGearSketch } from './joint';
 import { expectAllOk, newEngine } from './kit';
@@ -23,6 +24,12 @@ function section(engine: Engine, args: QueryArgs<'section'>, at?: Id): SectionRe
   return answer.result;
 }
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
+function mass(engine: Engine, args: QueryArgs<'mass'>, options: QueryOptions = {}): MassProperties {
+  const answer = engine.query('mass', args, options);
+  if (!answer.ok) throw new Error(`${answer.error.code}: ${answer.error.message}`);
+  return answer.result;
+}
+const PLA = 1.24; // g/cm3
 function gap(engine: Engine, args: QueryArgs<'gap'> = {}, options: QueryOptions = {}): GapReport {
   const answer = engine.query('gap', args, options);
   if (!answer.ok) throw new Error(`${answer.error.code}: ${answer.error.message}`);
@@ -298,5 +305,69 @@ describe('scenario 11: the queries asked about the robot joint', () => {
     const [open] = gap(engine, { bodies: ['sun', 'planet'] }, { state: looser.state }).pairs;
     expect(open.distance).toBeGreaterThan(0.15);
     expect(open.distance).toBeLessThan(0.2);
+  });
+
+  it('1d: the carrier alone: its mass, its centre of mass on the axis, the tensor of a body of revolution', () => {
+    const carrier = mass(engine, { bodies: ['carrier'], density: PLA });
+    // the volume the engine publishes; with exact circles it would be 14873.478 (the polygons are inscribed)
+    expect(carrier.volume).toBeCloseTo(engine.getState().evaluation.bodies.carrier.volume, 6);
+    expect(carrier.volume).toBeCloseTo(14863.496, 2);
+    expect(carrier.mass).toBeCloseTo(18.431, 3);
+    // on the axis of the joint, at z = 48.569 (48.567 with exact circles)
+    expect(Math.hypot(carrier.centerOfMass[0], carrier.centerOfMass[1])).toBeLessThan(1e-3);
+    expect(carrier.centerOfMass[2]).toBeCloseTo(48.569, 3);
+    // about the axis 8256.9 g·mm2, about a line across it 4242.9; three pins a third of a turn
+    // apart make the two across equal and leave nothing off the diagonal
+    expect(carrier.inertia[2][2]).toBeCloseTo(8256.9, 0);
+    expect(carrier.inertia[0][0]).toBeCloseTo(4242.9, 0);
+    expect(carrier.inertia[1][1]).toBeCloseTo(carrier.inertia[0][0], 1);
+    for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) {
+      expect(Math.abs(carrier.inertia[i][j])).toBeLessThan(0.05);
+      expect(carrier.inertia[j][i]).toBe(carrier.inertia[i][j]);
+    }
+    // the disc before its pins, asked after its feature
+    const disc = mass(engine, { bodies: ['carrier'], density: PLA }, { at: 'carrier' });
+    expect(disc.centerOfMass[2]).toBeCloseTo(49, 3); // a disc from 46.5 to 51.5
+    expect(disc.mass).toBeLessThan(carrier.mass);
+  });
+
+  it('1d: what turns with the output: the carrier and the three planets as one piece, about the axis of the joint', () => {
+    const planets = engine.getState().evaluation.features.planets.bodies ?? [];
+    expect(planets).toEqual(['planets/1', 'planets/2']);
+    const started = performance.now();
+    const link = mass(engine, { bodies: ['carrier', 'planet', ...planets], density: PLA, about: { kind: 'base', axis: 'Z' } });
+    const took = performance.now() - started;
+    expect(link.volume).toBeCloseTo(30393.134, 1);
+    expect(link.mass).toBeCloseTo(37.687, 3);
+    // three planets a third of a turn apart cancel out: the centre of mass stays on the axis
+    expect(link.about?.distance).toBeLessThan(1e-3);
+    expect(link.centerOfMass[2]).toBeCloseTo(44.1905, 3);
+    expect(link.about?.moment).toBeCloseTo(17639, -1);
+    expect(link.about?.moment).toBeCloseTo(link.inertia[2][2], 3); // the axis goes through the centre of mass
+    expect(link.bodies.map((body) => body.body)).toEqual(['carrier', 'planet', 'planets/1', 'planets/2']);
+    // one planet about the axis of the joint: its centre of mass is the centre distance away,
+    // and its moment is its own and its mass times the square of that
+    const planet = mass(engine, { bodies: ['planet'], density: PLA, about: { kind: 'sketchPoint', sketch: 'skGears', point: 'origin' } });
+    expect(planet.about?.distance).toBeCloseTo(20.25, 3);
+    expect(planet.about?.moment).toBeCloseTo(planet.inertia[2][2] + planet.mass * 20.25 ** 2, 1);
+    // the link is its four bodies: their moments about the axis add up
+    const carrier = mass(engine, { bodies: ['carrier'], density: PLA, about: { kind: 'base', axis: 'Z' } });
+    expect(link.about?.moment).toBeCloseTo((carrier.about?.moment ?? 0) + 3 * (planet.about?.moment ?? 0), 0);
+    // four bodies of some thousands of triangles: a few milliseconds, well under a second on a loaded machine
+    expect(took).toBeLessThan(1000);
+  });
+
+  it('1d: a bought motor and a printed carrier: a density by body, and a fill factor for the printed one', () => {
+    const mixed = mass(engine, { bodies: ['carrier', 'motor'], densities: { motor: 2.9 }, density: PLA, fill: 0.4 });
+    expect(mixed.bodies).toMatchObject([
+      { body: 'carrier', density: PLA, fill: 0.4, mass: expect.closeTo(7.372, 3) },
+      { body: 'motor', density: 2.9, fill: 1 },
+    ]);
+    expect(mixed.mass).toBeCloseTo(mixed.bodies[0].mass + mixed.bodies[1].mass, 9);
+    expect(mass(engine, { bodies: ['carrier'], density: PLA, fill: 0.4 }).mass).toBeCloseTo(7.372, 3);
+    // a fill factor that reaches no body is refused; so is a body left without a density
+    expect(engine.query('mass', { bodies: ['motor'], densities: { motor: 2.9 }, fill: 0.4 })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['fill'] } });
+    expect(engine.query('mass', { bodies: ['carrier'] })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['density'] } });
+    expect(engine.query('mass', { bodies: ['carrier'], densities: { nope: 1 } })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['densities', 'nope'] } });
   });
 });

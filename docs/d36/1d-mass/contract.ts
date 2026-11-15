@@ -2,6 +2,10 @@
 // type-checked (`npx tsc -p docs/d36/tsconfig.json`). The design is design.md.
 //
 // Third version, after the second round of reviews (design.md, "Reviews").
+//
+// As implemented (design.md, "As implemented"): `massIntegrals` gives the centroid and the second
+// moments about it, not the moments about the origin; a missing density and a fill factor for
+// nobody are `invalidArguments`. The types are in packages/engine/src/query/mass.ts.
 
 import type { Id, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, QuantitySpec, QueryContext } from '../00-prep/contract';

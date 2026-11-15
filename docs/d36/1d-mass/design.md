@@ -1,6 +1,6 @@
 # 1d Mass properties
 
-**Decision D41. State: designed, not implemented; third version, after two rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D41. State: the engine side (the query `mass`) is implemented on the branch `d36/1d`; see "As implemented" at the end, which says where the code differs from the text below. The design is in its third version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario and the entry as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: the mass of the carrier beyond the output.
 
@@ -132,3 +132,25 @@ Nothing was left without action. What stays open is under "Open": a body whose d
 ### Round 3 (2026-11-15): the fixes of round 2, the last round
 
 `codex` and a fresh internal subagent read only what the second fix commit (`bc6a44c`) changed; `agy` did not take part (out of quota). By the rule of the project this is the last round. Neither had a finding on this package. Both checked and found holding: the equation with its units, written the same in the contract, in `returns` and here, and what the entry computes; the three masses of the scenario (18.431, 7.372, 37.687 g); the test for a `fill` that applies to no body (a body with an explicit mass or its own density has fill 1; a mixed list passes; `fill: 1` and the default pass; a missing density is reported first); the index of a body without a volume in the argument. Nothing changed in this package in this round.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/mass.ts`: the entry `mass` in `QUERIES`, `massIntegrals` and `massSourceOf`; the types and `massIntegrals` are exported from the index of the engine. Tests: `packages/engine/test/mass.test.ts` (the integrals on meshes written by hand, against the formulas of a box and of a tube over regular polygons: far from the origin, turned, two pieces in one mesh, a mesh without a volume), `packages/scenarios/test/mass.test.ts` (the query against the real adapters: one body, several as one piece, the sources of a density, the fill factor, the moment about an axis, a hole, `at`, the errors), three cases of scenario 11 in `scenario11.test.ts`, and the rows of the query in `packages/mcp/test/queries.test.ts`.
+
+**The numbers of the design hold on the joint**: the carrier has 14863.496 mm³ (the volume the engine publishes) and 18.431 g, its centre of mass on the axis at z = 48.569, 8256.9 g·mm² about the axis and 4242.9 across it; the carrier with the three planets has 30393.134 mm³ and 37.687 g, its centre of mass on the axis at z = 44.1905 (the design printed 44.191), and 17639 g·mm² about the axis of the joint; a planet is 20.25 from that axis; the carrier at a fill of 0.4 has 7.372 g. The four bodies of the link take a few milliseconds.
+
+What differs from the design and from `contract.ts`:
+
+- **`massIntegrals` gives the centroid and the second moments about it**, not the first and second moments about the origin of the model. The sums are taken by signed tetrahedra from a vertex of the mesh and the second moments are then moved to the centroid; a group is put together from its bodies by the parallel axis theorem. Summed from the origin, the tensor about the centre of mass is a difference of numbers that grow with the square of the distance of the body from the origin: a box of 10 mm at 4000 m (the test) would keep five digits, and it keeps them all. The answer of the query is the same.
+- **A body without a density, and a fill factor that reaches no body, are `invalidArguments`**, with the paths `['density']` and `['fill']`: the code `QueryFailure` got with 1b for arguments that do not go together. The design wrote `failed`, the stand-in of that time. A body without a volume stays `failed`, with the place of the body in `bodies`.
+- **No body can be called `constructor`.** The engine refuses an ID that every object has by inheritance for a feature, and the check of the arguments refuses such a key of a record, so the case of the first review cannot be built. The query still reads `densities` by its own keys only (`has`).
+- **`units` and `significant` are on the entry**: grams, mm³, g/cm³, millimetres and g·mm²; a tool prints the mass, the inertia and the moment to six significant digits. `fill` has no unit.
+- **The messages name the argument** (`density: …`, `fill: …`, `about: …`), as the check of the arguments does.
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+
+**Known limits.**
+
+- The integrals are those of the mesh: round faces are inscribed polygons, so a body with round faces weighs a little less than its exact shape (0.07 % for the carrier at the chord tolerance 0.01 mm). The answer does not carry an accuracy.
+- A list whose bodies overlap counts the shared volume twice, as designed; the query does not look.

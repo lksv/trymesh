@@ -48,6 +48,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   measure: { from: { kind: 'face', body: 'low', face: { feature: 'low', role: 'startCap' } }, to: { kind: 'face', body: 'low', face: { feature: 'low', role: 'endCap' } } },
   section: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
   gap: {},
+  mass: { bodies: ['low'], density: 1 },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -60,6 +61,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   measure: { from: 'required', to: 'required' },
   section: { plane: 'required', offset: 'optional', flip: 'optional', bodies: 'optional', outline: 'optional', maxPoints: 'optional' },
   gap: { bodies: 'optional', within: 'optional', maxPairs: 'optional' },
+  mass: { bodies: 'required', density: 'optional', densities: 'optional', fill: 'optional', about: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -133,6 +135,15 @@ describe('the tool query', () => {
     // lifted by 0.1234567 mm above the lower disc: the distance is printed to six significant digits, the accuracy to three
     const lifted = call(engine, { query: 'gap', args: { bodies: ['low', 'high'] }, after: { type: 'setField', feature: 'high', path: 'extent/start', value: 10.1234567 } });
     expect(lifted.pairs).toMatchObject([{ a: 'high', b: 'low', distance: 0.123457, accuracy: 0.02 }]);
+    // the mass (D41): six significant digits for the mass and the inertia, six decimal places for the rest
+    const weighed = engine.query('mass', { bodies: ['low'], density: 1.24 });
+    if (!weighed.ok) throw new Error(weighed.error.message);
+    const printed = call(engine, { query: 'mass', args: { bodies: ['low'], density: 1.24 } });
+    expect(printed.mass).toBe(Number(weighed.result.mass.toPrecision(6)));
+    expect(printed.inertia[2][2]).toBe(Number(weighed.result.inertia[2][2].toPrecision(6)));
+    expect(printed.volume).toBe(Math.round(weighed.result.volume * 1e6) / 1e6);
+    expect(printed.bodies).toMatchObject([{ body: 'low', density: 1.24, fill: 1 }]);
+    expect(call(engine, { query: 'mass', args: { bodies: ['low'] } })).toEqual({ error: expect.stringContaining('invalidArguments: mass: density: the body "low" has no density of its own') });
     expect(call(engine, { query: 'gap', args: { bodies: ['low', 'low'] } })).toEqual({ error: 'invalidArguments: gap: bodies: two different bodies are needed for a pair' });
   });
 

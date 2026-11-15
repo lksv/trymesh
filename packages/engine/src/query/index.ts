@@ -9,12 +9,13 @@ import { catalog } from './catalog';
 import { type ContextDeps, type Internals, queryContext } from './context';
 import { gap } from './gap';
 import { interference } from './interference';
+import { mass } from './mass';
 import { measure } from './measure';
 import { section } from './section';
 import { constraintExplanation, sketchDiagnosis } from './sketch';
 import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
 
-export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap };
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap, mass };
 
 const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 

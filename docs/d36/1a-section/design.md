@@ -1,6 +1,6 @@
 # 1a Section: the query and the section view in the app
 
-**Decision D38. State: designed, not implemented; fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
+**Decision D38. State: the engine side (the query `section`) is implemented on the branch `d36/1a`, see "As implemented" at the end; the section view of the app is not yet. The design is in its fourth version, after three rounds of reviews.** Step 1 of [D36](../../decisions/D36-order-after-d35.md), track A of [the plan](../README.md). Written against the sixth version of the contract of [the preparatory step](../00-prep/design.md), at commit `0dc424b`. The types are in [contract.ts](contract.ts), the scenario, the entry and the view as calls in [calls.ts](calls.ts); both are type-checked by `npx tsc -p docs/d36/tsconfig.json`.
 
 Validation scenario 11 (the queries asked about the robot joint of scenario 9), this package's part: a section through the gears.
 
@@ -231,3 +231,26 @@ Two rows of this table were overtaken by round 3: the rule for corners of this r
 Nothing found in this round was left without action in this package.
 
 **Not reviewed by anyone: the fixes of this round.** They are the new rule for corners with its start, the precision per body, `takenAt` for the clip, and the dropped slivers. They are type-checked and the rule for corners was run on the joint, on the turned and moved bodies and on the two shapes made to break it (the prototype is outside the repository). The implementation should begin by turning those runs into tests.
+
+## As implemented
+
+### The engine side (2026-11-15)
+
+`packages/engine/src/query/section.ts`: the entry `section` in `QUERIES`, the pass `cut` with the rule for corners (`corners`), `nested`, `spansOf`, and `takenAt` and `completeRegions` exported from the index of the engine. The runs of the prototype became tests, as the last review asked: `packages/engine/test/section.test.ts` (meshes and chains written by hand: a ring turned about general axes and moved up to 2000 mm away, cut through and in the plane of its end cap; the parabola and the circle made to break the rule for corners; the table of spans), `packages/scenarios/test/section.test.ts` (the query on a small model with the real adapters) and the part of 1a in `scenario11.test.ts`.
+
+**The numbers of the design hold on the joint**, all of them as measured by the prototype: the areas (190.354, 431.379, 6131.972, 58.606), 19 loops and 2792 corners at z = 40, the budget (289 of 2224 at the default, 19 of 2224 at 30), 92 lines along the axis with the motor at 2385 and the carrier at 362.5, 38 spans through the nut pockets, 6028.838 for the front face of the housing with five bodies in `inPlane`, and nothing from outside. The six bodies at z = 40 take 20 to 30 ms together.
+
+What differs from the design and from `contract.ts`:
+
+- **A face that is not planar is `notAvailable`**, not `failed`, with the path `['plane']`: `QueryFailure` of the engine names that very case under `notAvailable` (something named is not in the state in the form the query needs).
+- **The directory is `query/`**, as the preparatory step made it, not `queries/`.
+- **The order of (u, v) takes two u within the precision as the same.** The design orders by u, then v. Two corners above each other (the two ends of a wall along v, which every box has) have the same u only up to the noise of the coordinates, so the exact order would let that noise choose where a loop starts. The first corner is the one with the smallest v among those whose u is the smallest within the precision of the body.
+- **The loops of a body are sorted** by their first points in that order, and so are the regions and the holes of a region. The design did not say; without it their order would follow the numbering of the triangles.
+- **Step 1 at the end of the walk:** a last point nearer than the precision to the first one is dropped, and the segment before it ends at the first point. The design did not say what closes the walk.
+- **The search for the furthest point** (step 3) stops as soon as the points between leave no direction a segment could take. This only saves time: which point is taken is decided by the distances alone. Without it a loop on one face of 1440 points would cost over a billion distance tests.
+- **`spansOf` is given the plane the section was taken at**, which is where the circle of a cone has its radius.
+- **A mesh that is not closed, and a hole that lies in no outer loop, are `failed`.** Neither can come from a body of the engine; the alternative was an open chain or a region without its hole.
+- **A body named twice in `bodies` is cut once**, and the bodies are listed in the order they were asked about (without `bodies`, the order of the model).
+- **The parabola of the design keeps 15 corners here, not 17.** The exact curve of the prototype's run is not recorded; on y = x² from 0 to 1 in steps of 0.001 the fewest segments that stay within 0.001 are 14, which is what the rule gives. The properties the design claims are tested: no point of the chain further than the precision from the corners, and the same list wherever the chain starts. The circle keeps 79 corners, as measured.
+
+**Not driven by a model yet:** an arc of a cone (no face is a cone until 2b) and a curve on a general surface; both are tested on loops written by hand. A plane that is not along an axis of the model is tested on the turned ring (the pass), not through the query: a model has no way to make such a plane.

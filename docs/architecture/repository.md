@@ -64,6 +64,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/interference.ts`, `query/sketch.ts`, `query/body.ts`, `query/catalog.ts` | the queries, one module each or a few that belong together |
 | `query/entity.ts` | `entityShape`: what a face, an edge or a sketch point is exactly, for a query that takes an entity |
 | `query/measure.ts` | the query `measure`: the exact part between two entities and the smallest distance on the mesh |
+| `query/section.ts` | the query `section`: the cut of a body by a plane (`cut`), the corners of a loop, the regions, the spans read from the surfaces and the budget; `takenAt` and `completeRegions` for whoever draws a cut |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

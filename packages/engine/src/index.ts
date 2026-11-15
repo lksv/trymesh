@@ -28,6 +28,7 @@ export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, Described, RunArgsOf } from '.
 export { type AnyQuery, type Queries, type QueryArgs, type QueryContext, QueryFailure, type QueryName, type QueryResult, type QuerySpec, type ResultUnit, type ResultUnits } from './query/spec';
 export { type EntityShape, type ShapedRef, entityShape } from './query/entity';
 export type { Measurement } from './query/measure';
+export { type CutLoop, type SectionLoop, type SectionOfBody, type SectionRegion, type SectionResult, type SectionSpan, completeRegions, cut, takenAt } from './query/section';
 export { type Closest, type MeshPart, closest, coordinatePrecision, meshAccuracy } from './mesh-distance';
 export { type Circle3, circleBetween } from './surfaces';
 export { argText, checkArgs, specProblems } from './query/check';

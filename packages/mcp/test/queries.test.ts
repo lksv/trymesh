@@ -46,6 +46,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   body: { body: 'low' },
   catalog: { name: Object.keys(DATA_CATALOGS)[0] ?? 'none' },
   measure: { from: { kind: 'face', body: 'low', face: { feature: 'low', role: 'startCap' } }, to: { kind: 'face', body: 'low', face: { feature: 'low', role: 'endCap' } } },
+  section: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -56,6 +57,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   body: { body: 'required' },
   catalog: { name: 'required', key: 'optional' },
   measure: { from: 'required', to: 'required' },
+  section: { plane: 'required', offset: 'optional', flip: 'optional', bodies: 'optional', outline: 'optional', maxPoints: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 

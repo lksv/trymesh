@@ -228,7 +228,9 @@ None new.
 
 ## Open questions
 
-- **For the owner: curves that drop out.** Should an inward offset that makes a corner arc vanish give sharp corners instead of an error? It is the natural result for a box with rounded corners and a wall thicker than the radius. It costs a loop that removes vanished curves and joins their neighbours, and a rule that differs from the taper's. The design leaves it out, as the backlog does.
+- **Curves that drop out: decided by the owner on 2026-11-15.** An inward offset that makes a curve vanish stays an error, as designed. The message of `invalidProfile` names the curves that vanished and says what to do about it: a corner radius larger than the offset, or the inner outline drawn in the sketch. An AI that builds the model through MCP corrects itself from such a message.
+  - The alternatives put to the owner: the error (chosen); a general loop that removes vanished curves and joins their neighbours, also in a chain (rejected for a proof of concept: neighbours need not meet, and one vanished curve may make the next vanish); and the narrow case only, an arc tangent to both its neighbours that is dropped and its neighbours joined in a sharp corner.
+  - The narrow case is recorded in [backlog.md](../../backlog.md) ("Profile offset"), to be done when a real model runs into the limit. It is local to the function of the offset. What it brings with it: the offset and the taper of 2b then differ (a taper pairs the curves of two profiles one to one and cannot drop any), and the face of a dropped arc is gone, so a sketch on it ends in `brokenReference` when a parameter crosses the limit.
 - Whether the mitre needs a limit. Left until a model runs into a spike.
 - The text of `invalidProfile` for an offset is in English like every new message; the general text of the code stays Czech until its line changes.
 

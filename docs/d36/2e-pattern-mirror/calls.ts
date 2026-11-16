@@ -166,8 +166,9 @@ export const massOverMcp: QueryToolInput = { query: 'mass', args: { bodies: PADS
 // mirrors make a turn: the copy has the handedness of the source again.
 export const UNDER_LAST_PAD: FaceNameAfter = { feature: 'pad', role: 'endCap', copy: [{ pattern: 'padX', index: 1 }, { pattern: 'padXY', index: 1 }] };
 export const sketchUnderAPad = (): string => statusOf(done(engine.preview({ type: 'batch', commands: sketchOn('under', onFace('padXY/1', UNDER_LAST_PAD)) })), 'under'); // ok
-// A mirror has one copy, and the registry knows it: a command that names a second one is invalid
-// (for a row it would be accepted and judged by the recompute, because a count may be an expression).
+// A mirror has one copy, and the registry knows it: a command cannot bring in a second one as
+// a body (for a row it would be accepted and judged by the recompute, because a count may be an
+// expression).
 export const secondCopyOfAMirror = (): boolean => engine.preview({ type: 'setBodyProperties', body: 'padX/2', patch: { color: '#000000' } }).ok; // false
 // A link of a mechanism lists a mirrored copy like any body (D49).
 export const asOneLink = (): Id[] => done(engine.preview({ type: 'setLink', id: 'base', bodies: ['box', ...PADS] })).evaluation.mechanism.links['base'].bodies;

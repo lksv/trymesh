@@ -43,6 +43,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 5c | Plane tilted about a line, midplane of two faces | 5 | I | 00 | outline |
 | 5d | Generators: cycloidal disc, GT2 pulley, profile shift of the gear | 5 | I | none | outline |
 | 5e | A second opinion of the kernel for a pair it refuses (D50): the port gets "the intersection as computed, for measuring only", and the collisions ask it about a pair the adapter refused; it may only clear such a pair, never call it a collision | 5 | H | 5a (the same code, `interference.ts`, and its poses for the tests); 5b does not wait for it | full ([5e-kernel-second/design.md](5e-kernel-second/design.md)); decided by the owner on 2026-11-16, designed that day |
+| 5f | Repair of the kernel adapter: `clean` and `restoreShifted`, so that an intersection of many slivers (a pin in its hole turned against it, faces flush only to the precision of the coordinates) comes out closed and is not refused. Owner, 2026-11-16: the next package right after 5e | 5 | H | 5e (its pinned poses are the first cases) | not yet; what is known is in [backlog.md](../backlog.md), "To verify first", and in the measurements of 5a and 5e. The id is proposed here; its decision number is taken when its design starts |
 | 6, 7 | Sketch (derived geometry and what stands on it, splines, trim and extend); tube along a path, twist and threads, names of reference dimensions | 6, 7 | | | not yet |
 
 The full designs of tracks A (1a to 1f), B (2a, 2b, 2c, 2f) and E (3a, 5a) and of 5e exist in their directories; the others are not written yet.
@@ -61,7 +62,7 @@ D35 point 7 ──▶ 00 preparatory step ──┬─▶ 1a 1b 1c 1d 1e 1f     
                                       ├─▶ 2g 3MF ; outline after 1a  (track F)
                                       ├─▶ 5c ; 5d                    (track I)
                                       └─▶ after 2b: 4a ─▶ 4b         (track G)
-                                          after 1c and 3a: 5a ─▶ 5e ; 5b  (track H; 5b needs only 5a)
+                                          after 1c and 3a: 5a ─▶ 5e ─▶ 5f ; 5b  (track H; 5b needs only 5a)
 ```
 
 Right after the preparatory step: all of track A, 2a, 2d, 2e, the 3MF part of 2g, 3a, 5c and 5d. That is more than can sensibly run at once; the priority of the steps picks among them.

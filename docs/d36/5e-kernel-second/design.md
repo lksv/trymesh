@@ -6,10 +6,13 @@ The package is small: one member of the kernel port, one branch of the answer ab
 
 ## The owner's decisions of 2026-11-16
 
-Both questions were left for the owner by the check of 5a before its implementation ([5a](../5a-mechanism/design.md), "Open").
+Two questions were left for the owner by the check of 5a before its implementation ([5a](../5a-mechanism/design.md), "Open"); three more were put by this design ("Open"). All five are decided.
 
 - **Yes to the addition to the kernel port**: "the intersection as computed, for measuring only", so that the collisions can take a second opinion about a pair the kernel refuses. The second opinion **may only clear** such a pair; it never turns it into a collision. It comes as a small package of its own after 5a. This design is that package.
 - **A picture of a pose that is not written** (`at` and `after` for the operation of the app `view_image`) **comes with 5b**, not with 5a. Nothing here depends on it; it is recorded here and in the row of 5b of [the plan](../README.md) because the two questions were put together. Until 5b a pose is written, drawn and undone.
+- **The repair of the kernel adapter** (`clean`, `restoreShifted`) **is the next package right after this one.** This package does not wait for it and is not replaced by it; what the repair changes for it is under "Rejected" and "Tests".
+- **The answer of the collisions gets the field `cleared`.** An answer that rests on a mesh nobody verified says so.
+- **A pair the kernel fails on carries the volume and the depth measured on the mesh as computed, worded as not verified.**
 
 ## The id
 
@@ -48,7 +51,7 @@ Nothing else changes: no new threshold but a bound on the work of the second mea
 
 **Deferred**:
 
-- The repair of the adapter (`clean`, `restoreShifted`), so that an intersection of many slivers comes out closed. It stays in the backlog as work of its own; this package neither needs it nor is in its way ("Rejected").
+- The repair of the adapter (`clean`, `restoreShifted`), so that an intersection of many slivers comes out closed. It is the next package after this one (owner, 2026-11-16; the backlog has what is known); this package neither needs it nor is in its way ("Rejected").
 - A faster measure of a mesh full of sheets. A pair askew to the axes of the model costs seconds to measure, refused or not ("The cost").
 - A second opinion for a union or a difference. A body is never built from a mesh that was not verified.
 
@@ -300,7 +303,7 @@ The spikes and all the checks of CLAUDE.md run before each commit. Review: full,
 
 ## Rejected
 
-- **The adapter repaired** (`clean` and `restoreShifted`, so that an intersection of many slivers comes out closed). The right place in the end, and the backlog keeps it. It is open-ended work in the most delicate code outside the engine (D29: correct by tests, not by proof), every change there has to pass the fuzz of unions and differences, and a pose sweep needs an answer now. The two do not exclude each other: a repaired adapter refuses less and the second opinion is asked less; it stays for what is still refused.
+- **The adapter repaired, in place of this package** (`clean` and `restoreShifted`, so that an intersection of many slivers comes out closed). The right place in the end, and by the owner's decision the next package. It is open-ended work in the most delicate code outside the engine (D29: correct by tests, not by proof), every change there has to pass the fuzz of unions and differences, and a pose sweep needs an answer now. The two do not exclude each other: a repaired adapter refuses less and the second opinion is asked less; it stays for what is still refused.
 - **The adapter without its two refusals** (the cleaned mesh, unchecked). Measured by 5a: 72 collisions that are none on 151 refused poses. A refused mesh measures wrong; the refusals are honest.
 - **The intersection as computed in place of the adapter's.** It errs on flush faces where the adapter is right (13 of 136 here, 5 of 123 in the run of 5a), and it would be the one answer.
 - **A second opinion that may also convict** (a refused pair that measures deep as computed is a collision). The owner's rule, and the numbers agree: of 37 refused pairs that measure as a collision 7 share nothing, and a point "0.4 mm deep" in 0.06 mm³ of noise looks like the real thing. The measure goes into the message instead.
@@ -330,11 +333,13 @@ The spikes and all the checks of CLAUDE.md run before each commit. Review: full,
 
 ## Open
 
-For the owner (none blocks the implementation):
+For the owner. The three questions of the second version were **decided by the owner on 2026-11-16**:
 
-- **When the repair of the adapter is done** (`clean`, `restoreShifted`; the backlog). After this package it matters for the real collisions the adapter refuses askew (they are `failed` and not `pairs`) and for the time, no longer for a pin in its hole.
-- **Whether `cleared` is wanted as a list of its own**, in the collisions and in the gap. The design adds it so that an answer that rests on a mesh nobody verified says so, and keeps `fits` verified. The other way is a report in the shape of today: a cleared fit among `fits`, a cleared nothing in no list, and nobody able to tell the two kinds of clear apart.
-- **Whether a failed pair should carry what the mesh as computed measures.** The design puts it into the message, in words that say it is not verified. It is the only way a refused real collision shows its size; it is also a number about a collision that comes from the second opinion, which the rule "may only clear" could be read to exclude.
+- **When the repair of the adapter is done: right after this package, as the next one.** After this package the repair matters for the real collisions the adapter refuses askew (they are `failed` and not `pairs`), for the few pairs that share nothing and stay failed, and for the time; no longer for a pin in its hole. The poses this design pins as refused are the first cases of that package, and its tests say which of their expectations flip when the adapter answers them.
+- **`cleared` is wanted: the answer of the collisions gets the field.** As designed: a list of its own, there only when it has an entry, with `pairs` and `fits` verified. The list of the same name in the answer of the gap follows from the same reason and is part of this design; it was put to the owner in one question with the other.
+- **A failed pair carries what the mesh as computed measures: the volume and the depth, worded as not verified.** As designed, in the message of the pair, after the reason of the refusal. The entry of `failed` keeps its three fields.
+
+Nothing is left for the owner.
 
 For the implementation:
 

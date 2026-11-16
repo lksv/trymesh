@@ -207,6 +207,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -522,6 +523,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -626,6 +628,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -761,6 +764,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -1132,6 +1136,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -1318,7 +1323,9 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll": "Through all"
-    + label
+    -   select value="throughAll"
+    -     option value="distance": "Distance"
+    -     option selected value="throughAll": "Through all"
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
     +     input value="0"
@@ -1328,9 +1335,7 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
-    -   select value="throughAll"
-    -     option value="distance": "Distance"
-    -     option selected value="throughAll": "Through all"
+    + label
     +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
     +   span.field
     +     input value=""
@@ -1410,7 +1415,9 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
-    + label
+    -   select value="throughAll"
+    -     option value="distance": "Distance"
+    -     option selected value="throughAll": "Through all"
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
     +     input value="0"
@@ -1420,9 +1427,7 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
-    -   select value="throughAll"
-    -     option value="distance": "Distance"
-    -     option selected value="throughAll": "Through all"
+    + label
     +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
     +   span.field
     +     input value=""
@@ -1578,6 +1583,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -2620,6 +2626,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -3134,6 +3141,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -3295,6 +3303,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -3492,6 +3501,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -3714,6 +3724,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -3921,6 +3932,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field

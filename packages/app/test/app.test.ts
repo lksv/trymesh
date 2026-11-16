@@ -67,6 +67,7 @@ const OFFSET = 'Offset along the normal (mm or an expression)';
 const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
 const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
 const TAPER = 'Taper (degrees or an expression; positive widens away from the start; empty = none)';
+const GAP = 'Gap before the plane (mm or an expression; negative = past it; empty = none)';
 // The name field, the expression field and the button of the row that adds a parameter (0) or a check (1).
 const adder = (h: Harness, which: number): { name: HTMLInputElement; value: HTMLInputElement; add: HTMLButtonElement } => {
   const row = h.button('panel', 'Add', which).parentElement as HTMLElement;
@@ -581,6 +582,45 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'OK');
     h.record('OK: the taper is removed from the feature');
     await matches(h, 'taper');
+  });
+
+  it('an extent up to a plane or a face, picked in the view (D47)', async () => {
+    const h = await start();
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Kružnice');
+    h.click(at(70, 15));
+    h.click(at(75, 15));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.click(at(20, 10));
+    h.type(h.field(DISTANCE), '12');
+    h.press('panel', 'OK');
+    // the cylinder ends in the plane of the top of the plate, beside the plate itself
+    h.press('toolbar', 'Vysunutí');
+    h.click(at(70, 15));
+    h.choose('Extent', 'upTo');
+    h.record('up to a plane: no plane yet, nothing to compute or confirm; the button arms a pick');
+    h.press('panel', 'Pick');
+    h.record('the pick armed: the view picks faces and planes');
+    h.move(at(20, 10, 12));
+    h.record('the face under the pointer');
+    h.click(at(20, 10, 12));
+    h.record('the top face of the plate picked: the preview runs to its plane and says the length');
+    h.type(h.field(GAP), '2');
+    h.record('a gap typed: the cylinder stops 2 short of the plane');
+    h.press('panel', 'OK');
+    h.record('OK: the extrusion with its plane and gap is in the document');
+    h.row('Vysunutí 2').click();
+    h.record('selected: the summary names the plane, the gap and the length');
+    doubleClick(h, 'Vysunutí 2');
+    h.type(h.field(GAP), '');
+    h.press('panel', 'OK');
+    h.record('the gap emptied and confirmed: removed from the feature');
+    await matches(h, 'upto');
   });
 
   // A plate, a pin apart from it and a block that reaches into the plate, drawn through the app.

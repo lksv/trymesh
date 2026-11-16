@@ -4,7 +4,7 @@
 import { analyzeBody, faceFrame, onSurface, toWorld, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
 import { faceKey, has } from '../util';
-import type { Applied, BuiltTool, Model, Placement, State, ToolRecipe } from './state';
+import { type Applied, type BuiltTool, type Model, type Placement, type State, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
 // jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
@@ -31,6 +31,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   gearMesh: 'The gear cannot be put in mesh with the gear it refers to.',
   gearInterference: 'The tip of one gear of the pair runs into the root of the other.',
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
+  invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 
@@ -95,6 +96,7 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
       else bodies[target] = result;
     }
   } catch (error) {
+    if (error instanceof ToolProblem) return { ok: false, code: error.code, ...(error.refs ? { refs: error.refs } : {}), ...(error.detail ? { detail: error.detail } : {}) };
     return { ok: false, code: 'kernelFailure', detail: error instanceof Error ? error.message : String(error) };
   }
   if (unchanged.length === recipe.targets.length) return { ok: true, model, unchanged };

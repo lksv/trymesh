@@ -121,7 +121,7 @@ const form: FeatureForm<PatternFeature, Extra> = {
     const bodies = document.getElementById('draft-bodies');
     if (bodies) bodies.textContent = patternBodies(m, host);
   },
-  picks: { faces: true, planes: true },
+  picks: () => ({ faces: true, planes: true }),
   // a click on a body picks it as the source of a pattern of a body (not a copy of the preview itself)
   click(m, _event, pick, host) {
     const choices = patternChoices(host, m.index);

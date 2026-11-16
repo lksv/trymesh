@@ -1,6 +1,6 @@
 # 2f Extent up to a planar face (D47)
 
-**State: design, third version, after three rounds of reviews, the last allowed ("Reviews"; the third had no finding here, and what is still open is listed there as known limits).** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
+**State: implemented on the branch `d36/2f` (2026-11-16); see "As implemented" for where the code differs from this design.** The design below is its third version, after three rounds of reviews, the last allowed ("Reviews"; the third had no finding here, and what is still open is listed there as known limits). Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`. It adds to the declaration of the extrusion that [2a](../2a-offset/design.md) owns for track B, and it needs 2a in the code as well: the extent as a service (`features/extent.ts`), the prism in a module of its own and the rule of an optional numeric field. A prism with a tilted end, also one that ends flush on a tilted face, was run through the real kernel adapter in the spike of [2b](../2b-taper/design.md) ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the variant, the issue code, the facts), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -218,3 +218,22 @@ Still open, as known limits:
 
 - Nothing of the package was run in the engine; a copy of a pattern that gets one length was checked by reading only.
 - The value 0.01 rad is a choice; no model has tested it.
+
+## As implemented
+
+### The engine, the app and the tests (2026-11-16)
+
+The variant with its validation and references in `features/extent.ts`, the lengths in `upToSpan` of `recompute/extent.ts`, the end per vertex in `buildPrism`, `ToolProblem` in `recompute/state.ts` and its two catches, `invalidExtent`, the facts, the paragraph of `CONVENTIONS`, the form of the app with its button *Pick*. The rules as implemented are in [architecture/extrude.md](../../architecture/extrude.md), "Extent up to a plane"; the tests in [architecture/verification.md](../../architecture/verification.md).
+
+Where the code differs from the design above:
+
+- **The span** is a type of its own, `ToolSpan`: the pair of levels of today or a `TiltedSpan` (the start, the end level as a function of the point of the sketch, and the plane of the end cap). `toolSpan` keeps "distance" and "through all"; `upToSpan` is the extent up to a plane, called by the step for the feature itself and by `build` for every build.
+- **The refusals carry a detail**: which of the three it is, and for the gap its size; `refs` are the plane. A copy that fails names itself first, as the pattern does for any failed copy.
+- **`extentOf` takes `upTo: boolean`** from its caller (the extrusion allows it for every operation; the hole of 2c will not), next to `throughAll` and `noTaper`.
+- **What a form picks** (the need of this design from the preparatory step): `FeatureForm.picks` is a function of the mode, asked at every pointer event; the forms of a plane and of a pattern answer always the same, the extrusion only while *Pick* is armed.
+- **The label of a plane reference** is one function, `planeText` in the app's `features/plane.ts`, used by the forms of a plane and of an extrusion.
+- **The draft without a plane** holds the extent `upTo` without its `plane` (the draft is incomplete until one is chosen, `noPlane` in `sketch-commands.ts`), so nothing is computed or sent meanwhile.
+- **Scenario 12** follows `calls.ts` on the model with the steps of 2b (the draft of the rib makes the plane of the brace tilted: its lengths differ by `3 · tan 3°`).
+- **The test of "an addition that swallows the face it ends on"**: a cover that ends exactly flush on the top of a boss keeps that top under its old name (the kernel's rule for coplanar faces), so the test passes the plane by 1 (`gap: -1`) to swallow the face; its copy then measures to the plane the feature saw.
+
+Known limits, besides those of the design: see architecture/extrude.md, "Extent up to a plane", "Limits".

@@ -3,16 +3,20 @@ import type { Region } from '../sketch';
 import { toWorld } from '../solid';
 import type { FaceName, Frame, Id, SolidKernel } from '../types';
 import { cross3, sub3, unit3 } from '../util';
+import type { ToolSpan } from './extent';
 import type { BuiltTool, ResolvedProfile } from './state';
 
 // Postaví uzavřenou síť nad vybranými oblastmi: dvě víka a boční stěny. Boční stěna vznikne jen
 // z křivky na hranici právě jedné vybrané oblasti; křivka sdílená dvěma oblastmi se vyruší.
 // `span` je rozsah podél normály roviny skici: [začátek, konec], měřeno od roviny skici. Víko
-// startCap leží na začátku, endCap na konci.
+// startCap leží na začátku, endCap na konci. The end may be a level per vertex (an extent up to
+// a tilted plane, D47): every end lies on the same side of the start, and the end cap lies in the
+// plane the span describes.
 // `triangulation`: a cache of the planar triangulation by region. A tool that is built again and
 // again (for every copy of a pattern) passes the same map, so the profile is triangulated once.
-export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [number, number], sideOf: ResolvedProfile['sideOf'], firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {
-  const [start, end] = span;
+export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: ToolSpan, sideOf: ResolvedProfile['sideOf'], firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {
+  const start = Array.isArray(span) ? span[0] : span.start;
+  const endAt = (u: number, v: number): number => (Array.isArray(span) ? span[1] : span.end(u, v));
   // 2D síť sjednocení oblastí. Vrcholy se sdílejí podle klíče, takže sousední oblasti na sebe navazují.
   const index = new Map<string, number>();
   const xy: number[] = [];
@@ -80,7 +84,7 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [
   }
   const faces: BuiltTool['faces'] = [
     { name: { feature, role: 'startCap' }, info: { planar: true, origin: toWorld(frame, 0, 0, start), y: frame.y, normal: frame.normal } },
-    { name: { feature, role: 'endCap' }, info: { planar: true, origin: toWorld(frame, 0, 0, end), y: frame.y, normal: frame.normal } },
+    { name: { feature, role: 'endCap' }, info: Array.isArray(span) ? { planar: true, origin: toWorld(frame, 0, 0, span[1]), y: frame.y, normal: frame.normal } : { planar: true, ...span.cap } },
   ];
   const sideId = new Map<Id, number>();
   for (const curve of [...new Set(boundary.map((edge) => edge[2]))].sort()) {
@@ -98,14 +102,16 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: [
   }
 
   // 3D síť: spodní a horní hladina podle normály roviny skici; startCap je víko na začátku rozsahu.
+  // Every end lies on one side of the start, so the side of the first decides the winding.
   const n = xy.length / 2;
-  const [low, high] = [Math.min(start, end), Math.max(start, end)];
+  const up = endAt(xy[0], xy[1]) > start;
   const positions = new Float32Array(6 * n);
   for (let i = 0; i < n; i++) {
-    positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], low), 3 * i);
-    positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], high), 3 * (n + i));
+    const end = endAt(xy[2 * i], xy[2 * i + 1]);
+    positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], up ? start : end), 3 * i);
+    positions.set(toWorld(frame, xy[2 * i], xy[2 * i + 1], up ? end : start), 3 * (n + i));
   }
-  const [lowId, highId] = end > start ? [firstFaceId, firstFaceId + 1] : [firstFaceId + 1, firstFaceId];
+  const [lowId, highId] = up ? [firstFaceId, firstFaceId + 1] : [firstFaceId + 1, firstFaceId];
   const out: number[] = [];
   const ids: number[] = [];
   for (let t = 0; t < count; t++) {

@@ -646,8 +646,9 @@ export class App implements SketchHost, SceneHost {
       return moved ? this.renderScene() : undefined;
     }
     // a form that asks for no pick of the view gets the bare event
-    if (isDraft(m) && !m.form.picks) return m.form.hover?.(m, event, undefined, this) ? this.renderScene() : undefined;
-    const hover = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
+    const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
+    if (isDraft(m) && !wanted) return m.form.hover?.(m, event, undefined, this) ? this.renderScene() : undefined;
+    const hover = this.pick(event, isDraft(m) ? { ...wanted } : { edges: !this.pending, faces: true, planes: true });
     if (pickKey(hover) === pickKey(this.hover)) return;
     this.hover = hover;
     this.renderScene();
@@ -666,8 +667,9 @@ export class App implements SketchHost, SceneHost {
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
     if (m.kind === 'sketch') return sketchClick(this, m, event);
     // a form gets its clicks from the app: the bare event, or what it asked to be picked
-    if (isDraft(m) && !m.form.picks) return m.form.click?.(m, event, undefined, this);
-    const pick = this.pick(event, isDraft(m) ? { ...m.form.picks } : { edges: !this.pending, faces: true, planes: true });
+    const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
+    if (isDraft(m) && !wanted) return m.form.click?.(m, event, undefined, this);
+    const pick = this.pick(event, isDraft(m) ? { ...wanted } : { edges: !this.pending, faces: true, planes: true });
     if (isDraft(m)) return m.form.click?.(m, event, pick, this);
     const ref = this.planeRefOf(pick);
     if (this.pending) {

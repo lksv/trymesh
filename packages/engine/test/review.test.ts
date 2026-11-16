@@ -310,11 +310,11 @@ describe('a module per feature type (D37): what the move could have changed unse
     expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern']);
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
-    expect(paths.slice(-3)).toEqual(['extent/start', 'extent/distance', 'extent/taper']);
+    expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
     expect(paths.slice(0, 2)).toEqual(['profile/offset', 'profile/thickness']);
-    expect(paths.slice(2, -3).every((path) => path.startsWith('profile/params/'))).toBe(true);
-    expect(paths.length).toBeGreaterThan(5);
+    expect(paths.slice(2, -5).every((path) => path.startsWith('profile/params/'))).toBe(true);
+    expect(paths.length).toBeGreaterThan(7);
     expect(FEATURE_TYPE_INFO.extrude.updatable).toEqual(['profile', 'extent', 'operation', 'targets']);
     expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset']);
     expect(FEATURE_TYPE_INFO.pattern.updatable).toEqual(['source', 'transform']);

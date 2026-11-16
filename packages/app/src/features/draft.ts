@@ -27,9 +27,10 @@ export interface FeatureForm<F extends Feature, Extra> {
   incomplete?(draft: Input<F>): boolean; // nothing to compute or to confirm yet
   panel(mode: DraftMode<F, Extra>, host: PanelHost): HTMLElement[];
   live?(mode: DraftMode<F, Extra>, host: PanelHost): void; // the parts of the panel that follow the preview without a rebuild
-  // What the form wants picked in the view. Without it the app picks nothing while the form is
-  // open and hands over the bare event (the extrusion finds its region with `host.planePoint`).
-  picks?: { faces?: true; planes?: true };
+  // What the form wants picked in the view now, asked at every pointer event. Without an answer the
+  // app picks nothing and hands over the bare event (the extrusion finds its region with
+  // `host.planePoint`); the extrusion asks for a face or a plane while its button "Pick" is armed.
+  picks?(mode: DraftMode<F, Extra>): { faces?: true; planes?: true } | undefined;
   hover?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): boolean; // true: redraw the scene
   click?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): void;
   overlay?(mode: DraftMode<F, Extra>, scene: SceneModel, host: PanelHost): void; // what the draft draws

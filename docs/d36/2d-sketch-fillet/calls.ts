@@ -13,7 +13,7 @@
 // adapter with the change of this package).
 
 import type { Expr, Id, SketchSolver, SolveInput, SolveResult, Vec3 } from '../../../packages/engine/src/index';
-import type { FaceNameAfter, StateAfter } from '../00-prep/contract';
+import type { CommandAfter, FaceNameAfter, StateAfter } from '../00-prep/contract';
 import { OUTLINE, RIB_LEFT, done, engine, fail, onFace, pointAt, run, sameName, sketchOn, unwrap } from '../2a-offset/calls';
 import type { FilletIds, SketchToolContextAfter } from './contract';
 import { CURVE_POINTS, FILLET, freshIds, sketchTool } from './contract';
@@ -28,7 +28,7 @@ const originOf = (state: StateAfter, sketch: Id): Vec3 | undefined => state.eval
 // ---------------------------------------------------------------- a. the tool
 
 // What a sketch tool is given: the sketch, its solved state, the values of the parameters and,
-// new, the document.
+// new and required, the document.
 export function contextOf(state: StateAfter, sketch: Id): SketchToolContextAfter {
   const feature = state.document.features.find((f) => f.id === sketch);
   if (feature?.type !== 'sketch') return fail(`no sketch "${sketch}"`);
@@ -89,9 +89,11 @@ export function cornerChecks(before: StateAfter, fillets: Record<Id, FilletIds>)
 
 // What the fillets moved without an error. `od` runs from o4, so its side faces start at o4, and
 // the sketch of the brace stands on one of them (the side of the cavity): the fillet at o4 names
-// it, and no other fillet names anything.
+// it, and no other fillet names anything. Each line of the outline starts at one corner, so each
+// fillet has one line that starts at its corner. Nothing in the box reads one line of the outline
+// without the other, so `shortened` is empty four times.
 export function movedByTheFillets(before: StateAfter, fillets: Record<Id, FilletIds>): boolean {
-  const named = fillets['o4'].moved.join() === 'braceSketch' && ['o1', 'o2', 'o3'].every((corner) => fillets[corner].moved.length === 0);
+  const named = fillets['o4'].moved.join() === 'braceSketch' && ['o1', 'o2', 'o3'].every((corner) => fillets[corner].moved.length === 0) && CORNERS.every((corner) => fillets[corner].shortened.length === 0);
   // The face started at the corner of the cavity, y = W - wall; it now starts where the moved arc
   // ends, y = W - cornerR. The brace went with it, 4 mm along the wall, and is still a brace.
   const [was, is] = [originOf(before, 'braceSketch'), originOf(engine.getState(), 'braceSketch')];
@@ -118,10 +120,45 @@ export function cornerRim(fillets: Record<Id, FilletIds>): boolean {
   const preview = done(
     engine.preview({
       type: 'batch',
-      commands: [...sketchOn('rims', onFace('lid', top)), { type: 'addExternal', sketch: 'rims', id: 'rim', ref: { type: 'edge', body: 'lid', edge: { a: top, b: { feature: 'lid', role: 'side', curve: fillets['o3'].arc[0] } }, kind: 'circle' } }],
+      commands: [...sketchOn('roundRim', onFace('lid', top)), { type: 'addExternal', sketch: 'roundRim', id: 'rim', ref: { type: 'edge', body: 'lid', edge: { a: top, b: { feature: 'lid', role: 'side', curve: fillets['o3'].arc[0] } }, kind: 'circle' } }],
     }),
   );
-  return preview.evaluation.features['rims'].status === 'ok' && near(preview.evaluation.features['rims'].sketch?.radii['rim'], 6);
+  return preview.evaluation.features['roundRim'].status === 'ok' && near(preview.evaluation.features['roundRim'].sketch?.radii['rim'], 6);
+}
+
+// ---------------------------------------------------------------- b2. what reads one line alone
+
+// Two things follow a fillet without an error and without a plane that moves; the tool names them
+// in `shortened`. Both are tried on a previewed state, before the corners are rounded, so nothing
+// of it stays in the model: the tool is a function of its context, and a previewed state is one.
+export function readOneLine(): boolean {
+  // a. A sketch on the top of the lid projects the edge of the top with the side face of `ob`
+  // (o2 to o3) as a line, from (80, 0) to (80, 50). The fillet at o3 names the sketch; the one at
+  // o1, which neither end of `ob` is at, does not. After it the projection ends at (80, 44), and
+  // the sketch has no warning: the edge is still there, only shorter.
+  const top: FaceNameAfter = { feature: 'lid', role: 'endCap' };
+  const note: CommandAfter[] = [...sketchOn('edgeNote', onFace('lid', top)), { type: 'addExternal', sketch: 'edgeNote', id: 'edge', ref: { type: 'edge', body: 'lid', edge: { a: top, b: { feature: 'lid', role: 'side', curve: 'ob' } }, kind: 'line' } }];
+  const noted = done(engine.preview({ type: 'batch', commands: note }));
+  const at = (corner: Id) => sketchTool('fillet', contextOf(noted, 'outline'), { corner, radius: 6 }, freshIds(noted.document, 'n_'));
+  const [near3, far] = [at('o3'), at('o1')];
+  if (!near3.ok || !far.ok) return false;
+  const rounded = done(engine.preview({ type: 'batch', commands: [...note, ...near3.commands] }));
+  const projection = rounded.evaluation.features['edgeNote'];
+  const edge = near3.ids['shortened'].join() === 'edgeNote' && far.ids['shortened'].length === 0 && projection.status === 'ok' && near(projection.sketch?.points['edge/b'].y, 44);
+
+  // b. A wall along `b12` alone, one of the two lines of the bracket. The fillet of the bend adds
+  // the arc to the bracket, which names both lines, and names this wall, which gets no arc: it is
+  // 7 long in place of 11, and its straight end is named by the end of the arc, not by `b2`.
+  const half: CommandAfter = { type: 'addFeature', feature: { id: 'half', name: 'half', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'ribs', curves: ['b12'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'new' } };
+  const withHalf = done(engine.preview(half));
+  const bend = sketchTool('fillet', contextOf(withHalf, 'ribs'), { corner: 'b2', radius: 4 }, freshIds(withHalf.document, 'n_'));
+  if (!bend.ok) return false;
+  const bent = done(engine.preview({ type: 'batch', commands: [half, ...bend.commands] }));
+  const ids = bend.ids as FilletIds;
+  const end = ids.ends[ids.lines.indexOf('b12')];
+  const ends = facesOf(bent, 'half').flatMap((name) => (name.role === 'wallEnd' ? [name.point] : []));
+  const wall = ids.patched.join() === 'bracket' && ids.shortened.join() === 'half' && bent.evaluation.features['half'].status === 'ok' && ends.includes(end) && !ends.includes('b2') && bent.evaluation.bodies['half'].volume < withHalf.evaluation.bodies['half'].volume;
+  return edge && wall;
 }
 
 // ---------------------------------------------------------------- c. a wall with a round bend
@@ -147,6 +184,8 @@ export function roundBracket(): boolean {
 
 // ---------------------------------------------------------------- d. what the tool refuses
 
+// It runs after the outline is rounded and before the bracket is: the bend `b2` is still a corner
+// the tool would fillet, so the last two are refused for their radius and for nothing else.
 export function refusals(): (string | undefined)[] {
   return [
     // a corner that was filleted: its two lines now end at the arc
@@ -157,8 +196,12 @@ export function refusals(): (string | undefined)[] {
     refusal('postSketch', 'mid', 2),
     // an expression the parameters give no value to
     refusal('ribs', 'b2', 'noSuchParameter'),
+    // a radius the lines are too short for: they are 11 and 13 long and meet at a right angle
+    refusal('ribs', 'b2', 11),
   ]; // each a text; nothing was drawn
 }
+// The same corner with a radius that fits is not refused (the control of the two above).
+export const stillSharp = (): boolean => refusal('ribs', 'b2', 4) === undefined;
 export const wrongInputs = (): void => {
   const context = contextOf(engine.getState(), 'outline');
   const newId = freshIds(engine.getState().document);
@@ -216,17 +259,20 @@ export function joinedGusset(): boolean {
 // Refused, each an invalid command that changes nothing.
 export function refusedRepoints(): boolean[] {
   const refused = (point: (typeof CURVE_POINTS)['line' | 'arc' | 'circle'][number], to: Id, id: Id = 'r1'): boolean => !engine.preview({ type: 'setCurvePoint', sketch: 'ribs', id, point, to }).ok;
+  // A constraint the catalog would refuse: the middle of a line cannot be its end. The batch is
+  // valid up to its last command (the IDs `r1m`, `r1mx`, `r1my`, `r1mid` are free), so the index
+  // of the command that failed says that the re-point is what was refused.
+  const middle: CommandAfter[] = [...pointAt('ribs', 'r1m', 'L / 2', 'wall'), { type: 'addConstraint', sketch: 'ribs', id: 'r1mid', constraint: { type: 'midpoint', point: 'r1m', line: 'r1' } }, { type: 'setCurvePoint', sketch: 'ribs', id: 'r1', point: 'b', to: 'r1m' }];
+  const result = engine.preview({ type: 'batch', commands: middle });
   return [
     refused('b', 'r1c'), // both ends of the line at one point
     refused('center', 'r1b'), // a line has no centre
     refused('a', 'o1'), // a point of another sketch
     refused('a', 'nope'), // no such point
     refused('a', 'r1b', 'nope'), // no such curve
-    // a constraint the catalog would refuse: the middle of a line cannot be its end
-    !engine.preview({
-      type: 'batch',
-      commands: [...pointAt('ribs', 'm', 'L / 2', 'wall'), { type: 'addConstraint', sketch: 'ribs', id: 'mid', constraint: { type: 'midpoint', point: 'm', line: 'r1' } }, { type: 'setCurvePoint', sketch: 'ribs', id: 'r1', point: 'b', to: 'm' }],
-    }).ok,
+    !result.ok && result.error.commandIndex === middle.length - 1,
+    // the same batch without the re-point is accepted (the control)
+    engine.preview({ type: 'batch', commands: middle.slice(0, -1) }).ok,
   ]; // all true
 }
 // The point a curve already has is accepted and is no change.
@@ -274,10 +320,11 @@ export function heldBySolver(): [SolveResult['status'], SolveResult['status'], b
 
 export function scenario12d(): boolean {
   const before = engine.getState();
+  const followers = readOneLine();
   const fillets = roundCorners();
   const corners = cornerChecks(before, fillets) && movedByTheFillets(before, fillets) && radiusByParameter() && cornerRim(fillets);
-  const bracket = roundBracket();
-  const refused = refusals().every((reason) => reason !== undefined);
+  const refused = refusals().every((reason) => reason !== undefined) && stillSharp();
+  const bracket = followers && roundBracket();
   const command = turnedRib() && joinedGusset() && refusedRepoints().every(Boolean) && samePoint();
   const [first, changed, at] = heldBySolver();
   return corners && bracket && refused && command && first === 'solved' && changed === 'solved' && at;

@@ -6,7 +6,7 @@
 // Four things change:
 // 1. `Command` gets one member, `setCurvePoint`.
 // 2. The sketch tools get the tool `fillet`, an input kind for "a point of the sketch, by its ID",
-//    and the document in their context.
+//    and the document in the context `sketchTool` takes.
 // 3. The solver adapter of planegcs gives a tangency of a line and an arc at a common end point to
 //    the library in another form (no type changes; the rule is stated at the end of this file).
 // 4. Nothing else: no field of the document, no feature type, no face role, no issue code, no
@@ -166,7 +166,7 @@ export const FILLET_RADIUS = { title: 'Radius', unit: 'mm', min: { value: 0, ope
 export const FILLET = {
   title: 'Fillet',
   summary:
-    'A fillet of the corner where two lines meet: an arc of the given radius, tangent to both lines. The lines are shortened to the ends of the arc and keep their IDs, so the faces made from them keep their names. The corner point stays as the virtual corner, held on both lines: dimensions and constraints on it mean what they did, and a size of the outline is still measured between its sharp corners. `radius` becomes a radius dimension (`ids.radius`), a number or an expression; change it there. The arc is added to every region and wall of the document that passes the corner (`ids.patched`), in the same batch, so the features built on the sketch keep their profiles and get the round face named by the arc: `side` of an extrusion (a cylinder, or a cone when the extrusion is tapered), `wallSide` left and right of a wall. A feature whose region has the corner on the rim of a hole (a plate around a pocket) needs no patch, since a region is named by its outer loop: it gets the round corner too and is in no list. Two lists name what reads the corner directly and is not patched; check them. `ids.moved`: sketches and plane features on a side face that starts at the corner (a side face starts where its line starts, at `a`); their plane has moved along the line, with everything dimensioned from its origin. `ids.shortened`: extrusions whose wall runs along one of the two lines only (the wall ends at the arc now), and sketches that project an edge of a side face of either line (the end of the projection at the corner has moved). Only features that read the corner directly are listed, by the names in the document: what is built on them follows them, and a listed feature may also be among the problems of the result. Refused: a point that is not the common end of exactly two lines (ends joined by a coincident constraint are two points: re-point one line onto the other point first, setCurvePoint), parallel lines, a radius the lines are too short for or one too small to draw, a line with an equalLength or midpoint constraint (it would measure the shortened line). A profile offset or a wall has to leave the arc a radius: an inward offset as large as the fillet is an error of that feature. Nothing keeps the arc a fillet afterwards: a later change that leaves it no room (a radius too large, a side too short) is often a conflict of the sketch or an invalid profile, but it can also be solved into an arc that runs past the end of a line, with no message and a body made from it, so look at the sketch after such a change. Of the curves that end at the corner the ones that are not construction curves are filleted; if there are none, the construction ones.',
+    'A fillet of the corner where two lines meet: an arc of the given radius, tangent to both lines. The lines are shortened to the ends of the arc and keep their IDs, so the faces made from them keep their names. The corner point stays as the virtual corner, held on both lines: dimensions and constraints on it mean what they did, and a size of the outline is still measured between its sharp corners. `radius` becomes a radius dimension (`ids.radius`), a number or an expression; change it there. The arc is added to every region and wall of the document that passes the corner (`ids.patched`), in the same batch, so the features built on the sketch keep their profiles and get the round face named by the arc: `side` of an extrusion (a cylinder, or a cone when the extrusion is tapered), `wallSide` left and right of a wall. A region that has the corner only on the rim of a hole (a plate around a pocket) needs no patch, since a region is named by its outer loop: a feature that reads the corner through holes alone gets the round corner too and is in no list. Two lists name what reads the corner directly and is not patched; check them. `ids.moved`: sketches and plane features on a side face that starts at the corner (a side face starts where its line starts, at `a`); their plane has moved along the line, with everything dimensioned from its origin. `ids.shortened`: extrusions whose wall runs along one of the two lines only (the wall ends at the arc now), and sketches that project an edge of a side face of either line (the end of the projection at the corner has moved). Only features that read the corner directly are listed, by the names in the document: what is built on them follows them, and a listed feature may also be among the problems of the result. Refused: a point that is not the common end of exactly two lines (ends joined by a coincident constraint are two points: re-point one line onto the other point first, setCurvePoint), parallel lines, a radius the lines are too short for or one too small to draw, a line with an equalLength or midpoint constraint (it would measure the shortened line). A profile offset or a wall has to leave the arc a radius: an inward offset as large as the fillet is an error of that feature. Nothing keeps the arc a fillet afterwards: a later change that leaves it no room (a radius too large, a side too short) is often a conflict of the sketch or an invalid profile, but it can also be solved into an arc that runs past the end of a line, with no message and a body made from it, so look at the sketch after such a change. Of the curves that end at the corner the ones that are not construction curves are filleted; if there are none, the construction ones.',
   inputs: { corner: { kind: 'point' }, radius: { kind: 'number', spec: FILLET_RADIUS, expression: true } },
   ids: {
     arc: 'the arc',
@@ -175,9 +175,9 @@ export const FILLET = {
     ends: 'the ends of the arc: `ends[i]` is the new end of `lines[i]`',
     constraints: 'the constraints the tool added, without the radius dimension: the tangency of `lines[0]`, of `lines[1]`, the corner on `lines[0]`, on `lines[1]`',
     radius: 'the radius dimension',
-    patched: 'the features whose region or wall named both lines and was given the arc, in the order of the timeline (empty when there are none; a feature whose region has the corner on a hole needs no patch and is not here)',
+    patched: 'the features whose region or wall named both lines and was given the arc, in the order of the timeline (empty when there are none; a feature that reads the corner only through the hole of a region needs no patch and is not here)',
     moved: 'sketches and plane features on a side face that starts at the corner: their plane moved with the start of its line (empty when there are none)',
-    shortened: 'features that read one of the two lines without the other: extrusions whose wall runs along one of them, sketches that project an edge of a side face of either (empty when there are none)',
+    shortened: 'features that read a line of the two by itself: extrusions whose wall runs along one of them, sketches that project an edge of a side face of either (empty when there are none)',
   },
 } as const satisfies SketchToolSpecAfter;
 // What `ids` of a fillet holds: every list of the entry, always present.
@@ -212,8 +212,10 @@ export type FilletIds = { [K in keyof (typeof FILLET)['ids']]: Id[] };
 //   recompute reports that one as `brokenProjection`).
 //
 // In neither list: a feature that names the corner point (it keeps the sharp corner), and
-// a feature whose region has the corner on the rim of a hole (it gets the round corner by itself;
-// the solved sketch does not say which curves the holes of a region have).
+// a feature that reads the corner only through the hole of a region (it gets the round corner by
+// itself; the solved sketch does not say which curves the holes of a region have). The patch is
+// per region: a feature with a region that names both lines in its outer loop is patched for it
+// and is in `patched`, whatever its other regions are.
 
 // ================================================================ 3. the solver adapter
 
@@ -235,7 +237,8 @@ export type FilletIds = { [K in keyof (typeof FILLET)['ids']]: Id[] };
 // The line may be a projected one or end at `origin`: both are lines of the input like any other.
 // The new form is as strict about a tangency as the library is about every other constraint (its
 // residual grows with the angle off tangent, that of `tangent_la` with its square): an input that
-// holds the points at a state only nearly tangent is a conflict now where it was solved before.
+// holds the points at a state only nearly tangent can be a conflict now where it was solved
+// before, and an input that was a conflict because of the double root is solved now.
 // The rule is decided from the curves and constraints of the input, never from positions. The
 // constraint keeps its ID in `conflicting` and `redundant`. Everything else about `tangent`
 // stays: a line and a circle, a circle and an arc, two circles, two arcs (design.md says why two

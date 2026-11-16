@@ -128,9 +128,10 @@ export function cornerRim(fillets: Record<Id, FilletIds>): boolean {
 
 // ---------------------------------------------------------------- b2. what reads one line alone
 
-// Two things follow a fillet without an error and without a plane that moves; the tool names them
-// in `shortened`. Both are tried on a previewed state, before the corners are rounded, so nothing
-// of it stays in the model: the tool is a function of its context, and a previewed state is one.
+// What reads a line of a corner by itself is named in `shortened`: two cases, both of which follow
+// the fillet without an error. Both are tried on a previewed state, before the corners are
+// rounded, so nothing of it stays in the model: the tool is a function of its context, and
+// a previewed state is one.
 export function readOneLine(): boolean {
   // a. A sketch on the top of the lid projects the edge of the top with the side face of `ob`
   // (o2 to o3) as a line, from (80, 0) to (80, 50). The fillet at o3 names the sketch; the one at

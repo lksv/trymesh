@@ -38,7 +38,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 3e | Parts list | 3 | E | 3a, 2c | outline |
 | 4a | Revolve | 4 | G | 2b (same code: tool build, face kinds) | outline |
 | 4b | Chamfer and fillet of edges: spike, chamfer, fillet | 4 | G | 4a | outline; the spike can run any time |
-| 5a | Mechanism description and the posed queries | 5 | H | 1c, 3a; scenario 13 also 1d; its app side the generic form of 1b | full for the description: adds a section to the document |
+| 5a | Mechanism description and the posed queries | 5 | H | 1c, 3a; scenario 13 also 1d; its app side the generic form of 1b | full for the description: adds a section to the document. The owner's decisions of 2026-11-16 and the check against the code and the real kernel of that day are in [5a-mechanism/design.md](5a-mechanism/design.md); everything it needs is merged |
 | 5b | Export of URDF and MJCF | 5 | H | 5a, 1d, 3a, 2g | outline |
 | 5c | Plane tilted about a line, midplane of two faces | 5 | I | 00 | outline |
 | 5d | Generators: cycloidal disc, GT2 pulley, profile shift of the gear | 5 | I | none | outline |

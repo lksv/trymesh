@@ -42,7 +42,9 @@ describe('data catalogs', () => {
     expect(catalogTable(catalogs, 'screws', 'toString')).toEqual({ missing: 'key' });
   });
 
-  it('the engine has no catalog yet; the first package with one adds it', () => {
-    expect(Object.keys(DATA_CATALOGS)).toEqual([]);
+  it('the catalogs of the engine: the hardware of D46', () => {
+    expect(Object.keys(DATA_CATALOGS)).toEqual(['clearanceHoles', 'socketHeadScrews', 'countersunkScrews', 'hexNuts', 'heatSetInserts']);
+    // the query `catalog` takes the map as it is, with the rows copied
+    expect(catalogTable(DATA_CATALOGS, 'hexNuts')).toMatchObject({ title: DATA_CATALOGS.hexNuts.title, columns: DATA_CATALOGS.hexNuts.columns });
   });
 });

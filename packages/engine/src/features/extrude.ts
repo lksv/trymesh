@@ -1,7 +1,7 @@
 // The extrusion feature.
 import { type EndPlane, toolSpan, upToSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
-import { applyTool, frame as frameOf, issue, withFaces } from '../recompute/services';
+import { applyTool, frame as frameOf, toolResult, withFaces } from '../recompute/services';
 import { type BuiltTool, type Done, type Step, type StepContext, type ToolRecipe, ToolProblem } from '../recompute/state';
 import { taperedSection, tapers } from '../recompute/taper';
 import { buildPrism } from '../recompute/tool-prism';
@@ -94,15 +94,7 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   };
   if (feature.operation !== 'new') {
     const recipe: ToolRecipe = { operation: feature.operation, targets: feature.targets ?? [], build };
-    const applied = applyTool(recipe, state, deps.kernel);
-    if (!applied.ok) return failed(applied.code, applied.refs, applied.detail);
-    // The recipe is stored even when nothing changed: a copy in a pattern can hit what the original missed.
-    const tools = { ...state.tools, [feature.id]: recipe };
-    const { unchanged } = applied;
-    if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings: [issue('noEffect', unchanged)] }, { tools }) };
-    // Only some targets were missed: the general text would read as if nothing had happened.
-    const warnings = unchanged.length ? [issue('noEffect', unchanged, 'only the targets in refs; the others were changed')] : [];
-    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...applied.model, tools }) };
+    return toolResult(feature.id, recipe, applyTool(recipe, state, deps.kernel), state, done, failed);
   }
   const first = state.faceNames.length;
   let tool: BuiltTool;

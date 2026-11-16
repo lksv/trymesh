@@ -4,7 +4,7 @@
 import { analyzeBody, faceFrame, onSurface, toWorld, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
 import { faceKey, has } from '../util';
-import { type Applied, type BuiltTool, type Model, type Placement, type State, type ToolRecipe, ToolProblem } from './state';
+import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
 // jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
@@ -32,6 +32,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   gearInterference: 'The tip of one gear of the pair runs into the root of the other.',
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
   invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
+  invalidHole: 'The dimensions do not make a hole.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 
@@ -66,6 +67,8 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
 // - A cut that would remove a whole target is an error and changes none of them.
 // - Targets the tool did not change are returned in `unchanged`. When it changed none, its faces
 //   are in no body and do not enter the face table either.
+// - A tool marked `refuseChange` that changed a target is the error of the mark, with the changed
+//   targets in `refs`, and changes none of them.
 export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel, placement?: Placement): Applied {
   const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
   if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
@@ -100,7 +103,21 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
     return { ok: false, code: 'kernelFailure', detail: error instanceof Error ? error.message : String(error) };
   }
   if (unchanged.length === recipe.targets.length) return { ok: true, model, unchanged };
+  if (tool.refuseChange) return { ok: false, code: tool.refuseChange.code, refs: recipe.targets.filter((target) => !unchanged.includes(target)), detail: tool.refuseChange.detail };
   return { ok: true, model: { ...withFaces(model, tool, first), bodies }, unchanged };
+}
+
+// The result of a feature that applied its tool to its targets (an extrusion that adds or cuts,
+// a hole), from what `applyTool` answered. The recipe is stored even when nothing changed: a copy
+// in a pattern can hit what the original missed.
+export function toolResult(id: Id, recipe: ToolRecipe, applied: Applied, state: State, done: Done, failed: Failed): Step {
+  if (!applied.ok) return failed(applied.code, applied.refs, applied.detail);
+  const tools = { ...state.tools, [id]: recipe };
+  const { unchanged } = applied;
+  if (unchanged.length === recipe.targets.length) return { state: done({ status: 'warning', warnings: [issue('noEffect', unchanged)] }, { tools }) };
+  // Only some targets were missed: the general text would read as if nothing had happened.
+  const warnings = unchanged.length ? [issue('noEffect', unchanged, 'only the targets in refs; the others were changed')] : [];
+  return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...applied.model, tools }) };
 }
 
 // The face tables of a model with the faces of a new tool appended.

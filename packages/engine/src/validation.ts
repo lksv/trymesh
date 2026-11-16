@@ -179,7 +179,7 @@ export function edgeName(v: unknown, what: string): EdgeName {
 // - `generated` is a reference to an extrusion whose profile comes from one of the generators in
 //   `accepts` (a gear in mesh with another gear).
 // - `tool` is a reference to a feature that applies a tool to bodies and can be repeated by
-//   a pattern: an extrusion with the operation add or cut.
+//   a pattern: an extrusion with the operation add or cut, a hole.
 // - `pattern` is a reference to a pattern (the one that made the copy a face name speaks of).
 export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern';
 export interface FeatureRef {
@@ -190,7 +190,7 @@ export interface FeatureRef {
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'extrude', pattern: 'pole (pattern)' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'pole (pattern)' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types

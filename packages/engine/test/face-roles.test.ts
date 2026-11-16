@@ -16,9 +16,34 @@ const refused = (run: () => unknown, message: RegExp) => {
 };
 
 describe('roles of faces', () => {
-  it('the roles of an extrusion, in the order they are listed to a client', () => {
-    expect(Object.keys(FACE_ROLES)).toEqual(['side', 'startCap', 'endCap', 'wallSide', 'wallEnd']);
-    expect(Object.fromEntries(Object.entries(FACE_ROLES).map(([role, spec]) => [role, Object.keys(spec.parts)]))).toEqual({ side: ['curve'], startCap: [], endCap: [], wallSide: ['curve', 'side'], wallEnd: ['point'] });
+  it('the roles of an extrusion and of a hole, in the order they are listed to a client', () => {
+    expect(Object.keys(FACE_ROLES)).toEqual(['side', 'startCap', 'endCap', 'wallSide', 'wallEnd', 'holeBore', 'holeHead', 'holeFlat', 'holeSeat']);
+    expect(Object.fromEntries(Object.entries(FACE_ROLES).map(([role, spec]) => [role, Object.keys(spec.parts)]))).toEqual({
+      side: ['curve'],
+      startCap: [],
+      endCap: [],
+      wallSide: ['curve', 'side'],
+      wallEnd: ['point'],
+      holeBore: ['point'],
+      holeHead: ['point'],
+      holeFlat: ['point', 'flat'],
+      holeSeat: [],
+    });
+  });
+
+  it('a text part holds any ID a sketch can have, a derived one with its slash included; the key stays unambiguous', () => {
+    // the centre of a projected circle as the point of a hole (D46 asks for own points, but the name itself is valid)
+    const bore: FaceName = { feature: 'H', role: 'holeBore', point: 'rim/center' };
+    expect(faceName(bore, 'face')).toEqual(bore);
+    expect(faceKey(bore)).toBe('H/holeBore/rim/center');
+    // a flat: the whole number first (alphabetical), then the free ID, which is the only free part of the role
+    const flat: FaceName = { feature: 'H', role: 'holeFlat', point: 'rim/center', flat: 2 };
+    expect(faceKey(flat)).toBe('H/holeFlat/2/rim/center');
+    expect(faceKey({ ...flat, flat: 1 })).not.toBe(faceKey(flat));
+    expect(faceKey({ feature: 'H', role: 'holeSeat', copy: [{ pattern: 'P', index: 1 }] })).toBe('H/holeSeat/@P:1');
+    // every role has at most one part that holds a free ID: the others are whole numbers or from a closed set
+    const free = (role: string): string[] => Object.entries(FACE_ROLES[role as keyof typeof FACE_ROLES].parts).flatMap(([part, spec]) => (spec.kind === 'text' && !(role === 'wallSide' && part === 'side') ? [part] : []));
+    for (const role of Object.keys(FACE_ROLES)) expect(free(role).length, role).toBeLessThanOrEqual(1);
   });
 
   it('the key of a face keeps its form for the roles of an extrusion', () => {

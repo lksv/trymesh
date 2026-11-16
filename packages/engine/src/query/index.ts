@@ -8,6 +8,7 @@ import { body } from './body';
 import { catalog } from './catalog';
 import { type ContextDeps, type Internals, queryContext } from './context';
 import { gap } from './gap';
+import { hardwareHole } from './hardware-hole';
 import { interference } from './interference';
 import { mass } from './mass';
 import { measure } from './measure';
@@ -16,7 +17,7 @@ import { section } from './section';
 import { constraintExplanation, sketchDiagnosis } from './sketch';
 import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
 
-export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap, mass, print };
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap, mass, print, hardwareHole };
 
 const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 

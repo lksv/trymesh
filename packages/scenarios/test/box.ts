@@ -1,7 +1,7 @@
 // The model of validation scenario 12 (docs/requirements.md): a box with a lid, built step by step
 // by the packages of track B of D36. This file holds the steps as commands, so that each package
 // adds its own to the same model (docs/d36/2a-offset/calls.ts and the calls.ts of 2b, 2c and 2f).
-import { type Command, type ExtrudeFeature, type Expr, type FaceName, type Id, type Input, type PlaneRef, emptySketch } from '@trymesh/engine';
+import { type Command, type ExtrudeFeature, type Expr, type FaceName, type HoleShape, type Id, type Input, type PlaneRef, emptySketch } from '@trymesh/engine';
 import { XY, batch } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -155,4 +155,33 @@ export const brace = (): Command =>
     sketchOn('braceSketch', onFace('box', { feature: 'cavity', role: 'side', curve: 'od' })),
     round('braceSketch', 'br', '-(W - 2 * wall - 16)', 'floor + 5', '1.5'),
     add({ ...base('brace'), profile: { type: 'regions', sketch: 'braceSketch', regions: [{ outerLoop: ['br'] }] }, extent: { type: 'upTo', plane: onFace('box', RIB_LEFT), start: 0 }, operation: 'add', targets: ['box'] }),
+  );
+
+// ---------------------------------------------------------------- 2c: screws through the lid, inserts in the posts
+
+// Four points on the top of the lid over the posts, and one hole feature for all four. Its shape and
+// label are the answer of the query `hardwareHole`, given here; no size is written in this file.
+export const SCREW_POINTS: Id[] = ['s1', 's2', 's3', 's4'];
+export const screwHoles = (shape: Input<HoleShape>, label: string, lidT: Expr): Command =>
+  batch(
+    { type: 'setParameter', name: 'lidT', expr: lidT },
+    { type: 'setParameter', name: 'holeComp', expr: '0.2' },
+    sketchOn('screws', onFace('lid', LID_TOP)),
+    pointAt('screws', 's1', INSET, INSET),
+    pointAt('screws', 's2', `L - (${INSET})`, INSET),
+    pointAt('screws', 's3', `L - (${INSET})`, `W - (${INSET})`),
+    pointAt('screws', 's4', INSET, `W - (${INSET})`),
+    { type: 'addFeature', feature: { id: 'screwHoles', name: 'screwHoles', suppressed: false, type: 'hole', sketch: 'screws', points: SCREW_POINTS, shape, extent: { type: 'throughAll', side: 'backward' }, targets: ['lid'], label } },
+  );
+
+// Two points on the tops of the two posts of 2f and a blind hole for a heat-set insert at each, as
+// deep as the catalog says; the holes in the two copied posts are a pattern of the hole feature
+// about the middle of the box.
+export const insertHoles = (shape: Input<HoleShape>, label: string, depth: number): Command =>
+  batch(
+    pointAt('tops', 'i1', INSET, INSET),
+    pointAt('tops', 'i2', `L - (${INSET})`, INSET),
+    pointAt('tops', 'center', 'L / 2', 'W / 2'),
+    { type: 'addFeature', feature: { id: 'inserts', name: 'inserts', suppressed: false, type: 'hole', sketch: 'tops', points: ['i1', 'i2'], shape, extent: { type: 'distance', start: 0, distance: -depth }, targets: ['box'], label } },
+    { type: 'addFeature', feature: { id: 'insertPattern', name: 'insertPattern', suppressed: false, type: 'pattern', source: { type: 'features', features: ['inserts'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'tops', point: 'center' }, count: 2, span: { type: 'full' } } } },
   );

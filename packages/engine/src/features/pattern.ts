@@ -117,7 +117,7 @@ export const pattern: FeatureModule<PatternFeature> = {
   info: {
     title: 'Pattern',
     summary:
-      'Repeats its source around an axis: a list of extrusions with the operation add or cut (each copy of their tools is applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
+      'Repeats its source around an axis: a list of features that apply a tool: extrusions with the operation add or cut, holes (each copy of their tools is applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
       'The count includes the original. The copies go around the full circle (`span: { type: "full" }`) or within an angle between the first and the last copy.',
     fields: [
       { path: 'transform/count', spec: PATTERN_COUNT },

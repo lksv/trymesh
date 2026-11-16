@@ -148,7 +148,7 @@ describe('příkazy časové osy', () => {
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: [] }) }, /targets/);
     // načtený dokument s takovým odkazem závisí na vlastníkovi tělesa
     expect(featureRefs(extrude('E2', 'S1', { operation: 'cut', targets: ['P/2'] }))).toEqual(['S1', 'P']);
-    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['extrude', 'pattern', 'plane', 'sketch']);
+    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['extrude', 'hole', 'pattern', 'plane', 'sketch']);
     expect(FEATURE_TYPE_INFO.extrude).toMatchObject({ bodies: 'self', updatable: ['profile', 'extent', 'operation', 'targets'] });
     expect(FEATURE_TYPE_INFO.sketch).toMatchObject({ bodies: 'none', updatable: [] });
   });

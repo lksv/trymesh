@@ -50,7 +50,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -198,9 +198,10 @@ export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 
 // A pattern repeats its source by a list of rigid transforms. The kind of the transform is
 // a variant; the first one is a circular pattern around an axis.
-// - `features`: extrusions with the operation add or cut. For every copy the tool of each of them
-//   is built in the transformed position and applied to the targets of that feature, in the order of
-//   the list. The features need not share targets; the list lets a hole repeat with its pocket.
+// - `features`: features that apply a tool: extrusions with the operation add or cut, holes. For
+//   every copy the tool of each of them is built in the transformed position and applied to the
+//   targets of that feature, in the order of the list. The features need not share targets; the
+//   list lets a hole repeat with its pocket.
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
 //   numbered from 1. A copy is a body like any other: a sketch can stand on it, it can be cut and its
 //   edges projected.
@@ -211,6 +212,60 @@ export interface PatternFeature extends FeatureBase {
   source: { type: 'features'; features: Id[] } | { type: 'body'; body: Id };
   transform: PatternTransform;
 }
+
+// A hole (D46): the same hole at every listed point of one sketch, along the normal of the sketch
+// plane, cut out of the targets. One tool for all points, so a pattern repeats it like a cut.
+// - `points`: points of the sketch that are not projected geometry (its own points or `origin`), at
+//   least one, none twice. Their order does not matter; the faces are named by the point.
+// - `shape`: what the hole looks like (HoleShape); every dimension is a numeric field
+//   `shape/<name>` and takes an expression, so a print compensation is a parameter added in it.
+// - `extent`: where the mouth is and how deep the hole goes (HoleExtent).
+// - `targets`: one or more bodies, none twice, like a cut.
+// - `label`: free text for people and for a parts list ("M3 countersunk screw"), not empty, at most
+//   200 characters; the engine never reads a dimension from it. `updateFeature` with
+//   `{ label: null }` removes it.
+// - The query `hardwareHole` composes `shape` and `label` from the hardware catalogs (and the
+//   depth of a hole for a heat-set insert); the document stores the numbers, not the size.
+// - Errors: `invalidHole` (see ErrorCode), `brokenReference` (the sketch, a point or a target is
+//   missing), `emptyResult` and `kernelFailure` as for a cut; the warning `noEffect` names the
+//   targets the holes missed.
+export interface HoleFeature extends FeatureBase {
+  type: 'hole';
+  sketch: Id;
+  points: Id[];
+  shape: HoleShape;
+  extent: HoleExtent;
+  targets: Id[];
+  label?: string;
+}
+
+// The shape of one hole, a variant by `type`. The wider part (the head) is at the mouth of the hole,
+// where the extent starts. No field has a default.
+// - `plain`: a cylinder of `diameter`.
+// - `counterbore`: a cylinder of `headDiameter`, `headDepth` deep, then the bore of `diameter`.
+// - `countersink`: a cone from `headDiameter` at the mouth down to the bore of `diameter`; `angle`
+//   is the included angle of the cone (radians, between 0 and π; `deg(90)` for a cone of 90°). The
+//   depth of the cone follows: (headDiameter − diameter) / 2 / tan(angle / 2).
+// - `nutPocket`: a hexagon `acrossFlats` wide and `headDepth` deep, then the bore. `rotation` is the
+//   angle of one corner of the hexagon from the X axis of the sketch, counter-clockwise.
+// The head has to be wider than the bore (for a nut pocket the bore has to fit between the flats).
+export type HoleShape =
+  | { type: 'plain'; diameter: number }
+  | { type: 'counterbore'; diameter: number; headDiameter: number; headDepth: number }
+  | { type: 'countersink'; diameter: number; headDiameter: number; angle: number }
+  | { type: 'nutPocket'; diameter: number; acrossFlats: number; headDepth: number; rotation: number };
+
+// The extent of a hole: two of the variants of a cut, without a taper and without `upTo`.
+// - `distance`: `start` is the offset of the mouth from the sketch plane along its normal;
+//   `distance` is the depth of the whole hole, head included, and its sign is the direction. For
+//   a sketch on a face the normal points out of the body, so a hole into it has a negative distance.
+// - `throughAll`: from the sketch plane through all targets, `forward` or `backward` (not `both`:
+//   a hole has a mouth). The depth of the hole is then how far the targets reach from the sketch
+//   plane on that side; the tool is longer by the overshoot of every "through all".
+// The result tells in `facts`: `depth`, the depth of the whole hole in mm for the feature itself
+// (for "through all" measured on the meshes of the targets, so with their float32 rounding), and
+// `headDepth`, the depth of the head (absent for a plain hole).
+export type HoleExtent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' };
 
 // Circular pattern: copies turned around the axis. `full`: the step is 2π / count. `angle`: the
 // angle between the first and the last copy, so the step is angle / (count − 1); it may be negative.
@@ -277,12 +332,26 @@ export type Extent =
 //   not depend on the order of `curves` or on the end the chain is walked from.
 // - `wallEnd`: the straight end of an open chain; `point` is the sketch point the chain ends at, as
 //   the end curve names it (`a`, `b`, `start` or `end` of the curve).
+// The faces of a hole (a feature of the type `hole`) are named by what they are and by the point,
+// so the bore keeps its name when a plain hole becomes a counterbore:
+// - `holeBore`: the bore at the point (a cylinder).
+// - `holeHead`: the side of the head at the point: the cylinder of a counterbore, the cone of
+//   a countersink.
+// - `holeFlat`: one side of the hexagon of a nut pocket (a plane). `flat` counts from 1,
+//   counter-clockwise, starting at the corner `rotation` points to.
+// - `holeSeat`: the planar step between the head and the bore of a counterbore or a nut pocket.
+//   The seats of all points of one feature lie in one plane and are one face, as the caps are.
+// - The mouths are `startCap` and the bottoms `endCap`, one face each for all points.
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
   | { feature: Id; role: 'endCap' } // protější víko
   | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }
   | { feature: Id; role: 'wallEnd'; point: Id }
+  | { feature: Id; role: 'holeBore'; point: Id }
+  | { feature: Id; role: 'holeHead'; point: Id }
+  | { feature: Id; role: 'holeFlat'; point: Id; flat: number }
+  | { feature: Id; role: 'holeSeat' }
 ) & { copy?: CopyTag[] };
 
 export interface CopyTag {
@@ -457,6 +526,17 @@ export interface Issue {
 // feature types it is an error.
 // invalidExtent: the extent `upTo` cannot reach its plane (parallel to the direction, through the
 // start of the tool, or a gap as large as the way to it).
+// invalidHole: the dimensions do not make a hole.
+// - The head is not wider than the bore (for a nut pocket: the bore does not fit between the flats).
+// - The head is as deep as the hole or deeper. For "through all" the hole is as deep as the targets
+//   reach from the mouth, and the overshoot of the tool does not count; the bore has to be left
+//   more than the resolution of the kernel (1e-4 of the largest coordinate) of that reach. Whether
+//   such a head is this error is decided by what its tool did: if it cut a target, it is; if it
+//   changed none (the targets do not pass the mouth), the feature has the warning `noEffect`, as
+//   a cut that misses. The reach is that of the whole targets, not of the material under each
+//   point: a head that passes through a thin plate of a body that reaches deeper elsewhere is not
+//   detected.
+// - Two points are so close that their holes would overlap; `refs` name the two points.
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -465,7 +545,8 @@ export type ErrorCode =
   | 'emptyResult'
   | 'kernelFailure'
   | 'invalidExpression'
-  | 'invalidExtent';
+  | 'invalidExtent'
+  | 'invalidHole';
 
 export type WarningCode =
   | 'sketchConflict'
@@ -636,7 +717,11 @@ export type Patch<T> = T extends number
         ? { [K in keyof T]?: Patch<T[K]> | null } // a dictionary: null removes an entry
         : { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
       : T;
-export type FeaturePatch = Patch<Pick<PlaneFeature, 'base' | 'offset'>> | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>> | Patch<Pick<PatternFeature, 'source' | 'transform'>>;
+export type FeaturePatch =
+  | Patch<Pick<PlaneFeature, 'base' | 'offset'>>
+  | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>
+  | Patch<Pick<PatternFeature, 'source' | 'transform'>>
+  | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>;
 
 // ---------------------------------------------------------------- queries
 

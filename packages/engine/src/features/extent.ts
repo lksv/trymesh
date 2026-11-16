@@ -24,12 +24,13 @@ export const EXTENT_FIELD_SPECS: FieldSpec[] = [
 // The extent of a feature. Which variants the feature may use is the caller's to say: `throughAll`
 // takes its length from the targets, so there must be some, and only a cut goes through all;
 // `upTo` ends in a plane. `noTaper`: why the feature may have no taper (a generated profile has no
-// curves to move), or undefined when it may. The taper is stored only when it is given (also
+// curves to move), or undefined when it may. `noBoth`: why "through all" may not go to both sides
+// (a hole has a mouth), or undefined when it may. The taper is stored only when it is given (also
 // a zero). On another variant than `distance` the key is refused rather than dropped: the size of
 // the far end would depend on the targets or on the plane.
 // The variant `upTo` lists its own fields, so a key it does not know is refused (the older two
 // variants drop such keys).
-export function extentOf(context: ValidationContext, v: unknown, what: string, allows: { throughAll: boolean; upTo: boolean; noTaper?: string }): ExtrudeFeature['extent'] {
+export function extentOf(context: ValidationContext, v: unknown, what: string, allows: { throughAll: boolean; upTo: boolean; noTaper?: string; noBoth?: string }): ExtrudeFeature['extent'] {
   const { fields } = context;
   const given = object(v, what);
   const type = oneOf(given.type, ['distance', 'throughAll', 'upTo'] as const, `${what}.type`);
@@ -49,7 +50,9 @@ export function extentOf(context: ValidationContext, v: unknown, what: string, a
     return given.gap === undefined ? { type, plane, start } : { type, plane, start, gap: fields.number(given.gap, 'extent/gap', EXTENT_GAP, `${what}.gap`) };
   }
   if (!allows.throughAll) fail(`${what}.type: throughAll is only for the operation cut`);
-  return { type: 'throughAll', side: oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.side`) };
+  const side = oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.side`);
+  if (side === 'both' && allows.noBoth !== undefined) fail(`${what}.side: ${allows.noBoth}`);
+  return { type: 'throughAll', side };
 }
 
 // The references of an extent: the plane an extent `upTo` ends in.

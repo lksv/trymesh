@@ -6,9 +6,13 @@
 //   a tapered cut and a straight bore.
 // - 2f (D47), the extent up to a plane: screw posts up to the underside of the lid, a brace up to
 //   the drafted side of the rib.
-import { type Command, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Surface, UPGRADES } from '@trymesh/engine';
+// - 2c (D46), the hole feature and the hardware catalogs: the lid screwed to the posts with
+//   countersunk screws (then socket heads and nut pockets instead, as previews), heat-set inserts in
+//   the posts and a pattern of them. No size of a part is written here: every one comes from the
+//   query `hardwareHole` and the catalogs.
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type HoleFeature, type Id, type PlaneRef, type Surface, UPGRADES, producesTool } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { BORE, CONE, FLOOR, LID_TOP, OUTLINE, POST_TOP, RIB_LEFT, UNDER_LID, box, brace, bracket, cavity, countersinkByHand, lid, lipLeadIn, parameters, posts, rib, ribDraft, sketchOn } from './box';
+import { BORE, CONE, FLOOR, LID_TOP, OUTLINE, POST_TOP, RIB_LEFT, SCREW_POINTS, UNDER_LID, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lipLeadIn, parameters, posts, rib, ribDraft, screwHoles, sketchOn } from './box';
 import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -301,5 +305,126 @@ describe('scenario 12, the part of 2f: screw posts up to the lid and a brace up 
     expectAllOk(other.getState());
     near(volumeOf(other.getState(), 'box'), volumeOf(before, 'box'), 1e-9);
     expect(UNDER_LID).toEqual({ kind: 'face', body: 'lid', face: { feature: 'lid', role: 'startCap' } });
+  });
+});
+
+describe('scenario 12, the part of 2c: screws through the lid and inserts in the posts, from the catalogs', () => {
+  let engine: Engine;
+  const errorOf = (state: EngineState, id: Id) => state.evaluation.features[id].error;
+  const named = (state: EngineState, feature: Id, role: FaceName['role']): FaceName[] => state.evaluation.faceNames.filter((name) => name.feature === feature && name.role === role);
+  const hardware = (args: Parameters<Engine['query']>[1] & object) => {
+    const answer = engine.query('hardwareHole', args as never);
+    if (!answer.ok) throw new Error(answer.error.message);
+    return answer.result as { shape: HoleFeature['shape']; label: string; depth?: number; from: string[] };
+  };
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket(), ribDraft(), lipLeadIn(), countersinkByHand(), posts(), sketchOn('tops', onFace('box', POST_TOP)), brace());
+  });
+
+  it('the screws: one hole feature of countersinks for M3 from the catalog, with the print compensation, through the lid', () => {
+    const preset = hardware({ use: 'countersunk', size: 'M3', allowance: 'holeComp' });
+    // The bores have to be in the lid, so its plate has to be thicker than the cone is deep. The
+    // plate is set from the row of the catalog: the cone of the head down to its point is deeper
+    // than any countersink for it; that and a millimetre, never less than the 3 mm the parts
+    // before were built with.
+    const screw = DATA_CATALOGS.countersunkScrews.rows.M3;
+    const plate = Math.max(3, screw.headDiameter / 2 / Math.tan(screw.headAngle / 2) + 1);
+    const state = run(engine, screwHoles(preset.shape, preset.label, String(plate)));
+    expectAllOk(state);
+    // the document holds expressions, numbers and a label, not a size
+    const feature = state.document.features.find((f) => f.id === 'screwHoles') as HoleFeature;
+    expect(feature.label).toBe('M3 countersunk screw');
+    expect(feature.expressions?.['shape/headDiameter']?.endsWith('+ holeComp')).toBe(true);
+    expect(feature.expressions?.['shape/diameter']?.endsWith('+ holeComp')).toBe(true);
+    expect(feature.expressions?.['shape/angle']?.startsWith('deg(')).toBe(true);
+    expect(feature.shape.type === 'countersink' && feature.shape.angle).toBeCloseTo(screw.headAngle, 9);
+    // one cone and one bore per point, named by the point; the cones are holes; every rim of a cone is a circle
+    expect(named(state, 'screwHoles', 'holeHead').map((name) => (name.role === 'holeHead' ? name.point : '')).sort()).toEqual(SCREW_POINTS);
+    const body = engine.query('body', { body: 'lid' });
+    if (!body.ok) throw new Error(body.error.message);
+    const ofRole = (role: FaceName['role']) => body.result.faces.filter((face) => face.name.feature === 'screwHoles' && face.name.role === role);
+    expect(ofRole('holeHead').every((face) => face.surface.kind === 'cone' && face.convex === false)).toBe(true);
+    expect(ofRole('holeHead').length).toBe(4);
+    expect(ofRole('holeBore').length).toBe(4);
+    const rims = body.result.edges.filter((edge) => [edge.name.a, edge.name.b].some((name) => name.feature === 'screwHoles' && name.role === 'holeHead'));
+    expect(rims.length).toBe(8);
+    expect(rims.every((edge) => edge.kind === 'circle')).toBe(true);
+    // the depth of the cone, and of the hole: "through all" of the lid reaches the lower edge of its lip
+    const facts = state.evaluation.features.screwHoles.facts ?? {};
+    expect(facts.headDepth as number).toBeLessThan(plate);
+    near(facts.depth as number, plate + 4, 1e-4);
+    // the assumption of the design about widths: the heads, with the allowance, fit into the top
+    // of the lid around their points, which are INSET (8.7) from its edges
+    if (feature.shape.type !== 'countersink') throw new Error('a countersunk screw is a countersink');
+    expect(feature.shape.headDiameter / 2).toBeLessThan(8.7);
+  });
+
+  it('socket heads instead: the bores keep their names, the heads become cylinders and a seat appears that a sketch stands on', () => {
+    const before = named(engine.getState(), 'screwHoles', 'holeBore');
+    const preset = hardware({ use: 'socketHead', size: 'M3' });
+    if (preset.shape.type !== 'counterbore') throw new Error('a socket head is a counterbore');
+    const state = preview(engine, {
+      type: 'batch',
+      commands: [
+        // the seat is in the lid only if its plate is thicker than the head is deep
+        { type: 'setParameter', name: 'lidT', expr: `${preset.shape.headDepth} + 2` },
+        { type: 'updateFeature', id: 'screwHoles', patch: { shape: preset.shape, label: preset.label } },
+        sketchOn('onSeat', onFace('lid', { feature: 'screwHoles', role: 'holeSeat' })),
+      ],
+    });
+    expect(named(state, 'screwHoles', 'holeBore')).toEqual(before);
+    expect(named(state, 'screwHoles', 'holeSeat')).toEqual([{ feature: 'screwHoles', role: 'holeSeat' }]);
+    expect(state.evaluation.features.onSeat.status).toBe('ok');
+    expect(state.evaluation.features.screwHoles.status).toBe('ok');
+  });
+
+  it('nut pockets instead: six flats per point, numbered from the corner the rotation points to', () => {
+    const preset = hardware({ use: 'nutPocket', size: 'M3' });
+    if (preset.shape.type !== 'nutPocket') throw new Error('a nut is a nut pocket');
+    const state = preview(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'lidT', expr: `${preset.shape.headDepth} + 2` }, { type: 'updateFeature', id: 'screwHoles', patch: { shape: preset.shape } }] });
+    expect(state.evaluation.features.screwHoles.status).toBe('ok');
+    const flats = named(state, 'screwHoles', 'holeFlat').flatMap((name) => (name.role === 'holeFlat' && name.point === 's1' ? [name.flat] : []));
+    expect(flats.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('heat-set inserts in the posts, as deep as the catalog says; a pattern of the hole puts them into the copied posts', () => {
+    const size = Object.keys(DATA_CATALOGS.heatSetInserts.rows).find((key) => DATA_CATALOGS.heatSetInserts.rows[key].thread === 3) as string;
+    const preset = hardware({ use: 'heatSetInsert', size, allowance: 'holeComp' });
+    expect(preset.depth).toBe(DATA_CATALOGS.heatSetInserts.rows[size].holeDepth);
+    const state = run(engine, insertHoles(preset.shape, preset.label, preset.depth as number));
+    expectAllOk(state);
+    const feature = state.document.features.find((f) => f.id === 'inserts') as HoleFeature;
+    expect(producesTool(feature)).toBe(true);
+    // four bores in the posts, two of them copies; the hole with its allowance is narrower than a post
+    const bores = state.evaluation.bodies.box.faces.map((face) => state.evaluation.faceNames[face.id]).filter((name) => name.feature === 'inserts' && name.role === 'holeBore');
+    expect(bores.length).toBe(4);
+    expect(bores.filter((name) => name.copy?.[0]?.pattern === 'insertPattern').length).toBe(2);
+    expect(state.evaluation.features.inserts.facts).toEqual({ depth: preset.depth });
+    // the other assumption: the hole of the insert, with its allowance, is narrower than a post (postR 4)
+    if (feature.shape.type !== 'plain') throw new Error('an insert is a plain hole');
+    expect(feature.shape.diameter).toBeLessThan(8);
+  });
+
+  it('refusals: a head narrower than the bore, a point not in the sketch; a hole that misses and one pointing away warn', () => {
+    expect(errorOf(preview(engine, { type: 'setField', feature: 'screwHoles', path: 'shape/headDiameter', value: 0.001 }), 'screwHoles')?.code).toBe('invalidHole');
+    expect(engine.preview({ type: 'updateFeature', id: 'screwHoles', patch: { points: ['s1', 'nope'] } }).ok).toBe(false);
+    // the box is below the lid and the hole runs up from above its top: it misses
+    const missed = preview(engine, { type: 'updateFeature', id: 'screwHoles', patch: { targets: ['box'], extent: { type: 'distance', start: 5, distance: 'lidT + 5' } } });
+    expect(missed.evaluation.features.screwHoles.warnings[0]?.code).toBe('noEffect');
+    // through all away from the lid: its top is the plane of the sketch; the tool only touches it
+    const away = preview(engine, { type: 'updateFeature', id: 'screwHoles', patch: { extent: { type: 'throughAll', side: 'forward' } } });
+    expect(away.evaluation.features.screwHoles.warnings[0]?.code).toBe('noEffect');
+    expect(engine.query('hardwareHole', { use: 'socketHead', size: 'nope' })).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['size'] } });
+  });
+
+  it('the finished parts do not collide, and the document loads to the same model', () => {
+    expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+    const before = engine.getState();
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.getState().document).toEqual(before.document);
+    expectAllOk(other.getState());
+    near(volumeOf(other.getState(), 'lid'), volumeOf(before, 'lid'), 1e-9);
   });
 });

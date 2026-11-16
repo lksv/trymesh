@@ -46,21 +46,22 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `catalog.ts`, `generators.ts`, `expression.ts`, `util.ts` | the catalogs (constraints, numeric fields, profile generators), expressions, utilities |
 | `face-roles.ts` | the catalog of the roles of faces (`FACE_ROLES`) and the key of a face built from it |
 | `data-catalogs.ts` | tables of data the engine carries (`DATA_CATALOGS`), typed by row |
+| `catalogs/hardware.ts` | the hardware catalogs of D46: clearance holes, socket head and countersunk screws, hexagon nuts, heat-set inserts, each with its row type and source |
 | `sketch-content.ts` | what the content of a sketch is, without validation: entities, operands and keys of constraints, the IDs of a document, the owner of a body ID |
 | `validation.ts` | what validators share: `CommandError`, the basic checks, the reader of numeric fields (`Fields`), names of faces and edges, references between features (`FeatureRef`, `planeRef`, `axisRef`), and the context a validator gets (`RefContext`, `ValidationContext`) |
 | `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
 | `mesh-distance.ts`, `surfaces.ts` | the smallest distance of two parts of the mesh, the precision of its coordinates and the accuracy of a number measured on it; the circle two surfaces meet in |
 | `solid.ts`, `interference.ts` | rigid transforms, faces and edges of a body, the plane on a face, the projection of an edge, measures of a mesh, STL; interference of bodies |
 | `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`); `ToolProblem`, the failure of a tool build with a code of its own (D47) |
-| `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
-| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal, and the lengths to the plane of an extent up to a plane (`upToSpan`, D47) |
+| `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool` (with the mark `refuseChange` of a built tool, D46), `toolResult` (the result of a feature that applied its tool), `withFaces`, the texts of issues |
+| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal, what "through all" measures (`throughAll`: the span, the reach of the targets, the scale, D46), and the lengths to the plane of an extent up to a plane (`upToSpan`, D47) |
 | `recompute/outline.ts` | exact outlines of profiles (D44): the outline of selected regions, an outline moved by an offset, the outline of a wall along a chain of curves, and their division into the polylines of regions with the tests of those polylines; the rings of a taper with the rule of the levels (`taperRings`, D45) |
 | `recompute/tool-prism.ts` | a tool build: the mesh of a prism over regions and its faces (`buildPrism`). Every tool build is a module `recompute/tool-*.ts` and returns a `BuiltTool` |
-| `recompute/tool-stack.ts` | a tool build (D45): the mesh of a stack of rings of one outline at levels along the normal, with its caps and sides (`buildStack`, `Ring`, `Section`) |
+| `recompute/tool-stack.ts` | a tool build (D45, D46): the mesh of a stack of sections of rings at levels along the normal, with its caps, sides and the planar steps between sections (`buildStack`, `Ring`, `Section`) |
 | `recompute/taper.ts` | the section of a tapered extrusion (D45): the rings of its outline and the surfaces of its sides (tilted planes, cones) in the coordinates of the sketch |
 | `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
 | `features/profile.ts`, `features/extent.ts` | the document halves of a profile source and of an extent: validation, references, fields |
-| `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |
+| `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts`, `hole.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |
 | `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
 | `schema.ts` | the schema of the document as named upgrade steps: `UPGRADES`, `SCHEMA_PENDING`, the version a build saves and the runner |
 | `document.ts` | commands, `validateDocument`, `fieldsOf`, `featureInput`, `featureRefs` |
@@ -73,6 +74,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/section.ts` | the query `section`: the cut of a body by a plane (`cut`), the corners of a loop, the regions, the spans read from the surfaces and the budget; `takenAt` and `completeRegions` for whoever draws a cut |
 | `query/gap.ts` | the query `gap`: the smallest distance of every pair of bodies within a search distance, from the pass over the meshes, with `interference` for the kind of a zero and for a body inside another |
 | `query/mass.ts` | the query `mass`: the integrals of a mesh (`massIntegrals`), where the density of a body comes from (`massSourceOf`, the seam with body properties), the bodies put together, the tensor and the moment about an axis |
+| `query/hardware-hole.ts` | the query `hardwareHole` (D46): the shape and the label of a hole for a piece of hardware from the catalogs |
 | `query/print.ts` | the query `print`: the print frame of an orientation (`frameOfDirection`, `turned`), the pass over the triangles (`printPass`: the box, the faces on the bed, the overhangs), the lists and their limits |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |

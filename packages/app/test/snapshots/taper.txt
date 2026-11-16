@@ -171,6 +171,7 @@
     -   button disabled title="Ctrl+Z": "↶ Zpět"
     +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
     +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
@@ -186,6 +187,7 @@
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -324,6 +326,7 @@
     -   button title="Ctrl+Z": "↶ Zpět"
     -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
     -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     - div.group
@@ -339,6 +342,7 @@
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -460,6 +464,7 @@
     -   button disabled title="Ctrl+Z": "↶ Zpět"
     +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
     +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
     + div.group
@@ -475,6 +480,7 @@
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:

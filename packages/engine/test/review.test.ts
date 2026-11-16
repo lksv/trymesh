@@ -295,20 +295,20 @@ describe('a module per feature type (D37): what the move could have changed unse
     refused(doc, to('Z'), /feature "Z" musí ležet před odkazující feature/);
     refused(doc, to('nope'), /feature "nope" neexistuje/);
     refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
-    refused(doc, to('A', 'PL'), /feature "PL" není extrude/);
+    refused(doc, to('A', 'PL'), /feature "PL" není a feature that names faces/);
     expect((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x.edge.a.feature).toBe('H');
   });
 
   it('only an extrusion that adds or cuts is a source of a pattern or says so', () => {
     const doc = model();
-    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not an extrusion with the operation add or cut`));
+    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not a feature that applies a tool \\(an extrusion with the operation add or cut, a hole\\)`));
     expect(doc.features.filter(producesTool).map((f) => f.id)).toEqual(['H']);
     expect(doc.features.map((f) => [f.id, generatorOf(f)]).filter(([, generator]) => generator !== undefined)).toEqual([['G', 'involuteGear']]);
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern/);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole']);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators

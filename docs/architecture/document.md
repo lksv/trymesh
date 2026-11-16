@@ -33,7 +33,7 @@ interface Document {
   features: Feature[];                    // časová osa
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;   // a hole: hole.md (D46)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 

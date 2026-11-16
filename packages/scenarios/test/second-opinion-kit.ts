@@ -15,6 +15,14 @@ import { cylinder } from './arm';
 import { run } from './kit';
 
 export const kernel = await createManifoldKernel();
+// The adapter with the cleaning of an intersection before D51: the first cleaning alone, which
+// refuses the poses the second cleaning answers. The tests of the second opinion ask it to keep
+// a real refusal (docs/d36/5f-adapter-repair/design.md, "What follows for 5e").
+export const firstOnly: SolidKernel = {
+  triangulate: (loops) => kernel.triangulate(loops),
+  boolean: (op, a, b) => kernel.boolean(op, a, b, { second: false }),
+  intersectionAsComputed: (a, b) => kernel.intersectionAsComputed(a, b),
+};
 const solver = await createPlanegcsSolver();
 export const TOLERANCE = 0.01; // the chord tolerance of a new document
 
@@ -53,10 +61,10 @@ export const placed = (body: BodyResult, place: RigidTransform | undefined): Bod
 export function judged(first: BodyResult, second: BodyResult, using: SolidKernel = kernel): InterferenceReport {
   return interferenceReport({ a: first, b: second }, undefined, 0.001, TOLERANCE, () => ({ a: first, b: second }), (x, y) => sharedBy(using, x, y, TOLERANCE));
 }
-// Whether the adapter refuses the intersection of the two, in that order.
-export function refused(first: BodyResult, second: BodyResult): boolean {
+// Whether `using` refuses the intersection of the two, in that order.
+export function refused(first: BodyResult, second: BodyResult, using: SolidKernel = kernel): boolean {
   try {
-    kernel.boolean('intersection', first.solid, second.solid);
+    using.boolean('intersection', first.solid, second.solid);
     return false;
   } catch {
     return true;

@@ -3,9 +3,9 @@
 import Module from 'manifold-3d';
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
 import type { BooleanOp, Solid, SolidKernel } from '@trymesh/engine';
-import { clean, isClosed, isFolded } from './clean';
+import { clean, cleanBySubdivision, isClosed, isFolded } from './clean';
 import { prepareTool, restoreShifted } from './coplanar';
-import { tolerances } from './geometry';
+import { type Tolerances, tolerances } from './geometry';
 
 export interface ManifoldKernelOptions {
   // Kde najít manifold.wasm (v browseru); v Node se najde sám.
@@ -16,6 +16,7 @@ export interface ManifoldKernelOptions {
 export interface BooleanOptions {
   prepare?: boolean; // posun stěn v jedné rovině před booleanem
   restore?: boolean; // návrat posunutých stěn po booleanu
+  second?: boolean; // the second cleaning of an intersection the first one leaves open or folded (D51)
 }
 
 export interface ManifoldKernel extends SolidKernel {
@@ -23,6 +24,8 @@ export interface ManifoldKernel extends SolidKernel {
   // Přístup ke knihovně pro testy (průřezy, rozklad na komponenty).
   readonly wasm: ManifoldToplevel;
   toManifold(s: Solid): Manifold;
+  // How often `boolean` ran the second cleaning (D51), for the tests that show which operations reach it.
+  readonly secondCleanings: number;
 }
 
 export async function createManifoldKernel(options: ManifoldKernelOptions = {}): Promise<ManifoldKernel> {
@@ -64,11 +67,16 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
     }
   };
 
+  let secondCleanings = 0;
+
   return {
     wasm,
     toManifold,
+    get secondCleanings() {
+      return secondCleanings;
+    },
 
-    boolean(op, a, b, { prepare = true, restore = true } = {}) {
+    boolean(op, a, b, { prepare = true, restore = true, second = true } = {}) {
       if (!prepare) return rawBoolean(op, a, b);
       const t = tolerances(a, b);
       const { tool, shifts } = prepareTool(op, a, b, t);
@@ -76,13 +84,19 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       // Síť se čistí vždy, i když se nic neposouvalo: kde se nástroj tělesa jen dotkne hranou,
       // nechává jádro nulové trojúhelníky s číslem stěny nástroje a stěna by se tvářila, že existuje.
       const out = restore && shifts.size > 0 ? restoreShifted(raw, shifts, b, tool, a, t) : clean(raw, t.weld);
-      if (!isClosed(out)) {
-        throw new Error('výsledek booleanu není uzavřená plocha (těleso se nejspíš samo sebe dotýká jen hranou nebo vrcholem)');
+      const refusal = verify(out, t);
+      if (!refusal) return out;
+      // An intersection of slivers can leave the loop of `clean` going round in a cycle and stopping
+      // open or folded (D51). It is cleaned again from the raw mesh (for an intersection nothing is
+      // moved) by the cleaning that cannot end open, and held to the same checks; what the first
+      // cleaning verifies is returned as before. A union and a difference never get here: the
+      // second cleaning may leave a null triangle carrying the number of a face that should be gone.
+      if (op === 'intersection' && second && shifts.size === 0) {
+        secondCleanings++;
+        const again = cleanBySubdivision(raw, t.weld);
+        if (!verify(again, t)) return again;
       }
-      // Detail menší než přesah (asi 1e-4 rozměru modelu) těsně u lícujících stěn návrat nezvládne:
-      // vrcholy se při něm předběhnou a trojúhelník se otočí. Lepší chyba než potichu vadná síť.
-      if (isFolded(out, t) || isFolded(out, tolerances(out))) throw new Error('výsledek booleanu má přeložený trojúhelník (detail menší než tolerance jádra u lícujících stěn)');
-      return out;
+      throw new Error(refusal);
     },
 
     // The intersection as the library returns it (D50): no faces moved before, no cleaning after,
@@ -131,6 +145,15 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       }
     },
   };
+}
+
+// The two checks of a cleaned result; the message of the refusal, or undefined when it passes.
+function verify(out: Solid, t: Tolerances): string | undefined {
+  if (!isClosed(out)) return 'výsledek booleanu není uzavřená plocha (těleso se nejspíš samo sebe dotýká jen hranou nebo vrcholem)';
+  // Detail menší než přesah (asi 1e-4 rozměru modelu) těsně u lícujících stěn návrat nezvládne:
+  // vrcholy se při něm předběhnou a trojúhelník se otočí. Lepší chyba než potichu vadná síť.
+  if (isFolded(out, t) || isFolded(out, tolerances(out))) return 'výsledek booleanu má přeložený trojúhelník (detail menší než tolerance jádra u lícujících stěn)';
+  return undefined;
 }
 
 // Vnitřní rozhraní knihovny (embind), které její typy nepopisují.

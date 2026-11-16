@@ -373,8 +373,9 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
       expect(step.failed.filter((pair) => pair !== 'forearm|upper'), `${step.degrees}°`).toEqual([]);
       expect([...step.pairs, ...step.fits, ...step.failed]).not.toContain('base|upper');
     }
-    // As measured through the real kernel: no step of this sweep is refused for the pin (one pose in
-    // thirty is, design.md, "Verified before the implementation"), so every step is pinned.
+    // As measured through the real kernel: no step of this sweep is refused for the pin (before D51
+    // about one pose in thirty was, design.md, "Verified before the implementation"; the second
+    // cleaning of D51 answers nearly all of them), so every step is pinned.
     const screws = (...copies: number[]) => ['forearm|motor', 'forearm|screw', ...copies.map((copy) => `forearm|screws/${copy}`)];
     const expected: Record<number, string[]> = { [-135]: screws(1, 2, 3), [-108]: screws(3), 108: screws(1), 135: screws(1, 2, 3) };
     expect(sweep).toEqual(sweep.map((step) => ({ degrees: step.degrees, pairs: expected[step.degrees] ?? [], fits: step.degrees === 0 ? [] : ['forearm|upper'], failed: [] })));
@@ -591,7 +592,14 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
 // in the frame of its first body, so the kernel is asked `(forearm, upper turned back)`; the steps
 // it refuses are found here, not taken from the backlog (whose three poses are refused with the
 // parent first: second-opinion.test.ts).
-describe('scenario 13, the part of D50: the steps the kernel refuses for the pin of the elbow are cleared by its intersection as computed', () => {
+// The sweep runs twice (D51, docs/d36/5f-adapter-repair/design.md, "Tests the implementation
+// owes", 11): over the adapter with the first cleaning alone, which refuses the step k = 5 and so
+// keeps the second opinion tested through the engine, and over the adapter, whose second cleaning
+// answers that step: no step is refused and the pin is a verified fit at every step.
+describe.each([
+  ['the first cleaning alone', true],
+  ['the adapter', false],
+] as const)('scenario 13, the part of D50 and D51, over %s: the steps the kernel refuses for the pin of the elbow', (_name, firstOnly) => {
   let engine: Engine;
   const refusals: number[] = []; // per step, how many intersections the adapter refused
   let refusedNow = 0;
@@ -601,7 +609,7 @@ describe('scenario 13, the part of D50: the steps the kernel refuses for the pin
       triangulate: (loops) => kernel.triangulate(loops),
       boolean: (op, a, b) => {
         try {
-          return kernel.boolean(op, a, b);
+          return kernel.boolean(op, a, b, { second: !firstOnly });
         } catch (error) {
           if (op === 'intersection') refusedNow++;
           throw error;
@@ -625,10 +633,15 @@ describe('scenario 13, the part of D50: the steps the kernel refuses for the pin
   it('a. at a refused step the pin is in `cleared` and in no other list; no step has anything in `failed` or `pairs`', () => {
     const steps = Array.from({ length: 40 }, (_, i) => stepAt(i + 1));
     const refused = steps.filter((step) => refusals[step.k] > 0);
-    // As measured: one step of the 40 is refused, k = 5 (−72.130°), where the mesh as computed is a
-    // fit of 0.031 mm³. Without the second opinion (5a alone) the pin was in `failed` there.
-    expect(refused.length, 'a refused step: otherwise the test tests nothing').toBeGreaterThan(0);
-    expect(refused.map((step) => step.k)).toContain(5);
+    if (firstOnly) {
+      // As measured: one step of the 40 is refused, k = 5 (−72.130°), where the mesh as computed is a
+      // fit of 0.031 mm³. Without the second opinion (5a alone) the pin was in `failed` there.
+      expect(refused.length, 'a refused step: otherwise the test tests nothing').toBeGreaterThan(0);
+      expect(refused.map((step) => step.k)).toContain(5);
+    } else {
+      // the second cleaning answers the step k = 5: no step is refused
+      expect(refused.map((step) => step.k)).toEqual([]);
+    }
     for (const step of steps) {
       const label = `k = ${step.k}, ${(angleOf(step.k) / DEG).toFixed(3)}°`;
       // the range ends below the quarter turn at which the forearm reaches the screws and the motor
@@ -642,16 +655,19 @@ describe('scenario 13, the part of D50: the steps the kernel refuses for the pin
         expect(names(step.report.fits), label).toEqual(['forearm|upper']);
       }
     }
-    expect(steps.find((step) => step.k === 5)?.report.cleared).toEqual([{ a: 'forearm', b: 'upper', kind: 'fit', volume: expect.closeTo(0.0313, 3), depth: expect.any(Number) }]);
+    const five = steps.find((step) => step.k === 5)?.report;
+    if (firstOnly) expect(five?.cleared).toEqual([{ a: 'forearm', b: 'upper', kind: 'fit', volume: expect.closeTo(0.0313, 3), depth: expect.any(Number) }]);
+    else expect(five?.fits).toEqual([{ a: 'forearm', b: 'upper', volume: expect.closeTo(0.0313, 3), depth: expect.any(Number) }]);
   });
 
-  it('b. the gap at a refused step: the contact goes with the kind it was cleared as, and the pair is named in `cleared`', () => {
+  it('b. the gap at the step k = 5: a fit; over the first cleaning alone the pair is named in `cleared`', () => {
     const step = stepAt(5);
-    expect(step.cleared).toEqual(['forearm|upper|fit']);
+    expect(step.cleared).toEqual(firstOnly ? ['forearm|upper|fit'] : []);
     const gap = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: step.state }));
     expect(gap.pairs).toEqual([{ a: 'forearm', b: 'upper', distance: 0, contact: 'fit' }]);
-    expect(gap.cleared).toEqual([{ a: 'forearm', b: 'upper' }]);
-    // a step the adapter answers: a fit, no `cleared`
+    if (firstOnly) expect(gap.cleared).toEqual([{ a: 'forearm', b: 'upper' }]);
+    else expect(gap.cleared).toBeUndefined();
+    // a step the adapter answers with either cleaning: a fit, no `cleared`
     const answered = previewed(engine, pose({ elbow: angleOf(1) }));
     const plain = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: answered }));
     expect(plain.pairs).toEqual([{ a: 'forearm', b: 'upper', distance: 0, contact: 'fit' }]);

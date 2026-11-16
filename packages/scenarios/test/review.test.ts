@@ -1,8 +1,8 @@
 // Nálezy z revize enginu ověřené proti skutečným adaptérům, a chybové kódy, které dosud neměly test.
-import type { Command, SketchFeature } from '@trymesh/engine';
+import type { Command, EngineState, FaceName, SketchFeature } from '@trymesh/engine';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
+import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 
 const plate = (width = 40, height = 30, thickness = 10) => {
   const engine = newEngine();
@@ -302,5 +302,67 @@ describe('the hole: the review of D46', () => {
     const state = run(engine, hole('T', ['p'], COUNTERBORE, THROUGH));
     expect(status(state).H).toBe('ok');
     expect(ofHole(state)).toEqual(['H/holeBore/p']);
+  });
+});
+
+describe('the linear pattern and the mirror: the review of D53', () => {
+  const faceBoxOf = (state: EngineState, body: string, name: FaceName) => {
+    const box = faceBox(state, body, name);
+    if (!box) throw new Error(`no face ${JSON.stringify(name)}`);
+    return box;
+  };
+  const pattern = (id: string, source: object, transform: object): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'pattern', source, transform } as never });
+  const planeAt = (id: string, offset: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset } });
+  const tagged = (name: FaceName, index: number): FaceName => ({ ...name, copy: [{ pattern: 'M', index }] });
+  const extrusion = (id: string, sketch: string, loop: string[], extent: object, operation: 'add' | 'cut'): Command => ({
+    type: 'addFeature',
+    feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: [...loop].sort() }] }, extent, operation, targets: ['E1'] } as never,
+  });
+
+  // A mirror plane parallel to the sketch plane reverses the normal of the frame of the copy: the
+  // sign of a distance and the side of an extent then run the other way, and the copy is still the
+  // image of its source. A plate 60 × 40 × 10, the sketch on its top (z = 10), the mirror in z = 5.
+  it('a mirror in a plane parallel to the sketch: added, cut, tapered and holed copies are the images of their sources', () => {
+    const tools: [string, Command[], number][] = [
+      ['added', [extrusion('F', 'T', rectLoop('q'), { type: 'distance', start: 0, distance: 5 }, 'add')], -5],
+      ['cut blind', [extrusion('F', 'T', rectLoop('q'), { type: 'distance', start: 0, distance: -3 }, 'cut')], 0],
+      ['a tapered cut', [extrusion('F', 'T', rectLoop('q'), { type: 'distance', start: 0, distance: -3, taper: 'deg(5)' }, 'cut')], 0],
+      ['a nut pocket', [{ type: 'addPoint', sketch: 'T', id: 'h', x: 30, y: 20 }, { type: 'addFeature', feature: { id: 'F', name: 'F', suppressed: false, type: 'hole', sketch: 'T', points: ['h'], shape: { type: 'nutPocket', diameter: 3, acrossFlats: 5.5, headDepth: 2.5, rotation: 0.1 }, extent: { type: 'distance', start: 0, distance: -4 }, targets: ['E1'] } }], 0],
+    ];
+    for (const [name, commands, low] of tools) {
+      const engine = plate(60, 40, 10);
+      run(engine, planeAt('top', 10), planeAt('low', 5), addSketch('T', { kind: 'plane', feature: 'top' }), rectangle('T', 'q', 5, 5, 10, 8, null));
+      const before = volume(engine.getState().evaluation.bodies.E1.solid);
+      const once = volume(run(engine, ...commands).evaluation.bodies.E1.solid);
+      const state = run(engine, pattern('M', { type: 'features', features: ['F'] }, { type: 'mirror', plane: { kind: 'plane', feature: 'low' } }));
+      expectAllOk(state);
+      expect(Math.abs(volume(state.evaluation.bodies.E1.solid) - once - (once - before)), name).toBeLessThan(1e-3 * Math.abs(once - before));
+      expect(state.evaluation.bodies.E1.bounds.min[2], name).toBeCloseTo(low, 5);
+    }
+  });
+
+  it('a linear pattern of features along the normal of a sketch on a face', () => {
+    // bosses on the top, shifted along the normal of a sketch on the side y = 0 (−Y, out of the
+    // plate): a negative spacing runs into the plate, +Y
+    const engine = plate(60, 40, 10);
+    run(engine, planeAt('top', 10), addSketch('T', { kind: 'plane', feature: 'top' }), circle('T', 'b', 10, 10, 2), extrusion('boss', 'T', ['b'], { type: 'distance', start: 0, distance: 5 }, 'add'), addSketch('W', onFace('E1', side('E1', 'ra'))));
+    const state = run(engine, pattern('P', { type: 'features', features: ['boss'] }, { type: 'linear', direction: { kind: 'sketchPoint', sketch: 'W', point: 'origin' }, count: 3, span: { type: 'spacing', spacing: -12 } }));
+    expectAllOk(state);
+    const middle = (index: number): number => {
+      const box = faceBoxOf(state, 'E1', { feature: 'boss', role: 'endCap', copy: [{ pattern: 'P', index }] });
+      return (box.min[1] + box.max[1]) / 2;
+    };
+    expect(middle(1)).toBeCloseTo(22, 4);
+    expect(middle(2)).toBeCloseTo(34, 4);
+  });
+
+  it('a face tagged as copy 2 of a mirror in a projected edge: a valid command, the warning brokenProjection', () => {
+    const engine = plate(60, 40, 10);
+    run(engine, { type: 'addFeature', feature: { id: 'far', name: 'far', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'YZ' }, offset: 80 } }, pattern('M', { type: 'body', body: 'E1' }, { type: 'mirror', plane: { kind: 'plane', feature: 'far' } }), addSketch('Top', XY));
+    const edge = (index: number) => ({ a: tagged(cap('E1'), index), b: tagged(side('E1', 'ra'), index) });
+    let state = run(engine, { type: 'addExternal', sketch: 'Top', id: 'one', ref: { type: 'edge', body: 'M/1', edge: edge(1), kind: 'line' } });
+    expect(status(state).Top).toBe('ok');
+    state = run(engine, { type: 'addExternal', sketch: 'Top', id: 'two', ref: { type: 'edge', body: 'M/1', edge: edge(2), kind: 'line' } });
+    expect(status(state).Top).toBe('warning:brokenProjection');
   });
 });

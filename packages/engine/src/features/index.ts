@@ -36,7 +36,7 @@ export function bodyProblem(doc: Document, body: Id): string | undefined {
   const { feature, local } = bodyOwner(body);
   const f = doc.features.find((candidate) => candidate.id === feature);
   if (!f) return `no feature of the document creates the body "${body}": the feature "${feature}" is not in the document`;
-  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1)`;
+  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1, a mirror only "<pattern>/1")`;
   return undefined;
 }
 

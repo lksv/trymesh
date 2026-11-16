@@ -16,6 +16,7 @@ import {
   axisKind,
   changeExtrude,
   changePattern,
+  rememberPattern,
   circleCommands,
   deleteCommands,
   dimensionFor,
@@ -700,25 +701,46 @@ describe('nálezy z revize aplikace', () => {
     expect(changePattern(body, { source: 'features' }, choices).source).toEqual({ type: 'features', features: ['h3'] });
     expect(patternIncomplete(changePattern(two, { source: 'body' }, { ...choices, bodies: [] }))).toBe(true);
     // the axis: a base axis, or the origin of the latest sketch until a sketch and a point are chosen
-    expect(axisKind(draft.transform.axis)).toBe('Z');
-    expect(changePattern(draft, { axis: 'X' }, choices).transform.axis).toEqual({ kind: 'base', axis: 'X' });
+    expect(draft.transform.type === 'circular' && axisKind(draft.transform.axis)).toBe('Z');
+    expect(changePattern(draft, { axis: 'X' }, choices).transform).toMatchObject({ axis: { kind: 'base', axis: 'X' } });
     const through = changePattern(draft, { axis: 'sketchPoint' }, choices);
-    expect(through.transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'origin' });
-    expect(axisKind(through.transform.axis)).toBe('sketchPoint');
-    expect(changePattern(through, { point: 'p1' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'p1' });
-    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { sketch: 's' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's', point: 'origin' }); // a point of the other sketch does not carry over
-    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { axis: 'sketchPoint' }, choices).transform.axis).toEqual({ kind: 'sketchPoint', sketch: 's2', point: 'p1' });
-    expect(changePattern(draft, { axis: 'sketchPoint' }, { ...choices, sketches: [] }).transform.axis).toEqual({ kind: 'base', axis: 'Z' }); // no sketch to go through
-    expect(changePattern(draft, { point: 'p1' }, choices).transform.axis).toEqual({ kind: 'base', axis: 'Z' });
+    expect(through.transform).toMatchObject({ axis: { kind: 'sketchPoint', sketch: 's2', point: 'origin' } });
+    expect(through.transform.type === 'circular' && axisKind(through.transform.axis)).toBe('sketchPoint');
+    expect(changePattern(through, { point: 'p1' }, choices).transform).toMatchObject({ axis: { kind: 'sketchPoint', sketch: 's2', point: 'p1' } });
+    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { sketch: 's' }, choices).transform).toMatchObject({ axis: { kind: 'sketchPoint', sketch: 's', point: 'origin' } }); // a point of the other sketch does not carry over
+    expect(changePattern(changePattern(through, { point: 'p1' }, choices), { axis: 'sketchPoint' }, choices).transform).toMatchObject({ axis: { kind: 'sketchPoint', sketch: 's2', point: 'p1' } });
+    expect(changePattern(draft, { axis: 'sketchPoint' }, { ...choices, sketches: [] }).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } }); // no sketch to go through
+    expect(changePattern(draft, { point: 'p1' }, choices).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } });
     // the count and the span; the angle the draft had last comes back
-    expect(changePattern(draft, { count: 'n' }, choices).transform.count).toBe('n');
+    expect(changePattern(draft, { count: 'n' }, choices).transform).toMatchObject({ count: 'n' });
     const angled = changePattern(draft, { span: 'angle' }, choices);
-    expect(angled.transform.span).toEqual({ type: 'angle', angle: Math.PI / 2 });
+    expect(angled.transform).toMatchObject({ span: { type: 'angle', angle: Math.PI / 2 } });
     const typed = changePattern(angled, { angle: 'deg(120)' }, choices);
-    expect(typed.transform.span).toEqual({ type: 'angle', angle: 'deg(120)' });
-    expect(changePattern(typed, { span: 'full' }, choices).transform.span).toEqual({ type: 'full' });
-    expect(changePattern(changePattern(typed, { span: 'full' }, choices), { span: 'angle' }, choices, typed.transform.span).transform.span).toEqual({ type: 'angle', angle: 'deg(120)' });
-    expect(changePattern(draft, { angle: 1 }, choices).transform.span).toEqual({ type: 'full' }); // the full circle has no angle
+    expect(typed.transform).toMatchObject({ span: { type: 'angle', angle: 'deg(120)' } });
+    expect(changePattern(typed, { span: 'full' }, choices).transform).toMatchObject({ span: { type: 'full' } });
+    expect(changePattern(changePattern(typed, { span: 'full' }, choices), { span: 'angle' }, choices, rememberPattern({}, typed)).transform).toMatchObject({ span: { type: 'angle', angle: 'deg(120)' } });
+    expect(changePattern(draft, { angle: 1 }, choices).transform).toMatchObject({ span: { type: 'full' } }); // the full circle has no angle
+
+    // the kinds (D53): a new transform of another kind, the one the draft had there before, its fields
+    const row = changePattern(typed, { kind: 'linear' }, choices);
+    expect(row.transform).toEqual({ type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 10 } });
+    expect(changePattern(row, { axis: 'sketchPoint' }, choices).transform).toMatchObject({ direction: { kind: 'sketchPoint', sketch: 's2', point: 'origin' } });
+    const spaced = changePattern(row, { spacing: 'pitch', count: 5 }, choices);
+    expect(spaced.transform).toMatchObject({ count: 5, span: { type: 'spacing', spacing: 'pitch' } });
+    const long = changePattern(spaced, { span: 'length' }, choices);
+    expect(long.transform).toMatchObject({ span: { type: 'length', length: 20 } });
+    expect(changePattern(long, { length: 40, spacing: 1, angle: 1 }, choices).transform).toMatchObject({ span: { type: 'length', length: 40 } }); // only the field of the span it has
+    expect(changePattern(long, { span: 'spacing' }, choices, rememberPattern({}, spaced)).transform).toMatchObject({ span: { type: 'spacing', spacing: 'pitch' } });
+    expect(changePattern(row, { span: 'angle' }, choices).transform).toEqual(row.transform); // a span of another kind
+    const mirror = changePattern(row, { kind: 'mirror' }, choices);
+    expect(mirror.transform).toEqual({ type: 'mirror', plane: { kind: 'base', plane: 'YZ' } });
+    expect(changePattern(mirror, { count: 3, axis: 'X', span: 'full' }, choices).transform).toEqual(mirror.transform); // a mirror has none of them
+    expect(changePattern(mirror, { plane: { kind: 'plane', feature: 'mid' } }, choices).transform).toEqual({ type: 'mirror', plane: { kind: 'plane', feature: 'mid' } });
+    // back to a kind: the transform it had, kept by the memory of the form
+    const memory = rememberPattern(rememberPattern({}, typed), spaced);
+    expect(changePattern(mirror, { kind: 'circular' }, choices, memory).transform).toEqual(typed.transform);
+    expect(changePattern(mirror, { kind: 'linear' }, choices, memory).transform).toEqual(spaced.transform);
+    expect(changePattern(mirror, { kind: 'circular' }, choices).transform).toEqual({ type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } });
 
     // the engine accepts the draft as a new feature and as a change of an existing one
     const { engine, run } = setup();
@@ -747,6 +769,15 @@ describe('nálezy z revize aplikace', () => {
     run([draftCommand(changePattern(edited, { source: 'features', span: 'full' }, real), true, 3)]);
     expect(engine.getState().document.features[3]).toMatchObject({ source: { type: 'features', features: ['h1'] }, transform: { span: { type: 'full' } } });
     expect(engine.getState().evaluation.features.n1.bodies).toEqual([]);
+    // another kind replaces the transform and its expressions: a row of the body, then its mirror image
+    const bodyRow = changePattern(changePattern(edited, { kind: 'linear' }, real), { count: 3, spacing: 50 }, real);
+    run([draftCommand(bodyRow, true, 3)]);
+    expect(engine.getState().document.features[3]).toEqual(bodyRow);
+    expect(engine.getState().evaluation.features.n1.bodies).toEqual(['n1/1', 'n1/2']);
+    const bodyMirror = changePattern(bodyRow, { kind: 'mirror', plane: { kind: 'base', plane: 'XZ' } }, real);
+    run([draftCommand(bodyMirror, true, 3)]);
+    expect(engine.getState().document.features[3]).toEqual(bodyMirror);
+    expect(engine.getState().evaluation.features.n1).toMatchObject({ status: 'ok', bodies: ['n1/1'] });
   });
 
   it('bod uvnitř smyčky', () => {

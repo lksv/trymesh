@@ -310,8 +310,9 @@ export type ProfileSource =
 
 export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 
-// A pattern repeats its source by a list of rigid transforms. The kind of the transform is
-// a variant; the first one is a circular pattern around an axis.
+// A pattern repeats its source by a list of isometries (turns, shifts, a mirror). The kind of the
+// transform is a variant: `circular` around an axis, `linear` along a direction, `mirror` in
+// a plane (PatternTransform).
 // - `features`: features that apply a tool: extrusions with the operation add or cut, holes. For
 //   every copy the tool of each of them is built in the transformed position and applied to the
 //   targets of that feature, in the order of the list. The features need not share targets; the
@@ -319,8 +320,14 @@ export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
 //   numbered from 1. A copy is a body like any other: a sketch can stand on it, it can be cut and its
 //   edges projected.
-// - `count` includes the original; 1 means the original alone. The pattern is atomic: when any copy
-//   fails, the whole pattern is in error and the model stays as it was before it.
+// - `count` includes the original; 1 means the original alone. A mirror has no count and makes one
+//   copy, number 1 (`<pattern>/1`; another number of a mirror is not a body a command may name).
+//   The pattern is atomic: when any copy fails, the whole pattern is in error and the model stays
+//   as it was before it.
+// - A copy of a feature goes to the targets of its source; a copy of a body is the body as it is at
+//   the pattern. What a mirrored body should have is therefore modelled before the mirror.
+// - A change of the kind keeps the IDs of the copies and the tags of their faces: what referred to
+//   copy 1 then refers to the copy of the new kind.
 export interface PatternFeature extends FeatureBase {
   type: 'pattern';
   source: { type: 'features'; features: Id[] } | { type: 'body'; body: Id };
@@ -381,9 +388,31 @@ export type HoleShape =
 // `headDepth`, the depth of the head (absent for a plain hole).
 export type HoleExtent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' };
 
-// Circular pattern: copies turned around the axis. `full`: the step is 2π / count. `angle`: the
-// angle between the first and the last copy, so the step is angle / (count − 1); it may be negative.
-export type PatternTransform = { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
+// The transform of a pattern, a variant by `type`; each variant lists its fields, and a field of
+// another variant is an invalid command. A patch with another `type` replaces the transform and
+// has to be complete.
+// - `circular`: copies turned around `axis`. `full`: the step is 2π / count. `angle` (field
+//   `transform/span/angle`): the angle between the first and the last copy, so the step is
+//   angle / (count − 1); it may be negative.
+// - `linear`: copies shifted along `direction`, an axis of which only the direction is used (a base
+//   axis points along its positive half; the normal of a sketch plane, which for a sketch on a face
+//   points out of the body; the point does not matter, `origin` will do). `count` as for
+//   `circular`. The span, both in mm and not zero, negative against the direction:
+//   - `spacing` (field `transform/span/spacing`): copy k is shifted by k · spacing, so a larger
+//     count adds copies at the far end and moves none (prefer it when something refers to a copy);
+//   - `length` (field `transform/span/length`): the distance between the original and the last
+//     copy, so the step is length / (count − 1); a change of the count moves every copy.
+// - `mirror`: one copy, the mirror image in `plane` (a base plane, a plane feature or a planar face
+//   of a body, as the plane of a sketch; for a face the whole plane it lies in), resolved in the
+//   state before the pattern. A plane of symmetry is a base plane or a plane feature offset by an
+//   expression (`offset: "L / 2"`). Errors: `brokenReference` and `nonPlanarFace` with the plane in
+//   `refs`. The copy is the mirror image as a set of points; its face names are those of the source
+//   faces with the tag of the copy (see FaceName), and a sketch on one of its faces has a
+//   right-handed frame of its own, not the image of a sketch on the source face.
+export type PatternTransform =
+  | { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } }
+  | { type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }
+  | { type: 'mirror'; plane: PlaneRef };
 
 // An axis: a base axis of the model, or the normal of a sketch plane led through a point of the
 // sketch (an own point, the origin or a point of projected geometry).
@@ -439,6 +468,10 @@ export type Extent =
 // A face of a copy made by a pattern carries `copy`: the pattern and the number of the copy (from
 // 1); for a pattern of a pattern the list grows, the latest pattern last. Faces of the original
 // have no `copy`. A reference to a face of a copy is also a reference to every pattern in the list.
+// A face of a mirrored copy (the pattern `mirror`) is named after the source face it is the image
+// of: what a name tells by a sense of rotation is reversed in it (the `wallSide` `left` lies on the
+// right of the image of its curve, the `holeFlat`s run clockwise), and the ends of a projected line
+// of any copy are read from the sketch, not derived from the source.
 // The faces of a wall (a profile of the type `wall`): every curve of the chain makes two side
 // faces, so `side` with the curve would name both.
 // - `wallSide`: `side` is the side of the curve in the curve's own direction: a line from its point
@@ -952,9 +985,9 @@ export type Command =
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
   // of the document can create: the feature exists and its type creates a body of that ID (an
-  // extrusion with the operation new; `<pattern>/<number>` of a pattern of a body). Whether the body
-  // exists in the model is not asked: the count of a pattern may be an expression and a feature may
-  // be suppressed.
+  // extrusion with the operation new; `<pattern>/<number>` of a pattern of a body, a mirror only
+  // `<pattern>/1`). Whether the body exists in the model is not asked: the count of a pattern may be
+  // an expression and a feature may be suppressed.
   // - setBodyProperties merges `patch` into the entry of the body, creating it; an entry left with
   //   no field is removed.
   // - setBodyMaterial takes the row `material` of the catalog `materials` and writes its key into

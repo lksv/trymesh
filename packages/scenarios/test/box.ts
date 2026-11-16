@@ -1,7 +1,8 @@
 // The model of validation scenario 12 (docs/requirements.md): a box with a lid, built step by step
-// by the packages of track B of D36. This file holds the steps as commands, so that each package
-// adds its own to the same model (docs/d36/2a-offset/calls.ts and the calls.ts of 2b, 2c and 2f).
-import { type Command, type ExtrudeFeature, type Expr, type FaceName, type HoleShape, type Id, type Input, type PlaneRef, emptySketch } from '@trymesh/engine';
+// by the packages of track B of D36 and by 2e. This file holds the steps as commands, so that each
+// package adds its own to the same model (docs/d36/2a-offset/calls.ts and the calls.ts of 2b, 2c,
+// 2f and 2e).
+import { type Command, type ExtrudeFeature, type Expr, type FaceName, type HoleShape, type Id, type Input, type PatternFeature, type PlaneRef, emptySketch } from '@trymesh/engine';
 import { XY, batch } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -185,3 +186,73 @@ export const insertHoles = (shape: Input<HoleShape>, label: string, depth: numbe
     { type: 'addFeature', feature: { id: 'inserts', name: 'inserts', suppressed: false, type: 'hole', sketch: 'tops', points: ['i1', 'i2'], shape, extent: { type: 'distance', start: 0, distance: -depth }, targets: ['box'], label } },
     { type: 'addFeature', feature: { id: 'insertPattern', name: 'insertPattern', suppressed: false, type: 'pattern', source: { type: 'features', features: ['inserts'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'tops', point: 'center' }, count: 2, span: { type: 'full' } } } },
   );
+
+// ---------------------------------------------------------------- 2e: vent slots, the rib mirrored, pads under the corners
+
+const pattern = (id: Id, source: PatternFeature['source'], transform: Input<PatternFeature>['transform']): Command => ({
+  type: 'addFeature',
+  feature: { id, name: id, suppressed: false, type: 'pattern', source, transform },
+});
+
+// The outer face of the long wall at y = 0: the side of the box from the curve `oa`. In the frame of
+// a sketch on it x runs along the wall (the X of the model) and y up (its Z); the normal points out.
+export const WALL_OUT: FaceName = { feature: 'box', role: 'side', curve: 'oa' };
+// One slot 2 wide and 12 high cut through the long wall, and a row of them along X: the count and
+// the spacing are parameters.
+export const vents = (): Command =>
+  batch(
+    { type: 'setParameter', name: 'vents', expr: '5' },
+    { type: 'setParameter', name: 'ventPitch', expr: '4' },
+    sketchOn('ventSketch', onFace('box', WALL_OUT)),
+    pointAt('ventSketch', 'v1', '16', '10'),
+    pointAt('ventSketch', 'v2', '16 + 2', '10'),
+    pointAt('ventSketch', 'v3', '16 + 2', '10 + 12'),
+    pointAt('ventSketch', 'v4', '16', '10 + 12'),
+    ...['a', 'b', 'c', 'd'].map((name, i): Command => ({ type: 'addCurve', sketch: 'ventSketch', id: `v${name}`, curve: { type: 'line', a: `v${i + 1}`, b: `v${((i + 1) % 4) + 1}` } })),
+    add({ ...base('vent'), profile: { type: 'regions', sketch: 'ventSketch', regions: [{ outerLoop: ['va', 'vb', 'vc', 'vd'] }] }, extent: { type: 'distance', start: 0, distance: '-(wall + 1)' }, operation: 'cut', targets: ['box'] }),
+    pattern('ventRow', { type: 'features', features: ['vent'] }, { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } }),
+  );
+
+// The two planes of symmetry of the box as plane features, so that they follow its size: the base
+// plane XZ has the normal −Y, so the plane y = W / 2 is its offset by −W / 2.
+export const MID_W: PlaneRef = { kind: 'plane', feature: 'midW' };
+export const MID_L: PlaneRef = { kind: 'plane', feature: 'midL' };
+export const midPlanes = (): Command =>
+  batch(
+    { type: 'addFeature', feature: { id: 'midW', name: 'midW', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XZ' }, offset: '-W / 2' } },
+    { type: 'addFeature', feature: { id: 'midL', name: 'midL', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'YZ' }, offset: 'L / 2' } },
+  );
+
+// The rib with its draft and the brace that ends on the rib's drafted side, once more on the other
+// long wall: a mirror of features in the plane y = W / 2, which keeps the plane of the brace's end.
+export const ribMirror = (): Command => pattern('ribMirror', { type: 'features', features: ['rib', 'brace'] }, { type: 'mirror', plane: MID_W });
+export const RIB_LEFT_COPY: FaceName = { ...RIB_LEFT, copy: [{ pattern: 'ribMirror', index: 1 }] };
+
+// An L-shaped pad under the corner of the box at the origin, 2 thick: a leg 15 long under the long
+// wall and one 8 long under the short one, both 3 wide. The shape has a handedness in its plane, so
+// the pad of the next corner is its mirror image: three mirrors, one of them of a copy. The
+// material is said once, on the source.
+export const PADS: Id[] = ['pad', 'padX/1', 'padY/1', 'padXY/1'];
+export function pads(): Command {
+  const corners: [string, string][] = [
+    ['15', '0'],
+    ['15', '3'],
+    ['3', '3'],
+    ['3', '8'],
+    ['0', '8'],
+  ];
+  const at = (i: number): Id => (i % 6 === 0 ? 'origin' : `q${i % 6}`);
+  return batch(
+    sketchOn('padSketch', XY),
+    ...corners.map(([x, y], i) => pointAt('padSketch', `q${i + 1}`, x, y)),
+    ...[0, 1, 2, 3, 4, 5].map((i): Command => ({ type: 'addCurve', sketch: 'padSketch', id: `ql${i}`, curve: { type: 'line', a: at(i), b: at(i + 1) } })),
+    add({ ...base('pad'), profile: { type: 'regions', sketch: 'padSketch', regions: [{ outerLoop: ['ql0', 'ql1', 'ql2', 'ql3', 'ql4', 'ql5'] }] }, extent: { type: 'distance', start: 0, distance: -2 }, operation: 'new' }),
+    pattern('padX', { type: 'body', body: 'pad' }, { type: 'mirror', plane: MID_L }),
+    pattern('padY', { type: 'body', body: 'pad' }, { type: 'mirror', plane: MID_W }),
+    pattern('padXY', { type: 'body', body: 'padX/1' }, { type: 'mirror', plane: MID_W }),
+    { type: 'setBodyMaterial', body: 'pad', material: 'TPU' },
+  );
+}
+
+// The lid twice more beside it, 5 mm apart, for the print bed: a linear pattern of a body.
+export const lidsInARow = (): Command => pattern('lids', { type: 'body', body: 'lid' }, { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 'L + 5' } });

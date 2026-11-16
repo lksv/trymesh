@@ -12,6 +12,9 @@ import type { BuiltTool, ResolvedProfile } from './state';
 // startCap leží na začátku, endCap na konci. The end may be a level per vertex (an extent up to
 // a tilted plane, D47): every end lies on the same side of the start, and the end cap lies in the
 // plane the span describes.
+// The vertices are placed by `frame` alone and the triangles wound as for a right-handed frame; in
+// the left-handed frame of a mirrored copy the prism faces inwards and `applyTool` turns it over
+// (D53).
 // `triangulation`: a cache of the planar triangulation by region. A tool that is built again and
 // again (for every copy of a pattern) passes the same map, so the profile is triangulated once.
 export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: ToolSpan, sideOf: ResolvedProfile['sideOf'], firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {

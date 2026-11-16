@@ -36,14 +36,33 @@ export const toPlane = (frame: Frame, p: Vec3): Vec2 => [dot3(sub3(p, frame.orig
 // ---------------------------------------------------------------- rigid transforms
 
 // An isometry p' = M · p + t (`RigidTransform` of types.ts: the mechanism publishes one per link).
-// A pattern is a list of these. With a negative determinant (a mirror, later) the order of
-// triangle vertices is reversed; a face description carries its normal without a sign, so it is
-// only mapped.
+// A pattern is a list of these. A mirror (a negative determinant: the pattern of the kind
+// `mirror`) reverses the order of triangle vertices; a face description carries its normal without
+// a sign, so it is only mapped. The pose of a link is composed of turns and shifts and never
+// mirrors.
 export type { RigidTransform };
 export const transformVector = (t: RigidTransform, v: Vec3): Vec3 => [dot3(t.matrix[0], v), dot3(t.matrix[1], v), dot3(t.matrix[2], v)];
 export const transformPoint = (t: RigidTransform, p: Vec3): Vec3 => add3(transformVector(t, p), t.translation);
 export const transformFrame = (t: RigidTransform, frame: Frame): Frame => ({ origin: transformPoint(t, frame.origin), x: transformVector(t, frame.x), y: transformVector(t, frame.y), normal: transformVector(t, frame.normal) });
 const determinant = (t: RigidTransform): number => dot3(t.matrix[0], cross3(t.matrix[1], t.matrix[2]));
+// Does the transform mirror (is its determinant negative)? A solid built or moved by it faces
+// inwards until its triangles are turned over (`turnedOver`).
+export const mirrors = (t: RigidTransform): boolean => determinant(t) < 0;
+// The reflection in the plane through `point` with the normal `normal` (any length, either sense):
+// the matrix I − 2 n nᵀ and the translation 2 (n · p) n. An isometry with the determinant −1;
+// applied twice it is the identity.
+export function reflection(point: Vec3, normal: Vec3): RigidTransform {
+  const n = mul3(normal, 1 / len3(normal));
+  const matrix = [0, 1, 2].map((i) => [0, 1, 2].map((j) => (i === j ? 1 : 0) - 2 * n[i] * n[j])) as [Vec3, Vec3, Vec3];
+  return { matrix, translation: mul3(n, 2 * dot3(n, point)) };
+}
+// The same solid with every triangle turned over (two of its vertices swapped): inwards becomes
+// outwards. The face of each triangle stays.
+export function turnedOver(solid: Solid): Solid {
+  const triangles = Uint32Array.from(solid.triangles);
+  for (let i = 0; i < triangles.length; i += 3) [triangles[i + 1], triangles[i + 2]] = [triangles[i + 2], triangles[i + 1]];
+  return { ...solid, triangles };
+}
 
 // Rotation by `angle` around the axis through `point` with the direction `axis` (right-handed).
 export function rotation(point: Vec3, axis: Vec3, angle: number): RigidTransform {
@@ -119,9 +138,8 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
 export function transformSolid(t: RigidTransform, solid: Solid, faceId: (old: number) => number): Solid {
   const positions = new Float32Array(solid.positions.length);
   for (let i = 0; i < positions.length; i += 3) positions.set(transformPoint(t, [solid.positions[i], solid.positions[i + 1], solid.positions[i + 2]]), i);
-  const triangles = Uint32Array.from(solid.triangles);
-  if (determinant(t) < 0) for (let i = 0; i < triangles.length; i += 3) [triangles[i + 1], triangles[i + 2]] = [triangles[i + 2], triangles[i + 1]];
-  return { positions, triangles, faceIds: solid.faceIds.map(faceId) };
+  const moved: Solid = { positions, triangles: Uint32Array.from(solid.triangles), faceIds: solid.faceIds.map(faceId) };
+  return mirrors(t) ? turnedOver(moved) : moved;
 }
 
 export function volumeOf(s: Solid): number {

@@ -37,7 +37,9 @@ export interface ToolRecipe {
   // extent that depends on them ("through all") is measured here, every time the tool is built.
   // `placement`: where a copy made by a pattern stands and how its faces are tagged. The tool is
   // built there, not moved afterwards, so that what depends on the targets is measured in the
-  // direction the copy points in.
+  // direction the copy points in. A build places every vertex by the frame it is given and winds
+  // its triangles as for a right-handed frame, without looking at the handedness; the frame of
+  // a mirrored copy is left-handed, and `applyTool` turns such a tool over (D53).
   build(targets: Solid[], firstFaceId: number, placement?: Placement): BuiltTool;
 }
 // What a tool build returns, whatever the tool is (recompute/tool-*.ts).

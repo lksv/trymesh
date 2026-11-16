@@ -36,8 +36,9 @@ export interface Section {
 // as a region with the narrower outline as its hole. The faces are the caps, then the steps (a name
 // given twice is one face), then the sides in the order of their keys.
 // The winding follows the direction of the rings along the normal, which is the same in every
-// section. Like the prism, the build assumes a right-handed frame; in a mirrored one the solid
-// comes out turned inside out.
+// section. Like the prism, the build winds its triangles as for a right-handed frame and does not
+// look at the handedness: in the left-handed frame of a mirrored copy the solid comes out facing
+// inwards, and `applyTool` turns it over (D53).
 // `triangulation`: a cache of the cap triangulations by region, shared by the builds of copies;
 // `steps`: the same for the steps, by the region of the ring after the step.
 export function buildStack(feature: Id, sections: Section | readonly Section[], frame: Frame, firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>, steps?: Map<Region, Uint32Array>): BuiltTool {

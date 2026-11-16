@@ -1,7 +1,7 @@
 // What the steps of the feature types share: reading the state (a frame of a plane reference, an
 // axis), applying a tool to its targets, the texts of issues. Functions over the state, imported by
 // the modules of the feature types; they are not handed over in a context that would grow with them.
-import { analyzeBody, faceFrame, onSurface, toWorld, volumeOf } from '../solid';
+import { analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
 import { faceKey, has } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
@@ -71,6 +71,10 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
 //   are in no body and do not enter the face table either.
 // - A tool marked `refuseChange` that changed a target is the error of the mark, with the changed
 //   targets in `refs`, and changes none of them; also when it would remove a target whole.
+// - A tool of a mirrored placement (a copy of the pattern `mirror`) is turned over right after its
+//   build. A build places every vertex by the frame it is given and winds its triangles as for
+//   a right-handed frame; in the left-handed frame of a mirrored copy every triangle then faces
+//   inwards. Here, once for every build; a build must not correct it itself.
 export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel, placement?: Placement): Applied {
   const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
   if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
@@ -80,6 +84,7 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
   let tool: BuiltTool;
   try {
     tool = recipe.build(recipe.targets.map((target) => model.bodies[target]), first, placement);
+    if (placement && mirrors(placement.transform)) tool = { ...tool, solid: turnedOver(tool.solid) };
     for (const target of recipe.targets) {
       const before = model.bodies[target];
       const result = kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);

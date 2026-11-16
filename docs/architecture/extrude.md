@@ -158,7 +158,7 @@ An extent of a distance may taper: `{ type: 'distance', start, distance, taper? 
 **Limits.**
 
 - Two features that meet in a circle are two polygons: the lower ring of a cone has the count of its larger ring, a bore of the same radius its own count, and slivers of the end cap of the tapered cut can stay between them (a third edge of the cone, also a circle). The hole of 2c builds both in one tool.
-- A tool built in a mirrored frame comes out turned inside out, for the prism as for the stack; to be settled with the mirror of 2e.
+- A tool built in a mirrored frame comes out turned inside out, for the prism as for the stack, by the rule every build keeps (it places the vertices by its frame and does not look at the handedness); `applyTool` turns the tool of a mirrored copy over (D53, [pattern.md](pattern.md)).
 - The rule of the levels spends about twice the points the tolerance needs, and the levels belong to the whole outline: one arc whose corner slides multiplies the rings of every curve, unrelated circles included (a review measured a D-shaped plate with 24 holes: 2 386 vertices without a taper, 3 918 at 0.1 rad, 11 799 at 0.3 rad), because the stack pairs rings point by point. Its loop was run on discs cut by a line, a lens of two arcs, a concave bite, a half disc as a hole and a half disc near collapse (engine tests and a review), not on every shape.
 - At `MAX_INTERVALS` the tool is built without a warning.
 

@@ -372,7 +372,12 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
 // ---------------------------------------------------------------- pattern
 
 export type PatternDraft = Input<PatternFeature>;
-export type PatternSpan = PatternDraft['transform']['span'];
+export type PatternTransformDraft = PatternDraft['transform'];
+export type PatternKind = PatternTransformDraft['type'];
+type CircularDraft = Extract<PatternTransformDraft, { type: 'circular' }>;
+type LinearDraft = Extract<PatternTransformDraft, { type: 'linear' }>;
+export type PatternSpan = CircularDraft['span'];
+export type LinearSpan = LinearDraft['span'];
 export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint';
 export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : 'sketchPoint');
 // One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism):
@@ -397,16 +402,39 @@ export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[]): A
 // One change of the pattern form.
 // - `source`: the other kind of source, filled with the latest choice of that kind.
 // - `toggleFeature`: adds a source feature or removes it; the list keeps the order of the timeline.
-// - `axis`: a base axis, or `sketchPoint` (the origin of the latest sketch until `sketch` and
-//   `point` say otherwise).
-// - `span`: `angle` returns to the angle the draft had last.
+// - `kind`: another kind of the transform: the transform the draft had in that kind before, or
+//   a new one (a linear pattern along X, a count of 3 and a spacing of 10; a mirror in the base
+//   plane YZ; a circular pattern around Z, a count of 4 over the full circle).
+// - `axis`, `sketch`, `point`: the axis of a circular pattern or the direction of a linear one
+//   (`sketchPoint`: the origin of the latest sketch until `sketch` and `point` say otherwise).
+// - `span`: of a circular pattern `full` or `angle`, of a linear one `spacing` or `length`; the
+//   span the draft had last of that type comes back.
+// - `plane`: the plane of a mirror.
 export interface PatternChange extends AxisChange {
   source?: 'features' | 'body';
   toggleFeature?: Id;
   body?: Id;
+  kind?: PatternKind;
   count?: number | Expr;
-  span?: PatternSpan['type'];
+  span?: PatternSpan['type'] | LinearSpan['type'];
   angle?: number | Expr;
+  spacing?: number | Expr;
+  length?: number | Expr;
+  plane?: PlaneRef;
+}
+// What the form remembers beyond the draft, to return to: the transform the draft had in each
+// kind, and the span of each type it had last.
+export interface PatternMemory {
+  kinds?: Partial<Record<PatternKind, PatternTransformDraft>>;
+  angle?: PatternSpan;
+  spacing?: LinearSpan;
+  length?: LinearSpan;
+}
+// The memory with what the draft has now.
+export function rememberPattern(memory: PatternMemory, draft: PatternDraft): PatternMemory {
+  const t = draft.transform;
+  const span = t.type === 'circular' && t.span.type === 'angle' ? { angle: t.span } : t.type === 'linear' ? { [t.span.type]: t.span } : {};
+  return { ...memory, ...span, kinds: { ...memory.kinds, [t.type]: t } };
 }
 // What the form offers at the place of the pattern on the timeline, in the order of the timeline:
 // extrusions that add or cut, bodies and sketches.
@@ -416,6 +444,12 @@ export interface PatternChoices {
   sketches: Id[];
 }
 const DEFAULT_ANGLE: PatternSpan = { type: 'angle', angle: Math.PI / 2 };
+const DEFAULT_SPAN: Record<LinearSpan['type'], LinearSpan> = { spacing: { type: 'spacing', spacing: 10 }, length: { type: 'length', length: 20 } };
+export const NEW_TRANSFORM: Record<PatternKind, PatternTransformDraft> = {
+  circular: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } },
+  linear: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: DEFAULT_SPAN.spacing },
+  mirror: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } },
+};
 const last = <T>(items: T[]): T | undefined => items[items.length - 1];
 
 // The first source of a new pattern: `preferred` (the feature selected on the timeline) when it is
@@ -432,7 +466,7 @@ export function patternSource(choices: PatternChoices, preferred?: Id): PatternD
 // A pattern draft the engine has nothing to compute for yet: no source feature, or no body.
 export const patternIncomplete = (draft: PatternDraft): boolean => (draft.source.type === 'features' ? draft.source.features.length === 0 : draft.source.body === '');
 
-export function changePattern(draft: PatternDraft, change: PatternChange, choices: PatternChoices, angle: PatternSpan = DEFAULT_ANGLE): PatternDraft {
+export function changePattern(draft: PatternDraft, change: PatternChange, choices: PatternChoices, memory: PatternMemory = {}): PatternDraft {
   let { source } = draft;
   if (change.source !== undefined && change.source !== source.type) {
     const tool = last(choices.tools);
@@ -446,12 +480,24 @@ export function changePattern(draft: PatternDraft, change: PatternChange, choice
     source = { type: 'features', features: [...picked].sort((a, b) => order(a) - order(b)) };
   }
   if (change.body !== undefined && source.type === 'body') source = { type: 'body', body: change.body };
+  return { ...draft, source, transform: changeTransform(draft.transform, change, choices, memory) };
+}
 
-  const axis = changeAxis(draft.transform.axis, change, choices.sketches);
-  let { span } = draft.transform;
-  if (change.span !== undefined && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : angle;
+function changeTransform(given: PatternTransformDraft, change: PatternChange, choices: PatternChoices, memory: PatternMemory): PatternTransformDraft {
+  const transform = change.kind !== undefined && change.kind !== given.type ? (memory.kinds?.[change.kind] ?? NEW_TRANSFORM[change.kind]) : given;
+  if (transform.type === 'mirror') return change.plane ? { ...transform, plane: change.plane } : transform;
+  const count = change.count ?? transform.count;
+  if (transform.type === 'linear') {
+    let { span } = transform;
+    if ((change.span === 'spacing' || change.span === 'length') && change.span !== span.type) span = memory[change.span] ?? DEFAULT_SPAN[change.span];
+    if (change.spacing !== undefined && span.type === 'spacing') span = { type: 'spacing', spacing: change.spacing };
+    if (change.length !== undefined && span.type === 'length') span = { type: 'length', length: change.length };
+    return { ...transform, direction: changeAxis(transform.direction, change, choices.sketches), count, span };
+  }
+  let { span } = transform;
+  if ((change.span === 'full' || change.span === 'angle') && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : (memory.angle ?? DEFAULT_ANGLE);
   if (change.angle !== undefined && span.type === 'angle') span = { type: 'angle', angle: change.angle };
-  return { ...draft, source, transform: { ...draft.transform, axis, count: change.count ?? draft.transform.count, span } };
+  return { ...transform, axis: changeAxis(transform.axis, change, choices.sketches), count, span };
 }
 
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.

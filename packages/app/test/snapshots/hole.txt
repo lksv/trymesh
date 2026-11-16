@@ -18,7 +18,7 @@
         button title="Vysunout oblasti skici": "Vysunutí"
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
-        button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
       div.group
         select value="" title="Ask a query about the model"
           option selected value="": "Queries…"
@@ -128,7 +128,7 @@
     -   button title="Vysunout oblasti skici": "Vysunutí"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
-    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -412,7 +412,7 @@
     +   button title="Vysunout oblasti skici": "Vysunutí"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
-    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -616,7 +616,7 @@
     -   button title="Vysunout oblasti skici": "Vysunutí"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
-    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -927,7 +927,7 @@
     +   button title="Vysunout oblasti skici": "Vysunutí"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
-    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"

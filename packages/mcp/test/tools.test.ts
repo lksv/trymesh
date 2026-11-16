@@ -703,7 +703,39 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('copy: [{ pattern, index }]');
     expect(text).toContain('{ kind: "sketchPoint", sketch, point }');
     expect(text).toContain('PatternFeature');
-    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle']);
+    // the count once per kind that has one, and the spans of a linear pattern (D53)
+    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle', 'transform/count', 'transform/span/spacing', 'transform/span/length']);
+    expect(text).toContain("{ type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }");
+    expect(text).toContain("{ type: 'mirror'; plane: PlaneRef }");
+  });
+
+  it('a linear pattern and a mirror through execute, and their summaries in get_model (D53)', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = { outerLoop: ['ab', 'bc', 'cd', 'da'] };
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setParameter', name: 'pitch', expr: '8' },
+        { type: 'addFeature', feature: { id: 'plate', name: 'plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } },
+        sketch('s2'),
+        { type: 'addPoint', sketch: 's2', id: 'm', x: 6, y: 15 },
+        { type: 'addCurve', sketch: 's2', id: 'k', curve: { type: 'circle', center: 'm' }, radius: 2 },
+        { type: 'addFeature', feature: { id: 'hole', name: 'hole', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['plate'] } },
+      ],
+    });
+    const linear = { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 'pitch' } };
+    expect(execute(engine, { type: 'addFeature', feature: { id: 'row', name: 'row', suppressed: false, type: 'pattern', source: { type: 'features', features: ['hole'] }, transform: linear } as never })).toMatchObject({ ok: true, problems: [] });
+    const mirror = { type: 'mirror', plane: { kind: 'base', plane: 'XZ' } };
+    expect(execute(engine, { type: 'addFeature', feature: { id: 'mir', name: 'mir', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: mirror } as never })).toMatchObject({ ok: true, bodies: ['plate', 'mir/1'], problems: [] });
+    const summary = (id: string) => ok(engine, 'get_model').features.find((f: { id: string }) => f.id === id);
+    expect(summary('row')).toMatchObject({ status: 'ok', transform: { ...linear, span: { type: 'spacing', spacing: 8 } } });
+    expect(summary('mir')).toMatchObject({ status: 'ok', transform: mirror, bodies: ['mir/1'] });
+    const labels = (body: string): string[] => ok(engine, 'get_body', { body }).faces.map((face: { label: string }) => face.label);
+    expect(labels('mir/1').filter((label) => label.startsWith('hole/'))).toEqual(['hole/side/k@mir:1', 'hole/side/k@row:1@mir:1', 'hole/side/k@row:2@mir:1']);
+    // a mirror has one copy: a second one is no body a command may name
+    expect(callTool(engine, 'execute', { command: { type: 'setBodyProperties', body: 'mir/2', patch: { color: '#000000' } } })).toMatchObject({ ok: false });
+    expect(callTool(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'm2', name: 'm2', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: { ...mirror, count: 2 } } } })).toMatchObject({ ok: false, error: expect.stringContaining('a transform of the type mirror has no such field') });
   });
 
   it('check_interference: a tiny overlap under threshold 0 keeps its digits; planar bodies collide however shallow', () => {

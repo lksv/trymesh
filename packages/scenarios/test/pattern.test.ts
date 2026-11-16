@@ -5,7 +5,7 @@ import type { Command, CopyTag, EngineState, ExtrudeFeature, FaceName, Id, Input
 import { XY, addSketch, cap, circle, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 
 type Side = 'forward' | 'backward' | 'both';
-type Transform = Input<PatternFeature>['transform'];
+type Transform = Extract<Input<PatternFeature>['transform'], { type: 'circular' }>;
 const through = (id: Id, sketch: Id, curves: Id[][], side: Side, targets: Id[]): Command => ({
   type: 'addFeature',
   feature: { ...extrude(id, sketch, curves, 1, 'cut'), extent: { type: 'throughAll', side }, targets } as ExtrudeFeature,

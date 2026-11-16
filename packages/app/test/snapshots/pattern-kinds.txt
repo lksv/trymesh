@@ -1,0 +1,1047 @@
+
+=== 1. a plate with a hole and a plane beside it
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":10,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":3}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x9)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}}) -> ok
+  features: s1, e1, hole, mid
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":10,"y":15}
+      radius c5: 3
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature hole:
+      {"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}
+  feature mid:
+      {"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+        button disabled title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 1"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Hole"
+        button.icon disabled title="A body is hidden at the feature that created it": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Mid plane"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Vysunutí přidáno.
+  view: 25 scene(s) set
+  scene:
+      bodies: e1
+      line #26303c width 1.5: 540 numbers, sum 22812.023
+      line #8b9bb4 width 1: 24 numbers, sum 374.778
+      line #8b9bb4 width 1: 24 numbers, sum 249.852
+      line #8b9bb4 width 1: 24 numbers, sum 124.926
+      line #8b9bb4 width 1: 24 numbers, sum 1574.926
+      line #5b7aa8 width 1.5: 600 numbers, sum 20596.611
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. a new pattern of the hole: around an axis
+  engine: getState("mid")
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"circular","axis":{"kind":"base","axis":"Z"},"count":4,"span":{"type":"full"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "New pattern"
+    + label
+    +   "Repeat"
+    +   select value="features"
+    +     option selected value="features": "Features (extrusions that add or cut)"
+    +     option value="body": "A body"
+    + label
+    +   "Kind"
+    +   select value="circular"
+    +     option selected value="circular": "Around an axis"
+    +     option value="linear": "Along a direction"
+    +     option value="mirror": "Mirror in a plane"
+    + fieldset
+    +   legend: "Features"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Hole"
+    + p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
+    + label
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + label
+    +   "Count with the original (a whole number or an expression)"
+    +   span.field
+    +     input value="4"
+    +     small.computed data-field="transform/count" data-unit="count"
+    + label
+    +   "Span"
+    +   select value="full"
+    +     option selected value="full": "Full circle"
+    +     option value="angle": "Angle between the first and the last copy"
+    + p#draft-bodies.hint
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole, copy 2 of Hole, copy 3 of Hole)"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Choose what to repeat, the axis and the count.
+  view: 1 scene(s) set
+
+=== 3. along a direction: the axis X, a count of 3 and a spacing of 10
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":3,"span":{"type":"spacing","spacing":10}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="linear"
+    +     option value="circular": "Around an axis"
+    +     option selected value="linear": "Along a direction"
+    -   select value="circular"
+    -     option selected value="circular": "Around an axis"
+    -     option value="linear": "Along a direction"
+    +   "Direction"
+    +   select value="X"
+    +     option selected value="X": "Axis X"
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    +     option value="Z": "Axis Z"
+    +     option value="sketchPoint": "The normal of a sketch plane"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    +     input value="3"
+    -     input value="4"
+    +   select value="spacing"
+    +     option selected value="spacing": "Spacing between neighbours"
+    +     option value="length": "Length between the first and the last copy"
+    + label
+    +   "Spacing (mm or an expression; negative = against the direction)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="transform/span/spacing" data-unit="mm"
+    + p.hint: "A larger count adds copies at the far end and moves none."
+    -   select value="full"
+    -     option selected value="full": "Full circle"
+    -     option value="angle": "Angle between the first and the last copy"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole, copy 2 of Hole, copy 3 of Hole)"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1476 numbers, sum 78779.671
+    - line #26303c width 1.5: 540 numbers, sum 22812.023
+
+=== 4. the normal of a sketch plane: no row of the point
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":3,"span":{"type":"spacing","spacing":10}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="sketchPoint"
+    +     option value="X": "Axis X"
+    -   select value="X"
+    -     option selected value="X": "Axis X"
+    +     option selected value="sketchPoint": "The normal of a sketch plane"
+    + label
+    +   "Sketch"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + p.hint: "The direction is the normal of the sketch plane; for a sketch on a face it points out of the body."
+    -     option value="sketchPoint": "The normal of a sketch plane"
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole, copy 2 of Hole)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 540 numbers, sum 22812.023
+    - line #26303c width 1.5: 1476 numbers, sum 78779.671
+
+=== 5. along Y, 8 apart
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"spacing","spacing":10}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"spacing","spacing":8}}},"index":4}, "n1") -> ok
+  panel:
+    +   select value="Y"
+    -   select value="sketchPoint"
+    +     option selected value="Y": "Axis Y"
+    -     option value="Y": "Axis Y"
+    +     option value="sketchPoint": "The normal of a sketch plane"
+    -     option selected value="sketchPoint": "The normal of a sketch plane"
+    -   "Sketch"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - p.hint: "The direction is the normal of the sketch plane; for a sketch on a face it points out of the body."
+    - label
+    +     input value="8"
+    -     input value="10"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole, copy 2 of Hole)"
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1224 numbers, sum 58941.26
+    - line #26303c width 1.5: 540 numbers, sum 22812.023
+
+=== 6. a length between the first and the last copy
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":20}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="length"
+    +     option value="spacing": "Spacing between neighbours"
+    +     option selected value="length": "Length between the first and the last copy"
+    -   select value="spacing"
+    -     option selected value="spacing": "Spacing between neighbours"
+    -     option value="length": "Length between the first and the last copy"
+    +   "Length (mm or an expression; negative = against the direction)"
+    -   "Spacing (mm or an expression; negative = against the direction)"
+    +     input value="20"
+    +     small.computed data-field="transform/span/length" data-unit="mm"
+    + p.hint: "The copies divide the length evenly; a change of the count moves them all."
+    -     input value="8"
+    -     small.computed data-field="transform/span/spacing" data-unit="mm"
+    - p.hint: "A larger count adds copies at the far end and moves none."
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 2 of Hole)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1008 numbers, sum 47688.96
+    - line #26303c width 1.5: 1224 numbers, sum 58941.26
+
+=== 7. back to the spacing: the one the draft had
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":20}}},"index":4}, "n1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"spacing","spacing":8}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="spacing"
+    +     option selected value="spacing": "Spacing between neighbours"
+    +     option value="length": "Length between the first and the last copy"
+    -   select value="length"
+    -     option value="spacing": "Spacing between neighbours"
+    -     option selected value="length": "Length between the first and the last copy"
+    +   "Spacing (mm or an expression; negative = against the direction)"
+    -   "Length (mm or an expression; negative = against the direction)"
+    +     input value="8"
+    +     small.computed data-field="transform/span/spacing" data-unit="mm"
+    + p.hint: "A larger count adds copies at the far end and moves none."
+    -     input value="20"
+    -     small.computed data-field="transform/span/length" data-unit="mm"
+    - p.hint: "The copies divide the length evenly; a change of the count moves them all."
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 2 of Hole)"
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1224 numbers, sum 58941.26
+    - line #26303c width 1.5: 1008 numbers, sum 47688.96
+
+=== 8. a mirror: named so, in the base plane YZ
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"mirror","plane":{"kind":"base","plane":"YZ"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    + h2: "New mirror"
+    - h2: "New pattern"
+    +   select value="mirror"
+    -   select value="linear"
+    +     option value="linear": "Along a direction"
+    +     option selected value="mirror": "Mirror in a plane"
+    -     option selected value="linear": "Along a direction"
+    -     option value="mirror": "Mirror in a plane"
+    +   "Mirror plane"
+    +   select value="base:YZ"
+    +     option value="base:XY": "rovina XY"
+    +     option value="base:XZ": "rovina XZ"
+    +     option selected value="base:YZ": "rovina YZ"
+    +     option value="plane:mid": "rovina „Mid plane“"
+    + div.buttons
+    +   button: "Pick"
+    + p.hint: "One copy, the mirror image in the plane; for a face the whole plane it lies in. A plane of symmetry is best a base plane or a plane feature offset by an expression."
+    -   "Direction"
+    -   select value="Y"
+    -     option value="X": "Axis X"
+    -     option selected value="Y": "Axis Y"
+    -     option value="Z": "Axis Z"
+    -     option value="sketchPoint": "The normal of a sketch plane"
+    - label
+    -   "Count with the original (a whole number or an expression)"
+    -   span.field
+    -     input value="3"
+    -     small.computed data-field="transform/count" data-unit="count"
+    - label
+    -   "Span"
+    -   select value="spacing"
+    -     option selected value="spacing": "Spacing between neighbours"
+    -     option value="length": "Length between the first and the last copy"
+    - label
+    -   "Spacing (mm or an expression; negative = against the direction)"
+    -   span.field
+    -     input value="8"
+    -     small.computed data-field="transform/span/spacing" data-unit="mm"
+    - p.hint: "A larger count adds copies at the far end and moves none."
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 540 numbers, sum 22812.023
+    - line #26303c width 1.5: 1224 numbers, sum 58941.26
+
+=== 9. the plane feature chosen in the list
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"mirror","plane":{"kind":"plane","feature":"mid"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="plane:mid"
+    -   select value="base:YZ"
+    +     option value="base:YZ": "rovina YZ"
+    +     option selected value="plane:mid": "rovina „Mid plane“"
+    -     option selected value="base:YZ": "rovina YZ"
+    -     option value="plane:mid": "rovina „Mid plane“"
+  view: 1 scene(s) set
+
+=== 10. a mirror of the plate: its copy beside it
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"plane","feature":"mid"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="body"
+    +     option value="features": "Features (extrusions that add or cut)"
+    +     option selected value="body": "A body"
+    -   select value="features"
+    -     option selected value="features": "Features (extrusions that add or cut)"
+    -     option value="body": "A body"
+    + label
+    +   "Body"
+    +   select value="e1"
+    +     option selected value="e1": "Vysunutí 1"
+    + p.hint: "The copies are new bodies; what is added to the source after the pattern is not copied."
+    - fieldset
+    -   legend: "Features"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Hole"
+    - p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
+    + p#draft-bodies.hint: "New bodies: Mirror 1 / 1."
+    + p#draft-problem.issue.warning
+    - p#draft-bodies.hint
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole)"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, n1/1
+    + line #26303c width 1.5: 1080 numbers, sum 101165.846
+    + line #8b9bb4 width 1: 24 numbers, sum 770.875
+    + line #8b9bb4 width 1: 24 numbers, sum 513.916
+    + line #8b9bb4 width 1: 24 numbers, sum 256.958
+    + line #8b9bb4 width 1: 24 numbers, sum 1706.958
+    - bodies: e1
+    - line #26303c width 1.5: 540 numbers, sum 22812.023
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - line #8b9bb4 width 1: 24 numbers, sum 1574.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 36.708
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 36.708
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+
+=== 11. the pick armed: the view picks faces and planes
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"plane","feature":"mid"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   button: "Picking… (click to stop)"
+    -   button: "Pick"
+  status: Click a plane or a planar face in the view: the copy is the mirror image in its plane.
+  view: 1 scene(s) set
+
+=== 12. the top of the copy the preview made is refused: the pick stays armed
+  engine: getState("mid")
+  status: The mirror cannot be in a face the pattern itself makes; pick a plane or a face that exists before it.  [error]
+  view: 1 scene(s) set
+  scene:
+    + face n1/1 #11 #0ea5e9 opacity 0.3
+
+=== 13. the top of the plate picked: the copy is its image in that plane
+  engine: getState("mid")
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    +   select value="face"
+    -   select value="plane:mid"
+    +     option value="plane:mid": "rovina „Mid plane“"
+    +     option selected value="face": "stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    -     option selected value="plane:mid": "rovina „Mid plane“"
+    +   button: "Pick"
+    -   button: "Picking… (click to stop)"
+  status: Mirror plane: stěna Vysunutí 1 – protější víko (Vysunutí 1).
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1080 numbers, sum 52363.538
+    + line #8b9bb4 width 1: 24 numbers, sum 395.81
+    + line #8b9bb4 width 1: 24 numbers, sum 263.873
+    + line #8b9bb4 width 1: 24 numbers, sum 131.937
+    + line #8b9bb4 width 1: 24 numbers, sum 1581.937
+    - line #26303c width 1.5: 1080 numbers, sum 101165.846
+    - line #8b9bb4 width 1: 24 numbers, sum 770.875
+    - line #8b9bb4 width 1: 24 numbers, sum 513.916
+    - line #8b9bb4 width 1: 24 numbers, sum 256.958
+    - line #8b9bb4 width 1: 24 numbers, sum 1706.958
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    + face e1 #1 #0ea5e9 opacity 0.3
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 36.708
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 36.708
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
+    - face n1/1 #11 #0ea5e9 opacity 0.3
+
+=== 14. back around an axis: the transform the draft had there, named a pattern again
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"circular","axis":{"kind":"base","axis":"Z"},"count":4,"span":{"type":"full"}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    + h2: "New pattern"
+    - h2: "New mirror"
+    +   select value="circular"
+    +     option selected value="circular": "Around an axis"
+    -   select value="mirror"
+    -     option value="circular": "Around an axis"
+    +     option value="mirror": "Mirror in a plane"
+    -     option selected value="mirror": "Mirror in a plane"
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + label
+    +   "Count with the original (a whole number or an expression)"
+    +   span.field
+    +     input value="4"
+    +     small.computed data-field="transform/count" data-unit="count"
+    + label
+    +   "Span"
+    +   select value="full"
+    +     option selected value="full": "Full circle"
+    +     option value="angle": "Angle between the first and the last copy"
+    + p#draft-bodies.hint: "New bodies: Pattern 1 / 1, Pattern 1 / 2, Pattern 1 / 3."
+    -   "Mirror plane"
+    -   select value="face"
+    -     option value="base:XY": "rovina XY"
+    -     option value="base:XZ": "rovina XZ"
+    -     option value="base:YZ": "rovina YZ"
+    -     option value="plane:mid": "rovina „Mid plane“"
+    -     option selected value="face": "stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    - div.buttons
+    -   button: "Pick"
+    - p.hint: "One copy, the mirror image in the plane; for a face the whole plane it lies in. A plane of symmetry is best a base plane or a plane feature offset by an expression."
+    - p#draft-bodies.hint: "New bodies: Mirror 1 / 1."
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, n1/1, n1/2, n1/3
+    + line #26303c width 1.5: 2160 numbers, sum 14548.646
+    + line #8b9bb4 width 1: 24 numbers, sum 834.8
+    + line #8b9bb4 width 1: 24 numbers, sum 556.533
+    + line #8b9bb4 width 1: 24 numbers, sum 278.267
+    + line #8b9bb4 width 1: 24 numbers, sum 1728.267
+    - bodies: e1, n1/1
+    - line #26303c width 1.5: 1080 numbers, sum 52363.538
+    - line #8b9bb4 width 1: 24 numbers, sum 395.81
+    - line #8b9bb4 width 1: 24 numbers, sum 263.873
+    - line #8b9bb4 width 1: 24 numbers, sum 131.937
+    - line #8b9bb4 width 1: 24 numbers, sum 1581.937
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 39.752
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 39.752
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 39.752
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 39.752
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+
+=== 15. and the mirror again: the plane it had
+  engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}},"index":4}, "n1") -> ok
+  engine: getState("mid")
+  panel:
+    + h2: "New mirror"
+    - h2: "New pattern"
+    +   select value="mirror"
+    +     option value="circular": "Around an axis"
+    -   select value="circular"
+    -     option selected value="circular": "Around an axis"
+    +     option selected value="mirror": "Mirror in a plane"
+    -     option value="mirror": "Mirror in a plane"
+    +   "Mirror plane"
+    +   select value="face"
+    +     option value="base:XY": "rovina XY"
+    +     option value="base:XZ": "rovina XZ"
+    +     option value="base:YZ": "rovina YZ"
+    +     option value="plane:mid": "rovina „Mid plane“"
+    +     option selected value="face": "stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    + div.buttons
+    +   button: "Pick"
+    + p.hint: "One copy, the mirror image in the plane; for a face the whole plane it lies in. A plane of symmetry is best a base plane or a plane feature offset by an expression."
+    + p#draft-bodies.hint: "New bodies: Mirror 1 / 1."
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    - label
+    -   "Count with the original (a whole number or an expression)"
+    -   span.field
+    -     input value="4"
+    -     small.computed data-field="transform/count" data-unit="count"
+    - label
+    -   "Span"
+    -   select value="full"
+    -     option selected value="full": "Full circle"
+    -     option value="angle": "Angle between the first and the last copy"
+    - p#draft-bodies.hint: "New bodies: Pattern 1 / 1, Pattern 1 / 2, Pattern 1 / 3."
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, n1/1
+    + line #26303c width 1.5: 1080 numbers, sum 52363.538
+    + line #8b9bb4 width 1: 24 numbers, sum 395.81
+    + line #8b9bb4 width 1: 24 numbers, sum 263.873
+    + line #8b9bb4 width 1: 24 numbers, sum 131.937
+    + line #8b9bb4 width 1: 24 numbers, sum 1581.937
+    - bodies: e1, n1/1, n1/2, n1/3
+    - line #26303c width 1.5: 2160 numbers, sum 14548.646
+    - line #8b9bb4 width 1: 24 numbers, sum 834.8
+    - line #8b9bb4 width 1: 24 numbers, sum 556.533
+    - line #8b9bb4 width 1: 24 numbers, sum 278.267
+    - line #8b9bb4 width 1: 24 numbers, sum 1728.267
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 39.752
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 39.752
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 39.752
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 39.752
+
+=== 16. OK: the mirror is in the document
+  engine: getState("mid")
+  engine: execute({"type":"addFeature","feature":{"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}},"index":4}) -> ok
+  features: s1, e1, hole, mid, n1
+  feature n1:
+      {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Mirror 1"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New mirror"
+    - label
+    -   "Repeat"
+    -   select value="body"
+    -     option value="features": "Features (extrusions that add or cut)"
+    -     option selected value="body": "A body"
+    - label
+    -   "Kind"
+    -   select value="mirror"
+    -     option value="circular": "Around an axis"
+    -     option value="linear": "Along a direction"
+    -     option selected value="mirror": "Mirror in a plane"
+    - label
+    -   "Body"
+    -   select value="e1"
+    -     option selected value="e1": "Vysunutí 1"
+    - p.hint: "The copies are new bodies; what is added to the source after the pattern is not copied."
+    - label
+    -   "Mirror plane"
+    -   select value="face"
+    -     option value="base:XY": "rovina XY"
+    -     option value="base:XZ": "rovina XZ"
+    -     option value="base:YZ": "rovina YZ"
+    -     option value="plane:mid": "rovina „Mid plane“"
+    -     option selected value="face": "stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick"
+    - p.hint: "One copy, the mirror image in the plane; for a face the whole plane it lies in. A plane of symmetry is best a base plane or a plane feature offset by an expression."
+    - p#draft-bodies.hint: "New bodies: Mirror 1 / 1."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Pattern přidáno.
+  view: 2 scene(s) set
+  scene:
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 17. selected: the summary names the plane and the body
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Pattern"
+    + label
+    +   "Název"
+    +   input value="Mirror 1"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Mirrored in stěna Vysunutí 1 – protější víko (Vysunutí 1); body: Vysunutí 1."
+    + p.hint.body
+    +   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Mirror 1 / 1"
+    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    + label
+    +   "Name"
+    +   input value="" placeholder="Mirror 1 / 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "As its source: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face n1/1 #10 #f97316 opacity 0.3
+    + face n1/1 #11 #f97316 opacity 0.3
+    + face n1/1 #12 #f97316 opacity 0.3
+    + face n1/1 #13 #f97316 opacity 0.3
+    + face n1/1 #14 #f97316 opacity 0.3
+    + face n1/1 #15 #f97316 opacity 0.3
+    + face n1/1 #16 #f97316 opacity 0.3
+
+=== 18. edited into a row of the plate: another kind replaces the transform; the copy keeps its ID
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":3,"span":{"type":"spacing","spacing":10}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":10}}}}, "n1") -> ok
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: execute({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}}) -> ok
+  feature n1:
+    + {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}
+    - {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}
+  timeline:
+    + div.row.ok
+    - div.row.ok.selected
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Pattern"
+    - label
+    -   "Název"
+    -   input value="Mirror 1"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Mirrored in stěna Vysunutí 1 – protější víko (Vysunutí 1); body: Vysunutí 1."
+    - p.hint.body
+    -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Mirror 1 / 1"
+    - p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    - label
+    -   "Name"
+    -   input value="" placeholder="Mirror 1 / 1"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "As its source: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
+  status: Změna uložena.
+  view: 6 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1080 numbers, sum 81097.557
+    + line #8b9bb4 width 1: 24 numbers, sum 701.145
+    + line #8b9bb4 width 1: 24 numbers, sum 467.43
+    + line #8b9bb4 width 1: 24 numbers, sum 233.715
+    + line #8b9bb4 width 1: 24 numbers, sum 1683.715
+    - line #26303c width 1.5: 1080 numbers, sum 52363.538
+    - line #8b9bb4 width 1: 24 numbers, sum 395.81
+    - line #8b9bb4 width 1: 24 numbers, sum 263.873
+    - line #8b9bb4 width 1: 24 numbers, sum 131.937
+    - line #8b9bb4 width 1: 24 numbers, sum 1581.937
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - face n1/1 #10 #f97316 opacity 0.3
+    - face n1/1 #11 #f97316 opacity 0.3
+    - face n1/1 #12 #f97316 opacity 0.3
+    - face n1/1 #13 #f97316 opacity 0.3
+    - face n1/1 #14 #f97316 opacity 0.3
+    - face n1/1 #15 #f97316 opacity 0.3
+    - face n1/1 #16 #f97316 opacity 0.3
+
+=== 19. the summary of a row
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Pattern"
+    + label
+    +   "Název"
+    +   input value="Mirror 1"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Count 2 with the original, along axis X, spacing 50 mm; body: Vysunutí 1."
+    + p.hint.body
+    +   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Mirror 1 / 1"
+    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    + label
+    +   "Name"
+    +   input value="" placeholder="Mirror 1 / 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "As its source: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face n1/1 #10 #f97316 opacity 0.3
+    + face n1/1 #11 #f97316 opacity 0.3
+    + face n1/1 #12 #f97316 opacity 0.3
+    + face n1/1 #13 #f97316 opacity 0.3
+    + face n1/1 #14 #f97316 opacity 0.3
+    + face n1/1 #15 #f97316 opacity 0.3
+    + face n1/1 #16 #f97316 opacity 0.3

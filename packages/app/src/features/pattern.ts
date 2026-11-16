@@ -1,18 +1,24 @@
-// The pattern in the app: its form (what to repeat, the axis, the count and the span), its
-// summary, and the faces of its copies.
-import { type Id, type PatternFeature, type Unit, producesTool } from '@trymesh/engine';
+// The pattern in the app: its form (what to repeat, the kind of the transform, the axis or the
+// direction, the count and the span, or the plane of a mirror), its summary, and the faces of its
+// copies.
+import { type Id, type Input, type PatternFeature, type PlaneRef, type Unit, producesTool } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { bodyName } from '../issue-text';
 import { axisRows } from '../axis-picker';
-import { type PatternChange, type PatternChoices, type PatternSpan, changePattern, draftCommand, patternIncomplete, patternSource } from '../sketch-commands';
+import { type LinearSpan, NEW_TRANSFORM, type PatternChange, type PatternChoices, type PatternKind, type PatternMemory, type PatternSpan, changePattern, draftCommand, patternIncomplete, patternSource, rememberPattern } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
+import { planeText } from './plane';
 
 // What the form remembers beyond the draft.
 interface Extra {
-  angle?: PatternSpan; // the angle span the draft had last, to return to from the full circle
+  memory?: PatternMemory; // the transform the draft had in each kind and its spans, to return to
+  picking?: boolean; // the button "Pick" of a mirror is armed: the next click in the view takes a plane or a planar face
 }
+const KINDS: Record<PatternKind, string> = { circular: 'Around an axis', linear: 'Along a direction', mirror: 'Mirror in a plane' };
+// The name of a new draft by its kind (`Pattern 7`, `Mirror 7`), while it has the default one.
+const defaultName = (kind: PatternKind, id: Id): string => `${kind === 'mirror' ? 'Mirror' : 'Pattern'} ${id.slice(1)}`;
 type PatternMode = DraftMode<PatternFeature, Extra>;
 
 // What a pattern at this place of the timeline can repeat and turn around.
@@ -33,15 +39,19 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
   const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
   const set = (change: PatternChange, rebuild = true) => {
-    if (m.draft.transform.span.type === 'angle') m.extra.angle = m.draft.transform.span;
-    m.draft = changePattern(m.draft, change, choices, m.extra.angle);
+    m.extra.memory = rememberPattern(m.extra.memory ?? {}, m.draft);
+    const before = m.draft;
+    m.draft = changePattern(m.draft, change, choices, m.extra.memory);
+    // a new draft is named by its kind while its name is the default one
+    if (!m.editing && before.name === defaultName(before.transform.type, before.id)) m.draft = { ...m.draft, name: defaultName(m.draft.transform.type, m.draft.id) };
+    if (m.draft.transform.type !== 'mirror') m.extra.picking = false;
     draftChanged(host, rebuild);
   };
-  const { source } = m.draft;
-  const { axis, span } = m.draft.transform;
+  const { source, transform } = m.draft;
   const out: (HTMLElement | null)[] = [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'New pattern'),
+    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : transform.type === 'mirror' ? 'New mirror' : 'New pattern'),
     select('Repeat', (value) => set({ source: value as 'features' | 'body' }), option('features', 'Features (extrusions that add or cut)', source.type === 'features'), option('body', 'A body', source.type === 'body')),
+    select('Kind', (value) => set({ kind: value as PatternKind }), ...(Object.keys(KINDS) as PatternKind[]).map((kind) => option(kind, KINDS[kind], kind === transform.type))),
   ];
   if (source.type === 'features') {
     const missing = source.features.filter((id) => !choices.tools.includes(id));
@@ -68,15 +78,62 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
       h('p', { className: 'hint' }, 'The copies are new bodies; what is added to the source after the pattern is not copied.'),
     );
   }
-  out.push(...axisRows(host, axis, choices.sketches, set, 'An axis through a point needs a sketch before this place of the timeline.'));
-  out.push(
-    draftField(host, m, 'Count with the original (a whole number or an expression)', 'transform/count', (count) => set({ count }, false)),
-    select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),
-    span.type === 'angle' ? draftField(host, m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
-    h('p', { id: 'draft-bodies', className: 'hint' }, patternBodies(m, host)),
-    ...draftButtons(host, m),
-  );
+  const count = () => draftField(host, m, 'Count with the original (a whole number or an expression)', 'transform/count', (value) => set({ count: value }, false));
+  if (transform.type === 'circular') {
+    const { axis, span } = transform;
+    out.push(
+      ...axisRows(host, axis, choices.sketches, set, 'An axis through a point needs a sketch before this place of the timeline.'),
+      count(),
+      select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),
+      span.type === 'angle' ? draftField(host, m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
+    );
+  } else if (transform.type === 'linear') {
+    const { direction, span } = transform;
+    out.push(
+      ...axisRows(host, direction, choices.sketches, set, 'The normal of a sketch plane needs a sketch before this place of the timeline.', true),
+      count(),
+      select('Span', (value) => set({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbours', span.type === 'spacing'), option('length', 'Length between the first and the last copy', span.type === 'length')),
+      span.type === 'spacing'
+        ? draftField(host, m, 'Spacing (mm or an expression; negative = against the direction)', 'transform/span/spacing', (spacing) => set({ spacing }, false))
+        : draftField(host, m, 'Length (mm or an expression; negative = against the direction)', 'transform/span/length', (length) => set({ length }, false)),
+      h('p', { className: 'hint' }, span.type === 'spacing' ? 'A larger count adds copies at the far end and moves none.' : 'The copies divide the length evenly; a change of the count moves them all.'),
+    );
+  } else out.push(...mirrorRows(m, host, transform.plane, set));
+  out.push(h('p', { id: 'draft-bodies', className: 'hint' }, patternBodies(m, host)), ...draftButtons(host, m));
   return out.filter((element): element is HTMLElement => element !== null);
+}
+
+// The plane of a mirror: a select with the base planes and the plane features before the pattern
+// (and the face the draft has, by its label), and the button that arms a pick in the view.
+function mirrorRows(m: PatternMode, host: PanelHost, plane: Input<PlaneRef>, set: (change: PatternChange) => void): HTMLElement[] {
+  const planes = host.doc.features.slice(0, m.index).filter((f) => f.type === 'plane' && f.id !== m.draft.id).map((f) => f.id);
+  const refs: PlaneRef[] = [...(['XY', 'XZ', 'YZ'] as const).map((name): PlaneRef => ({ kind: 'base', plane: name })), ...planes.map((feature): PlaneRef => ({ kind: 'plane', feature }))];
+  const keyOf = (ref: Input<PlaneRef>): string => (ref.kind === 'base' ? `base:${ref.plane}` : ref.kind === 'plane' ? `plane:${ref.feature}` : 'face');
+  const listed = refs.some((ref) => keyOf(ref) === keyOf(plane));
+  const choose = (value: string) => {
+    const ref = refs.find((candidate) => keyOf(candidate) === value);
+    if (ref) set({ plane: ref });
+  };
+  const arm = () => {
+    m.extra.picking = !m.extra.picking;
+    host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the copy is the mirror image in its plane.' : `Mirror plane: ${planeText(host, plane)}.`);
+    draftChanged(host, true);
+  };
+  return [
+    h(
+      'label',
+      {},
+      'Mirror plane',
+      h(
+        'select',
+        { onchange: (event: Event) => choose((event.target as HTMLSelectElement).value) },
+        ...refs.map((ref) => h('option', { value: keyOf(ref), textContent: planeText(host, ref), selected: keyOf(ref) === keyOf(plane) })),
+        listed ? null : h('option', { value: keyOf(plane), textContent: plane.kind === 'plane' ? `${planeText(host, plane)} (missing)` : planeText(host, plane), selected: true }),
+      ),
+    ),
+    h('div', { className: 'buttons' }, h('button', { textContent: m.extra.picking ? 'Picking… (click to stop)' : 'Pick', onclick: arm })),
+    h('p', { className: 'hint' }, 'One copy, the mirror image in the plane; for a face the whole plane it lies in. A plane of symmetry is best a base plane or a plane feature offset by an expression.'),
+  ];
 }
 // The bodies the previewed pattern creates, for the form.
 function patternBodies(m: PatternMode, host: PanelHost): string {
@@ -94,7 +151,7 @@ const form: FeatureForm<PatternFeature, Extra> = {
     if (!source) return { problem: 'A pattern needs an extrusion that adds or cuts, or a body. Create one first.' };
     const id = host.newId('n');
     return {
-      draft: { id, name: `Pattern ${id.slice(1)}`, suppressed: false, type: 'pattern', source, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'full' } } },
+      draft: { id, name: defaultName('circular', id), suppressed: false, type: 'pattern', source, transform: NEW_TRANSFORM.circular },
       extra: {},
       say: 'Choose what to repeat, the axis and the count.',
     };
@@ -107,26 +164,46 @@ const form: FeatureForm<PatternFeature, Extra> = {
     if (bodies) bodies.textContent = patternBodies(m, host);
   },
   picks: () => ({ faces: true, planes: true }),
-  // a click on a body picks it as the source of a pattern of a body (not a copy of the preview itself)
+  // While "Pick" of a mirror is armed a click takes a plane or a planar face (not one the previewed
+  // pattern made); otherwise a click on a body picks it as the source of a pattern of a body (not
+  // a copy of the preview itself).
   click(m, _event, pick, host) {
     const choices = patternChoices(host, m.index);
+    if (m.extra.picking) {
+      const plane = host.planeRefOf(pick);
+      if (!plane) return host.say('A mirror plane is a plane or a planar face.', true);
+      const own = plane.kind === 'face' && (plane.body.startsWith(`${m.draft.id}/`) || (plane.face.copy ?? []).some((tag) => tag.pattern === m.draft.id));
+      if (own) return host.say('The mirror cannot be in a face the pattern itself makes; pick a plane or a face that exists before it.', true);
+      m.extra.picking = false;
+      m.extra.memory = rememberPattern(m.extra.memory ?? {}, m.draft);
+      m.draft = changePattern(m.draft, { plane }, choices, m.extra.memory);
+      host.say(`Mirror plane: ${planeText(host, plane)}.`);
+      draftChanged(host, true);
+      return;
+    }
     if (m.draft.source.type !== 'body' || !pick || pick.kind === 'plane' || !choices.bodies.includes(pick.body)) return;
-    m.draft = changePattern(m.draft, { body: pick.body }, choices, m.extra.angle);
+    m.draft = changePattern(m.draft, { body: pick.body }, choices, m.extra.memory);
     draftChanged(host);
   },
 };
 
 export const pattern: FeatureUi<PatternFeature, Extra> = {
-  button: { label: 'Pattern', title: 'Repeat extrusions that add or cut, or a body, around an axis' },
+  button: { label: 'Pattern', title: 'Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane' },
   create: { run: (host, at) => startDraft(host, form, at) },
   edit: (host, feature) => editDraft(host, form, feature, {}),
   summary(host, f) {
-    const { axis, count, span } = f.transform;
+    const t = f.transform;
     const field = (path: string, value: number, unit: Unit): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${valueText(value, unit)}` : valueText(value, unit));
     const source = f.source.type === 'features' ? `features: ${f.source.features.map((id) => host.nameOf(id)).join(', ')}` : `body: ${host.bodyName(f.source.body)}`;
-    const around = axis.kind === 'base' ? `axis ${axis.axis}` : `the point ${axis.point} of ${host.nameOf(axis.sketch)}`;
-    const extent = span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', span.angle, 'rad')}`;
-    return [h('p', { className: 'hint' }, `Count ${field('transform/count', count, 'count')} with the original, around ${around}, ${extent}; ${source}.`)];
+    if (t.type === 'mirror') return [h('p', { className: 'hint' }, `Mirrored in ${planeText(host, t.plane)}; ${source}.`)];
+    if (t.type === 'linear') {
+      const along = t.direction.kind === 'base' ? `axis ${t.direction.axis}` : `the normal of ${host.nameOf(t.direction.sketch)}`;
+      const extent = t.span.type === 'spacing' ? `spacing ${field('transform/span/spacing', t.span.spacing, 'mm')}` : `length ${field('transform/span/length', t.span.length, 'mm')}`;
+      return [h('p', { className: 'hint' }, `Count ${field('transform/count', t.count, 'count')} with the original, along ${along}, ${extent}; ${source}.`)];
+    }
+    const around = t.axis.kind === 'base' ? `axis ${t.axis.axis}` : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
+    const extent = t.span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', t.span.angle, 'rad')}`;
+    return [h('p', { className: 'hint' }, `Count ${field('transform/count', t.count, 'count')} with the original, around ${around}, ${extent}; ${source}.`)];
   },
   // the faces of the copies the pattern made
   ownsFace: (feature, name) => (name.copy ?? []).some((tag) => tag.pattern === feature.id),

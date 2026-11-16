@@ -698,6 +698,16 @@ describe('the app, driven as a user drives it', () => {
     h.record('edited into a row of the plate: another kind replaces the transform; the copy keeps its ID');
     h.row('Mirror 1').click();
     h.record('the summary of a row');
+    // review of D53: a direction whose point is gone can be repaired in the form
+    outside(h, { type: 'addPoint', sketch, id: 'pp', x: 30, y: 25 });
+    outside(h, { type: 'addFeature', feature: { id: 'lin', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'features', features: ['hole'] }, transform: { type: 'linear', direction: { kind: 'sketchPoint', sketch, point: 'pp' }, count: 2, span: { type: 'spacing', spacing: 15 } } } });
+    outside(h, { type: 'removeEntity', sketch, id: 'pp' });
+    doubleClick(h, 'Row');
+    h.record('a row along the normal of a sketch whose point is gone: the form warns and offers the origin');
+    h.press('panel', 'Use the origin of the sketch');
+    h.press('panel', 'OK');
+    h.record('the direction repaired: the point is the origin, the row computes again (a copy up the normal of the base sketch lands on the hole through all: noEffect)');
+    expect(h.engine.getState().evaluation.features.lin.status).toBe('warning');
     await matches(h, 'pattern-kinds');
   });
 

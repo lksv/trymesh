@@ -261,7 +261,7 @@ describe('the linear pattern and the mirror (D53)', () => {
     // the plane must lie before the pattern, and cannot be moved behind it
     invalid(doc, { type: 'addFeature', feature: of('P', holes, mirror({ kind: 'plane', feature: 'M' })), index: 4 }, /transform\.plane/);
     const after = run(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'M' }))));
-    invalid(after, { type: 'moveFeature', id: 'M', index: after.features.length - 1 }, /M|P/);
+    invalid(after, { type: 'moveFeature', id: 'M', index: after.features.length - 1 }, /"M" by se dostala za feature "P", která na ni odkazuje/);
     // a face of a copy: the copy's pattern is a reference as well
     const copied = run(doc, add(of('Q', body, row())));
     const onCopy = run(copied, add(of('P', holes, mirror({ kind: 'face', body: 'Q/1', face: { feature: 'A', role: 'endCap', copy: [{ pattern: 'Q', index: 1 }] } }))));

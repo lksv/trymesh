@@ -20,14 +20,20 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
   const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
   const out: HTMLElement[] = [select(direction ? 'Direction' : 'Axis', (value) => set({ axis: value as AxisKind }), ...(Object.keys(labels) as AxisKind[]).map((kind) => option(kind, labels[kind], kind === axisKind(axis))))];
+  const sketch = axis.kind === 'sketchPoint' ? host.feature(axis.sketch) : undefined;
+  const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
   if (axis.kind === 'sketchPoint' && direction) {
+    // The point does not matter for a direction, but the engine checks it: a point that is gone
+    // (removed, or given through MCP) is offered to be replaced by the origin of the sketch.
+    const gone = points.length > 0 && !points.includes(axis.point);
     out.push(
       select('Sketch', (value) => set({ sketch: value }), ...sketches.map((id) => option(id, host.nameOf(id), id === axis.sketch)), sketches.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)} (missing)`, true)),
+      ...(gone
+        ? [h('p', { className: 'issue warning' }, `The point ${axis.point} of the reference is no longer in the sketch.`), h('div', { className: 'buttons' }, h('button', { textContent: 'Use the origin of the sketch', onclick: () => set({ point: 'origin' }) }))]
+        : []),
       h('p', { className: 'hint' }, 'The direction is the normal of the sketch plane; for a sketch on a face it points out of the body.'),
     );
   } else if (axis.kind === 'sketchPoint') {
-    const sketch = host.feature(axis.sketch);
-    const points = sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
     out.push(
       select('Sketch', (value) => set({ sketch: value }), ...sketches.map((id) => option(id, host.nameOf(id), id === axis.sketch)), sketches.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)} (missing)`, true)),
       select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),

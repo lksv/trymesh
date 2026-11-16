@@ -467,3 +467,16 @@ Where the code differs from the design, or the design left a choice:
 - **The app snapshots** all change by the title of the button *Pattern*, and `features.txt` by the row *Kind*; `pattern-kinds.txt` is new.
 - Not done here, for the merging session: the rows of the indexes above and the entry of `docs/backlog.md`. Not checked in a browser.
 
+### Review of the implementation (2026-11-16)
+
+A fresh subagent (Opus 5.5), read-only, on the diff of the implementation with this design as the reference: no blocker, no major, six findings.
+
+| Finding | Severity | What changed |
+|---|---|---|
+| The picker of a direction hides the point, so a linear pattern whose point is gone (`brokenReference`) cannot be repaired in the form; choosing the same sketch again does nothing | minor | `axisRows` in the mode of a direction shows a warning and a button *Use the origin of the sketch*; a step of `pattern-kinds.txt` |
+| Owed tests missing: a face tagged as copy 2 of a mirror in a projected edge; a linear pattern of features along the normal of a sketch on a face; a mirror in a plane parallel to the sketch plane, which reverses the normal of the frame of the copy | minor | three cases in `packages/scenarios/test/review.test.ts`; they passed without a change of the engine |
+| A test of `moveFeature` matched nearly any message | nit | it matches the text of the ordering error |
+| The check that the saved schema version is that of the build is always true | nit | not acted on: the version is pinned by `schema.test.ts`, and pinning the number here would collide with a package that adds a step |
+| A sentence about "through all" in `architecture/pattern.md` had moved under the bullet of the mirrored tool | nit | moved back |
+| The table of `ui/pattern.md` did not name the kind, the direction and the plane among what an edit changes | nit | the row names them |
+

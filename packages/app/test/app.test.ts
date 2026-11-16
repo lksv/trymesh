@@ -677,14 +677,15 @@ describe('the app, driven as a user drives it', () => {
     h.record('selected: the summary names the label, the shape, the depth and the points; its faces are highlighted');
     doubleClick(h, 'Hole 1');
     h.choose('For', 'countersunk');
-    h.record('from the catalog for a countersunk screw: the sizes of that use');
+    h.record('from the catalog for a countersunk screw: the sizes both of its catalogs have (no M3.5)');
     h.type(h.field('Allowance (an expression added to the diameters, such as a parameter; empty = none)'), '0.2');
     h.press('panel', 'Fill from the catalog');
-    h.record('filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label');
+    h.record('filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label; the extent stays and the status line says so');
+    h.type(h.field('Start of the mouth (mm or an expression; offset from the sketch plane along its normal)'), '1');
     h.choose('For', 'heatSetInsert');
     h.choose('Size', 'M3x4x4.5');
     h.press('panel', 'Fill from the catalog');
-    h.record('filled for a heat-set insert: a plain hole and a distance of its depth');
+    h.record('filled for a heat-set insert: a plain hole, the depth of the insert as the distance, the start and the direction kept');
     h.type(h.field('Allowance (an expression added to the diameters, such as a parameter; empty = none)'), '0.2 +');
     h.press('panel', 'Fill from the catalog');
     h.record('an allowance that is no expression: the status line says why, the draft stays');

@@ -47,7 +47,22 @@ function shapeOfKind(draft: ShapeDraft, kind: HoleShape['type'], remembered: Ext
 }
 
 // The sizes the catalog of a use has.
-const sizesOf = (use: Use): string[] => Object.keys(use === 'heatSetInsert' ? DATA_CATALOGS.heatSetInserts.rows : DATA_CATALOGS.clearanceHoles.rows);
+// The catalogs each use reads (the table of the query `hardwareHole`).
+const READS: Record<Use, (keyof typeof DATA_CATALOGS)[]> = {
+  clearance: ['clearanceHoles'],
+  socketHead: ['clearanceHoles', 'socketHeadScrews'],
+  countersunk: ['clearanceHoles', 'countersunkScrews'],
+  nutPocket: ['clearanceHoles', 'hexNuts'],
+  heatSetInsert: ['heatSetInserts'],
+};
+// The sizes a use can answer: those every catalog it reads has (ISO 4762 has no M3.5, ISO 273 has).
+const sizesOf = (use: Use): string[] => {
+  const [first, ...rest] = READS[use].map((name) => Object.keys(DATA_CATALOGS[name].rows));
+  return first.filter((size) => rest.every((keys) => keys.includes(size)));
+};
+// The extent of a draft in words, for the status line.
+const extentText = (extent: HoleDraft['extent']): string =>
+  extent.type === 'throughAll' ? `through all (${SIDES[extent.side].toLowerCase()})` : `a distance of ${typeof extent.distance === 'number' ? fmt(extent.distance) : extent.distance} mm${extent.start === 0 ? '' : ` from a start of ${typeof extent.start === 'number' ? fmt(extent.start) : extent.start} mm`}`;
 // The own points of a sketch and its origin, as the form offers them.
 const pointsOf = (sketch: SketchFeature | undefined): Id[] => (sketch ? ['origin', ...Object.keys(sketch.points)] : []);
 
@@ -160,10 +175,16 @@ function catalogFields(m: HoleMode, host: PanelHost, option: (value: string, lab
     const answer = host.engine.query('hardwareHole', args);
     if (!answer.ok) return host.say(answer.error.message, true);
     const { shape, label, depth } = answer.result;
-    // an insert is a blind hole of its depth, into the body under the face of the sketch
-    const extent: HoleDraft['extent'] = depth === undefined ? m.draft.extent : { type: 'distance', start: 0, distance: -depth };
+    // An insert is a blind hole of its depth: the start of the draft stays and so does its direction
+    // (the sign of its distance, or the side of "through all": backward is against the normal).
+    // A screw or a nut leaves the extent as it is. The status line says what the extent is.
+    const current = m.draft.extent;
+    // an expression in the distance is read from the preview
+    const distance = current.type === 'distance' ? (typeof current.distance === 'number' ? current.distance : m.preview?.evaluation.features[m.draft.id]?.values?.['extent/distance']) : undefined;
+    const sign = current.type === 'throughAll' ? (current.side === 'backward' ? -1 : 1) : distance !== undefined && distance > 0 ? 1 : -1;
+    const extent: HoleDraft['extent'] = depth === undefined ? current : { type: 'distance', start: current.type === 'distance' ? current.start : 0, distance: sign * depth };
     m.draft = { ...m.draft, shape, label, extent };
-    host.say(`${label}: the sizes from ${answer.result.from.join(' and ')}.`);
+    host.say(`${label}: the sizes from ${answer.result.from.join(' and ')}; the extent ${depth === undefined ? 'stays' : 'is now'} ${extentText(extent)}.`);
     draftChanged(host);
   };
   return [

@@ -599,7 +599,7 @@
     + face e1 #11 #f97316 opacity 0.3
     + face e1 #12 #f97316 opacity 0.3
 
-=== 10. from the catalog for a countersunk screw: the sizes of that use
+=== 10. from the catalog for a countersunk screw: the sizes both of its catalogs have (no M3.5)
   engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}}, "d1") -> ok
   engine: getState("s2")  (x2)
   toolbar:
@@ -735,7 +735,6 @@
     +       option selected value="M2": "M2"
     +       option value="M2.5": "M2.5"
     +       option value="M3": "M3"
-    +       option value="M3.5": "M3.5"
     +       option value="M4": "M4"
     +   label
     +     "Series of the through hole"
@@ -778,7 +777,7 @@
     - face e1 #11 #f97316 opacity 0.3
     - face e1 #12 #f97316 opacity 0.3
 
-=== 11. filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label
+=== 11. filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label; the extent stays and the status line says so
   engine: query("hardwareHole", {"use":"countersunk","size":"M2","fit":"medium","allowance":"0.2"}) -> ok
   engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
   engine: getState("s2")
@@ -807,16 +806,17 @@
     -   input value="M3 socket head cap screw"
     +     input value="0.2"
     -     input value=""
-  status: M2 countersunk screw: the sizes from clearanceHoles and countersunkScrews.
+  status: M2 countersunk screw: the sizes from clearanceHoles and countersunkScrews; the extent stays a distance of -6 mm.
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 1332 numbers, sum 66949.145
     - line #26303c width 1.5: 1944 numbers, sum 96630.678
 
-=== 12. filled for a heat-set insert: a plain hole and a distance of its depth
+=== 12. filled for a heat-set insert: a plain hole, the depth of the insert as the distance, the start and the direction kept
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":1,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
   engine: getState("s2")
   engine: query("hardwareHole", {"use":"heatSetInsert","size":"M3x4x4.5","fit":"medium","allowance":"0.2"}) -> ok
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":0,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
   engine: getState("s2")
   panel:
     +   select value="plain"
@@ -839,6 +839,8 @@
     -     input value="deg(90)"
     -     small.computed data-field="shape/angle" data-unit="rad": "= 90°"
     - label
+    +     input value="1"
+    -     input value="0"
     +     input value="-5"
     -     input value="-6"
     +   input value="M3x4x4.5 heat-set insert"
@@ -874,7 +876,6 @@
     -       option selected value="M2": "M2"
     -       option value="M2.5": "M2.5"
     -       option value="M3": "M3"
-    -       option value="M3.5": "M3.5"
     -       option value="M4": "M4"
     -     "Series of the through hole"
     -     select value="medium"
@@ -882,10 +883,10 @@
     -       option selected value="medium": "Medium"
     -       option value="coarse": "Coarse"
     -   label
-  status: M3x4x4.5 heat-set insert: the sizes from heatSetInserts.
-  view: 1 scene(s) set
+  status: M3x4x4.5 heat-set insert: the sizes from heatSetInserts; the extent is now a distance of -5 mm from a start of 1 mm.
+  view: 2 scene(s) set
   scene:
-    + line #26303c width 1.5: 864 numbers, sum 42995.827
+    + line #26303c width 1.5: 864 numbers, sum 43520.827
     - line #26303c width 1.5: 1332 numbers, sum 66949.145
 
 === 13. an allowance that is no expression: the status line says why, the draft stays
@@ -897,13 +898,13 @@
   view: 0 scene(s) set
 
 === 14. edited: a plain hole without a label
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":0,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
   engine: getState("s2")
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":0,"distance":-5},"targets":["e1"],"label":null}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}, "d1") -> ok
   engine: getState("s2")
-  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":0,"distance":-5},"targets":["e1"],"label":null}}) -> ok
+  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}) -> ok
   feature d1:
-    + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":4.4},"extent":{"type":"distance","start":0,"distance":-5},"targets":["e1"],"expressions":{"shape/diameter":"4.2 + 0.2"}}
+    + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":4.4},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"expressions":{"shape/diameter":"4.2 + 0.2"}}
     - {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
   toolbar:
     +   button title="Ctrl+Z": "↶ Zpět"
@@ -1010,7 +1011,7 @@
     - label
     -   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
-    -     input value="0"
+    -     input value="1"
     -     small.computed data-field="extent/start" data-unit="mm"
     - label
     -   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"

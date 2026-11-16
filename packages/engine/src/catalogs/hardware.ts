@@ -107,7 +107,7 @@ export const hexNuts: DataCatalog<HexNutRow> = {
 export const heatSetInserts: DataCatalog<HeatSetInsertRow> = {
   title: 'Heat-set inserts',
   summary: 'Threaded inserts melted into a printed part, by the size as sold (thread, outer diameter, length), with a hole to start from. No standard: typical values; try the hole in a test print.',
-  source: 'Typical values for unbranded brass heat-set inserts, named thread × length × outer diameter as sold ("M3x3x4.5": M3, 3 long, 4.5 across), sizes offered by shops on 2026-11-16. The hole is straight, its diameter the outer diameter less 0.3 mm (ME Design Lab, University of Wisconsin–Madison, Heat Set Inserts), its depth the length and 1 mm (CNC Kitchen, Tips & Tricks for Heat-Set Inserts, 2021); checked against 3D Printer Gear and Sovol. Try the hole in a test print.',
+  source: 'Typical values for unbranded brass heat-set inserts, named thread × length × outer diameter as sold ("M3x3x4.5": M3, 3 long, 4.5 across), sizes offered by shops on 2026-11-16. The hole is straight, its diameter the outer diameter less 0.3 mm (ME Design Lab, University of Wisconsin–Madison, Heat Set Inserts), its depth the length and 1 mm (CNC Kitchen, Tips & Tricks for Heat-Set Inserts, 2021). Checked against 3D Printer Gear, which recommends the same hole at an outer diameter of 4.5 and one 0.1 mm smaller at 5 (M3) and 6 (M4), and Sovol (0.1 to 0.3 mm under the knurl); for M4 with an outer diameter of 5 and 5.5 no second source was found. Try the hole in a test print.',
   columns: {
     thread: THREAD,
     outerDiameter: { title: 'Outer diameter', unit: 'mm' },

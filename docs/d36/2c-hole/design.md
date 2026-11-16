@@ -368,3 +368,18 @@ Where the code differs from the design above:
 Found by the tests and recorded as behaviour: every case of the third round of reviews holds as designed, run through the real adapter (a head half a millimetre deeper than the plate refused, a plate thicker than the head by half the resolution refused and by twice it built with seat and bore, the thin plate 1000 away refused and not cut, holes pointing away at a height of 33.4 and on a turned copy `noEffect`, a pattern that turns such a hole into the plate cutting it, the sliver of a tilted face cut by a plain hole and refused for a headed one, the plate on a deeper rim not detected).
 
 Known limits, besides those of the design: see [architecture/hole.md](../../architecture/hole.md), "Limits".
+
+### The review (2026-11-16)
+
+One full review of the commit of the package by a subagent that did not write it, read-only, with probes through the real adapters. One serious finding and seven minor ones; all fixed in one commit, with their regressions in `packages/engine/test/review.test.ts` and `packages/scenarios/test/review.test.ts`.
+
+| Finding | Severity | What changed |
+|---|---|---|
+| The keys of the side faces joined the point and its part with `|`, which an ID may hold: a point `x|1` alone was `kernelFailure`, and with a point `x` beside it the hole at `x|1` took the names and surfaces of `x` | serious | The keys use `/`, which no ID of a point the hole takes holds |
+| A head or a blind bore shorter than the resolution of the kernel passed the check at `LENGTH_TOLERANCE` and gave a wrong body without an error (a counterbore 3 deep in a hole 3.00001 deep without its bore; a head of 0.0005 mm; a countersink of 179.9°) | minor | Both are compared with `δ = 1e-4 · max(1, c)`, the number "through all" uses, and refused with `invalidHole` and a detail; so is a plain blind hole not deeper than `δ` |
+| With "through all" a head wholly outside the targets (a sketch above the plate) is silent: the hole is `ok` with the head and the seat in no body | minor | A limit in architecture/hole.md; no issue code fits it |
+| The form offered every size of `clearanceHoles` for every use, so a socket head and a countersunk screw offered M3.5, which their catalogs lack | minor | The sizes every catalog of the use has |
+| *Fill from the catalog* for an insert dropped the start of the draft and assumed the normal points out of the body; a screw after an insert kept its blind distance unnoticed | minor | The start and the direction stay, only the depth is set; the status line says what the extent is after every fill; ui/hole.md has the rule |
+| architecture/hole.md said the check of the inserts showed no difference | minor | It names the differences (0.1 mm at an outer diameter of 5 and 6) and the M4 sizes without a second source, and so does `source` |
+| A target wholly inside a head marked `refuseChange` gave `emptyResult` | nit | `applyTool` reads the mark before it reports `emptyResult`; the extrusion has no mark and is unchanged |
+| `catalogTable` took any object | nit | It takes catalogs with a title, a summary, a source, columns and rows |

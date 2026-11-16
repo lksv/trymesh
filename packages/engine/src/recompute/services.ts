@@ -68,7 +68,7 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
 // - Targets the tool did not change are returned in `unchanged`. When it changed none, its faces
 //   are in no body and do not enter the face table either.
 // - A tool marked `refuseChange` that changed a target is the error of the mark, with the changed
-//   targets in `refs`, and changes none of them.
+//   targets in `refs`, and changes none of them; also when it would remove a target whole.
 export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel, placement?: Placement): Applied {
   const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
   if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
@@ -81,7 +81,8 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
     for (const target of recipe.targets) {
       const before = model.bodies[target];
       const result = kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);
-      if (result.triangles.length === 0) return { ok: false, code: 'emptyResult', refs: [target] };
+      // a tool that must not change a target and removed one whole is the error of its mark, not emptyResult
+      if (result.triangles.length === 0) return tool.refuseChange ? { ok: false, code: tool.refuseChange.code, refs: [target], detail: tool.refuseChange.detail } : { ok: false, code: 'emptyResult', refs: [target] };
       // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
       // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
       // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.

@@ -104,11 +104,13 @@ function loop(center: Vec2, radius: number, count: number, start: number, curve:
 }
 const region = (outer: Loop): Region => ({ ref: { outerLoop: [outer.curves[0]] }, outer, holes: [] });
 
-// The keys of the side faces in `Loop.curves`, and the names they stand for.
+// The keys of the side faces in `Loop.curves`, and the names they stand for. The parts are
+// separated by a slash, which no ID of a point the hole takes holds (an own point or `origin`); any
+// other character may be in an ID.
 const BORE = 'b';
 const HEAD = 'h';
 const FLAT = 'f';
-const sideKey = (part: string, point: Id, flat?: number): string => (flat === undefined ? `${part}|${point}` : `${part}|${point}|${flat}`);
+const sideKey = (part: string, point: Id, flat?: number): string => (flat === undefined ? `${part}/${point}` : `${part}/${point}/${flat}`);
 
 function step(feature: HoleFeature, { state, settings, deps, done: finish, failed }: StepContext): Step {
   const sketch = lookup(state.sketches, feature.sketch);
@@ -124,7 +126,21 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
   const size = measured(shape);
   if ('detail' in size) return failed('invalidHole', undefined, size.detail);
   const { head, outer } = size;
-  if (extent.type === 'distance' && head > 0 && head >= Math.abs(extent.distance) - LENGTH_TOLERANCE) return failed('invalidHole', undefined, `the head is ${mm(head)} mm deep and the hole ${mm(Math.abs(extent.distance))} mm: the head has to be shallower than the hole`);
+  // A head and a blind bore have to be longer than the resolution of the kernel adapter, the δ
+  // "through all" compares its head with (1e-4 of the largest coordinate of the targets and of the
+  // sketch plane): shorter, the adapter takes their two ends for one plane and drops the face
+  // between them without an error.
+  const resolution = 1e-4 * Math.max(1, throughAll('both', sketch.frame, feature.targets.flatMap((target) => lookup(state.bodies, target) ?? [])).scale);
+  const kernel = `the resolution of the kernel at the size of this model is ${mm(resolution)} mm`;
+  if (head > 0 && head <= resolution) return failed('invalidHole', undefined, `the head is ${mm(head)} mm deep, not more than ${kernel}`);
+  if (extent.type === 'distance' && Math.abs(extent.distance) - head <= resolution)
+    return failed(
+      'invalidHole',
+      undefined,
+      head === 0
+        ? `the hole is ${mm(Math.abs(extent.distance))} mm deep, not more than ${kernel}`
+        : `the head is ${mm(head)} mm deep and the hole ${mm(Math.abs(extent.distance))} mm: ${head >= Math.abs(extent.distance) ? 'the head has to be shallower than the hole' : `the bore below the head has to be longer than ${mm(resolution)} mm, ${kernel}`}`,
+    );
   // the holes of one tool must not overlap
   const points = [...centers];
   for (let i = 0; i < points.length; i++) {
@@ -150,7 +166,7 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
         : [];
   // The surfaces of the sides, in the coordinates of the sketch (z along the normal).
   const sideOf = (key: string): { name: FaceRole; info: FaceInfo } => {
-    const [part, point, flat] = key.split('|');
+    const [part, point, flat] = key.split('/');
     const [cx, cy] = centers.get(point) as Vec2;
     if (part === BORE) return { name: { role: 'holeBore', point }, info: { planar: false, surface: 'cylinder', center: [cx, cy, 0], axis: [0, 0, 1], radius: boreR } };
     if (part === FLAT) {

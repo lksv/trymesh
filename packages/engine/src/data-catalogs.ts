@@ -37,10 +37,10 @@ export type CatalogSet = { [N in keyof Catalogs]: Catalogs[N] extends { [K in ke
 export const DATA_CATALOGS: CatalogSet = { clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts };
 
 // The table of the catalog `name`, with all its rows or with the one row `key`. A row type written
-// as an interface is not a dictionary to the compiler, so a catalog is taken as an object and the
-// rows are copied. Returns what is
+// as an interface is not a dictionary to the compiler, so a catalog is taken with its columns and
+// rows as objects and the rows are copied. Returns what is
 // missing instead of a table: the name or the key.
-export function catalogTable(catalogs: { readonly [name: string]: object }, name: string, key?: string): CatalogTable | { missing: 'name' | 'key' } {
+export function catalogTable(catalogs: { readonly [name: string]: { title: string; summary: string; source: string; columns: object; rows: object } }, name: string, key?: string): CatalogTable | { missing: 'name' | 'key' } {
   if (!has(catalogs, name)) return { missing: 'name' };
   const catalog = catalogs[name] as CatalogTable;
   if (key !== undefined && !has(catalog.rows, key)) return { missing: 'key' };

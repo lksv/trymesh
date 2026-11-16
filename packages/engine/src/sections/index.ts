@@ -6,6 +6,7 @@
 // documents for undo and the recompute all ask the registry; a second section (the mechanism of
 // 5a) is one entry.
 import type { Environment } from '../expression';
+import type { State } from '../recompute/state';
 import type { BodyResult, Command, Document, Evaluation, Id } from '../types';
 import { has } from '../util';
 import { type Dict, isObject } from '../validation';
@@ -56,11 +57,11 @@ export const sectionsDiffer = (a: Document, b: Document): boolean => NAMES.some(
 // from is the same.
 export type KeptResults = Map<SectionName, Map<string, Map<string, unknown>>>;
 const RESULTS_KEPT = 4; // per key of a section, most recently used last
-export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {
+export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, state: State, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {
   const results: Record<string, unknown> = {};
   let written: Partial<Sections> | undefined;
   for (const name of NAMES) {
-    const evaluated = specOf(name).evaluate(doc[name], doc, bodies, environment);
+    const evaluated = specOf(name).evaluate(doc[name], doc, bodies, environment, state);
     let memory = kept.get(name);
     if (!memory) kept.set(name, (memory = new Map()));
     const result = evaluated.result as Record<string, unknown>;

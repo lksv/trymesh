@@ -10,6 +10,7 @@ import { evaluateParameters } from '../src/expression';
 import { SECTION_INFO, freshIds, namedBySections, takenOver } from '../src/index';
 import { SCHEMA_PENDING, UPGRADES, upgradeDocument } from '../src/schema';
 import { bodyPropertiesWithoutBody, printedBodies } from '../src/sections/body-properties';
+import type { State } from '../src/recompute/state';
 import { DOCUMENT_SECTIONS } from '../src/sections/index';
 import type { BodyResult, Command, Document, Engine, Id, SketchSolver, SolidKernel } from '../src/types';
 
@@ -42,10 +43,11 @@ const refused = (doc: Document, command: Command, message: RegExp): CommandError
 };
 const set = (body: Id, patch: object): Command => ({ type: 'setBodyProperties', body, patch }) as Command;
 
-// The result of the section over bodies of these volumes (mm3).
+// The result of the section over bodies of these volumes (mm3). Body properties read nothing of the
+// state of the recompute.
 const BODIES = { upper: 10000, motor: 30000, screw: 50, 'screws/1': 50, 'screws/2': 50, 'screws/3': 50 };
 const evaluated = (doc: Document, bodies: Record<Id, number> = BODIES) =>
-  DOCUMENT_SECTIONS.bodyProperties.evaluate(doc.bodyProperties, doc, Object.fromEntries(Object.entries(bodies).map(([id, volume]) => [id, { volume } as BodyResult])), evaluateParameters(doc.parameters));
+  DOCUMENT_SECTIONS.bodyProperties.evaluate(doc.bodyProperties, doc, Object.fromEntries(Object.entries(bodies).map(([id, volume]) => [id, { volume } as BodyResult])), evaluateParameters(doc.parameters), {} as State);
 
 describe('the section and its upgrade step', () => {
   it('is always in the document, after the timeline; an empty one is `{}`', () => {

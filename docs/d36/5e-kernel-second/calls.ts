@@ -5,7 +5,7 @@
 // A step that cannot be written here is a hole in the contract. Lines marked `@ts-expect-error`
 // are calls that must not compile.
 //
-// Second version, after the first round of review (design.md, "Reviews").
+// Third version, after two rounds of review (design.md, "Reviews").
 //
 // The numbers in the comments were measured on 2026-11-16 through the real kernel on the arm of
 // `packages/scenarios/test/scenario13.test.ts` (chord tolerance 0.01 mm); design.md, "Measured".
@@ -236,8 +236,10 @@ export function elbowAt(value: number): Step {
 export const sweep = (): Step[] => Array.from({ length: 40 }, (_, i) => elbowAt((angleOf(i + 1, -88, 88) * Math.PI) / 180));
 // What the test holds of the sweep:
 // - at least one step is refused (otherwise the test tests nothing, and says so);
-// - at a refused step: { pairs: 0, failed: [], cleared: [['forearm', 'upper', 'fit']] }, and
-//   `fits` without that pair. With 5a alone the same step has failed: [['forearm', 'upper']];
+// - at a refused step: { pairs: 0, failed: [] }, the pair `forearm`, `upper` in `cleared` and
+//   not in `fits`. Its kind is 'fit' in most poses and 'nothing' in some (1 of 7 refused poses
+//   along an axis), so the test holds the kind only for the step it names. With 5a alone the
+//   same step has failed: [['forearm', 'upper']];
 // - at every step: nothing in `failed` and nothing in `pairs` (the range ends below the quarter
 //   turn at which the forearm reaches the screws).
 export const refusedSteps = (steps: Step[]): Step[] => steps.filter((step) => step.refused);
@@ -246,12 +248,13 @@ export const refusedSteps = (steps: Step[]): Step[] => steps.filter((step) => st
 // failed pair. A step whose pin was cleared is clear, and says by `cleared` how it is known.
 export const clear = (step: Step): boolean => step.pairs === 0 && step.failed.length === 0;
 
-// The gap at a refused step: `contact` of the pin and its hole is 'fit', where 5a alone answers
-// 'unknown', and the report of the gap names the pair in its own `cleared`.
+// The gap at a refused step: `contact` of the pin and its hole goes with the kind the collisions
+// cleared it as ('fit' with a fit, 'touching' with nothing), where 5a alone answers 'unknown',
+// and the report of the gap names the pair in its own `cleared`.
 export function gapAt(value: number): { contact: string; cleared: [Id, Id][] } {
   const preview = engine.preview({ type: 'setPose', values: { elbow: value } });
   if (!preview.ok) return fail(preview.error.message);
   const report: GapReport = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: preview.state }));
   const pair = report.pairs[0] ?? fail('the pin is in its hole');
-  return { contact: pair.contact ?? fail('a pin in its hole has no gap'), cleared: ids(report.cleared ?? []) }; // { contact: 'fit', cleared: [['forearm', 'upper']] }
+  return { contact: pair.contact ?? fail('a pin in its hole has no gap'), cleared: ids(report.cleared ?? []) }; // { contact: 'fit' or 'touching', cleared: [['forearm', 'upper']] }
 }

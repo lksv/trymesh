@@ -3,7 +3,7 @@
 // (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the engine and states what
 // the package adds or changes. The design is design.md; the calls are calls.ts.
 //
-// Second version, after the first round of review (design.md, "Reviews").
+// Third version, after two rounds of review (design.md, "Reviews").
 //
 // Four things change: the kernel port gets one member, the answer about one pair (`sharedBy` of
 // `interference.ts`) carries what the second opinion measured, the report of the collisions
@@ -119,8 +119,10 @@ export declare function sharedBy(kernel: SolidKernel, a: BodyResult, b: BodyResu
 
 // The most triangles of a mesh as computed that the second opinion measures. The search for
 // sheets in `depthOf` grows with the square of the triangles of a piece; above the bound the pair
-// stays failed, which is always allowed. The number comes from a measurement of the
-// implementation (the meshes of the design had 854 to 7,452 triangles).
+// stays failed, which is always allowed, and its message says after the reason of the refusal
+// that the mesh as computed was not measured, with the bound. The number comes from
+// a measurement of the implementation and lies above every mesh the tests pin (the meshes of the
+// design had 854 to 7,452 triangles).
 export declare const SECOND_OPINION_TRIANGLES: number;
 
 // ---------------------------------------------------------------- the report of the collisions
@@ -129,7 +131,8 @@ export declare const SECOND_OPINION_TRIANGLES: number;
 // - `kind`: what the mesh as computed measures as, by `verdictOf` with the threshold of the
 //   call: `nothing` (the pair shares nothing, or only touches) or `fit` (round faces that
 //   overlap no deeper than the chord tolerance).
-// - `volume`, `depth`: of the mesh as computed, as for an entry of `fits`.
+// - `volume`, `depth`: of the mesh as computed, as for an entry of `fits`. A tool that rounds
+//   the entries of `pairs` and `fits` rounds these the same way.
 // The pair is clear. What it rests on was not verified by the kernel, and the kind is less sure
 // than that of a verified pair (flush faces far from the origin have measured as a fit).
 export interface Cleared {
@@ -157,7 +160,7 @@ declare module '../../../packages/engine/src/types' {
 // The message of a failed pair that has a second opinion: the reason of the refusal as the
 // kernel gave it, then what the mesh as computed measures, said as what it is, with three
 // significant digits.
-// "<reason>; as computed the two share 6.04 mm³, 0.039 mm deep, which the kernel could not verify"
+// "<reason>; as computed the two share 6.04 mm³, 0.0394 mm deep, which the kernel could not verify"
 export declare function failedMessage(reason: string, asComputed: Measured): string;
 
 // ---------------------------------------------------------------- the report of the gap
@@ -165,8 +168,9 @@ export declare function failedMessage(reason: string, asComputed: Measured): str
 // The gap of 1c asks the collisions about a pair (the kind of a zero; whether one body lies
 // inside the other). `GapReport` gets an optional list of the pairs whose answer went through
 // a pair the collisions cleared, whether the pair ends at zero, at a distance or apart. It is
-// there only when it has an entry and holds at most `maxPairs` pairs, in the order of the bodies
-// in the model; it takes no part in `truncated`.
+// there only when it has an entry, in the order of the bodies in the model. It is not cut by
+// `maxPairs` and takes no part in `truncated`: `pairs` is sorted by distance and cut, and a list
+// cut in another order could drop the mark of a pair that is shown.
 // - A pair cleared as a fit has `contact: 'fit'`; one cleared as nothing has `'touching'` when
 //   its surfaces meet and goes on to its distance when they do not.
 declare module '../../../packages/engine/src/query/gap' {

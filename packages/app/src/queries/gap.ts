@@ -2,7 +2,9 @@
 // and accuracy or its kind of contact; the pairs that could not be measured with the reason; and
 // a line that says when a list was cut. A picked row draws its two bodies in the two colours of
 // a picked collision, highlights the two faces of the gap and joins its two points by a line
-// with its length. It is the collisions view with a line more in the scene.
+// with its length. It is the collisions view with a line more in the scene. A pair whose answer
+// went through a pair the collisions cleared by a mesh the kernel did not verify (D50) is marked
+// in its row, and the note counts such pairs.
 import type { Gap } from '@trymesh/engine';
 import { h } from '../dom';
 import { COLOR } from '../draw';
@@ -17,21 +19,23 @@ const CONTACT: Record<Extract<Gap, { contact: string }>['contact'], { text: stri
   touching: { text: 'touching', title: 'The two bodies touch and share no volume: flush faces' },
   fit: { text: 'fit', title: 'Round faces reach into each other by no more than the chord tolerance: a pin in a hole of the same diameter' },
   collision: { text: 'collision', title: 'The two bodies share a volume' },
-  unknown: { text: 'touching or colliding', title: 'The surfaces meet, and the kernel could not compute what the two bodies share' },
+  unknown: { text: 'touching or colliding', title: 'The surfaces meet, and the kernel could not verify what the two bodies share' },
 };
 
 export const gapView: QueryView<'gap'> = {
   answer(result, _args, panel) {
+    const cleared = new Set((result.cleared ?? []).map((pair) => `${pair.a}\u0000${pair.b}`));
     const row = (pair: Gap, index: number): HTMLElement[] => {
       const picked = panel.picked === index;
       const names = `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}`;
       const open = 'between' in pair;
+      const mark = cleared.has(`${pair.a}\u0000${pair.b}`) ? { text: ' (cleared)', title: ' The collisions cleared the pair by a mesh the kernel did not verify.' } : { text: '', title: '' };
       const line = h(
         'div',
-        { className: `row ${picked ? 'selected' : ''}`, title: open ? 'Highlight the two bodies and show where the gap is' : `Highlight the two bodies. ${CONTACT[pair.contact].title}`, onclick: () => panel.pick(picked ? undefined : index) },
+        { className: `row ${picked ? 'selected' : ''}`, title: `${open ? 'Highlight the two bodies and show where the gap is' : `Highlight the two bodies. ${CONTACT[pair.contact].title}`}${mark.title}`, onclick: () => panel.pick(picked ? undefined : index) },
         h('span', { className: 'name', textContent: names }),
         // two bodies of planar faces are exact to the precision of the coordinates: nothing to add
-        h('small', {}, open ? `${distanceText(pair, panel)}${coarse(pair.accuracy) > 0 ? ` ± ${panel.number(coarse(pair.accuracy), 'mm')}` : ''}` : CONTACT[pair.contact].text),
+        h('small', {}, `${open ? `${distanceText(pair, panel)}${coarse(pair.accuracy) > 0 ? ` ± ${panel.number(coarse(pair.accuracy), 'mm')}` : ''}` : CONTACT[pair.contact].text}${mark.text}`),
       );
       // where the gap is: the two faces are the features to change, in the order of the two bodies
       return picked && open ? [line, h('p', { className: 'hint' }, `Between ${panel.faceLabel(pair.between.faceA)} and ${panel.faceLabel(pair.between.faceB)}.`)] : [line];
@@ -71,7 +75,11 @@ export const gapView: QueryView<'gap'> = {
   note(result, panel) {
     const failed = result.refused ? ` ${result.refused} pair(s) could not be measured.` : '';
     const apart = result.apart ? ` ${result.apart} further apart.` : '';
+    const cleared = result.cleared?.length ? ` ${result.cleared.length} pair(s) rest on a mesh the kernel did not verify.` : '';
     const within = panel.number(result.within, 'mm');
-    return { text: result.close ? `Gaps: ${result.close} pair(s) of bodies within ${within} of each other.${apart}${failed}` : `No two bodies within ${within} of each other: ${result.checked} pair(s) checked.${failed}`, error: result.refused > 0 };
+    return {
+      text: result.close ? `Gaps: ${result.close} pair(s) of bodies within ${within} of each other.${apart}${cleared}${failed}` : `No two bodies within ${within} of each other: ${result.checked} pair(s) checked.${cleared}${failed}`,
+      error: result.refused > 0,
+    };
   },
 };

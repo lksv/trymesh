@@ -59,9 +59,12 @@ interface Solid {
   faceIds: Uint32Array;      // číslo stěny pro každý trojúhelník
 }
 
+interface ComputedMesh { unverified: Solid }       // a mesh the kernel computed and did not verify (D50)
+
 interface SolidKernel {
   boolean(op: 'union' | 'difference' | 'intersection', a: Solid, b: Solid): Solid;
   triangulate(loops: Float64Array[]): Uint32Array;   // 2D polygon s dírami: vnější smyčka proti směru hodin, díry po směru
+  intersectionAsComputed(a: Solid, b: Solid): ComputedMesh;   // for measuring only (D50)
 }
 ```
 
@@ -70,10 +73,26 @@ Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné
 Záruky implementace:
 1. Výstup `boolean` je uzavřené těleso.
 2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.
-3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. Průnik engine používá jen v dotazu na kolize těles (`interference`), kde ho zajímá objem, ne stěny: adaptér Manifoldu u průniku záruku neplní, nástroj před ním neupravuje a výsledek jen vyčistí a ověří; když ho ověřit nedokáže, skončí výjimkou a dotaz dvojici ohlásí jako nespočítanou.
+3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. The engine uses an intersection only in the query of collisions (`interference`), which wants its volume, not its faces: the Manifold adapter does not keep this guarantee for an intersection, does not adjust the tool before it and only cleans and verifies the result; when it cannot verify it, it throws, and the query then asks for the intersection as computed (below) and may clear the pair by it, or reports it as failed.
 4. Stejný vstup dá vždy stejný výstup.
 
 Když adaptér výsledek zaručit nedokáže, skončí výjimkou a engine ji ohlásí jako `kernelFailure`. Potichu vadné těleso vrátit nesmí. Výjimkou končí i vadný vstup: neuzavřená nebo dovnitř orientovaná síť, nesedící počet čísel stěn.
+
+#### The intersection as computed (D50)
+
+`intersectionAsComputed(a, b)` is what the two solids share as the kernel computes it, **for measuring only**. The collisions (`sharedBy` in `interference.ts`, the only caller; `packages/engine/test/modules.test.ts` holds it) ask it about a pair whose `boolean('intersection')` threw, and may only clear such a pair by it ([api.md](api.md), "Interference"). The result is wrapped (`ComputedMesh`, the field `unverified`), so it cannot be handed to `boolean`, put into a body or exported without writing `.unverified`.
+
+What an implementation guarantees:
+1. The common part of the two solids as the kernel computed it, with nothing done to it: no faces moved before, nothing welded, dropped, split or repaired after.
+2. **What the two solids share is in the mesh**: every part of their common volume thicker than the precision of their coordinates (a millionth of the largest coordinate of the two, and of a millimetre at least). The mesh may hold more than they share, never less. This is what a cleared pair rests on; no test can prove it of a kernel.
+3. It is closed by its indices: every edge in two triangles, once each way, so every connected piece has a volume. Two solids that are apart give a mesh without triangles.
+4. Every triangle carries the number of the face of `a` or `b` it comes from.
+5. The same input gives the same output.
+6. It throws for an input `boolean` throws for, when the library reports an error, and when the mesh would not keep guarantee 3 (that is the one check); never because the mesh is not clean.
+
+Not guaranteed, as `boolean` guarantees it: that the mesh is a solid (it may hold unjoined vertices at one place, triangles without an area, sheets where faces coincide, slivers thinner than the precision, pieces that touch along an edge or at a vertex, and pieces of noise that are inside out, each below 10⁻⁵ mm³ on the arm of scenario 13); a tolerance for faces in one plane (guarantee 3 of `boolean`); that another operation of the kernel takes it (Manifold would load it and silently drop a part, step 7 below); the same answer with `a` and `b` swapped (nor is a refusal of `boolean` the same both ways). A kernel whose intersection is exact (B-rep) may return that result here.
+
+**The adapter of Manifold**: the boolean of the library as it is (the inner `rawBoolean`: both inputs checked as for `boolean`, the library asked, its error thrown, the arrays copied out), then `isClosed` of `clean.ts` on the result, then the wrapper. No shift of faces before, no cleaning after, no check of folded triangles, no tolerances. Every mesh looked at was closed (136 refused poses of the design and the poses of its tests). The library has a floor of its own: triangles colinear within its tolerance are removed and shorter edges may be collapsed; that tolerance follows the largest coordinate as the precision of the coordinates does and is about an eighth of it, so what it may lose is thinner than what the collisions call nothing ([the design](../d36/5e-kernel-second/design.md), "The port"). The option `{ prepare: false }` of `ManifoldKernel.boolean` is the same raw boolean for the tests of the adapter, without the check and the wrapper.
 
 **Jak záruku č. 3 plní adaptér Manifoldu.** Manifold sám toleranci ke skoro-koplanárním plochám nemá a na šikmých stěnách kvůli float32 selhává. Adaptér se proto řídí jedním pravidlem: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Každý takový styk změní před booleanem na skutečný průnik a po booleanu posunuté stěny vrátí.
 

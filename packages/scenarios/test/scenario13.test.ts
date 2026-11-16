@@ -14,50 +14,13 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Id, type MassProperties, QUERIES, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, emptySketch, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Id, type MassProperties, QUERIES, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { arm, cylinder } from './arm';
 import { newEngine, run } from './kit';
 
-const sketch = (id: Id): Command => ({ type: 'addFeature', feature: emptySketch(id, id, { kind: 'base', plane: 'XY' }) });
-const fixedPoint = (sketchId: Id, point: Id, x: number, y: number): Command[] => [
-  { type: 'addPoint', sketch: sketchId, id: point, x, y },
-  { type: 'addConstraint', sketch: sketchId, id: `${point}Fix`, constraint: { type: 'fixed', point, x, y } },
-];
-// A cylinder: the feature `id` from the circle of its own sketch `<id>Sketch`, whose centre is the
-// point `<id>Centre`. With a target it is added to that body or cut from it.
-function cylinder(id: Id, x: number, y: number, radius: number, from: number, to: number, operation: 'new' | 'add' | 'cut' = 'new', target?: Id): Command[] {
-  const [sketchId, circle] = [`${id}Sketch`, `${id}Circle`];
-  return [
-    sketch(sketchId),
-    ...fixedPoint(sketchId, `${id}Centre`, x, y),
-    { type: 'addCurve', sketch: sketchId, id: circle, curve: { type: 'circle', center: `${id}Centre` }, radius },
-    { type: 'addConstraint', sketch: sketchId, id: `${id}Radius`, constraint: { type: 'radius', curve: circle, value: radius, driving: true } },
-    {
-      type: 'addFeature',
-      feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: [circle] }] }, extent: { type: 'distance', start: from, distance: to - from }, operation, ...(target === undefined ? {} : { targets: [target] }) },
-    },
-  ];
-}
-const arm = (): Command => ({
-  type: 'batch',
-  commands: [
-    ...cylinder('base', 0, 0, 30, -10, 0),
-    ...cylinder('shoulderPin', 0, 0, 4, -10, 8, 'add', 'base'),
-    ...cylinder('upper', 60, 0, 70, 0, 8),
-    ...cylinder('shoulderHole', 0, 0, 4, -1, 9, 'cut', 'upper'),
-    ...cylinder('elbowHole', 120, 0, 4, -1, 9, 'cut', 'upper'),
-    ...cylinder('forearm', 180, 0, 70, 8, 16),
-    ...cylinder('elbowPin', 120, 0, 4, 0, 16, 'add', 'forearm'),
-    sketch('layout'),
-    ...fixedPoint('layout', 'shoulder', 0, 0),
-    ...fixedPoint('layout', 'elbow', 120, 0),
-    ...cylinder('motor', 60, 0, 14, 8, 38),
-    ...cylinder('screw', 80, 0, 1.5, 8, 14),
-    { type: 'addFeature', feature: { id: 'screws', name: 'Screws', suppressed: false, type: 'pattern', source: { type: 'body', body: 'screw' }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' }, count: 4, span: { type: 'full' } } } },
-  ],
-});
 const refusal = (engine: Engine, command: Command): string => {
   const result = engine.execute(command);
   if (result.ok) throw new Error(`expected ${command.type} to be refused`);
@@ -618,5 +581,80 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
       'joint: upper (mm, when type is prismatic)',
       'joint: value (mm, when type is prismatic)',
     ]);
+  });
+});
+
+// The part of D50 (docs/d36/5e-kernel-second/design.md, "Tests", 4): the elbow stepped through the
+// first 40 angles of the recipe of the design over ±88° (`lower + (upper − lower) · frac(k ·
+// 0.6180339887)`, k = 1 to 40), through the engine, with a kernel that passes everything on and
+// notes the intersections the adapter refused. The engine orders a pair by its IDs and computes it
+// in the frame of its first body, so the kernel is asked `(forearm, upper turned back)`; the steps
+// it refuses are found here, not taken from the backlog (whose three poses are refused with the
+// parent first: second-opinion.test.ts).
+describe('scenario 13, the part of D50: the steps the kernel refuses for the pin of the elbow are cleared by its intersection as computed', () => {
+  let engine: Engine;
+  const refusals: number[] = []; // per step, how many intersections the adapter refused
+  let refusedNow = 0;
+  beforeAll(async () => {
+    const kernel = await createManifoldKernel();
+    const watching: SolidKernel = {
+      triangulate: (loops) => kernel.triangulate(loops),
+      boolean: (op, a, b) => {
+        try {
+          return kernel.boolean(op, a, b);
+        } catch (error) {
+          if (op === 'intersection') refusedNow++;
+          throw error;
+        }
+      },
+      intersectionAsComputed: (a, b) => kernel.intersectionAsComputed(a, b),
+    };
+    engine = createEngine({ solver: await createPlanegcsSolver(), kernel: watching });
+    run(engine, arm());
+    run(engine, mechanismOfTheArm());
+  });
+  const angleOf = (k: number): number => (-88 + 176 * ((k * 0.6180339887) % 1)) * DEG;
+  const stepAt = (k: number) => {
+    const state = previewed(engine, pose({ elbow: angleOf(k) }));
+    refusedNow = 0;
+    const report = unwrap(engine.query('interference', {}, { state }));
+    refusals[k] = refusedNow;
+    return { k, state, report, cleared: (report.cleared ?? []).map((pair) => `${pair.a}|${pair.b}|${pair.kind}`) };
+  };
+
+  it('a. at a refused step the pin is in `cleared` and in no other list; no step has anything in `failed` or `pairs`', () => {
+    const steps = Array.from({ length: 40 }, (_, i) => stepAt(i + 1));
+    const refused = steps.filter((step) => refusals[step.k] > 0);
+    // As measured: one step of the 40 is refused, k = 5 (−72.130°), where the mesh as computed is a
+    // fit of 0.031 mm³. Without the second opinion (5a alone) the pin was in `failed` there.
+    expect(refused.length, 'a refused step: otherwise the test tests nothing').toBeGreaterThan(0);
+    expect(refused.map((step) => step.k)).toContain(5);
+    for (const step of steps) {
+      const label = `k = ${step.k}, ${(angleOf(step.k) / DEG).toFixed(3)}°`;
+      // the range ends below the quarter turn at which the forearm reaches the screws and the motor
+      expect([step.report.pairs, step.report.failed], label).toEqual([[], []]);
+      if (refusals[step.k] > 0) {
+        expect(step.cleared.map((pair) => pair.split('|').slice(0, 2).join('|')), label).toEqual(['forearm|upper']);
+        expect(names(step.report.fits), label).toEqual([]);
+      } else {
+        // a step without a refused pair answers as before 5e, field for field
+        expect(step.report.cleared, label).toBeUndefined();
+        expect(names(step.report.fits), label).toEqual(['forearm|upper']);
+      }
+    }
+    expect(steps.find((step) => step.k === 5)?.report.cleared).toEqual([{ a: 'forearm', b: 'upper', kind: 'fit', volume: expect.closeTo(0.0313, 3), depth: expect.any(Number) }]);
+  });
+
+  it('b. the gap at a refused step: the contact goes with the kind it was cleared as, and the pair is named in `cleared`', () => {
+    const step = stepAt(5);
+    expect(step.cleared).toEqual(['forearm|upper|fit']);
+    const gap = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: step.state }));
+    expect(gap.pairs).toEqual([{ a: 'forearm', b: 'upper', distance: 0, contact: 'fit' }]);
+    expect(gap.cleared).toEqual([{ a: 'forearm', b: 'upper' }]);
+    // a step the adapter answers: a fit, no `cleared`
+    const answered = previewed(engine, pose({ elbow: angleOf(1) }));
+    const plain = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: answered }));
+    expect(plain.pairs).toEqual([{ a: 'forearm', b: 'upper', distance: 0, contact: 'fit' }]);
+    expect(plain.cleared).toBeUndefined();
   });
 });

@@ -27,6 +27,7 @@ import type { State } from '../src/recompute/state';
 import { DOCUMENT_SECTIONS } from '../src/sections/index';
 import { blockedText, poseNote } from '../src/sections/mechanism';
 import { type FaceInfo, IDENTITY, analyzeBody } from '../src/solid';
+import { interferenceReport, sharedBy } from '../src/interference';
 import type { BodyResult, Id, Joint, Mechanism } from '../src/types';
 import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
 
@@ -164,6 +165,9 @@ function mockEngine(options: { failDrag?: boolean } = {}) {
   const kernel: SolidKernel = {
     boolean: () => {
       throw new Error('náhradní jádro booleany neumí');
+    },
+    intersectionAsComputed: () => {
+      throw new Error('the stand-in kernel has no intersection');
     },
     triangulate: () => new Uint32Array(),
   };
@@ -747,3 +751,29 @@ const ARM9: Mechanism = {
 };
 const base9 = (mechanism: unknown, parameters: object[] = []): Document =>
   validateDocument({ ...JSON.parse(JSON.stringify(emptyDocument())), parameters, features: [extrusion9('base'), extrusion9('upper'), extrusion9('forearm'), { ...emptySketch('layout', 'layout', { kind: 'base', plane: 'XY' }), points: { shoulder: { x: 0, y: 0 }, elbow: { x: 120, y: 0 } } }], mechanism });
+
+describe('the second opinion of the kernel: the review of D50', () => {
+  // Two blocks 10 mm apart along X that overlap by 1 mm, from meshes written by hand, and a kernel
+  // whose intersection answers with the block they share and counts its calls.
+  const block = (x: number, width: number, face: number): Solid => prism([[x, 0], [x + width, 0], [x + width, 10], [x, 10]], 0, 10, () => face);
+  const bodyOf = (solid: Solid, face: number): BodyResult => ({ solid, faces: [0, 1, face].map((id) => ({ id, planar: true })), edges: [], volume: 0, bounds: { min: [Math.min(...solid.positions.filter((_, i) => i % 3 === 0)), 0, 0], max: [Math.max(...solid.positions.filter((_, i) => i % 3 === 0)), 10, 10] } });
+  const [a, b] = [bodyOf(block(0, 10, 2), 2), bodyOf(block(9, 10, 3), 3)];
+  const calls = { boolean: 0, asComputed: 0 };
+  const answering: SolidKernel = {
+    boolean: () => (calls.boolean++, block(9, 1, 3)),
+    intersectionAsComputed: () => (calls.asComputed++, { unverified: block(9, 1, 3) }),
+    triangulate: () => new Uint32Array(),
+  };
+  const ask = (threshold: number) => interferenceReport({ A: a, B: b }, undefined, threshold, 0.01, () => ({ a, b }), (x, y) => sharedBy(answering, x, y, 0.01));
+
+  it('a report of a pair the kernel answers has no field `cleared`, and the threshold moves the pair between no list and `pairs` without the second opinion', () => {
+    const colliding = ask(0.001);
+    expect(Object.keys(colliding)).toEqual(['pairs', 'fits', 'failed', 'checked']);
+    expect(colliding.pairs).toEqual([{ a: 'A', b: 'B', volume: expect.closeTo(100, 4), depth: expect.closeTo(1, 4) }]);
+    const below = ask(200);
+    expect(Object.keys(below)).toEqual(['pairs', 'fits', 'failed', 'checked']);
+    expect([below.pairs, below.fits, below.failed]).toEqual([[], [], []]);
+    expect(calls).toEqual({ boolean: 2, asComputed: 0 });
+  });
+});
+

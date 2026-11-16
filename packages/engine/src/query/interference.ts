@@ -21,7 +21,8 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
   summary: 'Which bodies share a volume, pair by pair. Bodies that only touch are not reported.',
   returns:
     '`pairs`: the collisions, each `{ a, b, volume, depth }` (mm³, mm; `a` is the smaller ID). `fits`: pairs that overlap no deeper than the chord tolerance where round faces meet (a pin in a hole of the same diameter), not collisions of the design. ' +
-    '`failed`: pairs the geometric kernel could not intersect, with its message. `checked`: the number of pairs looked at.',
+    '`pairs` and `fits` rest only on an intersection the kernel verified. `cleared` (only when it has an entry): pairs the kernel refused to verify and whose intersection as the kernel computed it measures as no collision, each `{ a, b, kind, volume, depth }` with `kind` `nothing` or `fit`; such a pair is clear, by a mesh nobody verified. ' +
+    '`failed`: pairs that are neither colliding nor clear: the kernel refused them and what it computed measures as a collision or could not be measured; the message gives the reason and, when it was measured, the volume and depth as computed, not verified. `checked`: the number of pairs looked at.',
   args: INTERFERENCE_ARGS,
   significant: { volume: 6, depth: 4 },
   units: { volume: 'mm3', depth: 'mm' },

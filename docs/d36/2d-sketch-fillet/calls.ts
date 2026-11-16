@@ -148,7 +148,8 @@ export function readOneLine(): boolean {
 
   // b. A wall along `b12` alone, one of the two lines of the bracket. The fillet of the bend adds
   // the arc to the bracket, which names both lines, and names this wall, which gets no arc: it is
-  // 7 long in place of 11, and its straight end is named by the end of the arc, not by `b2`.
+  // 7 long in place of 11 (1.6 thick and 12 high, so its volume is 134.4 in place of 211.2), and
+  // its straight end is named by the end of the arc, not by `b2`.
   const half: CommandAfter = { type: 'addFeature', feature: { id: 'half', name: 'half', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'ribs', curves: ['b12'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'new' } };
   const withHalf = done(engine.preview(half));
   const bend = sketchTool('fillet', contextOf(withHalf, 'ribs'), { corner: 'b2', radius: 4 }, freshIds(withHalf.document, 'n_'));
@@ -157,7 +158,7 @@ export function readOneLine(): boolean {
   const ids = bend.ids as FilletIds;
   const end = ids.ends[ids.lines.indexOf('b12')];
   const ends = facesOf(bent, 'half').flatMap((name) => (name.role === 'wallEnd' ? [name.point] : []));
-  const wall = ids.patched.join() === 'bracket' && ids.shortened.join() === 'half' && bent.evaluation.features['half'].status === 'ok' && ends.includes(end) && !ends.includes('b2') && bent.evaluation.bodies['half'].volume < withHalf.evaluation.bodies['half'].volume;
+  const wall = ids.patched.join() === 'bracket' && ids.shortened.join() === 'half' && bent.evaluation.features['half'].status === 'ok' && ends.includes(end) && !ends.includes('b2') && near(withHalf.evaluation.bodies['half'].volume, 211.2, 0.01) && near(bent.evaluation.bodies['half'].volume, 134.4, 0.01);
   return edge && wall;
 }
 
@@ -196,7 +197,8 @@ export function refusals(): (string | undefined)[] {
     refusal('postSketch', 'mid', 2),
     // an expression the parameters give no value to
     refusal('ribs', 'b2', 'noSuchParameter'),
-    // a radius the lines are too short for: they are 11 and 13 long and meet at a right angle
+    // a radius the lines are too short for: they are 11 and 13 long and meet at a right angle,
+    // so the radius has to be below 11, and 11 itself would leave `b12` no length
     refusal('ribs', 'b2', 11),
   ]; // each a text; nothing was drawn
 }
@@ -215,7 +217,7 @@ export const wrongInputs = (): void => {
 // The description for the AI is generated from the entry: the corner is "a point of the sketch,
 // by its ID", the radius "a number, positive, mm, or an expression".
 export const describedInputs: string[] = Object.keys(FILLET.inputs); // corner, radius
-export const returnedLists: string[] = Object.keys(FILLET.ids); // arc, center, lines, ends, constraints, radius, patched, moved
+export const returnedLists: string[] = Object.keys(FILLET.ids); // arc, center, lines, ends, constraints, radius, patched, moved, shortened
 
 // ---------------------------------------------------------------- e. the command by itself
 
@@ -252,7 +254,7 @@ export function joinedGusset(): boolean {
   const apart = run({ type: 'addFeature', feature: { id: 'gusset', name: 'gusset', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'ribs', curves: ['g12', 'g23'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'add', targets: ['box'] } });
   const joined = run({ type: 'setCurvePoint', sketch: 'ribs', id: 'g23', point: 'a', to: 'g2' }, { type: 'removeEntity', sketch: 'ribs', id: 'g2b' });
   // Now the corner is one point and the tool can fillet it. The lines are 9 and 13 long and meet
-  // at a right angle, so the largest radius that fits is below 9: 20 is refused with that number.
+  // at a right angle, so the radius has to be below 9: 20 is refused with that bound.
   return apart.evaluation.features['gusset'].error?.code === 'invalidProfile' && allOk(joined) && refusal('ribs', 'g2', 2) === undefined && refusal('ribs', 'g2', 20) !== undefined;
 }
 

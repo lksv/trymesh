@@ -31,7 +31,7 @@ The package is three things, and the third was not expected:
 
 - **The command `setCurvePoint`** `{ sketch, id, point, to }`: one point of one own curve is replaced by another own point of the sketch (or `origin`). The curve keeps its ID, kind, direction, construction flag and constraints. It covers every point of a curve (`a`, `b`; `center`, `start`, `end`), because the validation is the same for all of them.
 - **The tool `fillet`** `{ corner, radius }`: the corner is the ID of the point where exactly two lines end. It draws the arc with its three points at their exact places, re-points the two lines, adds two tangencies and a driving radius dimension (a number or an expression), and keeps the corner point as the crossing of the two lines (two `pointOnCurve` constraints).
-- **In the same batch** it adds the arc to every region and every wall of the document that names both lines (`ids.patched`). It names what follows the corner without an error and is not patched: the sketches and plane features on a side face that starts at the corner (`ids.moved`), and the walls along one of the two lines and the sketches that project an edge of their side faces (`ids.shortened`).
+- **In the same batch** it adds the arc to every region and every wall of the document that names both lines (`ids.patched`). It names what reads the corner directly and is not patched: the sketches and plane features on a side face that starts at the corner (`ids.moved`), and the walls along one of the two lines and the sketches that project an edge of their side faces (`ids.shortened`).
 - **The planegcs adapter** gives a tangency of a line and an arc that share an end point to the library in a form its analysis of redundancy can handle.
 - **The app** gets the tool *Fillet* on the sketch bar and a row that re-points a point of a selected curve to a selected point. **MCP** gets both without code of its own beyond one sentence of the description and one example.
 - **The document does not change its shape**: no schema step.
@@ -55,6 +55,7 @@ The package is three things, and the third was not expected:
 - `solver-patched.ts`: the adapter of `master`, copied, with a switch for how a tangency at a common end is given to the library.
 - `a-sketch.spike.ts` (the solver), `b-existing.spike.ts` (shapes drawn by hand on `master`), `c-solid.spike.ts` (bodies), `d-limits.spike.ts` (fillets that stop fitting), `e-scenario.spike.ts` (the numbers of `calls.ts`).
 - After the first round of reviews: `f-review1.spike.ts` (two arcs with their centres at one place; a fillet of lines that carry no closed outline), `g-review1.spike.ts` (a line removed and added under its ID), `h-review1.spike.ts` (a slot whose ends are joined by `coincident` constraints), `i-review1.spike.ts` (documents saved by the adapter of `master`, loaded with the rule), `j-review1.spike.ts` (a projected edge and a wall along one line under a fillet).
+- After the second round: `k-review2.spike.ts` (points fixed off tangent, saved by `master` and loaded with the rule; a concave outline and the plate with radii far past the fit; a radius below the length tolerance).
 - A copy of `packages/` with the adapter changed as proposed, and `npx vitest run` over all of it.
 
 ### A fillet in the solver, four ways to hold the arc
@@ -92,18 +93,26 @@ What a fillet does when it stops fitting, with the square radius (the plate 80 �
 | The height 12 (two fillets use it up), 11.9, 10 | `sketchConflict` | ok, unchanged |
 | The height 5 | solved, `valid: false` | `invalidProfile` |
 
-With the square radius no case of either table ends in a body that is wrong without a message: it is fine, a conflict, or an invalid profile. The list of constraints a conflict names is often most of the sketch (for the radius 44 all 27 it has); it does not point at the radius.
+With the square radius no case of these two tables ends in a body that is wrong without a message: it is fine, a conflict, or an invalid profile. The list of constraints a conflict names is often most of the sketch (for the radius 44 all 27 it has); it does not point at the radius.
 
-**That holds for these cases, not in general.** The constraints say "tangent" and "this radius"; nothing says that an end of the arc stays between the corner and the far end of its line. On a closed outline the far end belongs to the next line, so an arc that runs past it crosses the outline or pushes against the other dimensions. Where the lines carry no closed outline, the arc can run past (measured after the first review):
+**That holds for these cases, not in general.** The constraints say "tangent" and "this radius"; nothing says that an end of the arc stays between the corner and the far end of its line. An arc that runs past the end of a line is a conflict or an invalid profile only when it happens to cross the outline or to push against another dimension. Measured after the reviews (`f-review1`, `k-review2`), each row a change of one radius from 6:
 
 | Case | Sketch | What is built on it |
 |---|---|---|
 | The bend of the bracket of scenario 12 (construction lines 11 and 13 long, a wall along them), its radius set to 9, 10.9 | solved, a fillet | ok |
 | The same, 11 and 12 | solved, `valid: true`; the end of the arc is at the far end of the line or past it | the wall is `invalidProfile` ("the curve has no length", "no longer meet") |
 | The same, 20 and 35 | `sketchConflict` | ok, unchanged |
-| Two construction lines 40 and 30 long from one fixed corner, nothing built on them, the radius set from 6 to 35 | solved, `ok`, no warning; the ends of the arc are at (35, 0) and (0, 35), the second 5 past the far end of its line | nothing |
+| Two construction lines 40 and 30 long from one fixed corner, nothing built on them, the radius set to 35 | solved, `ok`, no warning; the ends of the arc are at (35, 0) and (0, 35), the second 5 past the far end of its line | nothing |
+| The dimensioned plate 80 × 50 with a fillet at one corner, the radius set to 100 | `sketchConflict` | ok, unchanged |
+| The same, 219 | solved, `valid: false` | `invalidProfile` |
+| The same, 220, 250, 1000 | solved, `ok`, `valid: true`; the ends of the arc are far outside the rectangle, at (80, −170) and (−140, 50) for 220 | **ok, with a body that is not the plate**: the arc clears the other two sides, so the outline is closed again |
+| The plate with four fillets, one set to 219, 220, 250, 1000 | solved, `ok`, `valid: true`, not a fillet | **ok, a wrong body** |
+| A closed concave outline (an L with fixed corners, the fillet at its inner corner, the lines 40 and 30 long), the radius set to 20, 29 | solved, a fillet | ok |
+| The same, 30 | solved, `valid: false` | error |
+| The same, 31, 41 | `sketchConflict` | ok, unchanged |
+| The same, 35, 39 | solved, `ok`, `valid: true`; an end of the arc is past the end of its line | **ok, a wrong body** |
 
-So a later change can leave a solved sketch whose arc is no longer the fillet of its corner, without a message, when nothing reads the lines as a profile ("Known limits").
+So a later change can leave a solved sketch whose arc is no longer the fillet of its corner, without a message, and a body made from it: on open lines, on a concave outline, and on the plain rectangle when the radius is several times too large. The package does not prevent it ("Known limits").
 
 Also measured:
 
@@ -219,6 +228,7 @@ The backlog left open what happens to dimensions and constraints on the corner p
 - **Where they differ:** a line of no length satisfies the new form and has no meaning in the old one. In a sketch that leaves the line free to collapse, a collapse is a solution; the profile then reports a curve of no length (`valid: false`), as measured in the rows marked `x`.
 - The constraint keeps its ID, so `conflicting` and `redundant` name it as before.
 - Everything else stays: a line and a circle, a circle and an arc, two circles, two arcs, and a line and an arc whose common point is held otherwise (a chain of `coincident` constraints through a third point, `pointOnCurve` of the arc's end with the line).
+- **The line may be a projected one, or end at `origin`.** A projected line is a line of the input with two fixed points, and an arc's end joined to one of them by `coincident` is what a snap of an anchor makes; the rule reads that join like any other. When the projection is lost, the join and the tangency are both left out of the input together. This case follows from the rule and was not measured ("To verify").
 - **The join by a `coincident` constraint** was added after the first review. The defect is the same there and so is the cure (measured, the second table of "Shapes drawn by hand"), and a slot drawn with joined ends is as likely from an AI as one with shared points. Only a direct join is read: it is what was measured. A constraint the engine left out of the input (one on a lost projection) is not there to be read, so the rule cannot rest on a join the solver does not hold.
 
 **Two arcs are left as they are.** The first version of this design changed them too ("the common point lies on the line of the two centres"). Both reviewers found that form wrong, and measurement agrees: its line has no length when the two centres are at one place. The form that measured well ("the second centre lies on the line of the first centre and the common point") is still not the same statement as the form of today: `tangent_aa` holds the kind of contact (the arcs on opposite sides of the common tangent, or on the same side) that the estimate has, and a point on a line allows both. A solution of the other kind, an S turned into a cusp, would be returned as solved. Curing it needs a check of the kind in the adapter's test of a usable result and tests of its own (an exact S and an exact inner contact under large changes). The fillet of two lines draws no tangency of two arcs, so this is not paid for here; "For the plan" has the row for the backlog.
@@ -226,7 +236,9 @@ The backlog left open what happens to dimensions and constraints on the corner p
 **What it does to existing documents.**
 
 - The solver is called at every recompute of a sketch, also on load when the stamp of the inputs matches (`step` of `features/sketch.ts`). With a matching stamp the positions are the stored ones; the status, `sketchConflict`, `conflicting` and `redundant` come from that call, so from the new form.
-- A stored state that satisfies the form of today satisfies the new one: an exact state exactly, one the solver left (off tangent by its noise, because of the double root) within the solver's tolerance. Measured (`i-review1.spike.ts`): twelve slots saved by the adapter of `master` (ends as one point and ends joined by `coincident`; drawn off by 0 to 0.3, the noisy ones after two changes of their dimensions) and loaded with the rule. Each loads `ok` with no warning and no point moved, and each can be changed afterwards, the exact ones included, which `master` could not change.
+- **A state that is exactly tangent satisfies both forms. One that is nearly tangent does not have to:** the residual of the form of today grows with the square of the angle off tangent, that of the new form with the angle, so the new form is as strict about a tangency as the library is about every other constraint, and the form of today was laxer.
+- **Where the solver can move the points, it converges from the stored state** and the sketch loads as before. Measured (`i-review1.spike.ts`): twelve slots saved by the adapter of `master` (ends as one point and ends joined by `coincident`; drawn off by 0 to 0.3, the noisy ones after two changes of their dimensions) load with the rule as `ok`, with no warning, and each can be changed afterwards, the exact ones included, which `master` could not change. (That no point moves on load says nothing about the adapter: `step` keeps the stored positions whatever the solver returns.)
+- **Where the other constraints hold the points at a state that is only nearly tangent, the sketch gets a `sketchConflict` on load that it did not have.** Measured (`k-review2.spike.ts`): a line and an arc with all four points fixed and the centre 1e-9 to 1e-5 mm off the tangent position is `ok` on `master` and a conflict with the rule that names the tangency and the fixed points (from 1e-4 on `master` reports it too). The geometry does not change: it is the stored one. Such a document over-determines the tangency with values that are not exact, for example coordinates rounded to a few decimals; the warning is true, and it goes away when the tangency or the value that repeats it is removed. This is accepted as the price of the rule and is in "Open" with the question about the adapter.
 - The list `redundant` of a sketch result, which repeats what the library says, no longer names such tangencies (the engine's own diagnosis never did).
 - A sketch that is solved again (after an edit) is solved through the new form; all tests pass with it, the snapshots of the app included.
 
@@ -241,16 +253,17 @@ The tool reads `context.document` and adds to its batch, after the sketch comman
 - **Which features have a profile source** is a table typed over the feature types, in `sketch-tools.ts`: today the extrusion alone. A feature type added later does not compile until it says whether it has one (the revolve of 4a will).
 - Features that are suppressed or in error are patched like the others. Holes, patterns and joints name points, not curves, and need nothing.
 - The patched features are returned in `ids.patched`.
+- **A feature whose region has the corner on the rim of a hole needs no patch and is in no list.** A region is named by its outer loop alone, and its holes are found by containment at every recompute (`detectProfile`). So a plate extruded from an outer rectangle, with a pocket drawn as an inner rectangle, gets the round corner of the pocket and its round face by itself when a corner of the pocket is filleted. `patched` then names only the features that extrude the inner rectangle itself, and may be empty. The solved sketch gives the tool the loops of a region as polylines, not the curves of its holes, so naming such features would need geometry; the tool's description says that they follow.
 
-**What follows the corner without an error** and is not patched is named in two lists. Both hold the features that read the changed geometry directly. What is built on a listed feature (a body extruded from a listed sketch, a sketch on that body) follows it and is not listed.
+**What reads the corner directly and is not patched** is named in two lists. They are made by the two rules below from the names in the document alone, with no geometry and no recompute. So they are the features to look at, not a statement about their state: most follow the corner without an error, and one that ends in an error or with a warning (a wall that no longer forms a chain, a projection of an edge that is gone) is in its list and in the problems of the result as well. What is built on a listed feature (a body extruded from a listed sketch, a sketch on that body) follows it and is not listed.
 
 - **`ids.moved`: a plane starts elsewhere.** A planar side face has its origin at the start (`a`) of its line. Of the two lines, zero, one or both start at the corner. Listed are the sketches whose plane, and the plane features whose base, is a face in the role `side` or `wallSide` whose curve is a line of the two that starts at the corner. The tool does not say by how much: with a profile offset or a wall the face starts at the moved line's start, not at the sketch point. The state before and after says it (`features[id].plane.origin`), and a preview of the batch shows it without writing.
 - **`ids.shortened`: one of the lines is read without the other.**
   - An extrusion whose wall names exactly one of the two lines. It needs no arc and gets none; its chain ended at the corner and ends at the arc now, so the wall is shorter by the length the fillet took.
-  - A sketch that projects an edge of a face in the role `side` or `wallSide` whose curve is either line. The edge of that face with a cap ends at the arc now, so the end of the projected line has moved and what is tied to it follows. The tool does not work out which end of an edge is at the corner, so an edge at the far end of the line is named as well. The edge between the side faces of the two lines is the exception: it is gone, and the recompute reports it.
-- Both lists read face names, so they see what stands on a face of a pattern copy as well, and need no geometry.
+  - A sketch that projects an edge one of whose two faces is in the role `side` or `wallSide` with either line as its curve. The edge of that face with a cap ends at the arc now, so the end of the projected line has moved and what is tied to it follows. The tool does not work out which edge it is: an edge at the far end of the line is named as well, and so is the edge between the side faces of the two lines, which is gone (the recompute reports that one as `brokenProjection`).
+- Both lists read face names, so they see what stands on a face of a pattern copy as well (a copy keeps the curve in its name).
 
-**What breaks with an error** is not listed, because the result of the batch lists it (`problems` of the MCP answer, the model panel of the app): a projection of the edge between the two side faces (`brokenProjection`), a feature with an inward offset or a wall thickness that leaves the arc no radius (`invalidProfile`, with the text of D44), a reference to the straight end of a wall that ended at the corner (the face is `wallEnd` with the point the chain ends at, and that point is now the end of the arc).
+**What breaks with an error** has no list of its own, because the result of the batch lists it (`problems` of the MCP answer, the model panel of the app): a projection of the edge between the two side faces (`brokenProjection`), a feature with an inward offset or a wall thickness that leaves the arc no radius (`invalidProfile`, with the text of D44), a reference to the straight end of a wall that ended at the corner (the face is `wallEnd` with the point the chain ends at, and that point is now the end of the arc).
 
 **What the lists do not cover.** They are what the tool can read from names in the document. A feature that names the corner point keeps it: a hole placed on the corner point stays at the sharp corner, which the body no longer has. A measurement or a check that reads a length of the outline reads the new one.
 
@@ -258,15 +271,15 @@ The tool reads `context.document` and adds to its batch, after the sketch comman
 
 It answers `ok: false` with a reason and draws nothing:
 
-- **The corner.** The curves that count are the own curves of the sketch that end at the vertex of the corner: a line by `a` or `b`, an arc by `start` or `end`. The vertex is the corner point and the own points a satisfied `coincident` constraint joins to it, as the profile joins them (`pointJoins` of `sketch.ts`). Projected curves never count, and a centre is not an end. Of the curves that count, those that are not construction curves are taken; if there are none, the construction ones. They have to be exactly two lines, and both have to end at the corner point itself.
+- **The corner.** The curves that count are the own curves of the sketch that end at the vertex of the corner: a line by `a` or `b`, an arc by `start` or `end`. The vertex is the class of the corner point in `pointJoins` of `sketch.ts`, which is how the profile joins points: every point that satisfied `coincident` constraints tie to the corner, directly or through other points, `origin` and projected points included. An own curve that ends at any point of the class counts (a line may end at `origin` itself). Projected curves never count, and a centre is not an end. Of the curves that count, those that are not construction curves are taken; if there are none, the construction ones. They have to be exactly two lines, and both have to end at the corner point itself.
   - So the corner of a rectangle with a construction diagonal is filleted and the diagonal stays on the point; the bend of a wall along construction lines is filleted with a construction arc; a corner tied to a projected point by `coincident` (what a snap of an anchor makes) is filleted.
   - A point where a line meets an arc, or three lines meet, or one line ends, is refused with what ends there.
   - When one of the two lines ends at another point of the vertex, the corner is two points. It is refused with that point named; the caller makes it one point first (`setCurvePoint`).
 - **The lines.** With the tolerances of the engine (`LENGTH_TOLERANCE` 1e-6 mm, `ANGLE_TOLERANCE` 1e-4 rad, `util.ts`):
   - a line of the two shorter than the length tolerance (it has no direction);
   - the angle between the two lines within the angle tolerance of 0 or of π ("parallel": folded onto each other, or one straight line through the corner).
-- **A radius that does not fit**: what would be left of a line (its length less the tangent length `r / tan(θ/2)`) is not above the length tolerance. The message gives the largest radius that fits (the shorter of the two lines times the tangent of half the angle between them).
-- **A radius too small to draw**: the tangent length or the chord of the arc is not above the length tolerance. A shorter curve is "a curve of no length" for the profile and would make every extrusion of the sketch invalid.
+- **A radius that does not fit**: what would be left of a line (its length less the tangent length `r / tan(θ/2)`) is not above the length tolerance. The message gives the bound: the radius has to be below the shorter of the two lines times the tangent of half the angle between them (that value itself leaves a line of no length and is refused).
+- **A radius too small to draw**: the radius, the tangent length or the chord of the arc is not above the length tolerance. The profile and the wall refuse an arc whose radius is not above it, and a shorter curve is "a curve of no length"; either would make every extrusion of the sketch invalid (measured: a radius of 0.75e-6 at a corner of 60° has a tangent length and a chord of 1.3e-6 and leaves `valid: false`).
 - **A point out of range**: a coordinate of the centre or of an end of the arc beyond ±`MAX_NUMBER`, which `addPoint` would refuse (the polygon checks its points the same way).
 - **A radius as an expression without a value**: the tool has to place the arc, so it evaluates the expression with the parameters of the context (as the polygon does for its size). Without parameters, or with an expression in error, it is refused.
 - **`equalLength` or `midpoint` on one of the two lines**, named in the message.
@@ -281,7 +294,7 @@ Inputs `{ corner: Id; radius: number | Expr }`. With `u1`, `u2` the directions f
 2. The batch: `addPoint` × 3; `setCurvePoint` × 2 (the end of each line that was the corner); `addCurve` of the arc, counter-clockwise the short way round, a construction curve when the lines are; `addConstraint` × 5 (`tangent` × 2, `pointOnCurve` of the corner with each line, `radius`, driving, with the value given); the patches.
 3. `ids`: `arc`, `center`, `lines` (the two lines in the order of their IDs), `ends` (`ends[i]` is the new end of `lines[i]`), `constraints` (the four without a value), `radius`, `patched`, `moved`, `shortened`. Every list is always there; the last three may be empty, and each is in the order of the timeline.
 
-The context of a tool gets the document as a required field. The fillet without it would draw the arc and break every feature on the sketch, so there is no call without it; the other tools do not read it.
+`sketchTool` takes the context of today with the document as a required field. The fillet without it would draw the arc and break every feature on the sketch, so there is no call of a tool without it; the other tools do not read it. The context of today stays what it is for the functions that never read a document (`placeAnchor`, `anchorPosition`, the new `nearestCurvePoint`), so `SketchView.source` of the app and the callers of `sketchView` do not change.
 
 The batch is solved once, after its last command, and is already satisfied as drawn. One undo takes it back, the patches included.
 
@@ -304,7 +317,8 @@ A `pointOnCurve` of the corner with one of its lines may be in the sketch alread
 | `packages/solver-planegcs/src/index.ts` | the case of `translate`, which now gets the constraints of the input as well |
 | `packages/mcp/src/api.ts` | the text of the input kind, a sentence of the section "Sketch tools" about tools that change what is drawn, the example of the fillet |
 | `packages/mcp/src/tools.ts` | `sketchToolBatch` passes the document |
-| `packages/app/src/sketch-view.ts` | `sketchView` is given the document and the values of the parameters: it builds `SketchView.source`, the context of the tools |
+| `packages/app/src/sketch-mode.ts` (`sketchContextOf`) | the context for `sketchTool`: `SketchView.source` with the document and the values of the parameters. `sketch-view.ts` and the other callers of `sketchView` (`scene.ts`, `features/extrude.ts`, `queries/controls.ts`) do not change |
+| tests and helpers that call `sketchTool` with a context written out (`packages/scenarios/test/sketch-tools.test.ts`, `joint.ts`, `packages/app/test/sketch-tools.test.ts`) | the document in that context |
 | `packages/app/src/sketch-mode.ts`, `sketch-commands.ts`, `panels/sketch.ts` | the tool *Fillet*, its radius, the row *Re-point* |
 | `docs/architecture/sketch.md`, `api.md`, `ports.md`, `docs/ui/sketch.md`, `verification.md` | the tool and the command, the adapter's third exception, the UI rows, the tests |
 
@@ -318,10 +332,10 @@ A `pointOnCurve` of the corner with one of its lines may be in the sketch alread
 
 **The app.**
 
-- **The tool *Fillet*** on the sketch bar. One click on a point; a click elsewhere says what the tool wants. While it is active the panel has its option, *Radius*: a number or an expression (the field of the forms), 2 mm at first, remembered for the next corner. A refusal of the tool is said in the status line with its reason. After a fillet the status line says how many features got the arc and names the features of `moved` and `shortened`.
+- **The tool *Fillet*** on the sketch bar. One click on a point; a click elsewhere says what the tool wants. While it is active the panel has its option, *Radius*: a number or an expression (the field of the forms), 2 mm at first, remembered for the next corner. A refusal of the tool is said in the status line with its reason. After a fillet the status line says how many features were patched and names the features of `moved` and `shortened`.
 - The batch of the fillet is sent as the tool made it: the switch *Konstrukčně* of the sketch bar does not turn its arc into a construction curve (the arc follows its lines).
 - **The row *Re-point*** in the panel of the sketch, offered when the selection is one own curve and one own point (or the origin). It has a choice of the points the curve has, by its kind (*Start* and *End* of a line; *Centre* of a circle; *Centre*, *Start* and *End* of an arc), and a button that sends `setCurvePoint` for the chosen one. The point of the curve nearest to the selected point is chosen at first. So the app reaches every point the command does. Which point is nearest is asked of the shared module (`nearestCurvePoint`), not computed in the app.
-- The context of the sketch tools (`SketchView.source`, built by `sketchView` of `sketch-view.ts`) gets the document and the values of the parameters where the open sketch is read (`sketchContextOf`).
+- The context for `sketchTool` is made where the open sketch is read (`sketchContextOf`): `SketchView.source` with the document and the values of the parameters.
 
 ## Issue codes
 
@@ -352,16 +366,21 @@ None is added. The command has the texts of an invalid command; the tool answers
 15. **The two-arc case in the adapter.** "The common point on the line of the two centres" is singular for centres at one place (measured); "the second centre on the line of the first centre and the common point" loses the kind of contact. "The solver adapter" has both.
 16. **The adapter's rule by point ID alone** (the first version). A slot with ends joined by `coincident` keeps the defect (measured), and the engine's analysis already reads an end held on the curve by a constraint as the double root.
 17. **The adapter's rule over every way an end can be held on the line**: chains of `coincident` constraints, `pointOnCurve` of the arc's end with the line. The same equation would hold. Not taken now: only the direct join was measured, and a chain needs the joins of the whole input worked out at every solve. It is the next step if such a sketch turns up ("Known limits").
-18. **The document optional in the context of a tool** (the first version). A fillet called without it would answer `ok` with empty lists and break every feature on the sketch.
+18. **The document optional in the context of a tool** (the first version). A fillet called without it would answer `ok` with empty lists and break every feature on the sketch. **The document required in every context** (the second version) reached `sketchView` and its four callers, three of which draw sketches that are not open, and every test that places an anchor; it is required where a tool is called and nowhere else.
 19. **One list for everything that follows the corner.** A plane that starts elsewhere and a wall that got shorter ask for different checks; two lists say which.
 20. **Listing everything that moves, to the end of the timeline.** That is the dependency graph of the recompute, not something a sketch tool reads from names; the features that read the corner directly are the ones to check, and the rest follows them.
+21. **Lists that hold only what is not in error after the batch** (the second version). A tool that does not recompute cannot know that; the lists are made by rules over names, and the result of the batch says what is in error.
+22. **Naming the features whose region has the corner on a hole.** The solved sketch gives a region as its reference and polylines; which curves its holes have would have to be found again by geometry in the tool. Stated in the description of the tool instead, with a row for the backlog.
 
 ## Known limits
 
 - Two lines only; one point as the corner; no `equalLength` or `midpoint` on the lines. So no corner of a shape the polygon tool drew can be filleted: every side of it carries `equalLength`.
-- **Nothing keeps a fillet a fillet.** The sketch holds an arc, two tangencies and a radius, not "the ends of the arc lie on the lines between the corner and their far ends". On a closed outline a change that leaves the arc no room showed as a conflict or as an invalid profile in every case measured. Where the lines carry no closed outline (construction lines, an open chain) it can be solved into an arc that runs past the end of a line: a wall along them then fails (`invalidProfile`), and with nothing built on them there is no message at all (measured). A check would have to know which arcs are fillets, which the document does not record.
+- **Nothing keeps a fillet a fillet.** The sketch holds an arc, two tangencies and a radius, not "the ends of the arc lie on the lines between the corner and their far ends". A later change that leaves the arc no room is often a conflict or an invalid profile, and not always: it can be solved into an arc that runs past the end of a line, with no message and a body made from it. Measured: construction lines with nothing on them; a concave outline (radius 35 where 30 fits); the plain dimensioned rectangle 80 × 50 when the radius is 220 or more. A check would have to know which arcs are fillets, which the document does not record; "For the plan" has the row.
+- **A feature whose region has the corner on the rim of a hole** gets the round corner without a patch and is in no list.
+- **A bend of construction lines at a vertex that also holds curves that are not construction** cannot be filleted: the curves that are not construction are the ones taken. (A wall along construction lines that bends at a corner of the outline.)
+- **A document that over-determines a tangency with values that are only nearly tangent** (points fixed at rounded coordinates) gets a `sketchConflict` on load that `master` did not report; its geometry does not change.
 - A conflict of a fillet that stopped fitting names most of the sketch, not the radius.
-- A sketch or a plane feature on a side face that starts at the corner moves; a wall along one of the two lines gets shorter; the end of a projected edge moves. These are named (`moved`, `shortened`), not prevented, and the distance is not given. Only the features that read the corner directly are named, and `shortened` also names a sketch whose projected edge is at the far end of the line.
+- A sketch or a plane feature on a side face that starts at the corner moves; a wall along one of the two lines gets shorter; the end of a projected edge moves. These are named (`moved`, `shortened`), not prevented, and the distance is not given. Only the features that read the corner directly are named; the lists are made from names, so `shortened` also names a sketch whose projected edge is at the far end of the line, and a listed feature may be one the recompute reports.
 - A feature that names the corner point keeps the sharp corner (a hole there is outside the round body).
 - The edge between the two side faces is gone, and the new edges of the round face with its neighbours cannot be projected (kind `other`); the rims of the round face on the caps can (circles).
 - A profile offset inwards, a taper or a wall has to leave the arc a radius. The box of scenario 12 needs a corner radius above `wall + clearance + lipT`; below that the features with the larger offsets are `invalidProfile`. The narrow variant of D44 that drops such arcs ([backlog.md](../../backlog.md), "corner arcs that drop out") would lift this, and round corners make it more likely to be wanted.
@@ -378,6 +397,7 @@ None is added. The command has the texts of an invalid command; the tool answers
 - The drags of the app on a filleted sketch, through the real tool.
 - The adapter's rule during a drag. A drag leaves the redundant primitives out; if a join that the rule read were among them, the tangency would be solved against an end that is free for that pass. The result is solved again without the drag before it is returned, so it cannot come back wrong; whether such a drag ends as a conflict was not measured.
 - The lists `moved` and `shortened` on a pattern copy: the prototype read plain face names only.
+- The adapter's rule with a projected line (an arc tangent to a projected edge at its end, joined by the `coincident` of a snap), and with a line that ends at `origin`: both follow from the rule and were not measured.
 - The example of the fillet in the test of the MCP description, which runs every example.
 - The snapshots of the app: the sketch bar gets a tool, so the record of what the page shows changes there and nowhere else.
 
@@ -386,16 +406,19 @@ None is added. The command has the texts of an invalid command; the tool answers
 - **Engine, the command:** every point name of every kind, and a name the kind does not have; the refusals of `calls.ts`, each with the index of the command and its reason; the same point; the stamp; the old point kept.
 - **Engine, the tool:**
   - the batch and the IDs; construction lines; a corner at the origin; a corner with a construction diagonal; a corner tied to a projected point; an expression as the radius;
-  - each refusal, with its tolerance from both sides (a radius just under the largest that fits and just over; lines nearly parallel; a radius too small; a point out of range; a corner of two joined points);
+  - each refusal, with its tolerance from both sides (a radius just under the bound and at it; lines nearly parallel; a radius, a tangent length and a chord at the length tolerance; a point out of range; a corner of two joined points; a corner joined to `origin` with a third line that ends at `origin`);
+  - a corner of a pocket inside a plate: the plate is not patched, is `ok` and has the round face;
   - the patches of regions and walls;
   - `moved` with two lines that start at the corner, with one and with none, and with a plane feature on the face;
-  - `shortened` with a wall along one line and with a projected edge, and the edge between the two side faces not in it.
+  - `shortened` with a wall along one line and with a projected edge; a listed feature that the recompute reports as well (the projection of the edge between the two side faces).
 - **Solver adapter:**
   - an exact fillet and an exact slot, each changed afterwards, with the ends as one point and with the ends joined by `coincident`;
   - the IDs in `conflicting`;
   - a join through a third point and two arcs keep the form of today;
-  - a document saved by `master`, loaded: an exact slot and one drawn off by 1e-6, each without a warning and with its points unchanged;
-  - a fillet of two construction lines with nothing built on them, its radius set past the end of a line: the known limit, pinned as it is.
+  - a document saved by `master`, loaded: an exact slot and one drawn off by 1e-6, each `ok` without a warning, and after the first change that solves it again no point further than the solver's tolerance from where the change puts it;
+  - a line and an arc with all points fixed 1e-6 off tangent: `ok` on `master`, a conflict with the rule, pinned as the known limit it is;
+  - an arc tangent to a projected edge at its end, changed afterwards;
+  - fillets that stop being fillets, pinned as they are: two construction lines with the radius set past the end of a line, the plate 80 × 50 with a radius of 250.
 - **Scenarios:** the cases of spike A as regressions (radii, sizes, angles, drags); scenario 12.
 - **MCP:** the description of the tool and of the input kind, the example, `patched`, `moved` and `shortened` in the answer.
 - **App:** the tool, its option, a refusal, the row *Re-point* with each point of a line, a circle and an arc.
@@ -406,7 +429,7 @@ The review of the implementation is a full one: it changes how the solver is cal
 
 For the owner:
 
-1. **The adapter.** May 2d change the planegcs adapter as above (a tangency of a line and an arc at a common end given to the library as a square radius; all tests pass with it, and documents saved by `master` load unchanged), or should the fillet leave the adapter alone and draw two construction radii per corner? Recommended: the adapter; it also repairs slots and rounded outlines drawn at exact coordinates, which are broken on `master` today.
+1. **The adapter.** May 2d change the planegcs adapter as above (a tangency of a line and an arc at a common end given to the library as a square radius), or should the fillet leave the adapter alone and draw two construction radii per corner? Recommended: the adapter; it also repairs slots and rounded outlines drawn at exact coordinates, which are broken on `master` today. All tests pass with it and the documents measured load as before. Its price: a document that fixes a tangency twice with values that are only nearly tangent (points fixed at rounded coordinates) shows a conflict on load that `master` did not report, with its geometry unchanged.
 2. **The corner point.** It stays as the virtual corner, held on both lines, so dimensions keep measuring to the sharp corner (the open point of the backlog). Decided here; say so if the dimensions should move to the arc instead.
 
 ## For the plan
@@ -416,7 +439,8 @@ For the owner:
 - **The backlog** keeps from its entry what is deferred here (a line with an arc, a chamfer, removing a fillet), and its remark on corner arcs that drop out gains a use. Its sentence that remove-and-add changes the ID of a line is to be corrected (the constraints are what is lost).
 - **Two rows for the backlog:**
   - *A tangency of two arcs at a common end point cannot be changed after it is drawn exactly* (the defect of `master` this package cures for a line and an arc). Measured: "the second centre on the line of the first centre and the common point" solves every case tried; it needs a check that the kind of contact is the one of the estimate. The same for an arc's end held on a line by `pointOnCurve` or through a chain of joins.
-  - *A fillet that later changes turn into something else* (an arc past the end of its line, no message when nothing is built on the lines). It needs the sketch to know which arcs are fillets.
+  - *A fillet that later changes turn into something else* (an arc past the end of its line; no message, and on a concave outline or with a radius several times too large a wrong body). It needs the sketch to know which arcs are fillets, or a warning for a line whose direction turned round in a solve.
+  - *The features whose region has a filleted corner on the rim of a hole are not named by the tool.* It needs the curves of the holes of a region in the solved sketch.
 - **Shared places:** the plan lists "Sketch commands and `sketch.ts`" for 2d. The package does not write to `sketch.ts`; it writes to the solver adapter, which the plan does not list.
 
 ## Reviews
@@ -453,6 +477,27 @@ Three reviewers were asked, each to check the design against the code of `master
 
 The round had more than six findings with at least three serious, so a second round followed.
 
+### Round 2 (the fixes of round 1, commit `3a64909`)
+
+The reviewers were asked to look mainly at what the fix changed. `codex` had 7 findings (5 major, 2 minor), the subagent 11 (6 minor, 5 notes; "no blocker and no major finding"). Five are the same finding from both. Each was checked or measured (`k-review2.spike.ts`); all were accepted, one in part.
+
+| # | Finding | Reviewer | Severity | Accepted? | What changed |
+|---|---|---|---|---|---|
+| 1 | "A stored state that satisfies the form of today satisfies the new one" does not hold within a tolerance: the old residual is quadratic in the angle off tangent, the new one linear. A document with all points fixed slightly off tangent gets a conflict on load. "No point moved" follows from `step`, not from the adapter | codex 1, subagent 8 | major (codex), note (subagent) | yes; measured: `ok` on `master` and a conflict with the rule for 1e-9 to 1e-5 off | "What it does to existing documents" rewritten: what converges, what gets a new warning, and why; a known limit; named in the question for the owner; two tests |
+| 2 | The refusal of a radius too small tests the tangent length and the chord, not the radius, which the profile and the wall test | codex 2, subagent 4 | major (codex), minor (subagent) | yes; measured: 0.75e-6 at 60° leaves `valid: false` | The radius is in that refusal and in its test |
+| 3 | The lists are said to hold only features not in error after the batch, and to be read from names without a recompute; both cannot be true | codex 3, subagent 6 | major (codex), minor (subagent) | yes | The lists are defined by their two rules over names; a listed feature may be among the problems. The exception for the edge between the two side faces is dropped (alternative 21) |
+| 4 | A feature whose region has the corner on a hole loop gets the arc without a patch and is in no list; the status line would say that no feature got the arc | codex 4, subagent 2 | major (codex), minor (subagent) | in part: stated, not listed | "What the tool does…", the summary and the description of `patched`, the status line, a known limit, a test, a row for the backlog (alternative 22) |
+| 5 | The summary of the tool and "Measured" still promise a conflict or an invalid profile on a closed outline | codex 5, subagent 1 | major (codex), minor (subagent) | yes; measured: a concave outline at radius 35 and 39, and the plain plate from radius 220, are `ok` with a wrong body | The promise is gone from the summary, "Measured" (six rows added) and "Known limits"; tests pin the cases; the row for the backlog is wider |
+| 6 | `readOneLine` checks only that the volume of the wall decreased | codex 6 | minor | yes | The two volumes, 211.2 and 134.4 |
+| 7 | The comment of `returnedLists` in `calls.ts` leaves out `shortened` | codex 7, subagent 10 | minor, note | yes | The comment |
+| 8 | The document required in `SketchToolContext` breaks `sketchView` and its four callers, `placeAnchor`, `anchorPosition` and many tests, which the design does not name | subagent 3 | minor | yes | Required only in the context `sketchTool` takes; `SketchToolContext` stays; "Where the code lives" names `sketchContextOf` and the tests (alternative 18) |
+| 9 | The vertex of the corner leaves out `origin` and points joined through a projected point, where the profile joins them | subagent 5 | minor | yes | The vertex is the class of `pointJoins`, every point of it |
+| 10 | The message of "does not fit" offers a radius that is itself refused | subagent 7 | note | yes | "The radius has to be below …" |
+| 11 | The adapter's rule also fires for a projected line and for a line that ends at `origin`; neither stated nor measured | subagent 9 | note | yes | Stated in "The solver adapter"; a test; "To verify" |
+| 12 | A bend of construction lines at a vertex that also holds real curves cannot be filleted | subagent 11 | note | yes | "Known limits" |
+
+The round again had more than six findings with at least three serious (as `codex` rated them), so a third and last round followed, on the diff of this fix alone.
+
 ## Rows for the indexes
 
 **`docs/d36/README.md`, the row of 2d** (column "Design now"):
@@ -463,7 +508,7 @@ and in "Numbers": decisions D52 taken by 2d, next D53; scenario 12 gets the part
 
 **`docs/decisions.md`, the row of the table:**
 
-> | D52 | [2d Re-pointing a point of a curve and the fillet of a sketch corner](d36/2d-sketch-fillet/design.md) | designed 2026-11-16 | A command that gives a curve another point and keeps its ID; a sketch tool that fillets the corner of two lines, keeps the corner point as the virtual corner, adds the arc to the regions and walls that passed it and names what follows the corner without an error; the solver adapter gives a tangency of a line and an arc at a common end as a square radius |
+> | D52 | [2d Re-pointing a point of a curve and the fillet of a sketch corner](d36/2d-sketch-fillet/design.md) | designed 2026-11-16 | A command that gives a curve another point and keeps its ID; a sketch tool that fillets the corner of two lines, keeps the corner point as the virtual corner, adds the arc to the regions and walls that passed it and names what else reads the corner; the solver adapter gives a tangency of a line and an arc at a common end as a square radius |
 
 **`docs/requirements.md`, scenario 12, a part after "Holes with hardware":**
 

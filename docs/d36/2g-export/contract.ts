@@ -149,8 +149,9 @@ export const EMPTY = {
 // code         | arg       | when
 // notAvailable | ['plane'] | the plane is not in the state asked about, or the face is not planar (from `section`)
 // failed       |           | the mesh of a body is not a closed surface (from `section`)
-// failed       |           | a triangle of a body names one vertex twice, or a coordinate is not a finite number (`3mf`; a defect of the mesh)
-// failed       |           | the file does not fit a ZIP without ZIP64, or a name is too long for one (`storedZip`, below)
+// failed       |           | a triangle of a body names one vertex twice (`3mf`; a defect of the mesh)
+// failed       |           | a number to write is not finite (`plain`, `float32Text`: all three formats; a defect of the mesh)
+// failed       |           | the file does not fit the ZIP the engine writes: too many entries, too large, a name too long (`storedZip`, below)
 //
 // The outline resolves its plane also when no body is taken, so `about.frame` is always there.
 // All three formats are exported as modelled, like every export (D49).
@@ -175,7 +176,9 @@ export declare function chosenBodies(context: QueryContext, bodies: readonly Id[
 // never "-0". Writing no exponent is a choice of the writer, not a rule of the formats (the
 // grammar of SVG path data takes one; the DXF reference does not say): a plain decimal is what
 // every reader takes. Nine decimals of a millimetre is a millionth of a micron, far under the
-// precision of the coordinates (float32). Throws for a number that is not finite.
+// precision of the coordinates (float32). Throws `QueryFailure('failed')` for a number that is
+// not finite, so a format that meets one refuses like a query (`runExport` turns only a
+// `QueryFailure` into an answer).
 export declare function plain(value: number): string;
 
 // A coordinate of a mesh in 3MF: the shortest decimal text that reads back as the same float32
@@ -184,7 +187,8 @@ export declare function plain(value: number): string;
 // SHOULD NOT use more precision than the error generated in their calculations"). It may use an
 // exponent ("1e-7"), which the type of a coordinate allows (ST_Number, appendix B.1.1:
 // `((\-|\+)?(([0-9]+(\.[0-9]+)?)|(\.[0-9]+))((e|E)(\-|\+)?[0-9]+)?)`), and never writes "-0",
-// "NaN" or "Infinity", which it does not allow. Throws for a number that is not finite.
+// "NaN" or "Infinity", which it does not allow. Throws `QueryFailure('failed')` for a number
+// that is not finite.
 export declare function float32Text(value: number): string;
 
 // A text as character data or as the value of an attribute in double quotes (XML 1.0, fifth
@@ -207,7 +211,7 @@ export declare function xmlText(text: string): string;
 // is stored (.ZIP File Format Specification 6.3.10, PKWARE, 4.4.5: method 0).
 export interface ZipEntry {
   // Relative, with forward slashes, no leading slash (4.4.17.1); the paths of `ExportFile` have
-  // this form. At most 65 535 bytes as UTF-8: its length is a field of two bytes (4.4.10).
+  // this form. At most `ZIP_NAME_LIMIT` bytes as UTF-8.
   name: string;
   bytes: Uint8Array;
 }
@@ -229,14 +233,26 @@ export interface ZipEntry {
 // - CRC-32 (4.4.7: register preset to all ones, the result complemented), with the polynomial
 //   0xedb88320 of the sample code of RFC 1952, section 8.
 // - no extra field, no comment, no data descriptor, one disk; internal and external attributes 0.
-// - No ZIP64. The values 0xFFFF and 0xFFFFFFFF of a field of the end record mean "see the ZIP64
-//   record" (4.4.1.4), which is not written, so they must not come up as real values. It throws
+// - No ZIP64. A writer that needs it puts 0xFFFF or 0xFFFFFFFF into the field that is too small
+//   and adds the ZIP64 record (4.4.1.4), and the fields are read that way in a ZIP64 archive
+//   (4.4.8, 4.4.9, 4.4.16, 4.4.21 to 4.4.24). The specification does not forbid those values as
+//   real ones in a plain archive (65 535 entries can be written and read without ZIP64). The
+//   writer keeps clear of them all the same, so no reader has a reason to look for a record that
+//   is not there: a policy of this writer, stricter than the format. It throws
 //   `QueryFailure('failed')`, before anything is laid out, for
 //   - 65 535 entries or more;
-//   - an entry of 0xFFFFFFFF bytes or more, or an archive in which an offset or the size of the
-//     central directory would reach 0xFFFFFFFF (4 GiB less one byte);
-//   - a name longer than 65 535 bytes (it would be written with a wrong length).
+//   - an entry of 0xFFFFFFFF bytes or more;
+//   - files that, with their local headers, reach 0xFFFFFFFF bytes together (the offset of the
+//     central directory, and so every offset of an entry), or a central directory of that size.
+//     So the files of an archive stay under 4 GiB; the archive itself, with its directory after
+//     them, has no limit of its own;
+//   - a name longer than `ZIP_NAME_LIMIT` bytes.
 //   The 3MF core specification asks producers for a plain ZIP when the data fits (1.1).
+// The longest name of an entry, in bytes of UTF-8: the length is a field of two bytes, and "the
+// combined length of any directory record and these three fields SHOULD NOT generally exceed
+// 65,535 bytes" (4.4.10 to 4.4.12: the name, the extra field and the comment; the last two are
+// empty here). A central header is 46 bytes before its name.
+export const ZIP_NAME_LIMIT = 0xffff - 46; // 65 489
 export declare function crc32(bytes: Uint8Array): number;
 export declare function storedZip(entries: readonly ZipEntry[]): Uint8Array;
 
@@ -303,8 +319,9 @@ export const THREE_MF = {
 // - `partnumber`: the ID of the body, which stays the same when the name changes (chapter 4: "a
 //   way to keep track of objects").
 // - `pid`, `pindex`: the base material of the body, when it has a colour.
-// - `vertices`: the positions of the mesh that a triangle names, in their order, in millimetres,
-//   by `float32Text`; the triangles index them by their new numbers. A mesh of the kernel may
+// - `vertices`: the positions of the mesh that a triangle names, in the order of `positions`
+//   (those no triangle names are skipped), in millimetres, by `float32Text`; the triangles index
+//   them by their new numbers. A mesh of the kernel may
 //   hold positions no triangle uses (the lid of scenario 12: 148 of 883, each a copy of a used
 //   one), and 4.1.3 asks a producer not to write duplicate vertices.
 // A base material (chapter 5) needs a name and a display colour, so only a body with a colour
@@ -339,9 +356,15 @@ export declare function baseMaterials(objects: readonly ThreeMfObject[]): { base
 // - otherwise one arc: the arc of the radius `radius` between the two corners, on the side that
 //   makes it turn the way the span does and by less than a half turn. `radius` is that of the
 //   surface the arc lies on. `turn` is the angle that arc turns by about its own centre, derived
-//   from the two corners and the radius (`±2·asin(chord / (2·radius))`): radians, positive
-//   counter-clockwise in the x and y of the frame, a quarter turn at most (`QUARTER`; an end
-//   piece differs by a hair from its share of the sweep when its end is inside the circle).
+//   from the two corners and the radius (`±2·asin(min(1, chord / (2·radius)))`): radians,
+//   positive counter-clockwise in the x and y of the frame.
+//   A piece spans a quarter turn at most (`QUARTER`) about the centre of the surface. Its own
+//   `turn` is that angle only when both its corners are on the circle: for an end piece it
+//   differs by about the distance of its end from the circle over the radius, less with the end
+//   inside and more with the end outside. An end in a vertex of the polygon is on the circle
+//   within the precision of the coordinates (float32), so an end piece that spans a quarter turn
+//   exactly can turn by a few 1e-8 of it more (measured: 90.000002° for a radius of 5.3). A check
+//   of "a quarter turn at most" on `turn` or on a bulge needs that allowance (`TURN_ALLOWANCE`).
 // Both numbers describe the same arc, so the two formats draw one curve: DXF writes the turn (as
 // a bulge), SVG the radius.
 export interface OutlinePiece {
@@ -373,6 +396,10 @@ export const QUARTER = Math.PI / 2;
 // comes out of the sum of its angles as π give or take the last digit, and the number of its
 // pieces must not depend on that digit.
 export const TURN_SLACK = 1e-9; // of a quarter turn
+// How far over a quarter turn the `turn` of an end piece may come out, as a part of it: what the
+// precision of the coordinates of its end makes of it (the note at `OutlinePiece`). For a check;
+// the writer does not use it.
+export const TURN_ALLOWANCE = 1e-6;
 
 // The outline for the options of a format.
 // 1. The bodies: the list; without one, the body of the face when `plane` is a face, else
@@ -395,14 +422,18 @@ export const TURN_SLACK = 1e-9; // of a quarter turn
 //      surface, at equal steps of the sweep from the angle of `from` (centre, radius, angle). The
 //      last piece ends at the next span, at a corner of the mesh again. Every piece is the arc of
 //      the radius of the surface between its two corners.
-//      Why at least two, and a quarter turn at most: a corner of the mesh lies on the circle or
-//      inside it, by up to the sagitta of the polygon where another face cuts the round face.
-//      With at least two pieces no piece has both its ends at such corners, and a piece of
-//      a quarter turn at most with one end on the circle and the other `s` inside it stays within
-//      `s` of the circle everywhere, the furthest at that corner itself. One arc of a quarter turn
-//      with both ends `s` inside is 1.41·`s` off in its middle; one arc of a half turn has its
-//      centre off by the root of twice the radius times `s` (0.32 mm for 0.01 mm on a radius of 5).
-//      Both measured; design.md, "Measured".
+//      Why at least two, and a quarter turn at most: a corner of the mesh lies on the circle
+//      (within the precision of the coordinates) or inside it, by up to the sagitta of the
+//      polygon where another face cuts the round face. With at least two pieces no piece has
+//      both its ends at such corners, and a piece of a quarter turn at most with one end on the
+//      circle and the other `s` off it stays within `s` of the circle everywhere, the furthest at
+//      that corner itself. One arc of a quarter turn with both ends `s` inside is 1.41·`s` off in
+//      its middle; one arc of a half turn has its centre off by the root of twice the radius
+//      times `s` (0.31 mm for 0.0099 mm on a radius of 5). Both measured; design.md, "Measured".
+//      This bounds every piece against the circle of its surface. It does not bound the drawing
+//      against the exact outline next to a corner: a corner is where the mesh has it, and in
+//      a narrow notch between two round faces that can be several `s` from the exact outline
+//      (design.md, "Known limits").
 //    - a curve (what has no exact form: a tooth flank, an ellipse): straight pieces through its
 //      points.
 // 4. `about.bounds`: the box of what is drawn: the corners, for an arc piece the points of the
@@ -512,7 +543,9 @@ export interface ExportPanel {
 // - `empty`: `problem` with that text, nothing is saved;
 // - one file (`layout: 'file'`): saved under its suggested name;
 // - a set (`layout: 'directory'`): saved as one ZIP, `<format>.zip`, built by `storedZip` from the
-//   files under their paths.
+//   files under their paths. Here `storedZip` is called by the form, not inside `engine.export`,
+//   so the form catches its `QueryFailure` itself (a path over `ZIP_NAME_LIMIT`: a body ID has
+//   no limit of length) and shows it as `problem`; nothing is saved.
 // The stand-in of the save of the app (`download` of `dom.ts`).
 export type SaveFile = (name: string, bytes: Uint8Array, mediaType: string) => void;
 export declare function runExportForm(panel: ExportPanel, engine: EngineAfter2g, marker: Id | null, save: SaveFile): void;

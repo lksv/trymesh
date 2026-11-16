@@ -11,7 +11,7 @@
 
 import type { Command, ExportFile, Exported, FaceName, Id, PlaneRef, QueryOutcome } from '../../../packages/engine/src/index';
 import type { EngineAfter2g, ExportFormatAfter, ExportOptionsAfter, ExportPanel, MeshAbout, OutlineAbout, SaveFile, ZipEntry } from './contract';
-import { DXF, EMPTY, SVG, THREE_MF, runExportForm, storedZip } from './contract';
+import { DXF, EMPTY, QUARTER, SVG, THREE_MF, TURN_ALLOWANCE, runExportForm, storedZip } from './contract';
 
 // The box of scenario 12 after the part of 2c: the bodies `box` and `lid`; the lid 4.36 thick
 // (the plate the countersinks of the M3 screws need), four countersunk screw holes over the posts,
@@ -181,7 +181,8 @@ export function boxAcross(): boolean {
   const file = only(unwrap(engine.export('dxf', { plane: XY, offset: 10 })));
   const about = outlineAbout(file);
   const drawing = text(file);
-  // every bulge is that of a piece of a quarter turn at most, and no arc is one piece
+  // every bulge is that of a piece of a quarter turn at most (give or take what the precision of
+  // the coordinates of an end makes of it), and no arc is one piece
   const bulges = drawing.split('\r\n').flatMap((line, i, lines) => (line === '42' && i % 2 === 0 ? [Number(lines[i + 1])] : []));
   return (
     about.bodies.join() === 'box' &&
@@ -191,7 +192,7 @@ export function boxAcross(): boolean {
     count(drawing, ['0', 'POLYLINE', '8', DXF.layers.outer].join('\r\n')) === 1 && // the ring is the one outer polyline; the free posts are circles
     count(drawing, ['0', 'POLYLINE', '8', DXF.layers.hole].join('\r\n')) === 2 &&
     bulges.length === 3 && // the round side of the fourth post turns by 4.37 rad (250°): three pieces
-    bulges.every((bulge) => Math.abs(bulge) <= Math.tan(Math.PI / 8) + 1e-12)
+    bulges.every((bulge) => Math.abs(bulge) <= Math.tan((QUARTER * (1 + TURN_ALLOWANCE)) / 4))
   );
 }
 // What a face as the plane means: the floor of the cavity gives the whole slab under it, 80 × 50,

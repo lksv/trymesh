@@ -70,6 +70,9 @@ export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['cente
 type TableName = (typeof CURVE_POINTS)[keyof typeof CURVE_POINTS][number];
 // every name of the table is a CurvePointName, and every CurvePointName is in the table
 true satisfies (TableName extends CurvePointName ? (CurvePointName extends TableName ? true : false) : false);
+// and each kind lists every point its shape has
+type Complete = { [T in CurveShape['type']]: [Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>] extends [(typeof CURVE_POINTS)[T][number]] ? true : false };
+({ line: true, circle: true, arc: true }) satisfies Complete;
 
 export function curvePoints(curve: Curve): Id[] {
   if (curve.type === 'line') return [curve.a, curve.b];

@@ -1,7 +1,8 @@
 // Sketch tools (D35, point 7): pure functions that turn a few inputs into a batch of sketch
 // commands. The app calls them from its drawing tools and the MCP server offers them as one tool
 // whose description is generated from the catalog below, so a tool added here is at both places.
-// Nothing here touches the recompute: a tool only reads the sketch and its solved positions.
+// Nothing here touches the recompute: a tool reads the sketch, its solved positions and, to change
+// the features that name its curves in the same batch (the fillet), the document.
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds } from './document';
 import { CURVE_POINTS, constraintOperands, duplicateOf, entityOf } from './sketch-content';

@@ -1,6 +1,6 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
 // selection, the list of constraints and dimensions, the projected geometry, and the options of
-// the polygon tool.
+// the polygon and the fillet tools, and the row that re-points a point of a curve (D52).
 import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, MAX_POLYGON_SIDES, constraintPath, isDimension, nearestCurvePoint } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';

@@ -441,6 +441,19 @@ describe('test zásahu', () => {
 });
 
 describe('nálezy z revize aplikace', () => {
+  it('review of D52: the row Re-point is not offered for a point the curve has already', () => {
+    const t = setup();
+    t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)!.commands);
+    const [line] = Object.keys(t.sketch().curves);
+    const [a, b] = Object.keys(t.sketch().points);
+    expect(repointSelection(t.view(), [line, a])).toBeUndefined();
+    expect(repointSelection(t.view(), [b, line])).toBeUndefined();
+    t.run(arcCommands('s', t.view(), onPoint(t.view(), 'origin'), free(20, 0), free(0, 20), t.newId));
+    const arc = Object.keys(t.sketch().curves).find((id) => t.sketch().curves[id].type === 'arc')!;
+    expect(repointSelection(t.view(), [arc, 'origin'])).toBeUndefined();
+    expect(repointSelection(t.view(), [arc, b])).toEqual({ curve: arc, to: b });
+  });
+
   it('dvojklik nástrojem Úsečka nevytvoří úsečku nulové délky', () => {
     const t = setup();
     // dvě kliknutí na stejné prázdné místo

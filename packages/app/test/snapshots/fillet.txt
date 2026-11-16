@@ -360,12 +360,13 @@
     -   p.hint: "Uzavřených oblastí: 1"
     +   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
     -   button title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
-    +     select value="a" title="Which point of the curve"
-    +       option selected value="a": "Start"
-    +       option value="b": "End"
+    - div.buttons.repoint
+    -   label
+    -     "Point of c1"
     -     select value="b" title="Which point of the curve"
     -       option value="a": "Start"
     -       option selected value="b": "End"
+    -   button title="The chosen point of c1 becomes p7; the curve keeps its ID and its constraints": "Re-point"
   status: Point of the curve changed.
   view: 1 scene(s) set
   scene:
@@ -414,15 +415,12 @@
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7."
     +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
     -   button title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    + div.buttons.repoint
+    +   label
     +     "Point of c6"
     +     select value="center" title="Which point of the curve"
     +       option selected value="center": "Centre"
     +   button title="The chosen point of c6 becomes p7; the curve keeps its ID and its constraints": "Re-point"
-    -     "Point of c1"
-    -     select value="a" title="Which point of the curve"
-    -       option selected value="a": "Start"
-    -       option value="b": "End"
-    -   button title="The chosen point of c1 becomes p7; the curve keeps its ID and its constraints": "Re-point"
   status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
   view: 12 scene(s) set
   scene:
@@ -454,6 +452,13 @@
   feature s1:
     + curve c6: {"type":"circle","center":"p7"}
     - curve c6: {"type":"circle","center":"p8"}
+  panel:
+    - div.buttons.repoint
+    -   label
+    -     "Point of c6"
+    -     select value="center" title="Which point of the curve"
+    -       option selected value="center": "Centre"
+    -   button title="The chosen point of c6 becomes p7; the curve keeps its ID and its constraints": "Re-point"
   status: Point of the curve changed.
   view: 1 scene(s) set
   scene:
@@ -481,16 +486,14 @@
     -   p.badge.open: "Stupně volnosti: 7"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8 a další 3; poloměr c6."
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8; poloměr c6."
+    + div.buttons.repoint
+    +   label
     +     "Point of c7"
     +     select value="end" title="Which point of the curve"
     +       option value="center": "Centre"
     +       option value="start": "Start"
     +       option selected value="end": "End"
     +   button title="The chosen point of c7 becomes p7; the curve keeps its ID and its constraints": "Re-point"
-    -     "Point of c6"
-    -     select value="center" title="Which point of the curve"
-    -       option selected value="center": "Centre"
-    -   button title="The chosen point of c6 becomes p7; the curve keeps its ID and its constraints": "Re-point"
   status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
   view: 13 scene(s) set
   scene:

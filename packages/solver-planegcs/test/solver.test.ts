@@ -1014,6 +1014,17 @@ describe('a tangency of a line and an arc at a common end (D52)', () => {
     }
   });
 
+  it('review of D52: a line whose two ends are joined to the two ends of the arc gives one result whatever the order of the keys', () => {
+    const chord = input({
+      points: { origin: { x: 0, y: 0 }, a: { x: -3, y: 4 }, b: { x: 5, y: 0 }, s: { x: 5, y: 0 }, e: { x: -3, y: 4 }, c: { x: 0, y: 0 } },
+      curves: { l: { type: 'line', a: 'a', b: 'b' }, f: { type: 'arc', center: 'c', start: 's', end: 'e' } },
+      constraints: { j1: { type: 'coincident', a: 's', b: 'b' }, j2: { type: 'coincident', a: 'e', b: 'a' }, t: { type: 'tangent', a: 'l', b: 'f' }, fix: { type: 'coincident', a: 'c', b: 'origin' } },
+      fixed: ['origin'],
+    });
+    const reversed = <T,>(record: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.entries(record).reverse());
+    expect(solver.solve({ ...chord, points: reversed(chord.points), constraints: reversed(chord.constraints) })).toEqual(solver.solve(chord));
+  });
+
   it('nothing keeps a fillet a fillet: a radius past the fit is solved into an arc beyond the end of a line', () => {
     // the lines are 40 and 30 long, so a fillet at the right angle fits below 30
     const result = solver.solve(fillet(50));

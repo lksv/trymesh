@@ -299,12 +299,13 @@ function commonEnd(line: Extract<Curve, { type: 'line' }>, arc: Extract<Curve, {
   const arcEnds = [arc.start, arc.end];
   const shared = arcEnds.find((p) => lineEnds.includes(p));
   if (shared !== undefined) return shared;
-  for (const c of Object.values(constraints)) {
-    if (c.type !== 'coincident') continue;
-    if (arcEnds.includes(c.a) && lineEnds.includes(c.b)) return c.a;
-    if (arcEnds.includes(c.b) && lineEnds.includes(c.a)) return c.b;
-  }
-  return undefined;
+  // the start before the end and the constraints by ID, so that the order of the keys of the
+  // input does not matter (a line both of whose ends are joined to the ends of the arc)
+  const joins = Object.keys(constraints)
+    .sort()
+    .map((id) => constraints[id])
+    .filter((c): c is Extract<Constraint, { type: 'coincident' }> => c.type === 'coincident');
+  return arcEnds.find((p) => joins.some((c) => (c.a === p && lineEnds.includes(c.b)) || (c.b === p && lineEnds.includes(c.a))));
 }
 
 function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>): Record<string, unknown> & { type: string } {

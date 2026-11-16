@@ -87,12 +87,13 @@ export function filletCommands(context: SketchToolCall, corner: Id, options: Fil
 // The points of a curve by its kind, with their labels: what the row Re-point offers.
 export const CURVE_POINT_LABELS: Record<CurvePointName, string> = { a: 'Start', b: 'End', center: 'Centre', start: 'Start', end: 'End' };
 
-// A selection that a curve can be re-pointed by: one own curve and one own point (or the origin).
+// A selection that a curve can be re-pointed by: one own curve and one own point (or the origin)
+// that is not a point of the curve already (a re-point onto it would change nothing or be refused).
 export function repointSelection(view: SketchView, selection: Id[]): { curve: Id; to: Id } | undefined {
   if (selection.length !== 2) return undefined;
   const curve = selection.find((id) => view.curves.get(id)?.own);
   const to = selection.find((id) => id !== curve && view.points.has(id) && (view.points.get(id)?.own || id === ORIGIN));
-  return curve && to ? { curve, to } : undefined;
+  return curve && to && !view.curves.get(curve)?.points.includes(to) ? { curve, to } : undefined;
 }
 
 // What the polygon tool of the app remembers between clicks: the number of sides and whether the

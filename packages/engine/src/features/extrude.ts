@@ -3,7 +3,9 @@ import { toolSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
 import { applyTool, issue, withFaces } from '../recompute/services';
 import type { BuiltTool, Done, Step, StepContext, ToolRecipe } from '../recompute/state';
+import { taperedSection } from '../recompute/taper';
 import { buildPrism } from '../recompute/tool-prism';
+import { type Section, buildStack } from '../recompute/tool-stack';
 import type { Region } from '../sketch';
 import { transformFrame } from '../solid';
 import type { ExtrudeFeature } from '../types';
@@ -16,7 +18,7 @@ import { PROFILE_FIELD_SPECS, profileRefs, profileSource, removableFromProfile }
 function extrudeFeature(o: Dict, what: string, context: ValidationContext): ExtrudeFeature {
   const profile = profileSource(context, o.profile, `${what}.profile`);
   const operation = oneOf(o.operation, ['new', 'add', 'cut'] as const, `${what}.operation`);
-  const extent = extentOf(context, o.extent, `${what}.extent`, { throughAll: operation === 'cut' });
+  const extent = extentOf(context, o.extent, `${what}.extent`, { throughAll: operation === 'cut', noTaper: profile.type === 'generated' ? 'a generated profile has no curves to move, so it cannot taper' : undefined });
   const feature: ExtrudeFeature = {
     ...base(o, what),
     type: 'extrude',
@@ -51,13 +53,23 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
     const warnings = [...(profile.warnings ?? []), ...result.warnings];
     return finish({ ...result, status: result.status === 'ok' && warnings.length ? 'warning' : result.status, warnings, ...(profile.facts ? { facts: profile.facts } : {}) }, change);
   };
+  // A taper that is not zero makes the tool a stack of rings, computed here once: an outline that
+  // cannot be moved to the far end is an error of the feature before any tool is built. Without
+  // a taper the tool is the prism.
+  const { extent } = feature;
+  let section: Section | undefined;
+  if (extent.type === 'distance' && extent.taper) {
+    const tapered = taperedSection(profile, { ...extent, taper: extent.taper }, settings.chordTolerance);
+    if ('code' in tapered) return tapered.message === undefined ? failed(tapered.code, tapered.refs) : { state: finish({ status: 'error', error: { code: tapered.code, message: tapered.message, refs: tapered.refs }, warnings: [] }) };
+    section = tapered;
+  }
   // The tool: the length of "through all" is measured against the targets it is built for, and
   // a copy of a pattern is built in its own position. The planar triangulation is shared by all builds.
   const triangulation = new Map<Region, Uint32Array>();
   const build: ToolRecipe['build'] = (targets, firstFaceId, placement) => {
     const frame = placement ? transformFrame(placement.transform, profile.frame) : profile.frame;
-    const prism = buildPrism(feature.id, profile.regions, frame, toolSpan(feature.extent, frame, targets), profile.sideOf, firstFaceId, deps.kernel, triangulation);
-    return placement ? { ...prism, faces: prism.faces.map((face) => ({ ...face, name: { ...face.name, copy: [placement.copy] } })) } : prism;
+    const tool = section ? buildStack(feature.id, section, frame, firstFaceId, deps.kernel, triangulation) : buildPrism(feature.id, profile.regions, frame, toolSpan(feature.extent, frame, targets), profile.sideOf, firstFaceId, deps.kernel, triangulation);
+    return placement ? { ...tool, faces: tool.faces.map((face) => ({ ...face, name: { ...face.name, copy: [placement.copy] } })) } : tool;
   };
   if (feature.operation !== 'new') {
     const recipe: ToolRecipe = { operation: feature.operation, targets: feature.targets ?? [], build };
@@ -86,7 +98,8 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
     title: 'Vysunutí',
     summary:
       'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
-      'The profile is a set of regions of a sketch (optionally moved by an offset), a wall along curves of a sketch that close no region (a rib, a ring), or comes from a profile generator (see Profile generators).',
+      'The profile is a set of regions of a sketch (optionally moved by an offset), a wall along curves of a sketch that close no region (a rib, a ring), or comes from a profile generator (see Profile generators). ' +
+      'An extent of a distance may taper (extent/taper): the sides tilt by the angle, lines give tilted planes and arcs and circles cones.',
     fields: [
       ...PROFILE_FIELD_SPECS,
       ...EXTENT_FIELD_SPECS,
@@ -105,7 +118,7 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
     normalize: (merged, patch) => {
       if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
     },
-    removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'profile' && removableFromProfile(f.profile, rest)),
+    removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'extent' ? f.extent.type === 'distance' && rest.length === 1 && rest[0] === 'taper' : field === 'profile' && removableFromProfile(f.profile, rest)),
   },
   step,
 };

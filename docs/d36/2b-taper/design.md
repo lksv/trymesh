@@ -1,6 +1,6 @@
 # 2b Taper on extrusion (D45)
 
-**State: design, fourth version, after three rounds of reviews, the last allowed ("Reviews"; what is still open is listed there as known limits).** Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
+**State: implemented on the branch `d36/2b` (2026-11-16); see "As implemented" for where the code differs from this design.** The design below is its fourth version, after three rounds of reviews, the last allowed ("Reviews"; what is still open is listed there as known limits). Written against the sixth version of the contract of the preparatory step and the code at `0dc424b`, and on top of [2a](../2a-offset/design.md), whose outline and offset it uses. The tool shapes of this package were tried against the real kernel adapter in a spike ("What was tried"); nothing else was run.
 
 Files: [contract.ts](contract.ts) (the field, the upgrade step, the rule for circles as one function), [calls.ts](calls.ts) (its part of validation scenario 12).
 
@@ -261,3 +261,25 @@ Still open, as known limits:
 - The loop was run on discs cut by a line only: not on an arc between two arcs, a concave arc or a hole of a profile, and not in the engine, which has no stack yet.
 - The rule spends about twice the points the tolerance needs ("Open questions").
 - The constants of this round (a quarter and a third) were run by one reviewer on one family of shapes and read by none in this text.
+
+## As implemented
+
+### The engine, the app and the tests (2026-11-16)
+
+The field and its two refusals in `features/extent.ts` (`extentOf` takes `noTaper`, the reason a feature may have no taper), the step `2b-taper` pending on the branch, the cone in `FaceInfo`, `surfaceOf` and `transformFace`, the cone pairs of `circleBetween`, the rings in `recompute/outline.ts` (`taperRings`), the section in a new `recompute/taper.ts` (`taperedSection`), the build in `recompute/tool-stack.ts` (`buildStack`), the step of the extrusion, the paragraph of `CONVENTIONS`, the field of the form. The rules as implemented are in [architecture/extrude.md](../../architecture/extrude.md), "Taper"; the tests in [architecture/verification.md](../../architecture/verification.md), "The taper".
+
+Where the code differs from the design above:
+
+- **`circleBetween` exists once, over `Surface`** (`surfaces.ts`, where 1b put it with the pair of a plane and a cylinder). `edgeKind` and `projectEdge` ask it with `surfaceOf` of the two faces; there is no copy over `FaceInfo`. What the design asked of the preparatory step ("A home for the circle of two surfaces") is so settled.
+- **`buildStack` takes one section** and the caps are always `startCap` and `endCap`. The list of sections, the names of the caps and the planar step come with the hole of 2c, the first that needs them.
+- **The surfaces of the sides are computed in `recompute/taper.ts`**, a module of its own beside the rings and the build, in the coordinates of the sketch; `buildStack` moves them into the frame with `transformFace`.
+- **An arc "whose sweep changes"** is an arc whose start angle or sweep differs between the near ring and the far one by more than 1e-9 rad. A corner that slides along an arc moves its start or its end, and both put the points of the rings off common rulings.
+- **The origin of the plane of a line** starts from the line as the straight extrusion describes it (`ResolvedProfile.sideOf(key).shape`): the start of the sketch curve for a side of regions, the rule of 2a for a wall (the moved start of a side, the left corner of an end). So a sketch on a wall end of a tapered wall stands where it stood without the taper.
+- **A refusal of a tapered wall names curves of the sketch.** `movedChain` and `movedOutline` take the `curveOf` of 2a for their texts and references, and the resolved profile of a wall carries it (`ResolvedProfile.curveOf`), because the outline of a wall has keys of its own.
+- **The counts of the rings** reach the polylines through `outlineRegions` (an argument `counts`, by loop and curve); without it the rule of a sketch profile counts as before.
+- **The fuzz of the adapter** has a generator of its own (`packages/kernel-manifold/test/taper-fuzz.ts`): changing the generator of `fuzz.ts` would have changed the cases of its pinned seeds. Its oracle is the volume of cross sections integrated by Simpson's rule between the levels where tools start and end.
+- **The app** drops the taper from a draft whose profile becomes generated (the field is not shown there, so it could not be emptied), and sends `taper: null` in the patch of a distance extent that has none.
+- **Scenario 12** follows `calls.ts`, with two moves: the taper on a gear is tested in `packages/engine/test/taper.test.ts`, because the box has no gear; the lead-in of the lip is checked by the interference of the box and the lid, not by a measure.
+- **The schema.** `SCHEMA_PENDING` is 1 on the branch; the test of the real list pins the branch (the version of `master` and the name of the step), and the merge sets the count to zero, the version to 4 and the test back to `master`. Scenario 0 reads the head a build writes from `SCHEMA_VERSION` and `SCHEMA_PENDING`, so it needs no change at a merge.
+
+Known limits, besides those of the design: the text of a refusal suggests corner radii also for a profile that has none (a rectangle under a taper that makes it vanish); it reads as the text of the offset, which says the same.

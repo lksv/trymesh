@@ -81,3 +81,38 @@ export const bracket = (): Command =>
     add({ ...base('bracket'), profile: { type: 'wall', sketch: 'ribs', curves: ['b12', 'b23'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'add', targets: ['box'] }),
     { type: 'setField', feature: 'bracket', path: 'profile/thickness', value: 2 },
   );
+
+// ---------------------------------------------------------------- 2b: a draft, a lead-in, a countersink by hand
+
+// The rib gets a draft of three degrees: narrower at its top. The taper is a field of the extent; a
+// patch merges it into the extent the feature has.
+export const ribDraft = (): Command => ({ type: 'updateFeature', id: 'rib', patch: { extent: { taper: 'deg(-3)' } } });
+
+// A lead-in on the lip so that the lid finds the box: the lip narrows towards its free end. The
+// field was absent; `setField` adds it.
+export const lipLeadIn = (): Command => ({ type: 'setField', feature: 'lip', path: 'extent/taper', value: 'deg(-10)' });
+
+// Two concentric circles on the top of the lid, in its middle, and from them a countersink: a cut
+// that narrows by 45° from the wide circle down to the narrow one, and a straight bore through. The
+// sizes and the angle are made up for the geometry (8 and 5 mm); they are no screw. Real sizes and
+// angles come from the catalogs of 2c. The disc of the wide circle is two regions of the sketch
+// (the ring and the disc inside it); they are taken together, so the narrow circle is not part of
+// the outline that tapers.
+export const LID_TOP: FaceName = { feature: 'lid', role: 'endCap' };
+export const CONE: FaceName = { feature: 'sink', role: 'side', curve: 'wide' };
+export const BORE: FaceName = { feature: 'bore', role: 'side', curve: 'narrow' };
+const centred = (sketch: Id, id: Id, radius: Expr): Command[] => [
+  { type: 'addCurve', sketch, id, curve: { type: 'circle', center: 'lidMid' }, radius: 1 },
+  { type: 'addConstraint', sketch, id: `${id}r`, constraint: { type: 'radius', curve: id, value: radius, driving: true } },
+];
+export const countersinkByHand = (): Command =>
+  batch(
+    { type: 'setParameter', name: 'wideD', expr: '8' },
+    { type: 'setParameter', name: 'narrowD', expr: '5' },
+    sketchOn('middle', onFace('lid', LID_TOP)),
+    pointAt('middle', 'lidMid', 'L / 2', 'W / 2'),
+    ...centred('middle', 'wide', 'wideD / 2'),
+    ...centred('middle', 'narrow', 'narrowD / 2'),
+    add({ ...base('sink'), profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['wide'] }, { outerLoop: ['narrow'] }] }, extent: { type: 'distance', start: 0, distance: '-(wideD - narrowD) / 2', taper: 'deg(-45)' }, operation: 'cut', targets: ['lid'] }),
+    add({ ...base('bore'), profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['narrow'] }] }, extent: { type: 'throughAll', side: 'backward' }, operation: 'cut', targets: ['lid'] }),
+  );

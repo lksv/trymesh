@@ -22,6 +22,7 @@ pnpm workspace (`pnpm@9.15.9`), Node, TypeScript, Vitest. `pnpm` is often not on
 | Build the MCP server | `cd packages/mcp && npx vite build` (`pnpm mcp:build`) |
 | Run the app | `pnpm dev` (Vite, port 5173) |
 | More kernel fuzz cases | `FUZZ_COUNT=30000 FUZZ_FIRST=1 npx vitest run packages/kernel-manifold/test/fuzz.test.ts` |
+| More fuzz cases with tapered tools | `TAPER_FUZZ_COUNT=5000 TAPER_FUZZ_FIRST=1 npx vitest run packages/kernel-manifold/test/taper-fuzz.test.ts` |
 
 There is no linter. Before a commit run the tests, both type checks, the spikes and the MCP build.
 

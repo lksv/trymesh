@@ -114,6 +114,11 @@
         span.field
           input value="10"
           small.computed data-field="extent/distance" data-unit="mm"
+      label
+        "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+        span.field
+          input value=""
+          small.computed data-field="extent/taper" data-unit="rad"
       p#draft-problem.issue.warning
       div.buttons
         button.primary: "OK"
@@ -272,6 +277,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.error: "The offset of -20 mm leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller offset or give the corners a radius larger than the offset, or draw the moved outline in the sketch and extrude that."
     - div.buttons
     -   button.primary: "OK"
@@ -301,7 +311,7 @@
     - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
 
 === 5. editing: the field shows the offset
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x3)
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -381,6 +391,11 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     + div.buttons
     +   button.primary: "OK"
@@ -403,7 +418,7 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
 
 === 6. the field emptied: the draft has no offset and the preview is the plain outline
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")
   panel:
     +     input value=""
@@ -415,7 +430,7 @@
 
 === 7. OK: the offset is removed from the feature
   engine: getState("s1")  (x3)
-  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}) -> ok
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
@@ -510,6 +525,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
@@ -605,6 +625,11 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.error
     + div.buttons
     +   button.primary disabled: "OK"
@@ -900,6 +925,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.error
     - div.buttons
     -   button.primary disabled: "OK"

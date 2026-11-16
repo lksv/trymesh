@@ -3,12 +3,16 @@
 // Pravidla jsou v docs/architecture.md, sekce Pojmenování a Extrude.
 import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, IssueCode, Projected, ProjectionKind, Solid, Surface, Vec2, Vec3 } from './types';
 import { closestOnTriangle } from './mesh-distance';
+import { circleBetween } from './surfaces';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from './util';
 
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
 export type FaceInfo =
   | { planar: true; origin: Vec3; y: Vec3; normal: Vec3 } // rovina bodem `origin`; `normal` bez znaménka směru ven
   | { planar: false; surface: 'cylinder'; center: Vec3; axis: Vec3; radius: number }
+  // The side of an arc or a circle of a tapered extrusion. `axis` points from the apex towards the
+  // face (a cone has two halves); `halfAngle` is between the axis and the surface.
+  | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
   | { planar: false; surface: 'swept'; axis: Vec3 };
@@ -18,10 +22,9 @@ export type FaceInfo =
 export function surfaceOf(info: FaceInfo): Surface {
   if (info.planar) return { kind: 'plane', origin: info.origin, normal: info.normal };
   if (info.surface === 'cylinder') return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
+  if (info.surface === 'cone') return { kind: 'cone', apex: info.apex, axis: info.axis, halfAngle: info.halfAngle };
   return { kind: 'swept', axis: info.axis };
 }
-type Cylinder = Extract<FaceInfo, { surface: 'cylinder' }>;
-type Plane = Extract<FaceInfo, { planar: true }>;
 
 export const toWorld = (frame: Frame, u: number, v: number, w = 0): Vec3 => [
   frame.origin[0] + u * frame.x[0] + v * frame.y[0] + w * frame.normal[0],
@@ -60,6 +63,7 @@ export function rotation(point: Vec3, axis: Vec3, angle: number): RigidTransform
 export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
   if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
   if (info.surface === 'cylinder') return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+  if (info.surface === 'cone') return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
   return { ...info, axis: transformVector(t, info.axis) };
 }
 
@@ -403,12 +407,12 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
   return data;
 }
 
+// The kind of the edge between two faces by their surfaces: two planes meet in a line (or are one
+// plane), surfaces that meet in a circle (`circleBetween`) in a circle, anything else in a general
+// curve (the edge of a cap with a swept side, two cylinders).
 function edgeKind(a: FaceInfo, b: FaceInfo): EdgeKind {
   if (a.planar && b.planar) return len3(cross3(a.normal, b.normal)) <= Math.sin(ANGLE_TOLERANCE) ? 'coplanar' : 'line';
-  if (a.planar === b.planar) return 'other';
-  const [plane, round] = a.planar ? [a, b as Exclude<FaceInfo, Plane>] : [b as Plane, a as Exclude<FaceInfo, Plane>];
-  // only a plane across a cylinder gives a circle; the edge of a cap with a swept side is a general curve
-  return round.surface === 'cylinder' && len3(cross3(plane.normal, round.axis)) <= Math.sin(ANGLE_TOLERANCE) ? 'circle' : 'other';
+  return circleBetween(surfaceOf(a), surfaceOf(b)) ? 'circle' : 'other';
 }
 
 // Normála rovinné stěny ven z tělesa: analytický směr, znaménko ze sítě. undefined = stěna v tělese není.
@@ -456,10 +460,10 @@ export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind
     return { kind: 'line', a: start, b: end };
   }
   if (edge.kind === 'circle') {
-    const [plane, cylinder] = a.planar ? [a, b as Cylinder] : [b as Plane, a as Cylinder]; // the kind `circle` guarantees a cylinder
-    if (len3(cross3(cylinder.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // elipsa nebo úsečka
-    const t = dot3(plane.normal, sub3(plane.origin, cylinder.center)) / dot3(plane.normal, cylinder.axis);
-    return { kind: 'circle', center: toPlane(frame, add3(cylinder.center, mul3(cylinder.axis, t))), radius: cylinder.radius };
+    const circle = circleBetween(surfaceOf(a), surfaceOf(b));
+    if (!circle) return 'brokenProjection'; // the kind `circle` was given by this function
+    if (len3(cross3(circle.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // elipsa nebo úsečka
+    return { kind: 'circle', center: toPlane(frame, circle.center), radius: circle.radius };
   }
   return 'unsupportedProjection';
 }

@@ -23,7 +23,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 - The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`. It keeps the cap of the tool out of the plane of a body face. The kernel adapter resolves about 1e-4 of the largest coordinate of body and tool together, so the overshoot is normally two orders of magnitude above it. Where it is not (a profile far larger than the targets), the adapter takes the cap as flush with the face, which it handles like any flush face; holes then still go through.
 - The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern measures it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
-- The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start` and `extent/distance` with `when: extent/type = distance`.
+- The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start`, `extent/distance` and the optional `extent/taper` (D45) with `when: extent/type = distance`.
 
 ### Profile offset and a wall (D44)
 
@@ -93,6 +93,45 @@ The source reads the solved curves only. It needs neither regions nor a valid pr
 **A limit.** The tests of the polylines work at `LENGTH_TOLERANCE` (1e-6 mm), and a body is stored in float32. An offset that leaves a strip thinner than float32 resolves at its place (about 1e-5 mm at 100 mm from the origin) and thicker than the tolerance passes, and the body has no volume there. A sketch drawn that thin without an offset behaves the same; the offset only makes such a strip easy to reach with a parameter.
 
 **An optional numeric field.** `profile/offset` is the first numeric field of a feature that may be absent ([document.md](document.md), "Catalog of numeric fields").
+
+### Taper (D45)
+
+An extent of a distance may taper: `{ type: 'distance', start, distance, taper? }`, the angle in radians between a side face and the direction of the extrusion, strictly between −π/2 and π/2. The design with its alternatives and reviews is [d36/2b-taper/design.md](../d36/2b-taper/design.md).
+
+- **Where the profile holds and the sign.** The profile of the sketch (after `profile/offset`) holds at the start of the extent, also when `start` is not zero. At the end it is that profile moved by `|distance| · tan(taper)` with the move of the offset ("Profile offset and a wall"), so a positive taper widens away from the start whichever way `distance` points (outer loops grow, holes shrink), as a positive offset grows a profile; a negative one narrows.
+- **An optional field** (`extent/taper`, unit `rad`, default 0) by the rule of [document.md](document.md) ("An optional field of a feature"): absent means none and is not stored; `setField` adds it; `{ extent: { taper: null } }` removes it.
+- **Invalid commands**, structural: the field on an extrusion with a generated profile (it has no curves to move), and the key `taper` on an extent that is not `distance` (the size of the far end of "through all" would follow the targets). The validator of an extent drops keys it does not know, so this key is refused by a line of its own; `extentOf` takes the reason a feature may have no taper (`noTaper`) from its caller, so the hole of 2c can use the extent without one. Another variant in a patch replaces the extent, the taper with it.
+- **Without a taper**, or with one that evaluates to exactly zero, the tool is the prism (`buildPrism`), triangle for triangle what it was.
+
+**The tool: a stack of rings** (`recompute/tool-stack.ts`, `buildStack`). The rings are the outline at levels along the normal, computed once per recompute step in the coordinates of the sketch (`taperedSection` in `recompute/taper.ts`, the rings by `taperRings` in `recompute/outline.ts`); a tool build only places them in its frame, so a pattern repeats a tapered tool like any other and an outline that cannot reach the far end is an error of the step before any tool is built.
+
+- Every ring has the same loops with the same number of points: every curve gets the largest count the rule of a sketch profile (`segments`) gives it over the rings, so rings pair point by point and the mesh is closed by construction.
+- The two caps are triangulated by the kernel each on its own (`startCap` at the start of the extent, `endCap` at its end); between two neighbouring rings every edge of a loop gives two triangles, `(P[k], P[k+1], Q[k+1])` and `(P[k], Q[k+1], Q[k])` for the points `P` of the nearer ring and `Q` of the other. The winding follows the direction of the rings along the normal; like the prism the build assumes a right-handed frame.
+- Side faces are numbered after the caps in the order of their keys, as the prism numbers them by the curve.
+- Several sections with a planar step between two outlines (a counterbore) are for the hole of 2c; `buildStack` takes one section today.
+
+**Levels.** The offset keeps a line parallel to itself and a tangent joint tangent, so in an outline of lines, circles and tangent arcs the straight segment between a near and a far corner lies in both side faces: such an outline (a rectangle, a rounded rectangle, a slot, a circle) has two rings. Where an arc meets a neighbour at an angle, its corner slides along it from ring to ring (its start or its sweep changes), and straight triangles between two rings leave its cone. For such arcs:
+
+- the arc is divided for a quarter of the chord tolerance;
+- the number of intervals between the ends doubles (the outline at the level `t` is the near one moved by `t · |distance| · tan(taper)`) until the centroid of every side triangle of such arcs lies within a third of the chord tolerance of its exact cone, measured as `(r − R) · cos(taper)`, at most `MAX_INTERVALS` = 64. The deviation from a cone is convex over a flat triangle whose corners lie on the cone, so a third at the centroid bounds the whole triangle by the tolerance (the proof is in the design). At 64 the tool is built as it is and the tolerance is not shown there.
+- Every ring is checked like an outline moved by an offset.
+
+**Surfaces of the sides.** The names are those of the straight extrusion.
+
+| Curve | Surface |
+|---|---|
+| a line | a plane through the near and the far line. `origin`: the start of the line as the straight extrusion gives it (the start of the sketch curve; for a wall its own rule), moved across the line by `−start · sign(distance) · tan(taper)`: where the plane meets the sketch plane. It is the start itself for a start or a taper of zero, so a taper whose expression passes through zero moves no sketch on the side. `y`: across the line in the plane, on the side of the normal of the sketch plane |
+| an arc, a circle | a cone about the normal through the centre: `apex` at the level `start − r₀ · distance / (r₁ − r₀)` for the radii `r₀` at the start and `r₁` at the end, `axis` the normal signed from the apex towards the face, `halfAngle` = \|taper\|. A hole tapers the other way than its outer loop; its cone opens the other way |
+
+**Circles between surfaces** (`circleBetween` in `surfaces.ts`, over `Surface`). `edgeKind` and `projectEdge` of `solid.ts` both ask it, and the body description of 1b reads it: a plane across the axis of a cylinder or of a cone (on the half the cone's axis points along), a cylinder and a cone about one axis, two cones about one axis where their radii are equal on the halves of both. "About one axis": parallel within `ANGLE_TOLERANCE` and a point of one axis within `LENGTH_TOLERANCE` of the other. The radius has to be above `LENGTH_TOLERANCE`. Two cylinders, also on one axis, stay `other`. So the mouth of a countersink (the face it is cut into and the cone) and its lower rim (the cone and the bore, two features) are circles a sketch projects.
+
+**Errors.** No new code. A far outline (or a level) that cannot be built is `invalidProfile` with the text of the offset, which starts "At the far end of the extrusion, the taper of -80°" (or "At 1.5 mm from the start of the extrusion" for a level), names the sketch curves and ends with what to do: a smaller taper or a shorter distance, corner radii larger than the move of the far end, or the far outline drawn in a sketch.
+
+**Limits.**
+
+- Two features that meet in a circle are two polygons: the lower ring of a cone has the count of its larger ring, a bore of the same radius its own count, and slivers of the end cap of the tapered cut can stay between them (a third edge of the cone, also a circle). The hole of 2c builds both in one tool.
+- A tool built in a mirrored frame comes out turned inside out, for the prism as for the stack; to be settled with the mirror of 2e.
+- The rule of the levels spends about twice the points the tolerance needs; its loop was run on discs cut by a line, a lens of two arcs and a half disc as a hole (engine tests), not on every shape.
 
 ### Profile generators (D35, point 3)
 

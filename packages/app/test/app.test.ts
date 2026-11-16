@@ -66,6 +66,7 @@ const ANGLE = 'Angle (° or an expression in radians)';
 const OFFSET = 'Offset along the normal (mm or an expression)';
 const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
 const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
+const TAPER = 'Taper (degrees or an expression; positive widens away from the start; empty = none)';
 // The name field, the expression field and the button of the row that adds a parameter (0) or a check (1).
 const adder = (h: Harness, which: number): { name: HTMLInputElement; value: HTMLInputElement; add: HTMLButtonElement } => {
   const row = h.button('panel', 'Add', which).parentElement as HTMLElement;
@@ -552,6 +553,34 @@ describe('the app, driven as a user drives it', () => {
     h.row('Vysunutí 2').click();
     h.record('the wall selected: its summary names the thickness and the curves');
     await matches(h, 'offset');
+  });
+
+  it('a taper on the extent of an extrusion (D45)', async () => {
+    const h = await start();
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.record('a new extrusion: the only region is selected, the taper is empty, the draft has none');
+    h.type(h.field(TAPER), '-10');
+    h.record('a taper typed in degrees: the draft has it in radians and the preview narrows');
+    h.type(h.field(TAPER), '-80');
+    h.record('a taper the far end does not survive: the preview says it is the far end and names the curves');
+    h.type(h.field(TAPER), 'deg(-5)');
+    h.press('panel', 'OK');
+    h.record('OK: the extrusion with its taper is in the document');
+    h.row('Vysunutí 1').click();
+    h.record('selected: the summary names the taper in degrees');
+    doubleClick(h, 'Vysunutí 1');
+    h.record('editing: the field shows the expression');
+    h.type(h.field(TAPER), '');
+    h.record('the field emptied: the draft has no taper and the preview is the prism');
+    h.press('panel', 'OK');
+    h.record('OK: the taper is removed from the feature');
+    await matches(h, 'taper');
   });
 
   // A plate, a pin apart from it and a block that reaches into the plate, drawn through the app.

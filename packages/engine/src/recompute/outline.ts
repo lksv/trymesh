@@ -231,17 +231,19 @@ function corner(before: Open, after: Open, d: number, radii: [number, number]): 
 // A chain of curves moved to the right of its travel by `d` (a negative `d` moves it to the left).
 // A closed chain is a loop; an open one has a first and a last curve with one neighbour, whose free
 // end moves along its own normal. The curves keep their keys; the vertices are numbered again, one
-// per corner. Refused:
+// per corner. `curveOf`: the sketch curve a key stands for, in the texts of a refusal. Refused:
 // - a radius that is not above the length tolerance;
 // - neighbours whose moved carriers do not meet;
 // - a curve that turned round or has no length left: a line whose new ends are not in its old
 //   direction by more than the tolerance; an arc whose new sweep has lost the sign of the old one,
 //   is not longer than the tolerance along the arc, or exceeds a full turn.
-export function movedChain(chain: OutlineCurve[], d: number, closed: boolean, move: Move): OutlineCurve[] | ProfileProblem {
+export function movedChain(chain: OutlineCurve[], d: number, closed: boolean, move: Move, curveOf: (key: string) => Id = (key) => key): OutlineCurve[] | ProfileProblem {
+  const refuse = (keys: string[], message: string): ProfileProblem => refusal(keys.map(curveOf), message);
+  const shownAs = (keys: string[]): string => quoted(keys.map(curveOf));
   const [only] = chain;
   if (only.type === 'circle') {
     const radius = only.radius + (only.ccw ? d : -d);
-    if (!(radius > LENGTH_TOLERANCE)) return refusal([only.key], `${move.subject} leaves no radius for the circle ${quoted([only.key])} (its radius is ${shown(only.radius)} mm). ${move.cure}`);
+    if (!(radius > LENGTH_TOLERANCE)) return refuse([only.key], `${move.subject} leaves no radius for the circle ${shownAs([only.key])} (its radius is ${shown(only.radius)} mm). ${move.cure}`);
     return [{ ...only, radius }];
   }
   const curves = chain as Open[];
@@ -250,7 +252,7 @@ export function movedChain(chain: OutlineCurve[], d: number, closed: boolean, mo
   const flat = curves.filter((curve, i) => curve.type === 'arc' && !(radii[i] > LENGTH_TOLERANCE));
   if (flat.length) {
     const smallest = Math.min(...flat.map((curve) => (curve.type === 'arc' ? curve.radius : Infinity)));
-    return refusal(flat.map((curve) => curve.key), `${move.subject} leaves no radius for ${flat.length === 1 ? 'the arc' : 'the arcs'} ${quoted(flat.map((curve) => curve.key))} (the smallest radius is ${shown(smallest)} mm), so ${flat.length === 1 ? 'it vanishes' : 'they vanish'}. ${move.cure}`);
+    return refuse(flat.map((curve) => curve.key), `${move.subject} leaves no radius for ${flat.length === 1 ? 'the arc' : 'the arcs'} ${shownAs(flat.map((curve) => curve.key))} (the smallest radius is ${shown(smallest)} mm), so ${flat.length === 1 ? 'it vanishes' : 'they vanish'}. ${move.cure}`);
   }
   // corners[i] is the new start of curve i; an open chain has one more, the end of its last curve
   const corners: Vec2[] = [];
@@ -261,7 +263,7 @@ export function movedChain(chain: OutlineCurve[], d: number, closed: boolean, mo
     else if (!after) corners.push(along(before.to, rightOf(tangent(before, true)), d));
     else {
       const at = corner(before, after, d, [radii[(i + n - 1) % n], radii[i % n]]);
-      if (!at) return refusal([before.key, after.key], `${move.subject} moves the curves ${quoted([before.key, after.key])} so that they no longer meet. ${move.cure}`);
+      if (!at) return refuse([before.key, after.key], `${move.subject} moves the curves ${shownAs([before.key, after.key])} so that they no longer meet. ${move.cure}`);
       corners.push(at);
     }
   }
@@ -281,18 +283,18 @@ export function movedChain(chain: OutlineCurve[], d: number, closed: boolean, mo
     if (Math.sign(sweep) !== Math.sign(curve.sweep) || !(Math.abs(sweep) * radii[i] > LENGTH_TOLERANCE) || Math.abs(sweep) > TAU) gone.push(curve.key);
     out.push({ ...curve, from, to, ends, radius: radii[i], start: curve.start + turnedStart, sweep });
   });
-  if (gone.length) return refusal(gone, `${move.subject} leaves no length for ${gone.length === 1 ? 'the curve' : 'the curves'} ${quoted(gone)}: ${gone.length === 1 ? 'its' : 'their'} neighbours meet before ${gone.length === 1 ? 'it' : 'them'}, so ${gone.length === 1 ? 'it vanishes' : 'they vanish'}. ${move.cure}`);
+  if (gone.length) return refuse(gone, `${move.subject} leaves no length for ${gone.length === 1 ? 'the curve' : 'the curves'} ${shownAs(gone)}: ${gone.length === 1 ? 'its' : 'their'} neighbours meet before ${gone.length === 1 ? 'it' : 'them'}, so ${gone.length === 1 ? 'it vanishes' : 'they vanish'}. ${move.cure}`);
   return out;
 }
 
 // An outline with every loop moved by `d`: positive grows the profile (outer loops move outwards,
 // holes shrink), because the material is on the left of every loop and a loop moves to its right.
-export function movedOutline(outline: Outline, d: number, move: Move): Outline | ProfileProblem {
+export function movedOutline(outline: Outline, d: number, move: Move, curveOf: (key: string) => Id = (key) => key): Outline | ProfileProblem {
   const regions: Outline['regions'] = [];
   for (const region of outline.regions) {
     const loops: OutlineCurve[][] = [];
     for (const loop of [region.outer, ...region.holes]) {
-      const moved = movedChain(loop, d, true, move);
+      const moved = movedChain(loop, d, true, move, curveOf);
       if (isProblem(moved)) return moved;
       loops.push(moved);
     }
@@ -303,9 +305,14 @@ export function movedOutline(outline: Outline, d: number, move: Move): Outline |
 
 // ---------------------------------------------------------------- polylines of an outline
 
-// A loop divided into a polyline by the rule of a sketch profile (`segments`, by the radius the
-// curve has now). Every vertex has a key of its own under `tag`.
-function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number): Loop {
+// The number of pieces a curve is divided into by the rule of a sketch profile (`segments`, by the
+// radius the curve has now): the points of a circle, the intervals of an arc, one for a line.
+const piecesOf = (curve: OutlineCurve, chordTolerance: number): number =>
+  curve.type === 'circle' ? segments(TAU, curve.radius, chordTolerance) : curve.type === 'arc' ? segments(Math.abs(curve.sweep), curve.radius, chordTolerance) : 1;
+
+// A loop divided into a polyline, every curve into `counts[i]` pieces when given, otherwise by the
+// rule of a sketch profile. Every vertex has a key of its own under `tag`.
+function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number, counts?: number[]): Loop {
   const out: Loop = { xy: [], keys: [], curves: [], exact: curves };
   curves.forEach((curve, i) => {
     const add = (p: Vec2, key: string): void => {
@@ -313,8 +320,8 @@ function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number): 
       out.keys.push(key);
       out.curves.push(curve.key);
     };
+    const n = counts?.[i] ?? piecesOf(curve, chordTolerance);
     if (curve.type === 'circle') {
-      const n = segments(TAU, curve.radius, chordTolerance);
       for (let step = 0; step < n; step++) {
         const k = curve.ccw ? step : (n - step) % n;
         add(onCircle(curve.center, curve.radius, (TAU * k) / n), `${tag}:${i}:${k}`);
@@ -323,7 +330,6 @@ function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number): 
     }
     add(curve.from, `${tag}:${i}`);
     if (curve.type !== 'arc') return;
-    const n = segments(Math.abs(curve.sweep), curve.radius, chordTolerance);
     for (let step = 1; step < n; step++) add(onCircle(curve.center, curve.radius, curve.start + (curve.sweep * step) / n), `${tag}:${i}:${step}`);
   });
   return out;
@@ -339,7 +345,9 @@ function polyline(curves: OutlineCurve[], tag: string, chordTolerance: number): 
 // outer loop.
 // `curveOf`: the sketch curve a key of the outline stands for, for the texts and the references of
 // a refusal. The keys of regions are the curves themselves; a wall has keys of its own.
-export function outlineRegions(outline: Outline, nesting: boolean[][], chordTolerance: number, move: Move, curveOf: (key: string) => Id = (key) => key): Region[] | ProfileProblem {
+// `counts`: the number of pieces of every curve, by loop (in the order of `loopsOf`) and curve, when
+// it is not the rule of a sketch profile (the rings of a taper share their counts).
+export function outlineRegions(outline: Outline, nesting: boolean[][], chordTolerance: number, move: Move, curveOf: (key: string) => Id = (key) => key, counts?: number[][]): Region[] | ProfileProblem {
   const named = (keys: string[]): Id[] => [...new Set(keys.map(curveOf))];
   const touching = touchingCurves(loopsOf(outline));
   if (touching) {
@@ -348,10 +356,11 @@ export function outlineRegions(outline: Outline, nesting: boolean[][], chordTole
     const what = curves.length === 1 ? `the two sides of the curve ${quoted(curves)}` : `the curves ${quoted(curves)}`;
     return refusal(curves, `${move.subject} makes ${what} touch or cross where they are not joined. ${move.cure}`);
   }
+  let at = 0;
   const regions = outline.regions.map((region, r): Region => ({
     ref: { outerLoop: [...new Set(region.outer.map((curve) => curve.key))].sort() },
-    outer: polyline(region.outer, `o:${r}`, chordTolerance),
-    holes: region.holes.map((hole, h) => polyline(hole, `o:${r}:h${h}`, chordTolerance)),
+    outer: polyline(region.outer, `o:${r}`, chordTolerance, counts?.[at++]),
+    holes: region.holes.map((hole, h) => polyline(hole, `o:${r}:h${h}`, chordTolerance, counts?.[at++])),
   }));
   const loops = regions.flatMap((region) => [region.outer, ...region.holes]);
   const bad = polygonProblem(loops, regions.flatMap((region) => [1, ...region.holes.map(() => -1)]));
@@ -374,6 +383,108 @@ export function outlineRegions(outline: Outline, nesting: boolean[][], chordTole
 export function sideShape(curve: OutlineCurve): SideCurve {
   if (curve.type !== 'line') return { type: 'round', center: curve.center, radius: curve.radius };
   return curve.forward ? { type: 'line', a: curve.from, b: curve.to } : { type: 'line', a: curve.to, b: curve.from };
+}
+
+// ---------------------------------------------------------------- the rings of a taper
+
+// The outline of a tapered extrusion at the levels the tool is built from (D45; the rule is in
+// docs/architecture/extrude.md, "Taper"). `near` holds at the start of the extent (level 0); the
+// outline at the level `t` is `near` moved by `t · shift`, the far one (level 1) by all of it.
+// - Every curve has one number of pieces in all rings: the largest the rule of a sketch profile
+//   gives for it over the rings.
+// - An arc whose start or sweep differs between the near and the far ring (a corner slides along
+//   it) is divided for a quarter of the chord tolerance, and the number of intervals between the
+//   two ends doubles until the centroid of every triangle of the sides of such arcs lies within
+//   a third of the tolerance of its exact cone, at most `MAX_INTERVALS`. A third at the centroid
+//   bounds the whole triangle by the tolerance (the deviation from a cone is convex over a flat
+//   triangle with its corners on the cone). Other outlines have the two rings.
+// - Every ring is checked like an outline moved by an offset.
+// `moveAt(t)`: the texts of a refusal at the level `t`; `taper` the angle, for the measure.
+export interface TaperRing {
+  t: number;
+  outline: Outline;
+  regions: Region[];
+}
+export const MAX_INTERVALS = 64;
+const SAME_ANGLE = 1e-9;
+export function taperRings(near: Outline, shift: number, taper: number, chordTolerance: number, moveAt: (t: number) => Move, curveOf: (key: string) => Id = (key) => key): TaperRing[] | ProfileProblem {
+  const nesting = nestingOf(near);
+  const outlines = new Map<number, Outline>([[0, near]]);
+  const outlineAt = (t: number): Outline | ProfileProblem => {
+    const known = outlines.get(t);
+    if (known) return known;
+    const moved = movedOutline(near, t * shift, moveAt(t), curveOf);
+    if (!isProblem(moved)) outlines.set(t, moved);
+    return moved;
+  };
+  const far = outlineAt(1);
+  if (isProblem(far)) return far;
+  const nearLoops = loopsOf(near);
+  const farLoops = loopsOf(far);
+  // arcs whose corners slide: by loop and curve
+  const sliding = nearLoops.map((loop, l) =>
+    loop.map((curve, c) => {
+      const other = farLoops[l][c];
+      return curve.type === 'arc' && other.type === 'arc' && (Math.abs(wrapped(other.start - curve.start)) > SAME_ANGLE || Math.abs(other.sweep - curve.sweep) > SAME_ANGLE);
+    }),
+  );
+  const anySliding = sliding.some((loop) => loop.some(Boolean));
+  let levels: number[] = [0, 1];
+  let rings: Outline[] = [near, far];
+  let counts: number[][] = [];
+  for (let intervals = 1; ; intervals *= 2) {
+    levels = Array.from({ length: intervals + 1 }, (_, j) => j / intervals);
+    const found = levels.map(outlineAt);
+    const problem = found.find(isProblem);
+    if (problem) return problem;
+    rings = found as Outline[];
+    counts = nearLoops.map((loop, l) => loop.map((_, c) => Math.max(...rings.map((ring) => piecesOf(loopsOf(ring)[l][c], sliding[l][c] ? chordTolerance / 4 : chordTolerance)))));
+    if (!anySliding || intervals >= MAX_INTERVALS || deepest(rings, levels, sliding, counts, taper) <= chordTolerance / 3) break;
+  }
+  const out: TaperRing[] = [];
+  for (let j = 0; j < levels.length; j++) {
+    const regions = outlineRegions(rings[j], nesting, chordTolerance, moveAt(levels[j]), curveOf, counts);
+    if (isProblem(regions)) return regions;
+    out.push({ t: levels[j], outline: rings[j], regions });
+  }
+  return out;
+}
+
+// The largest distance of the centroid of a side triangle of a sliding arc from its exact cone, over
+// every interval between two rings. The triangles are those the stack builds (`buildStack`): for
+// the points P of the nearer ring and Q of the other, (P[k], P[k+1], Q[k+1]) and (P[k], Q[k+1], Q[k]).
+// The distance is (r − R) · cos(taper) for the distance r of the centroid from the axis and the
+// radius R of the cone at its level, which is linear in the level.
+function deepest(rings: Outline[], levels: number[], sliding: boolean[][], counts: number[][], taper: number): number {
+  const loops = rings.map(loopsOf);
+  let worst = 0;
+  sliding.forEach((loop, l) =>
+    loop.forEach((slides, c) => {
+      if (!slides) return;
+      const n = counts[l][c];
+      const pointsOf = (ring: number): Vec2[] => {
+        const arc = loops[ring][l][c] as Extract<OutlineCurve, { type: 'arc' }>;
+        return Array.from({ length: n + 1 }, (_, k) => (k === 0 ? arc.from : k === n ? arc.to : onCircle(arc.center, arc.radius, arc.start + (arc.sweep * k) / n)));
+      };
+      const [first, last] = [loops[0][l][c], loops[loops.length - 1][l][c]] as Extract<OutlineCurve, { type: 'arc' }>[];
+      const radiusAt = (t: number): number => first.radius + t * (last.radius - first.radius);
+      let p = pointsOf(0);
+      for (let j = 0; j + 1 < rings.length; j++) {
+        const q = pointsOf(j + 1);
+        const [s, u] = [levels[j], levels[j + 1]];
+        const measure = (a: Vec2, b: Vec2, d: Vec2, t: number): void => {
+          const centroid: Vec2 = [(a[0] + b[0] + d[0]) / 3, (a[1] + b[1] + d[1]) / 3];
+          worst = Math.max(worst, Math.abs(dist2(centroid, first.center) - radiusAt(t)) * Math.cos(taper));
+        };
+        for (let k = 0; k < n; k++) {
+          measure(p[k], p[k + 1], q[k + 1], (2 * s + u) / 3);
+          measure(p[k], q[k + 1], q[k], (s + 2 * u) / 3);
+        }
+        p = q;
+      }
+    }),
+  );
+  return worst;
 }
 
 // ---------------------------------------------------------------- a wall along a chain

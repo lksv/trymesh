@@ -520,6 +520,11 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     + div.buttons
     +   button.primary: "OK"
@@ -547,7 +552,7 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
 === 11. a load: the app starts over with the new document
-  engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
+  engine: load("{\"schemaVersion\":3,\"schemaSteps\":[\"2b-taper\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   toolbar:
     +   button disabled: "Export STL"
@@ -665,6 +670,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"

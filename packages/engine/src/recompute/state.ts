@@ -75,12 +75,15 @@ export type FaceRole = FaceName extends infer Name ? (Name extends FaceName ? Om
 //   sides itself.
 // - `outline`: the exact outline the regions were divided from, after an offset. Asked for by
 //   a tool build that has to move it again. A generated profile has none.
+// - `curveOf`: the sketch curve a key of the outline stands for, in the texts and references of
+//   a refusal of such a move; absent when the keys are the curves (a wall has keys of its own).
 // A generated profile adds what its generator published and warned about.
 export interface ResolvedProfile {
   regions: Region[];
   frame: Frame;
   sideOf: (key: string) => { name: FaceRole; shape: SideCurve };
   outline?: () => Outline | ProfileProblem;
+  curveOf?: (key: string) => Id;
   facts?: Facts;
   warnings?: Issue[];
 }

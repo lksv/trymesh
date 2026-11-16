@@ -54,7 +54,7 @@ function wall(source: Extract<ProfileSource, { type: 'wall' }>, sketch: SketchSt
   if ('code' in found) return found;
   const built = outlineRegions(found.outline, found.nesting, chordTolerance, move, found.curveOf);
   if ('code' in built) return built;
-  return { regions: built, frame: sketch.frame, sideOf: (key) => found.sides.get(key) as { name: ReturnType<ResolvedProfile['sideOf']>['name']; shape: SideCurve }, outline: () => found.outline };
+  return { regions: built, frame: sketch.frame, sideOf: (key) => found.sides.get(key) as { name: ReturnType<ResolvedProfile['sideOf']>['name']; shape: SideCurve }, outline: () => found.outline, curveOf: found.curveOf };
 }
 
 // A profile from a generator. The generator reads only the solved operands, so it does not depend

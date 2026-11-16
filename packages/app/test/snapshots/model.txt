@@ -968,9 +968,9 @@
   view: 1 scene(s) set
 
 === 33. a field of a form with an expression: its value is next to it
-  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}}, "e3") -> ok
+  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":8,"taper":null},"operation":"new"}}, "e3") -> ok
   engine: getState("s2")  (x3)
-  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":"h + 3"},"operation":"new"}}, "e3") -> ok
+  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":"h + 3","taper":null},"operation":"new"}}, "e3") -> ok
   engine: getState("s2")
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -1083,6 +1083,11 @@
     +   span.field
     +     input value="h + 3"
     +     small.computed data-field="extent/distance" data-unit="mm": "= 13 mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     + div.buttons
     +   button.primary: "OK"
@@ -1135,7 +1140,7 @@
 
 === 34. the summary shows the expression and its value
   engine: getState("s2")  (x3)
-  engine: execute({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":"h + 3"},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":"h + 3","taper":null},"operation":"new"}}) -> ok
   feature e3:
     + {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":13},"operation":"new","expressions":{"extent/distance":"h + 3"}}
     - {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
@@ -1284,6 +1289,11 @@
     -   span.field
     -     input value="h + 3"
     -     small.computed data-field="extent/distance" data-unit="mm": "= 13 mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
@@ -3384,7 +3394,7 @@
   view: 2 scene(s) set
 
 === 90. a new document
-  engine: load("{\"schemaVersion\":3,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
+  engine: load("{\"schemaVersion\":3,\"schemaSteps\":[\"2b-taper\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
   toolbar:

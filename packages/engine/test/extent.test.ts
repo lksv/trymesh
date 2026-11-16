@@ -57,6 +57,7 @@ describe('extent of an extrusion', () => {
     expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.path.startsWith('extent/')).map((f) => [f.path, f.when])).toEqual([
       ['extent/start', { path: 'extent/type', equals: 'distance' }],
       ['extent/distance', { path: 'extent/type', equals: 'distance' }],
+      ['extent/taper', { path: 'extent/type', equals: 'distance' }],
     ]);
   });
 

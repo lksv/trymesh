@@ -228,7 +228,18 @@ export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchP
 // extent of all targets together along the normal, in the state the tool is applied to, plus an
 // overshoot. A target that lies entirely on the other side is not changed and the `noEffect`
 // warning names it. Further extents ("up to face") will come as variants.
-export type Extent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
+// `taper` (field `extent/taper`, radians, strictly between −π/2 and π/2, optional: absent means
+// none) is the angle between a side face and the direction of the extrusion. The profile of the
+// sketch (with its `profile/offset`) holds at the start of the extent; the profile at its end is
+// that one moved by |distance| · tan(taper) with the rule of the offset. Positive widens away from
+// the start whichever way `distance` points (outer loops grow, holes shrink), as a positive offset
+// does; negative narrows. Uses: a draft on a rib `deg(-2)`; a roof that prints without support
+// `deg(-45)`; a countersink cut from the face the head sits in, with a negative `distance` (into
+// the body) and a negative taper of half the included angle of the cone; a chamfer of the bottom
+// edge against elephant foot, a slab with `profile/offset: -c`, `distance: c` and `deg(45)`. The
+// side of a line is a tilted plane, the side of an arc or a circle a cone; the faces keep the names
+// of the straight extrusion. Not with a generated profile.
+export type Extent = { type: 'distance'; start: number; distance: number; taper?: number } | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
 
 // ---------------------------------------------------------------- jména
 

@@ -95,7 +95,10 @@ describe('the offset of a profile of regions', () => {
     invalid(doc, { type: 'setField', feature: 'S1', path: 'profile/offset', value: 1 }, /is not a numeric field/);
     // the registry says which fields may be absent: those whose description has a default
     const optional = FEATURE_TYPE_INFO.extrude.fields.filter((field) => field.spec.default !== undefined && !field.path.startsWith('profile/params/'));
-    expect(optional.map((field) => [field.path, field.when])).toEqual([['profile/offset', { path: 'profile/type', equals: 'regions' }]]);
+    expect(optional.map((field) => [field.path, field.when])).toEqual([
+      ['profile/offset', { path: 'profile/type', equals: 'regions' }],
+      ['extent/taper', { path: 'extent/type', equals: 'distance' }],
+    ]);
   });
 
   it('updateFeature sets it, changes it and removes it, also from a feature that did not have it', () => {

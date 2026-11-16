@@ -34,7 +34,7 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. |
 | A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
 
-The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has three kinds: a plane, a cylinder and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and only an edge between a plane and a cylinder is a circle.
+The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has four kinds: a plane, a cylinder, a cone (the side of an arc or a circle of a tapered extrusion, D45) and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and an edge is a circle where its two surfaces meet in one (`circleBetween`, [extrude.md](extrude.md), "Taper").
 
 **Roles (D37).** The roles are a closed union in `types.ts`, one member per role, because that is what an AI reads. The catalog `FACE_ROLES` (`face-roles.ts`) says for every role how it is called and names every field that tells apart the faces of that role within one feature (`curve` for `side`, none for a cap), each a text or a whole number and always present. The validator of a face name (`faceName` in `validation.ts`), the key of a face (`faceKey`) and the label the MCP tools print are built from the catalog, and the app imports `faceKey` instead of keeping a copy. A feature type that names faces in a new role adds one member to the union and one entry; the compiler ties the two (a role without an entry, an entry without a field of the name or with the other kind do not compile), and the app's own table of texts (`ROLES` in `issue-text.ts`) is typed by the union as well. The key is `<feature>/<role>`, then the values of those fields in the alphabetical order of their names, then `/@<pattern>:<index>` for every copy tag; for the three roles of today that is the key it always was, which the fingerprints of solved sketches and the face table depend on.
 
@@ -44,7 +44,7 @@ The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has thre
 type Surface =
   | { kind: 'plane'; origin: Vec3; normal: Vec3 }
   | { kind: 'cylinder'; origin: Vec3; axis: Vec3; radius: number }   // origin: a point of the axis
-  | { kind: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }      // no feature makes one yet (taper, countersink, revolve)
+  | { kind: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }      // the side of an arc or a circle of a tapered extrusion (D45)
   | { kind: 'swept'; axis: Vec3 }                                    // a planar curve moved along `axis`: gear teeth
   | { kind: 'general' };                                             // no feature makes one yet (revolve of an arc, twist, fillet)
 ```
@@ -66,8 +66,8 @@ interface EdgeName { a: FaceName; b: FaceName }   // a < b v lexikografickém po
 - Krajní body mají přesnost sítě (viz Přesnost u SolidKernel). Přímka samotná je přesná. Geometrie přichycená na krajní bod proto dá stěny nástroje jen téměř koplanární se stěnami tělesa; s tím počítá záruka jádra č. 3.
 - Hrana mezi dvěma stěnami v téže rovině (výstupek zarovnaný s horní stěnou) má druh `coplanar`. Průsečnice neexistuje a hranice nemusí být přímá. Nekreslí se a nejde promítnout. „V téže rovině" znamená, že normály obou stěn svírají úhel pod úhlovou tolerancí enginu. Přesná rovnoběžnost nestačí: stěna z úsečky přichycené na krajní body promítnutých hran je od stěny tělesa odkloněná o zlomek úhlové vteřiny a průsečnice takových rovin by vyšla kilometry daleko.
 - Hrana se vrací jako seznam úseček (`segments`), ne jako jedna lomená čára: hrana rozdělená výřezem má víc nesouvislých úseků a jedna čára by je spojila přes prázdný prostor.
-- Kruhová hrana je rozhraní boční stěny vzniklé z kružnice nebo oblouku a rovinné stěny kolmé na osu extrude. Střed a poloměr se počítají analyticky z vyřešené zdrojové křivky skici, ze sítě se nebere nic kromě ověření existence.
-- Ostatní hrany (válec říznutý šikmou rovinou, průnik dvou válců, the edge of a cap with the side of a generated profile) mají druh `other` a promítnout nejdou.
+- A circular edge is where the surfaces of its two faces meet in a circle (`circleBetween` in `surfaces.ts`): a plane across the axis of a cylinder or a cone, a cylinder and a cone about one axis, two cones about one axis (D45). The centre and the radius are computed from the two surfaces; the mesh only shows that the edge exists.
+- Other edges (a cylinder or a cone cut by a tilted plane, two cylinders also on one axis, a cone and a tilted plane of a tapered extrusion, the edge of a cap with the side of a generated profile) have the kind `other` and cannot be projected.
 
 Pojmenování hran je zároveň předpokladem pro budoucí rovinu nakloněnou kolem hrany, zaoblení a zkosení.
 

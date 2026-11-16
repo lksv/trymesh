@@ -6,9 +6,10 @@
 //   10): nothing is a collision and nothing fails, along an axis and askew; a pose the adapter
 //   still refuses and the second opinion clears is counted and held to 1 + 2 % of the poses asked
 //   (none of 480 in the run of the design).
-// - With SECOND_OPINION_KERNEL=first, over the first cleaning alone (the adapter before D51): along
-//   an axis nothing is a collision and nothing fails; askew nothing is a collision, and the poses
-//   that stay failed are counted and held below a bound from the measurement of 5e (1 of 80).
+// - Over the first cleaning alone (the adapter before D51), which keeps the second opinion tested:
+//   along an axis nothing is a collision and nothing fails; askew nothing is a collision, and the
+//   poses that stay failed are counted and held below a bound from the measurement of 5e (1 of 80).
+// Both by default; SECOND_OPINION_KERNEL=first or SECOND_OPINION_KERNEL=adapter runs one.
 // More poses, from another start:
 //   SECOND_OPINION_POSES=200 SECOND_OPINION_ASKEW=40 SECOND_OPINION_FIRST=1 npx vitest run packages/scenarios/test/second-opinion-fuzz.test.ts
 import { describe, expect, it } from 'vitest';
@@ -19,8 +20,12 @@ import { angleOf, askew, built, firstOnly, judged, kernel, placed, turned } from
 const POSES = Number(process.env.SECOND_OPINION_POSES ?? 12); // along an axis
 const ASKEW = Number(process.env.SECOND_OPINION_ASKEW ?? 2);
 const FIRST = Number(process.env.SECOND_OPINION_FIRST ?? 1);
-const FIRST_ONLY = process.env.SECOND_OPINION_KERNEL === 'first';
-const USING = FIRST_ONLY ? firstOnly : kernel;
+// Both kernels by default; SECOND_OPINION_KERNEL=first or =adapter runs one of them.
+const CHOSEN = process.env.SECOND_OPINION_KERNEL;
+const KERNELS = ([
+  ['the first cleaning alone', true],
+  ['the adapter', false],
+] as const).filter(([, first]) => CHOSEN === undefined || (CHOSEN === 'first') === first);
 const RADII = [1.5, 2.5, 4, 12];
 // Poses along an axis that failed once, pinned by the radius and their k (none so far).
 const PINNED: [number, number][] = [];
@@ -30,9 +35,9 @@ const Z: [number, number, number] = [0, 0, 1];
 const models = new Map(RADII.map((radius) => [radius, built(arm({ pin: radius }))]));
 // The i-th pose: the radii in turn, k counting up from FIRST.
 const poses = (count: number): [number, number][] => Array.from({ length: count }, (_, i) => [RADII[i % RADII.length], FIRST + i]);
-const KERNEL = FIRST_ONLY ? 'the first cleaning alone' : 'the adapter';
 
-describe(`a fuzz over turned pins in holes of the same circle (D50, D51), over ${KERNEL}`, () => {
+describe.each(KERNELS)('a fuzz over turned pins in holes of the same circle (D50, D51), over %s', (KERNEL, FIRST_ONLY) => {
+  const USING = FIRST_ONLY ? firstOnly : kernel;
   // Over the adapter a pose both cleanings refuse goes to the second opinion: rare.
   const fewCleared = (reports: InterferenceReport[]) => {
     console.log(`turned pins over ${KERNEL}: ${reports.length} poses asked, ${reports.flatMap((report) => report.cleared ?? []).length} cleared, ${reports.flatMap((report) => report.failed).length} failed`);

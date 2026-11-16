@@ -75,6 +75,9 @@ export function buildSliver(c: SliverCase): { a: Solid; b: Solid; volume: number
 // layer one weld tolerance thick over the side of the pin inside the plate.
 export const sliverRoom = (c: SliverCase, a: Solid, b: Solid, volume: number): number => 0.003 + 0.003 * volume + tolerances(a, b).weld * 2 * Math.PI * c.radius * 8;
 
+// The messages of the adapter's own checks ("not a closed surface", "a folded triangle").
+const REFUSAL = /není uzavřená plocha|přeložený trojúhelník/;
+
 export type SliverOutcome = 'unbuilt' | 'refused' | 'first' | 'second';
 
 // What the adapter made of one case, and what is wrong with its answer (empty: passed). A refusal by
@@ -84,8 +87,10 @@ export function checkSliver(seed: number): { outcome: SliverOutcome; problems: s
   let made: ReturnType<typeof buildSliver>;
   try {
     made = buildSliver(c);
-  } catch {
-    return { outcome: 'unbuilt', problems: [] };
+  } catch (error) {
+    // only a refusal by the adapter's own checks; anything else is a problem of the case
+    const message = error instanceof Error ? error.message : String(error);
+    return { outcome: 'unbuilt', problems: REFUSAL.test(message) ? [] : [`the inputs threw: ${message}`] };
   }
   const { a, b, volume } = made;
   const before = kernel.secondCleanings;
@@ -94,7 +99,7 @@ export function checkSliver(seed: number): { outcome: SliverOutcome; problems: s
     out = kernel.boolean('intersection', a, b);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { outcome: 'refused', problems: /není uzavřená plocha|přeložený trojúhelník/.test(message) ? [] : [`threw: ${message}`] };
+    return { outcome: 'refused', problems: REFUSAL.test(message) ? [] : [`threw: ${message}`] };
   }
   const outcome = kernel.secondCleanings > before ? 'second' : 'first';
   const d = describe(out, c.frame);

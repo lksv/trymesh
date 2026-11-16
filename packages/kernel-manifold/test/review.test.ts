@@ -5,7 +5,7 @@ import type { BooleanOp, Solid } from '@trymesh/engine';
 import { cleanBySubdivision, isClosed } from '../src/clean';
 import { tolerances, triangleCount } from '../src/geometry';
 import { randomFrame, rng } from './fuzz';
-import { type SliverCase, buildSliver } from './sliver-fuzz';
+import { type SliverCase, buildSliver, generateSliver, ngon } from './sliver-fuzz';
 import { IDENTITY, type Loop, type TestFrame, describe, idsOf, inspect, kernel, prism, rect, rotated } from './testkit';
 
 const ids = (n: number) => ({ start: 100 * n + 1, end: 100 * n + 2, sides: [100 * n + 3, 100 * n + 4, 100 * n + 5, 100 * n + 6] });
@@ -203,6 +203,20 @@ suite('D51: the second cleaning of an intersection of slivers', () => {
       expect(kernel.secondCleanings).toBe(before);
       expect(arrays(out)).toEqual(arrays(kernel.boolean('intersection', a, b, { second: false })));
     }
+  });
+
+  // 3. A union never reaches the second cleaning. The refused unions and differences above all
+  // have faces moved, so they would not reach it anyway; this union has none moved: the pin of
+  // the sliver fuzz joined to its flush plate two metres away (the seeds 2535 and 11106, refused
+  // "not a closed surface"; the second cleaning would answer it). Review of D51, finding 1. On the
+  // day the adapter answers it, keep that the counter does not move and drop that it is refused.
+  it.each([2535, 11106])('3. the union of the sliver fuzz seed %i, with no face moved, is refused without the second cleaning', (seed) => {
+    const c = generateSliver(seed);
+    const pin = prism(c.frame, ngon(c.radius + c.over, c.n, c.phase), 0, 16, { start: 21, end: 22, sides: Array(c.n).fill(23) });
+    const plate = prism(c.frame, rect(-20, -25, 40, 25), 8, 16, { start: 31, end: 32, sides: [33, 34, 35, 36] });
+    const before = kernel.secondCleanings;
+    expect(thrown(() => kernel.boolean('union', plate, pin))).toMatch(NOT_CLOSED);
+    expect(kernel.secondCleanings).toBe(before);
   });
 
   it('4. the second cleaning alone ends closed, the same twice, with the face numbers of its input', () => {

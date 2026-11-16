@@ -62,8 +62,11 @@ describe('the second opinion of the kernel (D50), below the engine ordering', ()
         expect(Math.abs(report.fits[0].volume - computed) / computed, label).toBeLessThan(2e-3);
       }
       // the same two meshes the other way round are answered by the first cleaning, and are a fit there
-      expect(judged(child, pins.upper, using), label).toMatchObject({ pairs: [], fits: [{ a: 'a', b: 'b' }], failed: [] });
-      expect(judged(child, pins.upper, using).cleared).toBeUndefined();
+      const before = kernel.secondCleanings;
+      const other = judged(child, pins.upper, using);
+      expect(other, label).toMatchObject({ pairs: [], fits: [{ a: 'a', b: 'b' }], failed: [] });
+      expect(other.cleared).toBeUndefined();
+      expect(kernel.secondCleanings, label).toBe(before);
     },
   );
 

@@ -1,16 +1,16 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type Vec2, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, type Vec2, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
-import { type Anchor, type PolygonOptions, arcCommands, asConstruction, circleCommands, deleteCommands, lineCommands, pointCommands, polygonCommands, positionOf, rectangleCommands } from './sketch-commands';
+import { type Anchor, type FilletOptions, type PolygonOptions, arcCommands, asConstruction, circleCommands, deleteCommands, filletCommands, lineCommands, pointCommands, polygonCommands, positionOf, rectangleCommands } from './sketch-commands';
 import { freeEntities } from './sketch-diagnosis';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
 import type { SceneModel } from './viewport';
 
-export type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'project';
+export type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'fillet' | 'project';
 
 export interface SketchMode {
   kind: 'sketch';
@@ -31,23 +31,28 @@ export interface SketchMode {
 }
 export const sketchMode = (id: Id): SketchMode => ({ kind: 'sketch', id, tool: 'select', clicks: [], selection: [] });
 
-// The open sketch as it is shown: the feature, its solution, its plane and the view of both.
+// The open sketch as it is shown: the feature, its solution, its plane and the view of both, and
+// what the sketch tools of the engine take: the sketch with the document and the values of the
+// parameters (D52).
 export interface SketchContext {
   feature: SketchFeature;
   result: SketchResult;
   frame: Frame;
   view: SketchView;
+  tool: SketchToolCall;
 }
 export function sketchContextOf(state: EngineState, id: Id): SketchContext | undefined {
   const feature = state.document.features.find((f) => f.id === id);
   const result = state.evaluation.features[id];
   if (feature?.type !== 'sketch' || !result?.sketch || !result.plane) return undefined;
-  return { feature, result: result.sketch, frame: result.plane, view: sketchView(feature, result.sketch) };
+  const view = sketchView(feature, result.sketch);
+  return { feature, result: result.sketch, frame: result.plane, view, tool: { ...view.source, parameters: state.evaluation.parameters, document: state.document } };
 }
 
 // What the mode remembers beyond one sketch. The app holds it; the mode and its panel read and write it.
 export interface SketchState {
   polygon: PolygonOptions; // what the polygon tool draws
+  fillet: FilletOptions; // the radius of the fillet tool
   explained?: { diagnosis: SketchDiagnosis; id: Id; value: ConstraintExplanation }; // the explanation asked last
 }
 
@@ -67,6 +72,7 @@ export const TOOLS: [Tool, string, string][] = [
   ['polygon', 'Polygon', 'Click the centre and then a vertex; the number of sides is set in the panel.'],
   ['circle', 'Kružnice', 'Klikněte na střed a pak na bod obvodu.'],
   ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
+  ['fillet', 'Fillet', 'Click the point where two lines meet; the radius is set in the panel.'],
   ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
 ];
 
@@ -172,6 +178,7 @@ export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent
   const context = host.sketchContext();
   if (!context) return;
   if (m.tool === 'project') return projectEdge(host, m, event, context);
+  if (m.tool === 'fillet') return filletCorner(host, m, event, context);
   // místo kliknutí včetně odvozené vazby spočítal poslední pohyb myši; bez něj se dopočítá
   const anchor = m.cursor && m.tool !== 'select' ? m.cursor : anchorAt(host, event, context);
   if (!anchor) return;
@@ -201,12 +208,28 @@ export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent
     const line = lineCommands(m.id, view, clicks[0], anchor, host.newId, m.infer);
     // řetěz pokračuje z konce, dokud se nenapojí na existující bod
     if (line && batch(line.commands) && anchor.snap?.kind !== 'point' && host.sketch === m) m.clicks = [{ at: anchor.at, snap: { kind: 'point', id: line.end } }];
-  } else if (m.tool === 'rect') batch(rectangleCommands(m.id, view, clicks[0], anchor, host.newId));
-  else if (m.tool === 'polygon') batch(polygonCommands(m.id, view, clicks[0], anchor, host.sketching.polygon, host.newId));
+  } else if (m.tool === 'rect') batch(rectangleCommands(m.id, context.tool, clicks[0], anchor, host.newId));
+  else if (m.tool === 'polygon') batch(polygonCommands(m.id, context.tool, clicks[0], anchor, host.sketching.polygon, host.newId));
   else if (m.tool === 'circle') batch(circleCommands(m.id, view, clicks[0], anchor, host.newId));
   else batch(arcCommands(m.id, view, clicks[0], clicks[1], anchor, host.newId));
   m.infer = undefined;
   host.renderScene();
+}
+
+// The fillet of the corner under the pointer (D52). The batch is sent as the tool made it: the
+// switch of construction curves does not apply, the arc follows its lines.
+function filletCorner(host: SketchHost, m: SketchMode, event: PointerEvent, context: SketchContext): void {
+  const corner = anchorAt(host, event, context)?.snap;
+  if (corner?.kind !== 'point') return host.say('Click a point where two lines meet.', true);
+  const made = filletCommands(context.tool, corner.id, host.sketching.fillet, host.newId);
+  if (!made.ok) return host.say(`Fillet: ${made.message}`, true);
+  const { patched, moved, shortened } = made.ids;
+  const notes = [
+    patched.length === 0 ? 'no feature needed the arc' : `the arc was added to ${patched.length === 1 ? 'the profile of 1 feature' : `the profiles of ${patched.length} features`}`,
+    ...(moved.length > 0 ? [`moved with the start of a line: ${moved.map((id) => host.nameOf(id)).join(', ')}`] : []),
+    ...(shortened.length > 0 ? [`reading one line, check: ${shortened.map((id) => host.nameOf(id)).join(', ')}`] : []),
+  ];
+  host.run({ type: 'batch', commands: made.commands }, `Corner rounded; ${notes.join('; ')}.`);
 }
 
 // Promítne hranu tělesa; je-li vybrané jedno promítnutí, opraví ho (ID zůstane, vazby drží).

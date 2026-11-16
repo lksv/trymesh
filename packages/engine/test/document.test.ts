@@ -457,3 +457,79 @@ describe('načtení dokumentu', () => {
     expect(() => validateDocument({ ...old, features: [{ ...old.features[1], distance: 0 }] })).toThrow(/must not be zero/);
   });
 });
+
+describe('setCurvePoint (D52)', () => {
+  // the rectangle of `base` with a circle, an arc and two free points
+  const withCurves = (): Document =>
+    run(
+      base(),
+      ...([['q1', 10, 10], ['q2', 20, 10], ['c', 50, 0], ['s', 55, 0], ['e', 50, 5]] as [string, number, number][]).map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 'S1', id, x, y })),
+      { type: 'addCurve', sketch: 'S1', id: 'k1', curve: { type: 'circle', center: 'c' }, radius: 3 },
+      { type: 'addCurve', sketch: 'S1', id: 'k2', curve: { type: 'arc', center: 'c', start: 's', end: 'e', construction: true } },
+    );
+  const repoint = (id: string, point: string, to: string): Command => ({ type: 'setCurvePoint', sketch: 'S1', id, point, to }) as Command;
+
+  it('every point of every kind of curve; the curve keeps its ID, kind, direction, flag and constraints', () => {
+    let doc = run(withCurves(), { type: 'addConstraint', sketch: 'S1', id: 'h', constraint: { type: 'horizontal', line: 'l1' } });
+    doc = run(doc, repoint('l1', 'a', 'q1'), repoint('l1', 'b', 'q2'));
+    expect(sketchOf(doc).curves.l1).toEqual({ type: 'line', a: 'q1', b: 'q2' });
+    expect(sketchOf(doc).constraints.h).toEqual({ type: 'horizontal', line: 'l1' });
+    doc = run(doc, repoint('k1', 'center', 'q1'));
+    expect(sketchOf(doc).curves.k1).toEqual({ type: 'circle', center: 'q1' });
+    expect(sketchOf(doc).radii.k1).toBe(3);
+    doc = run(doc, repoint('k2', 'center', 'origin'), repoint('k2', 'start', 'q2'), repoint('k2', 'end', 'p3'));
+    expect(sketchOf(doc).curves.k2).toEqual({ construction: true, type: 'arc', center: 'origin', start: 'q2', end: 'p3' });
+    // the old points stay, with nothing on them
+    expect(Object.keys(sketchOf(doc).points)).toEqual(['p1', 'p2', 'p3', 'p4', 'q1', 'q2', 'c', 's', 'e']);
+    // nothing is solved by the command: the positions are those of the document
+    expect(sketchOf(doc).points).toEqual(sketchOf(withCurves()).points);
+    // the document loads as it is
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+  });
+
+  it('a name the kind of the curve does not have is invalid', () => {
+    const doc = withCurves();
+    invalid(doc, repoint('l1', 'center', 'q1'), /a line has the points a, b, not "center"/);
+    invalid(doc, repoint('l1', 'start', 'q1'), /a line has the points a, b/);
+    invalid(doc, repoint('k1', 'a', 'q1'), /a circle has the points center, not "a"/);
+    invalid(doc, repoint('k2', 'b', 'q1'), /an? arc has the points center, start, end/);
+    invalid(doc, repoint('l1', 'middle', 'q1'), /not "middle"/);
+    invalid(doc, repoint('l1', 'constructor', 'q1'), /not "constructor"/);
+  });
+
+  it('refusals: no such curve, no such point, a point of another sketch or of projected geometry, a curve that would not be one', () => {
+    const doc = run(withCurves(), { type: 'addFeature', feature: emptySketch('S2', 'Other', XY) }, { type: 'addPoint', sketch: 'S2', id: 'z', x: 0, y: 0 });
+    invalid(doc, repoint('nope', 'a', 'q1'), /"nope" is not an own curve of the sketch/);
+    invalid(doc, repoint('p1', 'a', 'q1'), /"p1" is not an own curve/);
+    invalid(doc, repoint('l1', 'a', 'nope'), /"nope" není vlastní bod skici/);
+    invalid(doc, repoint('l1', 'a', 'z'), /"z" není vlastní bod skici/);
+    invalid(doc, repoint('l1', 'a', 'p2'), /dva různé body/); // both ends at one point
+    invalid(doc, repoint('k2', 'start', 'e'), /tři různé body/);
+    invalid(doc, repoint('k2', 'center', 's'), /tři různé body/);
+    invalid(doc, { type: 'setCurvePoint', sketch: 'E1', id: 'l1', point: 'a', to: 'q1' }, /není skica/);
+  });
+
+  it('a constraint the catalog would refuse afterwards makes the command invalid and is named', () => {
+    // the midpoint of a line cannot be its end; the symmetric points cannot be ends of the axis
+    const middle = run(withCurves(), { type: 'addConstraint', sketch: 'S1', id: 'mid', constraint: { type: 'midpoint', point: 'q1', line: 'l1' } });
+    invalid(middle, repoint('l1', 'b', 'q1'), /the constraint "mid" on "l1" would not hold: středem úsečky nemůže být její konec/);
+    const symmetric = run(withCurves(), { type: 'addConstraint', sketch: 'S1', id: 'sym', constraint: { type: 'symmetric', a: 'q1', b: 'q2', line: 'l3' } });
+    invalid(symmetric, repoint('l3', 'a', 'q2'), /"sym" on "l3" would not hold: souměrný bod nesmí být koncem osy/);
+    // in a batch: the index of the command that failed
+    expect(() => applyCommand(middle, { type: 'batch', commands: [{ type: 'addPoint', sketch: 'S1', id: 'x1', x: 0, y: 0 }, repoint('l1', 'b', 'q1')] })).toThrow(expect.objectContaining({ commandIndex: 1 }));
+    // other constraints on the curve do not matter
+    expect(sketchOf(run(symmetric, repoint('l1', 'a', 'q1'))).curves.l1).toEqual({ type: 'line', a: 'q1', b: 'p2' });
+  });
+
+  it('the point the curve has already is accepted and changes nothing', () => {
+    const doc = withCurves();
+    expect(applyCommand(doc, repoint('l1', 'a', 'p1'))).toBe(doc);
+  });
+
+  it('the stamp of the solved state no longer matches, as after any change of a curve', async () => {
+    const { solverSetup } = await import('../src/sketch');
+    const doc = withCurves();
+    const next = run(doc, repoint('l1', 'a', 'q1'));
+    expect(solverSetup(sketchOf(next), {}).stamp).not.toBe(solverSetup(sketchOf(doc), {}).stamp);
+  });
+});

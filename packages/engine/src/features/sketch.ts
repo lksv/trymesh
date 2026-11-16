@@ -43,6 +43,18 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   return { ...construction, type, center, start, end };
 }
 
+// The own rule of a constraint in the catalog (`check` of CONSTRAINTS), which reads the points of
+// the curves it names: `constraint` asks it when a constraint is validated, and the command
+// setCurvePoint asks it again for every constraint on the curve it changes (D52).
+function ruleProblem(sketch: SketchFeature, type: Constraint['type'], operands: Id[], kinds: EntityKind[]): string | undefined {
+  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
+  return CONSTRAINTS[type].check?.(kinds, operands, pointsOf);
+}
+export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): string | undefined {
+  const operands = constraintOperands(c);
+  return ruleProblem(sketch, c.type, operands, operands.map((id) => entityOf(sketch, id)?.kind as EntityKind));
+}
+
 // Vazba podle katalogu: operandy existují, mají správný druh a jsou navzájem různé, hodnota
 // splňuje konvenci znamének a aspoň jedním operandem může solver hýbat (řídicí vazbu jen mezi
 // pevnými entitami solver tiše ignoruje).
@@ -62,8 +74,7 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
     kinds.push(entity.kind);
   }
   if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: vazba potřebuje ${spec.operands.length === 2 ? 'dvě' : spec.operands.length} různé entity`);
-  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
-  const problem = spec.check?.(kinds, Object.values(operands), pointsOf);
+  const problem = ruleProblem(sketch, type as Constraint['type'], Object.values(operands), kinds);
   if (problem) fail(`${what}: ${problem}`);
   const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
   const onlyFixed = (): never => fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);

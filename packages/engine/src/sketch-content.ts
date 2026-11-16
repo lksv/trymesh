@@ -3,7 +3,7 @@
 // catalog and the utilities, so the sketch solver setup, the diagnosis and the feature modules can
 // all read it below the registry of feature types.
 import { CONSTRAINTS, type EntityKind } from './catalog';
-import type { Constraint, Curve, Dimension, Document, ExternalRef, FieldPath, Id, PlaneRef, SketchFeature } from './types';
+import type { Constraint, Curve, CurvePointName, CurveShape, Dimension, Document, ExternalRef, FieldPath, Id, PlaneRef, SketchFeature } from './types';
 import { ORIGIN, has } from './util';
 
 export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
@@ -61,6 +61,15 @@ export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
   }
   return undefined;
 }
+
+// The points a curve is given by, by the kind of the curve (D52): the fields of the shape other
+// than `type`, so the table cannot name a point a curve does not have.
+export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['center', 'start', 'end'] } as const satisfies {
+  [T in CurveShape['type']]: readonly Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>[];
+};
+type TableName = (typeof CURVE_POINTS)[keyof typeof CURVE_POINTS][number];
+// every name of the table is a CurvePointName, and every CurvePointName is in the table
+true satisfies (TableName extends CurvePointName ? (CurvePointName extends TableName ? true : false) : false);
 
 export function curvePoints(curve: Curve): Id[] {
   if (curve.type === 'line') return [curve.a, curve.b];

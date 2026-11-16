@@ -23,7 +23,10 @@ import {
   type Anchor,
   type NewId,
   type Placed,
+  type SketchToolCall,
   type SketchToolInputs,
+  type SketchToolResult,
+  type CurvePointName,
   type Vec2,
   anchorPosition,
   isFlag,
@@ -62,11 +65,34 @@ export function lineCommands(sketch: Id, view: SketchView, from: Anchor, to: Anc
   return { commands, end: b.id };
 }
 
-// The rectangle and the regular polygon are sketch tools of the engine, shared with MCP; here they
-// only get the clicks. undefined = the clicks cannot be drawn (both at one place).
-export function rectangleCommands(_sketch: Id, view: SketchView, first: Anchor, opposite: Anchor, newId: NewId): Command[] | undefined {
-  const made = sketchTool('rectangle', view.source, { first, opposite }, newId);
+// The rectangle, the regular polygon and the fillet are sketch tools of the engine, shared with
+// MCP; here they only get the clicks. `context` is the open sketch with the document
+// (`SketchContext.tool`). undefined = the clicks cannot be drawn (both at one place).
+export function rectangleCommands(_sketch: Id, context: SketchToolCall, first: Anchor, opposite: Anchor, newId: NewId): Command[] | undefined {
+  const made = sketchTool('rectangle', context, { first, opposite }, newId);
   return made.ok ? made.commands : undefined;
+}
+
+// What the fillet tool of the app remembers between corners: the radius, a number or an expression.
+export interface FilletOptions {
+  radius: number | Expr;
+}
+export const DEFAULT_FILLET: FilletOptions = { radius: 2 };
+
+// The fillet of a corner (D52): the batch as the tool made it, or the reason it refuses.
+export function filletCommands(context: SketchToolCall, corner: Id, options: FilletOptions, newId: NewId): SketchToolResult {
+  return sketchTool('fillet', context, { corner, radius: options.radius }, newId);
+}
+
+// The points of a curve by its kind, with their labels: what the row Re-point offers.
+export const CURVE_POINT_LABELS: Record<CurvePointName, string> = { a: 'Start', b: 'End', center: 'Centre', start: 'Start', end: 'End' };
+
+// A selection that a curve can be re-pointed by: one own curve and one own point (or the origin).
+export function repointSelection(view: SketchView, selection: Id[]): { curve: Id; to: Id } | undefined {
+  if (selection.length !== 2) return undefined;
+  const curve = selection.find((id) => view.curves.get(id)?.own);
+  const to = selection.find((id) => id !== curve && view.points.has(id) && (view.points.get(id)?.own || id === ORIGIN));
+  return curve && to ? { curve, to } : undefined;
 }
 
 // What the polygon tool of the app remembers between clicks: the number of sides and whether the
@@ -80,9 +106,9 @@ export const DEFAULT_POLYGON: PolygonOptions = { sides: 6, sizeKind: 'none' };
 // The size across flats exists for an even number of sides only; an odd polygon falls back to the circle.
 export const polygonSizeKind = (options: PolygonOptions): PolygonOptions['sizeKind'] => (options.sizeKind === 'acrossFlats' && options.sides % 2 === 1 ? 'circumscribed' : options.sizeKind);
 
-export function polygonCommands(_sketch: Id, view: SketchView, center: Anchor, vertex: Anchor, options: PolygonOptions, newId: NewId): Command[] | undefined {
+export function polygonCommands(_sketch: Id, context: SketchToolCall, center: Anchor, vertex: Anchor, options: PolygonOptions, newId: NewId): Command[] | undefined {
   const sizeKind = polygonSizeKind(options);
-  const made = sketchTool('polygon', view.source, { center, vertex, sides: options.sides, ...(sizeKind === 'none' ? {} : { sizeKind }) }, newId);
+  const made = sketchTool('polygon', context, { center, vertex, sides: options.sides, ...(sizeKind === 'none' ? {} : { sizeKind }) }, newId);
   return made.ok ? made.commands : undefined;
 }
 

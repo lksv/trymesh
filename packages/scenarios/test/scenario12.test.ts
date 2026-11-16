@@ -13,12 +13,13 @@
 // - 2e (D53), the linear pattern and the mirror: a row of vent slots in the long wall, the rib and
 //   its brace mirrored to the other long wall, pads under the corners as mirrors of one body, and
 //   the lid in a row for the print bed.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type Surface, UPGRADES } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type SketchFeature, type SolveInput, type Surface, UPGRADES, faceKey, freshIds, sketchTool } from '@trymesh/engine';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { readZip } from '../../engine/test/zip-reader';
 import { NO_PRINTED_BODY } from '../../engine/src/export/bodies';
 import { QUARTER, TURN_ALLOWANCE } from '../../engine/src/export/outline';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { BORE, CONE, FLOOR, LID_TOP, MID_W, OUTLINE, PADS, POST_TOP, RIB_LEFT, RIB_LEFT_COPY, SCREW_POINTS, UNDER_LID, WALL_OUT, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lidsInARow, lipLeadIn, midPlanes, pads, parameters, posts, rib, ribDraft, ribMirror, screwHoles, sketchOn, vents } from './box';
+import { BORE, CONE, FLOOR, LID_TOP, MID_W, OUTLINE, PADS, POST_TOP, RIB_LEFT, RIB_LEFT_COPY, SCREW_POINTS, UNDER_LID, WALL_OUT, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lidsInARow, lipLeadIn, midPlanes, pads, parameters, pointAt, posts, rib, ribDraft, ribMirror, screwHoles, sketchOn, vents } from './box';
 import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -749,5 +750,273 @@ describe('scenario 12, the part of 2g: the box and its lid as 3MF, the lid as a 
     expect(code(engine.export('svg', { plane: XY_PLANE, bodies: ['nope'] }))).toBe('notAvailable bodies/0');
     expect(code(engine.export('3mf', { bodies: [] }))).toBe('invalidArguments bodies');
     expect(code(engine.export('dxf', { plane: XY_PLANE, flip: true } as never))).toBe('invalidArguments flip');
+  });
+});
+
+describe('scenario 12, the part of 2d: round corners by the fillet of the sketch, the bare command setCurvePoint', () => {
+  let engine: Engine;
+  let finished: EngineState;
+  let fillets: Record<Id, Record<string, Id[]>>;
+  const CORNERS: Id[] = ['o1', 'o2', 'o3', 'o4'];
+  // the five features that read the one region of the outline
+  const ON_OUTLINE: Id[] = ['box', 'cavity', 'lid', 'lip', 'lipInside'];
+  const allOk = (state: EngineState): boolean => state.document.features.every((feature) => state.evaluation.features[feature.id].status === 'ok');
+  const facesOf = (state: EngineState, body: Id): string[] => state.evaluation.bodies[body].faces.map((face) => faceKey(state.evaluation.faceNames[face.id]));
+  const keptFaces = (before: EngineState, after: EngineState): boolean => ['box', 'lid'].every((body) => facesOf(before, body).every((name) => facesOf(after, body).includes(name)));
+  const contextOf = (state: EngineState, sketch: Id) => ({ sketch: state.document.features.find((f) => f.id === sketch) as SketchFeature, result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document });
+  const filletCorner = (sketch: Id, corner: Id, radius: number | string, prefix: string): Record<string, Id[]> => {
+    const state = engine.getState();
+    const made = sketchTool('fillet', contextOf(state, sketch), { corner, radius }, freshIds(state.document, prefix));
+    if (!made.ok) throw new Error(made.message);
+    run(engine, { type: 'batch', commands: made.commands });
+    return made.ids;
+  };
+  const refusal = (sketch: Id, corner: Id, radius: number | string): string | undefined => {
+    const state = engine.getState();
+    const made = sketchTool('fillet', contextOf(state, sketch), { corner, radius }, freshIds(state.document, 'x_'));
+    return made.ok ? undefined : made.message;
+  };
+  const pointOf = (state: EngineState, sketch: Id, id: Id): [number, number] => {
+    const p = state.evaluation.features[sketch].sketch!.points[id];
+    return [p.x, p.y];
+  };
+  beforeAll(() => {
+    // the finished model of 2a, 2b, 2f, 2c and 2e
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket(), ribDraft(), lipLeadIn(), countersinkByHand(), posts(), sketchOn('tops', onFace('box', POST_TOP)), brace());
+    const hardware = (args: object) => {
+      const answer = engine.query('hardwareHole', args as never);
+      if (!answer.ok) throw new Error(answer.error.message);
+      return answer.result as { shape: HoleFeature['shape']; label: string; depth?: number };
+    };
+    const screw = DATA_CATALOGS.countersunkScrews.rows.M3;
+    const countersunk = hardware({ use: 'countersunk', size: 'M3', allowance: 'holeComp' });
+    run(engine, screwHoles(countersunk.shape, countersunk.label, String(Math.max(3, screw.headDiameter / 2 / Math.tan(screw.headAngle / 2) + 1))));
+    const size = Object.keys(DATA_CATALOGS.heatSetInserts.rows).find((key) => DATA_CATALOGS.heatSetInserts.rows[key].thread === 3) as string;
+    const insert = hardware({ use: 'heatSetInsert', size, allowance: 'holeComp' });
+    run(engine, insertHoles(insert.shape, insert.label, insert.depth as number), vents(), midPlanes(), ribMirror(), pads());
+    finished = engine.getState();
+    expectAllOk(finished);
+  });
+
+  it('the finished model: what reads the outline, and what stands on a side face of it', () => {
+    // 33 features: 22 of 2a, 2b, 2f and 2c, 11 of 2e
+    expect(finished.document.features).toHaveLength(33);
+    const readers = finished.document.features.filter((f) => f.type === 'extrude' && f.profile.sketch === 'outline').map((f) => f.id);
+    expect(readers).toEqual(ON_OUTLINE);
+  });
+
+  it('what reads one line of a corner alone is named in shortened (tried on previews, before the corners are rounded)', () => {
+    // a sketch on the top of the lid projects the edge of the top with the side of `ob` (o2 to o3)
+    const top: FaceName = { feature: 'lid', role: 'endCap' };
+    const note: Command[] = [sketchOn('edgeNote', onFace('lid', top)), { type: 'addExternal', sketch: 'edgeNote', id: 'edge', ref: { type: 'edge', body: 'lid', edge: { a: top, b: { feature: 'lid', role: 'side', curve: 'ob' } }, kind: 'line' } }];
+    const noted = preview(engine, { type: 'batch', commands: note });
+    const fillet = (corner: Id) => sketchTool('fillet', contextOf(noted, 'outline'), { corner, radius: 6 }, freshIds(noted.document, 'n_'));
+    const [near3, far] = [fillet('o3'), fillet('o1')];
+    if (!near3.ok || !far.ok) throw new Error('refused');
+    expect(near3.ids.shortened).toEqual(['edgeNote']);
+    expect(far.ids.shortened).toEqual([]);
+    const rounded = preview(engine, { type: 'batch', commands: [...note, ...near3.commands] });
+    expect(rounded.evaluation.features.edgeNote).toMatchObject({ status: 'ok', warnings: [] });
+    near(pointOf(rounded, 'edgeNote', 'edge/b')[1], 44, 1e-6);
+    // a wall along `b12` alone, one of the two lines of the bracket: 7 long in place of 11
+    const half: Command = { type: 'addFeature', feature: { id: 'half', name: 'half', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'ribs', curves: ['b12'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'new' } };
+    const withHalf = preview(engine, half);
+    const bend = sketchTool('fillet', contextOf(withHalf, 'ribs'), { corner: 'b2', radius: 4 }, freshIds(withHalf.document, 'n_'));
+    if (!bend.ok) throw new Error(bend.message);
+    expect(bend.ids).toMatchObject({ patched: ['bracket'], shortened: ['half'] });
+    const bent = preview(engine, { type: 'batch', commands: [half, ...bend.commands] });
+    expect(bent.evaluation.features.half.status).toBe('ok');
+    near(volumeOf(withHalf, 'half'), 211.2, 1e-2);
+    near(volumeOf(bent, 'half'), 134.4, 1e-2);
+    const ends = bent.evaluation.bodies.half.faces.flatMap((face) => {
+      const name = bent.evaluation.faceNames[face.id];
+      return name.role === 'wallEnd' ? [name.point] : [];
+    });
+    expect(ends).toContain(bend.ids.ends[bend.ids.lines.indexOf('b12')]);
+    expect(ends).not.toContain('b2');
+  });
+
+  it('refusals, before the bracket is rounded: the end of one line, a point no line ends at, an expression without a value, a radius the lines are too short for', () => {
+    expect(refusal('ribs', 'b1', 2)).toMatch(/not the common end of exactly two lines: what ends there is "b12" \(line\)/);
+    expect(refusal('postSketch', 'mid', 2)).toMatch(/no curve ends there/);
+    expect(refusal('ribs', 'b2', 'noSuchParameter')).toMatch(/^radius: .*noSuchParameter/);
+    // the lines are 11 and 13 long at a right angle: the radius has to be below 11
+    expect(refusal('ribs', 'b2', 11)).toMatch(/has to be below 11$/);
+    expect(refusal('ribs', 'b2', 4)).toBeUndefined();
+  });
+
+  it('four fillets of the outline by one parameter: every feature on it patched, no face lost, twenty round faces, the lid still fits', () => {
+    run(engine, { type: 'setParameter', name: 'cornerR', expr: '6' });
+    fillets = Object.fromEntries(CORNERS.map((corner, i) => [corner, filletCorner('outline', corner, 'cornerR', `f${i + 1}_`)]));
+    const state = engine.getState();
+    expectAllOk(state);
+    const arcs = CORNERS.map((corner) => fillets[corner].arc[0]);
+    for (const corner of CORNERS) expect(fillets[corner].patched).toEqual(ON_OUTLINE);
+    for (const id of ON_OUTLINE) expect(featureOf(state, id).profile).toMatchObject({ regions: [{ outerLoop: [...OUTLINE, ...arcs].sort() }] });
+    // as determined as before, its sizes still between the sharp corners
+    const outline = state.evaluation.features.outline.sketch!;
+    expect(outline.degreesOfFreedom).toBe(0);
+    expect(outline.regions).toHaveLength(1);
+    near(outline.points.o3.x, 80, 1e-9);
+    near(outline.points.o3.y, 50, 1e-9);
+    // sixteen cylinders (the box 6, the cavity 4, the plate of the lid and the lip) and four cones (the lip has a lead-in)
+    const round = state.evaluation.faceNames.flatMap((name, i) => (name.role === 'side' && arcs.includes(name.curve) && !name.copy ? [{ name, surface: state.evaluation.faceSurfaces[i] }] : []));
+    expect(round).toHaveLength(20);
+    expect(round.filter((face) => face.surface.kind === 'cylinder')).toHaveLength(16);
+    expect(round.filter((face) => face.surface.kind === 'cone')).toHaveLength(4);
+    const radiusOf = (feature: Id): number => (round.find((face) => face.name.feature === feature)!.surface as { radius: number }).radius;
+    near(radiusOf('box'), 6, 1e-9);
+    near(radiusOf('cavity'), 4, 1e-9);
+    expect(keptFaces(finished, state)).toBe(true);
+    expect(engine.query('interference', { bodies: ['box', 'lid', ...PADS] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+  });
+
+  it('what the fillets moved without an error: the brace at o4 and the vent slots at o1; nothing reads one line of the outline alone', () => {
+    // `od` starts at o4 and the brace stands on its side face in the cavity; `oa` starts at o1 and the vents stand on its outer side
+    expect(fillets.o4.moved).toEqual(['braceSketch']);
+    expect(fillets.o1.moved).toEqual(['ventSketch']);
+    expect(fillets.o2.moved).toEqual([]);
+    expect(fillets.o3.moved).toEqual([]);
+    for (const corner of CORNERS) expect(fillets[corner].shortened).toEqual([]);
+    const state = engine.getState();
+    // the face started at the corner of the cavity, y = W − wall; it starts where the moved arc ends, y = W − cornerR
+    near(finished.evaluation.features.braceSketch.plane!.origin[1], 48, 1e-9);
+    near(state.evaluation.features.braceSketch.plane!.origin[1], 44, 1e-9);
+    // the vents start 6 mm further along the wall, the fourth at x = 38 in place of 32
+    near(state.evaluation.features.ventSketch.plane!.origin[0], 6, 1e-9);
+    const fourth: FaceName = { feature: 'vent', role: 'side', curve: 'vd', copy: [{ pattern: 'ventRow', index: 4 }] };
+    expect(faceBox(finished, 'box', fourth)?.min[0]).toBeCloseTo(32, 5);
+    expect(faceBox(state, 'box', fourth)?.min[0]).toBeCloseTo(38, 5);
+    // both are put back by their dimensions from the origin of their sketch
+    const back = run(engine, { type: 'setConstraintValue', sketch: 'braceSketch', id: 'brcx', value: '-(W - cornerR - wall - 16)' }, { type: 'batch', commands: ['v1x', 'v2x', 'v3x', 'v4x'].map((id, i): Command => ({ type: 'setConstraintValue', sketch: 'ventSketch', id, value: `${i === 1 || i === 2 ? '16 + 2' : '16'} - cornerR` })) });
+    expectAllOk(back);
+    expect(faceBox(back, 'box', fourth)?.min[0]).toBeCloseTo(32, 5);
+    const brace: FaceName = { feature: 'brace', role: 'side', curve: 'br' };
+    expect(faceBox(back, 'box', brace)?.min[1]).toBeCloseTo(faceBox(finished, 'box', brace)!.min[1], 6);
+  });
+
+  it('the radius is one parameter; an inward offset that uses it up is an error of that feature', () => {
+    expect(allOk(preview(engine, { type: 'setParameter', name: 'cornerR', expr: '8' }))).toBe(true);
+    // the inside of the lip is moved in by wall + clearance + lipT = 3.7
+    const used = preview(engine, { type: 'setParameter', name: 'cornerR', expr: '3.7' });
+    expect(used.evaluation.features.lipInside.error?.code).toBe('invalidProfile');
+    expect(used.evaluation.features.cavity.status).toBe('ok');
+    expect(allOk(preview(engine, { type: 'setParameter', name: 'L', expr: '120' }))).toBe(true);
+  });
+
+  it('the rim of a round corner on the top of the lid projects as a circle', () => {
+    const top: FaceName = { feature: 'lid', role: 'endCap' };
+    const state = preview(engine, { type: 'batch', commands: [sketchOn('roundRim', onFace('lid', top)), { type: 'addExternal', sketch: 'roundRim', id: 'rim', ref: { type: 'edge', body: 'lid', edge: { a: top, b: { feature: 'lid', role: 'side', curve: fillets.o3.arc[0] } }, kind: 'circle' } }] });
+    expect(state.evaluation.features.roundRim.status).toBe('ok');
+    near(state.evaluation.features.roundRim.sketch!.radii.rim, 6, 1e-6);
+    const centre = pointOf(state, 'roundRim', 'rim/center');
+    near(centre[0], 74, 1e-6);
+    near(centre[1], 44, 1e-6);
+  });
+
+  it('a corner that was filleted is no corner any more', () => {
+    expect(refusal('outline', 'o3', 2)).toBe('"o3" is not the common end of exactly two lines: no curve ends there');
+  });
+
+  it('the bracket gets a round bend: a construction arc added to the curves of its wall; a bend of 1 leaves the inner side no radius', () => {
+    const before = engine.getState();
+    const ids = filletCorner('ribs', 'b2', 4, 'bf_');
+    const state = engine.getState();
+    expectAllOk(state);
+    expect(ids.patched).toEqual(['bracket']);
+    const arc = ids.arc[0];
+    expect((state.document.features.find((f) => f.id === 'ribs') as SketchFeature).curves[arc]).toMatchObject({ construction: true, type: 'arc' });
+    expect(featureOf(state, 'bracket').profile).toMatchObject({ curves: ['b12', 'b23', arc].sort() });
+    expect(state.evaluation.faceNames.filter((name, i) => name.feature === 'bracket' && name.role === 'wallSide' && name.curve === arc && facesOf(state, 'box').includes(faceKey(state.evaluation.faceNames[i])))).toHaveLength(2);
+    expect(keptFaces(before, state)).toBe(true);
+    const tight = preview(engine, { type: 'setConstraintValue', sketch: 'ribs', id: ids.radius[0], value: 1 });
+    expect(tight.evaluation.features.bracket.error?.code).toBe('invalidProfile');
+  });
+
+  it('the bare command: the foot of the rib moved to a new point; its faces keep their names and the brace that ends in its side follows', () => {
+    const before = engine.getState();
+    const ribFaces = (state: EngineState): string[] => facesOf(state, 'box').filter((key) => state.evaluation.faceNames.some((name) => name.feature === 'rib' && faceKey(name) === key));
+    const state = run(engine, pointAt('ribs', 'r1c', 'L / 2 + 6', 'wall / 2'), { type: 'setCurvePoint', sketch: 'ribs', id: 'r1', point: 'a', to: 'r1c' });
+    expectAllOk(state);
+    const sketch = state.document.features.find((f) => f.id === 'ribs') as SketchFeature;
+    expect(sketch.curves.r1).toEqual({ construction: true, type: 'line', a: 'r1c', b: 'r1b' });
+    // the point the line left is still there, with its two dimensions
+    expect('r1a' in sketch.points && 'r1ax' in sketch.constraints).toBe(true);
+    expect(ribFaces(state)).toEqual(ribFaces(before));
+    expect(facesOf(state, 'box')).toContain(faceKey(RIB_LEFT));
+    expect(state.evaluation.features.brace.facts?.lengthMin).toBeGreaterThan(38);
+  });
+
+  it('a gusset drawn as two lines with end points of their own is joined by re-pointing one onto the other, and its corner can then be filleted', () => {
+    run(
+      engine,
+      pointAt('ribs', 'g1', '14', 'wall / 2'),
+      pointAt('ribs', 'g2', '14', 'wall + 8'),
+      pointAt('ribs', 'g2b', '14', 'wall + 8'),
+      pointAt('ribs', 'g3', 'wall / 2', 'wall + 8'),
+      { type: 'addCurve', sketch: 'ribs', id: 'g12', curve: { type: 'line', a: 'g1', b: 'g2', construction: true } },
+      { type: 'addCurve', sketch: 'ribs', id: 'g23', curve: { type: 'line', a: 'g2b', b: 'g3', construction: true } },
+    );
+    const apart = run(engine, { type: 'addFeature', feature: { id: 'gusset', name: 'gusset', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'ribs', curves: ['g12', 'g23'], thickness: 'ribT' }, extent: { type: 'distance', start: 0, distance: 'ribH' }, operation: 'add', targets: ['box'] } });
+    expect(apart.evaluation.features.gusset.error?.code).toBe('invalidProfile');
+    const joined = run(engine, { type: 'batch', commands: [{ type: 'setCurvePoint', sketch: 'ribs', id: 'g23', point: 'a', to: 'g2' }, { type: 'removeEntity', sketch: 'ribs', id: 'g2b' }] });
+    expectAllOk(joined);
+    // the lines are 9 and 13 long at a right angle: 2 fits, 20 does not
+    expect(refusal('ribs', 'g2', 2)).toBeUndefined();
+    expect(refusal('ribs', 'g2', 20)).toMatch(/has to be below 9$/);
+  });
+
+  it('refused re-points, each an invalid command that changes nothing; the point a curve has is no change', () => {
+    const refused = (point: string, to: Id, id: Id = 'r1'): boolean => !engine.preview({ type: 'setCurvePoint', sketch: 'ribs', id, point, to } as Command).ok;
+    expect(refused('b', 'r1c')).toBe(true); // both ends of the line at one point
+    expect(refused('center', 'r1b')).toBe(true); // a line has no centre
+    expect(refused('a', 'o1')).toBe(true); // a point of another sketch
+    expect(refused('a', 'nope')).toBe(true);
+    expect(refused('a', 'r1b', 'nope')).toBe(true);
+    // the middle of a line cannot be its end: the batch is refused at its last command
+    const middle: Command[] = [pointAt('ribs', 'r1m', 'L / 2', 'wall'), { type: 'addConstraint', sketch: 'ribs', id: 'r1mid', constraint: { type: 'midpoint', point: 'r1m', line: 'r1' } }, { type: 'setCurvePoint', sketch: 'ribs', id: 'r1', point: 'b', to: 'r1m' }];
+    const result = engine.preview({ type: 'batch', commands: middle });
+    expect(!result.ok && result.error.commandIndex).toBe(2);
+    expect(engine.preview({ type: 'batch', commands: middle.slice(0, -1) }).ok).toBe(true);
+    const before = engine.getState().document;
+    expect(engine.execute({ type: 'setCurvePoint', sketch: 'ribs', id: 'r1', point: 'b', to: 'r1b' }).ok).toBe(true);
+    expect(engine.getState().document).toBe(before);
+  });
+
+  it('at the port of the solver a fillet drawn exactly is solved again with another radius', async () => {
+    const solver = await createPlanegcsSolver();
+    const input = (radius: number): SolveInput => ({
+      points: { origin: { x: 0, y: 0 }, p: { x: 0, y: 0 }, q1: { x: 40, y: 0 }, q2: { x: 0, y: 30 }, t1: { x: 6, y: 0 }, t2: { x: 0, y: 6 }, c: { x: 6, y: 6 } },
+      radii: {},
+      curves: { l1: { type: 'line', a: 't1', b: 'q1' }, l2: { type: 'line', a: 'q2', b: 't2' }, f: { type: 'arc', center: 'c', start: 't2', end: 't1' } },
+      constraints: {
+        fix: { type: 'coincident', a: 'p', b: 'origin' },
+        h: { type: 'horizontal', line: 'l1' },
+        v: { type: 'vertical', line: 'l2' },
+        w: { type: 'distance', a: 'p', b: 'q1', value: 40, driving: true },
+        d: { type: 'distance', a: 'p', b: 'q2', value: 30, driving: true },
+        tan1: { type: 'tangent', a: 'l1', b: 'f' },
+        tan2: { type: 'tangent', a: 'l2', b: 'f' },
+        on1: { type: 'pointOnCurve', point: 'p', curve: 'l1' },
+        on2: { type: 'pointOnCurve', point: 'p', curve: 'l2' },
+        r: { type: 'radius', curve: 'f', value: radius, driving: true },
+      },
+      fixed: ['origin'],
+    });
+    expect(solver.solve(input(6)).status).toBe('solved');
+    const changed = solver.solve(input(10));
+    expect(changed.status).toBe('solved');
+    near(changed.points.t1.x, 10, 1e-6);
+    near(changed.points.t2.y, 10, 1e-6);
+  });
+
+  it('the document loads to the same model', () => {
+    const before = engine.getState();
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.getState().document).toEqual(before.document);
+    expectAllOk(other.getState());
+    for (const body of ['box', 'lid']) near(volumeOf(other.getState(), body), volumeOf(before, body), 1e-9);
   });
 });

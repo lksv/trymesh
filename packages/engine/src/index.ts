@@ -9,6 +9,7 @@ export {
   constraintKey,
   constraintOperands,
   constraintPath,
+  CURVE_POINTS,
   documentIds,
   duplicateOf,
   emptyDocument,
@@ -59,6 +60,7 @@ export {
   type NewId,
   type Placed,
   SKETCH_TOOLS,
+  type SketchToolCall,
   type SketchToolContext,
   type SketchToolInput,
   type SketchToolInputs,
@@ -67,6 +69,7 @@ export {
   type SketchToolSpec,
   anchorPosition,
   freshIds,
+  nearestCurvePoint,
   placeAnchor,
   sketchTool,
 } from './sketch-tools';

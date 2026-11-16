@@ -211,6 +211,10 @@ export type CurveShape =
 
 export type Curve = { construction?: boolean } & CurveShape;
 
+// The name a curve has for one of its points (the fields of CurveShape other than `type`): `a`,
+// `b` of a line; `center` of a circle; `center`, `start`, `end` of an arc.
+export type CurvePointName = 'a' | 'b' | 'center' | 'start' | 'end';
+
 export type ProjectionKind = 'line' | 'circle';
 
 // kind: jako co se hrana promítá
@@ -973,6 +977,26 @@ export type Command =
   | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number } // radius u kružnice
   | { type: 'removeEntity'; sketch: Id; id: Id } // bod nebo křivka
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
+  // One point of an own curve is replaced by another point; the curve keeps its ID, kind,
+  // direction, construction flag, radius and every constraint on it (D52).
+  // - `point` is the name the curve has for it: `a` or `b` of a line, `center` of a circle,
+  //   `center`, `start` or `end` of an arc. A name the kind of the curve does not have is an
+  //   invalid command.
+  // - `to` is an own point of the sketch or `origin` (a point of projected geometry is refused:
+  //   join to it with a coincident constraint). The curve has to stay one: the two points of
+  //   a line, the three of an arc differ.
+  // - A constraint on the curve that the catalog would refuse afterwards (a symmetric point that
+  //   becomes an end of the axis, the midpoint of a line that becomes its end) makes the command
+  //   invalid; the message names the constraint.
+  // - The old point stays, with its constraints, also when no curve uses it (removeEntity removes
+  //   it). `to` equal to the point the curve has is accepted and changes nothing.
+  // - Nothing moves by the command; the next recompute solves the sketch from the stored positions.
+  // - What follows in the recompute: a region is named by the curves of its outer loop and a side
+  //   face by its curve, so both keep their names, but a region may no longer be there; the origin
+  //   of the planar side face of a line is its start `a`, so re-pointing `a` moves a sketch or a
+  //   plane on that face; the straight end of a wall is named by the point its chain ends at
+  //   (`wallEnd`), so re-pointing a free end renames that face.
+  | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id }
   | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | FixedInput } // `fixed` without x, y takes the position of the point
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   // Without `value` neither the value nor the expression changes; a number removes the expression,

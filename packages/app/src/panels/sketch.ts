@@ -1,10 +1,10 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
 // selection, the list of constraints and dimensions, the projected geometry, and the options of
 // the polygon tool.
-import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, type Constraint, MAX_POLYGON_SIDES, constraintPath, isDimension } from '@trymesh/engine';
+import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, MAX_POLYGON_SIDES, constraintPath, isDimension, nearestCurvePoint } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
-import { type DimensionVariant, GEOMETRIC_KINDS, type PolygonOptions, dimensionFor, geometricFor, normalizeAngle, polygonSizeKind } from '../sketch-commands';
+import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, type PolygonOptions, dimensionFor, geometricFor, normalizeAngle, polygonSizeKind, repointSelection } from '../sketch-commands';
 import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-diagnosis';
 import { type SketchHost, type SketchMode, addConstraints, deleteSelection, explain, setTool } from '../sketch-mode';
 import { measure, operandsOf } from '../sketch-view';
@@ -47,6 +47,46 @@ function polygonOptions(host: SketchHost): HTMLElement[] {
     h('label', {}, 'Dimension of the size', size),
     h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded.'),
   ];
+}
+
+// The option of the fillet tool, shown while the tool is active: the radius, a number or an
+// expression over the parameters, remembered for the next corner.
+function filletOptions(host: SketchHost): HTMLElement[] {
+  const names = host.doc.parameters.map((p) => p.name);
+  const radius = h('input', {
+    className: 'value',
+    value: fieldText(host.sketching.fillet.radius, 'mm'),
+    title: 'mm, or an expression',
+    oninput: () => {
+      const parsed = parseField(radius.value, 'mm');
+      markProblem(radius, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : typeof parsed === 'number' && !(parsed > 0) ? 'The radius has to be positive.' : undefined);
+    },
+    onchange: () => {
+      // an empty field, a radius that is not positive or an expression in error leaves the radius as it was
+      const parsed = parseField(radius.value, 'mm');
+      const fine = typeof parsed === 'number' ? parsed > 0 : parsed !== undefined && expressionProblem(parsed, 'number', names) === undefined;
+      if (fine) host.sketching.fillet = { radius: parsed as number | Expr };
+      host.renderPanel();
+    },
+  });
+  return [
+    h('h2', {}, 'Fillet'),
+    h('label', {}, 'Radius', radius),
+    h('p', { className: 'hint' }, 'Click the point where two lines meet. The corner gets an arc tangent to both lines with a radius dimension; the lines keep their IDs and the corner point stays where the lines cross. The features that use the outline get the arc in their profile.'),
+  ];
+}
+
+// A row that re-points a point of the selected curve to the selected point (setCurvePoint, D52):
+// a choice of the points the curve has, the nearest one chosen at first.
+function repointRow(host: SketchHost, m: SketchMode): HTMLElement[] {
+  const context = host.sketchContext();
+  const picked = context && repointSelection(context.view, m.selection);
+  if (!context || !picked) return [];
+  const kind = context.feature.curves[picked.curve].type;
+  const nearest = nearestCurvePoint(context.view.source, picked.curve, picked.to);
+  const choice = h('select', { title: 'Which point of the curve' }, ...CURVE_POINTS[kind].map((name) => h('option', { value: name, textContent: CURVE_POINT_LABELS[name], selected: name === nearest })));
+  const send = () => host.run({ type: 'setCurvePoint', sketch: m.id, id: picked.curve, point: choice.value as CurvePointName, to: picked.to }, 'Point of the curve changed.');
+  return [h('div', { className: 'buttons repoint' }, h('label', {}, `Point of ${picked.curve}`, choice), h('button', { textContent: 'Re-point', title: `The chosen point of ${picked.curve} becomes ${picked.to}; the curve keeps its ID and its constraints`, onclick: send }))];
 }
 
 function sketchStatus(host: SketchHost, m: SketchMode): HTMLElement[] {
@@ -122,6 +162,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   out.push(...host.issues(host.view().evaluation.features[m.id]).filter((element) => element.textContent?.startsWith('Field ')));
   out.push(...diagnosisSummary(host, m, diagnosis));
   if (m.tool === 'polygon') out.push(...polygonOptions(host));
+  if (m.tool === 'fillet') out.push(...filletOptions(host));
 
   const dimension = (label: string, variant: DimensionVariant, title: string) => {
     const d = dimensionFor(variant, view, m.selection);
@@ -155,6 +196,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
       ),
       action('Smazat', m.selection.length > 0, () => deleteSelection(host, m), 'Delete'),
     ),
+    ...repointRow(host, m),
   );
 
   // vazby, které solver nedostal, protože odkazují na geometrii, kterou nešlo promítnout

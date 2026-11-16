@@ -16,7 +16,7 @@ import type {
 } from './types';
 import { CONSTRAINTS } from './catalog';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
-import { bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, isDimension, isDriving } from './sketch-content';
+import { CURVE_POINTS, bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, isDimension, isDriving } from './sketch-content';
 import { schemaHeader, upgradeDocument } from './schema';
 import { has } from './util';
 import {
@@ -39,7 +39,7 @@ import {
 import { FEATURE_TYPES, FEATURE_TYPE_INFO, refContext, requireRef, specOf } from './features/index';
 import { applySectionCommand, emptySections, renamedSections, validateSections } from './sections/index';
 import type { FeatureModule } from './features/module';
-import { constraint, curve, externalRef } from './features/sketch';
+import { constraint, constraintRuleProblem, curve, externalRef } from './features/sketch';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -50,6 +50,7 @@ export {
   constraintKey,
   constraintOperands,
   constraintPath,
+  CURVE_POINTS,
   curvePoints,
   derivedPoints,
   documentIds,
@@ -557,6 +558,28 @@ export function applyCommand(doc: Document, command: Command): Document {
         // pořadí klíčů jako při načtení dokumentu, aby se uložený a znovu načtený dokument nelišil
         const flagged = boolean(cmd.construction, 'setConstruction.construction') ? { construction: true, ...rest } : rest;
         return { ...s, curves: { ...s.curves, [id]: flagged as Curve } };
+      });
+
+    case 'setCurvePoint':
+      // D52: three checks: the name of the point, the changed curve as a curve, and the own rule of
+      // every constraint on it. Nothing is solved; the stamp of the sketch no longer matches.
+      return editSketch(doc, cmd.sketch, (s) => {
+        const id = string(cmd.id, 'setCurvePoint.id');
+        if (!has(s.curves, id)) fail(`setCurvePoint.id: "${id}" is not an own curve of the sketch`);
+        const old = s.curves[id];
+        const names: readonly string[] = CURVE_POINTS[old.type];
+        const point = string(cmd.point, 'setCurvePoint.point');
+        if (!names.includes(point)) fail(`setCurvePoint.point: a ${old.type} has the points ${names.join(', ')}, not "${point}"`);
+        const to = string(cmd.to, 'setCurvePoint.to');
+        if ((old as unknown as Record<string, Id>)[point] === to) return s;
+        const changed = curve(s, { ...old, [point]: to }, 'setCurvePoint');
+        const next = { ...s, curves: { ...s.curves, [id]: changed } };
+        for (const [constraintId, c] of Object.entries(s.constraints)) {
+          if (!constraintOperands(c).includes(id)) continue;
+          const problem = constraintRuleProblem(next, c);
+          if (problem) fail(`setCurvePoint: the constraint "${constraintId}" on "${id}" would not hold: ${problem}`);
+        }
+        return next;
       });
 
     case 'addConstraint':

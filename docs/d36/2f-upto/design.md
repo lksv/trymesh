@@ -237,3 +237,8 @@ Where the code differs from the design above:
 - **The test of "an addition that swallows the face it ends on"**: a cover that ends exactly flush on the top of a boss keeps that top under its old name (the kernel's rule for coplanar faces), so the test passes the plane by 1 (`gap: -1`) to swallow the face; its copy then measures to the plane the feature saw.
 
 Known limits, besides those of the design: see architecture/extrude.md, "Extent up to a plane", "Limits".
+
+### The review (2026-11-16)
+
+One full review, no serious finding. Fixed: the text for the AI still spoke of two variants of the extent; a click while *Pick* is armed could take a face of the draft's own preview (now refused with a message, as the pattern form refuses its own copy); "each copy runs to the plane" holds for a pattern of features, not for a pattern of a body, which copies the body as it is (said in `CONVENTIONS`, the comment of `Extent` and extrude.md); the hint after a pick follows the profile and is English; a hovered region no longer stays highlighted while picking. Tests added for a tilted tool against the normal, a copy that runs the other way, a copy the plane passes through, a wall up to a plane and the refused own face in the app.
+

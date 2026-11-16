@@ -612,6 +612,11 @@ describe('the app, driven as a user drives it', () => {
     h.record('the top face of the plate picked: the preview runs to its plane and says the length');
     h.type(h.field(GAP), '2');
     h.record('a gap typed: the cylinder stops 2 short of the plane');
+    h.press('panel', 'Pick');
+    h.click(at(70, 15, 10));
+    h.record('the end of its own preview is refused: the plane stays, the pick stays armed');
+    h.press('panel', 'Picking… (click to stop)');
+    h.record('the pick disarmed: clicks pick regions again');
     h.press('panel', 'OK');
     h.record('OK: the extrusion with its plane and gap is in the document');
     h.row('Vysunutí 2').click();

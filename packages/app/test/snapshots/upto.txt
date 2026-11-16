@@ -162,6 +162,9 @@
     -   button: "Pick"
   status: Click a plane or a planar face in the view: the extrusion ends in its plane.
   view: 1 scene(s) set
+  scene:
+    + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 100 numbers, sum 16744.87
+    - fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 100 numbers, sum 16744.87
 
 === 3. the face under the pointer
   engine: getState("s1")
@@ -184,7 +187,7 @@
     - p#draft-problem.issue.error
     +   button.primary: "OK"
     -   button.primary disabled: "OK"
-  status: Klikáním v pohledu vyberte oblasti skici.
+  status: Click regions of the sketch in the view to pick them.
   view: 1 scene(s) set
   scene:
     + bodies: e1, e2
@@ -217,7 +220,30 @@
     + line #26303c width 1.5: 672 numbers, sum 76171.758
     - line #26303c width 1.5: 672 numbers, sum 76967.758
 
-=== 6. OK: the extrusion with its plane and gap is in the document
+=== 6. the end of its own preview is refused: the plane stays, the pick stays armed
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"upTo","start":0,"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"gap":2},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x3)
+  panel:
+    +   button: "Picking… (click to stop)"
+    -   button: "Pick"
+  status: The extrusion cannot end in a face of its own; pick a plane or a face that exists before it.  [error]
+  view: 2 scene(s) set
+  scene:
+    + face e2 #7 #0ea5e9 opacity 0.3
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 7. the pick disarmed: clicks pick regions again
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"upTo","start":0,"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"gap":2},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   button: "Pick"
+    -   button: "Picking… (click to stop)"
+  status: Click regions of the sketch in the view to pick them.
+  view: 1 scene(s) set
+
+=== 8. OK: the extrusion with its plane and gap is in the document
   engine: getState("e1")
   engine: getState("s1")  (x2)
   engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"upTo","start":0,"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"gap":2},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}) -> ok
@@ -334,10 +360,10 @@
   view: 2 scene(s) set
   scene:
     - fill #64748b opacity 0.15 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
-    - fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 100 numbers, sum 16744.87
-    - face e1 #1 #0ea5e9 opacity 0.3
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 100 numbers, sum 16744.87
+    - face e2 #7 #0ea5e9 opacity 0.3
 
-=== 7. selected: the summary names the plane, the gap and the length
+=== 9. selected: the summary names the plane, the gap and the length
   timeline:
     + div.row.ok.selected
     - div.row.ok
@@ -363,7 +389,7 @@
     + face e2 #7 #f97316 opacity 0.3
     + face e2 #8 #f97316 opacity 0.3
 
-=== 8. the gap emptied and confirmed: removed from the feature
+=== 10. the gap emptied and confirmed: removed from the feature
   engine: preview({"type":"updateFeature","id":"e2","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}],"offset":null},"extent":{"type":"upTo","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"start":0,"gap":2},"operation":"new"}}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)

@@ -185,3 +185,90 @@ describe('an extent up to a plane', () => {
     near(volumeOf(pattern, 'A'), volumeOf(state, 'A') + disc(3) * 3, 2e-3);
   });
 });
+
+// The block B from −40 to 40 in x, −30 to 30 in y and z, and the wedge V whose underside lies in
+// the plane z = x − 5 (45°, through z = 0 at x = 5); sketches on XY cut B up to that plane.
+function steep(): Engine {
+  const engine = newEngine();
+  run(
+    engine,
+    addSketch('S', XY),
+    rectangle('S', 'r', -40, -30, 80, 60, null),
+    feature('B', regions('S', [rectLoop('r')]), { type: 'distance', start: -30, distance: 60 }),
+    addSketch('X', { kind: 'base', plane: 'XZ' }),
+    batch(
+      { type: 'addPoint', sketch: 'X', id: 'v1', x: -20, y: -25 },
+      { type: 'addPoint', sketch: 'X', id: 'v2', x: 20, y: 15 },
+      { type: 'addPoint', sketch: 'X', id: 'v3', x: 20, y: 40 },
+      { type: 'addPoint', sketch: 'X', id: 'v4', x: -20, y: 40 },
+      { type: 'addCurve', sketch: 'X', id: 'va', curve: { type: 'line', a: 'v1', b: 'v2' } },
+      { type: 'addCurve', sketch: 'X', id: 'vb', curve: { type: 'line', a: 'v2', b: 'v3' } },
+      { type: 'addCurve', sketch: 'X', id: 'vc', curve: { type: 'line', a: 'v3', b: 'v4' } },
+      { type: 'addCurve', sketch: 'X', id: 'vd', curve: { type: 'line', a: 'v4', b: 'v1' } },
+    ),
+    feature('V', regions('X', [['va', 'vb', 'vc', 'vd']]), { type: 'distance', start: 0, distance: -30 }),
+    addSketch('C', XY),
+  );
+  return engine;
+}
+const SLOPE: PlaneRef = { kind: 'face', body: 'V', face: { feature: 'V', role: 'side', curve: 'va' } };
+const BLOCK = 80 * 60 * 60;
+const circularZ = (count: number): Command => ({
+  type: 'addFeature',
+  feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'features', features: ['h'] }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count, span: { type: 'full' } } },
+});
+
+describe('an extent up to a plane, findings of the review', () => {
+  it('a tilted tool that runs against the normal: the volume, the facts, the end cap in the plane', () => {
+    const engine = steep();
+    const state = run(engine, circle('C', 'c', -10, 15, 2), feature('h', regions('C', [['c']]), upTo(SLOPE), 'cut', ['B']));
+    expectAllOk(state);
+    const facts = factsOf(state, 'h');
+    expect(facts?.forward).toBe(false);
+    expect(facts?.lengthMin).toBeCloseTo(13, 1);
+    expect(facts?.lengthMax).toBeCloseTo(17, 1);
+    near(volumeOf(state, 'B'), BLOCK - disc(2) * 15, 2e-3);
+    const end = surface(state, cap('h')) as Extract<Surface, { kind: 'plane' }>;
+    // the end cap lies in z = x − 5: its normal along ±(1, 0, −1)
+    near(Math.abs(end.normal[0] + end.normal[2]), 0, 1e-9);
+    near(end.origin[2] - (end.origin[0] - 5), 0, 1e-6);
+  });
+
+  it('a copy of a pattern on the other side of the plane runs the other way', () => {
+    const engine = steep();
+    run(engine, circle('C', 'c', 10, 15, 2), feature('h', regions('C', [['c']]), upTo(SLOPE), 'cut', ['B']));
+    expect(factsOf(engine.getState(), 'h')?.forward).toBe(true);
+    near(volumeOf(engine.getState(), 'B'), BLOCK - disc(2) * 5, 2e-3);
+    // the copy at (−10, −15): the plane is at z = −15 there, below the sketch
+    const state = run(engine, circularZ(2));
+    expectAllOk(state);
+    near(volumeOf(state, 'B'), BLOCK - disc(2) * 20, 4e-3);
+    expect(run(engine, addSketch('E', onFace('B', { ...cap('h'), copy: [{ pattern: 'P', index: 1 }] }))).evaluation.features.E.status).toBe('ok');
+  });
+
+  it('a copy whose profile the plane passes through is an error of the pattern, named by the copy', () => {
+    const engine = steep();
+    run(engine, circle('C', 'c', 0, 5, 2), feature('h', regions('C', [['c']]), upTo(SLOPE), 'cut', ['B']));
+    expect(factsOf(engine.getState(), 'h')?.forward).toBe(false);
+    // the copy at (5, 0) of four: the plane z = x − 5 meets the sketch plane under it
+    const state = run(engine, circularZ(4));
+    expect(errorOf(state, 'P')).toMatchObject({ code: 'invalidExtent', refs: [{ copy: 3, feature: 'h' }, SLOPE] });
+    expect(errorOf(state, 'P')?.message).toMatch(/passes through the start/);
+  });
+
+  it('a wall along a line up to the underside of the lid', () => {
+    const engine = model();
+    const state = run(
+      engine,
+      batch(
+        { type: 'addPoint', sketch: 'T', id: 'l1', x: 5, y: 5 },
+        { type: 'addPoint', sketch: 'T', id: 'l2', x: 35, y: 5 },
+        { type: 'addCurve', sketch: 'T', id: 'l', curve: { type: 'line', a: 'l1', b: 'l2' } },
+      ),
+      feature('wall', { type: 'wall', sketch: 'T', curves: ['l'], thickness: 2 }, upTo(LID('L')), 'add', ['A']),
+    );
+    expectAllOk(state);
+    expect(factsOf(state, 'wall')).toEqual({ lengthMin: 10, lengthMax: 10, forward: true });
+    near(volumeOf(state, 'A'), 12000 + 30 * 2 * 10);
+  });
+});

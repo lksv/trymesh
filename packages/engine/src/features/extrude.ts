@@ -109,6 +109,7 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   try {
     tool = build([], first);
   } catch (error) {
+    // the own span was measured above, so this is a guard, not a path a test reaches
     if (error instanceof ToolProblem) return failed(error.code, error.refs, error.detail);
     return failed('kernelFailure', undefined, error instanceof Error ? error.message : String(error));
   }

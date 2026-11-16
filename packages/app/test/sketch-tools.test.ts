@@ -31,7 +31,9 @@ import {
   polygonSizeKind,
   profileKind,
   rectangleCommands,
-  rememberedProfile, noPlane } from '../src/sketch-commands';
+  noPlane,
+  rememberedProfile,
+} from '../src/sketch-commands';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };

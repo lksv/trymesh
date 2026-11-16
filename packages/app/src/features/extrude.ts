@@ -218,12 +218,19 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
   ].filter((element): element is HTMLElement => element !== null);
 }
 
+// What a click in the view picks for the profile of the draft, said when a pick of a plane ends.
+const clickHint = (draft: ExtrudeDraft): string =>
+  draft.profile.type === 'wall' ? 'Click curves of the sketch in the view: the wall follows them.' : draft.profile.type === 'regions' ? 'Click regions of the sketch in the view to pick them.' : '';
+
 // The part of the extrusion form for an extent up to a plane (D47): the start, the plane with the
 // button that arms a pick in the view, the gap, and the length the preview got.
 function upToFields(host: PanelHost, m: ExtrudeMode, extent: UpToDraft, set: (change: ExtrudeChange, rebuild?: boolean) => void): HTMLElement[] {
   const arm = () => {
     m.extra.picking = !m.extra.picking;
-    host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the extrusion ends in its plane.' : 'Klikáním v pohledu vyberte oblasti skici.');
+    // no region or curve stays highlighted while the view picks faces
+    m.extra.hover = undefined;
+    m.extra.hoverCurve = undefined;
+    host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the extrusion ends in its plane.' : clickHint(m.draft));
     draftChanged(host, true);
   };
   return [
@@ -345,9 +352,11 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
     if (m.extra.picking) {
       const plane = host.planeRefOf(pick);
       if (!plane) return host.say('The extrusion can end in a plane or a planar face.', true);
+      // the view shows the preview: its own faces exist only after the extrusion
+      if (plane.kind === 'face' && (plane.face.feature === m.draft.id || plane.body === m.draft.id)) return host.say('The extrusion cannot end in a face of its own; pick a plane or a face that exists before it.', true);
       m.extra.picking = false;
       m.draft = changeExtrude(m.draft, { plane }, []);
-      host.say('Klikáním v pohledu vyberte oblasti skici.');
+      host.say(clickHint(m.draft));
       draftChanged(host, true);
       return;
     }

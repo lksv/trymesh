@@ -22,7 +22,6 @@ const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Uni
   ],
 };
 
-// What the generator of a feature published, for a human: "module 0.9 mm, pitch ⌀ 16.2 mm, …".
 // The length an extent up to a plane gave (D47), from the facts of the result.
 export function lengthText(f: { extent: ExtrudeDraft['extent'] }, result: FeatureResult | undefined): string {
   const facts = result?.facts;
@@ -30,6 +29,8 @@ export function lengthText(f: { extent: ExtrudeDraft['extent'] }, result: Featur
   const length = facts.lengthMin === facts.lengthMax ? fmt(facts.lengthMin) : `${fmt(facts.lengthMin)} to ${fmt(facts.lengthMax)}`;
   return `length ${length} mm, ${facts.forward ? 'along' : 'against'} the normal of the sketch plane`;
 }
+
+// What the generator of a feature published, for a human: "module 0.9 mm, pitch ⌀ 16.2 mm, …".
 export function factsText(f: { profile: ExtrudeDraft['profile'] }, result: FeatureResult | undefined): string {
   if (f.profile.type !== 'generated' || !result?.facts) return '';
   const facts = result.facts;

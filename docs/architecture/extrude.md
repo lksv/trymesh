@@ -35,7 +35,7 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 
 **Recompute.**
 
-1. The step resolves the plane with `frame` (`recompute/services.ts`) in the state before the feature: `brokenReference` or `nonPlanarFace` (refs: the plane) end the step. The recipe keeps the plane as a point and a unit normal (`EndPlane`) in the closure of `build`, so a copy of a pattern measures to the plane the feature saw, also when the feature itself swallowed the face.
+1. The step resolves the plane with `frame` (`recompute/services.ts`) in the state before the feature: `brokenReference` or `nonPlanarFace` (refs: the plane) end the step. The recipe keeps the plane as a point and a unit normal (`EndPlane`) in the closure of `build`, so a copy of a pattern of features measures to the plane the feature saw, also when the feature itself swallowed the face. A pattern of a body copies the body as it is, so under a tilted plane its copies do not end in the plane.
 2. `upToSpan` (`recompute/extent.ts`) measures, for every vertex of the polylines of the profile (the tool that is built; the length is linear, so the vertices test all of it), the length from the start along the normal of the frame to the plane: `N · (Q − P) / (N · n)`.
    - `|N · n| ≤ sin(UP_TO_MIN_ANGLE)` (0.01 rad): `invalidExtent`, the plane is parallel to the direction or nearly so. The angle bounds every length by a hundred times the distance of the start from the plane.
    - The lengths have one sign, each beyond `LENGTH_TOLERANCE`; otherwise the plane passes through the start or touches it: `invalidExtent`.

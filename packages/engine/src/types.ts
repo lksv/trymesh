@@ -227,7 +227,7 @@ export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchP
 // normal points out of the body, so an ordinary hole is `backward`. The length is taken from the
 // extent of all targets together along the normal, in the state the tool is applied to, plus an
 // overshoot. A target that lies entirely on the other side is not changed and the `noEffect`
-// warning names it. Further extents ("up to face") will come as variants.
+// warning names it.
 // `taper` (field `extent/taper`, radians, strictly between −π/2 and π/2, optional: absent means
 // none) is the angle between a side face and the direction of the extrusion. The profile of the
 // sketch (with its `profile/offset`) holds at the start of the extent; the profile at its end is
@@ -253,7 +253,8 @@ export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchP
 //   towards the start, measured across the plane, so the tool stops short of it; a negative gap
 //   passes it by as much. A gap never turns the tool round.
 // - The plane is resolved at every recompute, in the state before the feature, so the length
-//   follows the model; a copy made by a pattern runs from its own start to that same plane.
+//   follows the model; a copy made by a pattern of features runs from its own start to that same plane (a pattern of a
+//   body copies the body as it is).
 // - Errors: `brokenReference`, `nonPlanarFace` (the face is not planar), `invalidExtent` (the plane
 //   is parallel to the direction of the extrusion or within 0.01 rad of it; it passes through or
 //   touches the start of the tool; the gap reaches the start). For every operation; no taper.

@@ -48,7 +48,11 @@ export interface LinearTransform {
 //   `<pattern>/1` and a face of the copy carries `copy: [{ pattern, index: 1 }]`. The registry
 //   knows it: `createsBody` of a pattern of a body answers true for the local name `1` alone when
 //   the transform is a mirror (for the other kinds for every number from 1, as today, because
-//   a count may be an expression). A command that names `<mirror>/2` is therefore invalid.
+//   a count may be an expression). A command that brings in `<mirror>/2` as a body is therefore
+//   invalid. A document may still hold such an ID (after a change of the kind); each place reports
+//   it as a body that is not there. The number in the copy tag of a FACE is not checked against
+//   the kind: `copy: [{ pattern: <a mirror>, index: 2 }]` is a valid command and a broken
+//   reference of the recompute, as an index beyond a count is.
 // - The copy is the mirror image as a set of points. What is told by a sense of rotation is
 //   therefore reversed in it, and the names do not say so: a face name says which face of the
 //   source it is the image of. The face `wallSide` of a curve with `side: 'left'` lies on the right

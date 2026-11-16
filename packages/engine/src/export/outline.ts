@@ -13,8 +13,9 @@
 // the surface. Every other loop is a chain of pieces, each from a corner to the next:
 // - a line span is one straight piece;
 // - a curve span is straight pieces through its points;
-// - an arc span is `max(2, ceil(|sweep| / QUARTER − TURN_SLACK))` pieces at equal steps of its
-//   sweep about the centre of the surface. The first starts at `from` and the last ends at `to`,
+// - an arc span is `max(2, ceil((|sweep| − slack) / QUARTER − TURN_SLACK))` pieces at equal steps
+//   of its sweep about the centre of the surface (`piecesOfArc`; the slack is what the precision of
+//   the coordinates of its two ends makes of the sweep). The first starts at `from` and the last ends at `to`,
 //   corners of the mesh; the corners between are on the circle of the surface. Every piece is the
 //   arc of the radius of the surface between its two corners; the angle it turns by follows from
 //   them. With at least two pieces of a quarter turn at most no piece has both its ends at corners
@@ -97,11 +98,23 @@ export const QUARTER = Math.PI / 2;
 // its angles is π give or take the last digit, and its number of pieces must not depend on it.
 export const TURN_SLACK = 1e-9; // of a quarter turn
 // How far over a quarter turn the `turn` of an end piece may come out, as a part of it, through the
-// precision of the coordinates of its end. For a check; the writer does not use it.
+// precision of the coordinates of its end. For a check; the writer does not use it. A check of an
+// arc whose ends are corners of a mesh allows the slack of `piecesOfArc` as well.
 export const TURN_ALLOWANCE = 1e-6;
 
-// The number of pieces of an arc span of this sweep.
-export const piecesOfArc = (sweep: number): number => Math.max(2, Math.ceil(Math.abs(sweep) / QUARTER - TURN_SLACK));
+// The number of pieces of an arc span of this sweep. `slack` (rad): how far the sweep may be off
+// because its ends are corners of a mesh, whose coordinates have a precision. The ends of an arc
+// span are float32 points, so the sweep summed from them is off its true value by up to the
+// precision of the coordinates over the radius at each end (the corners between cancel out):
+// `2 · precision / radius`. A half turn at an ordinary place is π give or take some 1e-7, and
+// without the slack it would be three pieces or two by where the part sits (the review of D54:
+// eleven of twelve slots at odd places had a half turn in three pieces). With the slack a piece
+// may span a quarter turn and `slack / count` about the centre of the surface.
+export function piecesOfArc(sweep: number, slack = 0): number {
+  return Math.max(2, Math.ceil((Math.abs(sweep) - slack) / QUARTER - TURN_SLACK));
+}
+// The slack of the sweep of an arc of this radius, for coordinates of this precision.
+export const sweepSlack = (precision: number, radius: number): number => (radius > 0 ? (2 * precision) / radius : 0);
 
 // A box that grows by the points it reaches.
 class Box {
@@ -133,7 +146,7 @@ class Box {
 }
 
 // The pieces of one loop of the section; `box` grows by what is drawn.
-function loopOf(body: Id, loop: SectionLoop, hole: boolean, box: Box): OutlineLoop {
+function loopOf(body: Id, loop: SectionLoop, hole: boolean, box: Box, precision: number): OutlineLoop {
   const spans = loop.spans;
   if (!spans) throw new Error('the outline: the section left the spans of a loop out');
   if (spans.length === 1 && spans[0].kind === 'arc') {
@@ -147,7 +160,7 @@ function loopOf(body: Id, loop: SectionLoop, hole: boolean, box: Box): OutlineLo
   for (const span of spans) {
     if (span.kind === 'line') corners.push({ at: span.from });
     else if (span.kind === 'arc') {
-      const count = piecesOfArc(span.sweep);
+      const count = piecesOfArc(span.sweep, sweepSlack(precision, span.radius));
       const start = Math.atan2(span.from[1] - span.center[1], span.from[0] - span.center[0]);
       const sign = Math.sign(span.sweep);
       for (let k = 0; k < count; k++) {
@@ -187,7 +200,7 @@ export function outlineOf(context: QueryContext, options: RunArgsOf<typeof OUTLI
   const { plane, offset, bodies } = options;
   const taken: { chosen: Id[]; empty?: string } = bodies === undefined && plane.kind === 'face' ? { chosen: [plane.body] } : chosenBodies(context, bodies);
   const cut = section.run(context, { plane, offset, bodies: taken.chosen, outline: 'spans', maxPoints: Number.MAX_SAFE_INTEGER });
-  const { loops, bounds } = loopsOf(cut);
+  const { loops, bounds } = loopsOf(cut, cut.below);
   const about: OutlineAbout = {
     bodies: cut.bodies.map((body) => body.body),
     loops: loops.length,
@@ -205,14 +218,16 @@ export function outlineOf(context: QueryContext, options: RunArgsOf<typeof OUTLI
 // The loops of a complete answer of `section` with spans, in its order, and the box of what is
 // drawn: the corners, for an arc piece the points of its own circle furthest along x and y that it
 // passes, and the box of a whole circle. No box when there is no loop.
-export function loopsOf(cut: Pick<SectionResult, 'bodies'>): { loops: OutlineLoop[]; bounds?: { min: Vec2; max: Vec2 } } {
+// `precision`: of the coordinates of the cut (`below` of the section, the precision over the bodies
+// asked about), for the slack of the sweep of an arc (`piecesOfArc`).
+export function loopsOf(cut: Pick<SectionResult, 'bodies'>, precision = 0): { loops: OutlineLoop[]; bounds?: { min: Vec2; max: Vec2 } } {
   const box = new Box();
   const loops: OutlineLoop[] = [];
   for (const body of cut.bodies) {
     if (!body.regions) throw new Error('the outline: the section left the regions of a body out');
     for (const region of body.regions) {
-      loops.push(loopOf(body.body, region.outer, false, box));
-      for (const hole of region.holes) loops.push(loopOf(body.body, hole, true, box));
+      loops.push(loopOf(body.body, region.outer, false, box, precision));
+      for (const hole of region.holes) loops.push(loopOf(body.body, hole, true, box, precision));
     }
   }
   return loops.length ? { loops, bounds: { min: box.min, max: box.max } } : { loops };

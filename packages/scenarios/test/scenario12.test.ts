@@ -587,6 +587,15 @@ describe('scenario 12, the part of 2g: the box and its lid as 3MF, the lid as a 
     expect(outlineAbout(noBody.files[0]).loops).toBe(0);
   });
 
+  it('a face as the plane takes the body of the face alone; a list takes what it names (the review of D54)', () => {
+    // half a millimetre under the underside of the lid, outside it: the lip of the lid and the walls of the box
+    const alone = outlineAbout(only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: 0.5 }))));
+    expect([alone.bodies, alone.loops]).toEqual([['lid'], 2]);
+    const both = outlineAbout(only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: 0.5, bodies: ['box', 'lid'] }))));
+    expect(both.bodies).toEqual(['box', 'lid']);
+    expect(both.loops).toBeGreaterThan(alone.loops);
+  });
+
   it('refusals: a round face as the plane, a body that is not there, an empty list, an option the format does not have', () => {
     const code = (outcome: QueryOutcome<Exported>): string | undefined => (outcome.ok ? undefined : `${outcome.error.code} ${(outcome.error.arg ?? []).join('/')}`);
     expect(code(engine.export('dxf', { plane: onFace('box', { feature: 'posts', role: 'side', curve: 'pa' }) }))).toBe('notAvailable plane');

@@ -18,6 +18,9 @@ import { closest } from '../src/mesh-distance';
 import { type CutLoop, corners, nested } from '../src/query/section';
 import { box, cutOf, moved, planeAt, regular, together, turned, prism } from './section-kit';
 import { evaluateParameters } from '../src/expression';
+import { piecesOfArc, sweepSlack } from '../src/export/outline';
+import { QueryFailure } from '../src/query/spec';
+import { decimals, float32Text, xmlText } from '../src/export/text';
 import { BASE } from '../src/recompute/services';
 import { Memo, queryContext } from '../src/query/context';
 import { QUERIES } from '../src/query/index';
@@ -774,6 +777,30 @@ describe('the second opinion of the kernel: the review of D50', () => {
     expect(Object.keys(below)).toEqual(['pairs', 'fits', 'failed', 'checked']);
     expect([below.pairs, below.fits, below.failed]).toEqual([[], [], []]);
     expect(calls).toEqual({ boolean: 2, asComputed: 0 });
+  });
+});
+
+describe('the numbers, texts and arcs of an export: the review of D54', () => {
+  it('decimals with no places keeps the zeros of a whole number', () => {
+    expect([100, 1050, 0, -0, 2.5, -7].map((value) => decimals(value, 0))).toEqual(['100', '1050', '0', '0', '3', '-7']);
+    expect(decimals(1.5, 3)).toBe('1.5');
+  });
+
+  it('float32Text refuses a finite number beyond the range of a float32 instead of writing "Infinity"', () => {
+    for (const value of [1e39, -1e39]) expect(() => float32Text(value)).toThrow(QueryFailure);
+  });
+
+  it('a tab, a line feed or a carriage return in a name is written as a space, which lib3mf reads', () => {
+    expect(xmlText('Lid\tA\nB\rC')).toBe('Lid A B C');
+    expect(xmlText('x\ty')).not.toContain('&#');
+  });
+
+  it('the number of pieces of an arc allows for the precision of its ends', () => {
+    const slack = sweepSlack(8.5e-5, 5); // a slot about 85 mm from the origin, radius 5
+    for (const off of [-6.45e-7, 5.87e-7]) expect(piecesOfArc(Math.PI + off, slack)).toBe(2);
+    expect(piecesOfArc(Math.PI + 5.87e-7)).toBe(3); // without it, as before the review
+    expect(piecesOfArc(Math.PI + 0.01, slack)).toBe(3);
+    expect(sweepSlack(1e-6, 0)).toBe(0);
   });
 });
 

@@ -116,10 +116,10 @@ describe('numbers and texts of a file', () => {
     }
   });
 
-  it('xmlText: the five characters, the three white spaces, a control character, a lone surrogate', () => {
+  it('xmlText: the four characters, the three white spaces, a control character, a lone surrogate', () => {
     expect(xmlText('Lid <A&B> "top"')).toBe('Lid &lt;A&amp;B&gt; &quot;top&quot;');
     expect(xmlText("it's")).toBe("it's"); // in an attribute in double quotes an apostrophe needs nothing
-    expect(xmlText('a\tb\nc\rd')).toBe('a&#9;b&#10;c&#13;d');
+    expect(xmlText('a\tb\nc\rd')).toBe('a b c d'); // a space, not a reference: lib3mf refuses a reference (the review of D54)
     expect(xmlText('a\u0000b\u0008c\u001fd')).toBe('abcd');
     expect(xmlText('x\ud800y\udfffz')).toBe('xyz');
     expect(xmlText('￾￿')).toBe('');

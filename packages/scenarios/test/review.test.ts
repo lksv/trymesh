@@ -304,3 +304,30 @@ describe('the hole: the review of D46', () => {
     expect(ofHole(state)).toEqual(['H/holeBore/p']);
   });
 });
+
+describe('the export of an outline: the review of D54', () => {
+  it('a half turn is two pieces wherever the part sits: slots at odd places, the sweep off π by what float32 does to its ends', () => {
+    const counts: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const engine = newEngine();
+      const [x, y, r, length] = [10.3 + i * 1.37, 0.7 + i * 0.113, 2.3 + 0.17 * i, 13.1 + i * 0.71];
+      expectAllOk(
+        run(
+          engine,
+          addSketch('R', XY),
+          rectangle('R', 's', x, y - r, length, 2 * r, null),
+          addExtrude('SLOT', 'R', [rectLoop('s')], 5),
+          addSketch('K', XY),
+          circle('K', 'ka', x, y, r),
+          circle('K', 'kb', x + length, y, r),
+          addExtrude('SLOTA', 'K', [['ka']], 5, 'add', 'SLOT'),
+          addExtrude('SLOTB', 'K', [['kb']], 5, 'add', 'SLOT'),
+        ),
+      );
+      const answer = engine.export('dxf', { plane: XY, offset: 2, bodies: ['SLOT'] });
+      if (!answer.ok) throw new Error(answer.error.message);
+      counts.push(new TextDecoder().decode(answer.result.files[0].bytes).split('\r\n').filter((value, k) => value === '42' && k % 2 === 0).length);
+    }
+    expect(counts).toEqual(Array(12).fill(4)); // were 5 or 6 in eleven of them
+  });
+});

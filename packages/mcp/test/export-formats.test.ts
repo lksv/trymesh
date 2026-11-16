@@ -103,6 +103,18 @@ describe('the tool that hands the files of an export to the server', () => {
     expect(engine.save()).toBe(before);
   });
 
+  it('3mf and an outline of the state after a command that is only previewed, or after a feature (the review of D54)', () => {
+    const engine = model();
+    const before = engine.save();
+    expect(exported(engine, { format: '3mf', after: { type: 'removeFeature', id: 'high' } }).files[0].about).toMatchObject({ bodies: ['low'] });
+    expect(exported(engine, { format: '3mf', at: 'low' }).files[0].about).toMatchObject({ bodies: ['low'] });
+    // the disc `high` stands on `low` from z = 10: cut at 15 it is there, and not with `high` removed
+    const plane = { kind: 'base', plane: 'XY' };
+    expect(exported(engine, { format: 'dxf', options: { plane, offset: 15 } }).files[0].about).toMatchObject({ bodies: ['high'], loops: 1, circles: 1 });
+    expect(exported(engine, { format: 'svg', options: { plane, offset: 15 }, after: { type: 'removeFeature', id: 'high' } })).toEqual({ error: 'the plane cuts none of the bodies' });
+    expect(engine.save()).toBe(before);
+  });
+
   it('refuses in words: an unknown format or option, a body that is not there, a command that is not valid, an empty model', () => {
     const engine = model();
     expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg' });

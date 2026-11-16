@@ -447,3 +447,10 @@ Where the code differs from the contract, by the smallest change:
 - **The reader of the tests** is `packages/engine/test/zip-reader.ts`, used by the tests of the engine, scenario 12 and the app.
 - **The edges of 4 GiB** are tested with entries that claim that length (`storedZip` reads only `length` before it refuses), as the design said, by the arithmetic.
 
+**After the review** (one round, a fresh internal reviewer on the diff; no serious finding, two minor, one gap in the tests, three nits; all fixed, the regressions in the `review.test.ts` of the engine and of the scenarios):
+
+- **`xmlText` writes tab, line feed and carriage return as a space**, not as the character references the contract names. `lib3mf` 2.5.0 in strict mode refuses a whole 3MF with a character reference in an attribute (`&#9;`, also `&#233;`: "XML contains an invalid escape character"), and the body properties allow a tab in a name. In an attribute a reader turns a literal one into a space anyway (XML 1.0, 3.3.3).
+- **The number of pieces of an arc allows for the precision of its ends**: `piecesOfArc(sweep, slack)` with `slack = 2 · below / radius` (`sweepSlack`), not `TURN_SLACK` alone. The sweep of a span is summed from float32 corners and is off a whole number of quarters by some 1e-7 rad, about 400 times `TURN_SLACK`: eleven of twelve slots at odd places had a half turn in three pieces, so "a half turn is two pieces whatever the last digit of its sweep" did not hold. With the slack a piece spans a quarter turn and at most `slack / count` about the centre of the surface; the bound of a piece against its circle is unchanged to first order. `TURN_SLACK` stays as the floor.
+- `decimals(value, 0)` kept the zeros of a whole number wrong (`100` came out as `1`), and `float32Text` wrote `Infinity` for a finite number beyond the range of a float32; both fixed (neither reached a file of a model).
+- Tests added for a face as the plane with another printed body at that depth (the default takes the body of the face alone), and for `after` of an export.
+

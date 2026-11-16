@@ -67,7 +67,7 @@ describe('the pieces of a loop', () => {
   });
 
   it('the number of pieces: never one, a quarter turn at most, and a sweep of whole quarters give or take its last digit gets no extra piece', () => {
-    expect([0.01, 1, QUARTER, QUARTER * (1 + 1e-12), Math.PI * (1 + 1e-6), Math.PI, Math.PI + 1e-12, -Math.PI, 4.37, 3 * QUARTER, 6.2].map(piecesOfArc)).toEqual([2, 2, 2, 2, 3, 2, 2, 2, 3, 3, 4]);
+    expect([0.01, 1, QUARTER, QUARTER * (1 + 1e-12), Math.PI * (1 + 1e-6), Math.PI, Math.PI + 1e-12, -Math.PI, 4.37, 3 * QUARTER, 6.2].map((sweep) => piecesOfArc(sweep))).toEqual([2, 2, 2, 2, 3, 2, 2, 2, 3, 3, 4]);
   });
 
   it('an arc of a few degrees, a quarter, a half and almost a whole turn: the corners between on the circle, the turn of a piece from its corners and radius', () => {

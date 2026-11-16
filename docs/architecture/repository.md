@@ -54,8 +54,10 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
 | `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
-| `recompute/outline.ts` | exact outlines of profiles (D44): the outline of selected regions, an outline moved by an offset, the outline of a wall along a chain of curves, and their division into the polylines of regions with the tests of those polylines |
+| `recompute/outline.ts` | exact outlines of profiles (D44): the outline of selected regions, an outline moved by an offset, the outline of a wall along a chain of curves, and their division into the polylines of regions with the tests of those polylines; the rings of a taper with the rule of the levels (`taperRings`, D45) |
 | `recompute/tool-prism.ts` | a tool build: the mesh of a prism over regions and its faces (`buildPrism`). Every tool build is a module `recompute/tool-*.ts` and returns a `BuiltTool` |
+| `recompute/tool-stack.ts` | a tool build (D45): the mesh of a stack of rings of one outline at levels along the normal, with its caps and sides (`buildStack`, `Ring`, `Section`) |
+| `recompute/taper.ts` | the section of a tapered extrusion (D45): the rings of its outline and the surfaces of its sides (tilted planes, cones) in the coordinates of the sketch |
 | `features/module.ts` | `FeatureModule`: the entry of the registry of feature types plus the step of the recompute |
 | `features/profile.ts`, `features/extent.ts` | the document halves of a profile source and of an extent: validation, references, fields |
 | `features/plane.ts`, `sketch.ts`, `extrude.ts`, `pattern.ts` | one feature type each: its validator, its entry and its step; `sketch.ts` also the validators of sketch content, which the sketch commands call |

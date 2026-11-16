@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { Document, Engine, ExtrudeFeature } from '@trymesh/engine';
+import { type Document, type Engine, type ExtrudeFeature, SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES } from '@trymesh/engine';
 import { XY, addExtrude, addSketch, batch, cap, circle, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, status, volume } from './kit';
 
 const FIXTURE = readFileSync(new URL('./fixtures/v1-plate.json', import.meta.url), 'utf8');
@@ -30,8 +30,9 @@ describe('krok 0: dokument verze 1', () => {
 
     const old = JSON.parse(FIXTURE) as { features: Record<string, unknown>[] };
     const saved = JSON.parse(engine.save()) as Document;
-    expect(saved).toMatchObject({ schemaVersion: 3, parameters: [], checks: [] });
-    expect(saved).not.toHaveProperty('schemaSteps'); // only a build of a branch writes it
+    // the head this build writes: on master the version alone, on a branch with a pending step its name too
+    expect(saved).toMatchObject({ schemaVersion: SCHEMA_VERSION, parameters: [], checks: [] });
+    expect(saved.schemaSteps).toEqual(SCHEMA_PENDING ? UPGRADES.slice(-SCHEMA_PENDING).map((step) => step.name) : undefined);
     saved.features.forEach((f, i) => {
       const before = old.features[i];
       if (f.type !== 'extrude') return expect(f).toEqual(before); // skici se neřešily znovu

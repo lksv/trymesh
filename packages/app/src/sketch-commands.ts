@@ -256,8 +256,9 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   "through all" goes to both sides (D35, decision 13). `distance` is the distance extent to return
 //   to: the form passes the one the draft had last, so that switching the extent there and back
 //   does not lose the start, the distance and their expressions.
-// - `start` and `distance` belong to the distance extent and `side` to "through all"; a change for
-//   the other variant is ignored.
+// - `start`, `distance` and `taper` belong to the distance extent and `side` to "through all";
+//   a change for the other variant is ignored. The taper is an optional field (`null` removes it),
+//   and a generated profile has none: a draft whose profile becomes generated drops it.
 // - `source` switches the profile between regions of the sketch, a wall along its curves and
 //   a profile generator. A new generated profile gets the operands the form found in the sketch and
 //   the defaults of the catalog; a new wall has no curves yet and the thickness `WALL_THICKNESS`.
@@ -281,6 +282,7 @@ export interface ExtrudeChange {
   extent?: ExtentKind;
   start?: number | Expr;
   distance?: number | Expr;
+  taper?: number | Expr | null;
   side?: ExtentSide;
   operation?: ExtrudeFeature['operation'];
   target?: Id;
@@ -327,8 +329,12 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
   // a request for "through all" outside a cut is ignored: the draft keeps the distance it has
   if (change.extent === 'distance' && extent.type !== 'distance') extent = distance;
   if (change.extent === 'throughAll' && extent.type !== 'throughAll' && operation === 'cut') extent = { type: 'throughAll', side: 'both' };
-  if (extent.type === 'distance') extent = { ...extent, ...(change.start === undefined ? {} : { start: change.start }), ...(change.distance === undefined ? {} : { distance: change.distance }) };
-  else if (change.side !== undefined) extent = { ...extent, side: change.side };
+  const profile = changeProfile(draft.profile, change, remembered);
+  if (extent.type === 'distance') {
+    const { taper: old, ...rest } = extent;
+    const taper = profile.type === 'generated' ? undefined : change.taper === undefined ? old : change.taper;
+    extent = { ...rest, ...(change.start === undefined ? {} : { start: change.start }), ...(change.distance === undefined ? {} : { distance: change.distance }), ...(taper === undefined || taper === null ? {} : { taper }) };
+  } else if (change.side !== undefined) extent = { ...extent, side: change.side };
   let targets = change.target === undefined ? draft.targets : [change.target];
   if (change.toggleTarget !== undefined) targets = targets?.includes(change.toggleTarget) ? targets.filter((id) => id !== change.toggleTarget) : [...(targets ?? []), change.toggleTarget];
   if (operation === 'add' && targets && targets.length > 1) targets = targets.slice(0, 1);
@@ -339,7 +345,7 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
   const { targets: _old, ...rest } = draft;
   return {
     ...rest,
-    profile: changeProfile(draft.profile, change, remembered),
+    profile,
     extent,
     operation,
     ...(operation === 'new' || targets === undefined ? {} : { targets }),
@@ -427,10 +433,11 @@ export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, ed
   if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
   // the draft holds every field of the source and the transform, so merging them replaces both
   if (draft.type === 'pattern') return { type: 'updateFeature', id: draft.id, patch: { source: draft.source, transform: draft.transform } };
-  const { id, extent, operation, targets } = draft;
+  const { id, operation, targets } = draft;
   // The patch merges with the feature, so what the draft no longer has must be removed explicitly:
-  // the offset of regions and a reference of a generated profile. Every other entry of the
-  // profile is in the draft.
+  // the offset of regions, a reference of a generated profile and the taper of a distance. Every
+  // other entry of the profile and of the extent is in the draft.
+  const extent = draft.extent.type === 'distance' ? { ...draft.extent, taper: draft.extent.taper ?? null } : draft.extent;
   const profile: ProfileSourcePatch =
     draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };

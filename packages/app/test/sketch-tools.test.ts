@@ -516,7 +516,7 @@ describe('nálezy z revize aplikace', () => {
     expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...all.profile, offset: null }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
-    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: draft.extent, operation: 'add', targets: ['smazané'] } });
+    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null }, operation: 'add', targets: ['smazané'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
     expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4 } });
   });
@@ -617,6 +617,31 @@ describe('nálezy z revize aplikace', () => {
     expect(feature('e1').profile).toEqual({ type: 'wall', sketch: 's', curves: ['n'], thickness: WALL_THICKNESS });
     run([draftCommand(changeExtrude(changeExtrude(feature('e1'), { source: 'regions' }, []), { regions: [{ outerLoop: ['c1'] }], offset: 1 }, []), true, 1)]);
     expect(feature('e1').profile).toEqual({ ...draft.profile, offset: 1 });
+  });
+
+  it('the taper of a distance extent: an optional field of the draft, gone with a generated profile (D45)', () => {
+    const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    const tapered = changeExtrude(draft, { taper: 'deg(-5)' }, []);
+    expect(tapered.extent).toEqual({ type: 'distance', start: 0, distance: 5, taper: 'deg(-5)' });
+    expect(changeExtrude(tapered, { distance: 7 }, []).extent).toEqual({ type: 'distance', start: 0, distance: 7, taper: 'deg(-5)' });
+    expect(changeExtrude(tapered, { taper: null }, []).extent).toEqual(draft.extent);
+    expect(changeExtrude(tapered, { taper: 0 }, []).extent).toEqual({ ...draft.extent, taper: 0 }); // a zero is a value
+    // a generated profile has no taper: the draft drops it
+    expect(changeExtrude(tapered, { source: 'involuteGear' }, []).extent).toEqual(draft.extent);
+    // through all keeps the distance extent to return to, the taper with it
+    const cut = changeExtrude({ ...tapered, operation: 'cut', targets: ['b'] }, { extent: 'throughAll' }, ['b']);
+    expect(cut.extent).toEqual({ type: 'throughAll', side: 'both' });
+    expect(changeExtrude(cut, { taper: 0.1 }, ['b']).extent).toEqual({ type: 'throughAll', side: 'both' });
+    expect(changeExtrude(cut, { extent: 'distance' }, ['b'], tapered.extent).extent).toEqual(tapered.extent);
+    // editing: the patch removes a taper the draft no longer has; through all replaces the extent
+    expect(draftCommand(changeExtrude(tapered, { taper: null }, []), true, 1)).toMatchObject({ patch: { extent: { type: 'distance', taper: null } } });
+    expect(draftCommand(cut, true, 1)).toMatchObject({ patch: { extent: { type: 'throughAll', side: 'both' } } });
+    // the engine accepts both
+    const { engine, run } = setup();
+    run([{ type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin' }, radius: 8 }, draftCommand(tapered, false, 1)]);
+    expect(engine.getState().evaluation.features.e1.status).toBe('ok');
+    run([draftCommand(changeExtrude(tapered, { taper: null }, []), true, 1)]);
+    expect((engine.getState().document.features[1] as ExtrudeFeature).extent).toEqual(draft.extent);
   });
 
   it('a pattern draft: the source, the axis, the count and the span', () => {

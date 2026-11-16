@@ -1,6 +1,6 @@
 
 === 1. an extrusion needs a sketch
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":3}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":4}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -212,11 +212,16 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="extent/start" data-unit="mm"
-    - h2: "Skica"
+    + label
     +   "Distance (mm or an expression; negative = against the normal)"
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    - h2: "Skica"
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.error
     -   "Název"
     -   input value="Skica 1"
@@ -527,6 +532,11 @@
     -   span.field
     -     input value="12"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
@@ -626,6 +636,11 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.error
     + div.buttons
     +   button.primary disabled: "OK"
@@ -756,6 +771,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.error
     - div.buttons
     -   button.primary disabled: "OK"
@@ -1123,6 +1143,11 @@
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
     + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
+    + label
     +   "Těleso"
     +   select value="e1"
     +     option selected value="e1": "Vysunutí 1"
@@ -1272,6 +1297,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
   view: 1 scene(s) set
@@ -1293,13 +1323,18 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="extent/start" data-unit="mm"
-    -   select value="throughAll"
-    -     option value="distance": "Distance"
-    -     option selected value="throughAll": "Through all"
+    + label
     +   "Distance (mm or an expression; negative = against the normal)"
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    -   select value="throughAll"
+    -     option value="distance": "Distance"
+    -     option selected value="throughAll": "Through all"
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     -   "Side"
     -   select value="both"
     -     option selected value="both": "Both sides"
@@ -1338,6 +1373,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
   view: 1 scene(s) set
@@ -1375,13 +1415,18 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="extent/start" data-unit="mm"
-    -   select value="throughAll"
-    -     option value="distance": "Distance"
-    -     option selected value="throughAll": "Through all"
+    + label
     +   "Distance (mm or an expression; negative = against the normal)"
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    -   select value="throughAll"
+    -     option value="distance": "Distance"
+    -     option selected value="throughAll": "Through all"
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     -   "Side"
     -   select value="both"
@@ -1543,6 +1588,11 @@
     -   span.field
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
@@ -2580,6 +2630,11 @@
     +   span.field
     +     input value="10"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"
     -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
@@ -2677,6 +2732,11 @@
     + p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°"
     -     input value=""
     -     small.computed data-field="profile/offset" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 4500 numbers, sum 804493.379
@@ -2809,6 +2869,11 @@
     -     option selected value="": "(none)"
     - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 16.666667 mm, root ⌀ 24.166667 mm, rotation 0°"
     - label
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
   view: 2 scene(s) set
   scene:
     + line #26303c width 1.5: 1680 numbers, sum 259803.069
@@ -2877,6 +2942,11 @@
     + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
     -     input value=""
     -     small.computed data-field="profile/offset" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 4284 numbers, sum 763297.741
@@ -3103,7 +3173,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.531
 
 === 63. a double click on the timeline opens the form of the feature
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":12,"taper":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x3)
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -3235,6 +3305,11 @@
     +   span.field
     +     input value="12"
     +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
     + div.buttons
     +   button.primary: "OK"
@@ -3278,9 +3353,9 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.173
 
 === 64. the change is saved
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x4)
-  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null},"operation":"new"}}) -> ok
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}
@@ -3427,6 +3502,11 @@
     -   span.field
     -     input value="12"
     -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
@@ -3484,9 +3564,9 @@
     + face e4 #11 #f97316 opacity 0.3
 
 === 66. the form of the gear, a change typed
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")  (x3)
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"

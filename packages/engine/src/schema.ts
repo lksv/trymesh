@@ -58,7 +58,11 @@ const profilesAndParameters: UpgradeStep = {
 // build that can write the field saves version 3 or more, which such a build refuses.
 const schemaSteps: UpgradeStep = { name: 'd37-schema-steps', run: (o) => o };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps];
+// D45 (2b): the optional field `extent/taper`. It converts nothing; a build without the step would
+// drop the field of the extent on load, so it has to refuse the document instead.
+const taper: UpgradeStep = { name: '2b-taper', run: (o) => o };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
 export const SCHEMA_PENDING = 0;
 

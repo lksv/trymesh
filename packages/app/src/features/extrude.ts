@@ -161,6 +161,10 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
       ? [
           draftField(host, m, 'Start (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ start }, false)),
           draftField(host, m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
+          // a generated profile has no curves to move, so it has no taper
+          m.draft.profile.type === 'generated'
+            ? null
+            : draftField(host, m, 'Taper (degrees or an expression; positive widens away from the start; empty = none)', 'extent/taper', (taper) => set({ taper: typeof taper === 'number' && Number.isNaN(taper) ? null : taper }, false)),
         ]
       : [
           h(
@@ -350,7 +354,8 @@ export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
   edit: (host, feature) => editDraft(host, form, feature, {}),
   summary(host, f) {
     const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : '';
-    const extent = f.extent.type === 'distance' ? `distance ${shownValue(f, 'extent/distance', f.extent.distance)} mm${start}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
+    const taper = f.extent.type === 'distance' && f.extent.taper !== undefined ? `, taper ${f.expressions?.['extent/taper'] ? `${f.expressions['extent/taper']} = ` : ''}${fmt((f.extent.taper * 180) / Math.PI)}°` : '';
+    const extent = f.extent.type === 'distance' ? `distance ${shownValue(f, 'extent/distance', f.extent.distance)} mm${start}${taper}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
     const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => host.bodyName(id)).join(', ')}` : '';
     const offset = f.profile.type === 'regions' && f.profile.offset !== undefined ? `, offset ${shownValue(f, 'profile/offset', f.profile.offset)} mm` : '';
     const profile =

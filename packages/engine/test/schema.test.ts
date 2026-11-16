@@ -16,11 +16,11 @@ const refused = (run: () => unknown, message: RegExp) => {
 describe('the schema of the document', () => {
   it('master: the version is the number of steps plus one, and no names are written', () => {
     // the names in their order are pinned: a version counts the steps by position, so the list only grows at its end
-    expect(UPGRADES.map((entry) => entry.name)).toEqual(['d35-profiles-and-parameters', 'd37-schema-steps']);
+    expect(UPGRADES.map((entry) => entry.name)).toEqual(['d35-profiles-and-parameters', 'd37-schema-steps', '2b-taper']);
     expect(SCHEMA_PENDING).toBe(0);
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
     expect(schemaProblems()).toEqual([]);
-    expect(schemaHeader()).toEqual({ schemaVersion: 3 });
+    expect(schemaHeader()).toEqual({ schemaVersion: 4 });
     expect(Object.keys(emptyDocument())).toEqual(['schemaVersion', 'settings', 'parameters', 'checks', 'features']);
     expect(Object.keys(validateDocument(JSON.parse(JSON.stringify(emptyDocument()))))).toEqual(['schemaVersion', 'settings', 'parameters', 'checks', 'features']);
   });
@@ -32,7 +32,7 @@ describe('the schema of the document', () => {
     refused(() => validateDocument({ ...now, schemaSteps: 'a' }), /document\.schemaSteps: a list of names of upgrade steps is expected/);
     refused(() => validateDocument({ ...now, schemaSteps: [3] }), /document\.schemaSteps: a list of names/);
     // a name the version counts already
-    refused(() => validateDocument({ ...now, schemaSteps: ['d37-schema-steps'] }), /this build has no upgrade step "d37-schema-steps" after version 3/);
+    refused(() => validateDocument({ ...now, schemaSteps: ['d37-schema-steps'] }), /this build has no upgrade step "d37-schema-steps" after version 4/);
     expect(validateDocument({ ...now, schemaVersion: 2, schemaSteps: ['d37-schema-steps'] })).toEqual(now);
   });
 

@@ -2,10 +2,12 @@
 // packages of track B of D36 against the real adapters. Each package adds its part:
 // - 2a (D44), the profile offset and a wall from a line: the box and its cavity from one outline,
 //   the lid with a lip that fits with a print clearance, a rib and a bracket from construction lines.
-import { type Command, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef } from '@trymesh/engine';
+// - 2b (D45), the taper: a draft on the rib, a lead-in on the lip, and a countersink by hand from
+//   a tapered cut and a straight bore.
+import { type Command, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Surface, UPGRADES } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { FLOOR, OUTLINE, RIB_LEFT, box, bracket, cavity, lid, parameters, rib, sketchOn } from './box';
-import { expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
+import { BORE, CONE, FLOOR, LID_TOP, OUTLINE, RIB_LEFT, box, bracket, cavity, countersinkByHand, lid, lipLeadIn, parameters, rib, ribDraft, sketchOn } from './box';
+import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
 const volumeOf = (state: EngineState, body: Id): number => volume(state.evaluation.bodies[body].solid);
@@ -128,5 +130,99 @@ describe('scenario 12, the part of 2a: a box, its lid and its ribs from offsets 
     expect(after.document).toEqual(before.document);
     expectAllOk(after);
     near(volumeOf(after, 'box'), volumeOf(before, 'box'), 1e-9);
+  });
+});
+
+describe('scenario 12, the part of 2b: a draft, a lead-in and a countersink by hand from tapers', () => {
+  let engine: Engine;
+  const same = (a: FaceName, b: FaceName): boolean => JSON.stringify(a) === JSON.stringify(b);
+  const surfaceOf = (state: EngineState, name: FaceName): Surface => state.evaluation.faceSurfaces[state.evaluation.faceNames.findIndex((other) => same(other, name))];
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket());
+  });
+
+  it('a draft on the rib: the sides are still planes, narrower at the top, and a sketch stands on one', () => {
+    const before = volumeOf(engine.getState(), 'box');
+    const state = run(engine, ribDraft());
+    expectAllOk(state);
+    expect(featureOf(state, 'rib').extent).toMatchObject({ type: 'distance', taper: expect.closeTo(-Math.PI / 60, 12) });
+    expect(featureOf(state, 'rib').expressions).toMatchObject({ 'extent/taper': 'deg(-3)' });
+    expect(surfaceOf(state, RIB_LEFT).kind).toBe('plane');
+    // 1.6 at the floor, 1.6 − 2 · 12 tan 3° = 0.342 at the top; the free end leans too
+    expect(volumeOf(state, 'box')).toBeLessThan(before);
+    const top = faceBox(state, 'box', { feature: 'rib', role: 'endCap' });
+    expect((top?.max[0] ?? 0) - (top?.min[0] ?? 0)).toBeCloseTo(1.6 - 24 * Math.tan(Math.PI / 60), 4);
+    const onSide = preview(engine, sketchOn('onDraft', onFace('box', RIB_LEFT)));
+    expect(onSide.evaluation.features.onDraft.status).toBe('ok');
+    near(Math.abs(onSide.evaluation.features.onDraft.plane?.normal[2] ?? 0), Math.sin(Math.PI / 60), 1e-9);
+  });
+
+  it('a lead-in on the lip: setField adds the taper, the lip is 0.79 thick at its free end and still clears the box', () => {
+    const state = run(engine, lipLeadIn());
+    expectAllOk(state);
+    expect(featureOf(state, 'lip').extent).toMatchObject({ taper: expect.closeTo(-Math.PI / 18, 12) });
+    // the lip narrows by 4 tan 10° on every side towards its free end (z = 26); its inside does not
+    const lean = 4 * Math.tan(Math.PI / 18);
+    const outer = faceBox(state, 'lid', { feature: 'lip', role: 'side', curve: 'ob' });
+    expect(outer?.max[0]).toBeCloseTo(77.8, 4);
+    expect(outer?.min[0]).toBeCloseTo(77.8 - lean, 4);
+    const inner = faceBox(state, 'lid', { feature: 'lipInside', role: 'side', curve: 'ob' });
+    expect(inner?.min[0]).toBeCloseTo(76.3, 4);
+    // so the lip is 1.5 thick at the plate and 0.795 at its free end
+    expect((outer?.min[0] ?? 0) - (inner?.max[0] ?? 0)).toBeCloseTo(0.795, 3);
+    expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+  });
+
+  it('a countersink by hand: a cone between the top of the lid and the bore, its rims circles', () => {
+    const before = volumeOf(engine.getState(), 'lid');
+    const state = run(engine, countersinkByHand());
+    expectAllOk(state);
+    // the cone: a hole, with the half angle of the taper; its apex below the mouth by the radius of the mouth
+    const body = engine.query('body', { body: 'lid' });
+    if (!body.ok) throw new Error(body.error.message);
+    const cone = (body.result as { faces: { name: FaceName; surface: Surface; convex?: boolean }[] }).faces.find((face) => same(face.name, CONE));
+    expect(cone?.surface).toMatchObject({ kind: 'cone', halfAngle: expect.closeTo(Math.PI / 4, 9), axis: [0, 0, 1] });
+    expect(cone?.convex).toBe(false);
+    near((cone?.surface as Extract<Surface, { kind: 'cone' }>).apex[2], 33 - 4, 1e-9);
+    // the volume taken: the frustum of 1.5 from radius 4 to 2.5, then the bore of 2.5 through the
+    // rest of the plate (1.5), each a regular polygon of the count for its larger radius
+    const sides = (radius: number): number => Math.ceil((2 * Math.PI) / (2 * Math.acos(1 - 0.01 / radius)) - 1e-9);
+    const area = (n: number, r: number): number => (n / 2) * Math.sin((2 * Math.PI) / n) * r * r;
+    const frustum = (area(sides(4), 1) * 1.5 * (16 + 10 + 6.25)) / 3;
+    near(before - volumeOf(state, 'lid'), frustum + area(sides(2.5), 2.5) * 1.5, 0.02);
+    // both rims are circles, and a sketch projects them
+    const rims = run(
+      engine,
+      sketchOn('rims', XY),
+      { type: 'addExternal', sketch: 'rims', id: 'mouth', ref: { type: 'edge', body: 'lid', edge: { a: LID_TOP, b: CONE }, kind: 'circle' } },
+      { type: 'addExternal', sketch: 'rims', id: 'lower', ref: { type: 'edge', body: 'lid', edge: { a: BORE, b: CONE }, kind: 'circle' } },
+    );
+    expect(rims.evaluation.features.rims.status).toBe('ok');
+    const radii = rims.evaluation.features.rims.sketch?.radii ?? {};
+    near(radii.mouth, 4, 1e-9);
+    near(radii.lower, 2.5, 1e-9);
+    const kinds = rims.evaluation.bodies.lid.edges.filter((edge) => same(edge.name.a, CONE) || same(edge.name.b, CONE)).map((edge) => edge.kind);
+    expect(kinds.length).toBeGreaterThanOrEqual(2);
+    expect(kinds.every((kind) => kind === 'circle')).toBe(true);
+  });
+
+  it('refusals: a taper under which the far profile vanishes, and a taper on through all', () => {
+    const steep = preview(engine, { type: 'setField', feature: 'sink', path: 'extent/taper', value: 'deg(-80)' });
+    expect(steep.evaluation.features.sink.error).toMatchObject({ code: 'invalidProfile', refs: ['wide'] });
+    expect(steep.evaluation.features.sink.error?.message).toMatch(/^At the far end of the extrusion/);
+    // another variant of the extent replaces it, the taper with it; a taper on through all is refused
+    expect(engine.preview({ type: 'updateFeature', id: 'sink', patch: { extent: { type: 'throughAll', side: 'backward' } } }).ok).toBe(true);
+    expect(engine.preview({ type: 'updateFeature', id: 'sink', patch: { extent: { type: 'throughAll', side: 'backward', taper: 0.1 } as never } })).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
+  });
+
+  it('the step of the schema is in the list, and the document loads to the same model', () => {
+    expect(UPGRADES.some((step) => step.name === '2b-taper')).toBe(true);
+    const before = engine.getState();
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.getState().document).toEqual(before.document);
+    expectAllOk(other.getState());
+    near(volumeOf(other.getState(), 'lid'), volumeOf(before, 'lid'), 1e-9);
   });
 });

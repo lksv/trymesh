@@ -277,6 +277,7 @@ type Command =
   | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number }   // radius u kružnice
   | { type: 'removeEntity'; sketch: Id; id: Id }                              // bod nebo křivka
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
+  | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id } // D52: another point in one place of a curve
   | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> }
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
@@ -336,6 +337,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 
 - `removeEntity` kaskáduje: smazání bodu odstraní křivky, které na něm stojí, a smazání bodu nebo křivky odstraní vazby, které na ně odkazují. Křivky v `regions` pozdějších extrude zůstanou a extrude skončí v `noProfile`.
 - `removeExternal` odstraní vazby na promítnutou křivku a její odvozené body. Vlastní křivky na promítnuté body neodkazují, takže se jich mazání netýká.
+- `setCurvePoint` (D52) is no deletion: the curve keeps its ID and its constraints, and the point it had stays. It is invalid when `point` is not a name the kind of the curve has (`a`, `b` of a line; `center` of a circle; `center`, `start`, `end` of an arc; the table `CURVE_POINTS`), when the changed curve fails the validator of a curve (`to` an own point or `origin`, the points of the curve differ), or when the own rule of a constraint on the curve (`check` of the catalog: `symmetric`, `midpoint`) would refuse it afterwards; the message names that constraint. `to` equal to the point the curve has returns the same document, so it makes no undo step. Nothing is solved by the command; the stamp of the sketch holds the curves, so the next recompute solves it. In the recompute a region may be gone (`noProfile`), a side face starts at the new start of its line, and the straight end of a wall (`wallEnd`) is renamed by the new point of its chain.
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 

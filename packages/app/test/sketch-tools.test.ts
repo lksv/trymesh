@@ -1,11 +1,13 @@
 // Kreslicí nástroje a vazby z výběru proti skutečnému enginu: příkazy, které UI sestaví, musí
 // engine přijmout a výsledek musí odpovídat tomu, co uživatel nakreslil.
-import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, createEngine, duplicateOf, emptySketch } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, type SketchToolCall, createEngine, duplicateOf, emptySketch, nearestCurvePoint } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import {
   type Anchor,
+  CURVE_POINT_LABELS,
+  DEFAULT_FILLET,
   DEFAULT_POLYGON,
   GEOMETRIC_KINDS,
   type PatternChoices,
@@ -21,6 +23,7 @@ import {
   deleteCommands,
   dimensionFor,
   draftCommand,
+  filletCommands,
   generatedProfile,
   geometricFor,
   lineCommands,
@@ -32,6 +35,7 @@ import {
   polygonSizeKind,
   profileKind,
   rectangleCommands,
+  repointSelection,
   noPlane,
   rememberedProfile,
 } from '../src/sketch-commands';
@@ -40,7 +44,7 @@ import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, i
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
 
 // Engine se skicou `s` na rovině XY a čítačem ID jako v aplikaci.
-function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (commands: Command[] | undefined) => void; view: () => SketchView; sketch: () => SketchFeature; result: () => SketchResult } {
+function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (commands: Command[] | undefined) => void; view: () => SketchView; tool: () => SketchToolCall; sketch: () => SketchFeature; result: () => SketchResult } {
   const engine = createEngine(deps);
   let counter = 0;
   const newId = (prefix: string) => `${prefix}${++counter}`;
@@ -59,6 +63,8 @@ function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (command
       execute({ type: 'batch', commands: commands as Command[] });
     },
     view: () => sketchView(sketch(), result()),
+    // what the sketch tools of the engine take, as the app makes it (sketchContextOf)
+    tool: () => ({ sketch: sketch(), result: result(), parameters: engine.getState().evaluation.parameters, document: engine.getState().document }),
     sketch,
     result,
   };
@@ -70,7 +76,7 @@ const types = (sketch: SketchFeature): string[] => Object.values(sketch.constrai
 describe('kreslicí nástroje', () => {
   it('obdélník od počátku: čtyři úsečky, jedna oblast, volná jen šířka a výška', () => {
     const t = setup();
-    t.run(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
+    t.run(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
     expect(Object.keys(t.sketch().points)).toHaveLength(3); // čtvrtý roh je počátek
     expect(Object.keys(t.sketch().curves)).toHaveLength(4);
     expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
@@ -80,7 +86,7 @@ describe('kreslicí nástroje', () => {
 
   it('konstrukční režim: křivky nástroje jsou pomocné, vazby vznikají stejně a profil netvoří', () => {
     const t = setup();
-    t.run(asConstruction(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), free(30, 20), t.newId)!));
+    t.run(asConstruction(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId)!));
     expect(Object.values(t.sketch().curves).map((curve) => curve.construction)).toEqual([true, true, true, true]);
     expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
     expect(t.result().regions).toHaveLength(0);
@@ -98,14 +104,14 @@ describe('kreslicí nástroje', () => {
 
   it('obdélník s nulovou šířkou nebo ze dvou stejných bodů nevznikne', () => {
     const t = setup();
-    expect(rectangleCommands('s', t.view(), free(1, 1), free(1, 5), t.newId)).toBeUndefined();
-    expect(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), t.newId)).toBeUndefined();
+    expect(rectangleCommands('s', t.tool(), free(1, 1), free(1, 5), t.newId)).toBeUndefined();
+    expect(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), t.newId)).toBeUndefined();
   });
 
   it('a polygon: a hexagon by default, the dimension of the size as the panel says', () => {
     const t = setup();
     expect(DEFAULT_POLYGON).toEqual({ sides: 6, sizeKind: 'none' });
-    t.run(polygonCommands('s', t.view(), onPoint(t.view(), 'origin'), free(10, 0), DEFAULT_POLYGON, t.newId));
+    t.run(polygonCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(10, 0), DEFAULT_POLYGON, t.newId));
     expect(Object.keys(t.sketch().points)).toHaveLength(6);
     const curves = Object.values(t.sketch().curves);
     expect(curves.map((curve) => [curve.type, curve.construction === true])).toEqual([['circle', true], ...Array.from({ length: 6 }, () => ['line', false])]);
@@ -114,7 +120,7 @@ describe('kreslicí nástroje', () => {
     expect(t.result().degreesOfFreedom).toBe(2); // the size and the rotation
     // across flats: the size as drawn, rounded; vertex at 10 from the centre gives 10 · √3
     const flats = setup();
-    flats.run(polygonCommands('s', flats.view(), onPoint(flats.view(), 'origin'), free(10, 0), { sides: 6, sizeKind: 'acrossFlats' }, flats.newId));
+    flats.run(polygonCommands('s', flats.tool(), onPoint(flats.view(), 'origin'), free(10, 0), { sides: 6, sizeKind: 'acrossFlats' }, flats.newId));
     const size = Object.values(flats.sketch().constraints).find((constraint) => constraint.type === 'distancePointLine');
     expect(size).toMatchObject({ value: 17.32, driving: true });
     expect(flats.result().degreesOfFreedom).toBe(1);
@@ -123,12 +129,12 @@ describe('kreslicí nástroje', () => {
     expect(polygonSizeKind({ sides: 8, sizeKind: 'acrossFlats' })).toBe('acrossFlats');
     expect(polygonSizeKind({ sides: 5, sizeKind: 'none' })).toBe('none');
     const odd = setup();
-    odd.run(polygonCommands('s', odd.view(), free(5, 5), free(5, 15), { sides: 5, sizeKind: 'acrossFlats' }, odd.newId));
+    odd.run(polygonCommands('s', odd.tool(), free(5, 5), free(5, 15), { sides: 5, sizeKind: 'acrossFlats' }, odd.newId));
     expect(Object.values(odd.sketch().constraints).find((constraint) => constraint.type === 'diameter')).toMatchObject({ value: 20, driving: true });
     expect(odd.result().degreesOfFreedom).toBe(3); // the place and the rotation
     // a polygon of no size is not drawn
-    expect(polygonCommands('s', t.view(), free(1, 1), free(1, 1), DEFAULT_POLYGON, t.newId)).toBeUndefined();
-    expect(polygonCommands('s', t.view(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), DEFAULT_POLYGON, t.newId)).toBeUndefined();
+    expect(polygonCommands('s', t.tool(), free(1, 1), free(1, 1), DEFAULT_POLYGON, t.newId)).toBeUndefined();
+    expect(polygonCommands('s', t.tool(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), DEFAULT_POLYGON, t.newId)).toBeUndefined();
   });
 
   it('řetěz úseček sdílí body a uzavře se na první bod', () => {
@@ -187,7 +193,7 @@ describe('kreslicí nástroje', () => {
   it('konec na promítnutém bodě: nový vlastní bod s vazbou totožnosti', () => {
     const t = setup();
     // kvádr 30 × 20 × 10 a skica na jeho horní stěně s promítnutou hranou
-    t.run(rectangleCommands('s', t.view(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
+    t.run(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
     const loop = Object.keys(t.sketch().curves).sort();
     const execute = (command: Command) => expect(t.engine.execute(command)).toMatchObject({ ok: true });
     execute({ type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: loop }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
@@ -206,6 +212,39 @@ describe('kreslicí nástroje', () => {
     const curve = Object.values(sketch2().curves)[0] as { a: Id };
     expect(curve.a).not.toBe('x/a'); // křivka na promítnutý bod neodkazuje
     expect(state().evaluation.features.s2.sketch!.points[curve.a]).toMatchObject({ x: expect.closeTo(corner.at[0], 6), y: expect.closeTo(corner.at[1], 6) });
+  });
+});
+
+describe('the fillet and the re-point (D52)', () => {
+  it('the fillet of a corner through the context of the app; a refusal comes back with its reason', () => {
+    const t = setup();
+    t.run(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
+    const corner = [...t.view().points.values()].find((p) => Math.hypot(p.at[0] - 30, p.at[1] - 20) < 1e-9)!.id;
+    expect(DEFAULT_FILLET).toEqual({ radius: 2 });
+    const made = filletCommands(t.tool(), corner, { radius: 4 }, t.newId);
+    expect(made.ok).toBe(true);
+    t.run(made.ok ? made.commands : undefined);
+    expect(t.result().regions).toHaveLength(1);
+    expect(Object.values(t.sketch().curves).filter((curve) => curve.type === 'arc')).toHaveLength(1);
+    expect(filletCommands(t.tool(), corner, { radius: 4 }, t.newId)).toEqual({ ok: false, message: expect.stringMatching(/no curve ends there/) });
+  });
+
+  it('the selection a curve can be re-pointed by: one own curve and one own point or the origin; the nearer point first', () => {
+    const t = setup();
+    t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)!.commands);
+    t.run(pointCommands('s', t.view(), free(9, 5), t.newId));
+    const [line] = Object.keys(t.sketch().curves);
+    const [a, b, p] = Object.keys(t.sketch().points);
+    expect(repointSelection(t.view(), [line, p])).toEqual({ curve: line, to: p });
+    expect(repointSelection(t.view(), [p, line])).toEqual({ curve: line, to: p });
+    expect(repointSelection(t.view(), [line, 'origin'])).toEqual({ curve: line, to: 'origin' });
+    expect(repointSelection(t.view(), [line])).toBeUndefined();
+    expect(repointSelection(t.view(), [a, b])).toBeUndefined();
+    expect(repointSelection(t.view(), [line, p, a])).toBeUndefined();
+    expect(nearestCurvePoint(t.view().source, line, p)).toBe('b');
+    expect(nearestCurvePoint(t.view().source, line, 'origin')).toBe('a');
+    expect(nearestCurvePoint(t.view().source, 'nope', p)).toBeUndefined();
+    expect(Object.keys(CURVE_POINT_LABELS).sort()).toEqual(['a', 'b', 'center', 'end', 'start']);
   });
 });
 
@@ -402,6 +441,19 @@ describe('test zásahu', () => {
 });
 
 describe('nálezy z revize aplikace', () => {
+  it('review of D52: the row Re-point is not offered for a point the curve has already', () => {
+    const t = setup();
+    t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)!.commands);
+    const [line] = Object.keys(t.sketch().curves);
+    const [a, b] = Object.keys(t.sketch().points);
+    expect(repointSelection(t.view(), [line, a])).toBeUndefined();
+    expect(repointSelection(t.view(), [b, line])).toBeUndefined();
+    t.run(arcCommands('s', t.view(), onPoint(t.view(), 'origin'), free(20, 0), free(0, 20), t.newId));
+    const arc = Object.keys(t.sketch().curves).find((id) => t.sketch().curves[id].type === 'arc')!;
+    expect(repointSelection(t.view(), [arc, 'origin'])).toBeUndefined();
+    expect(repointSelection(t.view(), [arc, b])).toEqual({ curve: arc, to: b });
+  });
+
   it('dvojklik nástrojem Úsečka nevytvoří úsečku nulové délky', () => {
     const t = setup();
     // dvě kliknutí na stejné prázdné místo
@@ -440,7 +492,7 @@ describe('nálezy z revize aplikace', () => {
 
   it('smazání: sdílené body zůstanou, osiřelé zmizí; promítnutí bez geometrie jde zrušit', () => {
     const t = setup();
-    t.run(rectangleCommands('s', t.view(), free(5, 5), free(15, 12), t.newId));
+    t.run(rectangleCommands('s', t.tool(), free(5, 5), free(15, 12), t.newId));
     t.run(lineCommands('s', t.view(), free(30, 0.5), free(40, 0.5), t.newId)?.commands);
     const lone = Object.keys(t.sketch().curves)[4];
     const sideOfRectangle = Object.keys(t.sketch().curves)[0];

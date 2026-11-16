@@ -174,7 +174,7 @@ export function bodiesAndHoles(engine: Engine): EngineState {
   // the pocket of an M3 nut: a hexagon 5.5 across flats around the screw, drawn by the polygon tool
   const hex = sketchTool(
     'polygon',
-    { sketch: sketchOf(engine.getState(), 'skBolts'), result: engine.getState().evaluation.features.skBolts.sketch },
+    { sketch: sketchOf(engine.getState(), 'skBolts'), result: engine.getState().evaluation.features.skBolts.sketch, document: engine.getState().document },
     { center: { at: [50.5, 0], snap: { kind: 'point', id: 'cb' } }, vertex: { at: [53.7, 0.2] }, sides: 6, sizeKind: 'acrossFlats', size: NUT },
     freshIds(engine.getState().document, 'hex_'),
   );

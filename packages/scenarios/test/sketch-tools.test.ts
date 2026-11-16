@@ -11,13 +11,13 @@ const free = (x: number, y: number): Anchor => ({ at: [x, y] });
 const onPoint = (id: Id): Anchor => ({ at: [1e3, 1e3], snap: { kind: 'point', id } }); // the position comes from the point
 // Runs a tool in the sketch `S` with IDs the document does not have and executes its batch.
 function draw<K extends SketchToolName>(engine: Engine, tool: K, input: SketchToolInputs[K], sketch: Id = 'S'): Made {
-  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch) }, input, freshIds(engine.getState().document));
+  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch), document: engine.getState().document }, input, freshIds(engine.getState().document));
   if (!made.ok) throw new Error(made.message);
   run(engine, batch(...made.commands));
   return made;
 }
 const refused = <K extends SketchToolName>(engine: Engine, tool: K, input: unknown, sketch: Id = 'S'): string => {
-  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch) }, input as SketchToolInputs[K], freshIds(engine.getState().document));
+  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch), document: engine.getState().document }, input as SketchToolInputs[K], freshIds(engine.getState().document));
   if (made.ok) throw new Error('the tool should have refused the input');
   return made.message;
 };
@@ -37,7 +37,9 @@ const steps = (engine: Engine, made: Made): number[] => {
 
 describe('the catalog of sketch tools', () => {
   it('lists every tool with its inputs and what it returns', () => {
-    expect(Object.keys(SKETCH_TOOLS)).toEqual(['rectangle', 'polygon']);
+    expect(Object.keys(SKETCH_TOOLS)).toEqual(['rectangle', 'polygon', 'fillet']);
+    expect(SKETCH_TOOLS.fillet.inputs).toMatchObject({ corner: { kind: 'point' }, radius: { kind: 'number', spec: { unit: 'mm', min: { value: 0, open: true } }, expression: true } });
+    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened']);
     expect(Object.keys(SKETCH_TOOLS.rectangle.inputs)).toEqual(['first', 'opposite']);
     expect(Object.keys(SKETCH_TOOLS.rectangle.ids)).toEqual(['points', 'lines', 'constraints']);
     expect(SKETCH_TOOLS.polygon.inputs).toMatchObject({ center: { kind: 'anchor' }, vertex: { kind: 'anchor' }, sides: { kind: 'number', spec: { integer: true, min: { value: 3 }, max: { value: MAX_POLYGON_SIDES } } }, sizeKind: { kind: 'option', options: ['circumscribed', 'acrossFlats'], optional: true }, size: { kind: 'number', optional: true, expression: true } });
@@ -194,7 +196,7 @@ describe('the polygon tool', () => {
     // an expression: with the parameters of the document the polygon is drawn at its value, far from where the vertex was clicked
     const engine = sketched();
     run(engine, { type: 'setParameter', name: 'w', expr: '5.5' });
-    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), parameters: engine.getState().evaluation.parameters };
+    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), parameters: engine.getState().evaluation.parameters, document: engine.getState().document };
     const made = sketchTool('polygon', context, { center: onPoint('origin'), vertex: free(0.4, 0.3), sides: 12, sizeKind: 'acrossFlats', size: 'w' }, freshIds(engine.getState().document)) as Made;
     const drawn = made.commands.filter((command) => command.type === 'addPoint').map((command) => Math.hypot((command as { x: number }).x, (command as { y: number }).y));
     for (const radius of drawn) expect(radius).toBeCloseTo(5.5 / (2 * Math.cos(Math.PI / 12)), 9);
@@ -202,7 +204,7 @@ describe('the polygon tool', () => {
     for (const step of steps(engine, made)) expect(step).toBeCloseTo(1 / 12, 5);
     expect(solved(engine, 'S').regions).toHaveLength(1);
     // without the parameters, or with an expression that has no value, it is drawn as clicked
-    const blind = sketchTool('polygon', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') }, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'w' }, freshIds(engine.getState().document)) as Made;
+    const blind = sketchTool('polygon', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), document: engine.getState().document }, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'w' }, freshIds(engine.getState().document)) as Made;
     expect((blind.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
     const unknown = sketchTool('polygon', context, { center: free(50, 50), vertex: free(52, 50), sides: 6, size: 'nowhere * 2' }, freshIds(engine.getState().document)) as Made;
     expect((unknown.commands[1] as { x: number }).x).toBeCloseTo(52, 9);
@@ -222,7 +224,7 @@ describe('the polygon tool', () => {
     // forty times the radius, which used to fold the polygon (the second review).
     for (const [sides, sizeKind] of [[64, 'circumscribed'], [24, 'acrossFlats'], [6, 'acrossFlats']] as const) {
       const far = sketched();
-      const made = sketchTool('polygon', { sketch: sketchOf(far, 'S'), result: solved(far, 'S') }, { center: free(193.2, 51.8), vertex: onPoint('origin'), sides, sizeKind, size: 10 }, freshIds(far.getState().document)) as Made;
+      const made = sketchTool('polygon', { sketch: sketchOf(far, 'S'), result: solved(far, 'S'), document: far.getState().document }, { center: free(193.2, 51.8), vertex: onPoint('origin'), sides, sizeKind, size: 10 }, freshIds(far.getState().document)) as Made;
       const radius = 10 / (sizeKind === 'circumscribed' ? 2 : 2 * Math.cos(Math.PI / sides));
       const centre = made.commands[0] as { x: number; y: number };
       expect(Math.hypot(centre.x, centre.y), `${sides}`).toBeCloseTo(radius, 9);
@@ -280,7 +282,7 @@ describe('the polygon tool', () => {
       { type: 'addPoint', sketch: 'S', id: 'ae', x: 0, y: 25 },
       { type: 'addCurve', sketch: 'S', id: 'arc', curve: { type: 'arc', center: 'ac', start: 'as', end: 'ae' } }, // a quarter, from 0° to 90°
     );
-    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') };
+    const context = { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), document: engine.getState().document };
     const on = (id: Id, x: number, y: number) => anchorPosition(context, { at: [x, y], snap: { kind: 'curve', id } });
     expect(on('l', 4, 3)).toEqual([expect.closeTo(4, 9), expect.closeTo(0, 9)]);
     expect(on('l', 14, 3)).toEqual([expect.closeTo(10, 9), expect.closeTo(0, 9)]); // beyond the end: the end
@@ -367,7 +369,7 @@ describe('the polygon tool', () => {
     expect(refused(engine, 'polygon', { ...input, size: ' ' })).toMatch(/size: the expression is empty/);
     expect(refused(engine, 'polygon', { ...input, size: true })).toMatch(/size: a number is expected/);
     // an expression the engine cannot evaluate is an invalid command of the batch, not of the tool
-    const made = sketchTool('polygon', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') }, { ...input, size: 'missing * 2' }, freshIds(engine.getState().document));
+    const made = sketchTool('polygon', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), document: engine.getState().document }, { ...input, size: 'missing * 2' }, freshIds(engine.getState().document));
     expect(made.ok).toBe(true);
     expect(engine.execute(batch(...(made as Made).commands))).toMatchObject({ ok: false });
     expect(Object.keys(sketchOf(engine, 'S').points)).toEqual([]);
@@ -385,7 +387,7 @@ describe('the polygon tool', () => {
     expect(made.ids.lines).toEqual(['c3', 'c4', 'c5']);
     expect(made.ids.constraints[0]).toBe('k2');
     // a prefix keeps the IDs of one part of the model together
-    const named = sketchTool('rectangle', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S') }, { first: free(40, 0), opposite: free(50, 5) }, freshIds(engine.getState().document, 'nut_'));
+    const named = sketchTool('rectangle', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), document: engine.getState().document }, { first: free(40, 0), opposite: free(50, 5) }, freshIds(engine.getState().document, 'nut_'));
     expect((named as Made).ids.points).toEqual(['nut_p1', 'nut_p3', 'nut_p2', 'nut_p4']); // the two clicked corners get their IDs first
     expect(engine.execute(batch(...(named as Made).commands)).ok).toBe(true);
   });

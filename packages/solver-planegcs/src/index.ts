@@ -276,7 +276,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
       continue;
     }
-    out.push({ id, ...translate(id, constraint, input.curves) });
+    out.push({ id, ...translate(id, constraint, input.curves, input.constraints) });
   }
 
   if (drag) {
@@ -290,7 +290,25 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
 
 // Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
 // (A fixed point is the exception with two primitives and is translated by the caller.)
-function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>): Record<string, unknown> & { type: string } {
+// A tangency of a line and an arc at a common end (D52). An end of the arc (`start` or `end`) is an
+// end of the line (`a` or `b`): the same point ID, or two points that one coincident constraint of
+// the input names together. Decided from the curves and constraints, never from positions; a chain
+// of joins or an end held on the line by pointOnCurve is not read.
+function commonEnd(line: Extract<Curve, { type: 'line' }>, arc: Extract<Curve, { type: 'arc' }>, constraints: Record<Id, Constraint>): Id | undefined {
+  const lineEnds = [line.a, line.b];
+  const arcEnds = [arc.start, arc.end];
+  const shared = arcEnds.find((p) => lineEnds.includes(p));
+  if (shared !== undefined) return shared;
+  // the start before the end and the constraints by ID, so that the order of the keys of the
+  // input does not matter (a line both of whose ends are joined to the ends of the arc)
+  const joins = Object.keys(constraints)
+    .sort()
+    .map((id) => constraints[id])
+    .filter((c): c is Extract<Constraint, { type: 'coincident' }> => c.type === 'coincident');
+  return arcEnds.find((p) => joins.some((c) => (c.a === p && lineEnds.includes(c.b)) || (c.b === p && lineEnds.includes(c.a))));
+}
+
+function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
     if (!curve) throw new Error(`solver: vazba ${id} odkazuje na neznámou křivku ${curveId}`);
@@ -335,7 +353,17 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       const [first, second] = rank[kind(c.a)] <= rank[kind(c.b)] ? [c.a, c.b] : [c.b, c.a];
       const pair = `${kind(first)}-${kind(second)}`;
       if (pair === 'line-circle') return { type: 'tangent_lc', l_id: first, c_id: second };
-      if (pair === 'line-arc') return { type: 'tangent_la', l_id: first, a_id: second };
+      if (pair === 'line-arc') {
+        // At a common end the library's form ("the centre is the radius away from the line") has
+        // a double root: its derivative there is that of the rule of the arc, so the library calls
+        // the tangency redundant when the estimate is exact and reports it as a conflict after any
+        // change. "The radius to the common end is square to the line" says the same wherever the
+        // line has a length, without the double root (D52; the engine's analysis reads it so too).
+        const [l, a] = [curves[first] as Extract<Curve, { type: 'line' }>, curves[second] as Extract<Curve, { type: 'arc' }>];
+        const shared = commonEnd(l, a, constraints);
+        if (shared !== undefined) return { type: 'perpendicular_pppp', l1p1_id: a.center, l1p2_id: shared, l2p1_id: l.a, l2p2_id: l.b };
+        return { type: 'tangent_la', l_id: first, a_id: second };
+      }
       if (pair === 'circle-circle') return { type: 'tangent_cc', c1_id: first, c2_id: second };
       if (pair === 'circle-arc') return { type: 'tangent_ca', c_id: first, a_id: second };
       if (pair === 'arc-arc') return { type: 'tangent_aa', a1_id: first, a2_id: second };

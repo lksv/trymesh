@@ -93,6 +93,8 @@ Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. S
 
 Osa X se dopočítá jako Y × N. Nezávisí tedy na pořadí bodů úsečky ani na orientaci smyčky.
 
+**A curve re-pointed (D52).** A side face is named by its curve and a region by the curves of its outer loop, so `setCurvePoint`, which keeps the ID of the curve, keeps those names; that is why the fillet of a corner keeps every face of the body under its name and only adds the round face `side` (or `wallSide`) of the arc. What follows the new point is the geometry: the origin of a planar side face is the start `a` of the line, so a sketch or a plane on the side face of a line whose start was re-pointed moves along the line (the fillet names such features in `ids.moved`), and the straight end of a wall is named by the point its chain ends at (`wallEnd`), so it is renamed when that end is re-pointed.
+
 On a face of a mirrored copy (D53) the rule is the same: the origin and the Y axis are the images of those of the source face, the normal points out of the copy, and X = Y × N is the opposite of the image of the source's X. A sketch on a face of a mirrored copy is right-handed like every sketch and is not the mirror image of the same sketch on the source face: its `x` coordinates run the other way. A mirror of a mirror (an even number of mirrors among the tags of a face) is a turned copy again.
 
 Směr „ven" se bere ze sítě: je to součet normál všech trojúhelníků s daným jménem vážený plochou. Jediný trojúhelník by mohl být úzký a dát špatné znaménko. Síť zároveň ověří, že stěna stále existuje. Ze sítě se bere jen znaménko, poloha a osy jsou analytické.

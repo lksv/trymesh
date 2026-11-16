@@ -266,6 +266,69 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'sketch');
   });
 
+  it('the fillet of a corner and the re-point of a curve (D52)', async () => {
+    const h = await start();
+    // a rectangle from the origin, extruded
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.press('panel', 'OK');
+    doubleClick(h, 'Skica 1');
+    h.record('a rectangle from the origin and its extrusion; the sketch opened again');
+
+    h.press('toolbar', 'Fillet');
+    h.record('the tool Fillet: its radius in the panel, 2 mm at first');
+    h.type(h.field('Radius'), '-1');
+    h.record('a radius that is not positive is marked while typing');
+    h.type(h.field('Radius'), '-1', true);
+    h.record('and not taken');
+    h.type(h.field('Radius'), '5', true);
+    h.click(at(20, 15));
+    h.record('a click on no point says what the tool wants');
+    h.click(point(h, 's1', pointIdAt(h, 's1', 40, 30)));
+    h.record('a click on the corner: the arc, the lines shortened, the extrusion patched; the status says so');
+    h.click(point(h, 's1', pointIdAt(h, 's1', 40, 30)));
+    h.record('the same corner again is refused with the reason');
+    h.type(h.field('Radius'), '50', true);
+    h.click(at(0, 0));
+    h.record('a radius the lines are too short for is refused with the bound');
+
+    // the re-point row: a line and a point selected
+    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Bod');
+    h.click(at(30, 45));
+    h.press('toolbar', 'Výběr');
+    h.click(at(20, 0));
+    h.click(at(30, 45), { shiftKey: true });
+    h.record('a line and a point selected: the row Re-point offers the start and the end, the nearer chosen');
+    h.choose('Point of c1', 'a');
+    h.press('panel', 'Re-point');
+    h.record('the start of the line re-pointed: the line keeps its ID, the region it closed is gone');
+    h.key('z', { ctrlKey: true });
+    h.press('toolbar', 'Kružnice');
+    h.click(at(70, 10));
+    h.click(at(80, 10));
+    h.press('toolbar', 'Výběr');
+    h.click(at(70, 20));
+    h.click(at(30, 45), { shiftKey: true });
+    h.record('a circle and a point: the row offers the centre only');
+    h.press('panel', 'Re-point');
+    h.record('the circle moved onto the point');
+    h.press('toolbar', 'Oblouk');
+    h.click(at(100, 10));
+    h.click(at(110, 10));
+    h.click(at(100, 20));
+    h.press('toolbar', 'Výběr');
+    h.click(at(100 + 10 * Math.SQRT1_2, 10 + 10 * Math.SQRT1_2));
+    h.click(at(30, 45), { shiftKey: true });
+    h.record('an arc and a point: the centre, the start and the end');
+    await matches(h, 'fillet');
+  });
+
   it('features: extrusions, a sketch on a face, a cut through all, a pattern, a plane, a gear; each form there and back', async () => {
     const h = await start();
     // the base sketch: a rectangle, a circle next to it and a point in the middle of the rectangle

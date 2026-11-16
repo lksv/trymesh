@@ -934,6 +934,7 @@
     +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     + div.group
     +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -1235,6 +1236,7 @@
     -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     -   button.active title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     - div.group
     -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -2638,6 +2640,7 @@
     +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     + div.group
     +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -2816,6 +2819,7 @@
     -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     - div.group
     -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -5221,6 +5225,7 @@
     +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     + div.group
     +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -5440,6 +5445,7 @@
     -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -5734,6 +5740,7 @@
     +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
     +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
     + div.group
     +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"

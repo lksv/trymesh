@@ -39,7 +39,7 @@ import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
-import { DEFAULT_POLYGON } from './sketch-commands';
+import { DEFAULT_FILLET, DEFAULT_POLYGON } from './sketch-commands';
 import { type View, Viewport } from './viewport';
 import { bodyName, faceLabel, featureName, issueText, takenOverText } from './issue-text';
 
@@ -72,7 +72,7 @@ export class App implements SketchHost, SceneHost {
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   readonly drafting: DraftState = { cost: 0, confirming: false };
-  readonly sketching: SketchState = { polygon: DEFAULT_POLYGON }; // remembered between sketches
+  readonly sketching: SketchState = { polygon: DEFAULT_POLYGON, fillet: DEFAULT_FILLET }; // remembered between sketches
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
 

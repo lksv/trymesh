@@ -124,6 +124,8 @@ describe('sketch tools', () => {
       expect(text).toContain(`  example of input: ${JSON.stringify(entry.example)}`);
       const engine = newEngine();
       execute(engine, sketch('s'));
+      // the fillet needs a corner: its example names the corner the example of the rectangle leaves
+      if (entry.tool === 'fillet') ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: catalog[0].example });
       const made = ok(engine, 'sketch_tool', { sketch: 's', tool: entry.tool, input: entry.example });
       expect(made, entry.tool).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true }] });
       // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
@@ -138,6 +140,11 @@ describe('sketch tools', () => {
       { name: 'size', description: 'a number, positive, mm, or an expression', required: false },
     ]);
     expect(text).toContain('  - size (optional): a number, positive, mm, or an expression');
+    expect(catalog.find((entry) => entry.tool === 'fillet')!.inputs).toEqual([
+      { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: true },
+      { name: 'radius', description: 'a number, positive, mm, or an expression', required: true },
+    ]);
+    expect(text).toContain('A tool may also change what is drawn: the fillet re-points two lines (setCurvePoint)');
     const tool = tools().find((candidate) => candidate.name === 'sketch_tool')!;
     expect((tool.inputSchema as any).properties.tool.enum).toEqual(Object.keys(SKETCH_TOOLS));
   });
@@ -170,6 +177,33 @@ describe('sketch tools', () => {
     ok(engine, 'undo');
     ok(engine, 'undo');
     expect(engine.save()).toBe(empty);
+  });
+
+  it('a fillet (D52): the answer carries patched, moved and shortened and the problems after the batch; setCurvePoint through execute', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, { type: 'addFeature', feature: { id: 'E', name: 'E', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } });
+    // a sketch on the side face of `cd`, which starts at the corner `c`, and a projection of the edge of `bc` with the top
+    const top = { feature: 'E', role: 'endCap' };
+    execute(engine, { type: 'addFeature', feature: { id: 'side', name: 'side', suppressed: false, type: 'sketch', plane: { kind: 'face', body: 'E', face: { feature: 'E', role: 'side', curve: 'cd' } }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
+    execute(engine, { type: 'batch', commands: [{ type: 'addFeature', feature: { id: 'onTop', name: 'onTop', suppressed: false, type: 'sketch', plane: { kind: 'face', body: 'E', face: top }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never }, { type: 'addExternal', sketch: 'onTop', id: 'x', ref: { type: 'edge', body: 'E', edge: { a: top, b: { feature: 'E', role: 'side', curve: 'bc' } }, kind: 'line' } as never }] });
+    const before = engine.save();
+    const previewed = ok(engine, 'sketch_tool', { sketch: 's', tool: 'fillet', input: { corner: 'c', radius: 4 }, preview: true });
+    expect(previewed).toMatchObject({ ok: true, problems: [], ids: { lines: ['bc', 'cd'], patched: ['E'], moved: ['side'], shortened: ['onTop'] } });
+    expect(engine.save()).toBe(before);
+    const made = ok(engine, 'sketch_tool', { sketch: 's', tool: 'fillet', input: { corner: 'c', radius: 4 } });
+    expect(made.ids).toEqual(previewed.ids);
+    expect(made).toMatchObject({ ok: true, problems: [] });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref.outerLoop).toContain(made.ids.arc[0]);
+    // the radius is an ordinary dimension
+    expect(execute(engine, { type: 'setConstraintValue', sketch: 's', id: made.ids.radius[0], value: 6 })).toMatchObject({ ok: true, problems: [] });
+    // a refusal says why, and the corner that was filleted is no corner any more
+    expect(() => ok(engine, 'sketch_tool', { sketch: 's', tool: 'fillet', input: { corner: 'c', radius: 4 } })).toThrow(/^fillet: "c" is not the common end of exactly two lines/);
+    expect(() => ok(engine, 'sketch_tool', { sketch: 's', tool: 'fillet', input: { corner: { at: [0, 0] }, radius: 4 } })).toThrow(/corner: the ID of a point of the sketch is expected/);
+    // the bare command
+    execute(engine, { type: 'addPoint', sketch: 's', id: 'n', x: 10, y: -5 });
+    expect(execute(engine, { type: 'setCurvePoint', sketch: 's', id: 'ab', point: 'a', to: 'n' })).toMatchObject({ ok: true });
+    expect(() => execute(engine, { type: 'setCurvePoint', sketch: 's', id: 'ab', point: 'center', to: 'n' })).toThrow(/a line has the points a, b/);
   });
 
   it('the generated IDs avoid every ID of the document; a prefix names them', () => {
@@ -235,7 +269,7 @@ describe('sketch tools', () => {
       expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [x, y] }, vertex: { at: [x * (1 - 1e-9), y * (1 - 1e-9)] }, sides: 6, size: 10 } }), `${x} ${y}`).toMatch(/reaches out of the range/);
     }
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
-    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon');
+    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
     expect(error({ sketch: 's', tool: 'polygon' })).toMatch(/argument "input": an object/);
     expect(error({ sketch: 's', tool: 'polygon', input: [hexagon] })).toMatch(/argument "input"/);

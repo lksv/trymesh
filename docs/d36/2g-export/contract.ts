@@ -92,30 +92,35 @@ export declare const threeMf: ExportFormatSpec<typeof THREE_MF_OPTIONS>;
 export declare const dxf: ExportFormatSpec<typeof OUTLINE_OPTIONS>;
 export declare const svg: ExportFormatSpec<typeof OUTLINE_OPTIONS>;
 
-// What `about` of the file says, as plain JSON for the answer of the tool `export`.
-export interface MeshAbout {
+// What `about` of the file says, as plain JSON for the answer of the tool `export`. Type aliases,
+// not interfaces: an alias of an object type is assignable to `Record<string, unknown>`, the type
+// of `ExportFile.about`, and an interface is not.
+export type MeshAbout = {
   bodies: Id[]; // the bodies written, in their order
   triangles: number;
-}
+};
 // - `bodies`: the bodies the plane cuts, in the order they were taken.
 // - `loops`: all closed loops of the drawing; `circles`: how many of them are whole circles.
 // - `area`: mm², of the section as the mesh gives it (the number of the query `section`), so
 //   a circle counts a little less than the circle that is drawn.
 // - `bounds`: the box of what is drawn, in the x and y of `frame`; absent when nothing is cut.
-// - `frame`: the plane as it was used (after the offset): `origin + x·u + y·v` is the point of the
-//   model a point (u, v) of the drawing stands for.
+// - `frame`: the plane as it was asked for, after the offset (`frame` of the answer of `section`).
+// - `below`: how far under that plane the cut was taken (`below` of `section`: the precision of
+//   the coordinates of the bodies taken). A point (u, v) of the drawing stands for the point
+//   `origin + x·u + y·v − normal·below` of the model.
 // - `inPlane`: bodies with a planar face in the plane, as the query `section` reports them; only
 //   when there are some. Such a body shows the cut just under that face, or nothing when it lies
 //   on the other side of the plane.
-export interface OutlineAbout {
+export type OutlineAbout = {
   bodies: Id[];
   loops: number;
   circles: number;
   area: number;
   bounds?: { min: Vec2; max: Vec2 };
   frame: Frame;
+  below: number;
   inPlane?: { body: Id; face: FaceName }[];
-}
+};
 
 // When an export holds nothing worth writing, `Exported.empty` says why (D37); a tool that writes
 // files refuses with the text. `3mf` uses the two texts of `stl`; the outline adds two.
@@ -128,6 +133,16 @@ export const EMPTY = {
   // is taken under the plane, and the body lies above it
   notCutInPlane: (body: Id): string => `the plane cuts none of the bodies; "${body}" has a face in the plane and lies on the side the normal of the plane points to: move \`offset\` into the body`,
 } as const;
+// A format returns its one file also when the export is empty (the layout `file` is one file,
+// and `runExport` holds a format to it). What that file is:
+// - `3mf`: the package with a model that has no object and no build item. The schema takes it
+//   (`item` may occur zero times); the text of 3.4.3 speaks of "one or more items", so it is not
+//   a file to hand on, which is what `empty` says. `lib3mf` reads it without a warning.
+// - `dxf`: the HEADER and an ENTITIES section with nothing in it.
+// - `svg`: the root with the two groups' outer one and no drawing; its box is the margin alone
+//   (2 × 2 mm about the origin), because there are no bounds.
+// No caller of this project writes such a file: the tool `export` and the form of the app refuse
+// with the text.
 
 // What `run` of a format refuses, beyond what the check of the options refuses before it:
 //
@@ -135,8 +150,9 @@ export const EMPTY = {
 // notAvailable | ['plane'] | the plane is not in the state asked about, or the face is not planar (from `section`)
 // failed       |           | the mesh of a body is not a closed surface (from `section`)
 // failed       |           | a triangle of a body names one vertex twice, or a coordinate is not a finite number (`3mf`; a defect of the mesh)
-// failed       |           | the file would need ZIP64: 4 GiB or more, or more than 65 535 entries (`storedZip`)
+// failed       |           | the file does not fit a ZIP without ZIP64, or a name is too long for one (`storedZip`, below)
 //
+// The outline resolves its plane also when no body is taken, so `about.frame` is always there.
 // All three formats are exported as modelled, like every export (D49).
 
 // ================================================================ the list of bodies of a print export
@@ -155,9 +171,11 @@ export declare function chosenBodies(context: QueryContext, bodies: readonly Id[
 // `export/text.ts`. The three functions are shared by the formats of this package and are what
 // the robot description of 5b (two XML formats) will write its numbers and names with.
 
-// A number in a text file that takes no exponent (DXF, SVG): at most nine decimals, no exponent,
-// no trailing zeros, and never "-0". Nine decimals of a millimetre is a millionth of a micron,
-// far under the precision of the coordinates (float32). Throws for a number that is not finite.
+// A number of a drawing (DXF, SVG): at most nine decimals, no exponent, no trailing zeros, and
+// never "-0". Writing no exponent is a choice of the writer, not a rule of the formats (the
+// grammar of SVG path data takes one; the DXF reference does not say): a plain decimal is what
+// every reader takes. Nine decimals of a millimetre is a millionth of a micron, far under the
+// precision of the coordinates (float32). Throws for a number that is not finite.
 export declare function plain(value: number): string;
 
 // A coordinate of a mesh in 3MF: the shortest decimal text that reads back as the same float32
@@ -188,7 +206,9 @@ export declare function xmlText(text: string): string;
 // robot description of 5b with its folder of meshes). No library and no compression: every file
 // is stored (.ZIP File Format Specification 6.3.10, PKWARE, 4.4.5: method 0).
 export interface ZipEntry {
-  name: string; // relative, with forward slashes, no leading slash (4.4.17.1); the paths of `ExportFile` have this form
+  // Relative, with forward slashes, no leading slash (4.4.17.1); the paths of `ExportFile` have
+  // this form. At most 65 535 bytes as UTF-8: its length is a field of two bytes (4.4.10).
+  name: string;
   bytes: Uint8Array;
 }
 // The values of the records, by the sections of the specification:
@@ -209,9 +229,14 @@ export interface ZipEntry {
 // - CRC-32 (4.4.7: register preset to all ones, the result complemented), with the polynomial
 //   0xedb88320 of the sample code of RFC 1952, section 8.
 // - no extra field, no comment, no data descriptor, one disk; internal and external attributes 0.
-// - No ZIP64: a file of 4 GiB or more, or more than 65 535 entries, throws `QueryFailure('failed')`
-//   (4.4.1.4 marks such fields with 0xFFFFFFFF and 0xFFFF for ZIP64, which is not written). The
-//   3MF core specification asks producers for a plain ZIP when the data fits (1.1).
+// - No ZIP64. The values 0xFFFF and 0xFFFFFFFF of a field of the end record mean "see the ZIP64
+//   record" (4.4.1.4), which is not written, so they must not come up as real values. It throws
+//   `QueryFailure('failed')`, before anything is laid out, for
+//   - 65 535 entries or more;
+//   - an entry of 0xFFFFFFFF bytes or more, or an archive in which an offset or the size of the
+//     central directory would reach 0xFFFFFFFF (4 GiB less one byte);
+//   - a name longer than 65 535 bytes (it would be written with a wrong length).
+//   The 3MF core specification asks producers for a plain ZIP when the data fits (1.1).
 export declare function crc32(bytes: Uint8Array): number;
 export declare function storedZip(entries: readonly ZipEntry[]): Uint8Array;
 
@@ -278,14 +303,17 @@ export const THREE_MF = {
 // - `partnumber`: the ID of the body, which stays the same when the name changes (chapter 4: "a
 //   way to keep track of objects").
 // - `pid`, `pindex`: the base material of the body, when it has a colour.
-// - `vertices`: the positions of the mesh as they are, in millimetres, by `float32Text`; the
-//   triangles index them as the mesh does.
+// - `vertices`: the positions of the mesh that a triangle names, in their order, in millimetres,
+//   by `float32Text`; the triangles index them by their new numbers. A mesh of the kernel may
+//   hold positions no triangle uses (the lid of scenario 12: 148 of 883, each a copy of a used
+//   one), and 4.1.3 asks a producer not to write duplicate vertices.
 // A base material (chapter 5) needs a name and a display colour, so only a body with a colour
 // gets one: `displaycolor` is its colour (`#RRGGBB`, 5.1.1), `name` its material label, or the
 // colour itself when it has none. Two bodies with the same pair share the entry. Names of base
 // materials should differ (5.1): when one label comes with several colours, each of those names
-// is the label, a space and the colour. The colour is for display only (5.1, the note): it does
-// not tell a printer what to print with, and the format does not claim it.
+// is the label, a space and the colour. (A label that itself ends in a colour can still meet
+// such a name; "should", and not chased further.) The colour is for display only (5.1, the note):
+// it does not tell a printer what to print with, and the format does not claim it.
 export interface ThreeMfObject {
   body: Id;
   name: string;
@@ -308,9 +336,14 @@ export declare function baseMaterials(objects: readonly ThreeMfObject[]): { base
 // A piece of a loop starts at the corner `at` and runs to the corner of the next piece (the last
 // one to the first corner: a loop is closed).
 // - `turn` 0: a straight piece.
-// - otherwise an arc that turns by `turn` about its centre: radians, positive counter-clockwise
-//   in the x and y of the frame, never more than a quarter turn (`QUARTER`). `radius` is that of
-//   the surface the arc lies on.
+// - otherwise one arc: the arc of the radius `radius` between the two corners, on the side that
+//   makes it turn the way the span does and by less than a half turn. `radius` is that of the
+//   surface the arc lies on. `turn` is the angle that arc turns by about its own centre, derived
+//   from the two corners and the radius (`±2·asin(chord / (2·radius))`): radians, positive
+//   counter-clockwise in the x and y of the frame, a quarter turn at most (`QUARTER`; an end
+//   piece differs by a hair from its share of the sweep when its end is inside the circle).
+// Both numbers describe the same arc, so the two formats draw one curve: DXF writes the turn (as
+// a bulge), SVG the radius.
 export interface OutlinePiece {
   at: Vec2;
   turn: number;
@@ -318,7 +351,8 @@ export interface OutlinePiece {
 }
 // - `circle`: the loop is a whole circle; it has no pieces. Centre and radius are those of the
 //   exact surface (a cylinder or a cone cut across its axis).
-// - otherwise `pieces`, at least two.
+// - otherwise `pieces`, at least two (a loop of one line and one arc is three: an arc is never
+//   one piece).
 // - `hole`: a hole of a region; an outer loop runs counter-clockwise and a hole clockwise, as in
 //   the answer of `section`.
 export interface OutlineLoop {
@@ -342,37 +376,55 @@ export const TURN_SLACK = 1e-9; // of a quarter turn
 
 // The outline for the options of a format.
 // 1. The bodies: the list; without one, the body of the face when `plane` is a face, else
-//    `chosenBodies(context, undefined)`. No body: an empty outline with the reason.
+//    `chosenBodies(context, undefined)`, which may be none.
 // 2. The cut: `run` of the query `section` with the same context (a query that builds on another
-//    calls its `run`), with `outline: 'spans'` and a budget no model reaches, so nothing is left
-//    out. Its refusals pass through as they are. What `section` says about where the cut is taken
-//    holds here: `below` the plane by the precision of the coordinates, so a face as the plane
-//    gives all the material of its body just under the face, not the face alone.
+//    calls its `run`), with those bodies (also when there are none: `run` takes an empty list,
+//    and the plane is then still resolved), `outline: 'spans'` and a budget no model reaches
+//    (`Number.MAX_SAFE_INTEGER`; `run` is called directly, so the check of the arguments does not
+//    limit it), so nothing is left out. Its refusals pass through as they are. What `section`
+//    says about where the cut is taken holds here: `below` the plane by the precision of the
+//    coordinates, so a face as the plane gives all the material of its body just under the face,
+//    not the face alone. `empty`: the text of `chosenBodies` when no body was taken; else, when
+//    no loop was cut, `EMPTY.notCutInPlane` with the first body of `inPlane`, or `EMPTY.notCut`.
 // 3. The loops, from the spans of `section` (a span is a line, an arc or a curve, and its ends
 //    are corners of the mesh, so the spans of a loop join exactly):
 //    - a loop of one arc span is a whole circle: `circle`, with the centre and radius of the span;
 //    - a line: one straight piece;
-//    - an arc: `max(1, ceil(|sweep| / QUARTER − TURN_SLACK))` pieces of equal turn. The first starts at `from` of the
-//      span, a corner of the mesh; the corners between the pieces are computed on the circle of
-//      the surface (centre, radius, the angle of `from` plus the turn so far); the last ends at
-//      the next span. So the loop stays closed, and no piece is an arc whose centre a reader has
-//      to find from a long chord: with the ends of the mesh, which lie inside the circle by up to
-//      the sagitta of the polygon where another face cuts the round face, one arc of a half turn
-//      has its centre off by the root of the radius times that sagitta (measured: 0.32 mm for
-//      0.01 mm on a radius of 5; design.md, "Measured");
+//    - an arc: `max(2, ceil(|sweep| / QUARTER − TURN_SLACK))` pieces. Their corners: the first is
+//      `from` of the span, a corner of the mesh; the others are computed on the circle of the
+//      surface, at equal steps of the sweep from the angle of `from` (centre, radius, angle). The
+//      last piece ends at the next span, at a corner of the mesh again. Every piece is the arc of
+//      the radius of the surface between its two corners.
+//      Why at least two, and a quarter turn at most: a corner of the mesh lies on the circle or
+//      inside it, by up to the sagitta of the polygon where another face cuts the round face.
+//      With at least two pieces no piece has both its ends at such corners, and a piece of
+//      a quarter turn at most with one end on the circle and the other `s` inside it stays within
+//      `s` of the circle everywhere, the furthest at that corner itself. One arc of a quarter turn
+//      with both ends `s` inside is 1.41·`s` off in its middle; one arc of a half turn has its
+//      centre off by the root of twice the radius times `s` (0.32 mm for 0.01 mm on a radius of 5).
+//      Both measured; design.md, "Measured".
 //    - a curve (what has no exact form: a tooth flank, an ellipse): straight pieces through its
 //      points.
-// 4. `about.bounds`: the box of what is drawn: the corners, and for an arc piece the points of
-//    its circle furthest along x and y that it passes.
+// 4. `about.bounds`: the box of what is drawn: the corners, for an arc piece the points of the
+//    circle of that piece (not of the surface) furthest along x and y that it passes, and the box
+//    of a whole circle.
 export declare function outlineOf(context: QueryContext, options: RunArgsOf<typeof OUTLINE_OPTIONS>): Outline;
 
 // ================================================================ the DXF file
 
 // `export/dxf.ts`. DXF Reference, AutoCAD 2012 (Autodesk). The file is the minimal one the
 // reference describes under "Writing a DXF File": no TABLES and no BLOCKS (both may be left out,
-// and a layer an entity names without a LAYER table is created by the reader), a HEADER with
-// three variables (it may hold only the variables one sets), and ENTITIES written as the example
-// program of that chapter writes them: the type, the layer and the coordinates, nothing else.
+// and a layer an entity names without a LAYER table is created by the reader), and ENTITIES
+// written as the example program of that chapter writes them: the type, the layer and the
+// coordinates, nothing else.
+// What the reference does not say, and the design takes on (design.md, "Known limits"):
+// - Its tables of POLYLINE and VERTEX list a subclass marker (group 100) and its common groups
+//   a handle (group 5), which the files of its own release carry. The example program writes
+//   neither, and the reference states no rule for when they may be left out. The file names the
+//   release of the old-style polyline, AC1009, and leaves both out; `ezdxf` reads it as a file
+//   of that release and its audit finds nothing.
+// - It says the HEADER "can be omitted if you don't set header variables", not that a HEADER may
+//   hold three variables only. `ezdxf` takes it.
 // A group is two lines: the code, then the value. The reference does not name the end of a line;
 // CR LF is written. The text is ASCII: nothing of the model is written but numbers.
 export const DXF = {
@@ -396,7 +448,7 @@ export const DXF = {
 //   clockwise from the start point to the endpoint"); then SEQEND with 8. The first corner is not
 //   repeated: the flag closes the loop, and the piece of the last vertex runs to the first.
 // The file ends with ENDSEC and EOF. Coordinates and radii by `plain`; a bulge with twelve
-// decimals.
+// decimals. A drawing of nothing is the HEADER and an empty ENTITIES section.
 export declare function dxfText(outline: Outline): string;
 
 // ================================================================ the SVG file
@@ -410,7 +462,7 @@ export const SVG = {
 } as const;
 // - The root: `width` and `height` in `mm` and a `viewBox` of the same two numbers (7.7), so one
 //   user unit is one millimetre whatever a reader takes a pixel for: the box of the drawing and
-//   the margin on every side.
+//   the margin on every side. A drawing of nothing has no box: the margin about the origin.
 // - The y axis of SVG points down (7.3) and that of the plane up: a point (u, v) is written
 //   (u, −v), with no transform. The drawing is then not mirrored: it looks as the section does in
 //   the app seen against the normal.
@@ -419,7 +471,7 @@ export const SVG = {
 // - A whole circle: `circle` with `cx`, `cy`, `r` (9.3). Any other loop: one `path` (8.3):
 //   `M` to the first corner, then per piece `L x y` or `A r r 0 0 f x y` to the next corner, and
 //   `Z`; the last straight piece is the `Z` itself. `r` is the radius of the piece. The large-arc
-//   flag is always 0 (a piece is a quarter turn at most). The sweep flag `f` is 1 for a piece that
+//   flag is always 0 (a piece turns by less than a half turn). The sweep flag `f` is 1 for a piece that
 //   turns clockwise in the plane (`turn < 0`) and 0 otherwise: SVG calls the direction of
 //   growing angle in its own axes positive (8.3.8), and with y down that is clockwise in the
 //   plane.
@@ -453,7 +505,9 @@ export interface OpenExport {
 export interface ExportPanel {
   open?: OpenExport;
 }
-// What *Export* of the form does: `engine.export(format, draft, { at: marker })`, and then
+// What *Export* of the form does: `engine.export(format, draft, marker === null ? {} : { at: marker })`
+// (the marker is null at the end of the timeline, and `at` takes no null: the form of a query
+// does the same), and then
 // - refused: `problem` from the error;
 // - `empty`: `problem` with that text, nothing is saved;
 // - one file (`layout: 'file'`): saved under its suggested name;

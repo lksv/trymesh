@@ -10,7 +10,7 @@
 // (design.md, "Measured"). They become the expectations of the test in packages/scenarios.
 
 import type { Command, ExportFile, Exported, FaceName, Id, PlaneRef, QueryOutcome } from '../../../packages/engine/src/index';
-import type { EngineAfter2g, ExportPanel, MeshAbout, OutlineAbout, SaveFile, ZipEntry } from './contract';
+import type { EngineAfter2g, ExportFormatAfter, ExportOptionsAfter, ExportPanel, MeshAbout, OutlineAbout, SaveFile, ZipEntry } from './contract';
 import { DXF, EMPTY, SVG, THREE_MF, runExportForm, storedZip } from './contract';
 
 // The box of scenario 12 after the part of 2c: the bodies `box` and `lid`; the lid 4.36 thick
@@ -23,6 +23,11 @@ const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result 
 // The one file of an export of the layout `file`.
 const only = (exported: Exported): ExportFile => (exported.layout === 'file' && exported.files.length === 1 && exported.empty === undefined ? exported.files[0] : fail(exported.empty ?? 'one file is expected'));
 const text = (file: ExportFile): string => new TextDecoder().decode(file.bytes);
+// `about` of a file is plain JSON to the catalog; a format knows its shape. The two shapes go into
+// the field as they are (they are type aliases):
+export const fits: ExportFile['about'][] = [{ bodies: ['box'], triangles: 1440 } satisfies MeshAbout, {} as OutlineAbout];
+const meshAbout = (file: ExportFile): MeshAbout => file.about as MeshAbout;
+const outlineAbout = (file: ExportFile): OutlineAbout => file.about as OutlineAbout;
 const count = (whole: string, piece: string): number => whole.split(piece).length - 1;
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
@@ -39,7 +44,7 @@ declare function itemsOf(zip: Uint8Array): ZipEntry[];
 // Without options: the printed bodies, as objects of one document.
 export function boxAs3mf(): boolean {
   const file = only(unwrap(engine.export('3mf', {})));
-  const about = file.about as unknown as MeshAbout;
+  const about = meshAbout(file);
   const items = itemsOf(file.bytes);
   const model = new TextDecoder().decode(items[2].bytes);
   return (
@@ -47,24 +52,28 @@ export function boxAs3mf(): boolean {
     file.mediaType === 'model/3mf' &&
     about.bodies.join() === 'box,lid' &&
     about.triangles === 2926 && // 1440 and 1486
-    // the three items of a package, in this order; the file is 1.26 times the STL of the same bodies (184 748 and 146 384 bytes)
+    // the three items of a package, in this order; the file is 1.21 times the STL of the same bodies (177 803 and 146 384 bytes)
     items.map((item) => item.name).join() === [THREE_MF.contentTypes.item, THREE_MF.relationships.item, THREE_MF.model.item].join() &&
     // an object per body: its name, its ID as the part number, no property (no body has a colour yet)
     model.includes('<object id="1" type="model" name="box" partnumber="box">') &&
     model.includes('<object id="2" type="model" name="lid" partnumber="lid">') &&
     !model.includes('<basematerials') &&
-    count(model, '<vertex ') === 720 + 883 &&
+    // the vertices a triangle names: all 720 of the box, 735 of the 883 positions of the lid
+    count(model, '<vertex ') === 720 + 735 &&
     count(model, '<triangle ') === 2926 &&
     model.includes('<build><item objectid="1"/><item objectid="2"/></build>')
   );
 }
-// The mesh of the file is the mesh of the body: every coordinate reads back as the float32 of
-// the solid, so the file and the STL of the same body hold the same numbers.
+// The mesh of the file is the mesh of the body: every triangle of the file has the corners of
+// the triangle of the solid, each coordinate read back as the very float32, so the file and the
+// STL of the same body hold the same numbers. (The lid: its vertices are renumbered, because the
+// positions no triangle names are left out.)
 export function sameMesh(): boolean {
-  const { positions } = engine.getState().evaluation.bodies['box'].solid;
-  const model = new TextDecoder().decode(itemsOf(only(unwrap(engine.export('3mf', { bodies: ['box'] }))).bytes)[2].bytes);
-  const written = [...model.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"\/>/g)].flatMap((vertex) => [vertex[1], vertex[2], vertex[3]].map(Number));
-  return written.length === positions.length && written.every((value, i) => Math.fround(value) === positions[i]);
+  const { positions, triangles } = engine.getState().evaluation.bodies['lid'].solid;
+  const model = new TextDecoder().decode(itemsOf(only(unwrap(engine.export('3mf', { bodies: ['lid'] }))).bytes)[2].bytes);
+  const vertices = [...model.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"\/>/g)].map((vertex) => [vertex[1], vertex[2], vertex[3]].map(Number));
+  const corners = [...model.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)].flatMap((triangle) => [triangle[1], triangle[2], triangle[3]].map(Number));
+  return corners.length === triangles.length && corners.every((vertex, i) => [0, 1, 2].every((k) => Math.fround(vertices[vertex][k]) === positions[3 * triangles[i] + k]));
 }
 
 // The body properties of 3a reach the file: the name, and the colour as a base material named by
@@ -96,7 +105,7 @@ export function whichBodies(): (string | undefined)[] {
     const state = engine.preview({ type: 'batch', commands: bodies.map((body): Command => ({ type: 'setBodyProperties', body, patch: { use: 'reference' } })) });
     return state.ok ? { state: state.state } : fail(state.error.message);
   };
-  const bodiesOf = (exported: Exported): string => (only(exported).about as unknown as MeshAbout).bodies.join();
+  const bodiesOf = (exported: Exported): string => meshAbout(only(exported)).bodies.join();
   return [
     bodiesOf(unwrap(engine.export('3mf', {}, asReference(['box'])))), // 'lid': the box is a bought part now
     bodiesOf(unwrap(engine.export('3mf', { bodies: ['box'] }, asReference(['box'])))), // 'box': listed, whatever its use
@@ -111,7 +120,7 @@ export function whichBodies(): (string | undefined)[] {
 // it goes through with. The plane is a face of the lid, so the lid is the body.
 export function lidAsDxf(): boolean {
   const file = only(unwrap(engine.export('dxf', { plane: UNDER_LID, offset: -0.5 })));
-  const about = file.about as unknown as OutlineAbout;
+  const about = outlineAbout(file);
   const drawing = text(file);
   const lines = drawing.split('\r\n');
   return (
@@ -159,7 +168,7 @@ export function lidAsSvg(): boolean {
 // 45°), and the lid is named in `inPlane`.
 export function topOfTheLid(): boolean {
   const file = only(unwrap(engine.export('svg', { plane: LID_TOP })));
-  const about = file.about as unknown as OutlineAbout;
+  const about = outlineAbout(file);
   return text(file).includes('<circle class="hole" cx="8.7" cy="-8.7" r="3.45992"/>') && text(file).includes('<circle class="hole" cx="40" cy="-25" r="3.99992"/>') && about.inPlane?.[0].body === 'lid';
 }
 
@@ -170,9 +179,9 @@ export function topOfTheLid(): boolean {
 // whole circles, and the fourth post grown into the bracket, whose round side is an arc.
 export function boxAcross(): boolean {
   const file = only(unwrap(engine.export('dxf', { plane: XY, offset: 10 })));
-  const about = file.about as unknown as OutlineAbout;
+  const about = outlineAbout(file);
   const drawing = text(file);
-  // every bulge is that of a piece of a quarter turn at most
+  // every bulge is that of a piece of a quarter turn at most, and no arc is one piece
   const bulges = drawing.split('\r\n').flatMap((line, i, lines) => (line === '42' && i % 2 === 0 ? [Number(lines[i + 1])] : []));
   return (
     about.bodies.join() === 'box' &&
@@ -188,15 +197,37 @@ export function boxAcross(): boolean {
 // What a face as the plane means: the floor of the cavity gives the whole slab under it, 80 × 50,
 // not the floor alone (76 × 46). The floor alone is cut a little above it, where the cavity is.
 export function floorOfTheCavity(): [number, number] {
-  const under = only(unwrap(engine.export('svg', { plane: FLOOR }))).about as unknown as OutlineAbout;
-  const above = only(unwrap(engine.export('svg', { plane: FLOOR, offset: 0.5 }))).about as unknown as OutlineAbout;
+  const under = outlineAbout(only(unwrap(engine.export('svg', { plane: FLOOR }))));
+  const above = outlineAbout(only(unwrap(engine.export('svg', { plane: FLOOR, offset: 0.5 }))));
   return [under.area, above.loops]; // 4000; the walls and what stands on the floor
 }
 // A body that only stands on the plane is not cut: the export holds nothing and says where the
 // body is. The tool `export` refuses with that text; the form of the app shows it.
 export const standsOnThePlane = (): boolean => unwrap(engine.export('dxf', { plane: XY })).empty === EMPTY.notCutInPlane('box');
+// An export that holds nothing still returns its one file: a drawing without entities, a box of
+// the margin alone, a package without objects. Its `about` is whole: the plane is resolved also
+// when no body is taken.
+export function nothingToWrite(): boolean {
+  const unprinted = engine.preview({ type: 'batch', commands: ['box', 'lid'].map((body): Command => ({ type: 'setBodyProperties', body, patch: { use: 'reference' } })) });
+  if (!unprinted.ok) return fail(unprinted.error.message);
+  const drawing = unwrap(engine.export('svg', { plane: XY }));
+  const model = unwrap(engine.export('3mf', {}, { state: unprinted.state }));
+  const noBody = unwrap(engine.export('dxf', { plane: XY, offset: 10 }, { state: unprinted.state }));
+  return (
+    drawing.empty === EMPTY.notCutInPlane('box') &&
+    drawing.files.length === 1 &&
+    new TextDecoder().decode(drawing.files[0].bytes).includes('width="2mm" height="2mm" viewBox="-1 -1 2 2"') &&
+    outlineAbout(drawing.files[0]).bounds === undefined &&
+    model.empty === EMPTY.noPrintedBody &&
+    itemsOf(model.files[0].bytes).length === 3 &&
+    noBody.empty === EMPTY.noPrintedBody &&
+    !new TextDecoder().decode(noBody.files[0].bytes).includes('POLYLINE') &&
+    outlineAbout(noBody.files[0]).frame.origin[2] === 10 &&
+    outlineAbout(noBody.files[0]).loops === 0
+  );
+}
 // The state: before the holes were made, the plate has its outline and nothing else.
-export const beforeTheHoles = (): number => (only(unwrap(engine.export('dxf', { plane: UNDER_LID, offset: -0.5 }, { at: 'lipInside' }))).about as unknown as OutlineAbout).loops; // 1
+export const beforeTheHoles = (): number => outlineAbout(only(unwrap(engine.export('dxf', { plane: UNDER_LID, offset: -0.5 }, { at: 'lipInside' })))).loops; // 1
 
 // ---------------------------------------------------------------- d. refusals
 
@@ -233,17 +264,19 @@ export const overMcp = [
   // the lid as it would be with a thicker plate: a command previewed first, nothing written to the document
   { format: 'svg', path: 'out/lid.svg', options: { plane: UNDER_LID, offset: -0.5 }, after: { type: 'setParameter', name: 'lidT', expr: '6' } },
 ] as const;
-// Over the model of that test (two discs, `low` from z = 0 and `high` on it).
-export const FIXTURES = {
+// Over the model of that test (two discs, `low` from z = 0 and `high` on it), typed as the tables
+// of the test are (there over every format of the catalog).
+type Added = Exclude<ExportFormatAfter, 'stl'>;
+export const FIXTURES: { [F in Added]: ExportOptionsAfter<F> } = {
   '3mf': { bodies: ['low'] },
   dxf: { plane: XY, offset: 5 },
   svg: { plane: XY, offset: 5 },
-} as const;
-export const OPTIONS = {
+};
+export const OPTIONS: { [F in Added]: { [K in keyof Required<ExportOptionsAfter<F>>]: {} extends Pick<ExportOptionsAfter<F>, K> ? 'optional' : 'required' } } = {
   '3mf': { bodies: 'optional' },
   dxf: { plane: 'required', offset: 'optional', bodies: 'optional' },
   svg: { plane: 'required', offset: 'optional', bodies: 'optional' },
-} as const;
+};
 
 // ---------------------------------------------------------------- f. the form of the app
 
@@ -253,7 +286,7 @@ export function fromTheApp(): string[] {
   const saved: string[] = [];
   const save: SaveFile = (name, bytes) => void saved.push(`${name} ${bytes.length}`);
   const panel: ExportPanel = { open: { format: 'dxf', draft: { plane: UNDER_LID, offset: -0.5 } } };
-  runExportForm(panel, engine, null, save); // 'outline.dxf 682'
+  runExportForm(panel, engine, null, save); // 'outline.dxf 682'; the marker is at the end of the timeline, so no `at` is passed
   // a set of files is saved as one ZIP: the STL per body of the format of D37
   const set = unwrap(engine.export('stl', { perBody: true }));
   if (set.layout === 'directory') save('stl.zip', storedZip(set.files.map((file) => ({ name: file.path, bytes: file.bytes }))), 'application/zip'); // box.stl, lid.stl
@@ -284,6 +317,7 @@ export function scenario12g(): boolean {
     Math.abs(under - 4000) < 1e-6 &&
     above > 1 &&
     standsOnThePlane() &&
+    nothingToWrite() &&
     beforeTheHoles() === 1 &&
     round === 'notAvailable plane' &&
     missing === 'notAvailable bodies/0' &&

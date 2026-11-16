@@ -1,6 +1,6 @@
 // Interference of bodies: the volume two bodies share, pair by pair (D35, point 5).
 import { coordinatePrecision } from './mesh-distance';
-import { type Reach, penetration, thickestPiece, volumeOf } from './solid';
+import { type Reach, penetration, thickestPiece, volumeOf, volumeOfPieces } from './solid';
 import type { BodyResult, Id, InterferenceReport, Solid, SolidKernel } from './types';
 import { has } from './util';
 
@@ -30,14 +30,15 @@ export function bodyFileName(body: Id): string {
   return name;
 }
 
-interface Shared {
+// What was measured of what two bodies share.
+export interface Measured {
   volume: number;
   depth: number; // see `depthOf`
   planar: number; // the part of the depth that planar faces reach into each other
   round: boolean; // what they share has a face that is not planar
   slack: number; // how precisely a depth is known
 }
-const NOTHING: Shared = { volume: 0, depth: 0, planar: 0, round: false, slack: 0 };
+const NOTHING: Measured = { volume: 0, depth: 0, planar: 0, round: false, slack: 0 };
 
 // Faces of the two bodies that coincide leave sheets without thickness in their intersection.
 // Their two sides have the same coordinates, so they are looked for within a small part of the
@@ -59,27 +60,91 @@ function depthOf(common: Solid, a: Solid, b: Solid, isPlanar: (face: number) => 
   return { depth: rough > limit ? rough : Math.max(reached.depth, thickestPiece(common, SHEET * slack)), planar: reached.planar };
 }
 
+// The measure of a mesh two bodies share, with its volume handed in (a verified mesh and a mesh
+// as computed take it differently). It throws when the volume is not a number.
+function measure(common: Solid, volume: number, a: BodyResult, b: BodyResult, tolerance: number): Measured {
+  if (!Number.isFinite(volume)) throw new Error('the intersection has a volume that is not a number');
+  const planar = new Map([...a.faces, ...b.faces].map((face) => [face.id, face.planar]));
+  // coordinates are single precision: a depth is known to about a millionth of the largest coordinate
+  const slack = coordinatePrecision(a, b);
+  // a face the two lists do not have cannot be called planar
+  const isPlanar = (face: number): boolean => planar.get(face) === true;
+  const deep = volume > 0 ? depthOf(common, a.solid, b.solid, isPlanar, tolerance + slack, slack) : { depth: 0, planar: 0 };
+  return { volume, ...deep, round: common.faceIds.some((id) => planar.get(id) === false), slack };
+}
+
+// The most triangles of an intersection as computed that the second opinion measures (D50). The
+// measure is the slow part (the search for sheets in `depthOf` grows with the square of the
+// triangles of a piece); above the bound the pair stays failed, which is always allowed. Measured
+// (2026-11-16): the arm of scenario 13 gives 512 to 888 triangles with the axis of its joint along
+// a coordinate axis (0.1 to 0.2 s) and 1,806 to 7,452 askew (0.7 to 2.4 s); the largest
+// intersection of two parts of the joint of scenario 9 (the housing and itself turned a little)
+// has 9,174 and takes 3.7 s, as much through the kernel's verified answer. The bound lies above
+// all of them, so it never changes what the tests pin, and holds a refused pair to about five
+// seconds.
+export const SECOND_OPINION_TRIANGLES = 12000;
+
+const text = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 // What two bodies share. The kernel gives no guarantee for an intersection with flush faces and may
-// fail (its result is cleaned and verified); then the answer is the message of the failure.
+// refuse one (its result is cleaned and verified); then the answer is the reason of the refusal,
+// with a second opinion when the kernel's intersection as computed could be measured (D50).
 // `tolerance` belongs to the meshes (a document with another chord tolerance has other meshes), so
 // the answer for a pair of meshes does not depend on the call and can be kept by the two meshes.
-export type SharedVolume = Shared | { message: string };
+// - The second opinion is asked only when `boolean` threw, with the two bodies in the same order:
+//   a pair the kernel answers keeps its answer and its cost.
+// - When `boolean` answered with a mesh that cannot be measured, the pair is failed and the second
+//   opinion is not asked: a kernel that hands out such a mesh is not asked again.
+// - When the second call throws, its mesh cannot be measured or is above the bound, the answer is
+//   the reason of the refusal alone (with the bound named when that was the cause).
+// - The volume of a verified mesh is the absolute value of the whole (a sliver the cleaning left
+//   inside out must not hide as a negative volume); that of a mesh as computed is added piece by
+//   piece.
+export type SharedVolume = Measured | { message: string; asComputed?: Measured };
 export function sharedBy(kernel: SolidKernel, a: BodyResult, b: BodyResult, tolerance: number): SharedVolume {
+  let common: Solid;
   try {
-    // the absolute value: a sliver the cleaning left inside out must not hide as a negative volume
-    const common = kernel.boolean('intersection', a.solid, b.solid);
-    const volume = Math.abs(volumeOf(common));
-    if (!Number.isFinite(volume)) throw new Error('the intersection has a volume that is not a number');
-    const planar = new Map([...a.faces, ...b.faces].map((face) => [face.id, face.planar]));
-    // coordinates are single precision: a depth is known to about a millionth of the largest coordinate
-    const slack = coordinatePrecision(a, b);
-    // a face the two lists do not have cannot be called planar
-    const isPlanar = (face: number): boolean => planar.get(face) === true;
-    const deep = volume > 0 ? depthOf(common, a.solid, b.solid, isPlanar, tolerance + slack, slack) : { depth: 0, planar: 0 };
-    return { volume, ...deep, round: common.faceIds.some((id) => planar.get(id) === false), slack };
-  } catch (error) {
-    return { message: error instanceof Error ? error.message : String(error) };
+    common = kernel.boolean('intersection', a.solid, b.solid);
+  } catch (refusal) {
+    const message = text(refusal);
+    try {
+      const mesh = kernel.intersectionAsComputed(a.solid, b.solid).unverified;
+      if (mesh.triangles.length / 3 > SECOND_OPINION_TRIANGLES) return { message: `${message}; the intersection as computed has more than ${SECOND_OPINION_TRIANGLES} triangles and was not measured` };
+      return { message, asComputed: measure(mesh, volumeOfPieces(mesh), a, b, tolerance) };
+    } catch {
+      return { message };
+    }
   }
+  try {
+    return measure(common, Math.abs(volumeOf(common)), a, b, tolerance);
+  } catch (error) {
+    return { message: text(error) };
+  }
+}
+
+// What one pair is, by one measure: the rule of the report, for the answer of the kernel and for
+// the second opinion alike.
+// - `nothing`: a volume at most the threshold, or no deeper than the precision of the coordinates
+//   (noise of flush faces, whatever its size: large flush faces of turned copies share
+//   a fraction of a mm³).
+// - `fit`: otherwise, when neither body reaches deeper into the other than `tolerance` (the chord
+//   tolerance of the document), what they share has a round face and no planar face of one body
+//   reaches into a planar face of the other further than the polygon of a round face next to it
+//   explains.
+// - `collision`: otherwise; see InterferenceReport.
+export type Verdict = 'nothing' | 'fit' | 'collision';
+export function verdictOf(measured: Measured, threshold: number, tolerance: number): Verdict {
+  if (!(measured.volume > threshold && measured.depth > measured.slack)) return 'nothing';
+  return measured.round && measured.planar <= measured.slack && measured.depth <= tolerance + measured.slack ? 'fit' : 'collision';
+}
+
+// Three significant digits, without an exponent for the sizes a model has.
+const digits = (value: number): string => String(Number(value.toPrecision(3)));
+
+// The message of a refused pair whose intersection as computed measures as a collision: the
+// reason of the refusal as the kernel gave it, then what was measured, said as what it is.
+export function failedMessage(reason: string, asComputed: Measured): string {
+  return `${reason}; as computed the two share ${digits(asComputed.volume)} mm³, ${digits(asComputed.depth)} mm deep, which the kernel could not verify`;
 }
 
 // The arguments as the method `Engine.interference` takes them: a mistake of the caller throws.
@@ -99,15 +164,12 @@ export const boxesApart = (a: BodyResult['bounds'], b: BodyResult['bounds']): bo
 // rejected already by boxes that hold the two bodies (it then builds no moved mesh). `shared` answers for one pair;
 // the caller keeps its answers by the two meshes, so that after a change of the model only the
 // pairs with a changed body go to the kernel again.
-// - A pair is reported when the volume of its intersection is above the threshold; `a` is the
-//   smaller ID in string order. Pairs come in the order of the bodies in the model.
-// - A volume no deeper than the precision of the coordinates is noise of flush faces, not
-//   a pair, whatever its size (large flush faces of turned copies share a fraction of a mm³).
-// - A reported pair is a fit when neither body reaches deeper into the other than `tolerance`
-//   (the chord tolerance of the document), what they share has a round face and no planar face
-//   of one body reaches into a planar face of the other further than the polygon of a round
-//   face next to it explains; otherwise it is a collision: see InterferenceReport.
-// - A pair the kernel failed on is in `failed`, neither colliding nor clear.
+// - A pair is reported by `verdictOf`: a fit or a collision when the volume of its intersection is
+//   above the threshold and deeper than the precision of the coordinates; `a` is the smaller ID
+//   in string order. Pairs come in the order of the bodies in the model.
+// - A pair the kernel refused is judged by its second opinion with the same rule: `nothing` or
+//   a fit puts it in `cleared`; a collision, or no second opinion, leaves it in `failed`, neither
+//   colliding nor clear. The second opinion never puts a pair in `pairs` or `fits`.
 // - Boxes that do not overlap need no kernel: the volume is zero.
 export function interferenceReport(
   bodies: Readonly<Record<Id, unknown>>,
@@ -126,11 +188,17 @@ export function interferenceReport(
       report.checked++;
       const computed = pair(a, b);
       const result = !computed || boxesApart(computed.a.bounds, computed.b.bounds) ? NOTHING : shared(computed.a, computed.b);
-      if ('message' in result) report.failed.push({ a, b, message: result.message });
-      else if (result.volume > threshold && result.depth > result.slack) {
-        const fit = result.round && result.planar <= result.slack && result.depth <= tolerance + result.slack;
-        (fit ? report.fits : report.pairs).push({ a, b, volume: result.volume, depth: result.depth });
+      if (!('message' in result)) {
+        // `pairs` and `fits` are written here only, from a mesh the kernel verified
+        const verdict = verdictOf(result, threshold, tolerance);
+        if (verdict !== 'nothing') (verdict === 'fit' ? report.fits : report.pairs).push({ a, b, volume: result.volume, depth: result.depth });
+        continue;
       }
+      const second = result.asComputed;
+      const kind = second && verdictOf(second, threshold, tolerance);
+      if (!second || kind === undefined) report.failed.push({ a, b, message: result.message });
+      else if (kind === 'collision') report.failed.push({ a, b, message: failedMessage(result.message, second) });
+      else (report.cleared ??= []).push({ a, b, kind, volume: second.volume, depth: second.depth });
     }
   }
   return report;

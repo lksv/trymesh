@@ -1,10 +1,10 @@
 // D35 point 5 against the real adapters: volume and bounds of a body, export of chosen bodies and
 // the interference query.
-import { describe, expect, it } from 'vitest';
-import { type Command, type Engine, type EngineState, type Id, type InterferenceReport, type SolidKernel, bodyFileName, createEngine, INTERFERENCE_THRESHOLD } from '@trymesh/engine';
+import { afterAll, describe, expect, it } from 'vitest';
+import { type Command, type Engine, type EngineState, type Id, type InterferenceOptions, type InterferenceReport, type SolidKernel, bodyFileName, createEngine, INTERFERENCE_THRESHOLD } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
-import { XY, addSketch, circle, expectAllOk, extrude, newEngine, rectLoop, rectangle, run } from './kit';
+import { XY, addSketch, circle, expectAllOk, extrude, newEngine as plainEngine, rectLoop, rectangle, run } from './kit';
 
 const span = (id: Id, sketch: Id, curves: Id[][], start: number, distance: number, operation: 'new' | 'add' | 'cut' = 'new', targets?: Id[]): Command => ({
   type: 'addFeature',
@@ -19,26 +19,98 @@ const disc = (radius: number): number => {
   return (sides / 2) * radius * radius * Math.sin((2 * Math.PI) / sides);
 };
 
+// Every collision this file asks of an engine made by `newEngine` is asked a second time (D50,
+// docs/d36/5e-kernel-second/design.md, "Tests", 3): of the same document loaded into an engine
+// whose kernel refuses every intersection and answers its intersection as computed, so that the
+// second opinion decides every pair that reaches the kernel. The models of this file are the ones
+// `interference.ts` was written on (flush faces, a pin in its hole turned by a pattern, identical
+// bodies, shallow overlaps of planar and of round faces). What holds for each:
+// - nothing is a collision or a fit by the second opinion;
+// - a pair the kernel verified as a collision is failed, never cleared;
+// - on these models a cleared pair has the kind the kernel verified (a fit where it verified a fit,
+//   `nothing` where it verified nothing). That is a property of these models, not of the rule.
+// A pair the kernel verified clear may stay failed (the mesh as computed errs towards a collision
+// on flush faces); those are counted.
+const real = await createManifoldKernel();
+const refusingSolver = await createPlanegcsSolver();
+const refusing: SolidKernel = {
+  triangulate: (loops) => real.triangulate(loops),
+  boolean: (op, a, b) => {
+    if (op === 'intersection') throw new Error('the kernel gave up');
+    return real.boolean(op, a, b);
+  },
+  intersectionAsComputed: (a, b) => real.intersectionAsComputed(a, b),
+};
+const SECOND = { asked: 0, collisions: 0, fits: 0, clearedFits: 0, clearedNothing: 0, notCleared: 0 };
+const key = (pair: { a: Id; b: Id }) => `${pair.a} ${pair.b}`;
+function compared(verified: InterferenceReport, second: InterferenceReport): void {
+  SECOND.asked++;
+  expect([second.pairs, second.fits]).toEqual([[], []]);
+  const cleared = new Map((second.cleared ?? []).map((pair) => [key(pair), pair.kind]));
+  const failed = new Set(second.failed.map(key));
+  for (const pair of verified.pairs) {
+    expect(cleared.has(key(pair)), `${key(pair)} collides and was cleared`).toBe(false);
+    expect(failed.has(key(pair)), `${key(pair)} collides and is not failed`).toBe(true);
+  }
+  const fits = new Set(verified.fits.map(key));
+  for (const [pair, kind] of cleared) expect(kind, `${pair} cleared as another kind`).toBe(fits.has(pair) ? 'fit' : 'nothing');
+  const notClear = new Set([...verified.pairs, ...verified.failed].map(key));
+  SECOND.collisions += verified.pairs.length;
+  SECOND.fits += verified.fits.length;
+  SECOND.clearedFits += [...cleared.values()].filter((kind) => kind === 'fit').length;
+  SECOND.clearedNothing += [...cleared.values()].filter((kind) => kind === 'nothing').length;
+  SECOND.notCleared += second.failed.filter((pair) => !notClear.has(key(pair))).length;
+}
+const newEngine = (): Engine => {
+  const engine = plainEngine();
+  return new Proxy(engine, {
+    get(target, property, receiver) {
+      if (property !== 'interference') return Reflect.get(target, property, receiver);
+      return (options?: InterferenceOptions): InterferenceReport => {
+        const verified = target.interference(options);
+        const twin = createEngine({ solver: refusingSolver, kernel: refusing });
+        expect(twin.load(target.save()).ok).toBe(true);
+        compared(verified, twin.interference(options));
+        return verified;
+      };
+    },
+  });
+};
+afterAll(() => {
+  // the second opinion was asked about every model, saw collisions and fits, and cleared fits
+  expect(SECOND.asked).toBeGreaterThan(20);
+  expect(SECOND.collisions).toBeGreaterThan(20);
+  expect(SECOND.clearedFits).toBe(SECOND.fits);
+  console.log(`bodies: the second opinion over ${SECOND.asked} reports: ${SECOND.collisions} verified collisions all failed, ${SECOND.clearedFits} of ${SECOND.fits} fits cleared as fits, ${SECOND.clearedNothing} pairs cleared as nothing, ${SECOND.notCleared} verified clear pairs left failed`);
+});
+
 // A plate A 40 × 30 × 10 and a block B 20 × 20 × 10 that enters it by 10 × 10 × 5 mm at a corner.
 function overlapping(engine: Engine = newEngine()): Engine {
   run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), span('A', 'S1', [rectLoop('r')], 0, 10), addSketch('S2', XY), rectangle('S2', 'q', 30, 20, 20, 20, null), span('B', 'S2', [rectLoop('q')], 5, 10));
   return engine;
 }
 
-// The real kernel with a count of intersections, a switch that makes them fail and one that
-// makes them return a mesh with a coordinate that is not a number.
+// The real kernel with a count of intersections, a switch that makes them fail (both the
+// intersection and the intersection as computed, D50), one that makes only the intersection
+// fail (the second opinion then decides) and one that makes it return a mesh with a coordinate
+// that is not a number.
 async function watchedEngine() {
   const real = await createManifoldKernel();
-  const watch = { intersections: 0, fail: false, broken: false };
+  const watch = { intersections: 0, asComputed: 0, fail: false, refuse: false, broken: false };
   const kernel: SolidKernel = {
     triangulate: (loops) => real.triangulate(loops),
     boolean: (op, a, b) => {
       if (op === 'intersection') {
         watch.intersections++;
-        if (watch.fail) throw new Error('the kernel gave up');
+        if (watch.fail || watch.refuse) throw new Error('the kernel gave up');
         if (watch.broken) return { positions: Float32Array.from([NaN, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]), faceIds: Uint32Array.from([0, 0, 0, 0]) };
       }
       return real.boolean(op, a, b);
+    },
+    intersectionAsComputed: (a, b) => {
+      watch.asComputed++;
+      if (watch.fail) throw new Error('the kernel gave up again');
+      return real.intersectionAsComputed(a, b);
     },
   };
   return { engine: createEngine({ solver: await createPlanegcsSolver(), kernel }), watch };
@@ -437,5 +509,18 @@ describe('interference of bodies', () => {
     ]);
     engine.undo();
     watch.broken = false;
+    expect(watch.asComputed).toBe(2); // asked only where `boolean` threw: the two pairs of `fail`
+    // only the intersection refused (D50): the intersection as computed decides, and it may only
+    // clear. C inside A shares 6000 mm³ with it and 500 with B: both stay failed with the measure
+    watch.refuse = true;
+    run(engine, { type: 'updateFeature', id: 'C', patch: { extent: { start: 5 } } });
+    report = engine.interference();
+    expect(report.failed.map((pair) => [pair.a, pair.b])).toEqual([['A', 'C'], ['B', 'C']]);
+    expect(report.failed[0].message).toMatch(/^the kernel gave up; as computed the two share 6000 mm³, [\d.]+ mm deep, which the kernel could not verify$/);
+    expect(report.failed[1].message).toBe('the kernel gave up; as computed the two share 500 mm³, 5 mm deep, which the kernel could not verify');
+    expect([report.pairs.map((pair) => [pair.a, pair.b]), report.fits, report.cleared]).toEqual([[['A', 'B']], [], undefined]);
+    expect(watch.asComputed).toBe(4);
+    engine.undo();
+    watch.refuse = false;
   });
 });

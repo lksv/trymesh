@@ -290,6 +290,7 @@ describe('a cut with several target bodies', () => {
         if (++calls === failAt) throw new Error('the kernel gave up');
         return real.boolean(op, a, b);
       },
+      intersectionAsComputed: (a, b) => real.intersectionAsComputed(a, b),
     };
     const engine = createEngine({ solver: await createPlanegcsSolver(), kernel });
     run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), span('A', 'S1', [rectLoop('r')], 0, 10), span('B', 'S1', [rectLoop('r')], 20, 10), addSketch('S2', XY), circle('S2', 'k', 20, 15, 4));

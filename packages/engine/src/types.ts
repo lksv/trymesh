@@ -516,11 +516,39 @@ export interface Solid {
 
 export type BooleanOp = 'union' | 'difference' | 'intersection';
 
+// A mesh the kernel computed and did not verify (D50). The field is named so that reading it says
+// what the reader takes on: the mesh is measured (a volume, a depth) and is never a body of the
+// model, the input of another operation of the kernel, or something an export writes.
+export interface ComputedMesh {
+  unverified: Solid;
+}
+
 export interface SolidKernel {
   // Vyhodí výjimku, když výsledek není uzavřené těleso; engine ji ohlásí jako `kernelFailure`.
   boolean(op: BooleanOp, a: Solid, b: Solid): Solid;
   // 2D polygon s dírami; vrací trojice indexů do vrcholů všech smyček za sebou
   triangulate(loops: Float64Array[]): Uint32Array;
+  // What two solids share as the kernel computes it, for measuring only (D50): the collisions ask
+  // it when `boolean('intersection', a, b)` threw, and it may only clear a pair. What an
+  // implementation guarantees:
+  // 1. The common part of the two solids as computed, with nothing done to it: no faces moved
+  //    before, nothing welded, dropped, split or repaired after.
+  // 2. What the two solids share is in the mesh: every part of their common volume thicker than
+  //    the precision of their coordinates (a millionth of the largest coordinate of the two, and
+  //    of a millimetre at least). The mesh may hold more than they share, never less.
+  // 3. It is closed by its indices: every edge is in two triangles, once each way, so every
+  //    connected piece has a volume. Two solids that are apart give a mesh without triangles.
+  // 4. Every triangle carries the number of the face of `a` or `b` it comes from.
+  // 5. The same input gives the same output.
+  // 6. It throws for an input `boolean` throws for, when the library reports an error, and when
+  //    the mesh would not keep guarantee 3; never because the mesh is not clean.
+  // Not guaranteed, as `boolean` guarantees it: that the mesh is a solid (it may hold unjoined
+  // vertices at one place, triangles without an area, sheets where faces coincide, slivers
+  // thinner than the precision, pieces that touch along an edge or at a vertex, and pieces of
+  // noise that are inside out); a tolerance for faces in one plane; that another operation of the
+  // kernel takes it; the same answer with `a` and `b` swapped. A kernel whose intersection is
+  // exact may return that result here.
+  intersectionAsComputed(a: Solid, b: Solid): ComputedMesh;
 }
 
 // ---------------------------------------------------------------- přepočet
@@ -695,13 +723,32 @@ export interface Interference {
 // - Not reported at all: bodies that only touch, and a shared volume no deeper than the
 //   precision of the coordinates (a millionth of the largest coordinate of the pair; planar
 //   faces have to overlap by about twice that), whatever its size.
-// - `failed`: the kernel computes an intersection without a guarantee for flush faces and may
-//   fail; such a pair is neither among the colliding ones nor among the clear ones.
+// - `pairs` and `fits` rest only on an intersection the kernel verified.
+// - The kernel computes an intersection without a guarantee for flush faces and may refuse it.
+//   It is then asked for its intersection as computed, which it does not verify; that may only
+//   clear the pair, by the same rule and threshold as a verified one.
+// - `cleared`: pairs the kernel refused and its intersection as computed shows to be no
+//   collision. Present only when it has an entry.
+// - `failed`: pairs that are neither colliding nor clear: the kernel refused them and what it
+//   computed measures as a collision or could not be measured. The message gives the reason of
+//   the refusal and then, when it was measured, the volume and depth as computed, not verified.
 export interface InterferenceReport {
   pairs: Interference[];
   fits: Interference[];
   failed: { a: Id; b: Id; message: string }[];
+  cleared?: Cleared[];
   checked: number; // number of pairs examined
+}
+// A pair the kernel refused and its intersection as computed clears. `kind`: what that mesh
+// measures as, by the threshold of the call: `nothing` (it shares nothing, or only touches) or
+// `fit` (round faces within the chord tolerance). `volume` and `depth` are of that mesh, as for
+// an entry of `fits`. The pair is clear; the kind is less sure than a verified one.
+export interface Cleared {
+  a: Id; // the smaller ID, as in the other lists
+  b: Id;
+  kind: 'nothing' | 'fit';
+  volume: number; // mm³
+  depth: number; // mm
 }
 // `bodies`: only pairs of these bodies (all without a list). `threshold`: the volume in mm³ above
 // which a pair is reported (0.001 by default). `at`: the state after the given feature.

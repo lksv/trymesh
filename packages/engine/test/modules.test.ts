@@ -78,6 +78,13 @@ describe('modules of the engine', () => {
     expect(cycles(MODULES, (file) => readFileSync(file, 'utf8'))).toEqual([]);
   });
 
+  // The intersection as computed is a mesh nobody verified (D50): it is measured by the collisions
+  // and never becomes a body, the input of another boolean or a file. One module calls it.
+  it('the intersection as computed is asked in interference.ts alone', () => {
+    const callers = MODULES.filter((file) => /\.intersectionAsComputed\s*\(/.test(readFileSync(file, 'utf8'))).map(name);
+    expect(callers).toEqual(['interference.ts']);
+  });
+
   // The guard itself: every form of import that loads a module is an edge, and only a statement
   // that is type-only as a whole is not.
   describe('the reader of imports', () => {

@@ -1,6 +1,6 @@
 # 5e A second opinion of the kernel for a pair it refuses (D50)
 
-**State: design, third version, after two rounds of review (see "Reviews") and with the owner's answers to its open questions, written on 2026-11-16 against `master` at `d5a2c95` (3a and 2c merged, 5a designed and being implemented) and against the design of [5a](../5a-mechanism/design.md). Not implemented; the package comes after 5a.** The types are in [contract.ts](contract.ts), the calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Its tests join validation scenario 13 (the part of 5a: the elbow stepped through its range), no scenario of its own.
+**State: design, third version, after two rounds of review (see "Reviews") and with the owner's answers to its open questions, written on 2026-11-16 against `master` at `d5a2c95` (3a and 2c merged, 5a designed and being implemented) and against the design of [5a](../5a-mechanism/design.md). Implemented on 2026-11-16 on the branch `d36/5e` from `master` at `7de2ca3` (5a merged); see "As implemented" at the end.** The types are in [contract.ts](contract.ts), the calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Its tests join validation scenario 13 (the part of 5a: the elbow stepped through its range), no scenario of its own.
 
 The package is small: one member of the kernel port, one branch of the answer about a pair of bodies, one optional list in the report of the collisions and of the gap. It is new geometry in the collisions and an addition to a port, so it has a full design and its implementation a full review (CLAUDE.md, "Depth of the review").
 
@@ -395,3 +395,36 @@ A fresh internal subagent (Fable 5.2, effort high), read-only, at commit `1e6022
 Checked and found to hold: every entry of the table of round 1 against the diff, with no leftover of the first version; guarantees 3 and 6 and the closure check across the three files; that the volume piece by piece never makes a shared volume smaller than the volume of the whole and is used in the refused branch only; that `place` is the table row by row and that the second opinion cannot reach `pairs` or `fits`; the gap followed through `gapOf` for a pair cleared as nothing, cleared as a fit and left failed, with the expectations of `gap.test.ts` standing when both members refuse; both declaration mergings; the ten k of the pinned poses against their angles; "Measured" against the raw outputs; that each test can be written against the code; the owner's five decisions across the design, the row D50, the rows 5b, 5e and 5f, the map and the backlog. Not probed by either round: the models of `bodies.test.ts` with the volume piece by piece (test 3 will show it).
 
 With seven findings, none of them major, and fixes of a sentence or a number each, no third round was run.
+
+## As implemented
+
+Implemented on 2026-11-16 on the branch `d36/5e`, from `master` at `7de2ca3` (5a merged, schema version 6). No schema step: nothing in the document changes.
+
+| File | What |
+|---|---|
+| `packages/engine/src/types.ts` | `ComputedMesh` and `intersectionAsComputed` on `SolidKernel` with its guarantees as comments (between the markers, not printed for the AI); `cleared?` and `Cleared` on `InterferenceReport`, and the text about `pairs`, `fits`, `cleared` and `failed` (printed) |
+| `packages/engine/src/interference.ts` | `Measured` (was `Shared`), `measure`, `SECOND_OPINION_TRIANGLES`, `sharedBy` with the refused branch, `verdictOf`, `failedMessage`; `interferenceReport` places a pair by the table of "One pair, and the report" |
+| `packages/engine/src/solid.ts` | `volumeOfPieces`, and `pieceSolids` shared with `thickestPiece` |
+| `packages/engine/src/query/interference.ts`, `query/gap.ts` | the text of `returns`; the kind of a zero reads `cleared`; `GapReport.cleared`, carried in what is remembered for a pair and in what `gapOf` returns |
+| `packages/kernel-manifold/src/index.ts` | `intersectionAsComputed`: `rawBoolean`, `isClosed`, the wrapper |
+| `packages/mcp/src/tools.ts`, `api.ts` | the description and the rounding of `check_interference`; the sentence of the conventions |
+| `packages/app/src/queries/interference.ts`, `gap.ts` | the cleared pairs as rows after the fits (pickable) and in the note; a row of the gap marked *(cleared)* and counted in the note |
+| the five fakes of the port | `bodies.test.ts` and `gap.test.ts`: `fail` makes both members throw, the new switch `refuse` only `boolean`; `extent.test.ts` passes the member on; `review.test.ts` and `hole.test.ts` throw |
+
+Deviations from the design, and what it left to the implementation:
+
+- **The bound on the work is 12,000 triangles.** The joint of scenario 9 as modelled has no pair that shares anything (every intersection of two of its parts has no triangles), so the measurement took the largest intersection of two of its parts that could be made: the housing with itself turned by 0.01 rad, 9,174 triangles, measured in 3.7 s, as long through the kernel's verified answer. The askew poses of the arm here gave 1,806 to 7,346 triangles (0.7 to 2.4 s; pins of radius 12 and 25 askew 1,312 to 4,204, up to 1.6 s). The bound lies above all of them and above every mesh the tests pin, and holds a refused pair to about five seconds.
+- **Where the seconds go** ("Open"): not only in the search for sheets. A mesh deeper than the limit of a fit skips that search (`depthOf`), and the housing turned still took 3.7 s: the reach of `penetration` over every point of a large mesh is as slow. No early stop was added; the bound limits the work.
+- **Test 3 (`bodies.test.ts`) is not rearranged into a model per function.** The file's engines come from a local `newEngine` whose `interference` asks the same question again of the same document (`save`, then `load` into an engine over a kernel that refuses every intersection) and checks what `holds` of `calls.ts` checks, call by call; the expectations of the file are untouched. Over the 57 reports the file asks: nothing in `pairs` or `fits`, the 35 verified collisions all failed, the 12 verified fits all cleared as fits, 48 pairs cleared as nothing, every cleared pair of the verified kind, and no verified clear pair left failed. The same models and the same counts as the design's review, with a smaller change of the file.
+- **The arm** of scenario 13 moved into `packages/scenarios/test/arm.ts`, with the radius of the pin of the elbow and of its hole as options, so that the tests of 5e build the same model.
+- **The poses pinned** (`packages/scenarios/test/second-opinion.test.ts`; the recipe with k = 0 and k = −1 for the two ends of a range, `second-opinion-kit.ts`):
+  - Test 1: the three poses of the backlog as designed, and the same two meshes the other way round answered by the adapter as a fit (that does not flip with a repair).
+  - Test 6: refused and cleared as nothing, the plate at the origin turned to −88° (k = 0) and to k = 2, and the washer two metres away at k = 2; pinned failed with the phrase, the plate two metres away at ±88° and the pin askew at k = 52. The other flush poses looked at (the washer turned and both slid, at k = 1 and 2) are answered by the adapter and are not pinned.
+  - Test 7: the pin 0.03 larger at −88° and at k = 1 (both orders refused, 6.04 mm³ as computed), the pin 0.011 larger at k = 2 (k = 0 and 2 of 0 to 6 are refused), the plate sunk by 0.0006 at k = 1 (every pose looked at, the ends and k = 1 to 6, is refused).
+- **Test 5** is a file of its own (`second-opinion-fuzz.test.ts`), so that it runs beside the other: the radii in turn, k counting up from `SECOND_OPINION_FIRST`, `SECOND_OPINION_POSES` along an axis (12 by default) and `SECOND_OPINION_ASKEW` askew (4), each pose in both orders; askew the failed poses are held to 1 + 5 % of the poses asked. 240 poses along an axis and 40 askew passed; no pose along an axis failed, so none is pinned.
+- **Scenario 13** found one refused step of the 40, k = 5 (−72.130°), as measured, cleared as a fit of 0.0313 mm³; the test holds that k = 5 is among the refused steps and names its kind.
+- **The gap**: what is remembered for a pair of meshes carries the mark, so a pair whose answer went through a cleared pair stays in `cleared` of the gap when it is asked again, also after the kernel would answer it (the test of the gap holds it: the answer belongs to the two meshes, as every remembered answer does).
+- **The message** writes three significant digits as JavaScript prints a number: a volume below 10⁻⁶ comes out as `4e-7`.
+- **The drafts** `contract.ts` and `calls.ts` are left as they were: they type-check against the code (the property they merge into `SolidKernel` has the type of the new method).
+- **The app** was not run in a browser; its views are tested over answers written by hand (`packages/app/test/query-interference.test.ts`). No model of `app.test.ts` has a refused pair, so no snapshot changed.
+

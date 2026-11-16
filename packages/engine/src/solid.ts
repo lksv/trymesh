@@ -289,23 +289,36 @@ function pieces(solid: Solid): number[][] {
   return [...groups.values()];
 }
 
+// The connected pieces of a mesh, each a mesh over the same positions.
+const pieceSolids = (solid: Solid): Solid[] =>
+  pieces(solid).map((triangles) => ({
+    positions: solid.positions,
+    triangles: Uint32Array.from(triangles.flatMap((t) => [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]])),
+    faceIds: Uint32Array.from(triangles.map((t) => solid.faceIds[t])),
+  }));
+
 // The largest mean thickness of a connected piece of a mesh: twice the volume of the piece over
 // its surface. Piece by piece, so that a lump is not thinned out by slivers elsewhere in the mesh.
 // With `eps` the sheets are left out of the surface (see `areaOf`).
 export function thickestPiece(solid: Solid, eps?: number): number {
   let thickest = 0;
-  for (const triangles of pieces(solid)) {
-    const piece: Solid = {
-      positions: solid.positions,
-      triangles: Uint32Array.from(triangles.flatMap((t) => [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]])),
-      faceIds: Uint32Array.from(triangles.map((t) => solid.faceIds[t])),
-    };
+  for (const piece of pieceSolids(solid)) {
     const volume = Math.abs(volumeOf(piece));
     if (!(volume > 0)) continue;
     const area = areaOf(piece, eps);
     if (area > 0) thickest = Math.max(thickest, (2 * volume) / area);
   }
   return thickest;
+}
+
+// The volume of a mesh piece by piece: the sum of the volumes of its connected pieces, each
+// without its sign (D50). A mesh the kernel did not verify may hold pieces of noise that are
+// inside out; taken whole, their volume would subtract from what is shared, piece by piece it
+// adds. (A lobe joined to a real piece through an edge is in that piece and still subtracts.)
+export function volumeOfPieces(solid: Solid): number {
+  let volume = 0;
+  for (const piece of pieceSolids(solid)) volume += Math.abs(volumeOf(piece));
+  return volume;
 }
 
 // How deep two bodies reach into each other, measured on what they share (`common`, their

@@ -85,6 +85,16 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       return out;
     },
 
+    // The intersection as the library returns it (D50): no faces moved before, no cleaning after,
+    // and one check, that it is closed by its indices (guarantee 3 of the port). Every refused
+    // pose looked at gave a closed mesh; one that is not would otherwise be measured without
+    // a word.
+    intersectionAsComputed(a, b) {
+      const mesh = rawBoolean('intersection', a, b);
+      if (!isClosed(mesh)) throw new Error('the intersection as computed is not closed by its indices');
+      return { unverified: mesh };
+    },
+
     // Vnější smyčka proti směru hodin, díry po směru; trojúhelníky pak vycházejí proti směru hodin.
     triangulate(loops) {
       if (loops.length === 0) return new Uint32Array(0);

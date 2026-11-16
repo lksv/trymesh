@@ -183,6 +183,9 @@ const fanKernel = (): SolidKernel => ({
   boolean: () => {
     throw new Error('not here');
   },
+  intersectionAsComputed: () => {
+    throw new Error('not here');
+  },
   triangulate(loops) {
     const [outer, inner] = loops.map((loop) => loop.length / 2);
     const out: number[] = [];

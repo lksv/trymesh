@@ -40,7 +40,8 @@ export const GAP_ARGS = {
 //   `collision` (they share a volume above its threshold; also a body that lies wholly inside the
 //   material of the other, whose surfaces do not meet), `fit` (round faces within the chord
 //   tolerance of each other), `touching` (neither: flush faces, or less than that query reports),
-//   `unknown` (the surfaces meet and the kernel could not compute what they share).
+//   `unknown` (the surfaces meet and the kernel could not compute what they share). A pair that
+//   query lists in `cleared` (D50) is a fit when it was cleared as one and touches otherwise.
 // - `between`, for a distance above zero: the two points the gap lies between, `a` on the body
 //   `a`, and the face each lies on. Where a point lies on an edge or a corner, the face named is
 //   the one that faces the other body most directly: the wall of a bore, not the cap it ends in.
@@ -63,6 +64,10 @@ export type Gap = { a: Id; b: Id } & (
 //   many there are.
 // - `checked`: the number of pairs examined: `close`, `apart` and `refused` together.
 // - `truncated`: when either list was cut; `shown` and `total` count the two lists together.
+// - `cleared` (D50): the pairs whose answer went through a pair the query `interference` cleared
+//   by an intersection the kernel computed and did not verify, whether the pair ends at zero, at
+//   a distance or apart. Only when it has an entry, in the order of the bodies in the model. It
+//   is not cut by `maxPairs` and takes no part in `truncated`.
 export interface GapReport extends Truncated {
   within: number; // mm
   pairs: Gap[];
@@ -71,6 +76,7 @@ export interface GapReport extends Truncated {
   failed: { a: Id; b: Id; message: string }[];
   refused: number;
   checked: number;
+  cleared?: { a: Id; b: Id }[];
 }
 
 declare module './spec' {
@@ -88,21 +94,26 @@ function boxDistance(a: Pick<BodyResult, 'bounds'>, b: Pick<BodyResult, 'bounds'
 
 // What `interference` says about one pair. It looks at the boxes itself: boxes that do not
 // overlap share nothing and cost no call of the kernel. It reports a pair the kernel failed on
-// in its answer, so nothing is caught here.
+// in its answer, so nothing is caught here. A pair it cleared by a second opinion (D50) is a fit
+// when cleared as one and touches otherwise, and says that it was cleared.
 type Contact = Extract<Gap, { contact: string }>['contact'];
-function sharedBy(context: QueryContext, a: Id, b: Id): { contact: Contact; message?: string } {
+function sharedBy(context: QueryContext, a: Id, b: Id): { contact: Contact; message?: string; cleared: boolean } {
   const shared = interference.run(context, { bodies: [a, b], threshold: INTERFERENCE_THRESHOLD });
-  if (shared.failed.length) return { contact: 'unknown', message: shared.failed[0].message };
-  return { contact: shared.pairs.length ? 'collision' : shared.fits.length ? 'fit' : 'touching' };
+  if (shared.failed.length) return { contact: 'unknown', message: shared.failed[0].message, cleared: false };
+  const cleared = shared.cleared?.[0];
+  if (cleared) return { contact: cleared.kind === 'fit' ? 'fit' : 'touching', cleared: true };
+  return { contact: shared.pairs.length ? 'collision' : shared.fits.length ? 'fit' : 'touching', cleared: false };
 }
 
 // What was measured between two meshes, without the names of anything: an answer is remembered by
 // the two meshes, and the IDs of the bodies and the names of the faces are read from the state
-// that is asked about. `first` is the mesh the point `onFirst` lies on.
+// that is asked about. `first` is the mesh the point `onFirst` lies on. `cleared`: the answer went
+// through a pair the collisions cleared by a second opinion.
 type Measured = 'apart' | { refused: string } | { contact: Contact } | { distance: number; onFirst: Vec3; onSecond: Vec3; faceFirst: number; faceSecond: number };
 interface Remembered {
   first: Solid;
   measured: Measured;
+  cleared: boolean;
 }
 
 // One pair, `a` the smaller ID. The answer is remembered by the two meshes, as the collisions
@@ -111,14 +122,14 @@ interface Remembered {
 // (a document with other settings is replayed from its start), so the tolerance in the key is
 // a guard.
 type PairAnswer = Gap | 'apart' | { refused: string };
-function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer {
+function gapOf(context: QueryContext, a: Id, b: Id, within: number): { answer: PairAnswer; cleared: boolean } {
   // from the context, in the frame of the first body: the pair is measured where the two stand to
   // each other, and the two points are moved back into the pose
   // Boxes that hold the two posed bodies (larger than their own boxes, so never closer) reject
   // a pair far apart before a moved mesh is built for it.
   const rough = [{ bounds: boxOf(context.bodies, a) }, { bounds: boxOf(context.bodies, b) }];
   const roughDistance = boxDistance(rough[0], rough[1]);
-  if (roughDistance >= within && roughDistance > coordinatePrecision(...rough)) return 'apart';
+  if (roughDistance >= within && roughDistance > coordinatePrecision(...rough)) return { answer: 'apart', cleared: false };
   const pair = framed(context.bodies, a, b);
   const [A, B] = [pair.a, pair.b];
   const precision = coordinatePrecision(A, B);
@@ -127,32 +138,35 @@ function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer 
   const reach = Math.max(within, precision);
   // Boxes that far apart hold no two points closer, and neither body can lie inside the other.
   const boxes = boxDistance(A, B);
-  if (boxes >= within && boxes > precision) return 'apart';
-  const { first, measured } = context.memo([A.solid, B.solid], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): Remembered => {
+  if (boxes >= within && boxes > precision) return { answer: 'apart', cleared: false };
+  const { first, measured, cleared } = context.memo([A.solid, B.solid], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): Remembered => {
     const found = closest({ solid: A.solid }, { solid: B.solid }, reach);
-    const answer = (value: Measured): Remembered => ({ first: A.solid, measured: value });
-    if (found && found.distance <= precision) return answer({ contact: sharedBy(context, a, b).contact });
+    const answer = (value: Measured, cleared = false): Remembered => ({ first: A.solid, measured: value, cleared });
+    if (found && found.distance <= precision) {
+      const met = sharedBy(context, a, b);
+      return answer({ contact: met.contact }, met.cleared);
+    }
     // The surfaces do not meet. That leaves two cases the pass cannot tell apart: the bodies are
     // apart, or a piece of one lies wholly inside the material of the other, however far from its
     // surface. A shared volume says which.
     const inside = sharedBy(context, a, b);
     if (inside.message !== undefined) return answer({ refused: `the kernel could not tell whether one body lies inside the other: ${inside.message}` });
-    if (inside.contact !== 'touching') return answer({ contact: inside.contact });
+    if (inside.contact !== 'touching') return answer({ contact: inside.contact }, inside.cleared);
     // a pair exactly `within` apart is found by the pass and is not closer than `within`
-    if (!found || found.distance >= within) return answer('apart');
+    if (!found || found.distance >= within) return answer('apart', inside.cleared);
     if (found.faceA === undefined || found.faceB === undefined) throw new Error('gap: a part with triangles names its faces');
-    return answer({ distance: found.distance, onFirst: found.a, onSecond: found.b, faceFirst: found.faceA, faceSecond: found.faceB });
+    return answer({ distance: found.distance, onFirst: found.a, onSecond: found.b, faceFirst: found.faceA, faceSecond: found.faceB }, inside.cleared);
   });
   // The answer handed out is a new object every time: a caller that changes it does not change
   // what is remembered.
-  if (measured === 'apart') return measured;
-  if ('refused' in measured) return { refused: measured.refused };
-  if ('contact' in measured) return { a, b, distance: 0, contact: measured.contact };
+  if (measured === 'apart') return { answer: measured, cleared };
+  if ('refused' in measured) return { answer: { refused: measured.refused }, cleared };
+  if ('contact' in measured) return { answer: { a, b, distance: 0, contact: measured.contact }, cleared };
   const names = context.state.evaluation.faceNames;
   // remembered the other way round when the mesh of `a` was the second one then
   const [onA, onB, faceA, faceB] = first === A.solid ? [measured.onFirst, measured.onSecond, measured.faceFirst, measured.faceSecond] : [measured.onSecond, measured.onFirst, measured.faceSecond, measured.faceFirst];
   const back = (point: Vec3): Vec3 => (pair.back ? transformPoint(pair.back, point) : [...point]);
-  return { a, b, distance: measured.distance, between: { a: back(onA), b: back(onB), faceA: names[faceA], faceB: names[faceB] }, accuracy: meshAccuracy({ bodies: { [a]: A, [b]: B }, state: context.state }, [a, b]) };
+  return { answer: { a, b, distance: measured.distance, between: { a: back(onA), b: back(onB), faceA: names[faceA], faceB: names[faceB] }, accuracy: meshAccuracy({ bodies: { [a]: A, [b]: B }, state: context.state }, [a, b]) }, cleared };
 }
 
 export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
@@ -164,7 +178,8 @@ export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
     '`pairs`: the pairs closer than `within`, the closest first, at most `maxPairs`, each with `a`, `b` (`a` is the smaller ID) and `distance` (mm, measured on the meshes). ' +
     'A distance above zero comes with `between` (the two points `a` and `b` and the face each lies on, `faceA` and `faceB`: the feature to change) and `accuracy` (mm: an estimate of how far the meshes may be from the exact shapes). ' +
     'A distance of zero comes with `contact`: `touching` (flush faces), `fit` (round faces within the chord tolerance), `collision` (a shared volume, also a body wholly inside another) or `unknown` (the kernel could not compute what they share). ' +
-    '`close`: how many pairs are closer than `within`. `apart`: how many are further apart (not measured). `failed`: pairs that could not be measured, with the reason, at most `maxPairs`; `refused`: how many. `checked`: pairs examined. `truncated` when either list was cut.',
+    '`close`: how many pairs are closer than `within`. `apart`: how many are further apart (not measured). `failed`: pairs that could not be measured, with the reason, at most `maxPairs`; `refused`: how many. `checked`: pairs examined. `truncated` when either list was cut. ' +
+    '`cleared` (only when it has an entry, not cut): pairs `{ a, b }` whose answer rests on a pair the query `interference` cleared by an intersection the kernel computed and did not verify.',
   args: GAP_ARGS,
   significant: { distance: 6, accuracy: 3 },
   units: { distance: 'mm', accuracy: 'mm', within: 'mm' },
@@ -175,11 +190,13 @@ export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
     if (args.bodies && ids.length < 2) throw new QueryFailure('invalidArguments', 'bodies: two different bodies are needed for a pair', ['bodies']);
     const pairs: Gap[] = [];
     const failed: GapReport['failed'] = [];
+    const cleared: { a: Id; b: Id }[] = [];
     let apart = 0;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
-        const found = gapOf(context, a, b, args.within);
+        const { answer: found, cleared: throughCleared } = gapOf(context, a, b, args.within);
+        if (throughCleared) cleared.push({ a, b });
         if (found === 'apart') apart++;
         else if ('refused' in found) failed.push({ a, b, message: found.refused }); // one pair that cannot be measured does not take the others with it
         else pairs.push(found);
@@ -187,7 +204,7 @@ export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
     }
     pairs.sort((x, y) => x.distance - y.distance); // stable: pairs at one distance keep the order of the bodies
     const [close, refused] = [pairs.length, failed.length];
-    const report: GapReport = { within: args.within, pairs: pairs.slice(0, args.maxPairs), close, apart, failed: failed.slice(0, args.maxPairs), refused, checked: close + apart + refused };
+    const report: GapReport = { within: args.within, pairs: pairs.slice(0, args.maxPairs), close, apart, failed: failed.slice(0, args.maxPairs), refused, checked: close + apart + refused, ...(cleared.length ? { cleared } : {}) };
     const shown = report.pairs.length + report.failed.length;
     return shown < close + refused ? { ...report, truncated: { shown, total: close + refused } } : report;
   },

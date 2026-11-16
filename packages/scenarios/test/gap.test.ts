@@ -35,18 +35,24 @@ function blocks(engine: Engine = newEngine()): Engine {
   return engine;
 }
 
-// The real kernel with a count of intersections and a switch that makes them fail.
+// The real kernel with a count of intersections, a switch that makes them fail (both the
+// intersection and the intersection as computed, D50) and one that makes only the intersection
+// fail, so that the second opinion of the collisions decides.
 async function watchedEngine() {
   const real = await createManifoldKernel();
-  const watch = { intersections: 0, fail: false };
+  const watch = { intersections: 0, fail: false, refuse: false };
   const kernel: SolidKernel = {
     triangulate: (loops) => real.triangulate(loops),
     boolean: (op, a, b) => {
       if (op === 'intersection') {
         watch.intersections++;
-        if (watch.fail) throw new Error('the kernel gave up');
+        if (watch.fail || watch.refuse) throw new Error('the kernel gave up');
       }
       return real.boolean(op, a, b);
+    },
+    intersectionAsComputed: (a, b) => {
+      if (watch.fail) throw new Error('the kernel gave up again');
+      return real.intersectionAsComputed(a, b);
     },
   };
   return { engine: createEngine({ solver: await createPlanegcsSolver(), kernel }), watch };
@@ -246,6 +252,52 @@ describe('the query gap', () => {
     const cut = gap(engine, { maxPairs: 1 });
     expect(cut).toMatchObject({ close: 3, refused: 2, truncated: { shown: 2, total: 5 } });
     expect(cut.failed).toEqual([{ a: 'F', b: 'PIN', message }]);
+  });
+
+  it('a pair the kernel refuses and its intersection as computed clears (D50): the gap goes on and names the pair in `cleared`', async () => {
+    const { engine, watch } = await watchedEngine();
+    blocks(engine);
+    run(engine, ...block('F', 200, 0, 20, 20), addSketch('sh', XY), circle('sh', 'h', 210, 10, 4), circle('sh', 'k', 210, 10, 3), span('hole', 'sh', [['h'], ['k']], 0, 10, 'cut', ['F']), span('PIN', 'sh', [['k']], 0, 10));
+    run(engine, ...block('G', 300, 0, 20, 20), addSketch('sg', XY), circle('sg', 'm', 310, 10, 4), circle('sg', 'n', 310, 10, 3), span('hole2', 'sg', [['m'], ['n']], 0, 10, 'cut', ['G']), span('PIN2', 'sg', [['n']], 0, 10));
+    // a block wholly inside E: its surfaces do not meet those of E
+    run(engine, ...block('IN', 103, 3, 2, 2, 3, 2));
+    watch.refuse = true;
+    const report = gap(engine);
+    // the pins in larger holes share nothing as computed: the gap goes on to their distance of
+    // 1 mm (less the sagitta of the polygons)
+    expect(report.pairs.map((pair) => [pair.a, pair.b, pair.contact ?? Math.round(pair.distance * 100) / 100])).toEqual([
+      ['B', 'C', 'touching'], // flush: their boxes do not overlap, the kernel is not needed
+      ['C', 'D', 'unknown'], // they really collide: failed as computed as well
+      ['G', 'PIN2', 0.99],
+      ['F', 'PIN', 0.99],
+      ['A', 'B', 2],
+    ]);
+    expect(report.cleared).toEqual([
+      { a: 'F', b: 'PIN' },
+      { a: 'G', b: 'PIN2' },
+    ]);
+    // a body inside another shares its whole volume, as computed as well: still refused, with the measure
+    expect(report.failed).toEqual([{ a: 'E', b: 'IN', message: expect.stringMatching(/^the kernel could not tell whether one body lies inside the other: the kernel gave up; as computed the two share 8 mm³, [\d.]+ mm deep, which the kernel could not verify$/) }]);
+    // `cleared` is not cut by `maxPairs` and takes no part in `truncated`
+    const cut = gap(engine, { maxPairs: 1 });
+    expect(cut.cleared).toEqual(report.cleared);
+    expect(cut.truncated).toEqual({ shown: 2, total: 6 });
+    // the kernel verifies again. An answer is remembered by the two meshes, mark and all: the pins
+    // stay cleared and C and D unknown; the block moved inside E is another mesh, and a verified
+    // collision
+    watch.refuse = false;
+    run(engine, { type: 'setConstraintValue', sketch: 'sIN', id: 'inx', value: 104 });
+    const verified = gap(engine);
+    expect(verified.cleared).toEqual(report.cleared);
+    expect(verified.failed).toEqual([]);
+    expect(verified.pairs.map((pair) => [pair.a, pair.b, pair.contact ?? Math.round(pair.distance * 100) / 100])).toEqual([
+      ['B', 'C', 'touching'],
+      ['C', 'D', 'unknown'], // remembered as well
+      ['E', 'IN', 'collision'],
+      ['G', 'PIN2', 0.99],
+      ['F', 'PIN', 0.99],
+      ['A', 'B', 2],
+    ]);
   });
 
   it('errors: one body is not a pair, a body that is not there, a search distance of zero', () => {

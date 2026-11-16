@@ -165,6 +165,9 @@ function mockEngine(options: { failDrag?: boolean } = {}) {
     boolean: () => {
       throw new Error('náhradní jádro booleany neumí');
     },
+    intersectionAsComputed: () => {
+      throw new Error('the stand-in kernel has no intersection');
+    },
     triangulate: () => new Uint32Array(),
   };
   const engine = createEngine({ solver, kernel });

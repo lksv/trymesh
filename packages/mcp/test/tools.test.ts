@@ -1,6 +1,8 @@
 // Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import { apiDescription, apiText, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
 import { MUTATING, callTool, changesDocument, tools } from '../src/tools';
@@ -79,6 +81,10 @@ describe('popis API', () => {
     expect(types).toContain('export interface SketchDiagnosis');
     expect(types).not.toContain('interface SolidKernel');
     expect(types).not.toContain('interface SketchSolver');
+    // the mesh the kernel did not verify is the port's (D50); what the collisions report of it is not
+    expect(types).not.toContain('ComputedMesh');
+    expect(types).toContain('cleared?: Cleared[];');
+    expect(types).toContain('export interface Cleared');
     // každý typ vazby z katalogu je i v typech
     for (const type of Object.keys(CONSTRAINTS)) expect(types, type).toContain(`'${type}'`);
   });
@@ -724,6 +730,36 @@ describe('model, tělesa a příkazy', () => {
     // 0.002 mm into each other, far below the chord tolerance, and still a collision: no round face
     expect(tiny.pairs[0].depth).toBeGreaterThan(0.0015);
     expect(tiny.pairs[0].depth).toBeLessThan(0.0025);
+  });
+
+  it('check_interference and query: a pair the kernel refuses is cleared or failed by its intersection as computed (D50), rounded like the others', async () => {
+    // the real kernel, which refuses every intersection: the second opinion decides every pair
+    const real = await createManifoldKernel();
+    const kernel: SolidKernel = { ...real, triangulate: (loops) => real.triangulate(loops), boolean: (op, a, b) => (op === 'intersection' ? (() => { throw new Error('the kernel gave up'); })() : real.boolean(op, a, b)), intersectionAsComputed: (a, b) => real.intersectionAsComputed(a, b) };
+    const engine = createEngine({ solver: await createPlanegcsSolver(), kernel });
+    const box = (id: string, x: number, y: number, size: number, start: number): Command[] => {
+      const corners: [number, number][] = [[x, y], [x + size, y], [x + size, y + size], [x, y + size]];
+      return [
+        sketch(`s${id}`),
+        ...corners.map(([px, py], i): Command => ({ type: 'addPoint', sketch: `s${id}`, id: `${id}p${i}`, x: px, y: py })),
+        ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: `s${id}`, id: `${id}l${i}`, curve: { type: 'line', a: `${id}p${i}`, b: `${id}p${(i + 1) % 4}` } })),
+        ...corners.map(([px, py], i): Command => ({ type: 'addConstraint', sketch: `s${id}`, id: `${id}f${i}`, constraint: { type: 'fixed', point: `${id}p${i}`, x: px, y: py } })),
+        { type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: `s${id}`, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}l${i}`) }] }, extent: { type: 'distance', start, distance: 1 }, operation: 'new' } },
+      ];
+    };
+    // the two boxes of the test above: 0.002 × 0.002 × 0.1 mm at a corner
+    expect(execute(engine, { type: 'batch', commands: [...box('A', 0, 0, 10, 0), ...box('B', 9.998, 9.998, 10, 0.9)] })).toMatchObject({ ok: true, bodies: ['A', 'B'], problems: [] });
+    const cleared = ok(engine, 'check_interference');
+    expect(cleared).toEqual({ pairs: [], fits: [], failed: [], cleared: [{ a: 'A', b: 'B', kind: 'nothing', volume: expect.any(Number), depth: expect.any(Number) }], checked: 1, tolerance: 0.01 });
+    // significant digits, as for `pairs` and `fits`: 4e-7 mm³ is not rounded to zero
+    expect(cleared.cleared[0].volume).toBeGreaterThan(3.5e-7);
+    expect(cleared.cleared[0].volume).toBe(Number(cleared.cleared[0].volume.toPrecision(6)));
+    expect(cleared.cleared[0].depth).toBe(Number(cleared.cleared[0].depth.toPrecision(4)));
+    expect(ok(engine, 'query', { query: 'interference', args: {} })).toEqual({ pairs: [], fits: [], failed: [], cleared: cleared.cleared, checked: 1 });
+    // with the threshold 0 the same mesh is a collision, which the second opinion cannot report: failed, with what it measured
+    const failed = ok(engine, 'check_interference', { threshold: 0 });
+    expect(failed).toEqual({ pairs: [], fits: [], failed: [{ a: 'A', b: 'B', message: expect.stringMatching(/^the kernel gave up; as computed the two share 4(\.\d+)?e-7 mm³, 0\.002\d* mm deep, which the kernel could not verify$/) }], checked: 1, tolerance: 0.01 });
+    expect(tools().find((tool) => tool.name === 'check_interference')?.description).toContain('`cleared`');
   });
 
   it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {

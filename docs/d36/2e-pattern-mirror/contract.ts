@@ -45,7 +45,10 @@ export interface LinearTransform {
 //   `transform/plane`, resolved in the state before the pattern). For a face it is the whole plane
 //   the face lies in.
 // - No count and no numeric field: the copy has the number 1, so a mirrored body is
-//   `<pattern>/1` and a face of the copy carries `copy: [{ pattern, index: 1 }]`.
+//   `<pattern>/1` and a face of the copy carries `copy: [{ pattern, index: 1 }]`. The registry
+//   knows it: `createsBody` of a pattern of a body answers true for the local name `1` alone when
+//   the transform is a mirror (for the other kinds for every number from 1, as today, because
+//   a count may be an expression). A command that names `<mirror>/2` is therefore invalid.
 // - The copy is the mirror image as a set of points. What is told by a sense of rotation is
 //   therefore reversed in it, and the names do not say so: a face name says which face of the
 //   source it is the image of. The face `wallSide` of a curve with `side: 'left'` lies on the right
@@ -66,13 +69,15 @@ export type PatternTransformD = CircularTransform | LinearTransform | MirrorTran
 // The pattern feature after this package. Nothing but the transform changes:
 // - the source is a list of features that apply a tool, or one body, for every kind;
 // - a pattern of a body creates the bodies `<pattern>/<number>` from 1 (`createsBody` of the
-//   registry) and answers `bodySource` with its source, so a copy of any kind inherits the body
+//   registry; a mirror only `<pattern>/1`) and answers `bodySource` with its source, so a copy of any kind inherits the body
 //   properties of its source (D48) and is listed in a link of the mechanism like any body (D49);
 // - a pattern of features applies, for every copy and in the order of the list, the tool of each
 //   source built in the frame of the copy to the targets of that source; the pattern is atomic.
 export interface PatternFeatureD extends Omit<PatternFeature, 'transform'> {
   transform: PatternTransformD;
 }
+// A change of the kind keeps the IDs of the copies and the tags of their faces: what refers to
+// copy 1 then refers to the copy of the new kind.
 // What `updateFeature` may change, by the rules of today: a transform of the same `type` merges
 // by field, another `type` replaces the transform and has to be complete (its expressions go with
 // it), a reference (`direction`, `plane`) and a span of another type are replaced whole.

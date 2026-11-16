@@ -5,8 +5,12 @@
 // with a draft and an extent up to a tilted plane), and the box gets four L-shaped pads under its
 // corners, one modelled and three mirrored (mirrors of a body, one of them of a copy).
 // The numbers in the comments were measured with a prototype against the real adapters (design.md,
-// "What was measured").
+// "What was measured"), on the model as packages/scenarios/test/box.ts builds it. `scenario12` of
+// 2c-hole/calls.ts, imported here for the order of the parts, was written before 2c was
+// implemented and asks the catalog for an insert of the size `M3`; the catalog as implemented
+// names its rows as sold (`M3x3x4.5`), and the test of this part follows box.ts.
 
+import { SCHEMA_VERSION } from '../../../packages/engine/src/index';
 import type { Id, Input } from '../../../packages/engine/src/index';
 import type { CommandAfter, FaceNameAfter, PlaneRefAfter, QueryToolInput, StateAfter } from '../00-prep/contract';
 import { RIB_LEFT, done, engine, onFace, pointAt, run, sameName, sketchOn, unwrap } from '../2a-offset/calls';
@@ -162,6 +166,9 @@ export const massOverMcp: QueryToolInput = { query: 'mass', args: { bodies: PADS
 // mirrors make a turn: the copy has the handedness of the source again.
 export const UNDER_LAST_PAD: FaceNameAfter = { feature: 'pad', role: 'endCap', copy: [{ pattern: 'padX', index: 1 }, { pattern: 'padXY', index: 1 }] };
 export const sketchUnderAPad = (): string => statusOf(done(engine.preview({ type: 'batch', commands: sketchOn('under', onFace('padXY/1', UNDER_LAST_PAD)) })), 'under'); // ok
+// A mirror has one copy, and the registry knows it: a command that names a second one is invalid
+// (for a row it would be accepted and judged by the recompute, because a count may be an expression).
+export const secondCopyOfAMirror = (): boolean => engine.preview({ type: 'setBodyProperties', body: 'padX/2', patch: { color: '#000000' } }).ok; // false
 // A link of a mechanism lists a mirrored copy like any body (D49).
 export const asOneLink = (): Id[] => done(engine.preview({ type: 'setLink', id: 'base', bodies: ['box', ...PADS] })).evaluation.mechanism.links['base'].bodies;
 
@@ -172,6 +179,23 @@ export function lidsInARow(): Id[] | undefined {
   const preview = done(engine.preview(pattern('lids', { type: 'body', body: 'lid' }, { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 'L + 5' } })));
   const moved = about(preview.evaluation.bodies['lids/2'].bounds.min[0], 170, 1e-4) && about(volumeOf(preview, 'lids/2'), volumeOf(preview, 'lid'), 1e-3);
   return moved ? preview.evaluation.features['lids'].bodies : undefined; // ['lids/1', 'lids/2']
+}
+
+// ---------------------------------------------------------------- the document
+
+// No step of the schema: the document is saved with the version this build has, and loads to the
+// same model. (A build without the package refuses it: it does not know the kinds.)
+export function roundTrip(): boolean {
+  const before = engine.getState();
+  const saved = engine.save();
+  const loaded = engine.load(saved);
+  return (
+    loaded.ok &&
+    (JSON.parse(saved) as { schemaVersion: number }).schemaVersion === SCHEMA_VERSION &&
+    loaded.state.evaluation.features['ribMirror'].status === 'ok' &&
+    PADS.every((id) => about(volumeOf(loaded.state, id), 120)) &&
+    about(volumeOf(loaded.state, 'box'), volumeOf(before, 'box'), 1e-9)
+  );
 }
 
 // ---------------------------------------------------------------- what must not compile
@@ -199,7 +223,7 @@ export function scenario12e(): boolean {
   const withVents = volumeOf(engine.getState(), 'box');
   const mirrored = ribMirrorChecks(withVents, ribMirror()) && sketchOnTheCopy() && withoutItsPlane() === 'brokenReference' && inARoundFace() === 'nonPlanarFace' && toARowInstead() && !halfAPatch();
   const built = pads();
-  const corners = padChecks(built) && padProperties(built) && sketchUnderAPad() === 'ok' && asOneLink().length === 5;
+  const corners = padChecks(built) && padProperties(built) && sketchUnderAPad() === 'ok' && !secondCopyOfAMirror() && asOneLink().length === 5;
   const lids = lidsInARow()?.join() === 'lids/1,lids/2';
-  return trackB && row && spans && mirrored && corners && lids;
+  return trackB && row && spans && mirrored && corners && lids && roundTrip();
 }

@@ -1,7 +1,7 @@
 // Body properties (D48) without geometry: the section of the document, its upgrade step, the three
 // commands, the result of the recompute over bodies written by hand, what a copy inherits, the
 // write-back of expressions, undo, and the IDs a section names. The same against the real adapters
-// is in packages/scenarios/test/body-properties.test.ts.
+// is in packages/scenarios/test/scenario13.test.ts.
 import { describe, expect, it } from 'vitest';
 import { DATA_CATALOGS } from '../src/data-catalogs';
 import { CommandError, applyCommand, emptyDocument, validateDocument } from '../src/document';

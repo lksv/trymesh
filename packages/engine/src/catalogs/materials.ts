@@ -21,12 +21,14 @@ declare module '../data-catalogs' {
 // - PA12 has no row: Prusament makes PA11 and no PA12, and every nylon of Bambu Lab is filled with
 //   fibres. A question for the owner (docs/d36/3a-body-properties/design.md, "As implemented").
 // - ABS is from Bambu Lab: Prusament makes no ABS.
-// - TPU: the data sheet says 1.25; the PrusaSlicer profile of the same filament says 1.23. The data
+// - TPU: the data sheet says 1.25, and so does the second source of the check (simplyprint.io, from
+//   the Open Filament Database); the PrusaSlicer profile of the same filament says 1.23. The data
 //   sheet is the source.
 // - PC is Prusament PC Blend, its only unfilled polycarbonate; its sheet measures by an in-house
 //   method of Prusa Polymers, not by ISO 1183 as the others.
 // Every number was read from the sheet named in its row on 2026-11-16 and checked against a second
-// published value (the PrusaSlicer profile, or a retailer for Bambu ABS).
+// published value: the PrusaSlicer profile for PLA, PETG, ASA and PC, simplyprint.io for TPU (the
+// profile differs, above), a retailer (MatterHackers) for Bambu ABS.
 export const MATERIALS: DataCatalog<MaterialRow> = {
   title: 'Printing materials',
   summary:

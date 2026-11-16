@@ -633,8 +633,9 @@ export function tools(): Tool[] {
       name: 'execute',
       description: `Provede příkaz enginu a zapíše ho do dokumentu (jeden krok undo). Víc příkazů naráz jde složit příkazem batch. Neplatný příkaz dokument nezmění a vrátí důvod. Typy vazeb: ${constraintTypes}. Přesné tvary příkazů vrací describe_api.`,
       inputSchema: COMMAND,
-      // `takenOver`: features and sketch entities the command added under an ID a section of the
-      // document (body properties) still named, which they now take over
+      // `takenOver`: the IDs of features and sketch entities the command added while a section of
+      // the document (body properties) still named them; a body made under such an ID takes the
+      // properties, an entity of a sketch only shares the ID
       run: (engine, args) => {
         const before = engine.getState().document;
         const given = command(args);

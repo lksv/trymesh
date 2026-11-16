@@ -101,6 +101,8 @@ export interface PrintOrientation {
 export interface PrintReport extends Truncated {
   angle: number; // rad: the overhang angle used
   bodies: { body: Id; orientations: PrintOrientation[] }[];
+  // Set when the call names no bodies and the state has no printed body (D48): why `bodies` is empty.
+  empty?: string;
 }
 
 declare module './spec' {
@@ -280,7 +282,7 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
     '`onBed` (for an orientation given by a face, on the body of that face: whether the face lies on the bed; false when something of the body reaches below it), ' +
     '`contact` (`area` in mm2 and `count` of all planar faces that look straight down and have nothing of the body below them; `faces`: the largest, with their areas; a round face never counts) and ' +
     '`overhang` (`area` in mm2 and `count` of all faces that look down and lean from the vertical by more than the angle; `small`: how many of them are below `minArea` and not listed; `faces`: the others, the largest first, each with `area` and `from`, the height in mm above the bed where it starts). ' +
-    'Each list holds at most `maxFaces` faces, so the answer is at most 2 × `maxFaces` faces per body and orientation; `truncated` when `maxFaces` cut any list.',
+    'Each list holds at most `maxFaces` faces, so the answer is at most 2 × `maxFaces` faces per body and orientation; `truncated` when `maxFaces` cut any list. `empty`: without `bodies`, why there is no body to judge (the model has none, or none is a printed part).',
   args: PRINT_ARGS,
   units: { angle: 'rad', size: 'mm', area: 'mm2', from: 'mm' },
   run(context, args) {
@@ -332,6 +334,8 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
       });
       return { body: id, orientations };
     });
-    return { angle: args.overhang, bodies, ...(shown < total ? { truncated: { shown, total } } : {}) };
+    // without a list and with nothing printed: say why, rather than answer an empty list silently
+    const empty = args.bodies === undefined && bodies.length === 0 ? (Object.keys(context.bodies).length ? 'the model has no printed body (every body is a reference or auxiliary body); list the bodies to judge them anyway' : 'the model has no body') : undefined;
+    return { angle: args.overhang, bodies, ...(shown < total ? { truncated: { shown, total } } : {}), ...(empty ? { empty } : {}) };
   },
 };

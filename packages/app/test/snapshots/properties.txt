@@ -111,9 +111,9 @@
           option selected value="": "—"
           option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
           option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
-          option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+          option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
           option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
-          option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+          option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
           option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
       label
         "Material"
@@ -302,9 +302,9 @@
     -     option value="": "—"
     -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
     -     option selected value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
-    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
     -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
-    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
     -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     - label
     -   "Material"
@@ -439,9 +439,9 @@
     +     option selected value="": "—"
     +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
     +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
-    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
     +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
-    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
     +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     + label
     +   "Material"
@@ -470,3 +470,113 @@
     + face e1 #3 #f97316 opacity 0.3
     + face e1 #4 #f97316 opacity 0.3
     + face e1 #5 #f97316 opacity 0.3
+
+=== 12. a face of the copy selected: its form says it is a copy, its own use is reference, the empty choice is the use of its source
+  engine: execute({"type":"addFeature","feature":{"id":"pat","name":"Pattern","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"circular","axis":{"kind":"base","axis":"Z"},"count":2,"span":{"type":"full"}}}}) -> ok
+  engine: execute({"type":"setBodyProperties","body":"pat/1","patch":{"use":"reference"}}) -> ok
+  features: s1, e1, pat
+  feature pat:
+      {"id":"pat","name":"Pattern","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"circular","axis":{"kind":"base","axis":"Z"},"count":2,"span":{"type":"full"}}}
+  bodyProperties: {"pat/1":{"use":"reference"}}
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.row.ok
+    - div.row.ok.selected
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Pattern"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Výběr"
+    + p: "Stěna: Vysunutí 1 – protější víko, copy 1 of Pattern"
+    - h2: "Vysunutí"
+    - label
+    -   "Název"
+    -   input value="Vysunutí 1"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Nové těleso, distance 10 mm, regions: 1."
+    +   "Pattern / 1 [reference]: 12000 mm³, 40 × 30 × 10 mm"
+    -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+    + h2: "Properties of Pattern / 1"
+    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    - h2: "Properties of Vysunutí 1"
+    +   input value="" placeholder="Pattern / 1"
+    -   input value="" placeholder="Vysunutí 1"
+    +   select value="reference"
+    +     option value="": "As its source: Printed part"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    +     option selected value="reference": "Reference part (not printed)"
+    -     option value="reference": "Reference part (not printed)"
+    + div.buttons
+    +   button: "Clear the properties"
+  view: 5 scene(s) set
+  scene:
+    + bodies: e1, pat/1
+    + line #26303c width 1.5: 144 numbers, sum 980
+    + line #8b9bb4 width 1: 24 numbers, sum 738.666
+    + line #8b9bb4 width 1: 24 numbers, sum 492.444
+    + line #8b9bb4 width 1: 24 numbers, sum 246.222
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.175
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.175
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.175
+    + face pat/1 #7 #0ea5e9 opacity 0.3
+    + face pat/1 #7 #f97316 opacity 0.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - face e1 #0 #f97316 opacity 0.3
+    - face e1 #1 #f97316 opacity 0.3
+    - face e1 #2 #f97316 opacity 0.3
+    - face e1 #3 #f97316 opacity 0.3
+    - face e1 #4 #f97316 opacity 0.3
+    - face e1 #5 #f97316 opacity 0.3
+
+=== 13. the source made auxiliary: the empty choice of the copy follows it
+  engine: execute({"type":"setBodyProperties","body":"e1","patch":{"use":"auxiliary"}}) -> ok
+  bodyProperties: {"pat/1":{"use":"reference"},"e1":{"use":"auxiliary"}}
+  toolbar:
+    +   button disabled: "Export STL"
+    -   button: "Export STL"
+  panel:
+    +     option value="": "As its source: Auxiliary (no mass, not printed)"
+    -     option value="": "As its source: Printed part"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1 opacity 0.35, pat/1
+    - bodies: e1, pat/1
+    - face pat/1 #7 #0ea5e9 opacity 0.3
+
+=== 14. the empty choice: the copy has no use of its own and takes that of its source
+  engine: execute({"type":"setBodyProperties","body":"pat/1","patch":{"use":null}}) -> ok
+  bodyProperties: {"e1":{"use":"auxiliary"}}
+  panel:
+    +   "Pattern / 1 [auxiliary]: 12000 mm³, 40 × 30 × 10 mm"
+    -   "Pattern / 1 [reference]: 12000 mm³, 40 × 30 × 10 mm"
+    +   select value=""
+    +     option selected value="": "As its source: Auxiliary (no mass, not printed)"
+    -   select value="reference"
+    -     option value="": "As its source: Auxiliary (no mass, not printed)"
+    +     option value="reference": "Reference part (not printed)"
+    -     option selected value="reference": "Reference part (not printed)"
+    - div.buttons
+    -   button: "Clear the properties"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1 opacity 0.35, pat/1 opacity 0.35
+    - bodies: e1 opacity 0.35, pat/1

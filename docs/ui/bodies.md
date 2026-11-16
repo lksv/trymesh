@@ -33,7 +33,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Collisions, vol
 - **Names.** Wherever the app names a body (the line, the targets of a feature, the bodies an issue names) it takes the name of its properties: its own name, else that of the feature, a copy with ` / <number>`.
 - **The view** draws a body in the colour of its properties and an auxiliary body see-through (opacity 0.35). A picture of the model (D43) keeps its palette, which tells the bodies apart.
 - **Properties without a body.** Below the selection the panel lists the entries whose body is not in the model (*Properties without a body*), each with *Remove*; a body made again under the same ID would take the entry over.
-- **Status line.** A command of the app that adds a feature or an entity under an ID an entry still names says so (`takenOver`); the generator of IDs of the app (`newId`) does not hand such an ID out.
+- **Status line.** A command of the app that adds a feature or an entity under an ID an entry still names says that the ID is used again and that a body made under it takes those properties (`takenOver`); the generator of IDs of the app (`newId`) does not hand such an ID out.
 
 ### Implementation status
 

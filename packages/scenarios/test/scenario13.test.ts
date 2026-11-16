@@ -122,6 +122,10 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(state.document.bodyProperties.upper.mass).toBe(41.5);
     // the mass query fails for it and names it, instead of weighing it by a density
     expect(engine.query('mass', { bodies: ['upper'], density: 1 })).toMatchObject({ ok: false, error: { code: 'failed', message: expect.stringContaining('the mass of the body "upper" in its properties cannot be evaluated: unknown name "scale"') } });
+    // a density the call names for the body wins over its properties, also over one in error
+    const named = massOf(engine, { bodies: ['upper'], densities: { upper: 1.2 } });
+    expect(named.bodies[0]).toMatchObject({ from: 'densities', density: 1.2 });
+    near(named.mass, (1.2 * volumeOf(state, 'upper')) / 1000);
     // the same for a copy that inherits the pair of its source
     run(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'perScrew', expr: '0.9' }, { type: 'setBodyProperties', body: 'screw', patch: { mass: 'perScrew' } }] });
     state = run(engine, { type: 'removeParameter', name: 'perScrew' });
@@ -203,6 +207,27 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(new DataView(engine.exportMesh('stl').buffer).getUint32(80, true)).toBe(triangles);
     const print = engine.query('print', { orientations: [{ by: { up: [0, 0, 1] } }] });
     expect(print.ok && print.result.bodies.map((body) => body.body)).toEqual(['base', 'upper', 'forearm']);
+    expect(print.ok && print.result).not.toHaveProperty('empty');
+    // with no printed body the print query says why it judged none, as the export does
+    const unprinted = engine.preview({ type: 'batch', commands: ['base', 'upper', 'forearm'].map((body): Command => ({ type: 'setBodyProperties', body, patch: { use: 'reference' } })) });
+    if (!unprinted.ok) throw new Error(unprinted.error.message);
+    const none = engine.query('print', { orientations: [{ by: { up: [0, 0, 1] } }] }, { state: unprinted.state });
+    expect(none.ok && none.result).toMatchObject({ bodies: [], empty: expect.stringContaining('the model has no printed body') });
+    expect(engine.export('stl', {}, { state: unprinted.state })).toMatchObject({ ok: true, result: { empty: expect.stringContaining('the model has no printed body') } });
+  });
+
+  it('c. a change of a property recomputes no geometry, and a result stays the same object while what it is made of does', () => {
+    const before = engine.getState().evaluation;
+    const after = run(engine, { type: 'setBodyProperties', body: 'forearm', patch: { color: '#4e79a7' } }).evaluation;
+    for (const id of Object.keys(before.bodies)) expect(after.bodies[id].solid).toBe(before.bodies[id].solid);
+    for (const id of Object.keys(before.features)) expect(after.features[id]).toBe(before.features[id]);
+    expect(after.faceNames).toBe(before.faceNames);
+    // the results of the bodies the change does not touch are the same objects; the one it touches is new
+    for (const id of ['base', 'upper', 'motor', 'screw', 'screws/1']) expect(after.bodyProperties[id]).toBe(before.bodyProperties[id]);
+    expect(after.bodyProperties.forearm).not.toBe(before.bodyProperties.forearm);
+    // a recompute of an unchanged document (a state after the last feature) gives the same objects
+    expect(engine.getState('screws').evaluation.bodyProperties.upper).toBe(after.bodyProperties.upper);
+    run(engine, { type: 'setBodyProperties', body: 'forearm', patch: { color: null } });
   });
 
   it('d. an entry whose body is gone stays, is listed and can be removed; the generators do not hand its ID out', () => {

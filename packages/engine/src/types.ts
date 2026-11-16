@@ -428,7 +428,7 @@ export interface Evaluation {
 // The properties of a body of the state, with what it inherits and the defaults filled in. Computed
 // after the timeline, with the parameters and the checks, from the document and the volume of the
 // body; no step of a feature reads it, so a change of a property recomputes no geometry. A result
-// equal to the last one of the same body is the same object.
+// equal to one of the last few of the same body is the same object.
 // The mass, in this order:
 // 1. An auxiliary body has none.
 // 2. The pair `density` and `mass` is the own one when the entry states either, else the inherited

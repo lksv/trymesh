@@ -50,10 +50,12 @@ export const renamedSections = (doc: Document, from: string, to: string): Sectio
 export const sectionsDiffer = (a: Document, b: Document): boolean => NAMES.some((name) => a[name] !== b[name] && JSON.stringify(a[name]) !== JSON.stringify(b[name]));
 
 // After the timeline: the result of every section, and the sections whose numbers the recompute
-// wrote back. `kept` holds the last result of every key of a section: a new result equal to it is
-// replaced by it, so that a result is the same object as long as what it is computed from is the
-// same.
-export type KeptResults = Map<SectionName, Map<string, { text: string; value: unknown }>>;
+// wrote back. `kept` holds the last few results of every key of a section (a preview or a state
+// after a feature in between does not push out the result of the document): a new result equal to
+// one of them is replaced by it, so that a result is the same object as long as what it is computed
+// from is the same.
+export type KeptResults = Map<SectionName, Map<string, Map<string, unknown>>>;
+const RESULTS_KEPT = 4; // per key of a section, most recently used last
 export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {
   const results: Record<string, unknown> = {};
   let written: Partial<Sections> | undefined;
@@ -65,9 +67,13 @@ export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, Body
     const stable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(result)) {
       const text = JSON.stringify(value);
-      const last = memory.get(key);
-      if (last?.text === text) stable[key] = last.value;
-      else memory.set(key, { text, value: (stable[key] = value) });
+      let known = memory.get(key);
+      if (!known) memory.set(key, (known = new Map()));
+      const found = known.get(text);
+      stable[key] = found ?? value;
+      known.delete(text);
+      known.set(text, stable[key]);
+      if (known.size > RESULTS_KEPT) known.delete(known.keys().next().value as string);
     }
     results[name] = stable;
     if (evaluated.written !== undefined) (written ??= {})[name] = evaluated.written as Sections[typeof name];

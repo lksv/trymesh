@@ -1,19 +1,22 @@
 // The query `mass` (D41): the mass, the centre of mass and the inertia of one body or of several
 // taken as one rigid piece, from the volume and a density.
 import type { Id, Solid, Vec3 } from '../types';
+import { DENSITY as BODY_DENSITY } from '../sections/body-properties';
 import { cross3, dot3, has, len3, mul3, sub3 } from '../util';
 import type { ArgSpecs } from './args';
 import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 
 // ---------------------------------------------------------------- the arguments
 
-// Above zero and below anything that is not a mistake: osmium has 22.6 g/cm3.
-const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }, max: { value: 1000 } } as const;
+// The range of a density of the body properties (D48): above zero and at most 25 g/cm3, above the
+// densest element (osmium, 22.6), so a density in kg/m3 by mistake is refused.
+const DENSITY = BODY_DENSITY;
 
 // - `bodies`: the bodies taken as one rigid piece (a link of a mechanism); one body is a list of
 //   one. A body named twice counts once.
 // - `densities`: the density of single bodies, by body ID. It wins over everything but the use
-//   `auxiliary` and is taken as it is (an effective density).
+//   `auxiliary` (also over a density or a mass of the properties that cannot be evaluated) and is
+//   taken as it is (an effective density).
 // - `density`: the density of every listed body that has none of its own: none in `densities`
 //   and none in the document (`massSourceOf`: the density or the mass of its body properties).
 // - `fill`: the part of the volume that is material, for a printed part with infill. It goes
@@ -206,9 +209,9 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     // a body named twice counts once
     const skipped: Id[] = [];
     for (const id of new Set(args.bodies)) {
-      // the body's own properties first: an auxiliary body adds nothing and is listed apart
-      const own = massSourceOf(context, id);
-      if (own === 'auxiliary') {
+      // an auxiliary body adds nothing and is listed apart, also when `densities` names it
+      const properties = context.state.evaluation.bodyProperties;
+      if (has(properties, id) && properties[id].use === 'auxiliary') {
         skipped.push(id);
         continue;
       }
@@ -218,7 +221,10 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       if (!(unit.volume > 0)) throw new QueryFailure('failed', `bodies: the body "${id}" has no volume`, ['bodies', args.bodies.indexOf(id)]); // the place in the argument, not in the set
       // Whose density: the call's by body, then the body's own, then the call's for all. An own
       // key of the record only: a body may have an ID that every object has by inheritance.
+      // A density the call names wins over the properties, also over one in error.
       const named = args.densities !== undefined && has(args.densities, id) ? { density: args.densities[id] } : undefined;
+      const read = named ? undefined : massSourceOf(context, id);
+      const own = read === 'auxiliary' ? undefined : read; // auxiliary bodies were skipped above
       const stated = named ?? own;
       const source = stated ?? (args.density === undefined ? undefined : { density: args.density });
       if (!source) throw new QueryFailure('invalidArguments', `density: the body "${id}" has no density of its own: give \`density\`, or its density in \`densities\`, or set its properties (setBodyMaterial, setBodyProperties)`, ['density']);

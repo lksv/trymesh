@@ -227,7 +227,7 @@ export class App implements SketchHost, SceneHost {
     // properties an entry of the document kept for an ID the command used again (D48)
     const taken = takenOver(now.document, command);
     if (failed.length > 0) this.say(`Check failed: ${failed.join('; ')}`, true);
-    else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}Body properties kept for ${taken.join(', ')} apply to what was made under that ID; remove them in the model panel if it is something else.`);
+    else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}An ID that body properties name is now used again: ${taken.join(', ')}. A body made under it takes those properties; if it is another thing, remove them in the model panel.`);
     else if (done !== undefined) this.say(done);
     else if (this.note.error) this.say(''); // stará chyba po úspěšném příkazu už neplatí
     return true;

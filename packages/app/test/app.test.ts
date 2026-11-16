@@ -987,6 +987,21 @@ describe('the app, driven as a user drives it', () => {
     h.row('Vysunutí 1').click();
     h.press('panel', 'Clear the properties');
     h.record('the properties cleared by the button of the form');
+    // A copy made by a pattern of the body: its form offers the use of its source, read from the
+    // result of the source, not its own use.
+    outside(h, { type: 'addFeature', feature: { id: 'pat', name: 'Pattern', suppressed: false, type: 'pattern', source: { type: 'body', body }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } });
+    outside(h, { type: 'setBodyProperties', body: 'pat/1', patch: { use: 'reference' } });
+    h.row('Vysunutí 1').click(); // the extrusion no longer selected on the timeline: the form is that of the face picked
+    h.click(at(-20, -15, 10));
+    h.record('a face of the copy selected: its form says it is a copy, its own use is reference, the empty choice is the use of its source');
+    const useOf = () => Array.from((h.field('Use') as HTMLSelectElement).options).map((option) => option.textContent);
+    expect(useOf()[0]).toBe('As its source: Printed part');
+    outside(h, { type: 'setBodyProperties', body, patch: { use: 'auxiliary' } });
+    h.record('the source made auxiliary: the empty choice of the copy follows it');
+    expect(useOf()[0]).toBe('As its source: Auxiliary (no mass, not printed)');
+    h.choose('Use', '');
+    h.record('the empty choice: the copy has no use of its own and takes that of its source');
+    expect(h.engine.getState().evaluation.bodyProperties['pat/1'].use).toBe('auxiliary');
     await matches(h, 'properties');
   });
 

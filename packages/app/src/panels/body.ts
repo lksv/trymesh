@@ -68,12 +68,16 @@ export function bodyForm(host: PanelHost, id: Id): HTMLElement[] {
     'select',
     { onchange: () => material.value !== '' && host.run({ type: 'setBodyMaterial', body: id, material: material.value }, `Material ${material.value} with the density of its data sheet.`) },
     h('option', { value: '', textContent: '—', selected: !(entry.material !== undefined && own(rows, entry.material)) }),
-    ...Object.entries(rows).map(([key, row]) => h('option', { value: key, textContent: `${key} (${row.density} g/cm³)`, selected: entry.material === key, title: row.source.replace(/ \(.*$/, '') })),
+    ...Object.entries(rows).map(([key, row]) => h('option', { value: key, textContent: `${key} (${row.density} g/cm³)`, selected: entry.material === key, title: row.source.replace(/ \([^()]*https?:[^()]*\)/g, '') })),
   );
+  // Without a use of its own a copy has the use of its source, which the result of the source says
+  // (its own or what it inherits in turn); a body copied from none has the default.
+  const source = result.from !== undefined && own(evaluation.bodyProperties, result.from) ? evaluation.bodyProperties[result.from] : undefined;
+  const inheritedUse = result.from === undefined ? `Default: ${USES.part}` : source ? `As its source: ${USES[source.use]}` : 'As its source';
   const use = h(
     'select',
     { onchange: () => set({ use: use.value === '' ? null : (use.value as BodyUse) }) },
-    h('option', { value: '', textContent: `${result.from !== undefined ? 'As its source' : 'Default'}: ${USES[result.from !== undefined ? result.use : 'part']}`, selected: entry.use === undefined }),
+    h('option', { value: '', textContent: inheritedUse, selected: entry.use === undefined }),
     ...(Object.keys(USES) as BodyUse[]).map((key) => h('option', { value: key, textContent: USES[key], selected: entry.use === key })),
   );
   const color = h('input', { type: 'color', value: result.color ?? '#aab7c6', onchange: () => set({ color: color.value }) });

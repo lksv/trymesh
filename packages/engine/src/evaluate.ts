@@ -38,7 +38,7 @@ export class Evaluator {
   private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
   private readonly initial = new WeakMap<Document['settings'], State>();
   private readonly published = new WeakMap<FaceInfo[], Surface[]>();
-  private readonly kept: KeptResults = new Map(); // the last result of every key of a section
+  private readonly kept: KeptResults = new Map(); // the last few results of every key of a section
 
   constructor(private readonly deps: Deps) {}
 

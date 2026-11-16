@@ -15,7 +15,8 @@ import type { SectionSpec } from './spec';
 type Section = Record<Id, BodyProperties>;
 type Results = Record<Id, BodyPropertiesResult>;
 
-// The upper bound of the density keeps a value in another unit (1240 kg/m3) from passing.
+// The upper bound of the density lies above the densest element (osmium, 22.6 g/cm3) and keeps a
+// value in another unit (1240 kg/m3) from passing. The arguments of the mass query share it.
 export const DENSITY: NumberSpec = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }, max: { value: 25 } };
 export const MASS: NumberSpec = { title: 'Mass', unit: 'g', min: { value: 0, open: true } };
 const FIELDS: readonly EntryField[] = [

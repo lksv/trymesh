@@ -833,3 +833,191 @@ describe('equal radius and a fixed point (D35, point 6)', () => {
     expect(solver.solve({ ...one, points: reversed(one.points), constraints: reversed(one.constraints) })).toEqual(solver.solve(one));
   });
 });
+
+// D52: a tangency of a line and an arc at a common end (the same point ID, or two points one
+// coincident constraint joins) is given to the library as "the radius to that end is square to the
+// line". The library's own form has a double root there: drawn exactly, it calls the tangency
+// redundant and every later change of a dimension is a conflict.
+describe('a tangency of a line and an arc at a common end (D52)', () => {
+  // A fillet as the sketch tool draws it: a right corner at the origin, its lines 40 and 30 long,
+  // the arc of radius 6 exactly in place, the corner kept on both lines.
+  const fillet = (radius: number, extra: Record<Id, Constraint> = {}): SolveInput =>
+    input({
+      points: { origin: { x: 0, y: 0 }, p: { x: 0, y: 0 }, q1: { x: 40, y: 0 }, q2: { x: 0, y: 30 }, t1: { x: 6, y: 0 }, t2: { x: 0, y: 6 }, c: { x: 6, y: 6 } },
+      curves: { l1: { type: 'line', a: 't1', b: 'q1' }, l2: { type: 'line', a: 'q2', b: 't2' }, f: { type: 'arc', center: 'c', start: 't2', end: 't1' } },
+      constraints: {
+        fix: { type: 'coincident', a: 'p', b: 'origin' },
+        h: { type: 'horizontal', line: 'l1' },
+        v: { type: 'vertical', line: 'l2' },
+        w: { type: 'distance', a: 'p', b: 'q1', value: 40, driving: true },
+        d: { type: 'distance', a: 'p', b: 'q2', value: 30, driving: true },
+        tan1: { type: 'tangent', a: 'l1', b: 'f' },
+        tan2: { type: 'tangent', a: 'l2', b: 'f' },
+        on1: { type: 'pointOnCurve', point: 'p', curve: 'l1' },
+        on2: { type: 'pointOnCurve', point: 'p', curve: 'l2' },
+        r: { type: 'radius', curve: 'f', value: radius, driving: true },
+        ...extra,
+      },
+      fixed: ['origin'],
+    });
+  // A slot 20 long with half circles of radius 5. `shared`: the ends are one point ID; `joined`:
+  // the arcs end at points of their own, each joined to the end of a line by one coincident
+  // constraint; `third`: joined through a third point (two coincident constraints).
+  type Join = 'shared' | 'joined' | 'third';
+  const slot = (join: Join): SolveInput => {
+    const points: Record<Id, Point2> = { origin: { x: 0, y: 0 }, a: { x: 0, y: -5 }, b: { x: 20, y: -5 }, c: { x: 20, y: 5 }, d: { x: 0, y: 5 }, m1: { x: 0, y: 0 }, m2: { x: 20, y: 0 } };
+    const end = (k: 'a' | 'b' | 'c' | 'd'): Id => (join === 'shared' ? k : `${k}2`);
+    const constraints: Record<Id, Constraint> = {};
+    for (const k of join === 'shared' ? [] : (['a', 'b', 'c', 'd'] as const)) {
+      points[`${k}2`] = { ...points[k] };
+      if (join === 'joined') constraints[`j${k}`] = { type: 'coincident', a: k, b: `${k}2` };
+      else {
+        points[`${k}3`] = { ...points[k] };
+        constraints[`j${k}`] = { type: 'coincident', a: k, b: `${k}3` };
+        constraints[`k${k}`] = { type: 'coincident', a: `${k}3`, b: `${k}2` };
+      }
+    }
+    return input({
+      points,
+      curves: { bot: { type: 'line', a: 'a', b: 'b' }, top: { type: 'line', a: 'c', b: 'd' }, right: { type: 'arc', center: 'm2', start: end('b'), end: end('c') }, left: { type: 'arc', center: 'm1', start: end('d'), end: end('a') } },
+      constraints: {
+        ...constraints,
+        t1: { type: 'tangent', a: 'bot', b: 'right' },
+        t2: { type: 'tangent', a: 'top', b: 'right' },
+        t3: { type: 'tangent', a: 'top', b: 'left' },
+        t4: { type: 'tangent', a: 'bot', b: 'left' },
+        fix: { type: 'coincident', a: 'm1', b: 'origin' },
+        h: { type: 'horizontal', line: 'bot' },
+        r: { type: 'radius', curve: 'left', value: 5, driving: true },
+        len: { type: 'horizontalDistance', a: 'm1', b: 'm2', value: 20, driving: true },
+        r2: { type: 'radius', curve: 'right', value: 5, driving: true },
+      },
+      fixed: ['origin'],
+    });
+  };
+  // Each change of a dimension solved from the last solution, as the engine does; the statuses.
+  const changes = (start: SolveInput, steps: [Id, number][]): { statuses: string[]; last: SolveInput } => {
+    let current = start;
+    const statuses = [solver.solve(current).status as string];
+    for (const [id, value] of steps) {
+      current = { ...current, constraints: { ...current.constraints, [id]: { ...current.constraints[id], value } as Constraint } };
+      const result = solver.solve(current);
+      statuses.push(result.status);
+      if (result.status === 'solved') current = { ...current, points: result.points };
+    }
+    return { statuses, last: current };
+  };
+  const SLOT_CHANGES: [Id, number][] = [['r', 6], ['r2', 6], ['len', 30], ['r', 5], ['r2', 5], ['len', 20.5]];
+  const near = (p: Point2, x: number, y: number) => expect(p).toEqual({ x: expect.closeTo(x, 9), y: expect.closeTo(y, 9) });
+
+  it('a fillet drawn exactly is solved again with another radius; nothing is redundant', () => {
+    const first = solver.solve(fillet(6));
+    expect(first).toMatchObject({ status: 'solved', redundant: [], conflicting: [] });
+    const changed = solver.solve(fillet(10));
+    expect(changed.status).toBe('solved');
+    near(changed.points.t1!, 10, 0);
+    near(changed.points.t2!, 0, 10);
+    near(changed.points.c!, 10, 10);
+    near(changed.points.p!, 0, 0);
+    expect(changes(fillet(6), [['r', 10], ['r', 1], ['r', 29], ['r', 6]]).statuses).toEqual(['solved', 'solved', 'solved', 'solved', 'solved']);
+  });
+
+  it('a slot drawn exactly is solved after every change, with the ends as one point and joined by a coincident constraint', () => {
+    for (const join of ['shared', 'joined'] as const) {
+      expect(solver.solve(slot(join)).redundant, join).toEqual([]);
+      const { statuses, last } = changes(slot(join), SLOT_CHANGES);
+      expect(statuses, join).toEqual(Array(7).fill('solved'));
+      // the last shape: 20.5 long, radius 5, the lines tangent at the ends of the arcs
+      const p = solver.solve(last).points;
+      near(p.m2!, 20.5, 0);
+      near(p.b!, 20.5, -5);
+      near(p.c!, 20.5, 5);
+      near(p.d!, 0, 5);
+    }
+  });
+
+  it('the tangency keeps its ID in conflicting', () => {
+    // the end of the arc 3 from the corner contradicts a fillet of 6 at a right angle
+    const result = solver.solve(fillet(6, { bad: { type: 'distance', a: 'p', b: 't1', value: 3, driving: true } }));
+    expect(result.status).toBe('conflict');
+    expect(result.conflicting).toContain('bad');
+    expect(result.conflicting.some((id) => id === 'tan1' || id === 'tan2')).toBe(true);
+    expect(result.conflicting.every((id) => !id.startsWith('/'))).toBe(true);
+  });
+
+  it('a drag of the end of a determined fillet keeps the arc on its line', () => {
+    const dragged = solver.solve({ ...fillet(6), drag: { point: 't1', target: { x: 20, y: 3 } } });
+    expect(dragged.status).toBe('solved');
+    near(dragged.points.t1!, 6, 0);
+    near(dragged.points.c!, 6, 6);
+  });
+
+  it('a line that ends at the origin, and a projected line joined to the end of the arc, keep their tangency under a change', () => {
+    const atOrigin = input({
+      points: { origin: { x: 0, y: 0 }, q: { x: 30, y: 0 }, c: { x: 0, y: 6 }, e: { x: -6, y: 6 } },
+      curves: { l: { type: 'line', a: 'origin', b: 'q' }, f: { type: 'arc', center: 'c', start: 'origin', end: 'e' } },
+      constraints: { h: { type: 'horizontal', line: 'l' }, t: { type: 'tangent', a: 'l', b: 'f' }, r: { type: 'radius', curve: 'f', value: 6, driving: true }, ey: { type: 'verticalDistance', a: 'c', b: 'e', value: 0, driving: true } },
+      fixed: ['origin'],
+    });
+    const origin = changes(atOrigin, [['r', 10], ['r', 3]]);
+    expect(origin.statuses).toEqual(['solved', 'solved', 'solved']);
+    near(solver.solve(origin.last).points.c!, 0, 3);
+    // the projected line is a line of the input with two fixed points; a snap joins the arc to it
+    const projected = input({
+      points: { origin: { x: 0, y: 0 }, 'x/a': { x: 0, y: 0 }, 'x/b': { x: 30, y: 0 }, s: { x: 30, y: 0 }, c: { x: 30, y: 6 }, e: { x: 36, y: 6 } },
+      curves: { x: { type: 'line', a: 'x/a', b: 'x/b' }, f: { type: 'arc', center: 'c', start: 's', end: 'e' } },
+      constraints: { snap: { type: 'coincident', a: 's', b: 'x/b' }, t: { type: 'tangent', a: 'x', b: 'f' }, r: { type: 'radius', curve: 'f', value: 6, driving: true }, ey: { type: 'verticalDistance', a: 'c', b: 'e', value: 0, driving: true } },
+      fixed: ['origin', 'x/a', 'x/b'],
+    });
+    const edge = changes(projected, [['r', 10], ['r', 3]]);
+    expect(edge.statuses).toEqual(['solved', 'solved', 'solved']);
+    near(solver.solve(edge.last).points.c!, 30, 3);
+  });
+
+  // Known limits, pinned as they are.
+  it('a join through a third point and two arcs keep the form of the library, with its defect', () => {
+    const third = changes(slot('third'), SLOT_CHANGES);
+    expect(solver.solve(slot('third')).redundant).toEqual(['t1', 't2', 't3', 't4']);
+    expect(third.statuses.filter((status) => status === 'conflict')).toHaveLength(5);
+    // an S of two arcs that join smoothly at a common end, drawn exactly
+    const esse = input({
+      points: { origin: { x: 0, y: 0 }, m1: { x: 0, y: 0 }, s1: { x: -5, y: 0 }, q: { x: 0, y: 5 }, m2: { x: 0, y: 10 }, e: { x: 5, y: 10 } },
+      curves: { r1: { type: 'arc', center: 'm1', start: 'q', end: 's1' }, r2: { type: 'arc', center: 'm2', start: 'q', end: 'e' } },
+      constraints: {
+        t: { type: 'tangent', a: 'r1', b: 'r2' },
+        fix: { type: 'coincident', a: 'm1', b: 'origin' },
+        ra: { type: 'radius', curve: 'r1', value: 5, driving: true },
+        rb: { type: 'radius', curve: 'r2', value: 5, driving: true },
+        qx: { type: 'horizontalDistance', a: 'origin', b: 'q', value: 0, driving: true },
+        s1y: { type: 'verticalDistance', a: 'origin', b: 's1', value: 0, driving: true },
+        ey: { type: 'verticalDistance', a: 'm2', b: 'e', value: 0, driving: true },
+      },
+      fixed: ['origin'],
+    });
+    expect(changes(esse, [['ra', 6], ['rb', 4], ['ra', 5], ['rb', 5]]).statuses).toEqual(['solved', 'solved', 'conflict', 'conflict', 'solved']);
+  });
+
+  it('a line and an arc with all points fixed slightly off tangent are a conflict (the library form called it solved below about 1e-4)', () => {
+    for (const off of [1e-9, 1e-6]) {
+      const radius = Math.hypot(off, 1);
+      const at: [Id, number, number][] = [['a', 0, 0], ['b', 10, 0], ['c', off, 1], ['e', off + radius, 1]];
+      const result = solver.solve(
+        input({
+          points: { origin: { x: 0, y: 0 }, ...Object.fromEntries(at.map(([id, x, y]) => [id, { x, y }])) },
+          curves: { l: { type: 'line', a: 'a', b: 'b' }, f: { type: 'arc', center: 'c', start: 'a', end: 'e' } },
+          constraints: { t: { type: 'tangent', a: 'l', b: 'f' }, ...Object.fromEntries(at.map(([id, x, y]): [Id, Constraint] => [`fix${id}`, { type: 'fixed', point: id, x, y }])) },
+          fixed: ['origin'],
+        }),
+      );
+      expect(result.status, String(off)).toBe('conflict');
+      expect(result.conflicting).toEqual(['fixa', 'fixb', 'fixc', 'fixe', 't']);
+    }
+  });
+
+  it('nothing keeps a fillet a fillet: a radius past the fit is solved into an arc beyond the end of a line', () => {
+    // the lines are 40 and 30 long, so a fillet at the right angle fits below 30
+    const result = solver.solve(fillet(50));
+    expect(result.status).toBe('solved');
+    expect(result.points.t2!.y).toBeGreaterThan(30);
+  });
+});

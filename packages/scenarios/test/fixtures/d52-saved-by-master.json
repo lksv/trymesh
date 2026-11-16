@@ -1,0 +1,677 @@
+{
+ "slotExact": {
+  "status": "ok",
+  "warnings": [],
+  "document": {
+   "schemaVersion": 6,
+   "settings": {
+    "chordTolerance": 0.01
+   },
+   "parameters": [],
+   "checks": [],
+   "features": [
+    {
+     "id": "s",
+     "name": "s",
+     "suppressed": false,
+     "type": "sketch",
+     "plane": {
+      "kind": "base",
+      "plane": "XY"
+     },
+     "points": {
+      "a": {
+       "x": 0,
+       "y": -5
+      },
+      "b": {
+       "x": 20,
+       "y": -5
+      },
+      "c": {
+       "x": 20,
+       "y": 5
+      },
+      "d": {
+       "x": 0,
+       "y": 5
+      },
+      "m1": {
+       "x": 0,
+       "y": 0
+      },
+      "m2": {
+       "x": 20,
+       "y": 0
+      }
+     },
+     "radii": {},
+     "curves": {
+      "bot": {
+       "type": "line",
+       "a": "a",
+       "b": "b"
+      },
+      "top": {
+       "type": "line",
+       "a": "c",
+       "b": "d"
+      },
+      "right": {
+       "type": "arc",
+       "center": "m2",
+       "start": "b",
+       "end": "c"
+      },
+      "left": {
+       "type": "arc",
+       "center": "m1",
+       "start": "d",
+       "end": "a"
+      }
+     },
+     "constraints": {
+      "t1": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "right"
+      },
+      "t2": {
+       "type": "tangent",
+       "a": "top",
+       "b": "right"
+      },
+      "t3": {
+       "type": "tangent",
+       "a": "top",
+       "b": "left"
+      },
+      "t4": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "left"
+      },
+      "fix": {
+       "type": "coincident",
+       "a": "m1",
+       "b": "origin"
+      },
+      "h": {
+       "type": "horizontal",
+       "line": "bot"
+      },
+      "r": {
+       "type": "radius",
+       "curve": "left",
+       "value": 5,
+       "driving": true
+      },
+      "len": {
+       "type": "horizontalDistance",
+       "a": "m1",
+       "b": "m2",
+       "value": 20,
+       "driving": true
+      },
+      "r2": {
+       "type": "radius",
+       "curve": "right",
+       "value": 5,
+       "driving": true
+      }
+     },
+     "external": {},
+     "solved": {
+      "inputs": "948ade6a24eb827e",
+      "external": {}
+     }
+    }
+   ],
+   "bodyProperties": {},
+   "mechanism": {
+    "links": {},
+    "joints": {}
+   }
+  }
+ },
+ "slotJoinedExact": {
+  "status": "ok",
+  "warnings": [],
+  "document": {
+   "schemaVersion": 6,
+   "settings": {
+    "chordTolerance": 0.01
+   },
+   "parameters": [],
+   "checks": [],
+   "features": [
+    {
+     "id": "s",
+     "name": "s",
+     "suppressed": false,
+     "type": "sketch",
+     "plane": {
+      "kind": "base",
+      "plane": "XY"
+     },
+     "points": {
+      "a": {
+       "x": 0,
+       "y": -5
+      },
+      "b": {
+       "x": 20,
+       "y": -5
+      },
+      "c": {
+       "x": 20,
+       "y": 5
+      },
+      "d": {
+       "x": 0,
+       "y": 5
+      },
+      "m1": {
+       "x": 0,
+       "y": 0
+      },
+      "m2": {
+       "x": 20,
+       "y": 0
+      },
+      "a2": {
+       "x": 0,
+       "y": -5
+      },
+      "b2": {
+       "x": 20,
+       "y": -5
+      },
+      "c2": {
+       "x": 20,
+       "y": 5
+      },
+      "d2": {
+       "x": 0,
+       "y": 5
+      }
+     },
+     "radii": {},
+     "curves": {
+      "bot": {
+       "type": "line",
+       "a": "a",
+       "b": "b"
+      },
+      "top": {
+       "type": "line",
+       "a": "c",
+       "b": "d"
+      },
+      "right": {
+       "type": "arc",
+       "center": "m2",
+       "start": "b2",
+       "end": "c2"
+      },
+      "left": {
+       "type": "arc",
+       "center": "m1",
+       "start": "d2",
+       "end": "a2"
+      }
+     },
+     "constraints": {
+      "ja": {
+       "type": "coincident",
+       "a": "a",
+       "b": "a2"
+      },
+      "jb": {
+       "type": "coincident",
+       "a": "b2",
+       "b": "b"
+      },
+      "jc": {
+       "type": "coincident",
+       "a": "c",
+       "b": "c2"
+      },
+      "jd": {
+       "type": "coincident",
+       "a": "d2",
+       "b": "d"
+      },
+      "t1": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "right"
+      },
+      "t2": {
+       "type": "tangent",
+       "a": "top",
+       "b": "right"
+      },
+      "t3": {
+       "type": "tangent",
+       "a": "top",
+       "b": "left"
+      },
+      "t4": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "left"
+      },
+      "fix": {
+       "type": "coincident",
+       "a": "m1",
+       "b": "origin"
+      },
+      "h": {
+       "type": "horizontal",
+       "line": "bot"
+      },
+      "r": {
+       "type": "radius",
+       "curve": "left",
+       "value": 5,
+       "driving": true
+      },
+      "len": {
+       "type": "horizontalDistance",
+       "a": "m1",
+       "b": "m2",
+       "value": 20,
+       "driving": true
+      },
+      "r2": {
+       "type": "radius",
+       "curve": "right",
+       "value": 5,
+       "driving": true
+      }
+     },
+     "external": {},
+     "solved": {
+      "inputs": "ea3e11a645f13dd2",
+      "external": {}
+     }
+    }
+   ],
+   "bodyProperties": {},
+   "mechanism": {
+    "links": {},
+    "joints": {}
+   }
+  }
+ },
+ "slotNoisy": {
+  "status": "ok",
+  "warnings": [],
+  "document": {
+   "schemaVersion": 6,
+   "settings": {
+    "chordTolerance": 0.01
+   },
+   "parameters": [],
+   "checks": [],
+   "features": [
+    {
+     "id": "s",
+     "name": "s",
+     "suppressed": false,
+     "type": "sketch",
+     "plane": {
+      "kind": "base",
+      "plane": "XY"
+     },
+     "points": {
+      "a": {
+       "x": 0.0000262685477975476,
+       "y": -5.999999999999999
+      },
+      "b": {
+       "x": 29.999971548320858,
+       "y": -5.999999999999999
+      },
+      "c": {
+       "x": 30.332933993715425,
+       "y": 3.988903181732009
+      },
+      "d": {
+       "x": 0.3995809359292157,
+       "y": 5.986679804053668
+      },
+      "m1": {
+       "x": 0,
+       "y": -6.269315769365653e-23
+      },
+      "m2": {
+       "x": 30,
+       "y": -0.9999999999999989
+      }
+     },
+     "radii": {},
+     "curves": {
+      "bot": {
+       "type": "line",
+       "a": "a",
+       "b": "b"
+      },
+      "top": {
+       "type": "line",
+       "a": "c",
+       "b": "d"
+      },
+      "right": {
+       "type": "arc",
+       "center": "m2",
+       "start": "b",
+       "end": "c"
+      },
+      "left": {
+       "type": "arc",
+       "center": "m1",
+       "start": "d",
+       "end": "a"
+      }
+     },
+     "constraints": {
+      "t1": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "right"
+      },
+      "t2": {
+       "type": "tangent",
+       "a": "top",
+       "b": "right"
+      },
+      "t3": {
+       "type": "tangent",
+       "a": "top",
+       "b": "left"
+      },
+      "t4": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "left"
+      },
+      "fix": {
+       "type": "coincident",
+       "a": "m1",
+       "b": "origin"
+      },
+      "h": {
+       "type": "horizontal",
+       "line": "bot"
+      },
+      "r": {
+       "type": "radius",
+       "curve": "left",
+       "value": 6,
+       "driving": true
+      },
+      "len": {
+       "type": "horizontalDistance",
+       "a": "m1",
+       "b": "m2",
+       "value": 30,
+       "driving": true
+      },
+      "r2": {
+       "type": "radius",
+       "curve": "right",
+       "value": 5,
+       "driving": true
+      }
+     },
+     "external": {},
+     "solved": {
+      "inputs": "0896992e876e8860",
+      "external": {}
+     }
+    }
+   ],
+   "bodyProperties": {},
+   "mechanism": {
+    "links": {},
+    "joints": {}
+   }
+  }
+ },
+ "slotInConflict": {
+  "status": "warning",
+  "warnings": [
+   "sketchConflict"
+  ],
+  "document": {
+   "schemaVersion": 6,
+   "settings": {
+    "chordTolerance": 0.01
+   },
+   "parameters": [],
+   "checks": [],
+   "features": [
+    {
+     "id": "s",
+     "name": "s",
+     "suppressed": false,
+     "type": "sketch",
+     "plane": {
+      "kind": "base",
+      "plane": "XY"
+     },
+     "points": {
+      "a": {
+       "x": 0,
+       "y": -5
+      },
+      "b": {
+       "x": 20,
+       "y": -5
+      },
+      "c": {
+       "x": 20,
+       "y": 5
+      },
+      "d": {
+       "x": 0,
+       "y": 5
+      },
+      "m1": {
+       "x": 0,
+       "y": 0
+      },
+      "m2": {
+       "x": 20,
+       "y": 0
+      }
+     },
+     "radii": {},
+     "curves": {
+      "bot": {
+       "type": "line",
+       "a": "a",
+       "b": "b"
+      },
+      "top": {
+       "type": "line",
+       "a": "c",
+       "b": "d"
+      },
+      "right": {
+       "type": "arc",
+       "center": "m2",
+       "start": "b",
+       "end": "c"
+      },
+      "left": {
+       "type": "arc",
+       "center": "m1",
+       "start": "d",
+       "end": "a"
+      }
+     },
+     "constraints": {
+      "t1": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "right"
+      },
+      "t2": {
+       "type": "tangent",
+       "a": "top",
+       "b": "right"
+      },
+      "t3": {
+       "type": "tangent",
+       "a": "top",
+       "b": "left"
+      },
+      "t4": {
+       "type": "tangent",
+       "a": "bot",
+       "b": "left"
+      },
+      "fix": {
+       "type": "coincident",
+       "a": "m1",
+       "b": "origin"
+      },
+      "h": {
+       "type": "horizontal",
+       "line": "bot"
+      },
+      "r": {
+       "type": "radius",
+       "curve": "left",
+       "value": 5,
+       "driving": true
+      },
+      "len": {
+       "type": "horizontalDistance",
+       "a": "m1",
+       "b": "m2",
+       "value": 30,
+       "driving": true
+      },
+      "r2": {
+       "type": "radius",
+       "curve": "right",
+       "value": 5,
+       "driving": true
+      }
+     },
+     "external": {},
+     "solved": {
+      "inputs": "948ade6a24eb827e",
+      "external": {}
+     }
+    }
+   ],
+   "bodyProperties": {},
+   "mechanism": {
+    "links": {},
+    "joints": {}
+   }
+  }
+ },
+ "fixedOffTangent": {
+  "status": "ok",
+  "warnings": [],
+  "document": {
+   "schemaVersion": 6,
+   "settings": {
+    "chordTolerance": 0.01
+   },
+   "parameters": [],
+   "checks": [],
+   "features": [
+    {
+     "id": "s",
+     "name": "s",
+     "suppressed": false,
+     "type": "sketch",
+     "plane": {
+      "kind": "base",
+      "plane": "XY"
+     },
+     "points": {
+      "a": {
+       "x": 0,
+       "y": 0
+      },
+      "b": {
+       "x": 10,
+       "y": 0
+      },
+      "c": {
+       "x": 0.000001,
+       "y": 1
+      },
+      "e": {
+       "x": 1.0000010000005,
+       "y": 1
+      }
+     },
+     "radii": {},
+     "curves": {
+      "l": {
+       "type": "line",
+       "a": "a",
+       "b": "b"
+      },
+      "f": {
+       "type": "arc",
+       "center": "c",
+       "start": "a",
+       "end": "e"
+      }
+     },
+     "constraints": {
+      "fixa": {
+       "type": "fixed",
+       "point": "a",
+       "x": 0,
+       "y": 0
+      },
+      "fixb": {
+       "type": "fixed",
+       "point": "b",
+       "x": 10,
+       "y": 0
+      },
+      "fixc": {
+       "type": "fixed",
+       "point": "c",
+       "x": 0.000001,
+       "y": 1
+      },
+      "fixe": {
+       "type": "fixed",
+       "point": "e",
+       "x": 1.0000010000005,
+       "y": 1
+      },
+      "t": {
+       "type": "tangent",
+       "a": "l",
+       "b": "f"
+      }
+     },
+     "external": {},
+     "solved": {
+      "inputs": "98a1cd64c2fd28f3",
+      "external": {}
+     }
+    }
+   ],
+   "bodyProperties": {},
+   "mechanism": {
+    "links": {},
+    "joints": {}
+   }
+  }
+ }
+}

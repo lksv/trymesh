@@ -4,7 +4,10 @@
 // types of the preparatory step and what package 3a put into the shared vocabulary, and states
 // what the package adds. The design is design.md; the scenario written as calls is calls.ts.
 //
-// Third version, after three rounds of reviews (design.md, "Reviews").
+// Third version, after three rounds of reviews (design.md, "Reviews"), checked against the code on
+// 2026-11-16 (design.md, "Checked against the code"): the stand-in for the gap query is gone (1c
+// is merged), and what the review over the whole set gave to this package is stated (the model as
+// modelled for a query, the note about the pose, rows 18 and 19 of cross-review.md).
 //
 // Where the types will live: the section, its commands and its result in the evaluation go to
 // `types.ts`, into the parts that `describe_api` prints (the document before the marker
@@ -15,7 +18,7 @@
 import type { AxisRef, Expr, ExpressionError, Id, Input, Vec3 } from '../../../packages/engine/src/index';
 // Internal to the engine today; published with the result of the mechanism.
 import type { RigidTransform } from '../../../packages/engine/src/solid';
-import type { ArgSpecs, BodyResultAfter, IssueAfter, QuantitySpec, UpgradeStep } from '../00-prep/contract';
+import type { ArgSpecs, BodyResultAfter, EngineAfter, IssueAfter, QuantitySpec, QueryArgs, QueryName, QueryOptions, QueryOutcome, QueryResult, UpgradeStep } from '../00-prep/contract';
 
 // ================================================================ the section of the document
 
@@ -220,6 +223,12 @@ export declare function poseOfBody(mechanism: MechanismResult, body: Id): RigidT
 //   not from the two transforms to the pose, so it is the same numbers whenever those joints
 //   have the same values, and `b` is then the same object (remembered by the modelled solid and
 //   the motion).
+// - It is also what keeps a pair across one joint exact in single precision: the second body is
+//   turned about the axis of that joint only, so faces that are flush across a joint along
+//   a coordinate axis stay in one plane bit for bit. Two bodies posed to the world separately are
+//   rounded apart, and the kernel then refuses most poses of such a pair (design.md, "Verified
+//   before the implementation"). A query about a pair computes from this pair, not from two
+//   entries of `context.bodies`.
 // - Both arguments are bodies a context handed out. Nothing is returned when neither was moved:
 //   they are the modelled bodies already.
 // - The pair is ordered: the frame is that of the first body. An answer that tells the two bodies
@@ -252,20 +261,38 @@ export const MECHANISM_STEP: UpgradeStep = {
   run: (document) => ('mechanism' in document ? document : { ...document, mechanism: { links: {}, joints: {} } }),
 };
 
-// ================================================================ a stand-in for the gap query of 1c
+// ================================================================ the model as modelled, and the note about the pose
 
-// Package 1c (track A) designs the smallest gap on another branch. What 5a assumes of it: it
-// reads the two bodies from its context, so it answers in the pose asked about, and it tells
-// "farther apart than the search distance" from a number.
-export const STAND_IN_GAP_ARGS = {
-  a: { kind: 'body', title: 'First body' },
-  b: { kind: 'body', title: 'Second body' },
-  within: { kind: 'number', title: 'Search distance', optional: true, spec: { title: 'Search distance', unit: 'mm', min: { value: 0, open: true }, default: 10 } },
-} as const satisfies ArgSpecs;
-export interface StandInGapResult {
-  distance: number | null; // mm; null: farther apart than `within`
-  between?: { a: Vec3; b: Vec3 }; // in the pose asked about
+// Rows 18 and 19 of cross-review.md: additions to shared types that this package makes, because
+// a pose appears with it.
+// - An entry of the catalog of queries may say that it always computes from the model as modelled:
+//   `geometry: 'modelled'` on `QuerySpec`. Its context is the one an export gets. The print query
+//   of 1e is marked: a part is printed as it is modelled, whatever pose the document holds.
+// - A caller may ask any query about the model as modelled: `geometry: 'modelled'` in the options
+//   of `Engine.query` and as an argument of the tool `query`, next to `at`, `state` and `after`.
+//   It is the way to a body beyond a joint that cannot stand at zero or is at fault for more than
+//   its axis, and it is what a caller writes who wants the answer of before this package whatever
+//   the document holds.
+// Without either a query answers in the pose of the state asked about.
+export interface GeometryOption {
+  geometry?: 'modelled';
 }
+export type PosedQueryOptions = QueryOptions & GeometryOption;
+// `Engine.query` with the option; the draft cannot widen the type alias `QueryOptions` itself.
+export interface EngineWithPose extends Omit<EngineAfter, 'query'> {
+  query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: PosedQueryOptions): QueryOutcome<QueryResult<N>>;
+}
+
+// What a tool says beside its result when the answer is for a pose that moves a link: the joints
+// whose value is not zero, with their values (rad or mm). Absent when every link stands as
+// modelled, when the query was answered as modelled, and for a document without a mechanism, so
+// the answers of today do not change. The tool `query` and the tools `check_interference` and
+// `get_body` carry it in one place: an optional `about` beside `result` in the outcome of a tool,
+// which the server prints as a second text, as it prints `about` of a picture since 1f.
+export interface PoseNote {
+  pose: Record<Id, number>;
+}
+export declare function poseNote(mechanism: MechanismResult): PoseNote | undefined;
 
 // ================================================================ additions to the shared maps
 
@@ -283,6 +310,8 @@ declare module '../00-prep/contract' {
   }
   interface Queries {
     mechanism: { spec: typeof MECHANISM_ARGS; result: MechanismAnswer };
-    standInGap: { spec: typeof STAND_IN_GAP_ARGS; result: StandInGapResult };
   }
+  // the type parameters repeat those of the interface that is widened
+  interface QuerySpec<S, Result> extends GeometryOption {}
+  interface QueryToolInput extends GeometryOption {}
 }

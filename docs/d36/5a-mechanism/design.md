@@ -1,6 +1,6 @@
 # 5a Mechanism description and the posed queries (D49)
 
-**State: design, third version, after three rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`) and against [3a](../3a-body-properties/design.md).** Not implemented; the plan puts the implementation after 1c and 3a. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with 3a; this package writes the part "two revolute joints; the pose stepped through the range of one joint with the collisions asked at each step; the mass of what hangs beyond the first joint".
+**State: design, third version, after three rounds of reviews (see "Reviews"), with the owner's decisions of 2026-11-16 (see "Open") and checked on that day against the code of `master` with 3a and 2c merged (`a39aba4`, schema version 5); see "Checked against the code (2026-11-16)" and "Verified before the implementation". Ready for the implementation. Written against the sixth version of the contract of the preparatory step (`0dc424b`) and against [3a](../3a-body-properties/design.md).** Not implemented; the plan puts the implementation after 1c and 3a, and both are merged. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with 3a; this package writes the part "two revolute joints; the pose stepped through the range of one joint with the collisions asked at each step; the mass of what hangs beyond the first joint".
 
 The package adds a section to the document. The shape of the section, its commands, its upgrade step and the way a pose reaches a query are decided in full; the app, the wording of the MCP answers and what the export of 5b builds on it are described.
 
@@ -12,13 +12,13 @@ The preparatory step has already decided how a pose reaches a query (`00-prep/co
 
 What the code says:
 
-- **Everything a pose needs exists, in the pattern.** `AxisRef` (a base axis, or the normal of a sketch plane through a sketch point) with its validator `axisRef` and its references; the resolution of an axis against the state (inline in `Evaluator.transforms`; part 2 of the preparatory step cuts it out as `axis(ref, state)`); `RigidTransform`, `rotation(point, axis, angle)`, `transformSolid` and `transformFace` in `solid.ts`. A pose is a rigid transform per link, built from the same pieces as a copy of a pattern.
+- **Everything a pose needs exists, in the pattern.** `AxisRef` (a base axis, or the normal of a sketch plane through a sketch point) with its validator `axisRef` and its references; the resolution of an axis against the state (`axis(ref, state)` in `recompute/services.ts`, which the pattern and the context of a query call); `RigidTransform`, `rotation(point, axis, angle)`, `transformPoint`, `transformFrame`, `transformSolid` and `transformFace` in `solid.ts`. A pose is a rigid transform per link, built from the same pieces as a copy of a pattern.
 - **A step of the pose needs no solver and no kernel as a preview.** `applyCommand` returns a new document that shares the features; `Evaluator.run` still walks every feature and resolves its expressions, and finds every step in its memo (the memo follows the feature object and the values of its expressions, not the document); `evaluate` builds the map of bodies, where `analyzeBody` remembers its result by the mesh, and evaluates the checks. What remains is linear in the timeline and small.
-- **The answers about pairs are remembered by the meshes.** `Interferences` keeps what two bodies share in a `WeakMap` by the two `Solid` objects. Before that it rejects a pair by the boxes of the two bodies, and it takes the allowance for the precision of the coordinates from the same boxes; every pair of the bodies asked about is visited at every call. So what is remembered is found again only if the same two objects, with the same boxes, come back.
+- **The answers about pairs are remembered by the meshes.** The query `interference` (`query/interference.ts`) keeps what two bodies share through `context.memo`, by the two `Solid` objects. Before that `interferenceReport` (`interference.ts`) rejects a pair by the boxes of the two bodies, and `sharedBy` takes the allowance for the precision of the coordinates from the same boxes (`coordinatePrecision` of `mesh-distance.ts`); every pair of the bodies asked about is visited at every call. So what is remembered is found again only if the same two objects, with the same boxes, come back. The gap of 1c (`gapOf` in `query/gap.ts`) remembers a pair the same way.
 - **The expressions know the parameters only.** `Environment` in `expression.ts` is the table of parameters ("later also values produced by the recompute"). A joint value named inside the expression of another joint would be a second kind of name with its own order of evaluation.
 - **A command sees the numbers of before its batch.** `Fields` in the mode `update` does not evaluate the expression of a field the command does not name, and the numbers are written back after the whole batch (`settle`). A rule between two fields that is checked against the stored numbers is checked against the parameters of before the batch.
-- **The view draws `evaluation.bodies[id].solid`** (docs/ui.md), and the app asks the collisions for the state it shows, through `engine.interference`, without a catch (`checkCollisions` in `app.ts`).
-- **`interference` is one of the four methods of `Engine` that throw**; after the preparatory step it shares `run` with the query, so it answers in the pose as well. An exception out of it is not a `ToolError`: `callTool` lets it through, the server reports "the tool failed" with its message, and the bridge to the app reports an error of the app that may have changed the document.
+- **The view draws `evaluation.bodies[id].solid`** (`modelScene` in `packages/app/src/scene.ts`), and the app asks the collisions for the state it shows through the generic form of a query (`panels/query.ts`, with the view `interferenceView`), which calls `engine.query` and shows the message of an outcome that is not ok.
+- **`interference` is one of the four methods of `Engine` that throw**; it runs the entry of the catalog over the same context as `query` (`contextOf` in `engine.ts`), so it answers in the pose as well. An exception out of it is not a `ToolError`: `callTool` lets it through, the server reports "the tool failed" with its message, and the bridge to the app reports an error of the app that may have changed the document. `check_interference` is the one tool that still calls it.
 
 ## The cheap variant
 
@@ -35,6 +35,7 @@ A section `mechanism` of the document with links (a name, bodies) and joints (a 
 - A copy of a pattern that follows its source into a link (an option of the link).
 - A sweep in one call, and the static load of a joint as a query (the mass beyond it, the torque for a direction of gravity). Scenario 13 composes both from the calls that exist.
 - Closed loops, and joints with more than one freedom.
+- A picture of a pose that is not written. `view_image` (1f) draws a state of the document, so with this package it draws the pose the document holds; the path of an operation of the app has no `after` (the open need of 1f), so a pose that is only previewed cannot be drawn. Until then a pose is written, drawn and undone.
 - In the app: dragging a link in the view.
 
 ## The section
@@ -96,14 +97,14 @@ What a command checks only when it sets it, and what can break later:
   - **One exception: a joint at zero.** A joint whose only fault is its axis and whose value is 0 moves nothing whatever the axis is (a turn by zero is the identity exactly). It is in error and blocks nothing. So a model whose pose is zero stays readable while the sketch of an axis is being repaired, and so does the body a new axis will be taken from.
 - **The axis** of a joint is given as modelled (`axis`) and as the parent link carries it (`axisInPose`).
 - **What hangs on a joint** is not in the result, where every joint would repeat the lists of the joints beyond it. `carriedBy(section, result, joint)` gives it: the links beyond the joint, their bodies that the state has, and the bodies they list that the state does not have. A sum over the bodies is short by what is missing, so whoever adds up a mass looks at `missing` first.
-- **Stable objects**, as in 3a: the result of a link or a joint is the same object while what it is computed from is the same.
+- **Stable objects**, as in 3a: the result of a link or a joint is the same object while what it is computed from is the same. (The registry of 3a keeps a result stable by its top-level keys, which for this section are `links` and `joints` as wholes; see "What the implementation takes from 3a".)
 - **The bodies of the evaluation do not move.** A feature that refers to a face, a sketch on a face and every export see the model as modelled, whatever the values are.
 
 Two issue codes are added: `jointLimits` and `jointOutOfLimits`. The others a joint can have exist: `brokenReference`, `invalidExpression`.
 
 ## How a pose reaches a query
 
-The context of a query (`QueryContext` of the preparatory step) is built by the engine for the state asked about. With this package it reads `evaluation.mechanism` of that state and poses what belongs to a body:
+The context of a query (`QueryContext` in `query/spec.ts`) is built by the engine for the state asked about, by one function (`queryContext` in `query/context.ts`). Every query of the catalog reads the geometry of bodies only through it (`body`, `measure` with `entityShape`, `section`, `gap`, `mass`, `print`, `interference`), so this is the one place a pose enters. With this package it reads `evaluation.mechanism` of that state and poses what belongs to a body:
 
 - `bodies[id]`: the body of the evaluation moved by the transform of its link (`poseOfBody`). Positions, the segments of the edges and the bounds are transformed; the volume, the faces and the names stay. A body in no link, or in a link with the identity, is the object of the evaluation itself.
 - `surface(body, face)` and the frame of a face (`frame` with a face, an entity that is a face or an edge): moved the same way.
@@ -117,7 +118,7 @@ The context of a query (`QueryContext` of the preparatory step) is built by the 
 - Before the sketch of such an axis the bodies beyond the joint are blocked, and a query that reads them fails and names the joint; a query about the other bodies answers. It does not answer for the model as modelled instead: the caller asked about a document with a pose, and would not be told that the pose was dropped (`calls.ts`, `bentAtLayout` and `bentBeforeTheAxes`).
 - **The way to a blocked body that writes nothing** is the same question with the joint previewed at zero: `after: { type: 'setPose', values: { elbow: 0 } }`, with or without `at`. A joint at zero whose only fault is its axis blocks nothing. The message of the failure says so, so that the loud failure tells an AI what to do.
 
-**Lazily, and remembered.** A body is posed when a query reads it, so a query about one body moves one body. A posed body is remembered by the modelled solid and the transform (a few poses per solid), so a body that did not move between two steps of a sweep is the same object in both.
+**Lazily, and remembered.** A body is posed when a query reads it, so a query about one body moves one body. A posed body is remembered by the modelled solid and the transform (a few poses per solid), so a body that did not move between two steps of a sweep is the same object in both. The transform is compared by its numbers, not by the identity of its object, so the memory does not depend on how the registry of sections keeps a result stable.
 
 **A pair is computed in the frame of its first body.** What two bodies share, and how far apart they are, depends only on how they stand to each other. A query of the engine about a pair (the collisions; the gap of 1c) asks `pairInFrame(a, b)` and gets the first body as modelled, the second moved by the motions of the joints between their two links, and the transform back to the pose. It computes from those two bodies, with their boxes and their faces, and moves a coordinate of its answer back; a volume, a depth and a distance need nothing.
 
@@ -125,19 +126,32 @@ The context of a query (`QueryContext` of the preparatory step) is built by the 
 - In a sweep of one joint, only the pairs with one body on each side of that joint are computed at every step. The pairs beyond the joint keep their relation and are found in the memory, as are the pairs before it.
 - The motion between two links is composed from the motions of the joints on the way from one to the other, not from their two transforms to the pose. It is therefore the same numbers whenever those joints have the same values, and the moved second body is the same object.
 - The answer no longer depends on which pose asked first: the boxes that reject a pair and the allowance for precision are those of the two bodies in the frame of the first.
-- **The pair is ordered.** `pairInFrame(a, b)` and `pairInFrame(b, a)` hand out different objects (the frame is that of the first), and an answer in coordinates is in that frame until it is moved back. A query that remembers an answer about a pair through `context.memo`, whose owners have no order, puts the order into its key (`calls.ts`, `gapInPose`), or orders the pair itself before it asks.
-- The function gets two bodies of the context and finds their links by itself: the engine keeps, for every posed body it hands out, the modelled body and the link it came from.
+- It is also what keeps a pair across one joint exact in single precision: one body is as modelled and the other is turned about the axis of that one joint, so faces that are flush across a joint along a coordinate axis stay in one plane bit for bit, however the joints nearer the root stand. Two bodies posed to the world separately are rounded apart, and the kernel then refuses most poses of such a pair ("Verified before the implementation"). A query about a pair asks `pairInFrame`; it does not compute from two entries of `context.bodies`.
+- **The pair is ordered.** `pairInFrame(a, b)` and `pairInFrame(b, a)` hand out different objects (the frame is that of the first), and an answer in coordinates is in that frame until it is moved back. A query that remembers an answer about a pair through `context.memo`, whose owners have no order, orders the pair itself before it asks, as the collisions and the gap do by the two IDs (`calls.ts`, `gapInPose`), or puts the order into its key.
+- The function gets two bodies of the context and finds their links by itself: the engine keeps, for every posed body it hands out, the modelled body and the motions of the joints from the root to its link. A body the context handed out as the object of the evaluation (in no link, or in a link that stands as modelled) has no such record and counts as standing at a root.
+- What the two readers of today get from it. The collisions (`interferenceReport`) take the boxes that reject a pair, the precision and the two meshes from the pair in the frame; their report has no coordinate, so nothing is moved back. The gap (`gapOf`) takes the same and moves its two points back; it orders every pair by ID before it asks, so the frame of a pair is always that of the same body, and it goes on remembering which mesh was the first, as it does today. Its `accuracy` (`meshAccuracy`) is an estimate from the chord tolerance and the size of the coordinates and is read from the pair in the frame as well, so that it does not change with where the pair stands.
 
 **A blocked body cannot be read.** Reading `bodies[id]`, a surface or a frame of a body whose link is blocked throws `QueryFailure('failed', …)` naming the joint. So a query answers for the pose that was asked, or says why it cannot; it never answers for a pose in which a joint silently stood still. A query that does not touch the blocked bodies answers as usual. (`Object.keys(bodies)` reads nothing; the checks before `run` look names up in the evaluation, where they do not depend on the pose.)
 
 - Considered: a joint in error stands at zero and the query answers, as a feature in error is an empty operation. Rejected: a sweep over MCP returns only the answer of the query, so an AI would read "no collisions" at every step of a joint that did not move.
-- The callers of today that do not expect a failure are changed by hand, with this package: `check_interference` and `get_body` catch it and answer with the reason as an error of the call; the collisions panel of the app shows it. If the generic form of 1b exists by then the panel asks through `query` and gets the reason as an outcome; if not, `panels/collisions.ts` catches.
+- The one caller of today that does not expect a failure is changed by hand, with this package: `check_interference` calls `Engine.interference`, which throws, so the tool catches the failure and answers with the reason as an error of the call. `get_body` asks `query('body')` and turns an outcome that is not ok into an error of the call already. The collisions of the app are the view of the query `interference` in the generic form of 1b, which asks through `query` and shows the reason of a failed outcome; nothing is caught by hand there.
 
 **Stepping a pose.** In the engine: `preview` of `setPose` (or of `setParameter` for a coupled motion), then `query` with the previewed state; `calls.ts`, section b. Over MCP: the same command in `after` of the tool `query`.
 
 **The query `mechanism`** returns `evaluation.mechanism` of the state asked about, and with the argument `beyond` what hangs on that joint. It exists so that the resolved description is reachable through the tool `query` by construction, with `after`: where the links stand in a pose that is not written, which joint is in error, what a joint carries. Its answer grows with the section, which the caller wrote, as the answer of `get_document` does; `beyond` takes one joint so that the answer does not grow with the square of it.
 
-**What stays as modelled**: every export (the context of a format is never posed), `evaluation.bodies`, and with them `get_model`.
+**What stays as modelled**: every export (the context of a format is never posed), `evaluation.bodies`, and with them `get_model`; a query whose entry says `geometry: 'modelled'` (the print query of 1e); and any query a caller asks with the option `geometry: 'modelled'` (below).
+
+### The model as modelled, by name
+
+Decided by the review over the whole set (rows 18 to 20 of [cross-review.md](../cross-review.md)): the pose appears with this package, so this package makes the additions to the shared types that its own "Needs" asked of the preparatory step. They are in `contract.ts` (`GeometryOption`, `EngineWithPose`, `PoseNote`).
+
+- **An entry may say that it computes from the model as modelled**: `geometry: 'modelled'` on `QuerySpec`. The engine then hands it the context an export gets. The print query is marked: a part is printed as it is modelled, and an orientation given as a direction would otherwise be judged on a turned body.
+- **A caller may ask any query about the model as modelled**: `geometry: 'modelled'` in the options of `Engine.query` (next to `at` and `state`) and as an argument of the tool `query` (next to `at` and `after`). Nothing is posed, so nothing is blocked. It is the way to a body beyond a joint that cannot stand at zero or is at fault for more than its axis, and the message of a blocked body names it.
+  - It is asked for by name, per call. A state asked for with `at` is still posed (the back door of the second version stays closed): the caller who gets a modelled answer wrote the word.
+- **A tool says which pose it answered for.** When the state asked about has a link that is moved and the answer was computed in the pose, the tools `query`, `check_interference` and `get_body` put a note beside their result: the joints whose value is not zero, with their values (`poseNote`). The result itself does not change shape, and a document without a pose answers as today.
+  - Where the note travels is for the implementation; proposed: an optional `about` beside `result` in the outcome of a tool (`ToolOutcome`), which the server prints as a second text, as it prints `about` of a picture since 1f. What must hold: the result of a query is the result alone, and the note is there exactly when a link is moved and the answer is posed.
+- **`get_body` prints the volume and the bounds of the description** (`query('body')`), not of the state, so that one answer is not half posed.
 
 ### No placement of a link
 
@@ -165,48 +179,69 @@ Not designed here; listed so that nothing it needs is missing from the section o
 
 ```
 packages/engine/src/
-  types.ts                 the section, the commands, the result; RigidTransform moves here from solid.ts
-  sections/mechanism.ts    the entry of the registry of sections (3a): validation, commands, the result, carriedBy
-  pose.ts                  poseOfBody, the posed bodies and surfaces with their memory, pairInFrame
-  queries/mechanism.ts     the entry of the query
-  (the context of a query, of the preparatory step)   reads pose.ts for bodies, surfaces and frames
-  interference.ts          computes a pair in the frame of its first body
-packages/mcp/src/tools.ts  modelSummary, documentProblems; get_body, check_interference
-packages/app/src/panels/mechanism.ts, panels/collisions.ts; the scene and viewport.ts
+  types.ts                 the section, the commands, the result (before `// --- porty` and after `// --- přepočet`);
+                           RigidTransform moves here from solid.ts; `geometry` in QueryOptions
+  sections/mechanism.ts    the entry of the registry of sections (3a): validation, commands, the result,
+                           poseOfBody, carriedBy, poseNote
+  sections/spec.ts, index.ts   the registry of 3a: `evaluate` gets the state of the recompute as well (below)
+  schema.ts                the step `5a-mechanism`, SCHEMA_PENDING
+  solid.ts                 what a pose composes: the product and the inverse of two transforms, a shift along an axis
+  query/pose.ts            the posed bodies, surfaces and frames with their memory; pairInFrame
+  query/context.ts         queryContext poses bodies, surfaces and the frame of a face, or hands them out as modelled
+  query/spec.ts            `geometry` on QuerySpec
+  query/mechanism.ts       the entry of the query; one line in QUERIES (query/index.ts)
+  query/interference.ts, interference.ts   a pair in the frame of its first body: the boxes and what the kernel gets
+  query/gap.ts             the same, and the two points moved back
+  query/print.ts           marked `geometry: 'modelled'`
+  export/index.ts, engine.ts   an export and `exportMesh` ask for the modelled context
+packages/mcp/src/tools.ts  modelSummary, documentProblems; get_body, check_interference, query (the note, `geometry`)
+packages/mcp/src/api.ts    a paragraph of the conventions
+packages/mcp/test/queries.test.ts   the rows of the query `mechanism` in the two typed tables
+packages/app/src/
+  panels/mechanism.ts      the panel, as functions over PanelHost
+  scene.ts, viewport.ts, picture.ts   the pose in the view and in a picture (below)
+  app.ts                   stateBefore(0); the status line of what a command took over
+packages/scenarios/test/scenario13.test.ts   the part of 5a, after the part of 3a
 ```
 
-The registry of sections of 3a takes the entry, with `names` for the IDs the section names; `validateDocument`, `applyCommand`, `renameParameter`, `Evaluator.evaluate`, `settle` and `differs` are not edited again. The upgrade step is `5a-mechanism` (`MECHANISM_STEP`): it gives a document without the field an empty mechanism, leaves a field that is there to the validation and reads nothing else.
+The imports go one way (`docs/architecture/repository.md`, guarded by `packages/engine/test/modules.test.ts`): `sections/*` comes before `document.ts` and `evaluate.ts`, `query/*` after them. So what resolves the section (the transforms of the links, `poseOfBody`, `carriedBy`) is in `sections/mechanism.ts` and reads `axis` of `recompute/services.ts`; what makes posed geometry and remembers it is in `query/pose.ts`. `interference.ts` does not import it: `interferenceReport` is handed the pair to compute from, as it is handed `shared` today.
 
-**The life of a document** follows the table of 3a, with `5a-mechanism` for the name and W, the version of the `master` this branch starts from, for V. That `master` has 3a, so W is at least 3.
+The registry of sections of 3a takes the entry, with `names` for the IDs the section names; `validateDocument`, `applyCommand`, `renameParameter`, `Evaluator.evaluate`, `settle` and `differs` are not edited again, with the one exception named under "What the implementation takes from 3a". The upgrade step is `5a-mechanism` (`MECHANISM_STEP`): it gives a document without the field an empty mechanism, leaves a field that is there to the validation and reads nothing else.
+
+**The life of a document** follows the table of 3a, with `5a-mechanism` for the name and W, the version of the `master` this branch starts from, for V. `master` saves version 5 since 3a was merged (the steps of D35 and D37, `2b-taper` and `3a-body-properties`), so W is 5 unless another step is merged before the branch is cut. On the branch the step is the fifth and last of `UPGRADES`, `SCHEMA_PENDING` is 1, and a document is saved with `schemaVersion: 5` and `schemaSteps: ['5a-mechanism']`; after the merge `master` saves version 6.
 
 - A build that knows the step loads a document of the branch; one with the preparatory step that does not know it refuses it by the name; a build without this package refuses a document of the merged `master` by its version.
 - A document saved by a build with 3a and without this package loads in a build with it and gets the empty mechanism. The other way it is refused.
 - A field of a link or a joint that a build does not know (the effort limit of 5b) is refused, not dropped.
-- **The hole of 3a's table is not here.** A build from before the preparatory step accepts the versions 1 and 2 only (`upgrade` and `validateDocument`), and a document of this branch has version W. It refuses it.
+- **The hole of 3a's table is not here**, and since the preparatory step raised the version to 3 it is not in 3a either. A build from before the preparatory step accepts the versions 1 and 2 only, and a document of this branch has version W. It refuses it.
 
 ## MCP and the app
 
-**By construction.** The five commands go through `execute`, `preview` and `after`; the types are in the parts of `types.ts` that `describe_api` prints; the numeric fields of a joint are listed from `SECTION_INFO` of 3a; the query `mechanism` is reached by the tool `query` and listed with the queries; `get_document` returns the section.
+**By construction.** The five commands go through `execute`, `preview` and `after`; the types are in the parts of `types.ts` that `describe_api` prints; the section, its commands and the numeric fields of a joint (with the kind of joint each belongs to, `when`) are listed from `SECTION_INFO` in the generated part *Sections of the document* that 3a added; the query `mechanism` is reached by the tool `query` and listed with the queries, once it has its rows in the two typed tables of `packages/mcp/test/queries.test.ts`; `get_document` returns the section.
 
 **By hand**, with tests:
 
 - `get_model` gets `mechanism` when there is a link: the links with their bodies, the joints with kind, parent, child, the numbers and the expressions, the roots when there are several. The numbers are printed so that a limit read here is accepted as a value (the tolerance of the limits is wider than the rounding). The bodies it lists stay as modelled, and the description of the tool says so. The problems go next to `failedChecks`: joints in error with their code and message, links with missing bodies, bodies in no link. `execute` and `preview` return the same lists. With `at` the three lists are left out, as 3a leaves out its list of entries without a body: at a point of the construction they would name every joint whose sketch comes later and every body not made yet. The query `mechanism` with `at` gives the description resolved at that point to whoever asks for it.
-- `get_body` prints the volume and the bounds of `query('body')`, not of the state (see "Needs").
-- `check_interference` and `get_body` answer a blocked body with the reason, as an error of the call, and add a note to their answer when the pose moves any link, so that an answer for a bent arm is not read as one for the model as modelled.
-- A paragraph of the conventions in `describe_api`: the model as modelled is the zero of every joint; the sign of a turn; a pose is stepped with `after: { type: 'setPose', … }`; a query answers in the pose of the document, also with `at`, where it fails for a body beyond a joint that moved and whose axis is not made yet; a body beyond a joint whose axis is broken or not made yet is read with the joint previewed at zero (`after: setPose`); an axis, a sketch point or a plane feature given to a query is as modelled while the bodies are posed; exports are always as modelled.
+- `get_body` prints the volume and the bounds of `query('body')`, not of the state (`solidInfo(body)` in `bodyDetail` today).
+- `check_interference` and `get_body` answer a blocked body with the reason, as an error of the call (`check_interference` has to catch for it, `get_body` does already).
+- The tools `query`, `check_interference` and `get_body` say which pose they answered for when a link is moved (`poseNote`; "The model as modelled, by name"), so that an answer for a bent arm is not read as one for the model as modelled. The tool `query` takes `geometry: 'modelled'`.
+- `execute` lists what a command took over (`takenOver` of 3a), now also a sketch or a point that became the axis of a joint and a feature whose body entered a link.
+- A paragraph of the conventions in `describe_api`: the model as modelled is the zero of every joint; the sign of a turn; a pose is stepped with `after: { type: 'setPose', … }`; a query answers in the pose of the document, also with `at`, where it fails for a body beyond a joint that moved and whose axis is not made yet; a body beyond a joint whose axis is broken or not made yet is read with the joint previewed at zero (`after: setPose`) or with `geometry: 'modelled'`; an axis, a sketch point or a plane feature given to a query is as modelled while the bodies are posed; exports and the print query are always as modelled; a pair in `fits` across a joint is a pin in its hole and not a collision, and is there in nearly every turned pose; a pair in `failed` is neither clear nor colliding, happens for such a pin in about one pose of thirty, and is asked again a little to the side; the axes of joints are best laid along the axes of the model, because the collisions across a joint askew to them fail in most poses.
 
 **The app**:
 
-- A panel *Mechanism* (`panels/mechanism.ts`): the tree of links and joints, the bodies of each link, the bodies in no link, the problems.
+- A panel *Mechanism* (`panels/mechanism.ts`, functions over `PanelHost` like the other panels): the tree of links and joints, the bodies of each link, the bodies in no link, the problems.
 - A joint has a numeric field that takes an expression, and a slider between its limits. Dragging the slider previews `setPose`; releasing it executes it. The slider of a value with an expression is disabled: moving it would replace the expression, and with it a coupling, by a number.
 - *Reset pose* sets every value without an expression to the value nearest to zero that its limits allow (zero itself wherever the limits contain it).
 - Links and joints are made, changed and removed in forms of the panel: a link by a name and a pick of bodies, a joint by its kind, its two links, its axis (the picker of an axis that the form of the pattern has) and its numbers. Every confirmation is one command; removing a link that a joint names is refused with the reason.
-- **The view shows the pose** in the model mode: the app applies the transform of the link to the mesh of each body, without new geometry. That holds at the marker of the timeline too: the view shows the state at the marker by its own `evaluation.mechanism`, and a blocked link is drawn by its transform of the result (the joint that blocks it counted as standing at zero) and marked, with the joint named in the status line. In a sketch and in the form of a feature the view shows the model as modelled, because that is where sketches, planes and the references of features are; the status line says which of the two is shown.
-- The collisions are asked for the state shown, so in the pose; the highlight of a pair follows. A blocked body is reported as the reason the collisions cannot be asked.
+- **The view shows the pose** in the model mode: the app applies the transform of the link to the mesh of each body, without new geometry. In the code of today that is a transform next to `solid` wherever the scene hands a mesh to the view: `SceneModel.bodies` and `SceneModel.faces` (`viewport.ts`; a highlighted face, the two bodies of a picked collision), the outline of a body (`modelScene` in `scene.ts` copies the segments of its edges, which are as modelled), the box the camera is fitted to (`modelBounds`), and the hit of a pick (`pickBody` answers in the pose; the face and the edge it names do not depend on it). What a view of a query adds (`QUERY_VIEWS`, `addToScene`) is in the pose already where it is coordinates of an answer, and gets the transform with the mesh where it names a body or a face. A picture of the model (`pictureModel` in `picture.ts`, the operation `view_image` of 1f) draws the same state the same way. That holds at the marker of the timeline too: the view shows the state at the marker by its own `evaluation.mechanism`, and a blocked link is drawn by its transform of the result (the joint that blocks it counted as standing at zero) and marked, with the joint named in the status line. In a sketch and in the form of a feature the view shows the model as modelled, because that is where sketches, planes and the references of features are; the status line says which of the two is shown.
+- The collisions are asked for the state shown, so in the pose; the highlight of a pair follows. A blocked body is reported as the reason the collisions cannot be asked (the generic form shows the message of the outcome).
+- The form of a query offers *as modelled* (the option `geometry: 'modelled'`) when the document has a link that is moved.
+- `stateBefore(0)` of `app.ts` builds the evaluation of the state before the first feature by hand and has to give it a mechanism without bodies, as 3a gave it empty body properties. The status line of what a command took over (`takenOver`) speaks of body properties only today and has to name the mechanism as well.
 
 ## Shared vocabulary
 
-**Taken**: from the preparatory step the additions to the unions, `QueryContext` and its rule of the pose, `QuerySpec`, `IssueAfter`, `UpgradeStep`, the tool `query` with `after`; from 3a the registry of sections with its numeric fields, `SECTION_INFO`, the check of a body ID, `namedBySections` and `takenOver` for the IDs the section names, `standInMass` and the properties behind it; from the engine `AxisRef`, `RigidTransform`.
+**Taken**: from the preparatory step the additions to the unions, `QueryContext` and its rule of the pose, `QuerySpec`, `IssueAfter`, `UpgradeStep`, the tool `query` with `after`; from 3a the registry of sections with its numeric fields (`sections/fields.ts`), `SECTION_INFO`, the check of a body ID (`bodyProblem`), `namedBySections` and `takenOver` for the IDs the section names, and the properties behind the mass of a body; from track A the queries `gap` (1c) and `mass` (1d) and the generic form of a query (1b); from the engine `AxisRef`, `RigidTransform`.
 
 **Added**:
 
@@ -217,38 +252,147 @@ The registry of sections of 3a takes the entry, with `names` for the IDs the sec
 | `mechanism` in `Queries` | | |
 | `jointLimits`, `jointOutOfLimits` in `IssueCodes` | | |
 | step `5a-mechanism` | `UPGRADES` | |
-| `standInGap` in `Queries` | a stand-in, removed when 1c is merged | |
-| `poseOfBody`, `pairInFrame`, `carriedBy` | engine | the context of a query; `interference.ts`; 1c, for a pair; 5b |
+| `geometry: 'modelled'` on `QuerySpec`, in `QueryOptions` and in the input of the tool `query` | the shared types of the queries (row 18 of the cross-review) | `print` of 1e; any caller |
+| `poseNote` and the note beside the result of a tool | engine, MCP (row 19) | the tools `query`, `check_interference`, `get_body` |
+| `poseOfBody`, `pairInFrame`, `carriedBy` | engine | the context of a query; the queries `interference` and `gap`, for a pair; 5b |
 
-**Stand-ins.** `standInGap` stands for the smallest gap of 1c. Assumed of it: it takes two bodies and a search distance, reads the bodies from its context (so it answers in the pose), tells "farther apart than the search distance" from a distance, and gives the two nearest points in the pose. `standInMass` is declared by 3a and stands for the mass query of 1d; assumed here in addition: the centre of mass it returns is in the pose asked about.
+**No stand-in is left.** The first versions stood `standInGap` for the gap of 1c and used `standInMass` of 3a for the mass of 1d. Both queries are merged, and `calls.ts` asks them. What was assumed of them holds or is work of this package:
+
+- `gap` reads the two bodies from its context, tells "further apart than the search distance" (counted in `apart`) from a distance, and names the two points a gap lies between. With this package it computes a pair in the frame of its first body and moves the two points back to the pose.
+- `mass` reads the meshes from its context, so the centre of mass and the tensor are in the pose asked about; it reads the mass of a body from the properties of 3a (`massSourceOf`). It remembers the integrals of a mesh by the mesh, so a body that moved is integrated again in every pose it is asked in: a pass over its triangles, no kernel. Moving the remembered integrals by the transform instead is left to the implementation.
 
 ## Needs from the preparatory step
 
-1. **The model as modelled, for a query and for a caller.** Every query gets the posed context, and nothing in the shared contract lets an entry or a caller ask otherwise.
-   - The case of an entry: a print query of 1e with an orientation given as a direction (`up: [0, 0, 1]`), asked about `forearm` in a document whose stored pose has the elbow at 1.2. The context hands out the forearm turned by 1.2, and the bounds against the bed and the overhangs are those of the turned body, which is not how it is printed.
-   - The case of a caller: the elbow is bent and its axis sketch is broken, so the forearm is blocked. The AI wants `query('body', { body: 'forearm' })` to find the face a new axis can stand on. For most joints it has a way that writes nothing: the same query with `after: setPose` to zero (above). The case that remains is a joint that cannot stand at zero or is at fault for more than its axis: limits that do not contain zero (`setPose` to zero is refused), a limit or a value whose expression is broken. The bodies beyond such a joint cannot be read at all until the joint is repaired, although the model as modelled is well defined.
-   - Asked for: `QuerySpec.geometry: 'modelled'` (or the like) for an entry, and an option of the caller in `QueryOptions` and `QueryToolInput`, both giving the query the context an export gets. This package cannot add either: both types are the shared contract.
-   - Until then: a print query by a direction is wrong in a pose, and the description for the AI has to say so (the way around is again `after: setPose` to zero, where the limits allow it); the bodies beyond a joint of the remaining case are not readable. (The second version of this design answered a state asked for with `at` as modelled, which gave a caller a back door; it is gone, see "Rejected".)
-2. **The tool `query` does not say which pose it answered for.** Its answer is the result of the query alone.
-   - The case: `query` with `interference` on a saved document whose pose is not zero. The report is for the bent arm, and nothing in the answer says so; `check_interference` gets a note by hand with this package, the general tool cannot.
-   - Asked for: a place beside the result in the answer of the tool for a note of the engine about the state it answered for.
-3. **`get_body` would mix a posed and a modelled answer.** The preparatory step has `get_body` read the state "as today" and take the faces and the edges from `query('body')`.
-   - The case: `get_body` of `forearm` with the elbow at 1.2: the surfaces and the centres of the edges come posed from the query, the bounds as modelled from the state.
-   - Asked for: `get_body` prints `volume` and `bounds` of the `BodyDescription` too. They are equal until this package, so nothing changes in the step itself.
-4. **The checks before `run` should not read `context.bodies`.** They look up that a body, a face and an edge exist; these do not depend on the pose, and reading the posed record would pose every named body before the query runs and would throw for a blocked one before the query could be asked about anything else. A note for the implementation of the registry, not a change of a type.
+The four needs of the third version were read by the review over the whole set ([cross-review.md](../cross-review.md), rows 18 to 21) against the preparatory step as implemented. None is a need of another package any more: three are work of this package, one is answered.
 
-Notes for the plan, which this session does not edit:
+| # | Need | What the review decided | Where it is in this design |
+|---|---|---|---|
+| 1 | The model as modelled, for a query (the print query by a direction, in a document with a stored pose) and for a caller (a body beyond a joint that cannot stand at zero) | Row 18, with this package: `geometry: 'modelled'` on an entry and as an option of the caller; `print` is marked | "The model as modelled, by name"; `GeometryOption` in `contract.ts`; `forearmAsModelled` in `calls.ts` |
+| 2 | The tool `query` does not say which pose it answered for | Row 19, with this package: a note beside the result | The same section; `poseNote` |
+| 3 | `get_body` would mix a posed and a modelled answer (the faces and edges of the query, the volume and the bounds of the state) | Row 20, with this package: the tool prints the volume and the bounds of the description | "MCP and the app" |
+| 4 | The checks before `run` should not read `context.bodies` | Row 21, answered: the checker reads the evaluation (`checkArgs` with a `CheckScope` of the document and the evaluation), not the context | Nothing to do; the posed context is built after the check |
 
-- **Dependencies.** The plan lists 1c and 3a. The code of this package needs 3a (the registry of sections) and the preparatory step. Scenario 13 needs 1c and also 1d, for the mass beyond a joint. The app side needs the generic form of 1b for the collisions, or an edit of `panels/collisions.ts`.
-- **Shared places** this package writes to that the plan does not name for it: the context of a query (of the preparatory step); `interference.ts`, and the module of 1c for a pair in a frame; `viewport.ts` and the scene (the pose), shared with 1a, 1f and 3a; `get_body` and `check_interference` in `packages/mcp/src/tools.ts`.
+With need 1 met, the case that had no way out is gone: a body beyond a joint whose limits do not contain zero, or whose limit or value has a broken expression, is read with `geometry: 'modelled'`.
 
-## To verify before the implementation
+Notes for the plan:
 
-None of this was tried in code.
+- **Dependencies.** The code of this package needs 3a (the registry of sections) and the preparatory step. Scenario 13 needs 1c and 1d, and the app side the generic form of 1b; all three are merged. The plan has this row since the review over the whole set.
+- **Shared places** this package writes to: the context of a query (`query/context.ts`); `interference.ts` and `query/gap.ts`, for a pair in a frame; `query/spec.ts` and `QueryOptions` (`geometry`); `viewport.ts`, `scene.ts` and `picture.ts` (the pose), shared with 1a, 1f and 3a; `get_body`, `check_interference` and `query` in `packages/mcp/src/tools.ts`; the registry of sections of 3a (`sections/spec.ts`, `sections/index.ts`).
 
-- **A pair across a joint in a turned pose.** A pin of the child in a hole of the parent, of the same diameter, turned by an arbitrary angle. `interference.ts` was written for exactly this ("a pin in a hole of the same diameter whose polygon is turned differently" is a fit), but for copies of a pattern, at a few angles. To check with the real kernel: that such a pair stays among the fits over a sweep, and how often the kernel fails on it (`failed`). A failed pair is neither clear nor colliding, so a sweep keeps the list (`calls.ts`).
-- **The cost of a step** on the joint of scenario 9: how many pairs go to the kernel when one link moves, and how long a sweep of twenty steps takes. If it is too slow, a sweep in one call that stops at the first collision is the next thing to add.
-- **Single precision.** The second body of a pair has its coordinates rounded to float32 after the turn. Whether flush faces of two bodies that moved against each other (a washer of the child on a face of the parent) give noise above the thresholds of `interference.ts` has to be seen.
+## Checked against the code (2026-11-16)
+
+The design was written against `0dc424b`, before parts 1 and 3 of the preparatory step, track A and 2a, 2b and 2f were implemented. It was read again against `master` at `a39aba4`, which has 3a and 2c (both merged on 2026-11-16 during this check; the design of 3a is read by its "As implemented" where the two differ, and 2c touches nothing this package names: a new feature type, its face roles and a query that reads catalogs only, without an upgrade step). Nothing the design decides had to change; what changed is where things are, what is already there, and what this package has to do itself. `contract.ts` and `calls.ts` follow, and `npx tsc -p docs/d36/tsconfig.json` passes.
+
+| The design said | The code has | What changed here |
+|---|---|---|
+| The resolution of an axis is inline in `Evaluator.transforms`, to be cut out | `axis(ref, state)` in `recompute/services.ts`, which answers a line or the code of a broken reference with what it refers to; `axisRef` in `validation.ts` takes a `RefContext` (`refContext(doc, before)` of `features/index.ts`) | The names. A command of the section checks an axis with `refContext(doc, doc.features.length)`: the target has to exist and be of the right kind, and the rule of the order on the timeline cannot fail, as a section has no place on it |
+| `Interferences`, a class with a `WeakMap` by two solids | The query `interference` with `context.memo`; `interferenceReport` and `sharedBy` in `interference.ts`; the allowance is `coordinatePrecision` of `mesh-distance.ts`. The report has no coordinates | The names; `interferenceReport` is handed the pair to compute from, and nothing of its answer is moved back |
+| `standInGap`, `standInMass` | `gap` (1c) and `mass` (1d, reading the properties of 3a through `massSourceOf`) are merged | The stand-ins left the contract and the calls; see "Shared vocabulary" |
+| The four needs from the preparatory step | Rows 18 to 21 of the cross-review: three are work of this package, one is answered | "The model as modelled, by name"; `geometry: 'modelled'` and `poseNote` in the contract |
+| `queries/mechanism.ts`, `pose.ts` | `query/`, one module a query, the catalog in `query/index.ts`; the order of imports puts `sections/*` before `evaluate.ts` and `query/*` after it | `query/mechanism.ts`; the resolution of the section in `sections/mechanism.ts`, the posed geometry in `query/pose.ts` |
+| The context of a query "of the preparatory step" | `queryContext` in `query/context.ts`, one function for the queries, the exports (`runExport`) and the four methods of `Engine` (`contextOf`) | It gets the pose or is told to hand out the model as modelled: an export, `exportMesh`, an entry marked `geometry: 'modelled'`, a caller that asks for it |
+| A posed surface and the frame of a face | `Surface` is published per face (`evaluation.faceSurfaces`), derived from `FaceInfo` by `surfaceOf`; `transformFace` moves a `FaceInfo`, `transformFrame` a frame | A posed surface is `surfaceOf` of the moved `FaceInfo`, or a small function that moves a `Surface`; both are in reach of `query/pose.ts` |
+| `transformSolid`, `rotation` "and the same pieces as a copy of a pattern" | `solid.ts` has those and `transformPoint`, `transformVector`, `transformFrame`; it has no product of two transforms, no inverse and no shift along an axis | Three small functions come with the package |
+| `checkCollisions` in `app.ts`, `panels/collisions.ts` | Neither exists: the collisions are the view `interferenceView` of the generic form (`panels/query.ts`), which asks `engine.query` at the marker and shows the message of a failed outcome | Nothing to catch by hand in the app; `check_interference` is the one caller that still gets an exception |
+| `get_body` catches | `bodyDetail` turns a failed outcome of `query('body')` into an error of the call already; it reads the volume and the bounds from the state | Only the volume and the bounds change (row 20) |
+| "The app applies the transform of the link to the mesh" | `SceneModel` (`viewport.ts`) takes `{ id, solid, color?, opacity? }` per body and `{ solid, faceId }` per highlighted face; `modelScene` copies the segments of the edges; `modelBounds`, `pickBody`; `pictureModel` of 1f | The places are listed under "MCP and the app" |
+| A picture is not mentioned | `view_image` (1f) draws the state after `at`, without `after` | It draws the pose the document holds; a pose that is not written is deferred and put to the owner |
+| "`upgrade` in `document.ts`", W "at least 3" | `schema.ts`: `UPGRADES` has four steps on `master`, the last `3a-body-properties`; `master` saves version 5 and `SCHEMA_PENDING` is 0 | "The life of a document": W is 5, the step of this package is the fifth, and `master` saves version 6 after its merge |
+| Scenario 13 "becomes a test" | `packages/scenarios/test/scenario13.test.ts` exists with 3a: `arm()` builds the model of `build`, with the sketch `layout` after the three bodies of the arm | The part of 5a is added to that file |
+
+Checked and found as the design assumes: `Fields` and its three modes (a string in a field is evaluated by a command; the rule that a string equal to the stored expression is kept is in `updateFeature` of `applyCommand` and is repeated by `setJoint`); `Evaluator.run` with `upTo` and the parameters of the whole document; `stateAt` and `preview(cmd, at)` in `engine.ts`; `analyzeBody` remembered by the mesh; `askedState` of the tools (`after` previewed with `at`); `callTool` letting through what is not a `ToolError`; the generators of IDs counting `namedBySections` (`freshIds`, `newId` of the app); the two markers of `types.ts`.
+
+### What the implementation takes from 3a
+
+3a is merged (`7e2445e`, with the fixes of its review; the indexes in `d525a31`). What follows was read in the code of `master`, not in the design of 3a.
+
+- **The registry of sections** (`sections/spec.ts`, `sections/index.ts`): the entry `mechanism` of `DOCUMENT_SECTIONS` with `info`, `empty`, `validate`, `commands`, `renameParameter`, `names` and `evaluate`. The registry is typed by the fields of `Document` and of `Evaluation`, so the two types and the entry come together. `emptyDocument`, `validateDocument`, the default case of `applyCommand`, `renameParameter`, `differs` and `settle` ask the registry and are not edited.
+- **One change of the registry itself.** `SectionSpec.evaluate(section, doc, bodies, environment)` gets the bodies of the state and not the state of the recompute (the sketch of the registry in the design of 3a had the state; the code narrowed it to what body properties read). An axis through a sketch point needs the frames and the points of the sketches, so `evaluate` gets the state of the recompute as well: `Evaluator.evaluate` has it at hand where it calls `evaluateSections`, and the entry of 3a does not read it. This is the first commit of the package: one parameter of `SectionSpec.evaluate` and of `evaluateSections`, no change of behaviour, the tests of 3a unchanged.
+- **Stable results.** `evaluateSections` replaces a new result by one of the last four that is equal to it (`RESULTS_KEPT`, so that a preview in between does not push out the result of the document), per top-level key of a result: a body for 3a, but `links`, `joints`, `roots` and `unassigned` as wholes for this section. For a link or a joint to be the same object while nothing about it changed, the memory goes one level deeper for this section (an entry says how its result is keyed), or the claim is dropped; nothing in this design depends on it since the memory of posed bodies compares transforms by their numbers.
+- **Numeric fields of an entry** (`sections/fields.ts`): `readEntryFields` (through `Fields`, an error addressed `<joint>/<field>`), `resolveEntryFields` (the recompute, and the comparison of the limits by a command against the parameters of the document it is applied to), `writtenEntry`, `renamedEntry`, `storedExpressions`. `SectionFieldSpec` has `when`, for the kind of joint a field belongs to.
+- **The check of a body ID**: `bodyProblem(doc, body)` in `features/index.ts` (the feature exists and creates such a body; the order on the timeline is not asked).
+- **The IDs a section names**: `namedBySections` and `takenOver` read `names` of every entry. `takenOver` counts features, and points, curves and projections of sketches, which covers a body of a link and the sketch, the point and the projected entity of an axis. The generators (`freshIds`, `newId` of the app) already ask.
+- **The schema**: `UPGRADES` ends with `3a-body-properties`, `SCHEMA_PENDING` is 0 and `master` saves version 5. This package appends `5a-mechanism` as the fifth step and sets `SCHEMA_PENDING` to 1; the merge sets it back to 0, and `master` then saves version 6 (CLAUDE.md and `docs/architecture/api.md` name the version). The two steps touch different fields and give the same document in either order; the test of `schema.test.ts` that runs pending steps before and after the merged ones covers it.
+- **MCP**: `documentProblems` (where the lists of 3a are) takes the lists of the mechanism, and leaves them out with `at` as 3a does for its entries without a body; the generated part *Sections of the document* and the numeric fields of `describe_api` list the section from `SECTION_INFO` without an edit; `takenOver` of `execute`.
+- **The app**: `stateBefore(0)`, which empties `bodyProperties` with the bodies and has to do the same for the mechanism; the status line of `takenOver` ("An ID that body properties name is now used again"), which has to speak of the mechanism as well; `SceneModel.bodies` with `color` and `opacity`, next to which the transform goes; the form of a body (`panels/body.ts`) as the model of a form of the panel.
+- **The mass**: the query `mass` reads the mass of a body from `evaluation.bodyProperties` through `massSourceOf`, says per body where its mass came from (`from`), lists auxiliary bodies in `skipped` and fails with the name of a body that has no mass or whose mass cannot be evaluated. The mass beyond a joint of scenario 13 is that query over `carriedBy(...).bodies`.
+- **Scenario 13**: `scenario13.test.ts` with `arm()` and the part of 3a; the part of this package follows it in the same file, and the row of scenario 13 in `docs/requirements.md` gets its half. The catalog has no PA12, so nothing of this package's part uses it.
+- **The print query** answers `empty` when the model has no printed body (3a); marking the entry `geometry: 'modelled'` does not touch that.
+
+## Verified before the implementation (2026-11-16)
+
+The three checks this section listed were run as spikes against the real adapters (the Manifold kernel, the planegcs solver) and the engine of `master`. The mechanism does not exist, so the spikes posed bodies the way this design says the context will: a body moved by a rigid transform with its positions rounded to single precision (`transformSolid`), a pair in the frame of its first body, and `interferenceReport` with `sharedBy` of `interference.ts` as they are. About 6,000 poses of a pair went to the kernel.
+
+The spikes are not kept: together they run for half an hour, a spike is run before every commit, and what they guard becomes the part of 5a of scenario 13. The numbers are here, and so is the recipe: the model is `arm()` of `packages/scenarios/test/scenario13.test.ts` with the radius of its pins varied; a pose is `transformSolid(rotation([120, 0, 0], [0, 0, 1], angle), forearm.solid, (id) => id)` with the bounds of the moved mesh; the angles are the two ends of a range and `lower + (upper − lower) · frac(i · 0.6180339887)`, so that none is a round number; "askew" is the whole model moved first by a turn of 0.7 rad about (1, 2, 3) and a shift by (37.3, −12.9, 55.1), which stands for a model built on a tilted plane and for a pair that joints nearer the root have turned. The times were taken while other sessions ran their checks on the same machine and are upper bounds.
+
+### 1. A pin in its hole, turned
+
+The forearm with its pin in the hole of `upper`, both of one radius, the plates flush at z = 8, the elbow turned through ±88° (beyond that the forearm reaches the screws). As modelled the pair shares nothing, for every radius.
+
+| Pin radius | Poses | Collision | Fit | Nothing | Failed | Deepest fit, of the tolerance with the allowance |
+|---|---|---|---|---|---|---|
+| 1.5 | 120 | 0 | 119 | 0 | 1 | 0.92 |
+| 2.5 | 120 | 0 | 113 | 1 | 6 | 0.93 |
+| 4 | 400 | 0 | 383 | 4 | 13 | 0.96 |
+| 12 | 120 | 0 | 118 | 0 | 2 | 0.98 |
+
+The table is the pair in the frame of the parent with the axis along Z. The same pair in the frame of the child (240 poses) and with both bodies moved to a pose by a shoulder about Z (240 poses) gives the same picture: no collision, 233 and 232 fits, 4 and 5 failed.
+
+- **It stays a fit and is never a collision**: none in 3,000 poses of a pin through the adapter, the askew ones included. A planar face of one body reaches into a planar face of the other by at most 10⁻⁴ of the allowance (5 % of it askew), so the rule that tells a fit from a collision has room.
+- **It is a fit in nearly every turned pose** (96 %), with 0.2 to 1.2 mm³ of slivers, and in no list as modelled or where the turn is a whole side of the polygon. The depth of a fit comes to 0.98 of the chord tolerance: the corner of one polygon stands out of the flat of the other by the sagitta, which is the tolerance by construction. That is by design of `interference.ts`, and no margin is missing: the limit is the same number.
+- **The kernel refuses the pair in about 3 % of the poses** with the axis along a coordinate axis (22 of 760 in the table; pin 4 at −47.883°, −50.198° and 58.576°, to name three that can be pinned), and in 80 % of the poses of the askew model (387 of 484 in the frame of the parent, 188 of 240 with both moved). Such a pair is in `failed`, neither clear nor colliding.
+  - The refusal is the adapter's own, after its cleaning: "the result of the boolean is not a closed surface" (186 of the 189 looked at) or "has a folded triangle" (3). The library itself returned a result every time.
+  - The arm through the kernel otherwise agrees with the hand computation of the reviews: the forearm first collides with `screws/1` at 90.73° and with the motor at 91.18° (computed: 90.7° and 91.2°); as modelled its 28 pairs have no collision, no fit and no failure.
+
+### 2. The cost of a step, on the joint of scenario 9
+
+The joint of `packages/scenarios/test/joint.ts`: 8 bodies and 28 pairs, 17,146 triangles (the housing 5,310). The spike gave it the links a gearbox has (the housing, the plate and the motor stand; the sun on the input; the carrier on the output; each planet on its pin of the carrier) and computed the collisions as "A pair is computed in the frame of its first body" says, with the second body remembered by its mesh and the motions between the two links, and the answer by the two meshes.
+
+| Sweep of twenty steps | Pairs to the kernel a step | Bodies moved a step | A step | Twenty steps | Steps with a collision |
+|---|---|---|---|---|---|
+| As modelled, nothing remembered | 13 of 28 | 0 | 110 to 150 ms | | 0 |
+| The output alone, 2° a step (the planets carried without turning) | 8 | 7 | 71 to 278 ms, median 226 | 4.1 s | 18 |
+| The motion the gears allow, through one parameter (the sun by 17.3° a step, the carrier by Zs/(Zs+Zr) of it, each planet by −Zr/Zp of the carrier) | 12 to 13 | 20 | 94 to 162 ms, median 127 | 2.5 s | 0 |
+| The input alone, 1.3° a step | 5 | 1 | 58 to 130 ms, median 100 | 1.9 s | 20 |
+
+- Only the pairs with a body on each side of a moved joint go to the kernel; the others are found in the memory, and the same pose asked again costs 0.1 ms. The side of the engine (a preview of a command that changes no feature, and the query over it with everything remembered) is 0.2 ms a step.
+- A sweep of twenty steps is two to four seconds on this model. Over MCP a step is a tool call, which costs more than that; **a sweep in one call is not needed for speed** and stays deferred.
+- The coupled motion ran through 346° of the sun without a collision, a fit or a failed pair: the gears of scenario 9, with their backlash of 0.05, stay clear when they turn as gears do. No pair of that model is a pin in a hole of the same diameter (the pins of the carrier have 0.15 of play).
+
+### 3. Single precision: flush faces of two bodies that moved against each other
+
+A washer of the child on the top face of the parent, away from the axis so that it sweeps over the face, over a hole and over the rim, and a plate of the child that covers half the parent; no pin, so the flush face is all the two share. Turned about the axis of the joint, slid along the face (a prismatic joint), in the frame of the parent and with both moved to a pose, at the origin and two metres from it. 1,920 poses, half of them with the axis along Z and half askew.
+
+- **With the axis along a coordinate axis nothing reaches the kernel.** A turn about Z leaves every z as it is, also after the rounding, so the two faces stay in one plane bit for bit, the boxes of the two bodies touch and `interferenceReport` rejects the pair by its boxes: 960 poses, no volume, no time. (With a pin through the face the boxes overlap and the kernel is asked: that is check 1, where the flush faces around the pin cost nothing either.)
+- **Askew, the noise stays below the thresholds.** The two faces are then planes only to the last digit of their coordinates, and the kernel returns what lies between them: up to 0.01 mm³ at the origin and 0.24 mm³ two metres away, 240 times the volume threshold. The depth of it is 5 · 10⁻⁵ mm at most at the origin and 2.2 · 10⁻⁴ two metres away, against an allowance of 2.6 · 10⁻⁴ and 1.8 · 10⁻³: a third of the allowance in the worst pose, a tenth in most. No pose of the 960 is a fit or a collision. So `INTERFERENCE_THRESHOLD`, `coordinatePrecision` and `SHEET` stay as they are; it is the rule "no deeper than the precision of the coordinates" that holds, not the volume.
+- **Askew, the kernel refuses a quarter of the poses** (237 of 960; from none for a slide at the origin to seven in ten for the plate turned two metres away), with the same message as in check 1, and a pose takes up to 2.4 s (looking for the sheets is the slow part of `depthOf`).
+
+### What follows for the design
+
+- **The thresholds of `interference.ts` need no change**, and a pin in its hole across a joint is what the report calls a fit. `calls.ts` says what a sweep finds in which list.
+- **The frame of the first body is what keeps a pair exact, not only what makes it cheap.** Two bodies joined by a joint whose axis lies along a coordinate axis are computed from the one as modelled and the other turned about that axis, whatever the joints nearer the root have done to both. Posed to the world first, the same pair would be two meshes rounded apart from each other, which is the askew case: refused in four poses of five. The design had the frame for the memory; it is now also the reason the collisions work in a chain, and a query about a pair that reads `context.bodies` directly loses it (the description of `pairInFrame` says so).
+- **A joint whose axis is not along a coordinate axis is a known limit**: the normal of a sketch on a slanted face, later a tilted plane (5c). Its pairs are never called collisions wrongly, but most poses end in `failed`. The description for the AI says so, with the advice that follows from it: a mechanism is modelled with its axes along the axes of the model where that can be chosen.
+- **A failed pair in a sweep is common enough to be dealt with**: one pose in thirty for a pin in its hole. As designed, a sweep keeps `failed` and a step is clear only without it. What an AI does with such a step, and whether the engine should do better, is the next section.
+
+### A pair the kernel refuses
+
+What the spikes tried, on the poses the adapter refused. The first two rows are one run (189 refused poses: 9 pins with the axis along Z, 135 pins askew, 45 flush faces askew), the third another (9, 91 and 51):
+
+| Variant | Pins, axis along Z | Pins, askew | Flush faces, askew | Elsewhere |
+|---|---|---|---|---|
+| The adapter as it is | all failed | all failed | all failed | |
+| The intersection as the library returns it (no shift of faces in one plane, no cleaning, no check), measured by `sharedBy` | 8 fits, 1 nothing | 134 fits, 1 nothing | 44 nothing, 1 collision that is not one | Where the adapter does not refuse, it agrees on every pin (436 poses) and every real collision (120 poses of the forearm in the motor and in a screw), and calls 5 of 123 flush poses a collision that the adapter rightly does not |
+| The adapter without its two refusals at the end | 7 fits, 1 nothing, 1 collision that is not one | 60 fits, 31 collisions that are not | 11 nothing, 40 collisions that are not | The same mesh where the adapter does not refuse |
+
+So the refusals are honest (a refused mesh measures wrong), and the raw intersection is not a replacement for the adapter (it errs on flush faces, which is what the shift is for). What the numbers support is narrower:
+
+- **Proposed: a second opinion for a refused pair, which may only clear it.** When the adapter refuses the intersection of a pair, the collisions measure the intersection as the library returns it; if that says the pair shares nothing or is a fit, the pair is that; if it says a collision, the pair stays in `failed`. On the 189 refused poses that leaves one failed pair and calls none a collision. It cannot hide a collision the adapter would have found: where the adapter answers, its answer stands, and where it refuses, the raw volume of a real overlap is above the threshold and deeper than a fit, which keeps the pair in `failed`. The errors seen of the raw intersection all go one way, towards a collision that is not one.
+  - It needs an addition to the kernel port (the raw intersection is an option of the adapter that only its tests use): a property of `SolidKernel` for "what two solids share, as computed, for measuring only: it may hold sheets and pieces that touch along an edge, and is never a body of the model", with the adapter and the fakes of the tests, by the rule of the plan for an addition to a port. It is new geometry in the collisions and the kernel, so it is a step of its own with a full review, and its own measurement on the pattern cases `interference.ts` was written for.
+  - **An addition to the port is the owner's to decide** (as `minGap` of 1c was); see "Open". The rest of this design does not depend on it: without it a refused pair is in `failed`, as today.
+- Considered: **the adapter repaired** so that an intersection of many slivers comes out closed. The right place in the end, and open-ended work in `clean` and `restoreShifted` with the fuzz of the kernel; recorded for the backlog, not a step of this package.
+- Considered: **the pair asked again at a value next to it** (by the caller, or by the engine). It answers another question, and with four poses in five refused askew it does not converge there. It is what is left to a caller without the proposal, and the description for the AI names it for a failed pair across a joint: ask the step again a hundredth of a degree away, and trust neither.
+- Considered: **the two bodies a revolute joint joins declared a fit about its axis** and left out of the collisions. They can collide elsewhere, and a wrong axis is exactly what the collisions should find.
+- Rejected by the numbers: the adapter without its refusals, and the raw intersection in place of the adapter.
 
 ## Rejected
 
@@ -267,18 +411,25 @@ None of this was tried in code.
 
 ## Open
 
-For the owner. The first three are places where the design decides otherwise than the brief words it:
+For the owner. All five were put to the owner and **decided by the owner on 2026-11-16**, each as designed. The first three are places where the design decides otherwise than the brief words it:
 
-- **A coupled motion goes through a parameter**, not through the name of one joint in the expression of another. Both values follow one parameter; nothing new is needed in the expressions. Names of joints in expressions are deferred.
-- **A forest, not a tree with one root.** Several roots are allowed and listed; the export of 5b asks for one.
-- **A missing link is not a broken reference.** A joint cannot name a link that is not there, and a link that a joint names cannot be removed. A missing body and a missing sketch of an axis are broken references, as the brief says.
-- **The model as modelled is the zero of every joint.** An arm modelled folded has its zero folded. A field for "the value as modelled" is deferred and can be added without a change of what is saved; if the first mechanism the owner builds is modelled in a pose that should not be called zero, it should come with this package.
-- **The axis of a joint from a cylindrical face** ("the axis of this bore") is deferred with the other kinds of `AxisRef`. An axis through a sketch point needs the centre of the bore as a point of a sketch, which the model usually has.
+- **A coupled motion goes through a parameter: decided by the owner on 2026-11-16.** Not through the name of one joint in the expression of another. Both values follow one parameter; nothing new is needed in the expressions. Names of joints in expressions stay deferred.
+- **A forest, not a tree with one root: decided by the owner on 2026-11-16.** Several roots are allowed and listed; the export of 5b asks for one.
+- **A missing link is not a broken reference: decided by the owner on 2026-11-16.** A joint cannot name a link that is not there, and a link that a joint names cannot be removed. A missing body and a missing sketch of an axis are broken references, as the brief says.
+- **The model as modelled is the zero of every joint: decided by the owner on 2026-11-16.** An arm modelled folded has its zero folded. This package has no field for "the value as modelled"; it stays deferred and can be added without a change of what is saved.
+- **The axis of a joint from a cylindrical face: deferred, decided by the owner on 2026-11-16.** "The axis of this bore" comes with the other kinds of `AxisRef`, for the pattern as well. Until then an axis through a sketch point needs the centre of the bore as a point of a sketch, which the model usually has.
+
+Still for the owner, found by the check against the code (neither blocks the implementation):
+
+- **A picture of a pose that is not written.** `view_image` of 1f has no `after`, so an AI that steps a pose with `after: setPose` cannot see the step; it can write the pose, take the picture and undo. Giving the path of an operation of the app `at` and `after` (the need 1f recorded and did not take up) is a change of 1f's path, not of the mechanism. Whether it comes with this package, with 5b or on its own is the owner's to say; this design leaves it out.
+- **A second opinion for a pair the kernel refuses**, which needs an addition to the kernel port ("A pair the kernel refuses"). Measured: a pin in its hole across a joint is refused in one pose of thirty with the axis along a coordinate axis and in four of five askew; with the proposal one of 189 refused poses stays failed and none is called a collision wrongly. Without it the package works as designed and a sweep carries its failed pairs. The owner decides whether the port grows by it, as with `minGap` of 1c.
 
 For the implementation:
 
-- How many poses of a solid are remembered, and whether a posed solid shares its triangles with the modelled one (it can: a turn keeps the order of the vertices).
+- How many poses of a solid are remembered, and whether a posed solid shares its triangles with the modelled one (it can: a turn keeps the order of the vertices; `transformSolid` copies them today).
 - Whether the view should also offer the model as modelled while the model mode is shown (a switch in the panel), for a model whose stored pose is not zero.
+- Where the note about the pose travels in the answer of a tool ("The model as modelled, by name").
+- The steps of the sweep of scenario 13 at which the pin of the elbow is refused by the kernel, if any: the test names them and holds that such a step has nothing else in `failed` and nothing in `pairs` below a quarter turn.
 
 No third-party library is needed.
 
@@ -348,3 +499,7 @@ The same two reviewers, read-only, at commit `90033c8`; the internal one was aga
 Checked and found holding by both: a state after a feature posed by the section resolved against it, implementable on `stateAt`, `preview` and `Evaluator.evaluate` with `upTo` as they are (a body not made yet, a body half made, a prismatic and a fixed joint, a preview with `at`, the checks of the document, `check_interference` and `get_body` with `at`, the marker of the app), without a contradiction with the contract of the preparatory step; that no body handed out has a joint on its way to the root that silently stood still; the ordered pair and its memo key; `names` across the four files; the examples with `at` against the order of the features of `build`.
 
 No finding of this round was left without a change. With six findings, two of them major and none a blocker, and fixes that are a few sentences each, no fourth round was run.
+
+### The check before the implementation (2026-11-16)
+
+Not a review round: one session read the design against the code of `master` (with 3a and 2c, both merged that day), recorded the owner's decisions, and ran the three checks of "To verify before the implementation" against the real kernel. What it changed is listed in "Checked against the code (2026-11-16)" and "Verified before the implementation"; the decisions of the third version stand. New in the design, and read by no second reader yet: the option `geometry: 'modelled'` and the note about the pose as work of this package (they were decided by the review over the whole set, rows 18 to 20, and are written out here for the first time); the reason of precision for the pair in the frame of its first body; the known limit of a joint askew to the axes of the model; the proposal of a second opinion for a pair the kernel refuses, which waits for the owner. The review of the implementation reads them with the code.

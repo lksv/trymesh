@@ -29,7 +29,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 2c | Hole feature and the hardware catalog | 2 | B | 2b for the countersink; plain and counterbored holes need only 00 | implemented and merged 2026-11-16 ([2c-hole/design.md](2c-hole/design.md), "As implemented"); `buildStack` takes several sections with a planar step; the five catalogs of D46 from named tables; `throughAll` measures the reach of the targets |
 | 2f | Extent up to a planar face | 2 | B | 00; same code as 2a and 2b | implemented and merged 2026-11-16 ([2f-upto/design.md](2f-upto/design.md), "As implemented"); `ToolSpan` is a pair of levels or a tilted span, `ToolProblem` carries a code of a failed build, `FeatureForm.picks` is a function of the form's state |
 | 2d | Command that re-points an end of a curve, fillet of a sketch corner | 2 | C | D35 point 7 | full |
-| 2e | Linear pattern and mirror of features and bodies | 2 | D | 00 | full |
+| 2e | Linear pattern and mirror of features and bodies | 2 | D | 00 | full design written and reviewed 2026-11-16, D53 ([2e-pattern-mirror/design.md](2e-pattern-mirror/design.md)): two more variants of the transform of the pattern (`linear` along the direction of an `AxisRef` with a spacing or a length, `mirror` in a `PlaneRef`), the tool of a mirrored copy turned over in `applyTool`; no feature type, no issue code, no schema step. A grid is deferred to a package of its own, with two routes named |
 | 2g | Export: 3MF, outline as DXF and SVG, as entries of the registry of formats of the preparatory step | 2 | F | 00; the outline needs 1a | full |
 | 3a | Body properties and the catalog of materials | 3 | E | 00 | implemented and merged 2026-11-16 ([3a-body-properties/design.md](3a-body-properties/design.md), "As implemented"); the registry of sections (`DOCUMENT_SECTIONS`) and `bodySource` are what 5a, 2e and 3d build on; schema version 5 |
 | 3b | Import of a mesh as a reference body | 3 | E | 3a | outline |
@@ -118,5 +118,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f | D52 |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g (taken when their designs started) | D55 |
 | Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a) | 14 |

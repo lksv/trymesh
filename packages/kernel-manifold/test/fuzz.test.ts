@@ -2,6 +2,7 @@
 //   FUZZ_COUNT=30000 FUZZ_FIRST=1 pnpm test packages/kernel-manifold/test/fuzz.test.ts
 import { expect, it } from 'vitest';
 import { check, describeOps, generate } from './fuzz';
+import { kernel } from './testkit';
 
 const COUNT = Number(process.env.FUZZ_COUNT ?? 1000);
 const FIRST = Number(process.env.FUZZ_FIRST ?? 1);
@@ -9,6 +10,7 @@ const FIRST = Number(process.env.FUZZ_FIRST ?? 1);
 it(`náhodné posloupnosti booleanů: ${COUNT} případů od seedu ${FIRST}`, { timeout: 60_000 + COUNT * 50 }, () => {
   const failures: string[] = [];
   const rejected = { strict: 0, loose: 0 };
+  const second = kernel.secondCleanings;
   for (let seed = FIRST; seed < FIRST + COUNT; seed++) {
     const problems = check(seed, rejected);
     if (problems.length) failures.push(`seed ${seed}: ${problems.slice(0, 4).join('; ')}\n   ${describeOps(generate(seed).ops)}`);
@@ -18,6 +20,8 @@ it(`náhodné posloupnosti booleanů: ${COUNT} případů od seedu ${FIRST}`, { 
   // Odmítnutí chybou je bezpečné, ale má být vzácné.
   expect(rejected.strict).toBeLessThanOrEqual(Math.ceil(COUNT / 10000));
   expect(rejected.loose).toBeLessThanOrEqual(Math.ceil(COUNT / 200));
+  // unions and differences never reach the second cleaning of an intersection (D51)
+  expect(kernel.secondCleanings).toBe(second);
 });
 
 // Případy, které dřív selhaly a vedly k opravě adaptéru; hlídají se zvlášť, aby je změna výchozího

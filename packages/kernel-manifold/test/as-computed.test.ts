@@ -1,8 +1,8 @@
 // The intersection as computed (D50, `intersectionAsComputed` of the port): the raw intersection of
 // the library, checked for one thing, that it is closed by its indices. The poses the adapter
-// refuses are pinned in packages/scenarios/test/second-opinion.test.ts, which builds them through
-// the engine (a refusal depends on the exact polygons of the model); here are the guarantees on
-// solids of the kit.
+// refused before D51 (and its first cleaning alone still refuses) are pinned in
+// packages/scenarios/test/second-opinion.test.ts, which builds them through the engine (a refusal
+// depends on the exact polygons of the model); here are the guarantees on solids of the kit.
 import { describe, expect, it } from 'vitest';
 import type { Solid } from '@trymesh/engine';
 import { isClosed } from '../src/clean';

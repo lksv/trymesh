@@ -3,7 +3,7 @@
 // imports neither the registry, nor document.ts, nor evaluate.ts.
 import type { FieldSpec } from '../catalog';
 import type { Step, StepContext } from '../recompute/state';
-import type { Feature } from '../types';
+import type { Feature, Id } from '../types';
 import type { Dict, FeatureRef, ValidationContext } from '../validation';
 
 // Veřejný popis typu feature (pro UI a popis API).
@@ -32,6 +32,10 @@ export interface FeatureModule<F extends Feature> {
   // Does the feature create a body with this ID? `local` is the part of the ID after the slash
   // (absent without one).
   createsBody(f: F, local: string | undefined): boolean;
+  // The body a body of this feature was copied from (D48), for the properties it inherits: a pattern
+  // of a body answers with its source. Asked only for a body the feature creates. A type that
+  // derives a body from another (a mirror, a split) sets it; without it a body is copied from none.
+  bodySource?(f: F, local: string | undefined): Id | undefined;
   namesFaces: boolean; // does the feature name faces of bodies?
   // Does the feature leave a tool recipe that a pattern can repeat?
   producesTool(f: F): boolean;

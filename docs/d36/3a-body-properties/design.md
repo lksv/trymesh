@@ -1,6 +1,6 @@
 # 3a Body properties and the catalog of materials (D48)
 
-**State: design, third version, after three rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Not implemented. The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
+**State: design, third version, after three rounds of reviews (see "Reviews"). Written against the sixth version of the contract of the preparatory step (`0dc424b`).** Implemented on the branch `d36/3a` (see "As implemented" at the end). The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. Validation scenario 13 is shared with [5a](../5a-mechanism/design.md); this package writes the part "bodies with materials and a motor as a reference part with the mass of its data sheet".
 
 The package adds a section to the document. What is expensive to change later is the shape of that section, its upgrade step and what a build without the package does with it, so those parts are decided in full here; the app and the wording of the MCP answers are described and left to the implementation.
 
@@ -189,14 +189,14 @@ The step is `3a-body-properties` (`BODY_PROPERTIES_STEP` in `contract.ts`). It r
 
 `save` always writes the section, also when it is empty.
 
-What happens to a document, by what the build that loads it knows. V is the version of `master` when the branch of this package started (2 today). "Knows the step" means the name `3a-body-properties` is in its list of upgrade steps, pending or merged.
+What happens to a document, by what the build that loads it knows. V is the version of `master` when the branch of this package started (4: the preparatory step raised it to 3 with `d37-schema-steps`, and 2b added `2b-taper`). "Knows the step" means the name `3a-body-properties` is in its list of upgrade steps, pending or merged.
 
 | The document | The build that loads it | Result |
 |---|---|---|
 | saved by the branch of 3a (`schemaVersion: V`, `schemaSteps: ['3a-body-properties']`) | the same build | loads; the step is not run again |
 | the same | a build that knows the step and has more steps after version V (the branch rebased over a step merged meanwhile; `master` after the merge; a branch of another package cut from such a `master`, 5a among them) | loads; the other steps run, this one does not; `master` saves it as its own version without `schemaSteps` |
 | the same | a build with the preparatory step that does not know the step (`master` before the merge; a branch of another package cut before the merge) | refused: no step of that name |
-| the same | **a build from before the preparatory step** (the code of today; an MCP bundle that was not rebuilt) | **loads, and the section and `schemaSteps` are dropped without a word** (probe: today's `validateDocument` returns five keys). The next save writes a plain document of version 2. See "Needs from the preparatory step" |
+| the same | a build from before the preparatory step (an MCP bundle that was not rebuilt) | refused by the version: such a build reads version 2 at most (cross-review, need 16). When this design was written the hole was open: the branch would have saved version 2, which such a build loads, dropping the section without a word; see "Needs from the preparatory step" |
 | saved by `master` after the merge (version V+1 or higher) | any build that does not know the step, before or after the preparatory step | refused by the version |
 | saved by a build with 3a, without the section of 5a | a build with 5a | loads; the step of 5a adds the empty mechanism |
 | saved by a build with 5a | a build with 3a and without 5a | refused: by the version after the merge of 5a, by the name of the step before it |
@@ -242,10 +242,10 @@ What happens to a document, by what the build that loads it knows. V is the vers
 
 ## Needs from the preparatory step
 
-1. **A build from before the preparatory step reads a document of a branch and drops what it does not know.** The scheme of named steps protects against builds that know `schemaSteps`. The branch of this package saves `schemaVersion: 2`, which the code of today accepts; it then rebuilds the document from the five fields it knows.
+1. **Answered** (cross-review, need 16): the preparatory step raised the version to 3 with the step `d37-schema-steps`, which converts nothing, so a build from before it refuses every document saved since; the branch saves version 4 with `schemaSteps: ['3a-body-properties']`. What follows is the need as it was written. **A build from before the preparatory step reads a document of a branch and drops what it does not know.** The scheme of named steps protects against builds that know `schemaSteps`. The branch of this package would have saved `schemaVersion: 2`, which the code of that time accepted; it then rebuilt the document from the five fields it knew.
    - The case: the branch `d36/3a` saves a document with a motor of 280 g; the document is opened by the MCP server of the main tree, whose bundle was built before the preparatory step (CLAUDE.md warns that the bundle runs old code until it is rebuilt); the AI changes a dimension and saves. The properties are gone and nothing said so. The probe is `scratchpad/track-e/probe/older-build.test.ts`, outside the repository.
    - What would close it: the preparatory step raises the version itself, with a first named step that converts nothing. Every document saved after it has version 3, which every build without `schemaSteps` refuses. It does not reach back to documents a branch saved before the version was raised; there should be none.
-   - Until then this package cannot close it; the row of the table above stands. Package 5a does not have the hole: it starts from a `master` with 3a, whose version the code of today refuses.
+   - Until then this package could not close it. Package 5a does not have the hole either way.
 2. **A place for a note about an export as a whole.** `Exported` has `layout` and `files`, and `about` belongs to a file.
    - The case: `export` of the format `stl` with `perBody` over the arm of scenario 13. The answer has a file per printed body, and the fact that the motor and the screws were left out as reference bodies belongs to none of them. It can be written, by repeating the list in `about` of every file; with a single file it sits in `about` of that file.
    - Asked for, as the cleaner place and not as something that cannot be said otherwise: `skipped`, or an `about`, next to `files`.
@@ -343,3 +343,49 @@ The same two reviewers, read-only, at commit `90033c8`; the internal one was aga
 Checked and found holding by both: `takenOver` from the document and the command (a batch, a nested batch, a derived body ID, a sketch point, a sketch added with its entities, a feature removed and added again, a body made and given properties in one batch; `updateFeature` and undo add nothing); `fieldErrors` of the pair that is used; that both generators can count the IDs; the two corrected statements about the code; the commands of `build` against the types and the validators; its geometry, computed by both by hand (the plates touch, the screws are 4.5 clear of the motor, the forearm is 36 from the motor as modelled and 15.04 at 1.2 rad, first contact with a screw near 90.7° and with the motor near 91.2°). Nothing was run through the kernel.
 
 No finding of this round was left without a change. With six findings over the two packages, two of them major and none a blocker, and fixes of a few sentences each, no fourth round was run.
+
+## As implemented
+
+Implemented on the branch `d36/3a`, from `master` at `dd1dd4c` (2a, 2b, 2f and track A merged). Where the code is, by the plan of "A registry of sections":
+
+| File | What |
+|---|---|
+| `packages/engine/src/types.ts` | `Document.bodyProperties`, `BodyUse`, `BodyProperties` (before the marker `porty`); `Evaluation.bodyProperties`, `BodyPropertiesResult`, the three commands and `BodyPropertiesPatch` (after `přepočet`) |
+| `packages/engine/src/sections/spec.ts`, `fields.ts`, `body-properties.ts`, `index.ts` | `SectionSpec`, `SectionInfo`, `SectionFieldSpec`; the numeric fields of an entry; the section; the registry `DOCUMENT_SECTIONS`, `SECTION_INFO`, `namedBySections`, `takenOver` |
+| `packages/engine/src/catalogs/materials.ts` | the catalog `materials`, one line in `DATA_CATALOGS` |
+| `packages/engine/src/schema.ts` | the step `3a-body-properties`, `SCHEMA_PENDING = 1` |
+| `features/module.ts`, `features/pattern.ts`, `features/index.ts` | `bodySource` of the registry (the pattern of a body answers with its source); `bodyProblem` and `bodySource(doc, body)` |
+| `document.ts`, `evaluate.ts`, `engine.ts` | `emptyDocument`, `validateDocument`, the default case of `applyCommand` and `renameParameter` ask the registry; `Evaluator.evaluate` adds the results and returns the sections to write back (`sections`); `settle` writes them, `differs` compares them |
+| `export/stl.ts`, `query/print.ts`, `query/mass.ts`, `sketch-tools.ts` | the default list of the format `stl` and of the query `print` is `printedBodies`; `massSourceOf` reads the result; `freshIds` counts `namedBySections` |
+| `packages/mcp/src/tools.ts`, `api.ts`, `server.ts` | get_model, execute (`takenOver`), `_export_stl`; the generated part *Sections of the document*, the numeric fields of the sections, a paragraph of the conventions; the description of `export_stl` |
+| `packages/app/src/panels/body.ts`, `panels/model.ts`, `app.ts`, `scene.ts`, `viewport.ts`, `issue-text.ts` | the line and the form of a body, the entries without a body; names from the result; `newId`, the status line, the export button, `stateBefore(0)`; the colour and the translucency of a body |
+
+Deviations from the design, and choices it left to the implementation:
+
+- **The catalog has six rows, not seven: PA12 has none.** The densities were taken from the technical data sheets on 2026-11-16 (each row names its sheet, its version and its address; the research is recorded in the session, not in the repository): PLA 1.24, PETG 1.27, ASA 1.07, TPU 1.25 and PC 1.22 from Prusament, ABS 1.05 from Bambu Lab (Prusament makes no ABS). Prusament makes PA11 and no PA12, and every nylon of Bambu Lab is filled with fibres, so by the owner's rule PA12 is reported and not filled in. **A question for the owner**: leave PA12 out, add Prusament PA11 (1.02, ISO 1183) under its own name, or allow another source; the nearest PA12-based product is Bambu PAHT-CF (1.06, filled with carbon fibre). Two notes are in the rows: the PrusaSlicer profile of TPU 95A says 1.23 where the sheet says 1.25 (the sheet is the source), and the sheet of PC Blend measures by an in-house method of Prusa Polymers, not by ISO 1183. The calls of `calls.ts` that use PA12 for a copy in another material use PC in the test.
+- **The real mass query of 1d, not the stand-in.** 1d was merged first, so `standInMass` is not implemented; `massSourceOf` (the seam 1d named) reads the result. What the stand-in assumed is added to the query `mass`: per body `from` (`densities`, `mass`, `density` of the properties, or `argument`), and `skipped`, the auxiliary bodies listed, which add nothing also when `densities` names them. A body whose mass or density (own or inherited) cannot be evaluated fails the query with `failed` and its name; a list of auxiliary bodies only fails, as it has no mass. The fill factor of the call applies to neither kind of a body's own source, as 1d decided; a fill factor of the properties stays deferred.
+- **The print query (1e) without `bodies`** takes `printedBodies` as well, by the table "What 1d and the exports read" (the design's list of places named only the exports).
+- **No `about` of an export as a whole** (need 17 of the cross-review): the files of `stl` say which bodies each holds (`about.bodies`), and a model with no printed body says so in `empty` ("list the bodies to export them anyway"). Not needed for anything to work; left for 2g.
+- **Load.** An entry with no field (`{}`, or only `expressions: {}`) is dropped on a load, so "nothing set" has one spelling there too; an expression of a field the entry does not have is refused. A key is checked for its form: the part before the first slash passes the rules of an ID, and a part after a slash is not empty.
+- **`takenOver`** counts the IDs of features, and of points, curves and projections of sketches (`addPoint`, `addCurve`, `addExternal`, and those of a sketch added whole), not of constraints.
+- **The result of a body copied from itself** (a cycle of patterns, only in a document edited by hand) stops at the body seen: its `from` is the next body of the cycle.
+- **MCP.** `get_model` prints `density` next to `mass` (the open point "whether density is worth printing" was decided for it: it says what a mass of `massFrom: 'density'` comes from), the mass with six significant digits and `massFrom`. `bodyPropertyErrors` and `bodyPropertiesWithoutBody` are in `documentProblems`, so `execute` and `preview` have them too; `get_model` with `at` leaves out the second. `execute` adds `takenOver` only when it is not empty.
+- **The app.** The form is shown for the body of a face or an edge selected in the view, and for a selected feature that created one body (a pattern of several bodies lists its copies; a copy is reached by a face of it). Inherited values and the default name are placeholders (the second open point). The material has a select of the catalog and a field of its own. A picture of the model (D43) keeps its palette: its colours tell the bodies apart for a reader of the picture, and a body's own colour does not.
+- **Snapshots of the app test** change in four ways: the form of the properties appears under a selected extrusion and a selected face; the line of a body says that its link exports the body "whatever its use"; the summary of the query `mass` in the menu of queries changed; and a document saved on the branch names its pending step and has the empty section. The new snapshot `properties.txt` drives the form.
+
+### The review of the implementation (2026-11-16)
+
+One full review of `be7b65a` by a subagent that did not write the code; nothing serious, ten findings, all fixed in one commit:
+
+- The empty choice of *Use* in the form of a copy named the copy's own use as that of its source; it now reads the result of the source (`As its source: …`), and the app test drives the form of a copy.
+- The mass query read the properties before `densities`, so a body named in `densities` failed when its properties had an error; `densities` now wins over everything but the use `auxiliary`, as its description says. The range of a density of the query is that of the properties, (0, 25] g/cm³, above the densest element (it was 1000).
+- The query `print` without `bodies` and with no printed body answers with `empty`, the reason, as the format `stl` does.
+- The texts that report `takenOver` no longer say that a sketch point is the body: an ID that body properties name is used again, and a body made under it takes them.
+- A result of a section is kept among the last few of its key, so a preview in between does not push it out; the scenario tests that a change of a property recomputes no geometry and that the results of the other bodies stay the same objects.
+- The docs: the mass and the print query and the texts of `empty` in `api.md`; the life of a document and need 1 above (the hole is closed by version 3); the comment of the TPU row; the title of a row in the select keeps its sheet.
+
+Open:
+
+- PA12 (above), for the owner.
+- A fill factor per body, a print orientation, transparency and the other deferred fields of "The cheap variant".
+- The app was not run in a browser for this package; the view's own material of a coloured or translucent body is covered by the type check and the scene of the app test only.

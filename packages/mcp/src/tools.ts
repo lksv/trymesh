@@ -29,13 +29,17 @@ import {
   SKETCH_TOOLS,
   type SketchFeature,
   type SketchToolName,
+  type BodyPropertiesResult,
   bodyFileName,
+  bodyPropertiesWithoutBody,
   constraintOperands,
   constraintPath,
   faceParts,
   freshIds,
   isDimension,
+  printedBodies,
   sketchTool,
+  takenOver,
 } from '@trymesh/engine';
 import { apiText } from './api';
 
@@ -158,12 +162,40 @@ function parametersInfo(state: EngineState): { parameters: Record<string, unknow
   };
 }
 
-// What is not a feature state but the caller should know: checks that fail and parameters in error.
-function documentProblems(state: EngineState): Record<string, unknown> {
+// What is not a feature state but the caller should know: checks that fail, parameters in error,
+// body properties whose density or mass cannot be evaluated (own or inherited by a copy), and, for
+// the state at the end of the timeline (`whole`), entries of body properties whose body is gone.
+function documentProblems(state: EngineState, whole = true): Record<string, unknown> {
   const { parameters, checks } = parametersInfo(state);
   const failedChecks = checks.filter((check) => check.status !== 'ok');
   const parameterErrors = parameters.filter((parameter) => parameter.error !== undefined);
-  return { ...(failedChecks.length ? { failedChecks } : {}), ...(parameterErrors.length ? { parameterErrors } : {}) };
+  const bodyPropertyErrors = Object.entries(state.evaluation.bodyProperties).flatMap(([body, result]) => Object.entries(result.fieldErrors ?? {}).map(([field, error]) => ({ body, field, message: error.message })));
+  const withoutBody = whole ? bodyPropertiesWithoutBody(state.document.bodyProperties, state.evaluation.bodyProperties) : [];
+  return {
+    ...(failedChecks.length ? { failedChecks } : {}),
+    ...(parameterErrors.length ? { parameterErrors } : {}),
+    ...(bodyPropertyErrors.length ? { bodyPropertyErrors } : {}),
+    ...(withoutBody.length ? { bodyPropertiesWithoutBody: withoutBody } : {}),
+  };
+}
+
+// What the properties of a body state beyond the defaults (D48): the name when it has one of its
+// own, the colour, the material, the use when it is not `part`, the density, the mass in grams and
+// the body it was copied from.
+function propertiesInfo(state: EngineState, id: string): Record<string, unknown> {
+  const all = state.evaluation.bodyProperties;
+  const result: BodyPropertiesResult | undefined = Object.prototype.hasOwnProperty.call(all, id) ? all[id] : undefined;
+  if (!result) return {};
+  const own = Object.prototype.hasOwnProperty.call(state.document.bodyProperties, id) ? state.document.bodyProperties[id] : undefined;
+  return {
+    ...(own?.name !== undefined ? { name: result.name } : {}),
+    ...(result.color !== undefined ? { color: result.color } : {}),
+    ...(result.material !== undefined ? { material: result.material } : {}),
+    ...(result.use !== 'part' ? { use: result.use } : {}),
+    ...(result.density !== undefined ? { density: round(result.density) } : {}),
+    ...(result.mass !== undefined ? { mass: Number(result.mass.toPrecision(6)), massFrom: result.massFrom } : {}),
+    ...(result.from !== undefined ? { from: result.from } : {}),
+  };
 }
 
 // Stav skici v přehledech. U nevyřešené skici (konflikt, neúspěch solveru) stupně volnosti nic
@@ -206,14 +238,15 @@ function updatableFields(feature: Feature): Record<string, Json> {
   return Object.fromEntries(FEATURE_TYPE_INFO[feature.type].updatable.flatMap((field): [string, Json][] => (fields[field] === undefined ? [] : [[field, fields[field] as Json]])));
 }
 
-function modelSummary(state: EngineState): unknown {
+// `whole`: the state is that at the end of the timeline (no `at`).
+function modelSummary(state: EngineState, whole = true): unknown {
   const { document, evaluation } = state;
   return {
     features: document.features.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
-    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length })),
+    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length, ...propertiesInfo(state, id) })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
-    ...documentProblems(state),
+    ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
   };
@@ -475,9 +508,13 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_model',
-      description: 'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size, parameter values, checks that fail, and what is in error. `at` = the state after the given feature.',
+      description:
+        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). Without `at` also `bodyPropertiesWithoutBody`: entries of body properties whose body is gone, which a body made again under that ID takes over. `at` = the state after the given feature.',
       inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'ID feature; model se vyhodnotí jen po ni' } }, additionalProperties: false },
-      run: (engine, args) => modelSummary(stateAt(engine, optionalText(args, 'at'))),
+      run: (engine, args) => {
+        const at = optionalText(args, 'at');
+        return modelSummary(stateAt(engine, at), at === undefined);
+      },
     },
     {
       name: 'get_document',
@@ -596,7 +633,16 @@ export function tools(): Tool[] {
       name: 'execute',
       description: `Provede příkaz enginu a zapíše ho do dokumentu (jeden krok undo). Víc příkazů naráz jde složit příkazem batch. Neplatný příkaz dokument nezmění a vrátí důvod. Typy vazeb: ${constraintTypes}. Přesné tvary příkazů vrací describe_api.`,
       inputSchema: COMMAND,
-      run: (engine, args) => outcome(engine.execute(command(args))),
+      // `takenOver`: the IDs of features and sketch entities the command added while a section of
+      // the document (body properties) still named them; a body made under such an ID takes the
+      // properties, an entity of a sketch only shares the ID
+      run: (engine, args) => {
+        const before = engine.getState().document;
+        const given = command(args);
+        const answer = outcome(engine.execute(given)) as Record<string, unknown>;
+        const taken = takenOver(before, given);
+        return taken.length ? { ...answer, takenOver: taken } : answer;
+      },
     },
     {
       name: 'preview',
@@ -664,12 +710,16 @@ export function tools(): Tool[] {
       description: '',
       inputSchema: NONE,
       hidden: true,
-      // One file with the chosen bodies (all by default), or with `perBody` one file per body named
-      // by `bodyFileName`. The server writes the files; the engine may run in the app.
+      // One file with the chosen bodies (the printed ones by default: use `part`, D48), or with
+      // `perBody` one file per body named by `bodyFileName`. The server writes the files; the
+      // engine may run in the app.
       run: (engine, args) => {
-        const all = engine.getState().evaluation.bodies;
-        const chosen = bodyList(engine, args) ?? Object.keys(all);
-        if (chosen.length === 0) throw new ToolError(args.bodies === undefined || args.bodies === null ? 'the model has no body to export' : 'argument "bodies": the list is empty; leave it out to export all bodies');
+        const { bodies: all, bodyProperties } = engine.getState().evaluation;
+        const chosen = bodyList(engine, args) ?? printedBodies(bodyProperties);
+        if (chosen.length === 0 && (args.bodies === undefined || args.bodies === null)) {
+          throw new ToolError(Object.keys(all).length ? 'the model has no printed body (every body is a reference or auxiliary body); list the bodies in `bodies` to export them anyway' : 'the model has no body to export');
+        }
+        if (chosen.length === 0) throw new ToolError('argument "bodies": the list is empty; leave it out to export the printed bodies');
         if (args.perBody !== undefined && typeof args.perBody !== 'boolean') throw new ToolError('argument "perBody": true or false is expected');
         const file = (bodies: string[]) => ({ bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: base64(engine.exportMesh('stl', bodies)) });
         const unique = [...new Set(chosen)];

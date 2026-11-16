@@ -218,6 +218,23 @@ describe('MCP server: bodies', () => {
     await session.close();
   });
 
+  it('export_stl without a list takes the printed bodies (D48); a listed reference body is written', async () => {
+    const session = await connect();
+    await build(session);
+    // the wheel is a reference part: its copies take it over
+    expect((await session.call('execute', { command: { type: 'setBodyProperties', body: 'Wheel', patch: { use: 'reference', mass: 12 } } })).ok).toBe(true);
+    const printed = await session.call('export_stl', { path: join(dir, 'printed.stl') });
+    expect(printed.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['base']]);
+    const parts = await session.call('export_stl', { path: join(dir, 'printed'), perBody: true });
+    expect(parts.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['base']]);
+    const listed = await session.call('export_stl', { path: join(dir, 'wheel.stl'), bodies: ['planets/1'] });
+    expect(listed.files.map((file: { bodies: string[] }) => file.bodies)).toEqual([['planets/1']]);
+    // nothing printed: said, and how to export the bodies anyway
+    expect((await session.call('execute', { command: { type: 'setBodyProperties', body: 'base', patch: { use: 'auxiliary' } } })).ok).toBe(true);
+    expect(await session.call('export_stl', { path: join(dir, 'none.stl') })).toEqual({ error: expect.stringContaining('the model has no printed body (every body is a reference or auxiliary body)') });
+    await session.close();
+  });
+
   it('export_stl: chosen bodies in one file, or one file per body with an unambiguous name', async () => {
     const session = await connect();
     await build(session);

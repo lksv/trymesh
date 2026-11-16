@@ -21,7 +21,8 @@ export const catalog: QuerySpec<typeof CATALOG_ARGS, CatalogTable> = {
   returns: '`title`, `summary`, `source` (the standard or data sheet the rows come from), `columns` (each with a title and a unit, or `text`) and `rows` by key, each with a value per column.',
   args: CATALOG_ARGS,
   run: (_context, { name, key }) => {
-    const table = catalogTable(DATA_CATALOGS, name, key);
+    // a row type written as an interface is not a dictionary to the compiler; the table copies the rows
+    const table = catalogTable(DATA_CATALOGS as unknown as Record<string, CatalogTable>, name, key);
     if (!('missing' in table)) return table;
     const names = Object.keys(DATA_CATALOGS);
     if (table.missing === 'name') throw new QueryFailure('notAvailable', `name: there is no catalog "${name}"; ${names.length ? `the catalogs are ${names.join(', ')}` : 'the engine has no catalog yet'}`, ['name']);

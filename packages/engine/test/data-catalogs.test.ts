@@ -42,7 +42,7 @@ describe('data catalogs', () => {
     expect(catalogTable(catalogs, 'screws', 'toString')).toEqual({ missing: 'key' });
   });
 
-  it('the engine has no catalog yet; the first package with one adds it', () => {
-    expect(Object.keys(DATA_CATALOGS)).toEqual([]);
+  it('the catalogs of the engine: materials (D48)', () => {
+    expect(Object.keys(DATA_CATALOGS)).toContain('materials');
   });
 });

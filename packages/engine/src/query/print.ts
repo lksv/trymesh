@@ -1,6 +1,7 @@
 // The query `print` (D42): how a body prints in given orientations: its size against the bed,
 // the area that lies on the bed and the area that overhangs, per named face.
 import { coordinatePrecision } from '../mesh-distance';
+import { printedBodies } from '../sections/body-properties';
 import type { FaceName, Id, Solid, Truncated, Vec3 } from '../types';
 import { ANGLE_TOLERANCE, cross3, dot3, len3, mul3, sub3 } from '../util';
 import type { ArgSpecs, RunArgsOf } from './args';
@@ -9,7 +10,7 @@ import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 // ---------------------------------------------------------------- the arguments
 
 // - `bodies`: every body is a print of its own, judged in every orientation; without the
-//   argument all bodies of the state. A body named twice is judged once.
+//   argument the printed bodies of the state (use `part`, D48). A body named twice is judged once.
 // - `orientations`: one to twelve ways to put a body on the bed. Each says what is up:
 //   - `up`: a direction in the coordinates of the model (it need not be a unit vector);
 //   - `onBed`: a planar face: "this face lies on the bed". A surface has no side; the frame of
@@ -30,7 +31,7 @@ import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 // every body in every orientation, at most twelve orientations, and the bodies asked about.
 const BED_LENGTH = { title: 'Length of the printable space', unit: 'mm', min: { value: 0, open: true } } as const;
 export const PRINT_ARGS = {
-  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Each is a print of its own; without it all bodies.', optional: true },
+  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Each is a print of its own; without it the printed bodies (use `part`; not the reference and auxiliary bodies).', optional: true },
   orientations: {
     kind: 'list',
     min: 1,
@@ -100,6 +101,8 @@ export interface PrintOrientation {
 export interface PrintReport extends Truncated {
   angle: number; // rad: the overhang angle used
   bodies: { body: Id; orientations: PrintOrientation[] }[];
+  // Set when the call names no bodies and the state has no printed body (D48): why `bodies` is empty.
+  empty?: string;
 }
 
 declare module './spec' {
@@ -279,7 +282,7 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
     '`onBed` (for an orientation given by a face, on the body of that face: whether the face lies on the bed; false when something of the body reaches below it), ' +
     '`contact` (`area` in mm2 and `count` of all planar faces that look straight down and have nothing of the body below them; `faces`: the largest, with their areas; a round face never counts) and ' +
     '`overhang` (`area` in mm2 and `count` of all faces that look down and lean from the vertical by more than the angle; `small`: how many of them are below `minArea` and not listed; `faces`: the others, the largest first, each with `area` and `from`, the height in mm above the bed where it starts). ' +
-    'Each list holds at most `maxFaces` faces, so the answer is at most 2 × `maxFaces` faces per body and orientation; `truncated` when `maxFaces` cut any list.',
+    'Each list holds at most `maxFaces` faces, so the answer is at most 2 × `maxFaces` faces per body and orientation; `truncated` when `maxFaces` cut any list. `empty`: without `bodies`, why there is no body to judge (the model has none, or none is a printed part).',
   args: PRINT_ARGS,
   units: { angle: 'rad', size: 'mm', area: 'mm2', from: 'mm' },
   run(context, args) {
@@ -300,7 +303,7 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
     // a tolerance is not an order. Two areas that round apart are still listed by their size.
     const rounded = (area: number): number => Number(area.toPrecision(6));
     const bySize = <T extends { area: number; number: number }>(a: T, b: T): number => rounded(b.area) - rounded(a.area) || a.number - b.number;
-    const bodies = [...new Set(args.bodies ?? Object.keys(context.bodies))].map((id) => {
+    const bodies = [...new Set(args.bodies ?? printedBodies(context.state.evaluation.bodyProperties))].map((id) => {
       const body = context.bodies[id]; // from the context: the same code answers for a pose
       const precision = coordinatePrecision(body);
       // the normal of a planar face, out of the body; undefined for a face that is not planar
@@ -331,6 +334,8 @@ export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
       });
       return { body: id, orientations };
     });
-    return { angle: args.overhang, bodies, ...(shown < total ? { truncated: { shown, total } } : {}) };
+    // without a list and with nothing printed: say why, rather than answer an empty list silently
+    const empty = args.bodies === undefined && bodies.length === 0 ? (Object.keys(context.bodies).length ? 'the model has no printed body (every body is a reference or auxiliary body); list the bodies to judge them anyway' : 'the model has no body') : undefined;
+    return { angle: args.overhang, bodies, ...(shown < total ? { truncated: { shown, total } } : {}), ...(empty ? { empty } : {}) };
   },
 };

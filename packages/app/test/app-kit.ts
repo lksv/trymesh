@@ -118,7 +118,7 @@ const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 function sceneText(scene: SceneModel): string[] {
   const owner = (solid: unknown): string => scene.bodies.find((body) => body.solid === solid)?.id ?? '(a body that is not shown)';
   return [
-    `bodies: ${scene.bodies.map((body) => body.id).join(', ') || '(none)'}`,
+    `bodies: ${scene.bodies.map((body) => `${body.id}${body.color === undefined ? '' : ` ${hex(body.color)}`}${body.opacity === undefined ? '' : ` opacity ${body.opacity}`}`).join(', ') || '(none)'}`,
     ...(scene.clip ? [`clip: cut away above ${numbers(scene.clip.origin)} along ${numbers(scene.clip.normal)}`] : []),
     ...scene.lines.filter((set) => set.segments.length > 0).map((set) => `line ${hex(set.color)} width ${set.width}${set.dashed ? ' dashed' : ''}${set.onTop ? ' onTop' : ''}${set.overFills ? ' overFills' : ''}: ${digest(set.segments)}`),
     ...scene.points.filter((set) => set.positions.length > 0).map((set) => `points ${hex(set.color)} size ${set.size}: ${digest(set.positions)}`),
@@ -267,7 +267,7 @@ export async function startApp(): Promise<Harness> {
   const app = new App(engine, view);
 
   const lines: string[] = [];
-  const last: { features: Map<Id, string[]>; order: string; rest: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '' };
+  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}' };
   const region = (id: Region): string[] => Array.from((document.getElementById(id) as HTMLElement).childNodes).flatMap((child) => domText(child));
   const section = (title: string, changed: string[]): void => {
     if (changed.length) lines.push(`  ${title}:`, ...changed.map((line) => `    ${line}`));
@@ -293,6 +293,10 @@ export async function startApp(): Promise<Harness> {
     const rest = JSON.stringify({ parameters: doc.parameters, checks: doc.checks, settings: doc.settings, schemaVersion: doc.schemaVersion });
     if (rest !== last.rest) lines.push(`  document: ${rest}`);
     last.rest = rest;
+    // the body properties (D48), when they changed; a document without any says nothing
+    const properties = JSON.stringify(doc.bodyProperties);
+    if (properties !== last.properties) lines.push(`  bodyProperties: ${properties}`);
+    last.properties = properties;
     // what a user sees: only the parts that changed
     for (const id of ['toolbar', 'timeline', 'panel'] as const) {
       const now = region(id);

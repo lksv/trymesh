@@ -31,6 +31,7 @@ interface Document {
   parameters: Parameter[];                // named parameters, see Parameters and expressions
   checks: Check[];                        // expressions that are supposed to hold
   features: Feature[];                    // časová osa
+  bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
 }
 
 type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
@@ -210,3 +211,35 @@ An expression set by a command must evaluate against the parameter table at that
 **Write-back.** After `execute` and `load` the engine writes the substituted numbers into the document, for every feature type and regardless of whether a sketch solved, in the same undo step and through the same path as solved sketch variables. The cache entry is re-hung onto the new feature object. The number in the document is therefore always the last valid value, and a document saved with a broken expression loads again.
 
 **Checks** are evaluated in every recompute into `Evaluation.checks` (`ok`, `failed`, `error`). A failed check does not stop anything.
+
+### Body properties and the sections of the document (D48)
+
+A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism of 5a the second. A change of a section recomputes no geometry: no step of a feature reads one. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
+
+```ts
+type BodyUse = 'part' | 'reference' | 'auxiliary';
+interface BodyProperties {        // every field optional; an entry with no field is not stored
+  name?: string;                  // not inherited; non-empty, no leading or trailing space, at most 200 characters
+  color?: string;                 // '#rrggbb', stored in lower case
+  material?: string;              // a label, the rules of `name`
+  use?: BodyUse;                  // default 'part'
+  density?: number;               // g/cm3, (0, 25]; a numeric field
+  mass?: number;                  // g, above 0; a numeric field; wins over the density
+  expressions?: { density?: Expr; mass?: Expr };
+}
+```
+
+- **Keyed by body ID**, also a derived one (`screws/2`). The section is always present (`{}` when nothing is set); an entry with no field is removed, so "nothing set" has one spelling.
+- **The use** decides who reads a body: `part` is printed (the default); `reference` is a bought part (a motor): not printed, has a mass; `auxiliary` is no physical thing (kept-free space): neither printed nor weighed, still in the interference and gap queries. A reader that makes its own list of bodies (the print export `stl`, `exportMesh` and the tool `export_stl` without a list, the query `print` without `bodies`) takes the bodies with the use `part` (`printedBodies`); a body the caller lists is taken as listed.
+- **A copy takes after its source.** A body made as a copy (a pattern of a body) inherits what its own entry does not state: colour, material, use, and the density and the mass **as a pair** (an entry that states either inherits neither, so a copy in another material is weighed by its own density). The name is not inherited. The source is a fact of the document: the registry of feature types has `bodySource(feature, local)` (a pattern of a body answers with its source; a later mirror or split sets its own), followed recursively and stopped at a body seen already.
+- **An entry whose body is gone stays** (a removed or suppressed feature, a lower count of a pattern) and is taken over by a body that appears under its ID. `bodyPropertiesWithoutBody(section, result)` lists such entries (get_model, the app); `removeBodyProperties` removes one. To keep a reused ID visible, the generators of IDs (`freshIds`, `newId` of the app) count every ID a section names as used (`namedBySections`: the feature of every key, a derived key with its feature), and `takenOver(before, command)` lists the features and sketch entities a command adds under such an ID (execute of MCP and the status line of the app say it).
+- **Strict entries.** The validator lists the fields it allows and refuses any other, on a command and on a load; a later package can add a field without an upgrade step, because a build without it refuses the document. A key is checked on a load for its form only (a text whose part before the first slash could be an ID).
+- **Numeric fields of an entry** follow the rule of a numeric field of a feature (`sections/fields.ts`, through `Fields`): the field holds the last valid number, the expression is in `expressions` of the entry under the field name; a command takes a number or an expression; the recompute evaluates; after `execute` and `load` the engine writes the numbers back in the same undo step; `renameParameter` rewrites them. An error of a command names the field by `<body>/<field>` in `error.expression.path`.
+
+**Commands.** `setBodyProperties { body, patch }` merges a patch (`null` removes a field, a number in a numeric field removes its expression, a string sets one); `setBodyMaterial { body, material }` copies a row of the catalog `materials`: its key as the label and its density as a number (the expression goes, the mass stays); `removeBodyProperties { body }` removes an entry, also of a body that is gone. The body of the first two must be one a feature of the document can create (`bodyProblem` in `features/index.ts`: the feature exists and `createsBody` says yes); the order on the timeline is not asked.
+
+**The result** is `Evaluation.bodyProperties`, by body of the state (`BodyPropertiesResult`): the name (own, else that of the feature, a copy with ` / <number>`), colour, material, use, density, mass with `massFrom`, the nearest source `from`, and `fieldErrors` of the pair used. The mass: none for an auxiliary body; the stated mass; else density × volume / 1000; none when neither is stated or the one used is in error (nothing steps in for a field in error). A result equal to one of the last few of the same body (a preview in between does not push it out) is the same object.
+
+**The registry of sections** (`sections/index.ts`, `DOCUMENT_SECTIONS`) is typed by the fields of `Document` that are sections, so a section added to the type without an entry does not compile. An entry (`SectionSpec`, `sections/spec.ts`) has its description (`SECTION_INFO`: title, summary, commands, numeric fields, read by `describe_api`), the empty section, the validation on a load, its commands, the rename of a parameter, the IDs it names and its evaluation after the timeline. `emptyDocument`, `validateDocument`, the default case of `applyCommand`, `renameParameter`, `differs` and `settle` of the engine and `Evaluator.evaluate` ask it.
+
+**The catalog of materials** (`catalogs/materials.ts`, `DATA_CATALOGS.materials`): PLA, PETG, ABS, ASA, TPU and PC with the density of the solid material in g/cm3 from the technical data sheet of Prusament, and of Bambu Lab where Prusament does not make the material (ABS); each row names its sheet in `source`. A printed part is lighter, so a mass from these is an upper bound until the density of the body is corrected or its mass weighed. PA12 has no row (no unfilled PA12 from either maker).

@@ -147,12 +147,12 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     {
       name: 'export_stl',
       description:
-        'Saves bodies of the model as binary STL. By default all bodies go into the one file `path`, which is overwritten. `bodies` chooses the bodies. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written.',
+        'Saves bodies of the model as binary STL. By default the printed bodies (use `part` of the body properties; not the reference and auxiliary bodies) go into the one file `path`, which is overwritten. `bodies` chooses the bodies, whatever their use. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written.',
       inputSchema: {
         type: 'object',
         properties: {
           path: { type: 'string', description: 'path of the .stl file, or of the directory with `perBody`' },
-          bodies: { type: 'array', items: { type: 'string' }, description: 'body IDs; all bodies by default' },
+          bodies: { type: 'array', items: { type: 'string' }, description: 'body IDs; the printed bodies by default' },
           perBody: { type: 'boolean', description: 'one file per body in the directory `path`' },
           overwrite: { type: 'boolean', description: 'with `perBody`: replace files that already exist' },
         },

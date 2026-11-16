@@ -18,6 +18,9 @@ export interface SceneHost extends PanelHost {
   readonly hover?: ViewPick; // under the pointer in the model
 }
 
+// An auxiliary body (kept-free space, an envelope) is drawn see-through.
+export const AUXILIARY_OPACITY = 0.35;
+
 // The box of what a state shows: its bodies and the points of its sketches. An empty model has
 // a box of 40 mm, and a small one is padded to it, so that the view does not zoom in further.
 const BOXES = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
@@ -102,7 +105,9 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
   const outline: number[] = [];
   for (const [id, body] of Object.entries(evaluation.bodies)) {
     if (host.bodyHidden(id)) continue;
-    model.bodies.push({ id, solid: body.solid });
+    // a body in the colour of its properties, an auxiliary body translucent (D48)
+    const properties = Object.prototype.hasOwnProperty.call(evaluation.bodyProperties, id) ? evaluation.bodyProperties[id] : undefined;
+    model.bodies.push({ id, solid: body.solid, ...(properties?.color ? { color: Number.parseInt(properties.color.slice(1), 16) } : {}), ...(properties?.use === 'auxiliary' ? { opacity: AUXILIARY_OPACITY } : {}) });
     for (const edge of body.edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) outline.push(edge.segments[i]);
     // the faces of the selected extrusion, or of the copies the selected pattern made
     const owns = highlighted && inModel ? uiOf(highlighted.type).ownsFace : undefined;

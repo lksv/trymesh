@@ -275,6 +275,8 @@ function placedOf(context: QueryContext, orientation: Orientation, index: number
 
 export const print: QuerySpec<typeof PRINT_ARGS, PrintReport> = {
   title: 'Print check',
+  // a part is printed as it is modelled, whatever pose the mechanism holds (D49)
+  geometry: 'modelled',
   summary:
     'How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.',
   returns:

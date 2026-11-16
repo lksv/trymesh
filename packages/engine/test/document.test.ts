@@ -406,7 +406,7 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.schemaVersion = 0), /the schema version 0 is not a version of the document/);
     bad((d) => delete d.schemaVersion, /the schema version undefined is not a version of the document/);
     bad((d) => (d.schemaVersion = '3'), /the schema version "3" is not a version of the document/);
-    bad((d) => (d.schemaSteps = ['5a-mechanism']), /this build has no upgrade step "5a-mechanism" after version 5/);
+    bad((d) => (d.schemaSteps = ['5b-export']), /this build has no upgrade step "5b-export" after version 5/);
     bad((d) => (d.settings.chordTolerance = 0), /musí být kladná/);
     bad((d) => (d.features[0].curves.l1.b = 'p9'), /není vlastní bod/);
     bad((d) => (d.features[0].points.p1.x = null), /konečné číslo/);

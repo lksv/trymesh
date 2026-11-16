@@ -261,7 +261,9 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       }
       if (name.startsWith('_')) return reply(`neznámý nástroj "${name}"`, true);
       const outcome = await call(bridge?.session(), name, args);
-      return outcome.ok ? reply(outcome.result) : reply(outcome.error, true);
+      if (!outcome.ok) return reply(outcome.error, true);
+      // a note beside the result (the pose a query answered for, D49) is a second text
+      return outcome.about === undefined ? reply(outcome.result) : { content: [...reply(outcome.result).content, { type: 'text' as const, text: print(outcome.about) }] };
     } catch (error) {
       if (error instanceof Failure) return reply(error.message, true);
       return reply(`nástroj ${name} selhal: ${error instanceof Error ? error.message : String(error)}`, true);

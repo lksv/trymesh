@@ -89,9 +89,16 @@ export function checkInterferenceOptions(bodies: Record<Id, BodyResult>, chosen:
   for (const id of (chosen as Id[] | undefined) ?? []) if (!has(bodies, id)) throw new Error(`interference: the body "${id}" does not exist`);
 }
 
+// Boxes that do not overlap (touching counts as apart): the two bodies share no volume.
+export const boxesApart = (a: BodyResult['bounds'], b: BodyResult['bounds']): boolean => [0, 1, 2].some((axis) => a.max[axis] <= b.min[axis] || b.max[axis] <= a.min[axis]);
+
 // The report over the bodies of one state. `chosen`: the bodies to check, all without a list.
-// `shared` answers for one pair; the caller keeps its answers by the two meshes, so that after
-// a change of the model only the pairs with a changed body go to the kernel again.
+// `pair` hands out the two bodies a pair is computed from: with a mechanism (D49) the first one as
+// modelled and the second in its frame, so that the boxes that reject a pair, the precision of the
+// coordinates and the meshes do not depend on where the pair stands; or nothing for a pair it
+// rejected already by boxes that hold the two bodies (it then builds no moved mesh). `shared` answers for one pair;
+// the caller keeps its answers by the two meshes, so that after a change of the model only the
+// pairs with a changed body go to the kernel again.
 // - A pair is reported when the volume of its intersection is above the threshold; `a` is the
 //   smaller ID in string order. Pairs come in the order of the bodies in the model.
 // - A volume no deeper than the precision of the coordinates is noise of flush faces, not
@@ -102,16 +109,23 @@ export function checkInterferenceOptions(bodies: Record<Id, BodyResult>, chosen:
 //   face next to it explains; otherwise it is a collision: see InterferenceReport.
 // - A pair the kernel failed on is in `failed`, neither colliding nor clear.
 // - Boxes that do not overlap need no kernel: the volume is zero.
-export function interferenceReport(bodies: Readonly<Record<Id, BodyResult>>, chosen: readonly Id[] | undefined, threshold: number, tolerance: number, shared: (a: BodyResult, b: BodyResult) => SharedVolume): InterferenceReport {
+export function interferenceReport(
+  bodies: Readonly<Record<Id, unknown>>,
+  chosen: readonly Id[] | undefined,
+  threshold: number,
+  tolerance: number,
+  pair: (a: Id, b: Id) => { a: BodyResult; b: BodyResult } | undefined,
+  shared: (a: BodyResult, b: BodyResult) => SharedVolume,
+): InterferenceReport {
   const wanted = chosen === undefined ? undefined : new Set(chosen);
   const ids = Object.keys(bodies).filter((id) => wanted === undefined || wanted.has(id));
   const report: InterferenceReport = { pairs: [], fits: [], failed: [], checked: 0 };
-  const apart = (a: BodyResult, b: BodyResult): boolean => [0, 1, 2].some((axis) => a.bounds.max[axis] <= b.bounds.min[axis] || b.bounds.max[axis] <= a.bounds.min[axis]);
   for (let i = 0; i < ids.length; i++) {
     for (let j = i + 1; j < ids.length; j++) {
       const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
       report.checked++;
-      const result = apart(bodies[a], bodies[b]) ? NOTHING : shared(bodies[a], bodies[b]);
+      const computed = pair(a, b);
+      const result = !computed || boxesApart(computed.a.bounds, computed.b.bounds) ? NOTHING : shared(computed.a, computed.b);
       if ('message' in result) report.failed.push({ a, b, message: result.message });
       else if (result.volume > threshold && result.depth > result.slack) {
         const fit = result.round && result.planar <= result.slack && result.depth <= tolerance + result.slack;

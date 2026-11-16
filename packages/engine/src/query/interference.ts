@@ -1,7 +1,8 @@
 // The query `interference`: which bodies share a volume (D35, point 5).
-import { INTERFERENCE_THRESHOLD, interferenceReport, sharedBy } from '../interference';
+import { INTERFERENCE_THRESHOLD, boxesApart, interferenceReport, sharedBy } from '../interference';
 import type { InterferenceReport } from '../types';
 import type { ArgSpecs } from './args';
+import { boxOf, framed } from './pose';
 import type { QuerySpec } from './spec';
 
 export const INTERFERENCE_ARGS = {
@@ -25,9 +26,18 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
   significant: { volume: 6, depth: 4 },
   units: { volume: 'mm3', depth: 'mm' },
   // What a pair shares is kept by its two meshes: after a change of the model only the pairs with
-  // a changed body go to the kernel again.
+  // a changed body go to the kernel again. In a pose a pair is computed in the frame of its first
+  // body (the smaller ID), so the pairs a step of a sweep did not move are found again.
   run: (context, { bodies, threshold }) => {
     const tolerance = context.state.document.settings.chordTolerance;
-    return interferenceReport(context.bodies, bodies, threshold, tolerance, (a, b) => context.memo([a.solid, b.solid], 'shared', () => sharedBy(context.kernel, a, b, tolerance)));
+    return interferenceReport(
+      context.bodies,
+      bodies,
+      threshold,
+      tolerance,
+      // boxes that hold the two posed bodies and do not meet: no moved mesh is built for the pair
+      (a, b) => (boxesApart(boxOf(context.bodies, a), boxOf(context.bodies, b)) ? undefined : framed(context.bodies, a, b)),
+      (a, b) => context.memo([a.solid, b.solid], 'shared', () => sharedBy(context.kernel, a, b, tolerance)),
+    );
   },
 };

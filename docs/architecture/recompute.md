@@ -20,6 +20,7 @@ interface Evaluation {
   parameters: Record<string, ParameterResult>;   // values and errors of parameters
   checks: Record<string, CheckResult>;           // 'ok' | 'failed' | 'error' by check name
   bodyProperties: Record<Id, BodyPropertiesResult>;   // by body of the state (D48), see the document
+  mechanism: MechanismResult;                         // the mechanism resolved against this state (D49), see the document
 }
 
 interface BodyResult {
@@ -70,7 +71,7 @@ interface FeatureResult {
 - Feature ve stavu `error` se chová jako prázdná operace a přehrávání pokračuje. Co na ní závisí, skončí také v chybě.
 - Feature ve stavu `warning` výsledek má a závislé features s ním pracují normálně.
 - Potlačená feature (`suppressed`) se chová jako prázdná operace, stejně jako feature v chybě. Co na ní závisí, skončí v `brokenReference`, promítnutí v `brokenProjection`.
-- **The sections of the document** (body properties, D48) are evaluated after the timeline, with the parameters and the checks (`evaluateSections`): from the document, the bodies of the state and the environment of the parameters. Nothing in the timeline is recomputed for a change of one. `Evaluator.evaluate` returns, next to the write-backs of features, the sections whose numbers of expressions changed (`sections`), and `settle` of the engine puts them into the document in the same undo step. The last few results of every key are kept, so an equal result is the same object, also after a preview in between.
+- **The sections of the document** (body properties, D48; the mechanism, D49) are evaluated after the timeline, with the parameters and the checks (`evaluateSections`): from the document, the bodies of the state, the environment of the parameters and the state of the recompute (the sketches, for the axis of a joint). The mechanism of a state after a feature (`at`) is resolved against that state: a body not made yet is missing, a joint whose axis comes later is in error there. Nothing in the timeline is recomputed for a change of one. `Evaluator.evaluate` returns, next to the write-backs of features, the sections whose numbers of expressions changed (`sections`), and `settle` of the engine puts them into the document in the same undo step. The last few results of every key are kept, so an equal result is the same object, also after a preview in between.
 - `upTo` ukončí přehrávání u zadané feature. Náhled při úpravě feature uprostřed logu tak nepočítá nic za ní.
 
 **Tabulka čísel stěn.** Čísla stěn jsou součástí memoizovaného stavu, ne vlastností jednoho běhu. Stav po každé feature nese tabulku jmen; feature, která vytváří nové stěny, přidá jejich jména na konec tabulky předchozího stavu. Číslo stěny je tak funkcí začátku logu a sedí i tehdy, když se začátek bere z cache. Tabulka je jedna společná pro všechna tělesa, čísla se neukládají do dokumentu.

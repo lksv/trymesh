@@ -13,7 +13,7 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0
 
 describe('the camera of a picture', () => {
   it('the named views: what is to the right and what is up in the picture', () => {
-    const basis = (name: keyof typeof VIEWS) => fittedCamera(VIEWS[name].from, VIEWS[name].up, [BLOCK], 800, 600);
+    const basis = (name: keyof typeof VIEWS) => fittedCamera(VIEWS[name].from, VIEWS[name].up, [{ solid: BLOCK }], 800, 600);
     // front is seen from −Y with X to the right; back from +Y, so X runs to the left
     expect(basis('front')).toMatchObject({ right: near([1, 0, 0]), up: near([0, 0, 1]), back: near([0, -1, 0]) });
     expect(basis('back')).toMatchObject({ right: near([-1, 0, 0]), up: near([0, 0, 1]), back: near([0, 1, 0]) });
@@ -38,22 +38,30 @@ describe('the camera of a picture', () => {
 
   it('fitted to the bodies: their middle in the middle of the picture, a twentieth of margin on the tighter side', () => {
     // from the front the block is 40 wide and 10 high: the width decides in a picture of 800 by 600
-    const front = fittedCamera(VIEWS.front.from, VIEWS.front.up, [BLOCK], 800, 600);
+    const front = fittedCamera(VIEWS.front.from, VIEWS.front.up, [{ solid: BLOCK }], 800, 600);
     expect(front.center).toEqual(near([30, 10, 5]));
     expect(front.scale).toBeCloseTo(40 / (800 * 0.9), 12);
     // in a picture that is narrow the same; in one that is flat the height decides
-    expect(fittedCamera(VIEWS.front.from, VIEWS.front.up, [BLOCK], 100, 600).scale).toBeCloseTo(40 / 90, 12);
-    expect(fittedCamera(VIEWS.front.from, VIEWS.front.up, [BLOCK], 1600, 64).scale).toBeCloseTo(10 / (64 * 0.9), 12);
+    expect(fittedCamera(VIEWS.front.from, VIEWS.front.up, [{ solid: BLOCK }], 100, 600).scale).toBeCloseTo(40 / 90, 12);
+    expect(fittedCamera(VIEWS.front.from, VIEWS.front.up, [{ solid: BLOCK }], 1600, 64).scale).toBeCloseTo(10 / (64 * 0.9), 12);
     // from above: 40 by 20
-    const top = fittedCamera(VIEWS.top.from, VIEWS.top.up, [BLOCK], 800, 600);
+    const top = fittedCamera(VIEWS.top.from, VIEWS.top.up, [{ solid: BLOCK }], 800, 600);
     expect(top.scale).toBeCloseTo(Math.max(40 / 720, 20 / 540), 12);
     // several bodies: the box of all of them
     const far: Solid = { ...BLOCK, positions: Float32Array.from([-30, 0, 0, -30, 0, 40]) };
-    const both = fittedCamera(VIEWS.front.from, VIEWS.front.up, [BLOCK, far], 800, 600);
+    const both = fittedCamera(VIEWS.front.from, VIEWS.front.up, [{ solid: BLOCK }, { solid: far }], 800, 600);
     expect(both.center).toEqual(near([10, 10, 20]));
     expect(both.scale).toBeCloseTo(Math.max(80 / 720, 40 / 540), 12);
     // the direction may have any length
-    expect(fittedCamera([0, -7, 0], [0, 0, 3], [BLOCK], 800, 600)).toEqual(front);
+    expect(fittedCamera([0, -7, 0], [0, 0, 3], [{ solid: BLOCK }], 800, 600)).toEqual(front);
+  });
+
+  it('a body in a pose (D49) is fitted where its transform puts it', () => {
+    // the block turned a quarter about Z and shifted by 100 along X: from above it lies across, 20 by 40
+    const turned = { matrix: [[0, -1, 0], [1, 0, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3], translation: [100, 0, 0] as Vec3 };
+    const top = fittedCamera(VIEWS.top.from, VIEWS.top.up, [{ solid: BLOCK, transform: turned }], 800, 600);
+    expect(top.center).toEqual(near([90, 30, 5]));
+    expect(top.scale).toBeCloseTo(Math.max(20 / 720, 40 / 540), 12);
   });
 
   it('nothing to draw is a box of 40 mm about the origin; a point still has a scale', () => {
@@ -61,9 +69,9 @@ describe('the camera of a picture', () => {
     expect(empty.center).toEqual(near([0, 0, 0]));
     expect(empty.scale).toBeCloseTo(40 / 540, 12);
     const none: Solid = { positions: new Float32Array(), triangles: new Uint32Array(), faceIds: new Uint32Array() };
-    expect(fittedCamera(VIEWS.iso.from, VIEWS.iso.up, [none], 800, 600)).toEqual(empty);
+    expect(fittedCamera(VIEWS.iso.from, VIEWS.iso.up, [{ solid: none }], 800, 600)).toEqual(empty);
     const point: Solid = { ...none, positions: Float32Array.from([5, 6, 7]) };
-    const dot = fittedCamera(VIEWS.top.from, VIEWS.top.up, [point], 800, 600);
+    const dot = fittedCamera(VIEWS.top.from, VIEWS.top.up, [{ solid: point }], 800, 600);
     expect(dot.center).toEqual(near([5, 6, 7]));
     expect(dot.scale).toBe(1e-6);
   });

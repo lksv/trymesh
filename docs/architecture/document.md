@@ -32,6 +32,7 @@ interface Document {
   checks: Check[];                        // expressions that are supposed to hold
   features: Feature[];                    // časová osa
   bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
+  mechanism: Mechanism;                          // a section of the document, see The mechanism (D49)
 }
 
 type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;   // a hole: hole.md (D46)
@@ -214,7 +215,7 @@ An expression set by a command must evaluate against the parameter table at that
 
 ### Body properties and the sections of the document (D48)
 
-A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism of 5a the second. A change of a section recomputes no geometry: no step of a feature reads one. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
+A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism (D49) the second. A change of a section recomputes no geometry: no step of a feature reads one. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
 
 ```ts
 type BodyUse = 'part' | 'reference' | 'auxiliary';
@@ -240,6 +241,42 @@ interface BodyProperties {        // every field optional; an entry with no fiel
 
 **The result** is `Evaluation.bodyProperties`, by body of the state (`BodyPropertiesResult`): the name (own, else that of the feature, a copy with ` / <number>`), colour, material, use, density, mass with `massFrom`, the nearest source `from`, and `fieldErrors` of the pair used. The mass: none for an auxiliary body; the stated mass; else density × volume / 1000; none when neither is stated or the one used is in error (nothing steps in for a field in error). A result equal to one of the last few of the same body (a preview in between does not push it out) is the same object.
 
-**The registry of sections** (`sections/index.ts`, `DOCUMENT_SECTIONS`) is typed by the fields of `Document` that are sections, so a section added to the type without an entry does not compile. An entry (`SectionSpec`, `sections/spec.ts`) has its description (`SECTION_INFO`: title, summary, commands, numeric fields, read by `describe_api`), the empty section, the validation on a load, its commands, the rename of a parameter, the IDs it names and its evaluation after the timeline. `emptyDocument`, `validateDocument`, the default case of `applyCommand`, `renameParameter`, `differs` and `settle` of the engine and `Evaluator.evaluate` ask it.
+**The registry of sections** (`sections/index.ts`, `DOCUMENT_SECTIONS`) is typed by the fields of `Document` that are sections, so a section added to the type without an entry does not compile. An entry (`SectionSpec`, `sections/spec.ts`) has its description (`SECTION_INFO`: title, summary, commands, numeric fields, read by `describe_api`), the empty section, the validation on a load, its commands, the rename of a parameter, the IDs it names and its evaluation after the timeline. `emptyDocument`, `validateDocument`, the default case of `applyCommand`, `renameParameter`, `differs` and `settle` of the engine and `Evaluator.evaluate` ask it. `evaluate` gets the state of the recompute as well (D49: an axis through a sketch point reads the frames and points of the sketches), and an entry may name top-level keys of its result whose records are kept stable entry by entry (`entries`).
 
 **The catalog of materials** (`catalogs/materials.ts`, `DATA_CATALOGS.materials`): PLA, PETG, ABS, ASA, TPU and PC with the density of the solid material in g/cm3 from the technical data sheet of Prusament, and of Bambu Lab where Prusament does not make the material (ABS); each row names its sheet in `source`. A printed part is lighter, so a mass from these is an upper bound until the density of the body is corrected or its mass weighed. PA12 has no row (no unfilled PA12 from either maker).
+
+### The mechanism (D49)
+
+The second section of the document: links (bodies that move as one piece) and joints between them, for a pose of the model and, later, for the export of a robot description (5b). The design and its reasons are [docs/d36/5a-mechanism/design.md](../d36/5a-mechanism/design.md).
+
+```ts
+interface Mechanism { links: Record<Id, Link>; joints: Record<Id, Joint> }   // always present, empty: { links: {}, joints: {} }
+interface Link { name?: string; bodies: Id[] }                               // a body in at most one link; a copy of a pattern is listed like any other
+type Joint = { name?: string; parent: Id; child: Id; expressions?: { value?: Expr; lower?: Expr; upper?: Expr } } & (
+  | { type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number }    // rad; the limits within ±2π
+  | { type: 'continuous'; axis: AxisRef; value: number }                                // rad, no limits
+  | { type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number }   // mm along the direction of the axis
+  | { type: 'fixed' }
+);
+```
+
+- **The model as modelled is the zero of every joint.** A value is a displacement from where the timeline puts the bodies: a turn by the right-hand rule about the direction of the axis (for a sketch point the normal of its sketch, as for a pattern), or a shift along it. No link has a stored placement. The axis is an `AxisRef` given as modelled; the joints nearer the root carry it along.
+- **Records by ID**, unique among the links and among the joints, by the rules of every ID; they do not share the namespace of the features (the link `forearm` holds the body `forearm`). A name follows the rules of a body name.
+- **What always holds**, on a command and on a load: a body is in at most one link, once; the parent and the child of a joint are links of the section and differ; a link is the child of at most one joint and no link hangs on itself. The joints form a forest: several roots are allowed (a mechanism being built, two arms on one table) and listed. `removeLink` is refused while a joint names the link.
+- **What may break later**, and is checked only by a command that sets it: a body of a link has to be one a feature of the document can create (`bodyProblem`, as for body properties; only bodies the link did not have); the sketch and the point of an axis (`axisRef` with `refContext(doc, doc.features.length)`: the target exists and is of the right kind; only an axis the joint did not have). Later the feature may be removed or suppressed (the link lists the body in `missing`), the sketch may go (the joint is in error). The IDs the section names (the feature of every body, the sketch and the point of every axis, and the projected entity of a derived point such as `x1` of `x1/center`) are counted as used by the generators of IDs and reported by `takenOver`.
+- **`value`, `lower` and `upper` are numeric fields** of an entry (`<joint>/value`), by the rule of body properties (`sections/fields.ts`). `JOINT_FIELDS` has their ranges by type.
+- **The limits** (lower not above upper, the value within them) are compared by a command with the numbers as they are for the document it is applied to: a field with an expression is evaluated against its parameters, also a field the command does not name, so a batch that widens a limit through a parameter and then poses within it passes. A field whose expression does not evaluate takes no part. "Within" has a tolerance, `LIMIT_TOLERANCE` (1e-4 rad, 1e-6 mm, the tolerances of the engine): a value outside by no more is the limit and is stored as the limit. A parameter may move any of the three later; a load does not ask, the recompute does.
+- **Strict entries.** The section, a link and a joint list the fields they allow, on a command and on a load; a field of a later package (the effort limit of 5b) is refused, not dropped.
+
+**Commands.** `setLink { id, name?, bodies? }` creates the link or changes the fields named (`bodies` replaces the list, `name: null` removes the name; a body in another link is refused: take it out there first, in the same batch); `removeLink { id }`; `setJoint { id, joint }` creates or replaces the whole joint in the input form (a string equal to the expression the field has is kept without evaluation, as in `updateFeature`; `expressions` of the input stand for their fields); `removeJoint { id }`; `setPose { values }` sets the values named (a number removes the expression of the value, a string sets one; a fixed joint has none). An error of an expression is addressed `<joint>/<field>`. A command that changes nothing returns the document as it was.
+
+**The result** is `Evaluation.mechanism` (`MechanismResult`), resolved after the timeline against the state the evaluation is of (the final one, or the one after `at`) and the parameters:
+
+- per link `bodies` (those the state has), `missing`, `transform` (a `RigidTransform` from as modelled to the pose; the identity for a root) and `blockedBy`; per joint `status`, `error`, `fieldErrors`, the numbers used, `axis` as modelled and `axisInPose` (carried by the parent link; absent while it is blocked); `roots`; `unassigned`, the bodies in no link (empty while there is no link).
+- `T(child) = T(parent) ∘ M`, with M the turn about the modelled axis by the value, the shift along it, or nothing for a fixed joint or a value of zero; in double precision from the modelled configuration every time.
+- **A joint in error** (reported in this order: `invalidExpression`, `jointLimits`, `jointOutOfLimits`, then `brokenReference` of its axis) has no motion and blocks what hangs on it: `blockedBy` names the nearest such joint, and the transform counts it as standing at zero (the app draws by it). The exception: a joint whose only fault is its axis and whose value is 0 moves nothing and blocks nothing, so a model whose pose is zero answers at every point of its timeline as before the mechanism.
+- **What is written back** (in the same undo step, like every numeric field): a limit whenever it is in the range of its field, also when the two then cross; a value its expression takes out of the limits is not written (it keeps its last valid number); a value within the tolerance outside a limit is written as the limit.
+- The results of links and joints are kept stable entry by entry (`entries` of the registry entry): a joint or a link whose result did not change is the same object.
+- `carriedBy(section, result, joint)`: the links beyond a joint, their bodies and their missing bodies. `poseOfBody(result, body)`: the transform of the link of a body, nothing for a body that stands as modelled, or the joint that blocks it. `poseNote(result, section)`: the joints that move the model (no fault, a value that is not zero, a child link not blocked) with their values. `setPose` with the expression the value already has keeps it without evaluation, as `setJoint` does.
+
+The bodies of the evaluation do not move: a feature that refers to a face, a sketch on a face, every export and `get_model` see the model as modelled. The pose reaches the queries through their context ([api.md](api.md), "The pose of a query (D49)").

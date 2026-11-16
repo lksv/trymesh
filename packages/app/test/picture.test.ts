@@ -1,6 +1,6 @@
 // A picture of the model (D43): what a request draws (the bodies in their colours, their edges,
 // the cut) and the button that saves a picture, over states written by hand. No view draws here.
-import type { EngineState, Frame, SectionResult, Solid } from '@trymesh/engine';
+import type { EngineState, Frame, MechanismResult, RigidTransform, SectionResult, Solid, Vec3 } from '@trymesh/engine';
 import type { ImageRequest, RenderedImage, ViewCapability } from '@trymesh/mcp/view-image';
 import { describe, expect, it } from 'vitest';
 import { COLOR } from '../src/draw';
@@ -98,6 +98,36 @@ describe('a body the cut leaves nothing of', () => {
     const state = stateOf(3, { b0: box([1, 0, 1], [2, 1, 2]), b1: box([-1, 0, -1], [2, 1, 2]), b2: box([-3, 0, 1], [-2, 1, 2.5]) });
     // b0 lies above the plane x + z = 0; b1 crosses it; the box of b2 reaches below it at (−3, 1)
     expect(pictureModel(request({ state, cut: { frame: lean, regions: [] } })).cutAway).toEqual(['b0']);
+  });
+});
+
+describe('a picture of a model in a pose (D49)', () => {
+  // a turn by a quarter about Z: x' = −y, y' = x
+  const QUARTER: RigidTransform = { matrix: [[0, -1, 0], [1, 0, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3], translation: [0, 0, 0] };
+  const IDENTITY: RigidTransform = { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as [Vec3, Vec3, Vec3], translation: [0, 0, 0] };
+  // b1 in a link that is turned, b0 in a root link, b2 in no link
+  const posed = (link: Partial<MechanismResult['links'][string]>): EngineState => {
+    const state = stateOf(3);
+    const mechanism: MechanismResult = { links: { base: { bodies: ['b0'], missing: [], transform: IDENTITY }, arm: { bodies: ['b1'], missing: [], transform: QUARTER, ...link } }, joints: {}, roots: ['base'], unassigned: ['b2'] };
+    return { evaluation: { ...state.evaluation, mechanism } } as unknown as EngineState;
+  };
+
+  it('a body of a moved link carries its transform, its edges and its box are moved; the others as modelled', () => {
+    const { model } = pictureModel(request({ state: posed({}) }));
+    expect(model.bodies).toEqual([{ solid: SOLIDS[0], color: PALETTE[0].color }, { solid: SOLIDS[1], color: PALETTE[1].color, transform: QUARTER }, { solid: SOLIDS[2], color: PALETTE[2].color }]);
+    // the edge of b1 from (0, −1, 1) to (0, 1, 1) turned: from (1, 0, 1) to (−1, 0, 1)
+    expect(Array.from(model.lines[0].segments).slice(6, 12)).toEqual([1, 0, 1, -1, 0, 1]);
+    // its box is turned too: as modelled at −3 ≤ x ≤ −1 and y > 0, turned to y' = x < 0, which a cut
+    // of y < 0 takes away whole
+    const state = posed({});
+    (state.evaluation.bodies as unknown as Record<string, { bounds: unknown }>).b1.bounds = { min: [-3, 1, 1], max: [-1, 2, 1] };
+    expect(pictureModel(request({ state, cut: { frame: FRAME, regions: [] } })).cutAway).toEqual(['b1']);
+    expect(pictureModel(request({ state, cut: { frame: FRAME, regions: [] } }), () => ({})).cutAway).toEqual([]);
+  });
+
+  it('a blocked link is drawn by its transform; another pose can be asked for, as the view of a sketch shows the model as modelled', () => {
+    expect(pictureModel(request({ state: posed({ blockedBy: 'elbow' }) })).model.bodies[1]).toEqual({ solid: SOLIDS[1], color: PALETTE[1].color, transform: QUARTER });
+    expect(pictureModel(request({ state: posed({}) }), () => ({})).model.bodies[1]).toEqual({ solid: SOLIDS[1], color: PALETTE[1].color });
   });
 });
 

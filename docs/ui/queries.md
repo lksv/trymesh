@@ -9,7 +9,8 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 | List the queries | | `QUERIES`: title and summary of every entry |
 | Fill in the arguments | UI state | the description of the arguments (`QUERIES[name].args`); bodies, features, sketches, faces and edges of the shown state for the lists |
 | Take a face, an edge or a plane selected in the view | UI state | the pick of the view |
-| Ask | `engine.query(name, args, { at })` | the outcome: the result, or the code, the message and the path of the argument |
+| Ask | `engine.query(name, args, { at })`; with *As modelled* ticked also `geometry: 'modelled'` (D49) | the outcome: the result, or the code, the message and the path of the argument |
+| Offer *As modelled* | | `evaluation.mechanism` of the shown state: a link moved or blocked; `QUERIES[name].geometry` |
 | Show an answer | UI state | the result; `units` and `significant` of the entry; a view of the query when it has one |
 
 - **The menu.** In the model mode the toolbar has the menu *Queries…* with every query of the catalog of the engine by its title (the summary is the tooltip). A query needs nothing in the app to be there. The button *Collisions* stays and opens the query `interference`.
@@ -85,6 +86,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - The gap view was run in a browser on 2026-11-15 on a plate with a pin in a larger hole, a bar 2 mm beside it, a block flush with the bar and a block that reaches into the plate: the rows, the three kinds of a picked row, the limit of the list. What it showed: `± 0 mm` after the gap of two bodies of planar faces, which is now left out. A gap of half a millimetre is not seen at the size of the model; its label and the two highlighted faces show where it is.
 - Run in a browser on 2026-11-15 (the form of `measure`, of `interference` and of `section`, the lists, the picks in the view, a number out of its range, the marker moved). What it showed and the tests of the app could not: the tree was laid out as a row, the unit of a number wrapped under its field, an angle was rounded in radians before it was converted, and the sides of a body were listed under one label. All four are fixed.
 
+- **The pose (D49).** A query is asked about the state shown, so in the pose of the mechanism. While that state holds a pose (a link moved or blocked) the form has the checkbox *As modelled*: ticked, the query is asked with `geometry: 'modelled'`, and while its answer is shown the view shows the model as modelled too, so that what the answer highlights is where it was found; the status line says so. A query that always answers as modelled (the print check) has no checkbox but a line that says so, and its answer is shown on the model as modelled as well. A query about a body whose link is blocked fails, and the form shows the message of the engine, which names the joint and *as modelled* as the way out. See [mechanism.md](mechanism.md).
 - Not offered: asking over a preview or while a form of a feature is open (the model panel is not shown then), several answers at once, a question saved with the document.
 - The section view, not offered: a section by more than one plane, hatching and a colour per body, measuring inside the section, a click on the filled cut that selects its body, a step other than 1 mm, dragging the plane.
 - The gap view, not offered: a zoom to the picked gap, the gap of two groups of bodies, a sweep of a parameter.

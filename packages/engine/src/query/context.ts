@@ -2,8 +2,10 @@
 // recompute it came from.
 import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services';
 import type { State } from '../recompute/state';
+import { transformFrame, transformSurface } from '../solid';
 import type { Document, Evaluation, SolidKernel } from '../types';
 import { faceKey, has } from '../util';
+import { poseOf } from './pose';
 import { type QueryContext, QueryFailure } from './spec';
 
 // Results of queries kept for as long as all the objects they were computed from live. A result is
@@ -72,21 +74,31 @@ export interface ContextDeps {
 
 // The context of the query `name` over one state. `name` keeps the memoised results of different
 // queries apart.
-export function queryContext(name: string, evaluation: Evaluation, internals: Internals, deps: ContextDeps): QueryContext {
-  const { bodies, faceSurfaces, ...modelled } = evaluation;
+// - `geometry: 'modelled'`: the bodies as modelled, whatever the pose (an export, an entry of the
+//   catalog that says so, a caller who asks for it). Otherwise what belongs to a body is in the pose
+//   of the mechanism of the state (D49): `bodies`, `surface` and the frame of a face, each moved
+//   when it is read; reading a body whose pose is not known (a joint on its way has no motion)
+//   throws `QueryFailure('failed', …)` naming the joint.
+export function queryContext(name: string, evaluation: Evaluation, internals: Internals, deps: ContextDeps, geometry?: 'modelled'): QueryContext {
+  const { bodies: modelledBodies, faceSurfaces, ...modelled } = evaluation;
   const { state } = internals;
+  const pose = geometry === 'modelled' ? undefined : poseOf(internals.document.mechanism, evaluation.mechanism, modelledBodies);
+  const bodies = pose ? pose.bodies : modelledBodies;
   const problem = (code: string) => ({ problem: code === 'nonPlanarFace' ? ('nonPlanarFace' as const) : ('brokenReference' as const) });
   return {
     state: { document: internals.document, evaluation: modelled },
     bodies,
     surface(body, face) {
       const number = state.faceIds.get(faceKey(face));
-      if (number === undefined || !has(bodies, body) || !bodies[body].faces.some((own) => own.id === number)) return undefined;
-      return faceSurfaces[number];
+      if (number === undefined || !has(modelledBodies, body) || !modelledBodies[body].faces.some((own) => own.id === number)) return undefined;
+      const moved = pose?.transformOf(body);
+      return moved ? transformSurface(moved, faceSurfaces[number]) : faceSurfaces[number];
     },
     frame(ref) {
       const frame = frameOf(ref, state);
-      return typeof frame === 'string' ? problem(frame) : frame;
+      if (typeof frame === 'string') return problem(frame);
+      const moved = ref.kind === 'face' ? pose?.transformOf(ref.body) : undefined;
+      return moved ? transformFrame(moved, frame) : frame;
     },
     axis(ref) {
       const line = axisOf(ref, state);

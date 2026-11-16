@@ -396,3 +396,42 @@ input.invalid {
 .label.problem {
   color: var(--error);
 }
+
+/* the mechanism (D49): the tree of links and joints, the slider of a value */
+.mech-link,
+.mech-joint {
+  margin: 4px 0;
+}
+.mech-children {
+  margin-left: 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.mech-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mech-head .name {
+  flex: 1;
+  font-weight: 600;
+}
+.mech-joint > .mech-head .name {
+  font-weight: 500;
+}
+.mech-joint.error > .mech-head .name {
+  color: var(--error);
+}
+.mech-head button.link {
+  padding: 2px 0;
+}
+label.slider {
+  margin: 0 0 6px;
+}
+input.pose {
+  width: 100%;
+  padding: 0;
+}
+#status .pose {
+  color: var(--muted);
+}

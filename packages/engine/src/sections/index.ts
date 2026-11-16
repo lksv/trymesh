@@ -6,17 +6,19 @@
 // documents for undo and the recompute all ask the registry; a second section (the mechanism of
 // 5a) is one entry.
 import type { Environment } from '../expression';
+import type { State } from '../recompute/state';
 import type { BodyResult, Command, Document, Evaluation, Id } from '../types';
 import { has } from '../util';
 import { type Dict, isObject } from '../validation';
 import { bodyProperties } from './body-properties';
+import { mechanism } from './mechanism';
 import type { SectionInfo, SectionSpec } from './spec';
 
 export type SectionName = Exclude<keyof Document, 'schemaVersion' | 'schemaSteps' | 'settings' | 'parameters' | 'checks' | 'features'>;
 export type Sections = Pick<Document, SectionName>;
 export type SectionResults = Pick<Evaluation, SectionName>;
 
-export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties };
+export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism };
 
 const NAMES = Object.keys(DOCUMENT_SECTIONS) as SectionName[];
 // An entry as code that handles any section reads it.
@@ -54,29 +56,38 @@ export const sectionsDiffer = (a: Document, b: Document): boolean => NAMES.some(
 // after a feature in between does not push out the result of the document): a new result equal to
 // one of them is replaced by it, so that a result is the same object as long as what it is computed
 // from is the same.
+// The memory of a key whose entry is gone (a body removed, a link or a joint removed) is not dropped:
+// a state after a feature (`at`) or a preview that lacks the entry would otherwise push out the
+// results of the document. It grows with the IDs an engine has seen, each with at most
+// RESULTS_KEPT small results, and goes with the engine.
 export type KeptResults = Map<SectionName, Map<string, Map<string, unknown>>>;
 const RESULTS_KEPT = 4; // per key of a section, most recently used last
-export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {
+export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, state: State, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {
   const results: Record<string, unknown> = {};
   let written: Partial<Sections> | undefined;
   for (const name of NAMES) {
-    const evaluated = specOf(name).evaluate(doc[name], doc, bodies, environment);
+    const evaluated = specOf(name).evaluate(doc[name], doc, bodies, environment, state);
     let memory = kept.get(name);
     if (!memory) kept.set(name, (memory = new Map()));
     const result = evaluated.result as Record<string, unknown>;
+    const stableOf = (key: string, value: unknown): unknown => {
+      const text = JSON.stringify(value);
+      let known = (memory as Map<string, Map<string, unknown>>).get(key);
+      if (!known) (memory as Map<string, Map<string, unknown>>).set(key, (known = new Map()));
+      const found = known.get(text) ?? value;
+      known.delete(text);
+      known.set(text, found);
+      if (known.size > RESULTS_KEPT) known.delete(known.keys().next().value as string);
+      return found;
+    };
+    const nested = specOf(name).entries ?? [];
     const stable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(result)) {
-      const text = JSON.stringify(value);
-      let known = memory.get(key);
-      if (!known) memory.set(key, (known = new Map()));
-      const found = known.get(text);
-      stable[key] = found ?? value;
-      known.delete(text);
-      known.set(text, stable[key]);
-      if (known.size > RESULTS_KEPT) known.delete(known.keys().next().value as string);
+      const entries = nested.includes(key) && isObject(value) ? Object.fromEntries(Object.entries(value).map(([inner, item]) => [inner, stableOf(`${key}\u0000${inner}`, item)])) : value;
+      stable[key] = stableOf(key, entries);
     }
     results[name] = stable;
-    if (evaluated.written !== undefined) (written ??= {})[name] = evaluated.written as Sections[typeof name];
+    if (evaluated.written !== undefined) (written ??= {})[name] = evaluated.written as never;
   }
   return { results: results as unknown as SectionResults, ...(written ? { written } : {}) };
 }

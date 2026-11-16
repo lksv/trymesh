@@ -77,6 +77,13 @@ export interface QuerySpec<S, Result> {
   // for a program. A generic form shows an angle in degrees and writes the unit after a number;
   // a number under a key that is not listed is shown bare.
   units?: ResultUnits;
+  // What the query reads of the geometry of bodies (D49). Without it: the bodies in the pose of the
+  // state asked about. `modelled`: it always computes from the model as modelled, whatever pose the
+  // mechanism holds; its context is the one an export gets (the print query: a part is printed as
+  // it is modelled). `none`: it reads no geometry of bodies (a catalog, a sketch, the mechanism
+  // itself); it gets the context of the model as modelled too, and a tool says nothing of a pose
+  // beside its answer.
+  geometry?: 'modelled' | 'none';
   // A property, not a method, so that its parameter is checked strictly against the map below.
   // A query that builds on another calls its `run` with the same context.
   // - It does not throw for what its caller can cause. For what only the computation finds out it
@@ -94,6 +101,7 @@ export interface AnyQuery {
   args: ArgSpecs;
   significant?: { readonly [key: string]: number };
   units?: ResultUnits;
+  geometry?: 'modelled' | 'none';
   run: (context: QueryContext, args: never) => unknown;
 }
 

@@ -42,6 +42,9 @@ export { SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES, type UpgradeStep } from './sc
 export { DOCUMENT_SECTIONS, SECTION_INFO, type SectionName, namedBySections, takenOver } from './sections/index';
 export type { SectionFieldSpec, SectionInfo } from './sections/spec';
 export { DENSITY, MASS, bodyPropertiesWithoutBody, printedBodies } from './sections/body-properties';
+export { type Carried, JOINT_FIELDS, LIMIT_TOLERANCE, type PoseNote, carriedBy, poseNote, poseOfBody } from './sections/mechanism';
+export { MECHANISM_ARGS, type MechanismAnswer } from './query/mechanism';
+export { pairInFrame } from './query/pose';
 export type { MaterialRow } from './catalogs/materials';
 export { CONSTRAINTS, type Bound, type ConstraintSpec, type EntityKind, type FieldSpec, type NumberSpec, type OperandSpec, type Unit, checkNumber, rangeText } from './catalog';
 export { GENERATORS, type FlagSpec, type GeneratorSpec, type ParamSpec, isFlag } from './generators';

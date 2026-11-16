@@ -5,7 +5,8 @@ import { h } from '../dom';
 import { valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { bodyName } from '../issue-text';
-import { type AxisKind, type PatternChange, type PatternChoices, type PatternSpan, axisKind, changePattern, draftCommand, patternIncomplete, patternSource } from '../sketch-commands';
+import { axisRows } from '../axis-picker';
+import { type PatternChange, type PatternChoices, type PatternSpan, changePattern, draftCommand, patternIncomplete, patternSource } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 
 // What the form remembers beyond the draft.
@@ -13,8 +14,6 @@ interface Extra {
   angle?: PatternSpan; // the angle span the draft had last, to return to from the full circle
 }
 type PatternMode = DraftMode<PatternFeature, Extra>;
-
-const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
 
 // What a pattern at this place of the timeline can repeat and turn around.
 function patternChoices(host: PanelHost, index: number): PatternChoices {
@@ -69,21 +68,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
       h('p', { className: 'hint' }, 'The copies are new bodies; what is added to the source after the pattern is not copied.'),
     );
   }
-  out.push(select('Axis', (value) => set({ axis: value as AxisKind }), ...(Object.keys(AXES) as AxisKind[]).map((kind) => option(kind, AXES[kind], kind === axisKind(axis)))));
-  if (axis.kind === 'sketchPoint') {
-    const sketch = host.feature(axis.sketch);
-    const points = sketch?.type === 'sketch' && choices.sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
-    out.push(
-      select(
-        'Sketch',
-        (value) => set({ sketch: value }),
-        ...choices.sketches.map((id) => option(id, host.nameOf(id), id === axis.sketch)),
-        choices.sketches.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)} (missing)`, true),
-      ),
-      select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),
-      h('p', { className: 'hint' }, 'The axis is the normal of the sketch plane through the point.'),
-    );
-  } else if (choices.sketches.length === 0) out.push(h('p', { className: 'hint' }, 'An axis through a point needs a sketch before this place of the timeline.'));
+  out.push(...axisRows(host, axis, choices.sketches, set, 'An axis through a point needs a sketch before this place of the timeline.'));
   out.push(
     draftField(host, m, 'Count with the original (a whole number or an expression)', 'transform/count', (count) => set({ count }, false)),
     select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),

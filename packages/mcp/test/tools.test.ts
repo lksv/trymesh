@@ -790,6 +790,82 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('setBodyMaterial (it copies the density, do not type a density from memory)');
   });
 
+  it('the mechanism (D49): get_model, the problems, a query in the pose with the note beside it, a blocked body, as modelled', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
+    const plate = (id: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start, distance: 10 }, operation: 'new' } });
+    // two plates of 40 × 30 stacked, the upper one turns about the vertical axis through the corner (40, 30)
+    execute(engine, { type: 'batch', commands: [plate('e', 0), plate('f', 10), plate('g', 30), sketch('axes'), { type: 'addPoint', sketch: 'axes', id: 'pivot', x: 40, y: 30 }, { type: 'addConstraint', sketch: 'axes', id: 'pin', constraint: { type: 'fixed', point: 'pivot', x: 40, y: 30 } }] });
+    let answer = execute(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setLink', id: 'base', bodies: ['e'] },
+        { type: 'setLink', id: 'arm', name: 'Arm', bodies: ['f'] },
+        { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 'axes', point: 'pivot' }, lower: 'deg(-180)', upper: 'deg(180)', value: 0 } },
+      ],
+    });
+    expect(answer.bodiesInNoLink).toEqual(['g']);
+    const model = ok(engine, 'get_model');
+    expect(model.mechanism).toEqual({
+      links: [
+        { id: 'base', bodies: ['e'] },
+        { id: 'arm', name: 'Arm', bodies: ['f'] },
+      ],
+      joints: [{ id: 'turn', type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 'axes', point: 'pivot' }, lower: -3.141593, upper: 3.141593, value: 0, expressions: { lower: 'deg(-180)', upper: 'deg(180)' } }],
+    });
+    expect(model.bodiesInNoLink).toEqual(['g']);
+    // a limit read from get_model is accepted as a value (the tolerance is wider than the rounding)
+    expect(callTool(engine, 'preview', { command: { type: 'setPose', values: { turn: model.mechanism.joints[0].upper } } }).ok).toBe(true);
+
+    // a query in a pose that is not written: the answer is posed and the note says for which pose
+    const bent = callTool(engine, 'query', { query: 'body', args: { body: 'f' }, after: { type: 'setPose', values: { turn: 'deg(90)' } } });
+    if (!bent.ok) throw new Error(bent.error);
+    expect(bent.about).toEqual({ pose: { turn: 1.570796 } });
+    expect((bent.result as any).bounds).toEqual({ min: [40, -10, 10], max: [70, 30, 20] });
+    const modelled = callTool(engine, 'query', { query: 'body', args: { body: 'f' }, after: { type: 'setPose', values: { turn: 'deg(90)' } }, geometry: 'modelled' });
+    expect(modelled.ok && [modelled.about, (modelled.result as any).bounds]).toEqual([undefined, { min: [0, 0, 10], max: [40, 30, 20] }]);
+    expect(callTool(engine, 'query', { query: 'body', args: { body: 'f' } })).not.toHaveProperty('about');
+    expect(callTool(engine, 'query', { query: 'body', args: { body: 'f' }, geometry: 'posed' })).toEqual({ ok: false, error: 'argument "geometry": "modelled" or nothing is expected' });
+    const beyond = ok(engine, 'query', { query: 'mechanism', args: { beyond: 'turn' } });
+    expect(beyond.beyond).toEqual({ joint: 'turn', links: ['arm'], bodies: ['f'], missing: [] });
+
+    // written: get_body and check_interference answer in the pose with the note; get_model stays as modelled
+    execute(engine, { type: 'setPose', values: { turn: 'deg(90)' } });
+    const body = callTool(engine, 'get_body', { body: 'f' });
+    expect(body.ok && [body.about, (body.result as any).min, (body.result as any).max]).toEqual([{ pose: { turn: 1.570796 } }, [40, -10, 10], [70, 30, 20]]);
+    const collisions = callTool(engine, 'check_interference', {});
+    expect(collisions.ok && [collisions.about, (collisions.result as any).pairs]).toEqual([{ pose: { turn: 1.570796 } }, []]);
+    expect(ok(engine, 'get_model').bodies.find((entry: { id: string }) => entry.id === 'f')).toMatchObject({ min: [0, 0, 10], max: [40, 30, 20] });
+    // a query that reads no geometry of bodies says nothing of the pose (review of D49)
+    for (const [query, args] of [['catalog', { name: 'materials' }], ['mechanism', {}], ['sketchDiagnosis', { sketch: 's' }]] as const) expect(callTool(engine, 'query', { query, args })).not.toHaveProperty('about');
+
+    // the sketch of the axis removed while the arm is turned: the joint is in error and blocks the arm
+    answer = execute(engine, { type: 'removeFeature', id: 'axes' });
+    expect(answer.jointErrors).toEqual([{ joint: 'turn', code: 'brokenReference', message: expect.stringContaining('the axis of the joint "turn"') }]);
+    // the state of a joint goes with jointErrors: at the end of the timeline, not at a point of the construction
+    expect(ok(engine, 'get_model').mechanism.joints[0].status).toBe('error');
+    expect(ok(engine, 'get_model', { at: 'g' }).mechanism.joints[0]).not.toHaveProperty('status');
+    expect(callTool(engine, 'check_interference', {})).toEqual({ ok: false, error: expect.stringContaining('failed: the pose of the body "f" is not known: the joint "turn" has no motion') });
+    expect(callTool(engine, 'get_body', { body: 'f' })).toEqual({ ok: false, error: expect.stringContaining("geometry: 'modelled'") });
+    expect(callTool(engine, 'query', { query: 'body', args: { body: 'f' }, after: { type: 'setPose', values: { turn: 0 } } }).ok).toBe(true);
+    expect(callTool(engine, 'get_body', { body: 'e' }).ok).toBe(true);
+    // the sketch made again under its ID: execute says that it became the axis again
+    answer = execute(engine, { type: 'batch', commands: [sketch('axes'), { type: 'addPoint', sketch: 'axes', id: 'pivot', x: 40, y: 30 }] });
+    expect(answer.takenOver).toEqual(['axes', 'pivot']);
+    expect(answer).not.toHaveProperty('jointErrors');
+    // a body the link lists and the model does not have
+    answer = execute(engine, { type: 'setSuppressed', id: 'f', suppressed: true });
+    expect(answer.linksMissingBodies).toEqual([{ link: 'arm', missing: ['f'] }]);
+    expect(ok(engine, 'get_model', { at: 'f' })).not.toHaveProperty('linksMissingBodies');
+    // the description for the AI
+    const text = apiText();
+    expect(text).toContain('- mechanism (Mechanism): ');
+    expect(text).toContain('  commands: setLink, removeLink, setJoint, removeJoint, setPose');
+    expect(text).toContain('after: { type: "setPose", values: { elbow: 1.2 } }');
+    expect(text).toContain("{ type: 'setPose'; values: Record<Id, number | Expr> }");
+  });
+
   it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {
     const engine = newEngine();
     rectangle(engine, true);

@@ -52,7 +52,7 @@ export class Evaluator {
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
     // after the timeline, as the checks: no step of a feature reads a section
-    const sections = evaluateSections(doc, bodies, parameters, this.kept);
+    const sections = evaluateSections(doc, bodies, parameters, final, this.kept);
     return {
       evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks, ...sections.results },
       state: final,

@@ -30,7 +30,8 @@ const NO_ENVIRONMENT = (): Environment => ({});
 
 // ---------------------------------------------------------------- validation
 
-function label(v: unknown, what: string): string {
+// A text for people (a name of a body, a link or a joint; a material).
+export function label(v: unknown, what: string): string {
   const text = string(v, what);
   if (text === '' || text !== text.trim() || text.length > TEXT_LIMIT) fail(`${what}: a text that is not empty, has no leading or trailing space and at most ${TEXT_LIMIT} characters is expected`);
   return text;
@@ -43,7 +44,7 @@ function color(v: unknown, what: string): string {
 
 // The form of a key: a body ID whose part before the first slash could be an ID. Whether a feature
 // creates the body is not asked on a load, as for every reference of a document.
-function bodyKey(key: string, what: string): void {
+export function bodyKey(key: string, what: string): void {
   const { feature, local } = bodyOwner(key);
   newId(feature, what);
   if (local === '') fail(`${what}: "${key}" is not a body ID`);

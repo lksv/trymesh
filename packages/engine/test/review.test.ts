@@ -16,7 +16,18 @@ import type { EntityShape } from '../src/query/entity';
 import { exactBetween } from '../src/query/measure';
 import { closest } from '../src/mesh-distance';
 import { type CutLoop, corners, nested } from '../src/query/section';
-import { box, cutOf, moved, planeAt, regular, together, turned } from './section-kit';
+import { box, cutOf, moved, planeAt, regular, together, turned, prism } from './section-kit';
+import { evaluateParameters } from '../src/expression';
+import { BASE } from '../src/recompute/services';
+import { Memo, queryContext } from '../src/query/context';
+import { QUERIES } from '../src/query/index';
+import { POSE_STATS } from '../src/query/pose';
+import type { QueryName } from '../src/query/spec';
+import type { State } from '../src/recompute/state';
+import { DOCUMENT_SECTIONS } from '../src/sections/index';
+import { blockedText, poseNote } from '../src/sections/mechanism';
+import { type FaceInfo, IDENTITY, analyzeBody } from '../src/solid';
+import type { BodyResult, Id, Joint, Mechanism } from '../src/types';
 import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
@@ -636,3 +647,103 @@ describe('the hardware catalogs: the review of D46', () => {
     expect(DATA_CATALOGS.heatSetInserts.source).toMatch(/for M4 with an outer diameter of 5 and 5\.5 no second source/);
   });
 });
+
+describe('the mechanism: the review of D49', () => {
+  // Boxes 10 × 10 × 10 from meshes written by hand, one link each, in a chain of continuous joints
+  // about Z (or of prismatic joints along Z), asked through the context of a query with a kernel
+  // that counts its booleans and finds nothing shared.
+  const infos: FaceInfo[] = Array.from({ length: 6 }, () => ({ planar: true, origin: [0, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] }));
+  const names = infos.map((_, i) => ({ feature: 'b', role: 'side', curve: String(i) }));
+  const boxAt = (x: number, y: number): BodyResult => analyzeBody(prism([[x, y], [x + 10, y], [x + 10, y + 10], [x, y + 10]], 0, 10, (side) => 2 + side), names as never, infos).result;
+  const EMPTY: Solid = { positions: new Float32Array(0), triangles: new Uint32Array(0), faceIds: new Uint32Array(0) };
+  let booleans = 0;
+  const kernel = { boolean: () => (booleans++, EMPTY) } as unknown as SolidKernel;
+  const memo = new Memo();
+  // `ids` are the bodies, `perLink` how many bodies a link has; the joint `j<k>` moves the link `L<k>`
+  const world = (ids: Id[], placed: (i: number) => BodyResult, perLink: number, joint: (k: number) => Joint) => {
+    const bodies = Object.fromEntries(ids.map((id, i) => [id, placed(i)]));
+    const links = Array.from({ length: Math.ceil(ids.length / perLink) }, (_, k) => `L${k}`);
+    const section: Mechanism = {
+      links: Object.fromEntries(links.map((link, k) => [link, { bodies: ids.slice(k * perLink, (k + 1) * perLink) }])),
+      joints: Object.fromEntries(links.slice(1).map((link, k) => [`j${k + 1}`, { ...joint(k + 1), parent: links[k], child: link } as Joint])),
+    };
+    const document = { ...emptyDocument(), mechanism: section };
+    const mechanism = DOCUMENT_SECTIONS.mechanism.evaluate(section, document, bodies, {}, { sketches: {} } as unknown as State).result;
+    const evaluation = { bodies, faceSurfaces: [], faceNames: names, features: {}, parameters: {}, checks: {}, bodyProperties: {}, mechanism } as unknown as Evaluation;
+    const internals = { document, state: { faceIds: new Map(), sketches: {} } as unknown as State };
+    return (name: QueryName, args: object) => QUERIES[name].run(queryContext(name, evaluation, internals, { kernel, memo }), args as never);
+  };
+
+  it('a state asked again computes nothing, also with more links than eight (the memory of moved copies is sized by the links)', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `b${String(i).padStart(2, '0')}`);
+    const ask = world(ids, () => boxAt(0, 0), 1, () => ({ type: 'continuous', parent: '', child: '', axis: { kind: 'base', axis: 'Z' }, value: 0.05 }) as Joint);
+    booleans = 0;
+    expect(ask('interference', { threshold: 0.001 })).toMatchObject({ checked: 66, pairs: [] });
+    expect(booleans).toBe(66); // every pair overlaps
+    booleans = 0;
+    ask('interference', { threshold: 0.001 });
+    expect(booleans).toBe(0);
+  });
+
+  it('a pair whose bodies are far apart in the pose builds no moved mesh, for the collisions and for the gap', () => {
+    const ids = Array.from({ length: 40 }, (_, i) => `b${String(i).padStart(2, '0')}`);
+    const ask = world(ids, (i) => boxAt((i % 8) * 50, Math.floor(i / 8) * 50), 4, () => ({ type: 'prismatic', parent: '', child: '', axis: { kind: 'base', axis: 'Z' }, lower: 0, upper: 1000, value: 500 }) as Joint);
+    const built = POSE_STATS.meshesMoved;
+    booleans = 0;
+    expect(ask('interference', { threshold: 0.001 })).toMatchObject({ checked: 780, pairs: [] });
+    expect(ask('gap', { within: 5, maxPairs: 50 })).toMatchObject({ checked: 780, apart: 780 });
+    expect([POSE_STATS.meshesMoved - built, booleans]).toEqual([0, 0]);
+  });
+
+  it('the note of a pose lists the joints that move the model, with the values they move it by', () => {
+    const doc = base9({ ...ARM9, joints: { ...ARM9.joints, shoulder: { ...ARM9.joints.shoulder, value: 0.5 }, elbow: { ...ARM9.joints.elbow, value: 0.3 } } }, [{ name: 'q', expr: '3' }]);
+    const layout = { sketches: { layout: { frame: BASE.XY, geometry: { points: { shoulder: { x: 0, y: 0 }, elbow: { x: 120, y: 0 } } } } } } as unknown as State;
+    const of = (d: Document) => DOCUMENT_SECTIONS.mechanism.evaluate(d.mechanism, d, {}, evaluateParameters(d.parameters), layout).result;
+    expect(poseNote(of(doc), doc.mechanism)).toEqual({ pose: { shoulder: 0.5, elbow: 0.3 } });
+    // the elbow out of its limits by a parameter: in error, it moves nothing; the out-of-range number is not listed
+    const out = { ...doc, mechanism: { ...doc.mechanism, joints: { ...doc.mechanism.joints, elbow: { ...doc.mechanism.joints.elbow, expressions: { value: 'q' } } } } };
+    expect(poseNote(of(out), out.mechanism)).toEqual({ pose: { shoulder: 0.5 } });
+    // the shoulder out of its limits: the elbow beyond it moves nothing a query reads either
+    const blocked = { ...doc, mechanism: { ...doc.mechanism, joints: { ...doc.mechanism.joints, shoulder: { ...doc.mechanism.joints.shoulder, expressions: { value: 'q' } } } } };
+    expect(poseNote(of(blocked), blocked.mechanism)).toBeUndefined();
+  });
+
+  it('a body beyond two joints without a motion: the text names both, the nearest the root first, and one step of its hint reads the body', () => {
+    const turned = base9({ links: ARM9.links, joints: { shoulder: { ...ARM9.joints.elbow, parent: 'base', child: 'upper', axis: { kind: 'sketchPoint', sketch: 'layout', point: 'shoulder' }, value: 0.5 }, elbow: { ...ARM9.joints.elbow, value: 0.3 } } });
+    const of = (d: Document) => DOCUMENT_SECTIONS.mechanism.evaluate(d.mechanism, d, {}, {}, { sketches: {} } as unknown as State).result;
+    const text = blockedText(turned.mechanism, of(turned), 'forearm');
+    expect(text).toMatch(/^the pose of the body "forearm" is not known: the joints "shoulder", "elbow" have no motion \("shoulder": brokenReference: .*; "elbow": brokenReference: .*\)\. The bodies beyond them can be read with these joints at zero, which writes nothing: after: \{ "type": "setPose", "values": \{ "shoulder": 0, "elbow": 0 \} \}; or as modelled/);
+    const atZero = applyCommand(turned, { type: 'setPose', values: { shoulder: 0, elbow: 0 } });
+    expect(of(atZero).links.forearm.blockedBy).toBeUndefined();
+    // a joint whose limits do not allow zero: no hint of a pose, only the model as modelled
+    const away = base9({ links: ARM9.links, joints: { shoulder: { ...ARM9.joints.elbow, parent: 'base', child: 'upper', lower: 0.2, upper: 1, value: 0.5 } } });
+    expect(blockedText(away.mechanism, of(away), 'upper')).toMatch(/The bodies beyond it can be read as modelled with geometry: 'modelled'$/);
+  });
+
+  it('setPose with the expression the value already has keeps it without evaluation, as setJoint does', () => {
+    const doc = applyCommand(base9(ARM9, [{ name: 'q', expr: '0.5' }]), { type: 'setPose', values: { elbow: 'q' } });
+    const broken = applyCommand(doc, { type: 'removeParameter', name: 'q' });
+    expect(applyCommand(broken, { type: 'setPose', values: { elbow: ' q ' } })).toBe(broken);
+    expect(() => applyCommand(broken, { type: 'setPose', values: { elbow: 'q * 2' } })).toThrow(/unknown name "q"/);
+  });
+
+  it('the identity every root link shares as its transform cannot be changed', () => {
+    expect([Object.isFrozen(IDENTITY), Object.isFrozen(IDENTITY.matrix), Object.isFrozen(IDENTITY.matrix[0]), Object.isFrozen(IDENTITY.translation)]).toEqual([true, true, true, true]);
+    expect(() => {
+      IDENTITY.translation[0] = 5;
+    }).toThrow(TypeError);
+  });
+});
+
+// The arm of the engine test of the mechanism: the extrusions `base`, `upper`, `forearm`, the sketch
+// `layout`, and three links with two revolute joints, the elbow about a point of `layout`.
+const extrusion9 = (id: string) => ({ id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' });
+const ARM9: Mechanism = {
+  links: { base: { bodies: ['base'] }, upper: { bodies: ['upper'] }, forearm: { bodies: ['forearm'] } },
+  joints: {
+    shoulder: { type: 'revolute', parent: 'base', child: 'upper', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0 },
+    elbow: { type: 'revolute', parent: 'upper', child: 'forearm', axis: { kind: 'sketchPoint', sketch: 'layout', point: 'elbow' }, lower: -2, upper: 2, value: 0 },
+  },
+};
+const base9 = (mechanism: unknown, parameters: object[] = []): Document =>
+  validateDocument({ ...JSON.parse(JSON.stringify(emptyDocument())), parameters, features: [extrusion9('base'), extrusion9('upper'), extrusion9('forearm'), { ...emptySketch('layout', 'layout', { kind: 'base', plane: 'XY' }), points: { shoulder: { x: 0, y: 0 }, elbow: { x: 120, y: 0 } } }], mechanism });

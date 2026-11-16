@@ -1,5 +1,5 @@
 // The text of a recompute issue and the names of what it refers to, for a human. Pure functions, no DOM.
-import { type FaceName, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
+import { DOCUMENT_SECTIONS, type Document, type FaceName, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
 
 // The name of a feature of the document; undefined when the document has no such feature.
 export type NameOf = (feature: Id) => string | undefined;
@@ -79,4 +79,17 @@ export function angleProblem(value: unknown, spec: NumberSpec): string | undefin
   if (spec.min && spec.max) return `${spec.title}: ${degrees(value)} is not between ${degrees(spec.min.value)} and ${degrees(spec.max.value)}`;
   const bound = (below ? spec.min : spec.max) as NonNullable<NumberSpec['min']>;
   return `${spec.title}: ${degrees(value)} must be ${bound.open ? (below ? 'above' : 'below') : below ? 'at least' : 'at most'} ${degrees(bound.value)}`;
+}
+
+// The status line of a command that used again IDs a section of the document still names (`taken`,
+// from `takenOver` of the engine, against the document before the command): what the entry gives
+// to what was made under such an ID. Body properties (D48) go to a body; the mechanism (D49) puts
+// a body made under the ID into its link, and leads the axis of a joint through a sketch or a point.
+export function takenOverText(doc: Document, taken: Id[]): string {
+  const properties = taken.filter((id) => DOCUMENT_SECTIONS.bodyProperties.names(doc.bodyProperties).includes(id));
+  const mechanism = taken.filter((id) => DOCUMENT_SECTIONS.mechanism.names(doc.mechanism).includes(id));
+  return [
+    ...(properties.length ? [`An ID that body properties name is now used again: ${properties.join(', ')}. A body made under it takes those properties; if it is another thing, remove them in the model panel.`] : []),
+    ...(mechanism.length ? [`An ID that the mechanism names is now used again: ${mechanism.join(', ')}. A body made under it is in its link, and a sketch or a point made under it carries the axis of its joint; if it is another thing, change the mechanism in the model panel.`] : []),
+  ].join(' ');
 }

@@ -51,6 +51,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   mass: { bodies: ['low'], density: 1 },
   print: { orientations: [{ by: { up: [0, 0, 1] } }] },
   hardwareHole: { use: 'countersunk', size: 'M3', allowance: 'holeComp' },
+  mechanism: {},
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -66,6 +67,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   mass: { bodies: 'required', density: 'optional', densities: 'optional', fill: 'optional', about: 'optional' },
   print: { bodies: 'optional', orientations: 'required', bed: 'optional', overhang: 'optional', minArea: 'optional', maxFaces: 'optional' },
   hardwareHole: { use: 'required', size: 'required', fit: 'optional', allowance: 'optional' },
+  mechanism: { beyond: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -170,7 +172,7 @@ describe('the tool query', () => {
     expect(call(engine, { query: 'interference', after: { type: 'removeFeature', id: 'nope' } })).toEqual({ error: expect.stringMatching(/^after: invalidCommand: /) });
     expect(call(engine, { query: 'interference', after: { type: 'renameFeature', id: 'low', name: 'x' }, at: 'nope' })).toEqual({ error: expect.stringMatching(/^after: invalidCommand: /) });
     expect(call(engine, {})).toEqual({ error: expect.stringContaining('"query"') });
-    expect(call(engine, { query: 'interference', bodies: ['low'] })).toEqual({ error: 'unknown argument "bodies"; the tool takes query, args, at, after' });
+    expect(call(engine, { query: 'interference', bodies: ['low'] })).toEqual({ error: 'unknown argument "bodies"; the tool takes query, args, at, after, geometry' });
     expect(call(engine, { query: 'interference', args: ['low'] })).toEqual({ error: 'argument "args": an object is expected' });
     expect(call(engine, { query: 'interference', after: 'undo' })).toEqual({ error: 'argument "after": an object is expected' });
   });

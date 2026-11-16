@@ -1,6 +1,7 @@
 // Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
 // sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
 import {
+  type AxisRef,
   CONSTRAINTS,
   type Command,
   type Constraint,
@@ -373,20 +374,36 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
 export type PatternDraft = Input<PatternFeature>;
 export type PatternSpan = PatternDraft['transform']['span'];
 export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint';
-export const axisKind = (axis: PatternDraft['transform']['axis']): AxisKind => (axis.kind === 'base' ? axis.axis : 'sketchPoint');
+export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : 'sketchPoint');
+// One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism):
+// a base axis, or `sketchPoint` (the origin of the latest of `sketches` until `sketch` and `point`
+// say otherwise); another sketch starts at its origin.
+export interface AxisChange {
+  axis?: AxisKind;
+  sketch?: Id;
+  point?: Id;
+}
+export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[]): AxisRef {
+  let out = axis;
+  if (change.axis !== undefined && change.axis !== axisKind(out)) {
+    const sketch = sketches[sketches.length - 1];
+    if (change.axis !== 'sketchPoint') out = { kind: 'base', axis: change.axis };
+    else if (sketch !== undefined) out = { kind: 'sketchPoint', sketch, point: 'origin' };
+  }
+  if (change.sketch !== undefined && out.kind === 'sketchPoint' && change.sketch !== out.sketch) out = { kind: 'sketchPoint', sketch: change.sketch, point: 'origin' };
+  if (change.point !== undefined && out.kind === 'sketchPoint') out = { ...out, point: change.point };
+  return out;
+}
 // One change of the pattern form.
 // - `source`: the other kind of source, filled with the latest choice of that kind.
 // - `toggleFeature`: adds a source feature or removes it; the list keeps the order of the timeline.
 // - `axis`: a base axis, or `sketchPoint` (the origin of the latest sketch until `sketch` and
 //   `point` say otherwise).
 // - `span`: `angle` returns to the angle the draft had last.
-export interface PatternChange {
+export interface PatternChange extends AxisChange {
   source?: 'features' | 'body';
   toggleFeature?: Id;
   body?: Id;
-  axis?: AxisKind;
-  sketch?: Id;
-  point?: Id;
   count?: number | Expr;
   span?: PatternSpan['type'];
   angle?: number | Expr;
@@ -430,14 +447,8 @@ export function changePattern(draft: PatternDraft, change: PatternChange, choice
   }
   if (change.body !== undefined && source.type === 'body') source = { type: 'body', body: change.body };
 
-  let { axis, span } = draft.transform;
-  if (change.axis !== undefined && change.axis !== axisKind(axis)) {
-    const sketch = last(choices.sketches);
-    if (change.axis !== 'sketchPoint') axis = { kind: 'base', axis: change.axis };
-    else if (sketch !== undefined) axis = { kind: 'sketchPoint', sketch, point: 'origin' };
-  }
-  if (change.sketch !== undefined && axis.kind === 'sketchPoint' && change.sketch !== axis.sketch) axis = { kind: 'sketchPoint', sketch: change.sketch, point: 'origin' };
-  if (change.point !== undefined && axis.kind === 'sketchPoint') axis = { ...axis, point: change.point };
+  const axis = changeAxis(draft.transform.axis, change, choices.sketches);
+  let { span } = draft.transform;
   if (change.span !== undefined && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : angle;
   if (change.angle !== undefined && span.type === 'angle') span = { type: 'angle', angle: change.angle };
   return { ...draft, source, transform: { ...draft.transform, axis, count: change.count ?? draft.transform.count, span } };

@@ -1,7 +1,7 @@
 // Bodies: rigid transforms, faces and edges of a body, the plane on a face, the projection of an
 // edge, measures of a mesh, STL. The meshes of tools are built in recompute/tool-*.ts.
 // Pravidla jsou v docs/architecture.md, sekce Pojmenování a Extrude.
-import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, IssueCode, Projected, ProjectionKind, Solid, Surface, Vec2, Vec3 } from './types';
+import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, IssueCode, Projected, ProjectionKind, RigidTransform, Solid, Surface, Vec2, Vec3 } from './types';
 import { closestOnTriangle } from './mesh-distance';
 import { circleBetween } from './surfaces';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from './util';
@@ -35,13 +35,11 @@ export const toPlane = (frame: Frame, p: Vec3): Vec2 => [dot3(sub3(p, frame.orig
 
 // ---------------------------------------------------------------- rigid transforms
 
-// An isometry p' = M · p + t; `matrix` holds the rows of an orthogonal matrix. A pattern is a list
-// of these. With a negative determinant (a mirror, later) the order of triangle vertices is
-// reversed; a face description carries its normal without a sign, so it is only mapped.
-export interface RigidTransform {
-  matrix: [Vec3, Vec3, Vec3];
-  translation: Vec3;
-}
+// An isometry p' = M · p + t (`RigidTransform` of types.ts: the mechanism publishes one per link).
+// A pattern is a list of these. With a negative determinant (a mirror, later) the order of
+// triangle vertices is reversed; a face description carries its normal without a sign, so it is
+// only mapped.
+export type { RigidTransform };
 export const transformVector = (t: RigidTransform, v: Vec3): Vec3 => [dot3(t.matrix[0], v), dot3(t.matrix[1], v), dot3(t.matrix[2], v)];
 export const transformPoint = (t: RigidTransform, p: Vec3): Vec3 => add3(transformVector(t, p), t.translation);
 export const transformFrame = (t: RigidTransform, frame: Frame): Frame => ({ origin: transformPoint(t, frame.origin), x: transformVector(t, frame.x), y: transformVector(t, frame.y), normal: transformVector(t, frame.normal) });
@@ -58,6 +56,56 @@ export function rotation(point: Vec3, axis: Vec3, angle: number): RigidTransform
   ];
   const turned: Vec3 = [dot3(matrix[0], point), dot3(matrix[1], point), dot3(matrix[2], point)];
   return { matrix, translation: sub3(point, turned) };
+}
+
+// What a pose composes (D49): the identity, the product, the inverse, a shift along a direction.
+// Frozen to the last number: every root link shares it as its transform, and the app gets it by
+// reference.
+export const IDENTITY: RigidTransform = Object.freeze({
+  matrix: Object.freeze([Object.freeze([1, 0, 0]), Object.freeze([0, 1, 0]), Object.freeze([0, 0, 1])]),
+  translation: Object.freeze([0, 0, 0]),
+}) as unknown as RigidTransform;
+// Exactly the identity, number by number (a turn by zero is exactly the identity).
+export const isIdentity = (t: RigidTransform): boolean =>
+  t === IDENTITY || (t.translation.every((x) => x === 0) && t.matrix.every((row, i) => row.every((x, j) => x === (i === j ? 1 : 0))));
+// `a ∘ b`: first `b`, then `a`.
+export function compose(a: RigidTransform, b: RigidTransform): RigidTransform {
+  if (isIdentity(a)) return b;
+  if (isIdentity(b)) return a;
+  const column = (j: number): Vec3 => [b.matrix[0][j], b.matrix[1][j], b.matrix[2][j]];
+  const matrix = a.matrix.map((row) => [dot3(row, column(0)), dot3(row, column(1)), dot3(row, column(2))]) as [Vec3, Vec3, Vec3];
+  return { matrix, translation: transformPoint(a, b.translation) };
+}
+export function inverse(t: RigidTransform): RigidTransform {
+  if (isIdentity(t)) return t;
+  const m = t.matrix;
+  const matrix: [Vec3, Vec3, Vec3] = [
+    [m[0][0], m[1][0], m[2][0]],
+    [m[0][1], m[1][1], m[2][1]],
+    [m[0][2], m[1][2], m[2][2]],
+  ];
+  const back = transformVector({ matrix, translation: [0, 0, 0] }, t.translation);
+  return { matrix, translation: [-back[0], -back[1], -back[2]] };
+}
+// A shift by `distance` along the direction `axis`.
+export function shift(axis: Vec3, distance: number): RigidTransform {
+  const [x, y, z] = mul3(axis, distance / len3(axis));
+  return { matrix: IDENTITY.matrix.map((row) => [...row]) as [Vec3, Vec3, Vec3], translation: [x, y, z] };
+}
+// A published surface moved by a transform.
+export function transformSurface(t: RigidTransform, surface: Surface): Surface {
+  switch (surface.kind) {
+    case 'plane':
+      return { ...surface, origin: transformPoint(t, surface.origin), normal: transformVector(t, surface.normal) };
+    case 'cylinder':
+      return { ...surface, origin: transformPoint(t, surface.origin), axis: transformVector(t, surface.axis) };
+    case 'cone':
+      return { ...surface, apex: transformPoint(t, surface.apex), axis: transformVector(t, surface.axis) };
+    case 'swept':
+      return { ...surface, axis: transformVector(t, surface.axis) };
+    default:
+      return surface;
+  }
 }
 
 export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {

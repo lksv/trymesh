@@ -16,7 +16,7 @@ interface Engine {
   load(json: string): CommandResult;
   save(): string;
   exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // without a list the printed bodies (D48); '3mf' později
-  interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below
+  interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below; in the pose (D49)
   query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;   // see Queries below
   export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;   // see Export formats below
   subscribe(listener: (state: EngineState) => void): () => void;
@@ -37,10 +37,10 @@ type CommandResult =
 
 ### Queries (D37)
 
-A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation`, `body` and `catalog`.
+A query reads the model and changes nothing. Queries are a catalog `QUERIES` (`query/index.ts`), built like the registry of feature types: a query is a module in `query/` and one line of the catalog, and `Engine.query(name, args, options)` is the one way in for every query added from now on. The three methods that were queries before (`diagnoseSketch`, `explainConstraint`, `interference`) stay for their callers: each keeps its own checks of its arguments and its own texts and throws, and then runs the entry of the catalog that `query` runs, so the computation and its cache are shared and the messages are not. The catalog today: `interference`, `sketchDiagnosis`, `constraintExplanation`, `body`, `catalog`, `measure`, `section`, `gap`, `mass`, `print`, `hardwareHole` and `mechanism`.
 
 ```ts
-type QueryOptions = { at?: Id } | { state: EngineState };   // now, after a feature, or a state this engine handed out
+type QueryOptions = ({ at?: Id } | { state: EngineState }) & { geometry?: 'modelled' };   // now, after a feature, or a state this engine handed out; in its pose unless 'modelled' (D49)
 type QueryOutcome<Result> =
   | { ok: true; result: Result }
   | { ok: false; error: { code: 'invalidArguments' | 'notAvailable' | 'failed'; message: string; arg?: ArgPath } };
@@ -72,7 +72,7 @@ A number is checked against its own description only: the limit of ±1e9 on numb
 | Member | What it gives |
 |---|---|
 | `state` | the document and the evaluation, without the bodies and the surfaces |
-| `bodies`, `surface(body, face)` | the geometry of bodies. A query reads it nowhere else, so that it answers for bodies moved to a pose once the mechanism of step 5 exists; a surface is asked by body and face because one face number can lie in two bodies |
+| `bodies`, `surface(body, face)` | the geometry of bodies, in the pose of the state (D49, below). A query reads it nowhere else, so that it answers for bodies moved to a pose without a change of its own; a surface is asked by body and face because one face number can lie in two bodies |
 | `frame(ref)`, `axis(ref)` | the frame of a `PlaneRef` (for a face the normal points out of the body) and the line of an `AxisRef`, or the code the recompute gives for the same reference (`brokenReference`, `nonPlanarFace`) |
 | `face(name)`, `sketch(id)` | the number of a named face; what the recompute kept about a sketch (`SketchState`), undefined when it did not evaluate |
 | `kernel` | the geometric kernel; an exception of it becomes the answer `failed` |
@@ -158,6 +158,17 @@ A pair without an exact answer gets `smallest`, `angle` when both entities have 
 - *Nothing to judge*: without `bodies`, a state with no printed body answers `bodies: []` with `empty`, the reason (no body, or none is a printed part, and that listing the bodies judges them anyway).
 - *The size of the answer*: each of the two lists of a body in an orientation holds at most `maxFaces` (20) faces, the largest first and faces of one area (to six digits, what float32 coordinates give) in the order of their numbers, with the count of all of them next to it; `truncated` says how many faces were listed of how many, over the whole answer.
 - It does not know bridges, wall thickness, supports, or whether a part stands.
+
+**The pose of a query (D49).** With a mechanism a query answers for the bodies moved to the pose of the state asked about, while the evaluation keeps them where they are modelled. `queryContext` (`query/context.ts`) is the one place the pose enters:
+
+- `bodies[id]`, `surface(body, face)` and `frame` of a face (also of an entity that is a face or an edge) are moved by the transform of the link of the body (`poseOfBody`). A body in no link, or in a link that stands as modelled, is the object of the evaluation. A plane feature, a base plane, a sketch and its points and an axis are as modelled.
+- **Lazily, and remembered** (`query/pose.ts`): `bodies` has every key (listing it reads nothing) and a body is posed when it is read. A posed body (`movedBody`: positions in single precision, the segments of the edges and the bounds moved; the volume, the faces and the names kept; the triangles shared) is remembered by the modelled solid and the numbers of the transform, twice as many poses per solid as the mechanism has links and at least eight (`keepFor`: one state needs a copy per link a body is paired with), so a body that did not move between two steps of a sweep is the same object and what `memo` keeps for it is found again.
+- **A blocked body cannot be read**: reading it (or its surface, or the frame of its face) throws `QueryFailure('failed', …)`; the message names every joint without a motion on its way from the root, the nearest the root first, with its fault, and says that the bodies beyond can be read with these joints previewed at zero in one `setPose` (when each is at fault for its axis alone and its limits allow zero) or with `geometry: 'modelled'`. A query that does not touch the blocked bodies answers. `Engine.interference` throws it like its other errors.
+- **A pair is computed in the frame of its first body** (`pairInFrame(a, b)`): the first body as modelled, the second moved by the motions of the joints between their two links (the motions of the joints both links hang on cancel, compared by their numbers), and `back` to the pose. The collisions (`interferenceReport`, which is handed the pair) and the gap (`gapOf`, which moves its two points back and reads `meshAccuracy` from the pair) compute from it, ordered by ID. Before it, both reject a pair far apart by boxes that hold the posed bodies (`boxOf`, `movedBox`: the corners of the modelled box moved), so such a pair moves no mesh. Two bodies of one link are computed as modelled, a sweep of one joint computes only the pairs across it, and a pair across one joint along a coordinate axis stays exact in single precision (flush faces stay in one plane), however the joints nearer the root stand.
+- **The model as modelled, by name**: an entry marked `geometry: 'modelled'` (the print query) and a caller that passes `geometry: 'modelled'` in the options get the context an export gets; nothing is posed and nothing is blocked. An export and `exportMesh` always get it. An entry marked `geometry: 'none'` reads no geometry of bodies (`catalog`, `hardwareHole`, `sketchDiagnosis`, `constraintExplanation`, `mechanism`): it gets the same context, and a tool puts no note about the pose beside its answer.
+- A state after a feature (`at`) is posed by the mechanism resolved against that state: a document whose pose is zero answers there as before the mechanism (a joint at zero whose only fault is its axis blocks nothing); a bent one fails for the bodies beyond a joint whose axis is not made yet.
+
+**The mechanism** (`mechanism`, `query/mechanism.ts`, D49) returns `evaluation.mechanism` of the state asked about, and with `beyond` (the ID of a joint; one the section does not have is `notAvailable`) adds `beyond`: what hangs on that joint (`carriedBy`: its links, their bodies, their missing bodies). With `after: setPose` it says where the links stand in a pose that is not written; scenario 13 takes the bodies beyond the shoulder to the query `mass` with the same state for the mass and the torque of what hangs on it.
 
 **Distances on the mesh** (`mesh-distance.ts`), shared by the queries that measure:
 
@@ -260,6 +271,12 @@ type Command =
   | { type: 'setBodyProperties'; body: Id; patch: BodyPropertiesPatch }   // null removes a field
   | { type: 'setBodyMaterial'; body: Id; material: string }                // a row of the catalog materials
   | { type: 'removeBodyProperties'; body: Id }
+  // the mechanism (D49), a section of the document; see the document
+  | { type: 'setLink'; id: Id; name?: string | null; bodies?: Id[] }      // creates or changes; bodies replaces the list
+  | { type: 'removeLink'; id: Id }                                        // refused while a joint names the link
+  | { type: 'setJoint'; id: Id; joint: Input<Joint> }                     // creates or replaces the whole joint
+  | { type: 'removeJoint'; id: Id }
+  | { type: 'setPose'; values: Record<Id, number | Expr> }                 // the values of the joints named
   // složený
   | { type: 'batch'; commands: Command[] };
 ```
@@ -293,7 +310,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 
 - **Krok undo vzniká jen změnou obsahu dokumentu.** Přejmenování na stejné jméno nebo tažení plně určeného bodu historii nezaplní.
 - **Tažení, které solver nevyřeší,** dokument ani stav enginu nezmění; konflikt z neúspěšného pokusu ukáže jen `preview`.
-- **A command of a section of the document** (body properties) makes an undo step like any other: `differs` compares the sections too (`sectionsDiffer`).
+- **A command of a section of the document** (body properties, the mechanism) makes an undo step like any other: `differs` compares the sections too (`sectionsDiffer`).
 - **`getState(at)` s neznámou feature vyhodí výjimku; `preview(cmd, at)`** vrátí `invalidCommand`, když `at` v dokumentu po příkazu není. Tichý přepočet celé osy by zakryl chybu volajícího.
 - **Posluchači (`subscribe`)** dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine: vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní o zprávu nepřipraví a vyhodí se až nakonec; stav je v té chvíli už zapsaný.
 - **Nový bod a nová křivka ruší razítko řešení skici,** protože zapisují řešené proměnné přímo. Skica se pak při přepočtu vyřeší znovu, i kdyby se otisk vstupů solveru shodoval.
@@ -315,6 +332,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 | `d37-schema-steps` | 2 → 3 | Converts nothing. A build from before the list accepts version 2 and rebuilds the document from the fields it knows, so it would strip a document of a branch without a word; from version 3 on it refuses |
 | `2b-taper` | 3 → 4 | Converts nothing (D45). A build without it would drop the field `extent/taper` of an extent on load; with the step it refuses a document that may hold one. Merged 2026-11-16 |
 | `3a-body-properties` | 4 → 5 | The section `bodyProperties` (D48): a document without the field gets `{}`; a field that is there, whatever it holds (`null` included), is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Pending on the branch `d36/3a` until its merge (the branch saves version 4 with `schemaSteps: ['3a-body-properties']`) |
+| `5a-mechanism` | 5 → 6 | The section `mechanism` (D49): a document without the field gets `{ links: {}, joints: {} }`; a field that is there, whatever it holds, is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Pending on the branch `d36/5a` until its merge (the branch saves version 5 with `schemaSteps: ['5a-mechanism']`) |
 
 - **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
 - **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.

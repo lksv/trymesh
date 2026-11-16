@@ -28,6 +28,70 @@ export interface Document {
   // the count of a pattern dropped) and is taken over by a body that appears under its ID again;
   // `get_model` lists such entries, the command removeBodyProperties removes one.
   bodyProperties: Record<Id, BodyProperties>;
+  // The mechanism (D49): links, and joints between them. Always present, `{ links: {}, joints: {} }`
+  // when empty; without a link every query answers for the model as modelled. Not part of the
+  // timeline: a change of a value recomputes no geometry and moves no body of the evaluation.
+  mechanism: Mechanism;
+}
+
+// The mechanism: links, and joints between them (D49).
+// - The model is modelled in one configuration, and that configuration is the zero of every
+//   joint: a body stands where the timeline puts it when all values are 0.
+// - Links and joints are records by ID. An ID follows the rules of every ID (not empty, no `/`,
+//   not `origin`) and is unique among the links, or among the joints; a link may carry the ID of
+//   a feature (the link `forearm` holds the body `forearm`).
+// - A name of a link or of a joint is for people, by the rules of a body name: not empty, no
+//   leading or trailing space, at most 200 characters. Without it the ID is shown.
+// What always holds, on a command and on a load (the section is small and is checked whole):
+// - a body is listed in at most one link, and once in it;
+// - the parent and the child of a joint are links of the section and differ;
+// - a link is the child of at most one joint, and no link hangs on itself through a chain of
+//   joints. Together: the joints form a forest. More than one root is allowed (a mechanism that
+//   is being built, two arms on one table); the result lists the roots.
+// What a command checks only when it sets it, and what may break later (the result reports it):
+// - a body named by a link is one a feature of the document can create (as for body properties);
+// - the sketch and the point of an axis exist;
+// - `lower` is not above `upper`, and `value` lies within them, to a tolerance (1e-4 rad, 1e-6 mm:
+//   a value outside by no more than that is the limit, and is stored as the limit).
+export interface Mechanism {
+  links: Record<Id, Link>;
+  joints: Record<Id, Joint>;
+}
+
+// Bodies that move as one piece. A body is in at most one link; a body in no link stays where
+// it is modelled, like the bodies of a link that is no joint's child (a root). A link may be
+// empty. A copy made by a pattern is a body of its own (`<pattern>/<number>`) and is listed like
+// any other. The list keeps the order it was given.
+export interface Link {
+  name?: string;
+  bodies: Id[];
+}
+
+// A joint moves its child link, and everything that hangs on it, against its parent link.
+// - `revolute`: a turn about the axis by `value`, within `lower` and `upper` (each within a full
+//   turn, ±2π). `continuous`: the same without limits. Radians; a positive value turns
+//   counter-clockwise seen against the direction of the axis (the right-hand rule), as a pattern
+//   does; for a sketch point the direction is the normal of the sketch plane.
+// - `prismatic`: a shift along the direction of the axis by `value`, in millimetres.
+// - `fixed`: the child keeps its place against the parent.
+// - `axis` is given as modelled (the zero configuration) and is never posed by itself: the
+//   joints nearer to the root carry it along with the parent link.
+// - `value`, `lower` and `upper` are numeric fields (`<joint>/value`): each holds the last valid
+//   number and takes an expression over the parameters, kept in `expressions` of the joint under
+//   the name of the field. A coupled motion is two values that follow one parameter (`q` and
+//   `-2 * q`).
+export type Joint = JointBase &
+  (
+    | { type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number }
+    | { type: 'continuous'; axis: AxisRef; value: number }
+    | { type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number }
+    | { type: 'fixed' }
+  );
+export interface JointBase {
+  name?: string;
+  parent: Id; // a link
+  child: Id; // a link
+  expressions?: { value?: Expr; lower?: Expr; upper?: Expr };
 }
 
 // What a body is used as. It decides who reads the body:
@@ -492,6 +556,57 @@ export interface Evaluation {
   parameters: Record<string, ParameterResult>; // values and errors of parameters
   checks: Record<string, CheckResult>; // check results by name
   bodyProperties: Record<Id, BodyPropertiesResult>; // by body of the state, in the order of `bodies`
+  mechanism: MechanismResult; // the mechanism resolved against this state
+}
+
+// An isometry p' = M · p + t; `matrix` holds the rows of an orthogonal matrix.
+export interface RigidTransform {
+  matrix: [Vec3, Vec3, Vec3];
+  translation: Vec3;
+}
+
+// The mechanism of a state (D49): what the section says, resolved against the model of that state
+// and the parameters. Computed after the timeline, like the checks; no step of a feature reads it,
+// and the bodies of the evaluation stay where they are modelled. Queries answer in this pose.
+export interface MechanismResult {
+  links: Record<Id, LinkResult>;
+  joints: Record<Id, JointResult>;
+  roots: Id[]; // the links that are no joint's child
+  unassigned: Id[]; // bodies of the state that are in no link; empty while there is no link
+}
+export interface LinkResult {
+  bodies: Id[]; // the bodies of the link that the state has
+  missing: Id[]; // the bodies it lists that the state does not have
+  // Takes the link from where it is modelled to the pose; the identity for a root. A joint without
+  // a motion on the way to the root counts as standing at zero here, and `blockedBy` names the
+  // nearest such joint: the pose of the link is then not known, and a query that reads a body of
+  // the link fails.
+  transform: RigidTransform;
+  blockedBy?: Id;
+}
+// `status: 'error'`: something about the joint is wrong.
+// - brokenReference: the sketch or the point of the axis is not in the state;
+// - invalidExpression: a numeric field has an expression in error (`fieldErrors`);
+// - jointLimits: `lower` is above `upper` (after a change of a parameter);
+// - jointOutOfLimits: `value` is outside the limits (after a change of a parameter).
+// A joint in error has no motion and blocks what hangs on it, with one exception: a joint whose
+// only fault is its axis and whose value is 0 moves nothing whatever the axis is, so it is in
+// error and blocks nothing. A model whose pose is zero stays readable while the sketch of an axis
+// is being repaired (or, at a point of the timeline asked with `at`, is not made yet).
+export interface JointResult {
+  status: 'ok' | 'error';
+  error?: Issue;
+  fieldErrors?: { value?: ExpressionError; lower?: ExpressionError; upper?: ExpressionError };
+  // the numbers used; a field in error is left out
+  value?: number;
+  lower?: number;
+  upper?: number;
+  // The axis as modelled, and where the parent link carries it in the pose. `origin` is the point
+  // the axis was given by (the sketch point; the origin of the model for a base axis), `direction`
+  // a unit vector. A fixed joint has neither; `axisInPose` is absent while the parent link is
+  // blocked.
+  axis?: { origin: Vec3; direction: Vec3 };
+  axisInPose?: { origin: Vec3; direction: Vec3 };
 }
 
 // The properties of a body of the state, with what it inherits and the defaults filled in. Computed
@@ -628,7 +743,9 @@ export type ErrorCode =
   | 'kernelFailure'
   | 'invalidExpression'
   | 'invalidExtent'
-  | 'invalidHole';
+  | 'invalidHole'
+  | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
+  | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
 export type WarningCode =
   | 'sketchConflict'
@@ -803,6 +920,29 @@ export type Command =
   | { type: 'setBodyProperties'; body: Id; patch: BodyPropertiesPatch }
   | { type: 'setBodyMaterial'; body: Id; material: string }
   | { type: 'removeBodyProperties'; body: Id }
+  // The mechanism (D49). They keep what always holds of the section (see `Mechanism`); a command
+  // that would break it is invalid.
+  // - setLink creates the link `id`, or changes the fields named. `bodies` replaces the list; `name:
+  //   null` removes the name. A body that is in another link is an invalid command: take it out
+  //   there first, in the same batch. Only bodies the link did not have before are checked.
+  // - removeLink is refused while a joint names the link.
+  // - setJoint creates the joint `id` or replaces it, whole, in the input form: a numeric field
+  //   takes a number or an expression, which has to evaluate now. A string equal to the expression
+  //   the field already has is kept without evaluation. Only an axis the joint did not have before
+  //   is checked.
+  // - setPose sets the values of the joints named; the others keep theirs. A number removes the
+  //   expression of the value (and with it a coupling), a string sets one. A fixed joint has no
+  //   value. It is the command a sweep previews at every step, and the one for `after` of the tool
+  //   `query`.
+  // The limits are compared with the numbers as they are for the document the command is applied
+  // to: a field with an expression is evaluated against its parameters, also a field the command
+  // does not name. A field whose expression does not evaluate takes no part. An error of an
+  // expression names the field by `<joint>/<field>` in `error.expression.path`.
+  | { type: 'setLink'; id: Id; name?: string | null; bodies?: Id[] }
+  | { type: 'removeLink'; id: Id }
+  | { type: 'setJoint'; id: Id; joint: Input<Joint> }
+  | { type: 'removeJoint'; id: Id }
+  | { type: 'setPose'; values: Record<Id, number | Expr> }
   // složený
   | { type: 'batch'; commands: Command[] };
 
@@ -869,7 +1009,10 @@ export type QueryOutcome<Result> =
 // The state a query answers for: the current one, the one after a feature (`at`), or one that
 // `preview` or `getState` of this engine returned (`state`). With a previewed state nothing is
 // written, so a parameter can be stepped and each step asked about.
-export type QueryOptions = { at?: Id; state?: never } | { state: EngineState; at?: never };
+// `geometry: 'modelled'`: the answer is for the model as modelled, whatever pose the mechanism
+// holds; nothing is posed and nothing is blocked. Without it a query answers in the pose of the
+// state asked about (D49).
+export type QueryOptions = ({ at?: Id; state?: never } | { state: EngineState; at?: never }) & { geometry?: 'modelled' };
 
 // An answer that can be large says so: a query with such an answer has an argument that limits it
 // and returns how much there was.

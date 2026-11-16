@@ -1,6 +1,6 @@
 # 5f Repair of the kernel adapter: an intersection of many slivers comes out closed (D51)
 
-**State: design, first version, written on 2026-11-16 against `master` at `4d7c279` (5a and 5e merged), with the cause established by experiment against the real library (`manifold-3d` 3.5.5) and the repair measured as a candidate in a copy of the repository. Not implemented.** There is no `contract.ts` and no `calls.ts`: no public type or signature of the engine changes (the port `SolidKernel` and its guarantees stay word for word, `interference.ts` is not touched), and the package adds no query, command or document field. What changes is inside `packages/kernel-manifold`: one more cleaning in `clean.ts`, one branch in `boolean` of `index.ts`, and one field of the adapter's own `BooleanOptions`, which exists for its tests. `npx tsc -p docs/d36/tsconfig.json` passes with the directory as it is. Its tests join the tests of the adapter and the part of 5e of validation scenario 13; no scenario of its own.
+**State: design, second version, after one round of review (see "Reviews"), written on 2026-11-16 against `master` at `4d7c279` (5a and 5e merged), with the cause established by experiment against the real library (`manifold-3d` 3.5.5) and the repair measured as a candidate in a copy of the repository. Not implemented.** There is no `contract.ts` and no `calls.ts`: no public type or signature of the engine changes (the port `SolidKernel` and its guarantees stay word for word, `interference.ts` is not touched), and the package adds no query, command or document field. What changes is inside `packages/kernel-manifold`: one more cleaning in `clean.ts`, one branch in `boolean` of `index.ts`, and, for its tests, one field of the adapter's own `BooleanOptions` and a counter on `ManifoldKernel`. `npx tsc -p docs/d36/tsconfig.json` passes with the directory as it is. Its tests join the tests of the adapter and the part of 5e of validation scenario 13; no scenario of its own.
 
 It is a change of the mesh cleaning of the kernel adapter, so the implementation gets a full review (CLAUDE.md, "Depth of the review").
 
@@ -11,7 +11,7 @@ The owner's decision of 2026-11-16 ([5e](../5e-kernel-second/design.md), "The ow
 Three things the experiments settled that the backlog could only guess:
 
 - **`restoreShifted` takes no part.** For an intersection `prepareTool` moves no face (`coplanar.ts`: "Průnik se neupravuje"), so `boolean` goes from the library's result straight to `clean` and to the two checks. Every refusal of an intersection is made by `clean` and found by the checks. `restoreShifted` and `prepareTool` are not changed by this package.
-- **Both messages have one cause.** "Not a closed surface" and "a folded triangle" are two ends of the same cycle in the loop of `clean` ("The cause").
+- **Nearly all of the refusals have one cause.** On the poses of 5a and 5e every "not a closed surface" and seven of the eight "a folded triangle" come from the two steps of the loop of `clean` undoing each other ("The cause"). A fold can also come from the weld, which both cleanings share; that one is not repaired ("Known limits").
 - **The repair can be an addition, not a change.** A second cleaning, tried only where the cleaning of today ends in a refusal of an intersection, answers nearly all of them; everything the adapter answers today it answers with the same arrays.
 
 ## The cheap variant
@@ -102,9 +102,9 @@ Such a quadrilateral is no defect of the mesh: it is a thin piece of a face, wit
 
 - **"Not a closed surface"** (155 of 172): the check for open edges runs right after the drop, so every state of the cycle is seen open; the loop stops on a repeated state, open.
 - **The other "not closed" endings** (9) are the same two steps failing to meet: an edge opened by a drop finds no vertex among the ends of the open edges (8), or the states never repeat exactly and the loop runs all its thousand passes (1, about a second).
-- **"A folded triangle"** (8): the loop stops on a repeated state that happens to be closed, and in it one piece of a split lies turned over. In the five looked at, the folded triangle is no triangle of the input, it has the cosine −1 against its face, and its width is between the two weld tolerances (2.8 · 10⁻⁴ to 4.2 · 10⁻⁴, against 4.4 · 10⁻⁴ to 5.1 · 10⁻⁴ of the pair and 2.6 · 10⁻⁴ to 3.0 · 10⁻⁴ of the result): a split at a vertex up to one tolerance of the pair off the edge turned a needle over, and only the check by the tighter tolerance of the result sees it.
+- **"A folded triangle"** (8): in seven of them the loop stops on a repeated state that happens to be closed, and in it one piece of a split lies turned over. In the five of those looked at, the folded triangle is no triangle of the input, it has the cosine −1 against its face, and its width is between the two weld tolerances (2.8 · 10⁻⁴ to 4.2 · 10⁻⁴, against 4.4 · 10⁻⁴ to 5.1 · 10⁻⁴ of the pair and 2.6 · 10⁻⁴ to 3.0 · 10⁻⁴ of the result): a split at a vertex up to one tolerance of the pair off the edge turned a needle over, and only the check by the tighter tolerance of the result sees it. The eighth (the plate sunk by 0.0006 two metres away, slid, k = 5) ends closed after three passes with no state repeated: the weld there (4.5 · 10⁻³) is seven times the thickness of what the two share, and its fold is not of the cycle (found by the review).
 
-So the refusals are honest, as 5a found: the mesh the loop stops in is open or has a triangle inside out. And they are not a property of the geometry: the same raw mesh has a closed, unfolded cleaning within the same tolerance.
+So the refusals are honest, as 5a found: the mesh the loop stops in is open or has a triangle inside out. And nearly all of them are not a property of the geometry: for 167 of the 172 the same raw mesh has a closed, unfolded cleaning within the same tolerance ("Measured").
 
 ### Why it did not show before
 
@@ -123,13 +123,13 @@ The fuzz of the adapter makes unions and differences of a few prisms on a coarse
    - For each null triangle in the order of the list, with the long side a–b and the middle vertex m: **subdivide the side a–b at m in every triangle that has it.** A triangle (a, b, x) becomes (a, m, x) and (m, b, x) with its face number; the null triangle itself is the case x = m and becomes nothing. The pieces stand where the triangle stood in the list.
      - A subdivision is named by its side and its vertex. **One that was made before is not made again**; its null triangle stays.
      - When one of the triangles on the side was already replaced in this pass, the subdivision waits for the next pass.
-   - A pass that made no subdivision ends the loop: the null triangles that are left are those whose subdivision was made before.
+   - A pass that made no subdivision ends the loop: the null triangles that are left are those whose subdivision was made before. So does the thousandth pass, as in the first loop.
 3. **`splitNonManifold`**, as step 4 of `clean`.
 
 What it rests on:
 
 - **It cannot end open.** Call a mesh balanced when every directed edge a→b is met by as many b→a. The library's result is balanced (it is closed by its indices). The weld keeps it: a triangle that lost a vertex carried one edge both ways. Dropping a membrane removes every edge together with its opposite. A subdivision replaces a→b by a→m and m→b in every triangle that has it, b→a by b→m and m→a likewise, and adds m→x and x→m as a pair. So every state of the loop is balanced, and `splitNonManifold` turns a balanced mesh into one where every edge has exactly two triangles, as it does today. The first cleaning has no such property: between its two steps the mesh is open, and it is closed again only if step 3 finds its vertex.
-- **It ends.** There are finitely many subdivisions (a pair of vertices and a vertex), each is made once, and a pass without one stops the loop. No memory of states, no bound on passes. Measured: 7 passes and 107 subdivisions a call on average, the most seen 24 and 1,892 ("The sliver fuzz").
+- **It ends.** There are finitely many subdivisions (a pair of vertices and a vertex), each is made once, and a pass without one stops the loop. No memory of states. The bound of 1,000 passes is for a mesh nobody has seen: since every state is balanced, stopping early leaves null triangles and a closed mesh, never an open one (the most passes seen by the review, also with welds a thousand times larger, is 26). Measured: 7 passes and 107 subdivisions a call on average, the most seen 24 and 1,892 ("The sliver fuzz").
 - **It moves nothing further than the first cleaning does.** A subdivision moves the edge a–b to a–m–b, and m lies within `eps` of that edge by the rule that called the triangle null. It is the drop and the split of today made as one step.
 - **In the quadrilateral of the cycle it makes the two cuts and stops**: the first subdivision gives the other cut, the second gives the first one back, the third would be the first again and is not made. The quadrilateral ends as the library returned it, with its thin triangle in place: a triangle with an area, lying the way it lay. Nearly every run ends so: 823 of 843 runs of the sliver fuzz below, with 24 such triangles left on average among 2,700.
 - **The same input gives the same output** (guarantee 4): the order is that of the list, the names are vertex numbers.
@@ -149,15 +149,16 @@ if (op === 'intersection' && second) {
 throw new Error(refusal);
 ```
 
-- **The first cleaning first.** What it verifies is returned, so every intersection the adapter answers today has the answer of today, array for array. The second cleaning is not a better first one: it cuts the same mesh a little differently (the same arrays in 53 of 143 answered poses of the pin along Z), and the measures the tests pin would move in their last digits for nothing.
+- **The first cleaning first.** What it verifies is returned, so every intersection the adapter answers today has the answer of today, array for array. The price is the time of the first cleaning where it refuses ("The time"). The other way, the second cleaning as the only cleaning of an intersection, was measured too and answers the same; it is the one choice of this design that could go either way, and "Rejected" has its numbers.
 - **The same checks, by both tolerances.** A mesh from the second cleaning is held to what a mesh from the first is held to. Where it fails them the pair is refused with the first message.
 - **The message is the first one.** The fuzz of the adapter and `sharedBy` read the text; nothing new to tell apart.
 - **`BooleanOptions` gets `second?: boolean`** (default true), beside `prepare` and `restore`: "switching a step of the adapter off, only for the tests that show why it is needed". The tests of this package use it to show that a pinned case is refused by the first cleaning; the tests of 5e use it to keep a real refusal to give to the second opinion ("What follows for 5e"). It is on `ManifoldKernel`, not on the port.
+- **`ManifoldKernel` gets a counter**, `secondCleanings` (how often the second cleaning ran), beside `wasm` and `toManifold`, its access for tests. Without it no test can tell an adapter that keeps the second cleaning away from a union from one that does not: the refused unions of the tests are refused either way (test 3).
 
 ### Why an intersection only
 
 - **It may leave what a union must not have.** Guarantee 3 of the port promises a union and a difference without remnants of faces that should be gone, and the first cleaning keeps it by dropping every null triangle. The second cleaning leaves the null triangles it may not subdivide again, and one of them can carry the number of a face that has no other triangle left. Measured, with the second cleaning put **in place of** the first for every operation: 4 of 1,000 cases of the fuzz, the pinned seed 23288 and 1 of 300 tapered cases come out with a face that the same case built along the axes does not have. For an intersection the port promises no such thing (guarantee 3 is not kept for it, and the engine reads its volume and depth, not its faces).
-- **It does not answer the refused unions.** With the second cleaning allowed for every operation, the fuzz of 30,000 cases refuses the same three (one in the design range, two outside), and nothing else changes; all three are "a folded triangle" after the return of moved faces (the seeds 772, 13550 and 19940), which is another cause. So for a union there is a risk and no gain.
+- **It does not answer the refused unions.** With the second cleaning allowed for every operation, the fuzz of 30,000 cases refuses the same three (one in the design range, two outside), and nothing else changes; all three are "a folded triangle" thrown by a difference that moved faces of its tool and brought them back (the seeds 772, 13550 and 19940; checked), which is another cause. So for a union there is a risk and no gain.
 - **A body is never made of it.** Every caller that builds (`applyTool`, the tool builds, the pattern) asks for a union or a difference and gets the adapter of today, bit for bit.
 
 ### The guarantees of the port
@@ -224,9 +225,39 @@ Spikes against the real adapters and the engine of `master` at `4d7c279`. They a
 
 A fuzz of the adapter alone, on solids of its kit (`testkit.ts`), with an oracle that does not ask the kernel:
 
-- A plate (x and y from −30 to 30, from 0 to 8) with a hole cut by a regular polygon of n sides and radius r about the origin of the frame, its first corner on the x axis, the tool from −1 to 9; a pin of n sides and radius r + δ, turned by a phase, from 0 to 16, in seven cases of ten joined to a plate from 8 to 16 (x from −20 to 40, y from −25 to 25) that lies flush on the first, as the forearm lies on `upper`. n is 24, 32, 45 or 64; r is 1.5, 2.5, 4 or 12; δ is 0 in seven cases of ten, else 0.011, 0.03 or 0.1; the frame is `randomFrame` of `fuzz.ts` (one in five along the axes), in one case of seven moved 450 or 2,000 mm from the origin.
+- A plate (x and y from −30 to 30, from 0 to 8) with a hole cut by a regular polygon of n sides and radius r about the origin of the frame, its first corner on the x axis, the tool from −1 to 9; a pin of n sides and radius r + δ, turned by a phase, from 0 to 16, in seven cases of ten joined to a plate from 8 to 16 (x from −20 to 40, y from −25 to 25) that lies flush on the first, as the forearm lies on `upper`. n is 24, 32, 45 or 64; r is 1.5, 2.5, 4 or 12; δ is 0 in seven cases of ten, else 0.011, 0.03 or 0.1; the phase is in radians; the frame is `randomFrame` of `fuzz.ts` (one in five along the axes), in 15 cases of a hundred moved 450 or 2,000 mm from the origin along x. All sides of a polygon carry one face number, as the sides of a circle of the engine do. The flush plate is the body and the pin the tool of the union that joins them.
 - **The oracle**: the common part is (pin polygon minus hole polygon) × 8, and the area of the difference of two convex polygons is computed by clipping one by the edges of the other.
-- A case passes when the adapter refuses it, or answers with a mesh that is closed, has no folded triangle (`describe` of the kit, by the tolerance of the result) and has the volume of the oracle.
+- A case passes when the adapter refuses it, or answers with a mesh that is closed, has no folded triangle (`describe` of the kit, by the tolerance of the result) and has the volume of the oracle within a room that follows the weld: `0.003 + 0.003 · V + 40 · weld` mm³, with the weld of the two solids (`tolerances(a, b).weld`; 0.008 at the origin, 0.04 at 450 mm, 0.16 at 2,000 mm for a small volume).
+
+The counts below belong to this generator, seed by seed; the spike files are not kept, so it is here in full (`rng` and `randomFrame` of `fuzz.ts`, `prism` and `rect` of `testkit.ts`):
+
+```ts
+const ngon = (r: number, n: number, phase: number): Loop =>
+  Array.from({ length: n }, (_, i) => [r * Math.cos(phase + (2 * Math.PI * i) / n), r * Math.sin(phase + (2 * Math.PI * i) / n)]);
+
+function generate(seed: number) {
+  const r = rng(seed * 7919 + 13);
+  let frame = randomFrame(r);
+  const far = r() < 0.15 ? (r() < 0.5 ? 450 : 2000) : 0;
+  frame = { ...frame, o: [frame.o[0] + far, frame.o[1], frame.o[2]] };
+  const n = [24, 32, 45, 64][Math.floor(r() * 4)];
+  const radius = [1.5, 2.5, 4, 12][Math.floor(r() * 4)];
+  const over = r() < 0.7 ? 0 : [0.011, 0.03, 0.1][Math.floor(r() * 3)];
+  const phase = r() * 2 * Math.PI;
+  const top = r() < 0.7;
+  return { frame, n, radius, over, phase, top };
+}
+
+function build({ frame, n, radius, over, phase, top }: ReturnType<typeof generate>) {
+  const plate = prism(frame, rect(-30, -30, 30, 30), 0, 8, { start: 1, end: 2, sides: [3, 4, 5, 6] });
+  const hole = ngon(radius, n, 0);
+  const a = kernel.boolean('difference', plate, prism(frame, hole, -1, 9, { start: 7, end: 8, sides: Array(n).fill(9) }));
+  const pin = ngon(radius + over, n, phase);
+  let b = prism(frame, pin, 0, 16, { start: 21, end: 22, sides: Array(n).fill(23) });
+  if (top) b = kernel.boolean('union', prism(frame, rect(-20, -25, 40, 25), 8, 16, { start: 31, end: 32, sides: [33, 34, 35, 36] }), b);
+  return { a, b, volume: (area(pin) - area(clipped(pin, hole))) * 8 }; // `clipped`: the pin cut by every edge of the hole
+}
+```
 
 6,000 cases, the seeds 1 to 6000; in one the inputs could not be built (the union that makes the second solid was refused).
 
@@ -239,7 +270,7 @@ A fuzz of the adapter alone, on solids of its kit (`testkit.ts`), with an oracle
 | All | 5,999 | 843 | 815 | 28 |
 
 - **The refusals fall from 14 % of the cases to 0.5 %.** At the origin 8 of 5,106 cases stay refused (496 today); 450 or 2,000 mm away 20 of 893 (347 today).
-- **No answer is wrong.** Every answered case is closed and unfolded, by either cleaning. The volume against the exact one:
+- **Every answered case is closed and unfolded and has its volume within the room above**, by either cleaning: none of 5,971 answers is outside it. The room is what makes that so far from the origin: by the first criterion of the spike (2 % of the volume and 0.02 mm³) 27 answers were flagged, 8 of the first cleaning and 19 of the second, every one of them 450 or 2,000 mm away, with errors of a few hundredths of a mm³ (the seed 413: 0.036 measured for 0.0011 exact). The volume against the exact one:
 
   | Where | Cleaning | Answered | Mean error, mm³ | Worst |
   |---|---|---|---|---|
@@ -248,11 +279,11 @@ A fuzz of the adapter alone, on solids of its kit (`testkit.ts`), with an oracle
   | 450 mm away | first | 295 | 1.1 · 10⁻³ | 1.6 · 10⁻² |
   | 450 mm away | second | 136 | 3.7 · 10⁻³ | 2.0 · 10⁻² |
   | 2,000 mm away | first | 251 | 6.0 · 10⁻³ | 1.1 · 10⁻¹ |
-  | 2,000 mm away | second | 191 | 1.4 · 10⁻² | 7.4 · 10⁻² |
+  | 2,000 mm away | second | 191 | 1.4 · 10⁻² | 8.3 · 10⁻² |
 
   At the origin the second cleaning is as near the exact volume as the first (its mean is that of the cases it gets, the ones with the flush plate: the first cleaning's mean on those is 2.4 · 10⁻⁴). Far from the origin both carry the noise of single precision, which 5a measured for flush faces askew (up to 0.24 mm³ two metres away); the weld there is 10⁻³ and 4 · 10⁻³ mm, as much as the slivers are thick.
-- **What stays refused**: in each of the 28 the mesh of the second cleaning is closed and has a folded triangle, in 26 of them by the tolerance of the pair as well. Which step turns it was not looked at. 20 of the 28 are 450 or 2,000 mm away; of the 8 at the origin 7 have polygons of 64 sides, whose slivers are 0.002 to 0.003 thick, and one 32 sides at the radius 1.5. All 28 have the flush plate.
-- **The second cleaning in numbers** (843 runs): 7 passes and 107 subdivisions on average (the most seen 24 and 1,892; the most was recorded for the 265 runs of the last 2,000 cases and for the 28 that stay refused); 823 runs end with null triangles left, 24 on average among 2,700 triangles.
+- **What stays refused**: in each of the 28 the mesh of the second cleaning is closed and has a folded triangle, in 26 of them by the tolerance of the pair as well. 20 of the 28 are 450 or 2,000 mm away; of the 8 at the origin 7 have polygons of 64 sides, whose slivers are 0.002 to 0.003 thick, and one 32 sides at the radius 1.5. All 28 have the flush plate. Which step folds was looked at by the review on a generator of its own: of 37 meshes the second cleaning does not get past the checks, 14 are folded after the weld alone, the step both cleanings share, and 23 by the loop.
+- **The second cleaning in numbers** (843 runs): 7 passes and 107 subdivisions on average (the most seen 24 and 1,892, recorded for the 265 runs of the last 2,000 cases and for the 28 that stay refused; 26 passes in the probes of the review); 823 runs end with null triangles left, 24 on average among 2,700 triangles.
 - **A conical pin in its conical seat** (the same fuzz with frustums of 24, 32 and 45 sides, half angles from 14° to 45°, no flush plate; 600 cases): 3 refused today, all answered by the second cleaning; the volumes within 1.4 · 10⁻³ of the exact ones by either cleaning.
 - **The same 172 refused poses of the table of "The cause"**, given to the second cleaning directly: 167 pass both checks, 5 are closed and folded (the pin 0.03 larger askew at k = 27 and four poses of the plate sunk by 0.0006 two metres away).
 
@@ -262,13 +293,14 @@ The cleanings on the refused poses, the mean and in brackets the most:
 
 | Set | Refused | Triangles of the raw mesh | The library | The first cleaning | The second cleaning |
 |---|---|---|---|---|---|
-| Pin 4 along Z | 7 | 860 | 16 ms | 13 ms (16) | 12 ms (19) |
-| Pin 4 askew | 71 | 5,000 | 54 | 68 (154) | 45 (83) |
-| A pin 0.03 larger, askew | 12 | 5,300 | 56 | 80 (131) | 48 (94) |
-| Flush faces askew | 24 | 3,100 | 34 | 52 (192) | 30 (74) |
-| A plate sunk by 0.0006, askew | 17 | 880 | 29 | 102 (1,071) | 9 (15) |
+| Pin 4 along Z | 7 | 860 | 16 ms | 13 ms (16) | 11 ms (18) |
+| Pin 4 askew | 71 | 5,000 | 53 | 67 (154) | 45 (94) |
+| A pin 0.03 larger, askew | 12 | 5,300 | 54 | 80 (133) | 48 (95) |
+| Flush faces askew | 24 | 3,100 | 34 | 52 (186) | 29 (77) |
+| A plate sunk by 0.0006, askew | 17 | 880 | 29 | 103 (1,100) | 8 (16) |
 
-- The two checks take about a millisecond. The second cleaning is faster than the first, which goes round its cycle before it gives up (the 1,071 ms are the pose in which it runs all its thousand passes).
+- The two checks take about a millisecond. The second cleaning is faster than the first, which goes round its cycle before it gives up (the 1,100 ms are the pose in which it runs all its thousand passes).
+- **The first cleaning can take seconds before it gives up.** The review found, on a generator of its own (2,500 cases, 309 refused today), 9 refusals that spend 1.1 to 4.2 s in the first cleaning: 3.95 s for a raw mesh of 4,100 triangles and 3.09 s for one of 6,124, where the second cleaning takes 70 and 100 ms. That time is spent today as well, before the refusal.
 - **A pose through `sharedBy` costs what it cost**: 0.1 to 0.2 s along Z and 1.3 to 3.4 s askew, nearly all of it the measure of the engine. The 80 askew poses of the pin took 134 s with the adapter of today (71 of them refused and measured as computed) and 131 s with the candidate (the same 71 verified and measured).
 
 ## What follows for 5e
@@ -299,7 +331,7 @@ The cleanings on the refused poses, the mean and in brackets the most:
 
 **What the second opinion is still for:**
 
-- **A pair both cleanings fail**: 4 of the 183 refused poses of the arm and the flush model, 28 of the 843 refused cases of the sliver fuzz. Such a pair is judged by its mesh as computed as today: cleared, or failed with the measure in its message.
+- **A pair both cleanings fail**: 4 of the 183 refused poses of the arm and the flush model, 28 of the 843 refused cases of the sliver fuzz, and the pairs the weld itself folds (a keyed shaft nearly flush in its socket, "Known limits"). Such a pair is judged by its mesh as computed as today: cleared, or failed with the measure in its message.
 - **Whatever else makes `boolean` throw for an intersection** and leaves the library able to answer: the second opinion does not know why the adapter refused, and does not need to.
 - **It stays the one place that says "not verified".** The repair moves pairs out of `cleared` and `failed` into the verified lists; it does not make the verified lists less strict. A pair in `cleared` is rarer, and means what it meant.
 
@@ -308,12 +340,17 @@ The cleanings on the refused poses, the mean and in brackets the most:
 - The conventions of `describe_api` (`packages/mcp/src/api.ts`): "where the kernel refuses to verify such a pin (about one pose in thirty), the pair is in `cleared`" becomes: the kernel verifies nearly every such pose; a pair it cannot verify is in `cleared` or `failed` as before. "Askew to them a pair costs seconds and a few poses in a hundred still fail" becomes: askew to them a pair costs seconds.
 - The known limits of [5a](../5a-mechanism/design.md) (a joint askew to the axes) and of [5e](../5e-kernel-second/design.md) (a refused pair that really collides is in `failed`; a few that share nothing stay failed), each with a line that D51 answers these poses.
 - [backlog.md](../../backlog.md), "To verify first": the entry goes; what stays of it is under "Known limits" here.
+- [api.md](../../architecture/api.md), "Interference": the rates of refusal ("about one pose in thirty … four in five askew") and "a few refused pairs that share nothing stay failed"; [ai.md](../../architecture/ai.md), which retells the sentence of the conventions.
+- [ports.md](../../architecture/ports.md), "The intersection as computed": the list of what is "not guaranteed, as `boolean` guarantees it" names triangles without an area and sheets. An intersection from `boolean` holds sheets today, and where the second cleaning answered it holds thin triangles the first would have dropped (24 on average); the paragraph says so after this package.
+- Comments: `scenario13.test.ts` ("one pose in thirty is"), the head of `clean.ts`, the head of `second-opinion.test.ts`.
+
+**The bound of 5e does not reach a verified pair.** `SECOND_OPINION_TRIANGLES` is read only where `boolean` threw. A pair refused today whose mesh as computed has more than 12,000 triangles costs no measure and is failed at once; when the second cleaning verifies such a pair it is measured as every verified pair is, without a bound: the seconds an answered pair of that size costs today (3.7 s at 9,174 triangles, [5e](../5e-kernel-second/design.md), "As implemented"). Not measured here: no pose of the design is that large.
 
 ## Tests the implementation owes
 
 **The adapter** (`packages/kernel-manifold/test`, solids of the kit, no engine):
 
-1. **`review.test.ts`, the cases of this package**, each a plate with a hole and a pin under a flush plate as in the sliver fuzz, in the frame `rotated()` of the kit, given by n, r, δ and the phase (found by the scan of the design; the implementation checks each against its own build and replaces one that its build answers):
+1. **`review.test.ts`, the cases of this package**, each built by `build` of the sliver fuzz above with the flush plate, in the frame `rotated()` of the kit, given by n, r, δ and the phase in radians (found by a scan of 1,200 such cases; the review built all six again and got them; the implementation checks each against its own build and replaces one that its build answers). The same six are answered by the first cleaning in the frame `IDENTITY`, and without the flush plate:
 
    | n, r, δ, phase | First cleaning alone (`{ second: false }`) | The adapter |
    |---|---|---|
@@ -321,14 +358,14 @@ The cleanings on the refused poses, the mean and in brackets the most:
    | 32, 1.5, 0, 0.0818 | throws "přeložený trojúhelník" | closed, unfolded, 0.1321 against 0.1318 |
    | 32, 4, 0, 0.0818 | throws "není uzavřená plocha" | closed, unfolded, 0.9379 against 0.9375 |
    | 24, 12, 0, 0.009 | throws "není uzavřená plocha" | closed, unfolded, 2.0463 against 2.0460 |
-   | 24, 4, 0.03, 0.009 (a real collision) | throws "není uzavřená plocha" | closed, unfolded, 5.9861 against 5.9856 |
+   | 24, 4, 0.03, 0.009 (a real collision) | throws "není uzavřená plocha" | closed, unfolded, 5.986 against 5.9856 |
    | 45, 1.5, 0, 0.0707 | throws "není uzavřená plocha" | **still throws** (pinned as a limit, with the message of the first cleaning) |
 
    For each answered case also: the same arrays when asked twice; every face number is one of the two inputs'; the volume within 0.002 mm³ of the exact one.
-2. **The first cleaning wins**: an intersection it verifies (the blocks of `as-computed.test.ts`, and a pin askew that it answers) gives the same arrays with and without `{ second: false }`.
-3. **A union and a difference never reach the second cleaning**: the refused cases of `review.test.ts` ("a gap below the resolution") are refused with and without `{ second: false }`, with the same count; a spy is not needed, the option is the switch.
+2. **The first cleaning wins**: an intersection it verifies (the blocks of `as-computed.test.ts`, and a pin askew that it answers) gives the same arrays with and without `{ second: false }`, and the counter does not move.
+3. **A union and a difference never reach the second cleaning**: over the refused cases of `review.test.ts` (gaps and a depth below the resolution, refused 34, 27, 31, 10 and 11 times in the review's run) and the 1,000 cases of the fuzz the counter `secondCleanings` stays where it was; over the cases of test 1 it rises by one each. The count of refusals cannot be the test: the review found it the same with the second cleaning let at a union, which answers none of them.
 4. **The second cleaning alone**, as a function, on the raw meshes of the six cases of test 1 (`{ prepare: false }`): each result is closed (`isClosed`), the sixth as well (it fails the check of folded triangles, not the closed one); the same arrays when run twice; no face number that the raw mesh does not have.
-5. **`sliver-fuzz.test.ts`** with its generator in `sliver-fuzz.ts`, as measured: a case is refused or right; the refused are counted and held to a bound from the measurement (28 of 5,999 here; `1 + ⌈cases / 100⌉`); `SLIVER_FUZZ_COUNT` and `SLIVER_FUZZ_FIRST` as in the other fuzz files, 100 cases by default (about six seconds). A seed that fails is pinned in the file, as failing seeds of `fuzz.test.ts` are.
+5. **`sliver-fuzz.test.ts`** with its generator in `sliver-fuzz.ts`, as written out under "The sliver fuzz": a case is refused, or closed, unfolded and within the room of the volume given there (with it the 6,000 cases of the design pass; without the term of the weld the cases far from the origin do not); the refused are counted and held to a bound from the measurement (28 of 5,999 here; `1 + ⌈cases / 100⌉`); `SLIVER_FUZZ_COUNT` and `SLIVER_FUZZ_FIRST` as in the other fuzz files, 100 cases by default (about six seconds). A seed that fails is pinned in the file, as failing seeds of `fuzz.test.ts` are.
 6. **`fuzz.test.ts`, `taper-fuzz.test.ts`, `coplanar.test.ts`**: unchanged, and run once with `FUZZ_COUNT=30000` and `TAPER_FUZZ_COUNT=5000` before the commit; the lines they print must be those of today.
 
 **Below the engine's ordering** (`packages/scenarios/test/second-opinion*.ts`). The kit gets `firstOnly`, the adapter with `{ second: false }` behind the port (`{ ...kernel, boolean: (op, a, b) => kernel.boolean(op, a, b, { second: false }) }`), and `refused` and `judged` take the kernel to ask:
@@ -336,6 +373,7 @@ The cleanings on the refused poses, the mean and in brackets the most:
 7. **Test 1** (the three poses of the backlog): with `firstOnly` every expectation of today (refused; the mesh as computed closed, under 1 mm³, a fit; `cleared` as a fit); with the adapter: not refused, the pair in `fits` and no `cleared`, the volume that of the mesh as computed to three digits. The other order stays a verified fit.
 8. **Test 6** (flush faces askew): with `firstOnly` the expectations of today; with the adapter every one of the five poses, and the pin askew at k = 52, is not refused, nothing is in `pairs`, `failed` or `cleared`, the flush ones are in no list and the pin is in `fits`.
 9. **Test 7** (real collisions refused askew): with `firstOnly` failed and not cleared, as today; with the adapter each is in `pairs`, with a depth above the limit of a fit.
+   - **What is left for the second opinion, over the adapter itself** (a new test of that file): the pin 0.03 larger askew at k = 27 (32.898°), the parent first, is refused by both cleanings and stays `failed` with the phrase of the measure (6.04 mm³ as computed); the plate sunk by 0.0006 two metres away at −88° is refused and `cleared` as nothing. Without these two every test of "refused, then the second opinion" would run over `firstOnly` alone. Their comment says what the comment of 5e said: on the day the adapter answers one, the test keeps what it says of the pair and loses that it is refused.
 10. **`second-opinion-fuzz.test.ts`**: with the adapter, along an axis and askew: nothing in `pairs`, nothing in `failed`; a pose in `cleared` is counted and held to 1 + 2 % of the poses asked (none of 480 in the run of the design: 200 poses along an axis and 40 askew, both orders, of which the first cleaning refuses 6 and 62). The file takes its kernel from `SECOND_OPINION_KERNEL`: with `first` it is the fuzz of today, over the first cleaning alone and with the bounds of today.
 11. **Scenario 13, the part of 5e** (`scenario13.test.ts`): the sweep of 40 steps runs twice. Over a kernel that cleans once (`firstOnly`) the expectations of today stand: the step k = 5 is refused, the pin is in `cleared` as a fit, the gap says `fit` and names the pair. Over the adapter no step is refused, the pin is in `fits` at k = 5 and no step has a `cleared`. [requirements.md](../../requirements.md), scenario 13, gets the sentence.
 12. **`bodies.test.ts`, `gap.test.ts`** (the kernel that refuses every intersection): unchanged; their refusals are made by the test.
@@ -346,7 +384,8 @@ All the checks of CLAUDE.md before each commit. Review: full.
 
 - **At run time**, for an intersection the first cleaning refuses: one more cleaning and its two checks, 12 ms for the pin along an axis and 30 to 50 ms askew (the most seen 94): two to six hundredths of what such a pose costs. Nothing for any other call of the kernel.
 - **A sweep costs what it cost.** A refused pose paid for the measure of its mesh as computed and now pays for the measure of its verified mesh ("The time"). The seconds of a pair askew are in the measure of the engine and stay.
-- **The first cleaning is still paid for** where it refuses: it is what keeps the answers of today as they are.
+- **The first cleaning is still paid for** where it refuses: it is what keeps the answers of today as they are. It is 13 to 100 ms on the poses of the arm and seconds in rare cases (1.1 s in one pose of 874 here; 1.1 to 4.2 s in 9 of 309 refused cases of the review's generator).
+- **A refused pair above the bound of 5e** (12,000 triangles as computed) was failed without a measure and is measured once the adapter verifies it ("What follows for 5e").
 - **In the tests**: the sliver fuzz, about six seconds for its 100 cases (4,000 cases in both modes took 441 s); `second-opinion.test.ts` about twice its 30 s, since every pinned pose is measured over both kernels (one test per pose and kernel, so that none comes near the limit of 60 s); the part of 5e of scenario 13 about 8 s more (the sweep twice); the fuzz of 5e as today.
 - **In the code**: about sixty lines in `clean.ts`, ten in `index.ts`, one option for the tests. The file gets a second loop, and a reader has to know why there are two: the comment of the second says what the first cannot promise.
 - **In what is promised**: nothing new. More intersections are verified; the ones that are not are told as before.
@@ -355,8 +394,8 @@ All the checks of CLAUDE.md before each commit. Review: full.
 
 ```
 packages/kernel-manifold/src/
-  clean.ts      cleanBySubdivision; the weld and the rule of a null triangle shared with clean
-  index.ts      boolean: the branch for an intersection; BooleanOptions.second
+  clean.ts      cleanBySubdivision, beside clean
+  index.ts      boolean: the branch for an intersection; BooleanOptions.second; ManifoldKernel.secondCleanings
 packages/kernel-manifold/test/
   review.test.ts, sliver-fuzz.ts, sliver-fuzz.test.ts
 packages/scenarios/test/
@@ -367,14 +406,18 @@ docs/architecture/verification.md   a section for D51; the numbers of the fuzz
 docs/backlog.md, docs/requirements.md (scenario 13), the known limits of the designs of 5a and 5e
 ```
 
-`clean` itself is not edited beyond lifting the weld and the rule of a null triangle out of it for both cleanings to call; its result must stay the same array for array, which tests 2 and 6 hold. About sixty lines of new code in `clean.ts` and ten in `index.ts`.
+**`clean` itself is not edited.** The second cleaning has its own copy of the weld and of the rule of a null triangle (thirty lines), as the candidate that was measured had. Lifting the two out for both cleanings to call is the tidier file and is allowed only behind a test written first: the arrays of `clean` on the raw meshes of the first 1,000 fuzz cases and of the cases of test 1, recorded with the code of today and compared after. Nothing in the suite of today would notice a changed array of an intersection (the hash of `packages/scenarios/test/review.test.ts` pins the unions and differences of one model; the fuzz prints counts). About ninety lines of new code in `clean.ts` with the copy, sixty without, and fifteen in `index.ts`.
 
 ## Rejected
 
 - **The second cleaning in place of the first, for every operation.** One loop in the file instead of two. Measured: 4 of 1,000 fuzz cases, the pinned seed 23288 and 1 of 300 tapered cases keep a face that should be gone ("Why an intersection only"). It also changes every mesh whose null triangles lie next to each other, and with it the pinned hashes.
 - **The second cleaning as the second try for a union and a difference too.** It answered none of the three refused cases of 30,000 and changed nothing else; where it did answer, it could leave the remnant above and turn an honest refusal into a broken name.
-- **The second cleaning in place of the first for an intersection.** The answered intersections would change in their triangles (53 of 143 poses of the pin along Z keep their arrays) and the measures of the tests in their last digits, and nothing would be answered that the second try does not answer.
-- **The loop of today mended**: remembering its splits so that the same one is not made twice. Not tried. Its two steps would still leave the mesh open between them, with nothing to say that the state it stops in is closed (9 of the 172 refusals are not cycles), and a change of that loop changes the cases it closes today.
+- **The second cleaning as the only cleaning of an intersection** (no first try). Not chosen, and the one choice here that could go the other way. Measured:
+  - On the 783 poses the adapter answers today it answers all 783 with the same verdict (205 nothing, 440 fits, 138 collisions). The volume and the depth are the same to the last bit in 640 and differ by at most 0.02 mm³ and 4 · 10⁻⁶ mm in the rest; the arrays are the same in 53 of 143 answered poses of the pin along Z.
+  - The whole suite fails in the same ten tests and in no other: no test of today pins a number that moves.
+  - The review, on 1,500 cases of its own generator: it answers every one of the 1,324 intersections the first cleaning answers, with the same error of the volume at the origin (2.2 · 10⁻⁴ on average for both), and the cleanings take 9.4 s in place of 33.5 s, since the first loses its seconds where it gives up.
+  - So it would make `boolean` simpler (one cleaning for each kind of operation, no second try), it would be faster where the first refuses, and it would answer the same. It is not chosen because it changes the triangles of every answered intersection without answering any pair differently: a verified intersection of today has no null triangle left in it, one of the second cleaning has 24 on average, and the answers of today rest on the fuzz and the reviews the first cleaning went through. The design adds and leaves what is answered as it is.
+- **The loop of today mended**: remembering its splits so that the same one is not made twice. Not tried. Its two steps would still leave the mesh open between them, with nothing to say that the state it stops in is closed (10 of the 172 refusals are not cycles), and a change of that loop changes the cases it closes today.
 - **Another rule for a needle** (a margin that follows the length of the side, or none at all). Not tried: every margin has its quadrilateral, and the rule decides for unions and differences too, where the fuzz found it (`verification.md`: needles dropped as null in 14 of 30,000 cases).
 - **A cycle caught by a memory of states** in the second cleaning, as the first has it. Tried first: the loop then stops somewhere inside a cycle, with a turned piece in 10 of the 172 refused poses of "The cause", against 5 with the rule of once. A subdivision made once ends the cycle where it began.
 - **A triangle turned against the triangle it was cut from counted as null**, and **the pieces of a null triangle counted as null**. Tried, on top of the rule of once: the first answered 1 more case of 288 refused in a run of the sliver fuzz and none more of the 172 refused poses of "The cause", the second none anywhere. Two more rules in the most delicate file for one case in three hundred.
@@ -388,32 +431,35 @@ docs/backlog.md, docs/requirements.md (scenario 13), the known limits of the des
 - **A few intersections stay refused**: 4 of 183 refused poses of the arm and the flush model, 28 of 5,999 cases of the sliver fuzz (0.16 % at the origin, 2.2 % of the cases 450 or 2,000 mm away). In each of them the second cleaning's mesh is closed and has a folded triangle. The collisions then take the second opinion of 5e: one real collision of 52 stays `failed` with its measure in the message.
 - **The second cleaning leaves thin triangles the first would drop** (in 823 of 843 runs, 24 on average): those of the quadrilaterals of the cycle. They are triangles of the library's result or pieces of one, with an area, and the checks hold that none on a planar face lies turned over. For the collisions it means what it means for a mesh as computed ([5e](../5e-kernel-second/design.md), "Why it errs one way"): the flag `round` of the measure reads face numbers from every triangle, also a thin one. A fit needs more than that flag (no planar reach beyond the precision, a depth within the tolerance), and of 51 real collisions verified by the second cleaning 51 measured as collisions.
 - **A union and a difference are not repaired.** Their refusals are as rare and as honest as before: `kernelFailure` on the feature.
-- **An intersection is for measuring.** The verified mesh of solids with coincident faces holds sheets (guarantee 3 is not kept for an intersection), and the library reads such a mesh back with another volume: 522 of the 3,421 intersections the adapter of today answers in the first 4,000 cases of the sliver fuzz, and 178 of the 560 the second cleaning answers there. Nothing in the engine gives an intersection back to the kernel; a caller that did would have to know.
+- **An intersection is for measuring.** The verified mesh of solids with coincident faces holds sheets (guarantee 3 is not kept for an intersection), and the library reads such a mesh back with another volume: 522 of the 3,421 intersections the adapter of today answers in the first 4,000 cases of the sliver fuzz, and 178 of the 560 the second cleaning answers there. Three of about 2,190 answers of the adapter of today in the review's cases are meshes the library does not load at all ("Not manifold"), all from the first cleaning. Nothing in the engine gives an intersection back to the kernel; a caller that did would have to know.
 - **Far from the origin the answers are those of the weld.** Two metres away the weld tolerance is 4 · 10⁻³ mm, the volume of slivers 0.01 thick is known to a few hundredths of a mm³ (the table of the sliver fuzz), and what is thinner than the precision of the coordinates is nothing to the collisions, as before.
-- **The first cleaning can take a second before it gives up** (one pose of 874 ran its thousand passes, 1.07 s). Not changed: the time is spent before the second cleaning is tried.
+- **A fold made by the weld is not repaired.** Both cleanings weld the same way, and where the weld itself turns a triangle of a planar face over, both end folded. The review found the family where that is the rule: polygons of 4, 6 and 8 sides, **each side a planar face with a number of its own** (a square or hexagonal key nearly flush in its socket), turned by 10⁻⁶ to 3 · 10⁻² rad. Of 915 such cases 47 are refused today, 44 of them as folded; the second cleaning answers the 3 that are not closed and none of the 44. The sides of a circle of the engine share one face number and are not planar to the check, so the pins of this design do not meet it; a keyed shaft does. Such a pair goes to the second opinion as today.
+- **The first cleaning can take seconds before it gives up** (1.1 s in one pose of 874 here; up to 4.2 s in the review's cases, "The time"). Not changed: the time is spent before the second cleaning is tried.
 - **Askew to the axes of the model a pair costs seconds**, as before ([5e](../5e-kernel-second/design.md), "The cost").
 - **Measured on polygons of one circle, on cones of one cone and on flush planes.** Other families of slivers (two swept profiles that agree only to the chord tolerance, gear flanks in contact) were not tried; the argument for closedness does not depend on the shape, the numbers do.
-- **The claim "no answer is wrong" is 179 poses, 815 cases with an exact volume and 3 cones**, not a proof. A case that turns up is pinned in `review.test.ts`, as the regressions of the adapter are.
+- **That no answer is wrong is 179 poses, 815 cases with an exact volume, 3 cones and the 277 cases and 31 poses the review added**, not a proof. A case that turns up is pinned in `review.test.ts`, as the regressions of the adapter are.
 
 ## Open
 
 **Nothing needs the owner's decision.** The package stays inside the adapter, adds no library and changes no port.
 
-For the owner to know, since both follow from the measurements and not from the brief:
+For the owner to know, since they follow from the measurements and not from the brief:
 
 - **`restoreShifted` is not changed**, although the brief names it: it takes no part in an intersection.
 - **The refusals of a union and a difference are not repaired here.** They are rare (three in 30,000 fuzz cases), they have another cause, and the second cleaning must not be let near a union. If they are wanted, they are a package of their own with its own experiments.
+- **The first cleaning stays the first try for an intersection**, so that no answer of today changes. The other way (the second cleaning as the only cleaning of an intersection) answers the same on everything measured, makes `boolean` simpler and saves the seconds the first cleaning loses where it gives up; it changes the triangles of the intersections answered today ("Rejected"). It is a change of one branch and of test 2, now or later, if the owner prefers it.
+- **A verified intersection may hold thin triangles** where the second cleaning answered (and holds sheets where faces coincide, as today). Guarantee 1 of the port stands as worded; the paragraph of `ports.md` that contrasts `boolean` with the mesh as computed gets a line ("What follows for 5e").
 
 For the implementation:
 
 - The bounds of the two fuzz files and the default number of cases of the sliver fuzz, from its own run.
-- Whether the weld and the rule of a null triangle are shared by lifting them out of `clean` or by passing them in; either way the arrays of the first cleaning stay.
+- Whether the weld and the rule of a null triangle stay copied or are lifted out of `clean` behind the test of "Where the code lives".
 
 ## To verify before the implementation
 
 Nothing stands in the way, and no part of the design waits for a measurement. What the implementation measures first, because the candidate was a copy of the repository and not the code:
 
-1. **That lifting the weld and the rule of a null triangle out of `clean` leaves its arrays as they are**: the lines of the fuzz of 30,000 cases and of the 5,000 tapered ones, and the hashes of `packages/scenarios/test/review.test.ts`, before the second cleaning is wired in.
+1. **That `clean` answers as it did**: the lines of the fuzz of 30,000 cases and of the 5,000 tapered ones; and, if the weld is lifted out of it, the comparison of its arrays described under "Where the code lives", written before the edit.
 2. **The six cases of test 1** against its own build of the adapter (a refusal depends on the last bit of a coordinate).
 3. **The verdicts once**, on the 183 refused poses of "Measured" (ten minutes): 179 answered and none of them wrong is what the tests then hold in the small.
 
@@ -421,4 +467,28 @@ Not measured, and not needed to decide the design: the app (nothing of it change
 
 ## Reviews
 
-None yet: this is the version handed to the first review.
+### Round 1 (2026-11-16): first version
+
+One reviewer, an internal subagent that had not seen the design being written (Fable 5.2, effort high), read-only, at commit `972f868`. It was given the design, the code, the spike scripts with their raw outputs and the copy of the repository with the candidate. It ran probes of its own through the real kernel (a dozen scripts; kept outside the repository like the spikes): the table of the cause again from the code, 2,500 cases of a generator of its own (polygons of different side counts on one circle, tiny phases, a keyed pin, a pin off centre, polygons with planar sides, both orders, far from the origin), pins a little smaller and larger than their hole through the engine, the time of the two cleanings, the second cleaning alone. It found no blocker: three major, seven minor and four factual findings and two nits. Every finding was checked before it was acted on.
+
+| Finding | Severity | Holds? | What changed |
+|---|---|---|---|
+| "No answer is wrong" leaves out 27 answers the spike itself flagged by its volume criterion (all far from the origin), and test 5 names no room for the volume: with the spike's criterion it fails at 4,000 cases | major | Yes (the raw outputs: 3 and 18, 5 and 9 "problems") | The room follows the weld (`0.003 + 0.003 · V + 40 · weld`; the 6,000 cases run again with it: none outside); the 27 are said; test 5 has the room |
+| Test 3 cannot fail for what it guards: the refused unions of `review.test.ts` are refused as often with the second cleaning let at a union | major | Yes (its probe: 34, 27, 31, 10 and 11 refusals in all three modes) | A counter of the runs of the second cleaning on `ManifoldKernel`; test 3 reads it |
+| "Both messages have one cause" is wider than the evidence: the eighth folded refusal ends closed without a repeated state; and polygons with planar, separately numbered sides stay refused (44 of 47), folded by the weld alone in 14 of 37 cases looked at | major | Yes (its reruns; `isFolded` reads planar faces only, and the sides of the pins of the design share one number) | The brief and "The cycle" say seven of eight; a known limit for the weld's fold and that family; the second opinion's role names it |
+| The stall of the first cleaning is understated (1.1 to 4.2 s in 9 of 309 refused cases), and the second cleaning alone for an intersection is rejected on thin grounds: it answers all 1,324 cases the first answers, as exactly, in 9.4 s for 33.5 s | minor | Yes (its probes; measured again here on the 783 answered poses: the same verdict in all, and the suite fails in the same ten tests) | "The time", "The cost" and the limit say seconds; the alternative has its numbers under "Rejected" and is put to the owner as the one choice that could go the other way. The design stays with the first cleaning first |
+| "Tests 2 and 6 hold" the refactor of `clean` array for array: they do not, and the candidate copied the weld instead of lifting it | minor | Yes | `clean` is not edited; lifting is allowed only behind a comparison of arrays written first |
+| No bound on the second loop; and the bound of 5e does not cover a pair the second cleaning verifies | minor | Yes (`interference.ts`: the bound is read where `boolean` threw) | A bound of 1,000 passes, harmless since every state is closed; the bound of 5e said under "What follows for 5e" and "The cost" |
+| Texts not listed: `api.md` (the rates, "a few stay failed"), `ai.md`, the paragraph of `ports.md` that contrasts `boolean` with the mesh as computed, three comments | minor | Yes | Listed; the sentence of `ports.md` also under "Open" |
+| The explicit cases and the fuzz are not reproducible from the description: one face number for all sides, which solid is the tool of the union, radians, the generator and its seeds | minor | Yes (it rebuilt all six from the spike; with the pin first one case is answered) | The generator and the build are in the design in full; the description says the rest |
+| No test of what is left for the second opinion over the adapter itself | minor | Yes | Two poses both cleanings fail are pinned through the adapter (test 9) |
+| "An intersection is for measuring" is weaker than what it saw: three answers of today are meshes the library does not load | minor | Yes (its probe; all from the first cleaning) | Said in the limit |
+| The worst volume error of the second cleaning two metres away is 8.3 · 10⁻², not 7.4 · 10⁻² | factual | Yes (the group without the flush plate) | Corrected |
+| The row D51 said "one round of review" before there was one, and "every other test unchanged" beside ten that flip | factual | Yes | The row |
+| "After the return of moved faces" for the three refused unions rested on the message alone | factual | It holds: each is thrown by a difference whose tool had faces moved (checked) | Said as checked |
+| No raw output was kept for the table of the time and for "53 of 143" | factual | Yes | Both run again and kept with the other outputs; the table has the kept run |
+| 5.9860 for 5.9861; "the full designs of 5e and 5f" in the plan | nit | Yes | Corrected |
+
+Checked by the reviewer and found to hold: the table of the cause, rerun from the code, row for row, with no raw mesh open or folded; every cell of the table of the verdicts and of the table of 5e against the raw outputs; the counts of the sliver fuzz; the lines of the fuzz and the suite (1,278 of 1,288, the ten being the eight and the two); the cones; that the second cleaning never ended open (1,500 runs, also with welds a thousand times larger), gives the same arrays twice and no foreign face number; that all 2,191 answers of today in its cases came back with the same arrays; that 277 of its 309 refused cases are answered, each closed, unfolded and within the room; that 31 refused poses of pins 3.985 to 4.02 in a hole of 4, both orders, are verified as what they are; that `sharedBy` is the only caller of an intersection and `prepareTool` moves nothing for one; that `npx tsc -p docs/d36/tsconfig.json` passes. Not checked by it: the table of the time, the figures taken over from 5a and 5e, why the second cleaning in place of the first leaves a face in its four fuzz cases (the counts only), swept profiles and gear flanks, a chord tolerance other than 0.01 through the engine.
+
+With sixteen findings of which three are major, a second, narrow round follows.

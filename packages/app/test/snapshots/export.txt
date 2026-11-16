@@ -1,0 +1,372 @@
+
+=== 1. a plate and a second body under it; the menu Export… beside the queries
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x6)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"top","name":"Top","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":-20,"distance":5},"operation":"new"}}) -> ok
+  features: s1, e1, top
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature top:
+      {"id":"top","name":"Top","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":-20,"distance":5},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+        select value="" title="Export the model in a format of the engine"
+          option selected value="": "Export…"
+          option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+          option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP that is not compressed, about a quarter larger than the STL of the same bodies.": "3MF"
+          option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+          option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+        button title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 1"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Top"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Vysunutí přidáno.
+  view: 15 scene(s) set
+  scene:
+      bodies: e1, top
+      line #26303c width 1.5: 144 numbers, sum 5965
+      line #8b9bb4 width 1: 24 numbers, sum 428.575
+      line #8b9bb4 width 1: 24 numbers, sum 285.717
+      line #8b9bb4 width 1: 24 numbers, sum 142.858
+      line #5b7aa8 width 1.5: 24 numbers, sum 1400
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.408
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.408
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.408
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. DXF opened from the menu: its options, the plane armed
+  panel:
+    + h2 title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "Export: DXF (outline)"
+    + label title="A base plane, a plane feature or a planar face. The drawing is what the plane cuts out of the bodies, seen against its normal (a face is seen from outside its body)."
+    +   "Plane"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="base:XY": "XY"
+    +     option value="base:XZ": "XZ"
+    +     option value="base:YZ": "YZ"
+    +   button.active title="Take a plane or a planar face selected in the view": "Click a plane or a planar face in the view…"
+    + label title="Moves the plane along its normal; for a face a negative offset cuts into the body. Without it a face gives the cut just under it, and a body that only stands on the plane gives nothing."
+    +   "Offset (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0"
+    +     span.unit: "mm"
+    + label title="Only these, each once, whatever their use. Without it: the body of the face when the plane is a face, otherwise the printed bodies (use `part`)."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + div.buttons
+    +   button.primary: "Export"
+    +   button: "Close"
+  view: 1 scene(s) set
+
+=== 3. a click on the top face of the plate goes to the armed plane, not to the selection
+  panel:
+    +   select value="face"
+    +     option value="": "—"
+    -   select value=""
+    -     option selected value="": "—"
+    +     option selected value="face": "Vysunutí 1 – protější víko · e1/endCap"
+    +   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    -   button.active title="Take a plane or a planar face selected in the view": "Click a plane or a planar face in the view…"
+  view: 2 scene(s) set
+  scene:
+    + face e1 #1 #0ea5e9 opacity 0.3
+
+=== 4. exported a millimetre under the face: the outline of the plate saved under its suggested name, its size in the status line
+  engine: export("dxf", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-1}, {}) -> ok
+  panel:
+    +     input.value value="-1" placeholder="0"
+    -     input.value value="" placeholder="0"
+  status: Exported outline.dxf (398 bytes).
+  view: 1 scene(s) set
+  scene:
+    - face e1 #1 #0ea5e9 opacity 0.3
+  download: outline.dxf
+
+=== 5. a millimetre above the face: nothing is cut, the text of the export stays in the form, nothing is saved
+  engine: export("dxf", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":1}, {}) -> ok
+  panel:
+    +     input.value value="1" placeholder="0"
+    -     input.value value="-1" placeholder="0"
+    + p.issue.error: "the plane cuts none of the bodies"
+  status: the plane cuts none of the bodies  [error]
+  view: 1 scene(s) set
+
+=== 6. a query opened: the export form closes, one form at a time
+  panel:
+    + h2 title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    + label
+    +   "Body"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="e1": "Vysunutí 1"
+    +     option value="top": "Top"
+    - h2 title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "Export: DXF (outline)"
+    - label title="A base plane, a plane feature or a planar face. The drawing is what the plane cuts out of the bodies, seen against its normal (a face is seen from outside its body)."
+    -   "Plane"
+    -   select value="face"
+    -     option value="": "—"
+    -     option value="base:XY": "XY"
+    -     option value="base:XZ": "XZ"
+    -     option value="base:YZ": "YZ"
+    -     option selected value="face": "Vysunutí 1 – protější víko · e1/endCap"
+    -   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    - label title="Moves the plane along its normal; for a face a negative offset cuts into the body. Without it a face gives the cut just under it, and a body that only stands on the plane gives nothing."
+    -   "Offset (optional)"
+    -   span.field
+    -     input.value value="1" placeholder="0"
+    -     span.unit: "mm"
+    - label title="Only these, each once, whatever their use. Without it: the body of the face when the plane is a face, otherwise the printed bodies (use `part`)."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    +   button.primary: "Ask"
+    -   button.primary: "Export"
+    - p.issue.error: "the plane cuts none of the bodies"
+  view: 1 scene(s) set
+
+=== 7. SVG opened: the query closes
+  panel:
+    + h2 title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "Export: SVG (outline)"
+    + label title="A base plane, a plane feature or a planar face. The drawing is what the plane cuts out of the bodies, seen against its normal (a face is seen from outside its body)."
+    +   "Plane"
+    - h2 title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    - label
+    -   "Body"
+    +     option value="base:XY": "XY"
+    +     option value="base:XZ": "XZ"
+    +     option value="base:YZ": "YZ"
+    +   button.active title="Take a plane or a planar face selected in the view": "Click a plane or a planar face in the view…"
+    + label title="Moves the plane along its normal; for a face a negative offset cuts into the body. Without it a face gives the cut just under it, and a body that only stands on the plane gives nothing."
+    +   "Offset (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0"
+    +     span.unit: "mm"
+    + label title="Only these, each once, whatever their use. Without it: the body of the face when the plane is a face, otherwise the printed bodies (use `part`)."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    -     option value="e1": "Vysunutí 1"
+    -     option value="top": "Top"
+    +   button.primary: "Export"
+    -   button.primary: "Ask"
+  view: 1 scene(s) set
+
+=== 8. exported without a plane: refused by the engine, the row of the plane marked
+  engine: export("svg", {}, {}) -> invalidArguments: svg: plane: the argument is required
+  panel:
+    + label.invalid title="svg: plane: the argument is required"
+    - label title="A base plane, a plane feature or a planar face. The drawing is what the plane cuts out of the bodies, seen against its normal (a face is seen from outside its body)."
+    +   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    -   button.active title="Take a plane or a planar face selected in the view": "Click a plane or a planar face in the view…"
+    + p.issue.error: "svg: plane: the argument is required"
+  status: svg: plane: the argument is required  [error]
+  view: 1 scene(s) set
+
+=== 9. STL with a file per body: the set saved as one ZIP
+  engine: export("stl", {"perBody":true}, {}) -> ok
+  panel:
+    + h2 title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "Export: STL"
+    + label title="The bodies to export, each once, in this order, whatever their use; without it the printed bodies (use `part`: not the reference and auxiliary bodies of the body properties)."
+    - h2 title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "Export: SVG (outline)"
+    - label.invalid title="svg: plane: the argument is required"
+    -   "Plane"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="base:XY": "XY"
+    -     option value="base:XZ": "XZ"
+    -     option value="base:YZ": "YZ"
+    -   button title="Take a plane or a planar face selected in the view": "Pick in the view"
+    - label title="Moves the plane along its normal; for a face a negative offset cuts into the body. Without it a face gives the cut just under it, and a body that only stands on the plane gives nothing."
+    -   "Offset (optional)"
+    -   span.field
+    -     input.value value="" placeholder="0"
+    -     span.unit: "mm"
+    - label title="Only these, each once, whatever their use. Without it: the body of the face when the plane is a face, otherwise the printed bodies (use `part`)."
+    + label title="A folder with one file per body, named by the body ID, instead of one file with all of them."
+    +   "A file per body (optional)"
+    +   input type=checkbox checked
+    - p.issue.error: "svg: plane: the argument is required"
+  status: Exported stl.zip (1568 bytes).
+  view: 2 scene(s) set
+  download: stl.zip
+
+=== 10. 3MF with the marker after the plate: the state there, the plate alone
+  engine: getState("e1")
+  engine: export("3mf", {}, {"at":"e1"}) -> ok
+  engine: getState("e1")
+  toolbar:
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    + div.row.ok.later
+    - div.row.ok
+    + button.link: "Zobrazit celý model"
+  panel:
+    + h2 title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP that is not compressed, about a quarter larger than the STL of the same bodies.": "Export: 3MF"
+    - h2 title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "Export: STL"
+    - label title="A folder with one file per body, named by the body ID, instead of one file with all of them."
+    -   "A file per body (optional)"
+    -   input type=checkbox checked
+  status: Exported model.3mf (1934 bytes).
+  view: 3 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - bodies: e1, top
+    - line #26303c width 1.5: 144 numbers, sum 5965
+    - line #8b9bb4 width 1: 24 numbers, sum 428.575
+    - line #8b9bb4 width 1: 24 numbers, sum 285.717
+    - line #8b9bb4 width 1: 24 numbers, sum 142.858
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.408
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.408
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.408
+  download: model.3mf
+
+=== 11. 3MF at the end of the timeline: no `at`, both bodies
+  engine: export("3mf", {}, {}) -> ok
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.row.ok
+    - div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    - div.row.ok.later
+    - button.link: "Zobrazit celý model"
+  status: Exported model.3mf (2723 bytes).
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, top
+    + line #26303c width 1.5: 144 numbers, sum 5965
+    + line #8b9bb4 width 1: 24 numbers, sum 428.575
+    + line #8b9bb4 width 1: 24 numbers, sum 285.717
+    + line #8b9bb4 width 1: 24 numbers, sum 142.858
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.408
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.408
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.408
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+  download: model.3mf
+
+=== 12. the form closed
+  panel:
+    - h2 title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP that is not compressed, about a quarter larger than the STL of the same bodies.": "Export: 3MF"
+    - label title="The bodies to export, each once, in this order, whatever their use; without it the printed bodies (use `part`: not the reference and auxiliary bodies of the body properties)."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - div.buttons
+    -   button.primary: "Export"
+    -   button: "Close"
+  view: 1 scene(s) set

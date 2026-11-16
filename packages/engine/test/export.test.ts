@@ -35,8 +35,8 @@ describe('export formats', () => {
     expect(paths('a.stl', 'A.stl')).toBeUndefined(); // the case of letters depends on the disk: the writer's to refuse
   });
 
-  it('the catalog has STL, described', () => {
-    expect(Object.keys(EXPORT_FORMATS)).toEqual(['stl']);
+  it('the catalog has STL, 3MF and the outline as DXF and SVG, described', () => {
+    expect(Object.keys(EXPORT_FORMATS)).toEqual(['stl', '3mf', 'dxf', 'svg']);
     expect(Object.keys(EXPORT_FORMATS.stl.options)).toEqual(['bodies', 'perBody']);
   });
 

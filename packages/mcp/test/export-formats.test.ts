@@ -34,10 +34,16 @@ const exported = (engine: Engine, args: Record<string, unknown>): any => {
 // Options of every format, of the format's own type, that it exports `model()` with.
 const FIXTURES: { [F in ExportFormat]: ExportOptions<F> } = {
   stl: { bodies: ['low'], perBody: true },
+  '3mf': { bodies: ['low'] },
+  dxf: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
+  svg: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
 };
 // Every option of every format and whether a caller may leave it out, as the type says.
 const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]: {} extends Pick<ExportOptions<F>, K> ? 'optional' : 'required' } } = {
   stl: { bodies: 'optional', perBody: 'optional' },
+  '3mf': { bodies: 'optional' },
+  dxf: { plane: 'required', offset: 'optional', bodies: 'optional' },
+  svg: { plane: 'required', offset: 'optional', bodies: 'optional' },
 };
 const ENTRIES = Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>);
 
@@ -97,9 +103,21 @@ describe('the tool that hands the files of an export to the server', () => {
     expect(engine.save()).toBe(before);
   });
 
+  it('3mf and an outline of the state after a command that is only previewed, or after a feature (the review of D54)', () => {
+    const engine = model();
+    const before = engine.save();
+    expect(exported(engine, { format: '3mf', after: { type: 'removeFeature', id: 'high' } }).files[0].about).toMatchObject({ bodies: ['low'] });
+    expect(exported(engine, { format: '3mf', at: 'low' }).files[0].about).toMatchObject({ bodies: ['low'] });
+    // the disc `high` stands on `low` from z = 10: cut at 15 it is there, and not with `high` removed
+    const plane = { kind: 'base', plane: 'XY' };
+    expect(exported(engine, { format: 'dxf', options: { plane, offset: 15 } }).files[0].about).toMatchObject({ bodies: ['high'], loops: 1, circles: 1 });
+    expect(exported(engine, { format: 'svg', options: { plane, offset: 15 }, after: { type: 'removeFeature', id: 'high' } })).toEqual({ error: 'the plane cuts none of the bodies' });
+    expect(engine.save()).toBe(before);
+  });
+
   it('refuses in words: an unknown format or option, a body that is not there, a command that is not valid, an empty model', () => {
     const engine = model();
-    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl' });
+    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg' });
     expect(exported(engine, {})).toEqual({ error: expect.stringContaining('format') });
     expect(exported(engine, { format: 'stl', options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(exported(engine, { format: 'stl', options: { bodies: ['nope'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nope" is not in the state asked about' });

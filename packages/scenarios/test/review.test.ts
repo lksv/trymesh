@@ -169,7 +169,7 @@ describe('queries and exports: callers that are not typed', () => {
     const engine = plate();
     expect(failure(engine.query(['interference'] as never, {} as never))).toEqual(['invalidArguments', ['query'], expect.stringMatching(/^there is no query of that name \(a text is expected\); the queries are /)]);
     expect(failure(engine.query(JSON.parse('{"toString":null}') as never, {} as never))).toEqual(['invalidArguments', ['query'], expect.any(String)]);
-    expect(failure(engine.export(JSON.parse('{"toString":null}') as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format of that name (a text is expected); the formats are stl']);
+    expect(failure(engine.export(JSON.parse('{"toString":null}') as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format of that name (a text is expected); the formats are stl, 3mf, dxf, svg']);
     expect(failure(engine.query('interference', {}, null as never))).toEqual(['invalidArguments', ['options'], 'interference: the options are an object with `at` or `state`']);
     expect(failure(engine.query('interference', {}, 7 as never))).toEqual(['invalidArguments', ['options'], expect.any(String)]);
     expect(failure(engine.export('stl', {}, null as never))).toEqual(['invalidArguments', ['options'], 'stl: the options are an object with `at` or `state`']);
@@ -364,5 +364,32 @@ describe('the linear pattern and the mirror: the review of D53', () => {
     expect(status(state).Top).toBe('ok');
     state = run(engine, { type: 'addExternal', sketch: 'Top', id: 'two', ref: { type: 'edge', body: 'M/1', edge: edge(2), kind: 'line' } });
     expect(status(state).Top).toBe('warning:brokenProjection');
+  });
+});
+
+describe('the export of an outline: the review of D54', () => {
+  it('a half turn is two pieces wherever the part sits: slots at odd places, the sweep off π by what float32 does to its ends', () => {
+    const counts: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const engine = newEngine();
+      const [x, y, r, length] = [10.3 + i * 1.37, 0.7 + i * 0.113, 2.3 + 0.17 * i, 13.1 + i * 0.71];
+      expectAllOk(
+        run(
+          engine,
+          addSketch('R', XY),
+          rectangle('R', 's', x, y - r, length, 2 * r, null),
+          addExtrude('SLOT', 'R', [rectLoop('s')], 5),
+          addSketch('K', XY),
+          circle('K', 'ka', x, y, r),
+          circle('K', 'kb', x + length, y, r),
+          addExtrude('SLOTA', 'K', [['ka']], 5, 'add', 'SLOT'),
+          addExtrude('SLOTB', 'K', [['kb']], 5, 'add', 'SLOT'),
+        ),
+      );
+      const answer = engine.export('dxf', { plane: XY, offset: 2, bodies: ['SLOT'] });
+      if (!answer.ok) throw new Error(answer.error.message);
+      counts.push(new TextDecoder().decode(answer.result.files[0].bytes).split('\r\n').filter((value, k) => value === '42' && k % 2 === 0).length);
+    }
+    expect(counts).toEqual(Array(12).fill(4)); // were 5 or 6 in eleven of them
   });
 });

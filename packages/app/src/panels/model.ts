@@ -1,12 +1,13 @@
 // The panel of the model: the plane a new sketch or plane waits for, the selected feature with
-// its bodies, the selection in the view, and below them the open query, the parameters and the
-// mechanism.
+// its bodies, the selection in the view, and below them the open query or export, the parameters
+// and the mechanism.
 import { h } from '../dom';
 import type { PanelHost } from '../host';
 import { FEATURE_UI, uiOf } from '../features/index';
 import { FEATURE_TYPES } from '../labels';
 import { bodyForm, bodyRows, orphanRows } from './body';
 import { type MechanismPanel, mechanismPanel } from './mechanism';
+import { exportPanel } from './export';
 import { type QueryPanel, queryPanel } from './query';
 import { parametersPanel } from './parameters';
 
@@ -49,7 +50,7 @@ export function modelPanel(host: PanelHost, queries: QueryPanel, mechanism: Mech
     if (host.selected.kind !== 'plane') out.push(...bodyRows(host, [host.selected.body]), ...bodyForm(host, host.selected.body));
   }
   out.push(...orphanRows(host));
-  out.push(...queryPanel(queries, host));
+  out.push(...queryPanel(queries, host), ...exportPanel(queries, host));
   out.push(...parametersPanel(host));
   out.push(...mechanismPanel(host, mechanism));
   return out;

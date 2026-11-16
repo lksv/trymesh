@@ -13,7 +13,10 @@
 // - 2e (D53), the linear pattern and the mirror: a row of vent slots in the long wall, the rib and
 //   its brace mirrored to the other long wall, pads under the corners as mirrors of one body, and
 //   the lid in a row for the print bed.
-import { type Command, DATA_CATALOGS, type Engine, FEATURE_TYPE_INFO, type EngineState, type ExtrudeFeature, type FaceName, type HoleFeature, type Id, type PatternFeature, type PlaneRef, SCHEMA_VERSION, type Surface, UPGRADES, producesTool } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type Surface, UPGRADES } from '@trymesh/engine';
+import { readZip } from '../../engine/test/zip-reader';
+import { NO_PRINTED_BODY } from '../../engine/src/export/bodies';
+import { QUARTER, TURN_ALLOWANCE } from '../../engine/src/export/outline';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BORE, CONE, FLOOR, LID_TOP, MID_W, OUTLINE, PADS, POST_TOP, RIB_LEFT, RIB_LEFT_COPY, SCREW_POINTS, UNDER_LID, WALL_OUT, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lidsInARow, lipLeadIn, midPlanes, pads, parameters, posts, rib, ribDraft, ribMirror, screwHoles, sketchOn, vents } from './box';
 import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
@@ -573,5 +576,178 @@ describe('scenario 12, the part of 2e: vent slots in a row, the rib mirrored, pa
     for (const id of PADS) near(volumeOf(other.getState(), id), 120, 1e-3);
     near(volumeOf(other.getState(), 'box'), volumeOf(before, 'box'), 1e-9);
     expect(MID_W).toEqual({ kind: 'plane', feature: 'midW' });
+  });
+});
+
+describe('scenario 12, the part of 2g: the box and its lid as 3MF, the lid as a drawing for a laser', () => {
+  let engine: Engine;
+  const XY_PLANE: PlaneRef = XY;
+  const LID_UNDERSIDE: PlaneRef = UNDER_LID;
+  const unwrap = <T>(outcome: { ok: true; result: T } | { ok: false; error: { code: string; message: string } }): T => {
+    if (!outcome.ok) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+    return outcome.result;
+  };
+  // the one file of an export of the layout `file` that is not empty
+  const only = (exported: Exported): ExportFile => {
+    expect(exported.empty).toBeUndefined();
+    expect(exported.layout).toBe('file');
+    expect(exported.files.length).toBe(1);
+    return exported.files[0];
+  };
+  const text = (file: ExportFile): string => new TextDecoder().decode(file.bytes);
+  const modelOf = (file: ExportFile): string => new TextDecoder().decode(readZip(file.bytes)[2].bytes);
+  const count = (whole: string, piece: string): number => whole.split(piece).length - 1;
+  const meshAbout = (file: ExportFile) => file.about as MeshAbout;
+  const outlineAbout = (file: ExportFile) => file.about as OutlineAbout;
+  const asReference = (bodies: Id[]) => ({ state: preview(engine, { type: 'batch', commands: bodies.map((body): Command => ({ type: 'setBodyProperties', body, patch: { use: 'reference' } })) }) });
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket(), ribDraft(), lipLeadIn(), countersinkByHand(), posts(), sketchOn('tops', onFace('box', POST_TOP)), brace());
+    const hardware = (args: object) => unwrap(engine.query('hardwareHole', args as never)) as { shape: HoleFeature['shape']; label: string; depth?: number };
+    const screw = DATA_CATALOGS.countersunkScrews.rows.M3;
+    const countersunk = hardware({ use: 'countersunk', size: 'M3', allowance: 'holeComp' });
+    run(engine, screwHoles(countersunk.shape, countersunk.label, String(Math.max(3, screw.headDiameter / 2 / Math.tan(screw.headAngle / 2) + 1))));
+    const size = Object.keys(DATA_CATALOGS.heatSetInserts.rows).find((key) => DATA_CATALOGS.heatSetInserts.rows[key].thread === 3) as string;
+    const insert = hardware({ use: 'heatSetInsert', size, allowance: 'holeComp' });
+    expectAllOk(run(engine, insertHoles(insert.shape, insert.label, insert.depth as number)));
+  });
+
+  it('3MF: the printed bodies as objects of one package, the very coordinates of the mesh', () => {
+    const file = only(unwrap(engine.export('3mf', {})));
+    expect([file.path, file.mediaType]).toEqual(['model.3mf', 'model/3mf']);
+    expect(meshAbout(file)).toEqual({ bodies: ['box', 'lid'], triangles: 2926 });
+    const items = readZip(file.bytes);
+    expect(items.map((item) => item.name)).toEqual(['[Content_Types].xml', '_rels/.rels', '3D/3dmodel.model']);
+    const model = modelOf(file);
+    expect(model).toContain('<object id="1" type="model" name="box" partnumber="box">');
+    expect(model).toContain('<object id="2" type="model" name="lid" partnumber="lid">');
+    expect(model).not.toContain('<basematerials');
+    // the vertices a triangle names: all 720 of the box, 735 of the 883 positions of the lid
+    expect(count(model, '<vertex ')).toBe(720 + 735);
+    expect(count(model, '<triangle ')).toBe(2926);
+    expect(model).toContain('<build><item objectid="1"/><item objectid="2"/></build>');
+    // about a fifth larger than the STL of the same bodies
+    expect(file.bytes.length / engine.exportMesh('stl', ['box', 'lid']).length).toBeCloseTo(1.21, 2);
+    // the mesh of the file is the mesh of the body, the lid renumbered
+    const { positions, triangles } = engine.getState().evaluation.bodies.lid.solid;
+    const lid = modelOf(only(unwrap(engine.export('3mf', { bodies: ['lid'] }))));
+    const vertices = [...lid.matchAll(/<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"\/>/g)].map((vertex) => [vertex[1], vertex[2], vertex[3]].map(Number));
+    const corners = [...lid.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)].flatMap((triangle) => [triangle[1], triangle[2], triangle[3]].map(Number));
+    expect(corners.length).toBe(triangles.length);
+    expect(corners.every((vertex, i) => [0, 1, 2].every((k) => Math.fround(vertices[vertex][k]) === positions[3 * triangles[i] + k]))).toBe(true);
+  });
+
+  it('3MF: the name and the colour of the body properties, the colour as a base material named by the material; a name is escaped', () => {
+    const state = preview(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyProperties', body: 'lid', patch: { name: 'Lid <A&B>', color: '#ff8800', material: 'PETG' } },
+        { type: 'setBodyProperties', body: 'box', patch: { color: '#30343a' } },
+      ],
+    });
+    const model = modelOf(only(unwrap(engine.export('3mf', {}, { state }))));
+    expect(model).toContain('<basematerials id="1"><base name="#30343a" displaycolor="#30343A"/><base name="PETG" displaycolor="#FF8800"/></basematerials>');
+    expect(model).toContain('<object id="2" type="model" name="box" partnumber="box" pid="1" pindex="0">');
+    expect(model).toContain('<object id="3" type="model" name="Lid &lt;A&amp;B&gt;" partnumber="lid" pid="1" pindex="1">');
+    expect(engine.getState().document.bodyProperties).toEqual({}); // a preview: nothing written
+  });
+
+  it('3MF: which bodies, by their use and by a list; the state after a feature', () => {
+    const bodiesOf = (exported: Exported): string => meshAbout(only(exported)).bodies.join();
+    expect(bodiesOf(unwrap(engine.export('3mf', {}, asReference(['box']))))).toBe('lid');
+    expect(bodiesOf(unwrap(engine.export('3mf', { bodies: ['box'] }, asReference(['box']))))).toBe('box');
+    expect(unwrap(engine.export('3mf', {}, asReference(['box', 'lid']))).empty).toBe(NO_PRINTED_BODY);
+    expect(bodiesOf(unwrap(engine.export('3mf', {}, { at: 'box' })))).toBe('box');
+  });
+
+  it('DXF: the plate of the lid half a millimetre above its underside, a polyline and five circles for a laser', () => {
+    const file = only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: -0.5 })));
+    expect([file.path, file.mediaType]).toEqual(['outline.dxf', 'image/vnd.dxf']);
+    const about = outlineAbout(file);
+    expect([about.bodies, about.loops, about.circles, about.inPlane]).toEqual([['lid'], 6, 5, undefined]);
+    near(about.area, 3939.9012);
+    // the frame of the underside looks down: its x runs against the X of the model
+    expect(about.bounds).toEqual({ min: [-80, 0], max: [0, 50] });
+    const drawing = text(file);
+    expect(drawing.startsWith(['0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '9', '$INSUNITS', '70', '4', '9', '$MEASUREMENT', '70', '1', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES'].join('\r\n'))).toBe(true);
+    expect(drawing.endsWith(['0', 'ENDSEC', '0', 'EOF', ''].join('\r\n'))).toBe(true);
+    // the outline: one closed polyline of four corners, no bulge
+    expect([count(drawing, 'POLYLINE'), count(drawing, 'VERTEX')]).toEqual([1, 4]);
+    expect(drawing.split('\r\n').some((line, i) => line === '42' && i % 2 === 0)).toBe(false);
+    // the holes: the four bores of the screws (3.4 and the allowance of 0.2 across) over the posts, and the bore in the middle
+    expect(count(drawing, ['0', 'CIRCLE', '8', 'HOLES', '10', '-71.3', '20', '8.7', '30', '0', '40', '1.8'].join('\r\n'))).toBe(1);
+    expect(count(drawing, ['0', 'CIRCLE', '8', 'HOLES', '10', '-40', '20', '25', '30', '0', '40', '2.5'].join('\r\n'))).toBe(1);
+    expect(count(drawing, 'CIRCLE')).toBe(5);
+    // before the holes were made the plate has its outline and nothing else
+    expect(outlineAbout(only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: -0.5 }, { at: 'lipInside' })))).loops).toBe(1);
+  });
+
+  it('SVG: the same loops in millimetres with y turned over; the top face of the lid gives the mouths of the countersinks', () => {
+    const file = only(unwrap(engine.export('svg', { plane: LID_UNDERSIDE, offset: -0.5 })));
+    expect([file.path, file.mediaType]).toEqual(['outline.svg', 'image/svg+xml']);
+    const drawing = text(file);
+    expect(drawing).toContain('<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="82mm" height="52mm" viewBox="-81 -51 82 52">');
+    expect(drawing).toContain('<title>lid</title>');
+    expect(drawing).toContain('<path class="outer" d="M -80 0 L 0 0 L 0 -50 L -80 -50 Z"/>');
+    expect(drawing).toContain('<circle class="hole" cx="-71.3" cy="-8.7" r="1.8"/>');
+    expect(drawing).toContain('<circle class="hole" cx="-40" cy="-25" r="2.5"/>');
+    expect(count(drawing, '<circle ')).toBe(5);
+    // just under the top face, the circles of a cone of 45° are smaller by the precision of the coordinates
+    const top = only(unwrap(engine.export('svg', { plane: onFace('lid', LID_TOP) })));
+    expect(text(top)).toContain('<circle class="hole" cx="8.7" cy="-8.7" r="3.45992"/>');
+    expect(text(top)).toContain('<circle class="hole" cx="40" cy="-25" r="3.99992"/>');
+    expect(outlineAbout(top).inPlane?.[0].body).toBe('lid');
+  });
+
+  it('DXF: the box at z = 10, the ring of its walls, three posts as circles and the fourth with its round side as an arc in three pieces', () => {
+    const file = only(unwrap(engine.export('dxf', { plane: XY_PLANE, offset: 10 })));
+    const about = outlineAbout(file);
+    expect([about.bodies, about.loops, about.circles]).toEqual([['box'], 6, 3]);
+    near(about.area, 755.5653);
+    const drawing = text(file);
+    expect(count(drawing, ['0', 'POLYLINE', '8', 'OUTER'].join('\r\n'))).toBe(1);
+    expect(count(drawing, ['0', 'POLYLINE', '8', 'HOLES'].join('\r\n'))).toBe(2);
+    const bulges = drawing.split('\r\n').flatMap((line, i, lines) => (line === '42' && i % 2 === 0 ? [Number(lines[i + 1])] : []));
+    expect(bulges.length).toBe(3); // 250°: three pieces, never one
+    for (const bulge of bulges) expect(Math.abs(bulge)).toBeLessThanOrEqual(Math.tan((QUARTER * (1 + TURN_ALLOWANCE)) / 4));
+  });
+
+  it('a face as the plane: the floor of the cavity gives the whole slab under it; a plane the box only stands on gives nothing and says so', () => {
+    near(outlineAbout(only(unwrap(engine.export('svg', { plane: onFace('box', FLOOR) })))).area, 4000, 1e-6);
+    expect(outlineAbout(only(unwrap(engine.export('svg', { plane: onFace('box', FLOOR), offset: 0.5 })))).loops).toBeGreaterThan(1);
+    const standing = unwrap(engine.export('dxf', { plane: XY_PLANE }));
+    expect(standing.empty).toBe('the plane cuts none of the bodies; "box" has a face in the plane and lies on the side the normal of the plane points to: move `offset` into the body');
+    // the one file is still there: a drawing without entities, the box of the margin alone
+    const drawing = unwrap(engine.export('svg', { plane: XY_PLANE }));
+    expect(drawing.files.length).toBe(1);
+    expect(text(drawing.files[0])).toContain('width="2mm" height="2mm" viewBox="-1 -1 2 2"');
+    expect(outlineAbout(drawing.files[0]).bounds).toBeUndefined();
+    // no printed body: the plane is resolved all the same, `about` has its frame
+    const unprinted = asReference(['box', 'lid']);
+    const model = unwrap(engine.export('3mf', {}, unprinted));
+    expect(model.empty).toBe(NO_PRINTED_BODY);
+    expect(readZip(model.files[0].bytes).length).toBe(3);
+    const noBody = unwrap(engine.export('dxf', { plane: XY_PLANE, offset: 10 }, unprinted));
+    expect(noBody.empty).toBe(NO_PRINTED_BODY);
+    expect(text(noBody.files[0])).not.toContain('POLYLINE');
+    expect(outlineAbout(noBody.files[0]).frame.origin[2]).toBe(10);
+    expect(outlineAbout(noBody.files[0]).loops).toBe(0);
+  });
+
+  it('a face as the plane takes the body of the face alone; a list takes what it names (the review of D54)', () => {
+    // half a millimetre under the underside of the lid, outside it: the lip of the lid and the walls of the box
+    const alone = outlineAbout(only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: 0.5 }))));
+    expect([alone.bodies, alone.loops]).toEqual([['lid'], 2]);
+    const both = outlineAbout(only(unwrap(engine.export('dxf', { plane: LID_UNDERSIDE, offset: 0.5, bodies: ['box', 'lid'] }))));
+    expect(both.bodies).toEqual(['box', 'lid']);
+    expect(both.loops).toBeGreaterThan(alone.loops);
+  });
+
+  it('refusals: a round face as the plane, a body that is not there, an empty list, an option the format does not have', () => {
+    const code = (outcome: QueryOutcome<Exported>): string | undefined => (outcome.ok ? undefined : `${outcome.error.code} ${(outcome.error.arg ?? []).join('/')}`);
+    expect(code(engine.export('dxf', { plane: onFace('box', { feature: 'posts', role: 'side', curve: 'pa' }) }))).toBe('notAvailable plane');
+    expect(code(engine.export('svg', { plane: XY_PLANE, bodies: ['nope'] }))).toBe('notAvailable bodies/0');
+    expect(code(engine.export('3mf', { bodies: [] }))).toBe('invalidArguments bodies');
+    expect(code(engine.export('dxf', { plane: XY_PLANE, flip: true } as never))).toBe('invalidArguments flip');
   });
 });

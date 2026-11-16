@@ -18,7 +18,7 @@ The functions are split by area (D37, part 5), one file per panel or form, each 
 |---|---|---|
 | [ui/model.md](ui/model.md) | Opening and saving, undo, the view of the model, the timeline | Soubor a historie úprav; Zobrazení modelu; Časová osa; Implementation status |
 | [ui/plane.md](ui/plane.md) | A plane of its own | Vlastní rovina |
-| [ui/sketch.md](ui/sketch.md) | Starting a sketch, drawing, constraints and dimensions | Skica: založení; Skica: kreslení; Skica: vazby a kóty; Implementation status |
+| [ui/sketch.md](ui/sketch.md) | Starting a sketch, drawing (with the fillet and the re-point of D52), constraints and dimensions | Skica: založení; Skica: kreslení; Skica: vazby a kóty; Implementation status |
 | [ui/extrude.md](ui/extrude.md) | The form of the extrusion | Extrude |
 | [ui/hole.md](ui/hole.md) | The form of the hole, with the sizes from the catalogs | Hole (D46) |
 | [ui/pattern.md](ui/pattern.md) | The form of the pattern: circular, linear, mirror | Pattern (D35, point 4; the linear pattern and the mirror D53) |

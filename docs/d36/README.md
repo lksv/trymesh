@@ -2,7 +2,7 @@
 
 The working plan for [D36](../decisions/D36-order-after-d35.md), the order of work after D35. D36 decides the order of seven steps; this file cuts them into work packages and says which package needs which, where they write to the same places, and what can run at the same time.
 
-Last change: 2026-11-16. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, and parts 5 and 6 (documents by area, working in several trees) are done, so the preparatory step is complete; the full designs of tracks A, B and E (twelve packages) are written, reviewed in three rounds each and merged, and read together in [cross-review.md](cross-review.md). Of the packages, 1b (measuring, with the generic form of a query in the app) and 1a (the section, with the section view of the app) and 1c (the smallest gap, with the gap view of the app; the kernel port stayed as it is) and 1d (mass properties) and 1e (the print check, with the print view of the app) and 1f (a picture of the model for the AI, with the button that saves one) are implemented and merged: track A is complete. Of track B, 2a (the offset of a profile and a wall along curves), 2b (the taper of an extrusion), 2f (the extent up to a plane or a planar face) and 2c (the hole feature and the hardware catalogs), each with its part of scenario 12, are implemented and merged: the packages of track B with a full design are done. Of track E, 3a (body properties and the catalog of materials, with its part of scenario 13) is implemented and merged; 5a is next.
+Last change: 2026-11-16. State: D35 is closed; of the preparatory step, parts 2 (a module per feature type), 1 with 4 (the registries and the shared vocabulary) and 3 (the panels and forms of the app) are implemented, and parts 5 and 6 (documents by area, working in several trees) are done, so the preparatory step is complete; the full designs of tracks A, B and E (twelve packages) are written, reviewed in three rounds each and merged, and read together in [cross-review.md](cross-review.md). Of the packages, 1b (measuring, with the generic form of a query in the app) and 1a (the section, with the section view of the app) and 1c (the smallest gap, with the gap view of the app; the kernel port stayed as it is) and 1d (mass properties) and 1e (the print check, with the print view of the app) and 1f (a picture of the model for the AI, with the button that saves one) are implemented and merged: track A is complete. Of track B, 2a (the offset of a profile and a wall along curves), 2b (the taper of an extrusion), 2f (the extent up to a plane or a planar face) and 2c (the hole feature and the hardware catalogs), each with its part of scenario 12, are implemented and merged: the packages of track B with a full design are done. Of track E, 3a (body properties and the catalog of materials, with its part of scenario 13) is implemented and merged; 5a is next. The owner decided on 2026-11-16 that the kernel port grows by "the intersection as computed, for measuring only": that is the small package 5e (D50), designed and to be implemented after 5a.
 
 ## How the work goes
 
@@ -39,14 +39,15 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 4a | Revolve | 4 | G | 2b (same code: tool build, face kinds) | outline |
 | 4b | Chamfer and fillet of edges: spike, chamfer, fillet | 4 | G | 4a | outline; the spike can run any time |
 | 5a | Mechanism description and the posed queries | 5 | H | 1c, 3a; scenario 13 also 1d; its app side the generic form of 1b | full for the description: adds a section to the document. The owner's decisions of 2026-11-16 and the check against the code and the real kernel of that day are in [5a-mechanism/design.md](5a-mechanism/design.md); everything it needs is merged |
-| 5b | Export of URDF and MJCF | 5 | H | 5a, 1d, 3a, 2g | outline |
+| 5b | Export of URDF and MJCF. Also a picture of a pose that is not written: `at` and `after` for the operation of the app `view_image` (the open need of 1f; owner, 2026-11-16: it comes with this package, not with 5a) | 5 | H | 5a, 1d, 3a, 2g; the picture 1f | outline |
 | 5c | Plane tilted about a line, midplane of two faces | 5 | I | 00 | outline |
 | 5d | Generators: cycloidal disc, GT2 pulley, profile shift of the gear | 5 | I | none | outline |
+| 5e | A second opinion of the kernel for a pair it refuses (D50): the port gets "the intersection as computed, for measuring only", and the collisions ask it about a pair the adapter refused; it may only clear such a pair, never call it a collision | 5 | H | 5a (the same code, `interference.ts`, and its poses for the tests); 5b does not wait for it | full ([5e-kernel-second/design.md](5e-kernel-second/design.md)); decided by the owner on 2026-11-16, designed that day |
 | 6, 7 | Sketch (derived geometry and what stands on it, splines, trim and extend); tube along a path, twist and threads, names of reference dimensions | 6, 7 | | | not yet |
 
-The full designs of tracks A (1a to 1f), B (2a, 2b, 2c, 2f) and E (3a, 5a) exist in their directories; the others are not written yet.
+The full designs of tracks A (1a to 1f), B (2a, 2b, 2c, 2f) and E (3a, 5a) and of 5e exist in their directories; the others are not written yet.
 
-"Design now": **full** is `design.md`, `contract.ts` and `calls.ts`; **outline** is a `design.md` of a page that states the cheap variant and what the package needs from the shared vocabulary, without a contract. A contract written long before its implementation goes stale, so full designs are limited to steps 1 and 2 and to the two packages that add a section to the document (3a, 5a): the shape of the document is the thing that is expensive to change later.
+"Design now": **full** is `design.md`, `contract.ts` and `calls.ts`; **outline** is a `design.md` of a page that states the cheap variant and what the package needs from the shared vocabulary, without a contract. A contract written long before its implementation goes stale, so full designs are limited to steps 1 and 2 and to the two packages that add a section to the document (3a, 5a): the shape of the document is the thing that is expensive to change later. 5e has one as well: it adds to the kernel port, and it is implemented right after 5a.
 
 ## What can start when
 
@@ -60,7 +61,7 @@ D35 point 7 ──▶ 00 preparatory step ──┬─▶ 1a 1b 1c 1d 1e 1f     
                                       ├─▶ 2g 3MF ; outline after 1a  (track F)
                                       ├─▶ 5c ; 5d                    (track I)
                                       └─▶ after 2b: 4a ─▶ 4b         (track G)
-                                          after 1c and 3a: 5a ─▶ 5b  (track H)
+                                          after 1c and 3a: 5a ─▶ 5e ; 5b  (track H; 5b needs only 5a)
 ```
 
 Right after the preparatory step: all of track A, 2a, 2d, 2e, the 3MF part of 2g, 3a, 5c and 5d. That is more than can sensibly run at once; the priority of the steps picks among them.
@@ -76,7 +77,7 @@ Where packages collide although they do not depend on each other. The preparator
 | `app.ts` (2321 lines, one class) | everything with a form or a panel | all panels and forms are methods of one class | a file per panel and per feature form |
 | Extrusion: `ProfileSource`, `Extent`, `features/extrude.ts`, the two halves of a profile (`features/profile.ts`, `recompute/profile.ts`), the two halves of an extent (`features/extent.ts`, `toolSpan` in `recompute/extent.ts`), `buildPrism` in `recompute/tool-prism.ts`, the extrusion form | 2a, 2b, 2f, 4a | one feature, one step | stays shared: track B is sequential and 4a follows 2b |
 | `FaceInfo` and `EdgeKind` in `solid.ts`, `edgeKind`, `projectEdge` | 2b (cone), 4a (cone, general), 4b, 3d (face of a split) | plane, cylinder, swept | the kinds are agreed once in the shared vocabulary |
-| Kernel port (`SolidKernel` in `types.ts`, `kernel-manifold`) | 3d (split, offset); 1c (gap) added nothing to it in the end (D40) | `boolean`, `triangulate` | stays shared; small additions, the guarantee text needs care. A draft adds to the port by declaration merging and declares the addition as a property, not in method syntax (two methods of one name would merge as overloads without a complaint); the adapter and the fakes of the tests are work of the package |
+| Kernel port (`SolidKernel` in `types.ts`, `kernel-manifold`) | 3d (split, offset); 5e (`intersectionAsComputed`, for measuring only, D50); 1c (gap) added nothing to it in the end (D40) | `boolean`, `triangulate` | stays shared; small additions, the guarantee text needs care. A draft adds to the port by declaration merging and declares the addition as a property, not in method syntax (two methods of one name would merge as overloads without a complaint); the adapter and the fakes of the tests are work of the package |
 | Pattern: transform kinds, the `pattern` step | 2e | one kind | one package, no collision |
 | Sketch commands and `sketch.ts` | 2d, later step 6 | | one package for now |
 | `applyCommand` and `validateDocument` in `document.ts` | every package with a command or a section of the document (2d, 3a, 5a) | one function each | stay shared: a branch of the command, a line of the document; small and in different places |
@@ -116,5 +117,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a | D50 |
-| Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a | 14 |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e | D51 |
+| Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a) | 14 |

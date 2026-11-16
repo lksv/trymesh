@@ -58,6 +58,8 @@ describe('extent of an extrusion', () => {
       ['extent/start', { path: 'extent/type', equals: 'distance' }],
       ['extent/distance', { path: 'extent/type', equals: 'distance' }],
       ['extent/taper', { path: 'extent/type', equals: 'distance' }],
+      ['extent/start', { path: 'extent/type', equals: 'upTo' }],
+      ['extent/gap', { path: 'extent/type', equals: 'upTo' }],
     ]);
   });
 

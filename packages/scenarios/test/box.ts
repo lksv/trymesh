@@ -116,3 +116,43 @@ export const countersinkByHand = (): Command =>
     add({ ...base('sink'), profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['wide'] }, { outerLoop: ['narrow'] }] }, extent: { type: 'distance', start: 0, distance: '-(wideD - narrowD) / 2', taper: 'deg(-45)' }, operation: 'cut', targets: ['lid'] }),
     add({ ...base('bore'), profile: { type: 'regions', sketch: 'middle', regions: [{ outerLoop: ['narrow'] }] }, extent: { type: 'throughAll', side: 'backward' }, operation: 'cut', targets: ['lid'] }),
   );
+
+// ---------------------------------------------------------------- 2f: posts up to the lid, a brace up to the rib
+
+// The underside of the lid: the start cap of its plate. The posts refer to the face, not to the
+// height of the box.
+export const UNDER_LID: PlaneRef = { kind: 'face', body: 'lid', face: { feature: 'lid', role: 'startCap' } };
+export const POST_TOP: FaceName = { feature: 'posts', role: 'endCap' };
+// How far the centre of a post is from the outer faces of the box.
+export const INSET = 'wall + clearance + lipT + postR + 1';
+const round = (sketch: Id, id: Id, x: Expr, y: Expr, radius: Expr): Command =>
+  batch(
+    pointAt(sketch, `${id}c`, x, y),
+    { type: 'addCurve', sketch, id, curve: { type: 'circle', center: `${id}c` }, radius: 1 },
+    { type: 'addConstraint', sketch, id: `${id}r`, constraint: { type: 'radius', curve: id, value: radius, driving: true } },
+  );
+
+// Two posts on the floor of the cavity, in the corners of one long side, added to the box up to
+// the lid; the other two are copies turned about the middle of the box.
+export const posts = (): Command =>
+  batch(
+    sketchOn('postSketch', onFace('box', FLOOR)),
+    pointAt('postSketch', 'mid', 'L / 2', 'W / 2'),
+    round('postSketch', 'pa', INSET, INSET, 'postR'),
+    round('postSketch', 'pb', `L - (${INSET})`, INSET, 'postR'),
+    add({ ...base('posts'), profile: { type: 'regions', sketch: 'postSketch', regions: [{ outerLoop: ['pa'] }, { outerLoop: ['pb'] }] }, extent: { type: 'upTo', plane: UNDER_LID, start: 0 }, operation: 'add', targets: ['box'] }),
+    { type: 'addFeature', feature: { id: 'postPattern', name: 'postPattern', suppressed: false, type: 'pattern', source: { type: 'features', features: ['posts'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'postSketch', point: 'mid' }, count: 2, span: { type: 'full' } } } },
+  );
+
+// A round brace from the wall of the cavity at x = wall to the side of the rib that faces it. The
+// sketch stands on the wall face (`cavity`, the side from the curve `od`); its normal points into
+// the cavity, so the brace runs along it until the plane of the rib's side. With the draft of 2b
+// that plane is tilted against the sketch, and the end of the brace lies in it. In the frame of
+// the face x runs along the wall from its corner at y = W − wall, and y up from the sketch plane of
+// the outline; the brace sits 16 mm from the near wall, beside the post in that corner.
+export const brace = (): Command =>
+  batch(
+    sketchOn('braceSketch', onFace('box', { feature: 'cavity', role: 'side', curve: 'od' })),
+    round('braceSketch', 'br', '-(W - 2 * wall - 16)', 'floor + 5', '1.5'),
+    add({ ...base('brace'), profile: { type: 'regions', sketch: 'braceSketch', regions: [{ outerLoop: ['br'] }] }, extent: { type: 'upTo', plane: onFace('box', RIB_LEFT), start: 0 }, operation: 'add', targets: ['box'] }),
+  );

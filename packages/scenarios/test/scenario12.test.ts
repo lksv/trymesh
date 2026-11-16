@@ -4,9 +4,11 @@
 //   the lid with a lip that fits with a print clearance, a rib and a bracket from construction lines.
 // - 2b (D45), the taper: a draft on the rib, a lead-in on the lip, and a countersink by hand from
 //   a tapered cut and a straight bore.
+// - 2f (D47), the extent up to a plane: screw posts up to the underside of the lid, a brace up to
+//   the drafted side of the rib.
 import { type Command, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Surface, UPGRADES } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { BORE, CONE, FLOOR, LID_TOP, OUTLINE, RIB_LEFT, box, bracket, cavity, countersinkByHand, lid, lipLeadIn, parameters, rib, ribDraft, sketchOn } from './box';
+import { BORE, CONE, FLOOR, LID_TOP, OUTLINE, POST_TOP, RIB_LEFT, UNDER_LID, box, brace, bracket, cavity, countersinkByHand, lid, lipLeadIn, parameters, posts, rib, ribDraft, sketchOn } from './box';
 import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -224,5 +226,80 @@ describe('scenario 12, the part of 2b: a draft, a lead-in and a countersink by h
     expect(other.getState().document).toEqual(before.document);
     expectAllOk(other.getState());
     near(volumeOf(other.getState(), 'lid'), volumeOf(before, 'lid'), 1e-9);
+  });
+});
+
+describe('scenario 12, the part of 2f: screw posts up to the lid and a brace up to the rib', () => {
+  let engine: Engine;
+  const errorOf = (state: EngineState, id: Id) => state.evaluation.features[id].error;
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket(), ribDraft(), lipLeadIn());
+  });
+
+  it('the posts stand on the floor and end at the underside of the lid; the pattern adds the other two', () => {
+    const state = run(engine, posts());
+    expectAllOk(state);
+    // the lid is parallel to the floor: one length, from the floor to the lid
+    expect(state.evaluation.features.posts.facts).toEqual({ lengthMin: 28, lengthMax: 28, forward: true });
+    expect(faceBox(state, 'box', POST_TOP)).toMatchObject({ min: [expect.anything(), expect.anything(), 30], max: [expect.anything(), expect.anything(), 30] });
+    const copy = faceBox(state, 'box', { ...POST_TOP, copy: [{ pattern: 'postPattern', index: 1 }] });
+    expect(copy?.max[2]).toBeCloseTo(30, 9);
+    // the posts touch the lid and do not collide with it
+    expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+  });
+
+  it('the posts follow the lid; a gap stops them short of it; a gap as large as the way is an error', () => {
+    const higher = preview(engine, { type: 'setParameter', name: 'H', expr: '40' });
+    expect(higher.evaluation.features.posts.facts).toEqual({ lengthMin: 38, lengthMax: 38, forward: true });
+    expect(higher.evaluation.features.postPattern.status).toBe('ok');
+    expect(engine.query('interference', { bodies: ['box', 'lid'] }, { state: higher })).toMatchObject({ ok: true, result: { pairs: [] } });
+    const short = preview(engine, { type: 'setField', feature: 'posts', path: 'extent/gap', value: 0.2 });
+    expect(short.evaluation.features.posts.facts?.lengthMin).toBeCloseTo(27.8, 9);
+    expect(featureOf(short, 'posts').extent).toMatchObject({ type: 'upTo', gap: 0.2 });
+    expect(errorOf(preview(engine, { type: 'setField', feature: 'posts', path: 'extent/gap', value: 100 }), 'posts')?.code).toBe('invalidExtent');
+  });
+
+  it('the top of a post is a face a sketch stands on', () => {
+    const state = run(engine, sketchOn('tops', onFace('box', POST_TOP)));
+    expect(state.evaluation.features.tops.status).toBe('ok');
+    expect(state.evaluation.features.tops.plane).toMatchObject({ normal: [0, 0, 1] });
+  });
+
+  it('a brace from the wall of the cavity ends in the drafted side of the rib: two lengths', () => {
+    const state = run(engine, brace());
+    expectAllOk(state);
+    const facts = state.evaluation.features.brace.facts;
+    expect(facts?.forward).toBe(true);
+    // the side of the rib leans by 3°: the brace of radius 1.5 is longer at its bottom than at its top
+    expect((facts?.lengthMax as number) - (facts?.lengthMin as number)).toBeCloseTo(3 * Math.tan(Math.PI / 60), 2);
+    expect((facts?.lengthMin as number) > 37 && (facts?.lengthMax as number) < 38).toBe(true);
+  });
+
+  it('refusals: a parallel wall, the floor the posts stand on, a face of a later feature, a round face; a base plane works', () => {
+    const withPlane = (plane: PlaneRef) => errorOf(preview(engine, { type: 'updateFeature', id: 'posts', patch: { extent: { plane } } }), 'posts')?.code;
+    expect(withPlane(onFace('box', { feature: 'cavity', role: 'side', curve: 'oa' }))).toBe('invalidExtent');
+    expect(withPlane(onFace('box', FLOOR))).toBe('invalidExtent');
+    // a face of a feature after the posts: an invalid command
+    expect(engine.preview({ type: 'updateFeature', id: 'posts', patch: { extent: { plane: onFace('box', { feature: 'brace', role: 'side', curve: 'br' }) } } })).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
+    const stud = preview(engine, {
+      type: 'addFeature',
+      feature: { id: 'stud', name: 'stud', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'postSketch', regions: [{ outerLoop: ['pa'] }] }, extent: { type: 'upTo', plane: onFace('box', { feature: 'posts', role: 'side', curve: 'pb' }), start: 0 }, operation: 'new' },
+    });
+    expect(errorOf(stud, 'stud')?.code).toBe('nonPlanarFace');
+    // a distance becomes an extent up to a plane by a patch with the other type, complete
+    const toBase = preview(engine, { type: 'updateFeature', id: 'rib', patch: { extent: { type: 'upTo', plane: { kind: 'base', plane: 'XY' }, start: 'ribH' } } });
+    expect(toBase.evaluation.features.rib.status).not.toBe('error');
+    expect(toBase.evaluation.features.rib.facts).toEqual({ lengthMin: 14, lengthMax: 14, forward: false });
+  });
+
+  it('the document loads to the same model', () => {
+    const before = engine.getState();
+    const other = newEngine();
+    expect(other.load(engine.save()).ok).toBe(true);
+    expect(other.getState().document).toEqual(before.document);
+    expectAllOk(other.getState());
+    near(volumeOf(other.getState(), 'box'), volumeOf(before, 'box'), 1e-9);
+    expect(UNDER_LID).toEqual({ kind: 'face', body: 'lid', face: { feature: 'lid', role: 'startCap' } });
   });
 });

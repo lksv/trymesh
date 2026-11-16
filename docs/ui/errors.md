@@ -19,6 +19,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Errors of featu
 | `emptyResult` | upravit vzdálenost nebo oblasti | `updateFeature` |
 | `sketchConflict` (varování, model zůstává) | otevřít skicu, smazat konfliktní vazbu | `removeConstraint` |
 | `invalidExpression` (an error; a warning for a sketch, which keeps the last valid value) | fix the expression or the parameter, or enter a number | `setParameter`, `updateFeature`, `setConstraintValue` |
+| `invalidExtent` (D47) | pick another plane (not parallel to the direction, not through the start), or a smaller gap | `updateFeature` |
 
 Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
 

@@ -1,5 +1,5 @@
 // The plane in the app: a form with its base, picked in the view, and its offset.
-import type { FaceName, PlaneFeature } from '@trymesh/engine';
+import type { FaceName, Input, PlaneFeature, PlaneRef } from '@trymesh/engine';
 import { h } from '../dom';
 import { COLOR, loopSegments, planeSquare } from '../draw';
 import type { PanelHost } from '../host';
@@ -11,9 +11,12 @@ import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftCh
 type Extra = Record<string, never>; // the form remembers nothing beyond the draft
 type PlaneMode = DraftMode<PlaneFeature, Extra>;
 
+// A plane reference as the forms show it: a base plane, a plane feature, or a face of a body.
+export const planeText = (host: PanelHost, ref: PlaneRef | Input<PlaneRef>): string =>
+  ref.kind === 'base' ? `rovina ${ref.plane}` : ref.kind === 'plane' ? `rovina „${host.nameOf(ref.feature)}“` : `stěna ${faceLabel(ref.face as FaceName, host.featureNames)} (${host.bodyName(ref.body)})`;
+
 function planePanel(m: PlaneMode, host: PanelHost): HTMLElement[] {
-  const base = m.draft.base;
-  const label = base.kind === 'base' ? `rovina ${base.plane}` : base.kind === 'plane' ? `rovina „${host.nameOf(base.feature)}“` : `stěna ${faceLabel(base.face as FaceName, host.featureNames)} (${host.bodyName(base.body)})`;
+  const label = planeText(host, m.draft.base);
   return [
     h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nová rovina'),
     h('p', {}, `Základ: ${label}`),
@@ -34,7 +37,7 @@ const form: FeatureForm<PlaneFeature, Extra> = {
   },
   command: draftCommand,
   panel: planePanel,
-  picks: { faces: true, planes: true },
+  picks: () => ({ faces: true, planes: true }),
   // a click on a plane or a planar face makes it the base
   click(m, _event, pick, host) {
     const ref = host.planeRefOf(pick);

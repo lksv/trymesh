@@ -23,7 +23,34 @@ Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá pozd�
 - The overshoot is `max(1 mm, 1 % of the largest absolute coordinate of the targets and of the origin of the sketch plane)`. It keeps the cap of the tool out of the plane of a body face. The kernel adapter resolves about 1e-4 of the largest coordinate of body and tool together, so the overshoot is normally two orders of magnitude above it. Where it is not (a profile far larger than the targets), the adapter takes the cap as flush with the face, which it handles like any flush face; holes then still go through.
 - The length is measured every time the tool is built, against the targets in the state the tool is applied to. A hole through all therefore follows a later change of the thickness, and a pattern measures it for every copy.
 - A side on which no target reaches gets just the overshoot: the tool misses and the result is `noEffect`.
-- The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start`, `extent/distance` and the optional `extent/taper` (D45) with `when: extent/type = distance`.
+- The extent has no numeric field, so it has no expression; `FEATURE_TYPE_INFO.extrude.fields` lists `extent/start`, `extent/distance` and the optional `extent/taper` (D45) with `when: extent/type = distance`, and `extent/start` once more with the optional `extent/gap` for `upTo` (D47).
+
+### Extent up to a plane (D47)
+
+`{ type: 'upTo', plane, start, gap? }`: the tool runs from `start` (as for a distance) to a plane. The design with its alternatives and reviews is [d36/2f-upto/design.md](../d36/2f-upto/design.md).
+
+- **The plane** is a `PlaneRef`, validated by `planeRef` as the plane of a sketch: a base plane, a plane feature, or a planar face of a body. Its references are listed by `extentRefs` (`features/extent.ts`), so a command refuses a plane of a later feature and `moveFeature` keeps the extrusion behind what the plane needs. For a face it is the whole plane the face lies in: the tool ends there also where its profile passes beside the face (a miss is no error).
+- **No side.** The tool runs to the plane on whichever side of the start it lies; the result says which (`forward`).
+- **The variant lists its fields** (`type`, `plane`, `start`, `gap`): another key, a `taper` among them, is an invalid command. `start` is the field `extent/start` (a second row of the registry with `when: extent/type = upTo`); `gap` is an optional field `extent/gap` by the rule of [document.md](document.md). A patch with `plane` replaces the reference; a patch with another `type` replaces the variant and has to be complete. For every operation (`extentOf` takes `upTo` from its caller). No upgrade step: an older build refuses the unknown type.
+
+**Recompute.**
+
+1. The step resolves the plane with `frame` (`recompute/services.ts`) in the state before the feature: `brokenReference` or `nonPlanarFace` (refs: the plane) end the step. The recipe keeps the plane as a point and a unit normal (`EndPlane`) in the closure of `build`, so a copy of a pattern of features measures to the plane the feature saw, also when the feature itself swallowed the face. A pattern of a body copies the body as it is, so under a tilted plane its copies do not end in the plane.
+2. `upToSpan` (`recompute/extent.ts`) measures, for every vertex of the polylines of the profile (the tool that is built; the length is linear, so the vertices test all of it), the length from the start along the normal of the frame to the plane: `N · (Q − P) / (N · n)`.
+   - `|N · n| ≤ sin(UP_TO_MIN_ANGLE)` (0.01 rad): `invalidExtent`, the plane is parallel to the direction or nearly so. The angle bounds every length by a hundred times the distance of the start from the plane.
+   - The lengths have one sign, each beyond `LENGTH_TOLERANCE`; otherwise the plane passes through the start or touches it: `invalidExtent`.
+   - The gap moves the plane along its own normal towards the side of the start (measured across the plane, so a tilted plane shortens the tool by the gap over the cosine of the tilt); the lengths to the moved plane have to keep their sign beyond the tolerance, otherwise `invalidExtent` ("the gap … is as large as the way to the plane").
+   - Lengths that differ by no more than `LENGTH_TOLERANCE` (a plane parallel to the sketch) give one length, the middle of the extremes: the span `[start, start + length]` of a distance extent, with its end cap, and `lengthMin` equal to `lengthMax` exactly.
+   - Otherwise the span is a `TiltedSpan`: the end level as a function of the point of the sketch, and the plane of the end cap: `origin` the origin of the sketch carried along the normal into the plane, `y` its Y axis carried the same way, `normal` the normal of the plane.
+3. The feature's own lengths are measured in the step: a refusal is the error of the step, with `refs` the plane and a detail that says why. A copy measures its own in `build` (the frame of the copy) and throws `ToolProblem('invalidExtent', [plane], detail)` (`recompute/state.ts`); `applyTool` and the step of an extrusion with the operation `new` turn it into the error with that code, so a pattern reports the copy first in `refs` as for any failed copy. Every other exception of a build stays `kernelFailure`.
+4. `buildPrism` takes the end as a level per vertex; the side of the first vertex decides the winding and which cap is `startCap`. With one length the mesh is that of a distance extent, vertex for vertex.
+5. `facts` of the result: `lengthMin`, `lengthMax` (positive, along the normal of the sketch plane) and `forward`, for the tool of the feature itself, next to the facts of a profile generator.
+
+**Faces.** The sides are those of a straight extrusion, cut off by the end. The end cap is a plane a sketch can stand on; its edges with the sides of lines are lines, with a cylinder a circle only when the plane is across the axis (`other`, an ellipse, otherwise).
+
+**Flush ends.** A cut up to a face of its target ends exactly on that face; an addition up to a face of another body touches it. Flush planar faces, tilted ones included, are what the kernel port guarantees.
+
+**Limits.** An addition that ends exactly flush on a face of its target keeps that face under its old name where the two overlap (the kernel's rule for coplanar faces); the face is gone only where the tool covers it and passes it. The angle 0.01 rad is a policy that keeps the length in proportion to the model, not a guarantee of the accuracy of the kernel for every model.
 
 ### Profile offset and a wall (D44)
 

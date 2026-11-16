@@ -54,6 +54,19 @@ export interface Placement {
 export type Model = Pick<State, 'bodies' | 'faceNames' | 'faceInfos' | 'faceIds'>;
 // The model after a tool was applied and the targets it did not change, or why it could not be applied.
 export type Applied = { ok: true; model: Model; unchanged: Id[] } | { ok: false; code: IssueCode; refs?: unknown[]; detail?: string };
+// A tool build that fails with a code of its own (a copy of a pattern that cannot reach the plane
+// of an extent `upTo`, D47). The two places that call `build` (`applyTool`, and the step of an
+// extrusion with the operation `new`) turn it into the error of the feature with that code; every
+// other exception of a build is `kernelFailure`.
+export class ToolProblem extends Error {
+  constructor(
+    readonly code: IssueCode,
+    readonly refs?: unknown[],
+    readonly detail?: string,
+  ) {
+    super(detail ?? code);
+  }
+}
 
 // Křivka skici, ze které vzniká boční stěna. `general`: a side of a generated profile.
 export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number } | { type: 'general' };

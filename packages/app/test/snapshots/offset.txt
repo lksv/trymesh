@@ -104,6 +104,7 @@
         select value="distance"
           option selected value="distance": "Distance"
           option value="throughAll" disabled: "Through all (a cut only)"
+          option value="upTo": "Up to a plane or face"
       label
         "Start (mm or an expression; offset from the sketch plane along its normal)"
         span.field
@@ -267,6 +268,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -381,6 +383,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -515,6 +518,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -615,6 +619,7 @@
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
+    +     option value="upTo": "Up to a plane or face"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -915,6 +920,7 @@
     -   select value="distance"
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field

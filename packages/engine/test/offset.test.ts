@@ -98,6 +98,7 @@ describe('the offset of a profile of regions', () => {
     expect(optional.map((field) => [field.path, field.when])).toEqual([
       ['profile/offset', { path: 'profile/type', equals: 'regions' }],
       ['extent/taper', { path: 'extent/type', equals: 'distance' }],
+      ['extent/gap', { path: 'extent/type', equals: 'upTo' }],
     ]);
   });
 

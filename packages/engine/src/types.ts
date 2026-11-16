@@ -227,7 +227,7 @@ export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchP
 // normal points out of the body, so an ordinary hole is `backward`. The length is taken from the
 // extent of all targets together along the normal, in the state the tool is applied to, plus an
 // overshoot. A target that lies entirely on the other side is not changed and the `noEffect`
-// warning names it. Further extents ("up to face") will come as variants.
+// warning names it.
 // `taper` (field `extent/taper`, radians, strictly between −π/2 and π/2, optional: absent means
 // none) is the angle between a side face and the direction of the extrusion. The profile of the
 // sketch (with its `profile/offset`) holds at the start of the extent; the profile at its end is
@@ -239,7 +239,29 @@ export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchP
 // edge against elephant foot, a slab with `profile/offset: -c`, `distance: c` and `deg(45)`. The
 // side of a line is a tilted plane, the side of an arc or a circle a cone; the faces keep the names
 // of the straight extrusion. Not with a generated profile.
-export type Extent = { type: 'distance'; start: number; distance: number; taper?: number } | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' };
+// `upTo` (D47): the tool starts at `start` (as for a distance) and ends in a plane: `plane` is a base
+// plane, a plane feature or a planar face of a body, referred to as a sketch refers to its plane.
+// - For a face it is the whole plane the face lies in: the tool ends there also where its profile
+//   passes beside the face. The plane may be tilted against the sketch plane; the end cap then lies
+//   in it and the length differs from point to point. The sides keep the names of a straight
+//   extrusion.
+// - There is no side: the tool runs from its start to the plane on whichever side of the start the
+//   plane lies, and the result says which and how far (`facts`: `lengthMin`, `lengthMax`, `forward`,
+//   lengths along the normal of the sketch plane in mm, positive; `forward` true when the tool runs
+//   along the normal).
+// - `gap` (field `extent/gap`, mm, optional: absent means none): the plane is taken moved that far
+//   towards the start, measured across the plane, so the tool stops short of it; a negative gap
+//   passes it by as much. A gap never turns the tool round.
+// - The plane is resolved at every recompute, in the state before the feature, so the length
+//   follows the model; a copy made by a pattern of features runs from its own start to that same plane (a pattern of a
+//   body copies the body as it is).
+// - Errors: `brokenReference`, `nonPlanarFace` (the face is not planar), `invalidExtent` (the plane
+//   is parallel to the direction of the extrusion or within 0.01 rad of it; it passes through or
+//   touches the start of the tool; the gap reaches the start). For every operation; no taper.
+export type Extent =
+  | { type: 'distance'; start: number; distance: number; taper?: number }
+  | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' }
+  | { type: 'upTo'; plane: PlaneRef; start: number; gap?: number };
 
 // ---------------------------------------------------------------- jména
 
@@ -433,6 +455,8 @@ export interface Issue {
 // range of the field (details in `fieldErrors`). For a sketch it is a warning: the sketch is computed
 // with the last valid value of the field, so that it stays visible and can be fixed. For other
 // feature types it is an error.
+// invalidExtent: the extent `upTo` cannot reach its plane (parallel to the direction, through the
+// start of the tool, or a gap as large as the way to it).
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -440,7 +464,8 @@ export type ErrorCode =
   | 'nonPlanarFace'
   | 'emptyResult'
   | 'kernelFailure'
-  | 'invalidExpression';
+  | 'invalidExpression'
+  | 'invalidExtent';
 
 export type WarningCode =
   | 'sketchConflict'

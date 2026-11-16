@@ -36,6 +36,7 @@ type IssueCode =
   | 'brokenReference' | 'noProfile' | 'invalidProfile' | 'nonPlanarFace'
   | 'emptyResult' | 'kernelFailure'
   | 'invalidExpression'            // an error everywhere except a sketch, where it is a warning
+  | 'invalidExtent'                // an extent up to a plane cannot reach it (D47)
   // varování: feature výsledek má
   | 'sketchConflict' | 'brokenProjection' | 'degenerateProjection' | 'unsupportedProjection'
   | 'noEffect'

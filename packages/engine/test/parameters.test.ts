@@ -295,7 +295,7 @@ describe('catalog of numeric fields', () => {
   it('the static field description matches what validation reads', () => {
     expect(FEATURE_TYPE_INFO.plane.fields.map((f) => f.path)).toEqual(['offset']);
     // fields of a variant come with `when`; the parameters of profile generators are listed with their generator
-    expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.when?.path !== 'profile/generator').map((f) => f.path)).toEqual(['profile/offset', 'profile/thickness', 'extent/start', 'extent/distance', 'extent/taper']);
+    expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.when?.path !== 'profile/generator').map((f) => f.path)).toEqual(['profile/offset', 'profile/thickness', 'extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     expect(FEATURE_TYPE_INFO.sketch.fields).toEqual([]);
     const doc = run(base(), { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 0, distance: 5 }) }, { type: 'addFeature', feature: { id: 'P1', name: 'P1', suppressed: false, type: 'plane', base: XY, offset: 3 } });
     for (const id of ['E1', 'P1']) {

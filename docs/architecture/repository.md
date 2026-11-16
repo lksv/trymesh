@@ -24,7 +24,7 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `host.ts` | `PanelHost`: what a panel or a form may use of the app. A module of a panel imports this interface and never `app.ts` |
 | `features/index.ts` | `FEATURE_UI`: one entry per feature type of the engine, complete by the compiler (how the type starts, how it is edited, its lines in the model panel, its faces, its eye on the timeline, its form), and `TOOLBAR`, the order of the buttons |
 | `features/draft.ts` | What the forms share: the mode of a draft (`DraftMode`, which carries its form), the preview and the pause of a slow one, numeric fields, the buttons |
-| `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, what a move and a click mean, what it draws) |
+| `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, asked of its state at every pointer event, what a move and a click mean, what it draws) |
 | `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
 | `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
 | `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
@@ -51,9 +51,9 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `sketch.ts`, `analysis.ts`, `diagnose.ts` | the input of the solver and its stamp, reference dimensions, profiles and regions; the analysis of freedom and the diagnosis |
 | `mesh-distance.ts`, `surfaces.ts` | the smallest distance of two parts of the mesh, the precision of its coordinates and the accuracy of a number measured on it; the circle two surfaces meet in |
 | `solid.ts`, `interference.ts` | rigid transforms, faces and edges of a body, the plane on a face, the projection of an edge, measures of a mesh, STL; interference of bodies |
-| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`) |
+| `recompute/state.ts` | the state between features and the types a step works with (`State`, `Step`, `StepContext`, `ToolRecipe`, `BuiltTool`, `SketchState`); `ToolProblem`, the failure of a tool build with a code of its own (D47) |
 | `recompute/services.ts` | functions over the state that the steps share: `frame` (a plane reference), `axis` (an axis reference), `applyTool`, `withFaces`, the texts of issues |
-| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal |
+| `recompute/profile.ts`, `recompute/extent.ts` | a profile source turned into regions; the span of a tool along the normal, and the lengths to the plane of an extent up to a plane (`upToSpan`, D47) |
 | `recompute/outline.ts` | exact outlines of profiles (D44): the outline of selected regions, an outline moved by an offset, the outline of a wall along a chain of curves, and their division into the polylines of regions with the tests of those polylines; the rings of a taper with the rule of the levels (`taperRings`, D45) |
 | `recompute/tool-prism.ts` | a tool build: the mesh of a prism over regions and its faces (`buildPrism`). Every tool build is a module `recompute/tool-*.ts` and returns a `BuiltTool` |
 | `recompute/tool-stack.ts` | a tool build (D45): the mesh of a stack of rings of one outline at levels along the normal, with its caps and sides (`buildStack`, `Ring`, `Section`) |

@@ -31,6 +31,7 @@ import {
   polygonSizeKind,
   profileKind,
   rectangleCommands,
+  noPlane,
   rememberedProfile,
 } from '../src/sketch-commands';
 import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, insideLoop, kindOf, measure, operandsOf, polyline, sketchView } from '../src/sketch-view';
@@ -617,6 +618,29 @@ describe('nálezy z revize aplikace', () => {
     expect(feature('e1').profile).toEqual({ type: 'wall', sketch: 's', curves: ['n'], thickness: WALL_THICKNESS });
     run([draftCommand(changeExtrude(changeExtrude(feature('e1'), { source: 'regions' }, []), { regions: [{ outerLoop: ['c1'] }], offset: 1 }, []), true, 1)]);
     expect(feature('e1').profile).toEqual({ ...draft.profile, offset: 1 });
+  });
+
+  it('an extent up to a plane: for every operation, without a plane until one is picked, the gap optional (D47)', () => {
+    const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 2, distance: 5 }, operation: 'new' };
+    const fresh = changeExtrude(draft, { extent: 'upTo' }, []);
+    // a new one takes the start of the distance and has no plane yet
+    expect(fresh.extent).toEqual({ type: 'upTo', start: 2 });
+    expect(noPlane(fresh.extent)).toBe(true);
+    const XY = { kind: 'base', plane: 'XY' } as const;
+    const picked = changeExtrude(fresh, { plane: XY, gap: 'g' }, []);
+    expect(picked.extent).toEqual({ type: 'upTo', start: 2, plane: XY, gap: 'g' });
+    expect(noPlane(picked.extent)).toBe(false);
+    expect(changeExtrude(picked, { gap: null, start: 0 }, []).extent).toEqual({ type: 'upTo', start: 0, plane: XY });
+    // fields of the other variants are ignored; every operation keeps it
+    expect(changeExtrude(picked, { distance: 9, taper: 0.1, side: 'both' }, []).extent).toEqual(picked.extent);
+    expect(changeExtrude(picked, { operation: 'cut', target: 'b' }, ['b']).extent).toEqual(picked.extent);
+    expect(changeExtrude(picked, { operation: 'add', target: 'b' }, ['b']).extent).toEqual(picked.extent);
+    // to a distance and back: the form passes the one it had last
+    const back = changeExtrude(picked, { extent: 'distance' }, [], draft.extent);
+    expect(back.extent).toEqual(draft.extent);
+    expect(changeExtrude(back, { extent: 'upTo' }, [], undefined, {}, picked.extent as never).extent).toEqual(picked.extent);
+    // editing: the patch removes a gap the draft no longer has; the plane is a reference, sent whole
+    expect(draftCommand(changeExtrude(picked, { gap: null }, []), true, 1)).toMatchObject({ patch: { extent: { type: 'upTo', plane: XY, start: 2, gap: null } } });
   });
 
   it('the taper of a distance extent: an optional field of the draft, gone with a generated profile (D45)', () => {

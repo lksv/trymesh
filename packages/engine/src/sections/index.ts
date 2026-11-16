@@ -56,6 +56,10 @@ export const sectionsDiffer = (a: Document, b: Document): boolean => NAMES.some(
 // after a feature in between does not push out the result of the document): a new result equal to
 // one of them is replaced by it, so that a result is the same object as long as what it is computed
 // from is the same.
+// The memory of a key whose entry is gone (a body removed, a link or a joint removed) is not dropped:
+// a state after a feature (`at`) or a preview that lacks the entry would otherwise push out the
+// results of the document. It grows with the IDs an engine has seen, each with at most
+// RESULTS_KEPT small results, and goes with the engine.
 export type KeptResults = Map<SectionName, Map<string, Map<string, unknown>>>;
 const RESULTS_KEPT = 4; // per key of a section, most recently used last
 export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, state: State, kept: KeptResults): { results: SectionResults; written?: Partial<Sections> } {

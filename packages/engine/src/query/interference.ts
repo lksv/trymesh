@@ -1,8 +1,8 @@
 // The query `interference`: which bodies share a volume (D35, point 5).
-import { INTERFERENCE_THRESHOLD, interferenceReport, sharedBy } from '../interference';
+import { INTERFERENCE_THRESHOLD, boxesApart, interferenceReport, sharedBy } from '../interference';
 import type { InterferenceReport } from '../types';
 import type { ArgSpecs } from './args';
-import { framed } from './pose';
+import { boxOf, framed } from './pose';
 import type { QuerySpec } from './spec';
 
 export const INTERFERENCE_ARGS = {
@@ -35,7 +35,8 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
       bodies,
       threshold,
       tolerance,
-      (a, b) => framed(context.bodies, a, b),
+      // boxes that hold the two posed bodies and do not meet: no moved mesh is built for the pair
+      (a, b) => (boxesApart(boxOf(context.bodies, a), boxOf(context.bodies, b)) ? undefined : framed(context.bodies, a, b)),
       (a, b) => context.memo([a.solid, b.solid], 'shared', () => sharedBy(context.kernel, a, b, tolerance)),
     );
   },

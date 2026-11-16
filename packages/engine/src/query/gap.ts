@@ -12,7 +12,7 @@ import { closest, coordinatePrecision, meshAccuracy } from '../mesh-distance';
 import type { BodyResult, FaceName, Id, Solid, Truncated, Vec3 } from '../types';
 import type { ArgSpecs } from './args';
 import { interference } from './interference';
-import { framed } from './pose';
+import { boxOf, framed } from './pose';
 import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 import { transformPoint } from '../solid';
 
@@ -80,7 +80,7 @@ declare module './spec' {
 }
 
 // How far apart the boxes of two bodies are; zero when they overlap or touch.
-function boxDistance(a: BodyResult, b: BodyResult): number {
+function boxDistance(a: Pick<BodyResult, 'bounds'>, b: Pick<BodyResult, 'bounds'>): number {
   let squared = 0;
   for (let axis = 0; axis < 3; axis++) squared += Math.max(b.bounds.min[axis] - a.bounds.max[axis], a.bounds.min[axis] - b.bounds.max[axis], 0) ** 2;
   return Math.sqrt(squared);
@@ -114,6 +114,11 @@ type PairAnswer = Gap | 'apart' | { refused: string };
 function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer {
   // from the context, in the frame of the first body: the pair is measured where the two stand to
   // each other, and the two points are moved back into the pose
+  // Boxes that hold the two posed bodies (larger than their own boxes, so never closer) reject
+  // a pair far apart before a moved mesh is built for it.
+  const rough = [{ bounds: boxOf(context.bodies, a) }, { bounds: boxOf(context.bodies, b) }];
+  const roughDistance = boxDistance(rough[0], rough[1]);
+  if (roughDistance >= within && roughDistance > coordinatePrecision(...rough)) return 'apart';
   const pair = framed(context.bodies, a, b);
   const [A, B] = [pair.a, pair.b];
   const precision = coordinatePrecision(A, B);

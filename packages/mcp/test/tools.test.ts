@@ -837,10 +837,15 @@ describe('model, tělesa a příkazy', () => {
     const collisions = callTool(engine, 'check_interference', {});
     expect(collisions.ok && [collisions.about, (collisions.result as any).pairs]).toEqual([{ pose: { turn: 1.570796 } }, []]);
     expect(ok(engine, 'get_model').bodies.find((entry: { id: string }) => entry.id === 'f')).toMatchObject({ min: [0, 0, 10], max: [40, 30, 20] });
+    // a query that reads no geometry of bodies says nothing of the pose (review of D49)
+    for (const [query, args] of [['catalog', { name: 'materials' }], ['mechanism', {}], ['sketchDiagnosis', { sketch: 's' }]] as const) expect(callTool(engine, 'query', { query, args })).not.toHaveProperty('about');
 
     // the sketch of the axis removed while the arm is turned: the joint is in error and blocks the arm
     answer = execute(engine, { type: 'removeFeature', id: 'axes' });
     expect(answer.jointErrors).toEqual([{ joint: 'turn', code: 'brokenReference', message: expect.stringContaining('the axis of the joint "turn"') }]);
+    // the state of a joint goes with jointErrors: at the end of the timeline, not at a point of the construction
+    expect(ok(engine, 'get_model').mechanism.joints[0].status).toBe('error');
+    expect(ok(engine, 'get_model', { at: 'g' }).mechanism.joints[0]).not.toHaveProperty('status');
     expect(callTool(engine, 'check_interference', {})).toEqual({ ok: false, error: expect.stringContaining('failed: the pose of the body "f" is not known: the joint "turn" has no motion') });
     expect(callTool(engine, 'get_body', { body: 'f' })).toEqual({ ok: false, error: expect.stringContaining("geometry: 'modelled'") });
     expect(callTool(engine, 'query', { query: 'body', args: { body: 'f' }, after: { type: 'setPose', values: { turn: 0 } } }).ok).toBe(true);

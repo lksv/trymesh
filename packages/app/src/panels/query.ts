@@ -120,7 +120,7 @@ export function openQuery(panel: QueryPanel, host: PanelHost, name: QueryName): 
 
 // The choice of the geometry is offered while the state shown holds a pose of the mechanism (a link
 // moved or blocked), for a query that does not answer as modelled anyway (D49).
-const offersModelled = (entry: AnyQuery, host: PanelHost): boolean => entry.geometry !== 'modelled' && holdsPose(host.view().evaluation.mechanism);
+const offersModelled = (entry: AnyQuery, host: PanelHost): boolean => entry.geometry === undefined && holdsPose(host.view().evaluation.mechanism);
 
 // Is the answer that is shown one about the model as modelled: asked so, or of a query that always
 // answers so? The view then shows the model as modelled too, so that what it highlights is where the

@@ -30,7 +30,6 @@ import {
   type SketchFeature,
   type SketchToolName,
   type BodyPropertiesResult,
-  type MechanismResult,
   QueryFailure,
   bodyFileName,
   bodyPropertiesWithoutBody,
@@ -68,11 +67,11 @@ export class Noted {
     readonly about: Json,
   ) {}
 }
-// The answer of a tool computed in the pose of `mechanism`: with the note of the joints that are
-// not at zero when a link is moved, the result alone otherwise (a document without a pose answers
-// as before the mechanism).
-function posed(result: unknown, mechanism: MechanismResult | undefined): unknown {
-  const note = poseNote(mechanism);
+// The answer of a tool computed in the pose of the state asked about: with the note of the joints
+// that move the model, the result alone otherwise (a document without a pose answers as before the
+// mechanism).
+function posed(result: unknown, state: Pick<EngineState, 'document' | 'evaluation'>): unknown {
+  const note = poseNote(state.evaluation.mechanism, state.document.mechanism);
   return note ? new Noted(result, { pose: Object.fromEntries(Object.entries(note.pose).map(([joint, value]) => [joint, round(value)])) }) : result;
 }
 
@@ -212,8 +211,10 @@ function documentProblems(state: EngineState, whole = true): Record<string, unkn
 // The mechanism as get_model prints it (D49), when there is a link: the links with their bodies, the
 // joints with their numbers (rounded so that a limit read here is accepted as a value: the
 // tolerance of the limits is wider than the rounding) and expressions, the roots when there are
-// several. The bodies of get_model stay as modelled.
-function mechanismInfo(state: EngineState): { mechanism?: Record<string, unknown> } {
+// several. The bodies of get_model stay as modelled. `status: 'error'` of a joint goes with
+// `jointErrors`: for the state at the end of the timeline only (`whole`); at a point of the
+// construction a joint whose axis comes later would be in error, and the query `mechanism` says so.
+function mechanismInfo(state: EngineState, whole: boolean): { mechanism?: Record<string, unknown> } {
   const { links, joints } = state.document.mechanism;
   if (Object.keys(links).length === 0) return {};
   const { roots } = state.evaluation.mechanism;
@@ -231,7 +232,7 @@ function mechanismInfo(state: EngineState): { mechanism?: Record<string, unknown
           ...('axis' in joint ? { axis: joint.axis as unknown as Json } : {}),
           ...Object.fromEntries(['lower', 'upper', 'value'].flatMap((field) => (typeof numbers[field] === 'number' ? [[field, round(numbers[field] as number)]] : []))),
           ...(joint.expressions ? { expressions: joint.expressions } : {}),
-          ...(state.evaluation.mechanism.joints[id]?.status === 'error' ? { status: 'error' } : {}),
+          ...(whole && state.evaluation.mechanism.joints[id]?.status === 'error' ? { status: 'error' } : {}),
         };
       }),
       ...(roots.length > 1 ? { roots } : {}),
@@ -306,7 +307,7 @@ function modelSummary(state: EngineState, whole = true): unknown {
     bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length, ...propertiesInfo(state, id) })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
-    ...mechanismInfo(state),
+    ...mechanismInfo(state, whole),
     ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
@@ -335,7 +336,7 @@ function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown
     max: answer.result.bounds.max.map(round),
     faces: answer.result.faces.map((face) => ({ name: face.name as unknown as Json, label: faceLabel(face.name), planar: face.surface.kind === 'plane', area: round(face.area), ...(face.meshNormal ? { normal: face.meshNormal.map(round) } : {}) })),
     edges: answer.result.edges.map((edge) => ({ name: edge.name as unknown as Json, label: `${faceLabel(edge.name.a)} | ${faceLabel(edge.name.b)}`, kind: edge.kind, ...edgeShape(edge) })),
-  }, state.evaluation.mechanism);
+  }, state);
 }
 
 const plural = (count: number): string => `${count} ${count === 1 ? 'stupeň' : count >= 2 && count <= 4 ? 'stupně' : 'stupňů'} volnosti`;
@@ -674,7 +675,7 @@ export function tools(): Tool[] {
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = (pair: Interference) => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
         const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
-        return posed(answer, stateAt(engine, at).evaluation.mechanism);
+        return posed(answer, stateAt(engine, at));
       },
     },
     {
@@ -706,8 +707,11 @@ export function tools(): Tool[] {
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
         const spec = (QUERIES as Record<string, AnyQuery>)[name];
         const result = roundedResult(answer.result, spec.significant);
-        if (geometry === 'modelled' || spec.geometry === 'modelled') return result;
-        return posed(result, (options.state ?? engine.getState(options.at)).evaluation.mechanism);
+        // the note only for an answer computed from the bodies in the pose: not as modelled, not for
+        // a query that reads no geometry of bodies (`geometry: 'none'`: a catalog, a sketch, the
+        // mechanism itself)
+        if (geometry === 'modelled' || spec.geometry !== undefined) return result;
+        return posed(result, options.state ?? engine.getState(options.at));
       },
     },
     {

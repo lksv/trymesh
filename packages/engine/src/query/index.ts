@@ -33,7 +33,7 @@ export function runQuery(name: string, args: unknown, evaluation: Evaluation, in
   if (!checked.ok) return refused(checked.code, `${name}: ${checked.message}`, checked.arg);
   try {
     // the checker has made the values what the description derives; that is the one cast
-    return { ok: true, result: spec.run(queryContext(name, evaluation, internals, deps, spec.geometry ?? geometry), checked.value as never) };
+    return { ok: true, result: spec.run(queryContext(name, evaluation, internals, deps, spec.geometry ? 'modelled' : geometry), checked.value as never) };
   } catch (error) {
     if (error instanceof QueryFailure) return refused(error.code, `${name}: ${error.message}`, error.arg);
     throw error;

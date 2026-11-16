@@ -45,6 +45,7 @@ function rowOf<N extends keyof Catalogs>(catalog: N, size: string): Catalogs[N] 
 const degrees = (radians: number): string => `deg(${Number(((radians * 180) / Math.PI).toFixed(9))})`;
 
 export const hardwareHole: QuerySpec<typeof HARDWARE_HOLE_ARGS, HardwareHole> = {
+  geometry: 'none', // reads no geometry of bodies (D49)
   title: 'Hole for a piece of hardware',
   summary:
     'The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). ' +

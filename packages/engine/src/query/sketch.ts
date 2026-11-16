@@ -18,6 +18,7 @@ declare module './spec' {
 // `unavailable`; that is an answer, not an error. The diagnosis is kept by the evaluated sketch:
 // while neither the sketch nor the state before it changes, it is not computed again.
 export const sketchDiagnosis: QuerySpec<typeof SKETCH_ARGS, SketchDiagnosis> = {
+  geometry: 'none', // reads no geometry of bodies (D49)
   title: 'Diagnosis of a sketch',
   summary: 'How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.',
   returns: '`status` (solved, conflict, failed, unavailable), `degreesOfFreedom`, `free` (what still moves and how), `duplicates`, `redundant`, `removable` (a set of constraints that can be removed without a change), `conflicting`.',
@@ -29,6 +30,7 @@ export const sketchDiagnosis: QuerySpec<typeof SKETCH_ARGS, SketchDiagnosis> = {
 };
 
 export const constraintExplanation: QuerySpec<typeof CONSTRAINT_ARGS, ConstraintExplanation> = {
+  geometry: 'none', // reads no geometry of bodies (D49)
   title: 'Explanation of a constraint',
   summary: 'Whether a constraint of a sketch follows from other constraints, and from which.',
   returns: '`redundant` and `impliedBy`: the smallest set of other constraints the constraint follows from (empty when it is not redundant, or when it follows from the definition of a curve).',

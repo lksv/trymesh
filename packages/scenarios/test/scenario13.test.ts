@@ -525,8 +525,8 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     expect(posed.bounds.max[1]).toBeGreaterThan(atZero.evaluation.bodies.forearm.bounds.max[1] + 50);
     expect(unwrap(engine.query('body', { body: 'forearm' }, { geometry: 'modelled' })).bounds).toEqual(atZero.evaluation.bodies.forearm.bounds);
     // what a tool says beside its answer
-    expect(poseNote(bent.evaluation.mechanism)).toEqual({ pose: { elbow: 1 } });
-    expect(poseNote(atZero.evaluation.mechanism)).toBeUndefined();
+    expect(poseNote(bent.evaluation.mechanism, bent.document.mechanism)).toEqual({ pose: { elbow: 1 } });
+    expect(poseNote(atZero.evaluation.mechanism, atZero.document.mechanism)).toBeUndefined();
     expect(QUERIES.print.geometry).toBe('modelled');
     engine.undo();
   });

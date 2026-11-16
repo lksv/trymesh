@@ -234,6 +234,9 @@ function setPose(doc: Document, cmd: Dict): Section {
     if (!has(section.joints, id)) fail(`${what}: the mechanism has no joint "${id}"${known(section.joints, 'joints')}`);
     const old = section.joints[id];
     if (old.type === 'fixed') fail(`${what}: the joint "${id}" is fixed and has no value`);
+    // a string equal to the expression the value already has is no change, and is not evaluated
+    // (as in setJoint): a value whose expression stopped evaluating can be sent again unchanged
+    if (typeof given === 'string' && old.expressions?.value !== undefined && given.trim() === old.expressions.value) continue;
     const spec = (JOINT_FIELDS[old.type].find((field) => field.path === 'value') as EntryField).spec;
     // a number removes the expression of the value, a string sets one
     const reader = new Fields('update', {}, () => environment);
@@ -471,25 +474,55 @@ export function carriedBy(section: Mechanism, mechanism: MechanismResult, joint:
 }
 
 // What a tool says beside its result when the answer is for a pose that moves a link: the joints
-// whose value is not zero, with their values (rad or mm). Undefined while every link stands as
-// modelled.
+// that move the model, with the values they move it by (rad or mm). A joint in error, and a joint
+// beyond one, moves nothing a query reads (a body beyond it cannot be read), so it is not listed.
+// Undefined while no joint moves the model.
 export interface PoseNote {
   pose: Record<Id, number>;
 }
-export function poseNote(mechanism: MechanismResult | undefined): PoseNote | undefined {
-  if (!mechanism || Object.values(mechanism.links).every((own) => isIdentity(own.transform))) return undefined;
-  return { pose: Object.fromEntries(Object.entries(mechanism.joints).flatMap(([id, j]): [Id, number][] => (j.value ? [[id, j.value]] : []))) };
+export function poseNote(mechanism: MechanismResult | undefined, section: Mechanism | undefined): PoseNote | undefined {
+  if (!mechanism || !section) return undefined;
+  const moving = Object.entries(mechanism.joints).flatMap(([id, j]): [Id, number][] => {
+    const child = has(section.joints, id) && has(mechanism.links, section.joints[id].child) ? mechanism.links[section.joints[id].child] : undefined;
+    return j.status === 'ok' && j.value && child && child.blockedBy === undefined ? [[id, j.value]] : [];
+  });
+  return moving.length ? { pose: Object.fromEntries(moving) } : undefined;
 }
 
-// The text of a body that cannot be read in the pose: the joint, its fault, and the ways to it.
-export function blockedText(mechanism: MechanismResult, body: Id, joint: Id): string {
-  const result = has(mechanism.joints, joint) ? mechanism.joints[joint] : undefined;
-  const fault = result?.error ? `${result.error.code}: ${result.error.message}` : 'it is in error';
-  // the joint at zero moves nothing whatever its axis is, where its limits allow zero
-  const atZero = result?.error?.code === 'brokenReference' && !((result.lower ?? 0) > 0) && !((result.upper ?? 0) < 0);
+// The joints without a motion on the way from the root to the link of a body, the one nearest the
+// root first: every joint whose own fault blocks what hangs on it.
+function blockingJoints(section: Mechanism, mechanism: MechanismResult, body: Id): Id[] {
+  const jointOf = new Map(Object.entries(section.joints).map(([id, j]): [Id, Id] => [j.child, id]));
+  const out: Id[] = [];
+  const seen = new Set<Id>();
+  const link = Object.keys(section.links).find((id) => section.links[id].bodies.includes(body));
+  for (let at = link, by = at === undefined ? undefined : jointOf.get(at); at !== undefined && by !== undefined && !seen.has(at); at = section.joints[by].parent, by = jointOf.get(at)) {
+    seen.add(at);
+    if (mechanism.links[at]?.blockedBy === by) out.unshift(by);
+  }
+  return out;
+}
+
+// The text of a body that cannot be read in the pose: every joint on its way to the root that has
+// no motion, with its fault, and the ways to the body. The joints at zero are offered in one step
+// when each of them can stand there (its only fault is its axis and its limits allow zero).
+export function blockedText(section: Mechanism, mechanism: MechanismResult, body: Id): string {
+  const joints = blockingJoints(section, mechanism, body);
+  const faultOf = (joint: Id): string => {
+    const error = mechanism.joints[joint]?.error;
+    return error ? `${error.code}: ${error.message}` : 'in error';
+  };
+  const zeroable = joints.length > 0 && joints.every((joint) => {
+    const result = mechanism.joints[joint];
+    return result?.error?.code === 'brokenReference' && !((result.lower ?? 0) > 0) && !((result.upper ?? 0) < 0);
+  });
+  const named = joints.map((joint) => `"${joint}"`).join(', ');
+  const which = joints.length === 1 ? `the joint ${named} has no motion (${faultOf(joints[0])})` : `the joints ${named} have no motion (${joints.map((joint) => `"${joint}": ${faultOf(joint)}`).join('; ')})`;
+  const values = joints.map((joint) => `"${joint}": 0`).join(', ');
+  const beyond = `The bodies beyond ${joints.length === 1 ? 'it' : 'them'} can be read`;
   return (
-    `the pose of the body "${body}" is not known: the joint "${joint}" has no motion (${fault}). ` +
-    (atZero ? `The bodies beyond it can be read with the joint at zero, which writes nothing: after: { "type": "setPose", "values": { "${joint}": 0 } }; or ` : 'The bodies beyond it can be read ') +
+    `the pose of the body "${body}" is not known: ${which}. ` +
+    (zeroable ? `${beyond} with ${joints.length === 1 ? 'the joint' : 'these joints'} at zero, which writes nothing: after: { "type": "setPose", "values": { ${values} } }; or ` : `${beyond} `) +
     `as modelled with geometry: 'modelled'`
   );
 }

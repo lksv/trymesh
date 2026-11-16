@@ -23,6 +23,7 @@ declare module './spec' {
 }
 
 export const mechanism: QuerySpec<typeof MECHANISM_ARGS, MechanismAnswer> = {
+  geometry: 'none', // reads no geometry of bodies (D49)
   title: 'Mechanism',
   summary:
     'The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. ' +

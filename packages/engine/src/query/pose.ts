@@ -5,19 +5,29 @@
 // a sweep is the same object in both, and what `memo` keeps for it is found again.
 import { blockedText, linkOf, motionsTo, poseOfBody } from '../sections/mechanism';
 import { IDENTITY, compose, inverse, isIdentity, transformPoint } from '../solid';
-import type { BodyResult, Id, Mechanism, MechanismResult, RigidTransform, Solid } from '../types';
+import type { BodyResult, Id, Mechanism, MechanismResult, RigidTransform, Solid, Vec3 } from '../types';
 import { QueryFailure } from './spec';
 
 // ---------------------------------------------------------------- a body moved
 
-const POSES_KEPT = 8; // per solid; a sweep alternates between a few
+// How many moved copies of one solid are kept, most recently used last. In one query a body is
+// handed out in its pose once, and as the second body of a pair once for every other link it is
+// paired with (the motion between the two links), so one state needs at most as many copies as the
+// mechanism has links. Twice that keeps the state before as well (a sweep, a state asked again
+// after a preview), and never fewer than eight. Sized by the mechanism that asks (`keepFor`), not
+// by a fixed number: with more links than the memory holds, a state asked again would miss every
+// pair it had pushed out.
+const POSES_KEPT = 8;
+export const keepFor = (mechanism: MechanismResult): number => Math.max(POSES_KEPT, 2 * Object.keys(mechanism.links).length);
 const moved = new WeakMap<Solid, Map<string, BodyResult>>();
 const key = (t: RigidTransform): string => JSON.stringify([t.matrix, t.translation]);
+// How many moved meshes were built; read by the tests.
+export const POSE_STATS = { meshesMoved: 0 };
 
 // The body moved by a rigid transform: positions (single precision, as every mesh), the segments of
 // the edges and the bounds; the volume, the faces and the names stay. The triangles and the face
 // numbers are shared with the modelled solid (a rigid motion keeps the order of the vertices).
-export function movedBody(body: BodyResult, t: RigidTransform): BodyResult {
+export function movedBody(body: BodyResult, t: RigidTransform, keep: number = POSES_KEPT): BodyResult {
   if (isIdentity(t)) return body;
   let known = moved.get(body.solid);
   if (!known) moved.set(body.solid, (known = new Map()));
@@ -28,6 +38,7 @@ export function movedBody(body: BodyResult, t: RigidTransform): BodyResult {
     known.set(text, found);
     return found;
   }
+  POSE_STATS.meshesMoved++;
   const source = body.solid.positions;
   const positions = new Float32Array(source.length);
   const bounds: BodyResult['bounds'] = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
@@ -45,8 +56,24 @@ export function movedBody(body: BodyResult, t: RigidTransform): BodyResult {
   });
   const result: BodyResult = { solid: { positions, triangles: body.solid.triangles, faceIds: body.solid.faceIds }, volume: body.volume, bounds, faces: body.faces, edges };
   known.set(text, result);
-  if (known.size > POSES_KEPT) known.delete(known.keys().next().value as string);
+  while (known.size > keep) known.delete(known.keys().next().value as string);
   return result;
+}
+
+// The box of a body moved by a transform, from the eight corners of its box as modelled: it holds
+// the moved body (it may be larger than the box of the moved mesh), and it costs no mesh.
+export function movedBox(bounds: BodyResult['bounds'], t: RigidTransform | undefined): BodyResult['bounds'] {
+  if (!t) return bounds;
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let corner = 0; corner < 8; corner++) {
+    const p = transformPoint(t, [0, 1, 2].map((axis) => ((corner >> axis) & 1 ? bounds.max[axis] : bounds.min[axis])) as Vec3);
+    for (let axis = 0; axis < 3; axis++) {
+      min[axis] = Math.min(min[axis], p[axis]);
+      max[axis] = Math.max(max[axis], p[axis]);
+    }
+  }
+  return { min, max };
 }
 
 // ---------------------------------------------------------------- the bodies of a context
@@ -57,6 +84,7 @@ interface Posed {
   modelled: BodyResult;
   transform: RigidTransform;
   motions: RigidTransform[];
+  keep: number; // the memory of moved copies the mechanism needs (`keepFor`)
 }
 const records = new WeakMap<BodyResult, Posed>();
 
@@ -67,14 +95,25 @@ export interface Pose {
   bodies: Readonly<Record<Id, BodyResult>>;
   // the transform of the body; undefined when it stands as modelled; throws for a blocked body
   transformOf(body: Id): RigidTransform | undefined;
+  // a box that holds the body in the pose, without moving its mesh (`movedBox`)
+  boxOf(body: Id): BodyResult['bounds'];
 }
+// The pose a map of bodies handed out by a context belongs to.
+const poses = new WeakMap<object, Pose>();
 export function poseOf(section: Mechanism | undefined, mechanism: MechanismResult | undefined, modelled: Readonly<Record<Id, BodyResult>>): Pose | undefined {
   if (!section || !mechanism) return undefined;
   if (Object.values(mechanism.links).every((own) => own.blockedBy === undefined && isIdentity(own.transform))) return undefined;
   const transformOf = (body: Id): RigidTransform | undefined => {
     const pose = poseOfBody(mechanism, body);
-    if (pose !== undefined && 'blockedBy' in pose) throw new QueryFailure('failed', blockedText(mechanism, body, pose.blockedBy));
+    if (pose !== undefined && 'blockedBy' in pose) throw new QueryFailure('failed', blockedText(section, mechanism, body));
     return pose;
+  };
+  const keep = keepFor(mechanism);
+  const boxes = new Map<Id, BodyResult['bounds']>();
+  const boxOf = (id: Id): BodyResult['bounds'] => {
+    let box = boxes.get(id);
+    if (!box) boxes.set(id, (box = movedBox(modelled[id].bounds, transformOf(id))));
+    return box;
   };
   const handed = new Map<Id, BodyResult>();
   const bodyOf = (id: Id): BodyResult => {
@@ -83,8 +122,8 @@ export function poseOf(section: Mechanism | undefined, mechanism: MechanismResul
     const t = transformOf(id);
     let out = modelled[id];
     if (t) {
-      out = movedBody(modelled[id], t);
-      records.set(out, { modelled: modelled[id], transform: t, motions: motionsTo(section, mechanism, linkOf(mechanism, id) as Id) });
+      out = movedBody(modelled[id], t, keep);
+      records.set(out, { modelled: modelled[id], transform: t, motions: motionsTo(section, mechanism, linkOf(mechanism, id) as Id), keep });
     }
     handed.set(id, out);
     return out;
@@ -93,7 +132,16 @@ export function poseOf(section: Mechanism | undefined, mechanism: MechanismResul
   // is read.
   const bodies: Record<Id, BodyResult> = {};
   for (const id of Object.keys(modelled)) Object.defineProperty(bodies, id, { enumerable: true, get: () => bodyOf(id) });
-  return { bodies, transformOf };
+  const pose = { bodies, transformOf, boxOf };
+  poses.set(bodies, pose);
+  return pose;
+}
+
+// A box that holds the body `id` of a map a context handed out, in its pose: the box of the body
+// where nothing moves it, else `movedBox` (so a pair far apart is rejected without moving a mesh).
+export function boxOf(bodies: Readonly<Record<Id, BodyResult>>, id: Id): BodyResult['bounds'] {
+  const pose = poses.get(bodies);
+  return pose ? pose.boxOf(id) : bodies[id].bounds;
 }
 
 // ---------------------------------------------------------------- a pair in the frame of its first body
@@ -119,7 +167,8 @@ export function pairInFrame(a: BodyResult, b: BodyResult): { a: BodyResult; b: B
   let relative = IDENTITY;
   for (let i = motionsA.length - 1; i >= common; i--) relative = compose(relative, inverse(motionsA[i]));
   for (let i = common; i < motionsB.length; i++) relative = compose(relative, motionsB[i]);
-  return { a: A, b: movedBody(B, relative), back: first ? first.transform : IDENTITY };
+  const keep = Math.max(first?.keep ?? 0, second?.keep ?? 0);
+  return { a: A, b: movedBody(B, relative, keep), back: first ? first.transform : IDENTITY };
 }
 
 // A pair as a query about pairs reads it: in the frame of the first body when either moved.

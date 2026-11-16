@@ -59,14 +59,12 @@ export function rotation(point: Vec3, axis: Vec3, angle: number): RigidTransform
 }
 
 // What a pose composes (D49): the identity, the product, the inverse, a shift along a direction.
+// Frozen to the last number: every root link shares it as its transform, and the app gets it by
+// reference.
 export const IDENTITY: RigidTransform = Object.freeze({
-  matrix: [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-  ],
-  translation: [0, 0, 0],
-}) as RigidTransform;
+  matrix: Object.freeze([Object.freeze([1, 0, 0]), Object.freeze([0, 1, 0]), Object.freeze([0, 0, 1])]),
+  translation: Object.freeze([0, 0, 0]),
+}) as unknown as RigidTransform;
 // Exactly the identity, number by number (a turn by zero is exactly the identity).
 export const isIdentity = (t: RigidTransform): boolean =>
   t === IDENTITY || (t.translation.every((x) => x === 0) && t.matrix.every((row, i) => row.every((x, j) => x === (i === j ? 1 : 0))));

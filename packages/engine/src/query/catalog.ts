@@ -16,6 +16,7 @@ declare module './spec' {
 }
 
 export const catalog: QuerySpec<typeof CATALOG_ARGS, CatalogTable> = {
+  geometry: 'none', // reads no geometry of bodies (D49)
   title: 'Data catalog',
   summary: 'A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.',
   returns: '`title`, `summary`, `source` (the standard or data sheet the rows come from), `columns` (each with a title and a unit, or `text`) and `rows` by key, each with a value per column.',

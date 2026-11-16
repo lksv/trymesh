@@ -242,7 +242,7 @@ describe('the result of the recompute', () => {
     expect(evaluated(doc, BODIES('base')).result.links.c).toMatchObject({ bodies: [], missing: ['forearm'] });
     // what hangs on the turn, and the note of a pose
     expect(carriedBy(doc.mechanism, result, 'turn')).toEqual({ joint: 'turn', links: ['b', 'c'], bodies: ['upper', 'forearm'], missing: [] });
-    expect(poseNote(result)).toEqual({ pose: { turn: Math.PI / 2, slide: 5 } });
+    expect(poseNote(result, doc.mechanism)).toEqual({ pose: { turn: Math.PI / 2, slide: 5 } });
     expect(poseOfBody(result, 'base')).toBeUndefined();
     expect(poseOfBody(result, 'motor')).toBeUndefined();
     expect(poseOfBody(result, 'forearm')).toBe(result.links.c.transform);
@@ -252,7 +252,7 @@ describe('the result of the recompute', () => {
     const atZero = evaluated(arm(), undefined, NO_SKETCH).result;
     expect(atZero.joints.elbow).toMatchObject({ status: 'error', error: { code: 'brokenReference', refs: ['layout'] }, value: 0 });
     expect(atZero.links.forearm.blockedBy).toBeUndefined();
-    expect(poseNote(atZero)).toBeUndefined();
+    expect(poseNote(atZero, arm().mechanism)).toBeUndefined();
     const doc = apply(arm(), pose({ shoulder: 0.5, elbow: 1 }));
     const turned = evaluated(doc, undefined, NO_SKETCH).result;
     expect(turned.links.forearm).toMatchObject({ blockedBy: 'elbow' });

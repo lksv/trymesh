@@ -174,5 +174,138 @@ describe('a taper on an extrusion', () => {
     expect(errorOf(steep, 'R')).toMatchObject({ code: 'invalidProfile' });
     expect(errorOf(steep, 'R')?.refs).toEqual(['m']);
     expect(errorOf(steep, 'R')?.message).not.toMatch(/\|/);
+    // the cure speaks of the wall, not of corner radii
+    expect(errorOf(steep, 'R')?.message).toMatch(/make the wall thicker/);
+  });
+});
+
+// ---------------------------------------------------------------- findings of the review (D45)
+
+type Solid = EngineState['evaluation']['bodies'][string]['solid'];
+// Every directed edge of the mesh once, with its reverse: a closed surface, consistently oriented.
+function closed(solid: Solid): boolean {
+  const edges = new Set<string>();
+  for (let t = 0; t < solid.triangles.length; t += 3) {
+    for (let k = 0; k < 3; k++) {
+      const key = `${solid.triangles[t + k]}>${solid.triangles[t + ((k + 1) % 3)]}`;
+      if (edges.has(key)) return false;
+      edges.add(key);
+    }
+  }
+  return [...edges].every((key) => edges.has(key.split('>').reverse().join('>')));
+}
+const point = (sketch: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch, id, x, y });
+const straight = (sketch: Id, id: Id, a: Id, b: Id): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'line', a, b } });
+const bend = (sketch: Id, id: Id, center: Id, start: Id, end: Id): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'arc', center, start, end } });
+
+// D: a half disc of radius 10 (its arc meets the line at an angle, so it has levels). H: a square
+// with a half disc of radius 8 as a hole, and a second square beside it. W: an open wall of a line
+// and a tangent arc.
+function shapes(): Engine {
+  const engine = newEngine();
+  run(
+    engine,
+    addSketch('D', XY),
+    batch(point('D', 'l', -10, 0), point('D', 'r', 10, 0), point('D', 'o', 0, 0), straight('D', 'dl', 'l', 'r'), bend('D', 'da', 'o', 'r', 'l')),
+    addSketch('H', XY),
+    batch(
+      point('H', 's1', -20, -20), point('H', 's2', 20, -20), point('H', 's3', 20, 20), point('H', 's4', -20, 20),
+      straight('H', 'q1', 's1', 's2'), straight('H', 'q2', 's2', 's3'), straight('H', 'q3', 's3', 's4'), straight('H', 'q4', 's4', 's1'),
+      point('H', 'hl', -8, 0), point('H', 'hr', 8, 0), point('H', 'ho', 0, 0), straight('H', 'hd', 'hl', 'hr'), bend('H', 'ha', 'ho', 'hr', 'hl'),
+      point('H', 't1', 30, 0), point('H', 't2', 40, 0), point('H', 't3', 40, 10), point('H', 't4', 30, 10),
+      straight('H', 'u1', 't1', 't2'), straight('H', 'u2', 't2', 't3'), straight('H', 'u3', 't3', 't4'), straight('H', 'u4', 't4', 't1'),
+    ),
+    addSketch('W', XY),
+    batch(point('W', 'w1', 0, 0), point('W', 'w2', 10, 0), point('W', 'wc', 10, 5), point('W', 'w3', 15, 5), straight('W', 'wl', 'w1', 'w2'), bend('W', 'wa', 'wc', 'w2', 'w3')),
+  );
+  return engine;
+}
+
+describe('a taper, the findings of the review', () => {
+  it('the stack is closed and faces out: a D with levels, a profile with a hole and two regions, a wall; both signs, a start', () => {
+    const engine = shapes();
+    const profiles: [string, Profile][] = [
+      ['D', regions('D', [['da', 'dl']])],
+      ['H', regions('H', [['q1', 'q2', 'q3', 'q4'], ['u1', 'u2', 'u3', 'u4']])],
+      ['W', { type: 'wall', sketch: 'W', curves: ['wa', 'wl'], thickness: 2 }],
+    ];
+    let n = 0;
+    for (const [name, profile] of profiles) {
+      for (const distance of [6, -6]) {
+        for (const start of [0, 2.5]) {
+          for (const taper of [0.25, -0.1]) {
+            const id = `${name}${n++}`;
+            const state = run(engine, feature(id, profile, tapered(distance, taper, start)));
+            expect(state.evaluation.features[id].status, `${id}: ${state.evaluation.features[id].error?.message}`).toBe('ok');
+            const solid = state.evaluation.bodies[id].solid;
+            expect(closed(solid), id).toBe(true);
+            expect(volume(solid), id).toBeGreaterThan(0);
+          }
+        }
+      }
+    }
+  });
+
+  it('every triangle of a cone as built lies within the chord tolerance of the cone the face publishes', () => {
+    const engine = shapes();
+    const state = run(engine, feature('A', regions('D', [['da', 'dl']]), tapered(6, 0.25)), feature('B', regions('H', [['q1', 'q2', 'q3', 'q4']]), tapered(-4, 0.3, 1)));
+    expectAllOk(state);
+    let checked = 0;
+    for (const [body, face] of [['A', side('A', 'da')], ['B', side('B', 'ha')]] as const) {
+      const index = state.evaluation.faceNames.findIndex((other) => JSON.stringify(other) === JSON.stringify(face));
+      const cone = state.evaluation.faceSurfaces[index] as Extract<Surface, { kind: 'cone' }>;
+      expect(cone.kind).toBe('cone');
+      const solid = state.evaluation.bodies[body].solid;
+      const at = (i: number): number[] => [solid.positions[3 * i], solid.positions[3 * i + 1], solid.positions[3 * i + 2]];
+      for (let t = 0; t < solid.faceIds.length; t++) {
+        if (solid.faceIds[t] !== index) continue;
+        const [a, b, c] = [0, 1, 2].map((k) => at(solid.triangles[3 * t + k]));
+        for (let u = 0; u <= 8; u++) {
+          for (let v = 0; u + v <= 8; v++) {
+            const p = [0, 1, 2].map((i) => (u * a[i] + v * b[i] + (8 - u - v) * c[i]) / 8);
+            const d = [0, 1, 2].map((i) => p[i] - cone.apex[i]);
+            const along = d[0] * cone.axis[0] + d[1] * cone.axis[1] + d[2] * cone.axis[2];
+            const off = Math.hypot(d[0] - along * cone.axis[0], d[1] - along * cone.axis[1], d[2] - along * cone.axis[2]);
+            expect(Math.abs(off * Math.cos(cone.halfAngle) - along * Math.sin(cone.halfAngle))).toBeLessThan(0.01 + 1e-4);
+            checked++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it('a taper whose far end moves by no more than the length tolerance is the prism; just above it, an exact cone', () => {
+    const engine = plate();
+    const state = run(engine, feature('Z', regions('C1', [['o']]), tapered(10, 1e-15)), feature('Y', regions('C1', [['o']]), tapered(10, 'deg(90) - pi / 2')), feature('X', regions('C1', [['o']]), tapered(10, 1e-6)));
+    expectAllOk(state);
+    expect(surface(state, side('Z', 'o')).kind).toBe('cylinder');
+    expect(surface(state, side('Y', 'o')).kind).toBe('cylinder');
+    const cone = surface(state, side('X', 'o')) as Extract<Surface, { kind: 'cone' }>;
+    expect(cone.kind).toBe('cone');
+    expect(cone.apex.every(Number.isFinite)).toBe(true);
+    // the rims are circles of the radii at the two ends
+    const rims = state.evaluation.bodies.X.edges.filter((edge) => edge.name.a.role === 'side' || edge.name.b.role === 'side');
+    expect(rims.map((edge) => edge.kind)).toEqual(['circle', 'circle']);
+    const rim = engine.query('body', { body: 'X' });
+    expect(rim.ok).toBe(true);
+  });
+
+  it('regions that meet in a point cannot taper, and the text says it is the profile at the start', () => {
+    const engine = newEngine();
+    run(
+      engine,
+      addSketch('S', XY),
+      batch(
+        point('S', 'a', 0, 0), point('S', 'b', 10, 0), point('S', 'm', 10, 10), point('S', 'd', 0, 10), point('S', 'e', 20, 10), point('S', 'f', 20, 20), point('S', 'g', 10, 20),
+        straight('S', 'ab', 'a', 'b'), straight('S', 'bm', 'b', 'm'), straight('S', 'md', 'm', 'd'), straight('S', 'da', 'd', 'a'),
+        straight('S', 'me', 'm', 'e'), straight('S', 'ef', 'e', 'f'), straight('S', 'fg', 'f', 'g'), straight('S', 'gm', 'g', 'm'),
+      ),
+    );
+    const plain = run(engine, feature('P', regions('S', [['ab', 'bm', 'md', 'da'], ['me', 'ef', 'fg', 'gm']]), { type: 'distance', start: 0, distance: 10 }));
+    expect(plain.evaluation.features.P.status).toBe('ok');
+    const state = run(engine, feature('T', regions('S', [['ab', 'bm', 'md', 'da'], ['me', 'ef', 'fg', 'gm']]), tapered(10, 0.1)));
+    expect(errorOf(state, 'T')?.code).toBe('invalidProfile');
+    expect(errorOf(state, 'T')?.message).toMatch(/^At the start of the extrusion, the profile .*select regions that do not meet in a point, or extrude them without a taper\.$/);
   });
 });

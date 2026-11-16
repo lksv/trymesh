@@ -6,6 +6,7 @@ import type { Command, Document, ExtrudeFeature, FeaturePatch, Input, PlaneRef, 
 import { applyCommand, emptyDocument, emptySketch, featureInput, fieldsOf, validateDocument } from '../src/document';
 import { type Move, MAX_INTERVALS, taperRings } from '../src/recompute/outline';
 import type { Outline } from '../src/recompute/state';
+import { tapers } from '../src/recompute/taper';
 import { UPGRADES, upgradeDocument } from '../src/schema';
 import type { OutlineCurve } from '../src/sketch';
 import { circleBetween } from '../src/surfaces';
@@ -87,6 +88,13 @@ describe('the field extent/taper', () => {
     const through = run(cut, update('H', { extent: { type: 'throughAll', side: 'backward' } }));
     expect(feature(through, 'H').extent).toEqual({ type: 'throughAll', side: 'backward' });
     invalid(through, { type: 'setField', feature: 'H', path: 'extent/taper', value: 0.1 }, /is not a numeric field/);
+    // `null` for the taper asks for an extent without one: accepted whether the feature had one or not
+    expect(feature(run(through, update('H', { extent: { taper: null } as never })), 'H').extent).toEqual({ type: 'throughAll', side: 'backward' });
+    const plain = run(doc, add(extrude('K', { extent: { type: 'distance', start: 0, distance: -3 }, operation: 'cut', targets: ['A'] })));
+    for (const from of [plain, cut]) {
+      const id = from === plain ? 'K' : 'H';
+      expect(feature(run(from, update(id, { extent: { type: 'throughAll', side: 'both', taper: null } as never })), id).extent).toEqual({ type: 'throughAll', side: 'both' });
+    }
   });
 });
 
@@ -249,6 +257,25 @@ describe('the rings of a tapered outline', () => {
     const shrinking = sampled(holed, 3, 0.4);
     expect(shrinking.intervals).toBeGreaterThan(1);
     expect(shrinking.worst).toBeLessThanOrEqual(TOLERANCE);
+  });
+
+  it('at the cap of the intervals the rings are built as they are', () => {
+    // a half disc of radius 10 whose far end nearly collapses under a steep taper (the line and the
+    // arc meet ever more steeply)
+    const half = single([line('d', [-10, 0], [10, 0]), arc('a', [0, 0], 10, 0, Math.PI)]);
+    // the far end moved in by 4.9 of its inradius 5
+    const rings = taperRings(half, -4.9, -1.2, TOLERANCE, () => MOVE);
+    if ('code' in rings) throw new Error(rings.message);
+    expect(rings.length - 1).toBe(MAX_INTERVALS);
+  });
+
+  it('a taper is built only when the far end moves by more than the length tolerance', () => {
+    expect(tapers({ type: 'distance', start: 0, distance: 10, taper: 1e-15 })).toBe(false);
+    expect(tapers({ type: 'distance', start: 0, distance: 10, taper: 0 })).toBe(false);
+    expect(tapers({ type: 'distance', start: 0, distance: 10 })).toBe(false);
+    expect(tapers({ type: 'throughAll', side: 'both' })).toBe(false);
+    expect(tapers({ type: 'distance', start: 0, distance: -10, taper: 1e-6 })).toBe(true);
+    expect(tapers({ type: 'distance', start: 0, distance: 10, taper: -0.1 })).toBe(true);
   });
 
   it('a ring that cannot be built is refused with the text of the level', () => {

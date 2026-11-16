@@ -3,7 +3,7 @@ import { toolSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
 import { applyTool, issue, withFaces } from '../recompute/services';
 import type { BuiltTool, Done, Step, StepContext, ToolRecipe } from '../recompute/state';
-import { taperedSection } from '../recompute/taper';
+import { taperedSection, tapers } from '../recompute/taper';
 import { buildPrism } from '../recompute/tool-prism';
 import { type Section, buildStack } from '../recompute/tool-stack';
 import type { Region } from '../sketch';
@@ -53,13 +53,13 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
     const warnings = [...(profile.warnings ?? []), ...result.warnings];
     return finish({ ...result, status: result.status === 'ok' && warnings.length ? 'warning' : result.status, warnings, ...(profile.facts ? { facts: profile.facts } : {}) }, change);
   };
-  // A taper that is not zero makes the tool a stack of rings, computed here once: an outline that
-  // cannot be moved to the far end is an error of the feature before any tool is built. Without
-  // a taper the tool is the prism.
+  // A taper that moves the far end by more than the length tolerance makes the tool a stack of
+  // rings, computed here once: an outline that cannot be moved to the far end is an error of the
+  // feature before any tool is built. Without such a taper the tool is the prism.
   const { extent } = feature;
   let section: Section | undefined;
-  if (extent.type === 'distance' && extent.taper) {
-    const tapered = taperedSection(profile, { ...extent, taper: extent.taper }, settings.chordTolerance);
+  if (tapers(extent)) {
+    const tapered = taperedSection(profile, extent, settings.chordTolerance, feature.profile.type === 'wall');
     if ('code' in tapered) return tapered.message === undefined ? failed(tapered.code, tapered.refs) : { state: finish({ status: 'error', error: { code: tapered.code, message: tapered.message, refs: tapered.refs }, warnings: [] }) };
     section = tapered;
   }
@@ -118,7 +118,9 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
     normalize: (merged, patch) => {
       if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
     },
-    removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'extent' ? f.extent.type === 'distance' && rest.length === 1 && rest[0] === 'taper' : field === 'profile' && removableFromProfile(f.profile, rest)),
+    // `null` for the taper is accepted also where the extent has none, or becomes "through all":
+    // the patch asks for an extent without a taper, which it is
+    removable: (f, [field, ...rest]) => (field === 'targets' ? rest.length === 0 : field === 'extent' ? rest.length === 1 && rest[0] === 'taper' : field === 'profile' && removableFromProfile(f.profile, rest)),
   },
   step,
 };

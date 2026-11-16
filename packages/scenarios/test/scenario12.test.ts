@@ -162,9 +162,15 @@ describe('scenario 12, the part of 2b: a draft, a lead-in and a countersink by h
     const state = run(engine, lipLeadIn());
     expectAllOk(state);
     expect(featureOf(state, 'lip').extent).toMatchObject({ taper: expect.closeTo(-Math.PI / 18, 12) });
-    // the lip narrows by 4 tan 10° on every side towards its free end; its inside does not
-    const free = 1.5 - 4 * Math.tan(Math.PI / 18);
-    expect(free).toBeCloseTo(0.795, 3);
+    // the lip narrows by 4 tan 10° on every side towards its free end (z = 26); its inside does not
+    const lean = 4 * Math.tan(Math.PI / 18);
+    const outer = faceBox(state, 'lid', { feature: 'lip', role: 'side', curve: 'ob' });
+    expect(outer?.max[0]).toBeCloseTo(77.8, 4);
+    expect(outer?.min[0]).toBeCloseTo(77.8 - lean, 4);
+    const inner = faceBox(state, 'lid', { feature: 'lipInside', role: 'side', curve: 'ob' });
+    expect(inner?.min[0]).toBeCloseTo(76.3, 4);
+    // so the lip is 1.5 thick at the plate and 0.795 at its free end
+    expect((outer?.min[0] ?? 0) - (inner?.max[0] ?? 0)).toBeCloseTo(0.795, 3);
     expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
   });
 
@@ -179,8 +185,12 @@ describe('scenario 12, the part of 2b: a draft, a lead-in and a countersink by h
     expect(cone?.surface).toMatchObject({ kind: 'cone', halfAngle: expect.closeTo(Math.PI / 4, 9), axis: [0, 0, 1] });
     expect(cone?.convex).toBe(false);
     near((cone?.surface as Extract<Surface, { kind: 'cone' }>).apex[2], 33 - 4, 1e-9);
-    // the volume taken: the frustum of 1.5 from radius 4 to 2.5, then the bore of 2.5 through the rest
-    expect(volumeOf(state, 'lid')).toBeLessThan(before);
+    // the volume taken: the frustum of 1.5 from radius 4 to 2.5, then the bore of 2.5 through the
+    // rest of the plate (1.5), each a regular polygon of the count for its larger radius
+    const sides = (radius: number): number => Math.ceil((2 * Math.PI) / (2 * Math.acos(1 - 0.01 / radius)) - 1e-9);
+    const area = (n: number, r: number): number => (n / 2) * Math.sin((2 * Math.PI) / n) * r * r;
+    const frustum = (area(sides(4), 1) * 1.5 * (16 + 10 + 6.25)) / 3;
+    near(before - volumeOf(state, 'lid'), frustum + area(sides(2.5), 2.5) * 1.5, 0.02);
     // both rims are circles, and a sketch projects them
     const rims = run(
       engine,

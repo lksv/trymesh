@@ -282,4 +282,19 @@ Where the code differs from the design above:
 - **Scenario 12** follows `calls.ts`, with two moves: the taper on a gear is tested in `packages/engine/test/taper.test.ts`, because the box has no gear; the lead-in of the lip is checked by the interference of the box and the lid, not by a measure.
 - **The schema.** `SCHEMA_PENDING` is 1 on the branch; the test of the real list pins the branch (the version of `master` and the name of the step), and the merge sets the count to zero, the version to 4 and the test back to `master`. Scenario 0 reads the head a build writes from `SCHEMA_VERSION` and `SCHEMA_PENDING`, so it needs no change at a merge.
 
-Known limits, besides those of the design: the text of a refusal suggests corner radii also for a profile that has none (a rectangle under a taper that makes it vanish); it reads as the text of the offset, which says the same.
+Known limits, besides those of the design: see architecture/extrude.md, "Taper", "Limits" (the levels belong to the whole outline; the cap ends without a warning).
+
+### Review of the implementation (2026-11-16)
+
+One full review by a subagent that did not write the code (Opus 5.5), read-only, with probes outside the repository: no serious finding. It checked and found sound the closure and orientation of the stack for a D shape, a profile with a hole and two regions and an open wall over both signs of the distance and the taper and a start; the planes and cones of the sides (every vertex on its surface, the inside of cone triangles at 0.35 to 0.45 of the tolerance); that the levels measure the triangles the stack builds; the counts common to all rings; `circleBetween`; the document rules; that a taper of zero is the old prism; the app; the references of refusals.
+
+| Finding | Severity | What changed |
+|---|---|---|
+| A taper very close to zero (an expression meant to give zero) gave a wrong cone, and below about 1e-17 an apex of NaN: the apex divided by the difference of two nearly equal radii | minor | The slope of the radius is the move of the far end signed by the direction of the curve; a move not above `LENGTH_TOLERANCE` builds the prism (`tapers`) |
+| Regions that meet in a point pass as a straight extrusion and were refused under a taper with "At 0 mm … the taper of …", whose cure no taper satisfies | minor | The ring at the start has its own subject and cure: the profile at the start, select regions that do not meet in a point or extrude without a taper |
+| The levels apply to the whole outline: one sliding arc multiplies the rings of every curve | minor (cost) | A limit in architecture/extrude.md, with the numbers of the review |
+| The cure of a wall that becomes too thin spoke of corner radii | nit | A wall gets a cure of its own (a thicker wall or wider bends) |
+| `{ extent: { type: 'throughAll', …, taper: null } }` was accepted on a feature with a taper and refused on one without | nit | `null` for the taper is accepted wherever the patch asks for an extent without one |
+| Tests: the fuzz never runs `buildStack`; the dense sampling rebuilt the diagonal itself; the lead-in and the countersink of scenario 12 asserted arithmetic or only "smaller"; the cap, a near-zero taper and touching regions were not tested | gaps | A closure test of the built stack and a sampling of the built cone triangles against the published cones (real adapters); the lead-in measured on the faces of the lip, the countersink against the volume of a frustum and a bore; a case that reaches the cap; near-zero tapers; touching regions |
+
+Six findings, none serious, and a small fix: no further round.

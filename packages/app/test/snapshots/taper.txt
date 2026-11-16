@@ -136,7 +136,7 @@
   panel:
     +     input value="-80"
     -     input value="-10"
-    + p#draft-problem.issue.error: "At the far end of the extrusion, the taper of -80° leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller taper or a shorter distance, or give the corners radii larger than 56.7128 mm (the move of the outline at the far end), or draw the far outline in a sketch."
+    + p#draft-problem.issue.error: "At the far end of the extrusion, the taper of -80° leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller taper or a shorter distance, or make the profile wider and its corner radii larger than 56.7128 mm (the move of the outline at the far end), or draw the far outline in a sketch."
     - p#draft-problem.issue.warning
   view: 1 scene(s) set
   scene:
@@ -260,7 +260,7 @@
     -   span.field
     -     input value="-80"
     -     small.computed data-field="extent/taper" data-unit="rad"
-    - p#draft-problem.issue.error: "At the far end of the extrusion, the taper of -80° leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller taper or a shorter distance, or give the corners radii larger than 56.7128 mm (the move of the outline at the far end), or draw the far outline in a sketch."
+    - p#draft-problem.issue.error: "At the far end of the extrusion, the taper of -80° leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller taper or a shorter distance, or make the profile wider and its corner radii larger than 56.7128 mm (the move of the outline at the far end), or draw the far outline in a sketch."
     - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"

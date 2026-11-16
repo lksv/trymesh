@@ -30,6 +30,7 @@ import { insideFill, keptSegments } from './draw';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
+import { exportMenu, takeExportSelection } from './panels/export';
 import { type QueryPanel, answeredAsModelled, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
 import { type MechanismPanel, blockedNote } from './panels/mechanism';
 import { modelPanel } from './panels/model';
@@ -378,9 +379,11 @@ export class App implements SketchHost, SceneHost {
       groups.push(
         // a button per feature type that has one, in the order of TOOLBAR
         group(...TOOLBAR.flatMap((type) => (FEATURE_UI[type].button ? [button(FEATURE_UI[type].button.label, () => this.create(type), { title: FEATURE_UI[type].button.title, active: this.pending === type })] : []))),
-        // every query of the catalog of the engine from one menu; the collisions keep their button
+        // every query of the catalog of the engine from one menu; the collisions keep their button;
+        // every export format from another (D54), its form where the form of a query is
         group(
           queryMenu(this.queries, this),
+          exportMenu(this.queries, this),
           button('Collisions', () => openQuery(this.queries, this, 'interference'), { title: 'Check which bodies share a volume', disabled: Object.keys(this.view().evaluation.bodies).length < 2, active: this.queries.open?.name === 'interference' && shownAnswer(this.queries, this) !== undefined }),
         ),
       );
@@ -733,8 +736,8 @@ export class App implements SketchHost, SceneHost {
       }
       return;
     }
-    // an armed control of the open query takes the selection; the app then keeps none of its own
-    if (!pick || !takeSelection(this.queries, pick)) this.selected = pick;
+    // an armed control of the open query or export takes the selection; the app then keeps none of its own
+    if (!pick || !(takeSelection(this.queries, pick) || takeExportSelection(this.queries, pick))) this.selected = pick;
     this.renderPanel();
     this.renderScene();
   }

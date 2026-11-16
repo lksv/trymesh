@@ -348,7 +348,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, perBody: true })).toEqual({ error: 'unknown argument "perBody"; the tool takes format, path, options, overwrite, at, after' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
-    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl' });
+    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
@@ -359,6 +359,32 @@ describe('MCP server: bodies', () => {
     expect(await other.call('export', { format: 'stl', path: nowhere })).toEqual({ error: 'the model has no body to export' });
     await expect(readdir(nowhere)).rejects.toThrow();
     await Promise.all([session.close(), other.close()]);
+  });
+
+  it('export: a 3MF and the outline as DXF written to disk (D54)', async () => {
+    const session = await connect();
+    await build(session);
+    const model = join(dir, 'export-2g', 'model.3mf');
+    const written = await session.call('export', { format: '3mf', path: model });
+    expect(written.files).toEqual([{ path: model, bodies: ['base', 'Wheel', 'planets/1', 'planets/2'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    const bytes = await readFile(model);
+    expect(bytes.length).toBe(written.files[0].bytes);
+    // a ZIP: the local header of its first item is the content types, stored
+    expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
+    expect(bytes.readUInt16LE(8)).toBe(0);
+    expect(bytes.subarray(30, 30 + bytes.readUInt16LE(26)).toString()).toBe('[Content_Types].xml');
+    expect(bytes.toString('latin1')).toContain('<object id="1" type="model" name="base" partnumber="base">');
+    // the base disc cut a millimetre above the plane it stands on: one circle, of radius 5 about (20, 0)
+    const outline = join(dir, 'export-2g', 'base.dxf');
+    const drawn = await session.call('export', { format: 'dxf', path: outline, options: { plane: { kind: 'base', plane: 'XY' }, offset: 1 } });
+    expect(drawn.files).toEqual([expect.objectContaining({ path: outline, bodies: ['base'], loops: 1, circles: 1, below: expect.any(Number), frame: expect.any(Object), bytes: expect.any(Number) })]);
+    const text = await readFile(outline, 'utf8');
+    expect(text).toContain(['0', 'CIRCLE', '8', 'OUTER', '10', '20', '20', '0', '30', '0', '40', '5'].join('\r\n'));
+    expect(text.endsWith('0\r\nEOF\r\n')).toBe(true);
+    // a plane the base only stands on: refused with the text of the format, nothing written
+    expect(await session.call('export', { format: 'svg', path: join(dir, 'export-2g', 'none.svg'), options: { plane: { kind: 'base', plane: 'XY' } } })).toEqual({ error: expect.stringContaining('the plane cuts none of the bodies; "base" has a face in the plane') });
+    await expect(readFile(join(dir, 'export-2g', 'none.svg'))).rejects.toThrow();
+    await session.close();
   });
 
   it('export_stl per body: a failure midway leaves the directory as it was, exports at once do not mix their files', async () => {

@@ -1,6 +1,6 @@
 # UI: bodies
 
-Part of [ui.md](../ui.md); how to read the tables is said there. Collisions, volume and export; the properties of a body.
+Part of [ui.md](../ui.md); how to read the tables is said there. Collisions, volume and export; the properties of a body; the export form (D54).
 
 ## Bodies: collisions, volume and export (D35, point 5)
 
@@ -40,3 +40,23 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Collisions, vol
 ### Implementation status
 
 Implemented on the branch `d36/3a`; the form is driven by `packages/app/test/app.test.ts` (snapshot `properties.txt`). Not run in a browser.
+
+## The export form (D54)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| The menu *Export…* | | `EXPORT_FORMATS`: the title and the summary of every format |
+| The form of a format | | `EXPORT_FORMATS[format].options` (`ArgSpecs`), the controls of the query form |
+| A plane or a face picked into the armed option | UI state | the pick of the view, as in the query form |
+| *Export* | `engine.export(format, options, marker ? { at: marker } : {})` | `Exported`: `layout`, `files`, `empty` |
+| Save one file | download under `files[0].path` with its `mediaType` | |
+| Save a set | `storedZip(files)`, downloaded as `<format>.zip` (`application/zip`) | |
+
+- **The menu.** In the model mode the toolbar has the menu *Export…* beside *Queries…*, with every format of the catalog of the engine by its title (`STL`, `3MF`, `DXF (outline)`, `SVG (outline)`; the summary is the tooltip). A format needs nothing in the app to be there. The button *Export STL* and the link of a body line stay as they are.
+- **The form** *Export: <title>* takes the place of the query form in the model panel: one of the two is open at a time, and opening one closes the other. It is the generic form of a query over the options of the format (`panels/args.ts`, shared with `panels/query.ts`): the same control per kind of option, the first option that takes a pick armed (the plane of an outline), a plane or a planar face clicked in the view goes to it and not to the selection. *Export* and *Close*.
+- ***Export*** exports the state the view shows: with `at` when the insertion marker is after a feature, without it at the end of the timeline. One file is saved under its suggested name (`outline.dxf`, `model.3mf`); a set (`stl` with *A file per body*) is saved as one ZIP `<format>.zip` of the files under their paths, because a browser cannot write a folder. The status line says `Exported <name> (<size> bytes).`
+- **What is not saved.** A refusal of the engine, the text of an export with nothing in it (`the plane cuts none of the bodies`, `the model has no printed body …`), and a set the ZIP cannot hold (a path over 65 489 bytes, possible because a body ID has no limit of length) stay in the form under the buttons and in the status line, as an error; the row of the option a refusal names is marked with the message as its tooltip. They stay until the next *Export*.
+
+### Implementation status
+
+Implemented on the branch `d36/2g`; the form is driven by `packages/app/test/app.test.ts` (snapshot `export.txt`) and `packages/app/test/export-form.test.ts`. Not run in a browser.

@@ -83,7 +83,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/pose.ts` | the posed geometry of a context (D49): `movedBody` remembered by the solid and the transform, `poseOf` (the bodies of a state read lazily in the pose, a blocked one throws), `pairInFrame` and `framed` (a pair in the frame of its first body) |
 | `query/mechanism.ts` | the query `mechanism` (D49): the resolved mechanism of a state, and what hangs on a joint |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
-| `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
+| `export/spec.ts`, `export/bodies.ts`, `export/text.ts`, `export/zip.ts`, `export/outline.ts`, `export/stl.ts`, `export/threemf.ts`, `export/dxf.ts`, `export/svg.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the list of bodies of a print export (`chosenBodies`); numbers and texts of a file; a stored ZIP; the outline of a plane over the query `section` (D54); the formats `stl`, `3mf`, `dxf` and `svg`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
 | `engine.ts` | the facade |
 

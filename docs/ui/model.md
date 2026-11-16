@@ -11,6 +11,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Opening and sav
 | Otevřít | `load(json)` | |
 | Export sítě | `exportMesh('stl')`: the printed bodies (D48) | `printedBodies(evaluation.bodyProperties)` enables the button |
 | Export of one body | `exportMesh('stl', [body])` | `bodyFileName(body)` for the file name |
+| Export in a format of the catalog (D54) | `export(format, options, { at })`, the menu *Export…* and its form ([bodies.md](bodies.md#the-export-form-d54)) | `EXPORT_FORMATS` |
 | Undo, redo | `undo()`, `redo()` | `canUndo`, `canRedo` |
 | Překreslení po změně | `subscribe(listener)` | celý `EngineState` |
 

@@ -25,6 +25,9 @@ export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
 export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
+export { ZIP_NAME_LIMIT, type ZipEntry, crc32, storedZip } from './export/zip';
+export type { MeshAbout } from './export/threemf';
+export type { OutlineAbout } from './export/outline';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';
 export { QUERIES } from './query/index';
 export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, Described, RunArgsOf } from './query/args';

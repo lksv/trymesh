@@ -11,6 +11,7 @@ import { writeFileSync } from 'node:fs';
 import { type Command, emptyDocument } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
+import { readZip } from '../../engine/test/zip-reader';
 import { type Harness, client, onPlane, outside, startApp } from './app-kit';
 
 // The app connects to the bridge of the MCP server at its usual address; the test points it at
@@ -1227,5 +1228,62 @@ describe('the app, driven as a user drives it', () => {
     } finally {
       await bridge.close();
     }
+  });
+
+  it('the export form: a format from the menu, a face picked into its plane, an export with nothing in it, a refusal, a set as one ZIP, the state at the marker (D54)', async () => {
+    const h = await start();
+    const saved = vi.spyOn(URL, 'createObjectURL');
+    const savedBytes = async (index: number): Promise<Uint8Array> => new Uint8Array(await (saved.mock.calls[index][0] as Blob).arrayBuffer());
+    const exportMenu = (): HTMLSelectElement => h.document.querySelectorAll<HTMLSelectElement>('#toolbar select')[1];
+    try {
+      h.press('toolbar', 'Skica');
+      h.press('panel', 'XY');
+      h.press('toolbar', 'Obdélník');
+      h.click(at(0, 0));
+      h.click(at(40, 30));
+      h.press('toolbar', 'Dokončit skicu');
+      h.press('toolbar', 'Vysunutí');
+      h.press('panel', 'OK');
+      outside(h, { type: 'addFeature', feature: { id: 'top', name: 'Top', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: -20, distance: 5 }, operation: 'new' } });
+      h.record('a plate and a second body under it; the menu Export… beside the queries');
+      h.type(exportMenu(), 'dxf', true);
+      h.record('DXF opened from the menu: its options, the plane armed');
+      h.click(at(10, 15, 10));
+      h.record('a click on the top face of the plate goes to the armed plane, not to the selection');
+      h.type(h.field('Offset (optional)'), '-1', true);
+      h.press('panel', 'Export');
+      h.record('exported a millimetre under the face: the outline of the plate saved under its suggested name, its size in the status line');
+      expect(new TextDecoder().decode(await savedBytes(0))).toContain('POLYLINE');
+      h.type(h.field('Offset (optional)'), '1', true);
+      h.press('panel', 'Export');
+      h.record('a millimetre above the face: nothing is cut, the text of the export stays in the form, nothing is saved');
+      expect(saved.mock.calls.length).toBe(1);
+      h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'body', true);
+      h.record('a query opened: the export form closes, one form at a time');
+      h.type(exportMenu(), 'svg', true);
+      h.record('SVG opened: the query closes');
+      h.press('panel', 'Export');
+      h.record('exported without a plane: refused by the engine, the row of the plane marked');
+      h.type(exportMenu(), 'stl', true);
+      const perBody = h.field('A file per body (optional)') as HTMLInputElement;
+      perBody.checked = true;
+      h.type(perBody, '', true);
+      h.press('panel', 'Export');
+      h.record('STL with a file per body: the set saved as one ZIP');
+      expect(readZip(await savedBytes(1)).map((entry) => entry.name)).toEqual(['e1.stl', 'top.stl']);
+      h.type(exportMenu(), '3mf', true);
+      h.rowIcon('Vysunutí 1', '⇤');
+      h.press('panel', 'Export');
+      h.record('3MF with the marker after the plate: the state there, the plate alone');
+      h.press('timeline', 'Zobrazit celý model');
+      h.press('panel', 'Export');
+      h.record('3MF at the end of the timeline: no `at`, both bodies');
+      expect(readZip(await savedBytes(3)).map((entry) => entry.name)).toEqual(['[Content_Types].xml', '_rels/.rels', '3D/3dmodel.model']);
+      h.press('panel', 'Close');
+      h.record('the form closed');
+    } finally {
+      saved.mockRestore();
+    }
+    await matches(h, 'export');
   });
 });

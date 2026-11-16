@@ -2,8 +2,8 @@
 import { bodyFileName } from '../interference';
 import type { ArgSpecs } from '../query/args';
 import { toStl } from '../solid';
-import { printedBodies } from '../sections/body-properties';
 import type { ExportFile, Id } from '../types';
+import { chosenBodies } from './bodies';
 import type { ExportFormatSpec } from './spec';
 
 export const STL_OPTIONS = {
@@ -23,14 +23,14 @@ export const stl: ExportFormatSpec<typeof STL_OPTIONS> = {
   options: STL_OPTIONS,
   run: (context, { bodies, perBody }) => {
     // without a list the printed bodies (D48); a body the caller lists is taken as listed
-    const chosen: Id[] = bodies === undefined ? printedBodies(context.state.evaluation.bodyProperties) : [...new Set(bodies)];
+    const { chosen, empty } = chosenBodies(context, bodies);
     const file = (path: string, ids: Id[]): ExportFile => ({
       path,
       mediaType: 'model/stl',
       bytes: toStl(ids.map((id) => context.bodies[id].solid)),
       about: { bodies: ids, triangles: ids.reduce((sum, id) => sum + context.bodies[id].solid.triangles.length / 3, 0) },
     });
-    const empty = chosen.length === 0 ? { empty: bodies === undefined && Object.keys(context.bodies).length > 0 ? 'the model has no printed body (every body is a reference or auxiliary body); list the bodies to export them anyway' : 'the model has no body to export' } : {};
-    return perBody ? { layout: 'directory', files: chosen.map((id) => file(`${bodyFileName(id)}.stl`, [id])), ...empty } : { layout: 'file', files: [file('model.stl', chosen)], ...empty };
+    const said = empty === undefined ? {} : { empty };
+    return perBody ? { layout: 'directory', files: chosen.map((id) => file(`${bodyFileName(id)}.stl`, [id])), ...said } : { layout: 'file', files: [file('model.stl', chosen)], ...said };
   },
 };

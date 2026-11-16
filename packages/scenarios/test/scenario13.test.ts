@@ -256,11 +256,12 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: the branch names its pending step, and a field this build does not know is refused', () => {
-    expect(SCHEMA_PENDING).toBe(1);
+  it('e. save and load: version 5 with the step of the section, and a field this build does not know is refused', () => {
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.at(-1)?.name).toBe('3a-body-properties');
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaSteps).toEqual(['3a-body-properties']);
+    expect(saved.schemaVersion).toBe(5);
+    expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
     expect(loaded.ok && loaded.state.document.bodyProperties).toEqual(document.bodyProperties);

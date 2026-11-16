@@ -26,7 +26,7 @@
       constraint k2: {"type":"vertical","line":"c2"}
       constraint k3: {"type":"horizontal","line":"c3"}
       constraint k4: {"type":"vertical","line":"c4"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":4}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

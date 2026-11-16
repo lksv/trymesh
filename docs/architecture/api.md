@@ -305,7 +305,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 3.
+**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 5.
 
 **The schema is a list of named upgrade steps (D37, `schema.ts`).** `UPGRADES` holds the steps in order; on `master` the version a build saves is their number plus one. A step changes only the shape of the raw document, before the validation, which judges the content.
 

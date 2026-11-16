@@ -213,7 +213,7 @@ The owner considers moving three groups of the future features of requirements.m
 
 **Bodies and features**
 
-- **Extent "up to a face".** Cheap variant: up to a planar face. The engine builds the prism itself, so the far cap can lie in that plane also when the plane is tilted; the length follows the face when the model changes. A curved face is deferred.
+- **Extent "up to a face".** The cheap variant, up to a planar face, is done (D47, [d36/2f-upto/design.md](d36/2f-upto/design.md)). Still open: up to a curved face, and up to the next face the tool meets.
 - **Linear pattern and mirror of features and bodies.** Further kinds of the transform of the D35 pattern. Mirror reverses the winding, which the transform function of point 4 handles.
 - **Chamfer and fillet of edges: realistic in a restricted form.** A body is a mesh, but faces carry an exact description (plane, cylinder) and edges a kind (`line`, `circle`, `coplanar`, `other`), so a tool can be built for two cases:
   - a straight edge between two planar faces: a prism along the edge with a triangular profile (chamfer) or a corner minus a quarter circle (fillet); cut on a convex edge, added on a concave one;

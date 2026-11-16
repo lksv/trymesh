@@ -33,6 +33,8 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
   invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
   invalidHole: 'The dimensions do not make a hole.',
+  jointLimits: 'The lower limit of the joint is above its upper limit.',
+  jointOutOfLimits: 'The value of the joint is outside its limits.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 

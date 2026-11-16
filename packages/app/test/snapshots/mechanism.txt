@@ -1,0 +1,1474 @@
+
+=== 1. a model of three bodies: the panel of the mechanism offers a new link
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":90,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":5}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x9)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x6)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: getState("s1")
+  engine: getState("e1")  (x3)
+  engine: getState("s1")  (x5)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":3}]}) -> ok
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x5)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s2","id":"p5","x":30,"y":10},{"type":"addPoint","sketch":"s2","id":"p6","x":60,"y":25},{"type":"addPoint","sketch":"s2","id":"p7","x":60,"y":10},{"type":"addPoint","sketch":"s2","id":"p8","x":30,"y":25},{"type":"addCurve","sketch":"s2","id":"c6","curve":{"type":"line","a":"p5","b":"p7"}},{"type":"addConstraint","sketch":"s2","id":"k5","constraint":{"type":"horizontal","line":"c6"}},{"type":"addCurve","sketch":"s2","id":"c7","curve":{"type":"line","a":"p7","b":"p6"}},{"type":"addConstraint","sketch":"s2","id":"k6","constraint":{"type":"vertical","line":"c7"}},{"type":"addCurve","sketch":"s2","id":"c8","curve":{"type":"line","a":"p6","b":"p8"}},{"type":"addConstraint","sketch":"s2","id":"k7","constraint":{"type":"horizontal","line":"c8"}},{"type":"addCurve","sketch":"s2","id":"c9","curve":{"type":"line","a":"p8","b":"p5"}},{"type":"addConstraint","sketch":"s2","id":"k8","constraint":{"type":"vertical","line":"c9"}}]}) -> ok
+  engine: diagnoseSketch("s2")
+  engine: getState("s2")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: getState("s2")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: getState("s2")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}) -> ok
+  features: s1, e1, e2, s2, e3
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":90,"y":15}
+      radius c5: 5
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature e2:
+      {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature s2:
+      {"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p5: {"x":30,"y":10}
+      point p6: {"x":60,"y":25}
+      point p7: {"x":60,"y":10}
+      point p8: {"x":30,"y":25}
+      curve c6: {"type":"line","a":"p5","b":"p7"}
+      curve c7: {"type":"line","a":"p7","b":"p6"}
+      curve c8: {"type":"line","a":"p6","b":"p8"}
+      curve c9: {"type":"line","a":"p8","b":"p5"}
+      constraint k5: {"type":"horizontal","line":"c6"}
+      constraint k6: {"type":"vertical","line":"c7"}
+      constraint k7: {"type":"horizontal","line":"c8"}
+      constraint k8: {"type":"vertical","line":"c9"}
+  feature e3:
+      {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+        button title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 1"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 2"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 2"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 3"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Vysunutí přidáno.
+  view: 41 scene(s) set
+  scene:
+      bodies: e1, e2, e3
+      line #26303c width 1.5: 744 numbers, sum 98605.758
+      line #8b9bb4 width 1: 24 numbers, sum 735.918
+      line #8b9bb4 width 1: 24 numbers, sum 490.612
+      line #8b9bb4 width 1: 24 numbers, sum 245.306
+      line #5b7aa8 width 1.5: 600 numbers, sum 82201.018
+      line #5b7aa8 width 1.5: 24 numbers, sum 2070
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.044
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [95, 30, 10]
+
+=== 2. the form of a new link: a generated ID, a name, the bodies of the model
+  panel:
+    + h2: "New link"
+    + label
+    +   "ID"
+    +   input value="link1"
+    + label
+    +   "Name (empty: the ID)"
+    +   input value="" placeholder="link1"
+    + fieldset.targets
+    +   legend: "Bodies"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "Vysunutí 1"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "Vysunutí 2"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "Vysunutí 3"
+    +   button.primary: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 0 scene(s) set
+
+=== 3. the link Base with the plate: one setLink; the other bodies are in no link
+  engine: execute({"type":"setLink","id":"link1","name":"Base","bodies":["e1"]}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]}},"joints":{}}
+  panel:
+    + div.mech-link
+    +   div.mech-head
+    +     span.name: "Base (link1)"
+    +     button.link title="Change the name and the bodies of the link": "Edit"
+    +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +   p.hint: "Bodies: Vysunutí 1"
+    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2, Vysunutí 3"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New link"
+    - label
+    -   "ID"
+    -   input value="link1"
+    - label
+    -   "Name (empty: the ID)"
+    -   input value="" placeholder="link1"
+    - fieldset.targets
+    -   legend: "Bodies"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "Vysunutí 1"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "Vysunutí 2"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "Vysunutí 3"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  status: A link Base made.
+  view: 1 scene(s) set
+
+=== 4. the link Arm with the third body
+  engine: execute({"type":"setLink","id":"link2","name":"Arm","bodies":["e3"]}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{}}
+  panel:
+    + div.mech-link
+    +   div.mech-head
+    +     span.name: "Arm (link2)"
+    +     button.link title="Change the name and the bodies of the link": "Edit"
+    +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +   p.hint: "Bodies: Vysunutí 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2, Vysunutí 3"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+  status: A link Arm made.
+  view: 1 scene(s) set
+
+=== 5. the form of a new joint: revolute about Z, the parent the first link, the child the next one
+  panel:
+    + h2: "New joint"
+    + label
+    +   "ID"
+    +   input value="joint1"
+    + label
+    +   "Name (empty: the ID)"
+    +   input value="" placeholder="joint1"
+    + label
+    +   "Kind"
+    +   select value="revolute"
+    +     option selected value="revolute": "Revolute"
+    +     option value="continuous": "Continuous (no limits)"
+    +     option value="prismatic": "Prismatic (a slide)"
+    +     option value="fixed": "Fixed"
+    + label
+    +   "Parent link"
+    +   select value="link1"
+    +     option selected value="link1": "Base"
+    +     option value="link2": "Arm"
+    + label
+    +   "Child link (moves)"
+    +   select value="link2"
+    +     option value="link1": "Base"
+    +     option selected value="link2": "Arm"
+    + label
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    + label
+    +   "Lower limit (° or an expression in radians)"
+    +   input value="-180"
+    + label
+    +   "Upper limit (° or an expression in radians)"
+    +   input value="180"
+    + label
+    +   "Angle (° or an expression in radians)"
+    +   input value="0"
+    +   button.primary: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 0 scene(s) set
+
+=== 6. the joint Elbow: one setJoint; the tree has Arm under Elbow under Base
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0}}}
+  panel:
+    +   div.mech-children
+    +     div.mech-joint
+    +       div.mech-head
+    +         span.name: "Elbow (joint1): revolute about the axis Z"
+    +         button.link title="Change the joint": "Edit"
+    +         button.link title="Remove the joint; its child link then stands as modelled": "Remove"
+    +       label
+    +         "Angle (° or an expression in radians)"
+    +         span.field
+    +           input value="0"
+    +       label.slider
+    +         span.hint: "Pose, limits -90° to 90°"
+    +         input.pose type=range value="0" title="-90° to 90°"
+    +       div.mech-children
+    +         div.mech-link
+    +           div.mech-head
+    +             span.name: "Arm (link2)"
+    +             button.link title="Change the name and the bodies of the link": "Edit"
+    +             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +           p.hint: "Bodies: Vysunutí 3"
+    - div.mech-link
+    -   div.mech-head
+    -     span.name: "Arm (link2)"
+    -     button.link title="Change the name and the bodies of the link": "Edit"
+    -     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    -   p.hint: "Bodies: Vysunutí 3"
+    - h2: "New joint"
+    - label
+    -   "ID"
+    -   input value="joint1"
+    - label
+    -   "Name (empty: the ID)"
+    -   input value="" placeholder="joint1"
+    - label
+    -   "Kind"
+    -   select value="revolute"
+    -     option selected value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -     option value="prismatic": "Prismatic (a slide)"
+    -     option value="fixed": "Fixed"
+    - label
+    -   "Parent link"
+    -   select value="link1"
+    -     option selected value="link1": "Base"
+    -     option value="link2": "Arm"
+    - label
+    -   "Child link (moves)"
+    -   select value="link2"
+    -     option value="link1": "Base"
+    -     option selected value="link2": "Arm"
+    - label
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    - label
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-180"
+    - label
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="180"
+    - label
+    -   "Angle (° or an expression in radians)"
+    -   input value="0"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  status: A joint Elbow made.
+  view: 1 scene(s) set
+
+=== 7. the slider dragged to 45°: a preview, the view shows the arm turned, the document is unchanged
+  engine: preview({"type":"setPose","values":{"joint1":0.7853981633974483}}) -> ok
+  panel:
+    +           input value="45"
+    -           input value="0"
+    +         input.pose type=range value="45" title="-90° to 90°"
+    -         input.pose type=range value="0" title="-90° to 90°"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0.707, -0.707, 0] [0.707, 0.707, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 98633.549
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+
+=== 8. the slider released at 90°: one setPose, the status line says the view shows the pose
+  engine: preview({"type":"setPose","values":{"joint1":1.5707963267948966}}) -> ok
+  engine: execute({"type":"setPose","values":{"joint1":1.5707963267948966}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":1.5707963267948966}}}
+  panel:
+    +           input value="90"
+    -           input value="45"
+    +         input.pose type=range value="90" title="-90° to 90°"
+    -         input.pose type=range value="45" title="-90° to 90°"
+  status: A joint Elbow made. · The view shows the pose of the mechanism.
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 95030.758
+    - bodies: e1, e2, e3 posed [0.707, -0.707, 0] [0.707, 0.707, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 98633.549
+
+=== 9. undo: the drag was one step, the arm is back as modelled
+  engine: undo()
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0}}}
+  toolbar:
+    +   button title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+  panel:
+    +           input value="0"
+    -           input value="90"
+    +         input.pose type=range value="0" title="-90° to 90°"
+    -         input.pose type=range value="90" title="-90° to 90°"
+  status: A joint Elbow made.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + line #26303c width 1.5: 744 numbers, sum 98605.758
+    - bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 95030.758
+
+=== 10. redo: turned again
+  engine: redo()
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":1.5707963267948966}}}
+  toolbar:
+    +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button title="Ctrl+Shift+Z": "↷ Znovu"
+  panel:
+    +           input value="90"
+    -           input value="0"
+    +         input.pose type=range value="90" title="-90° to 90°"
+    -         input.pose type=range value="0" title="-90° to 90°"
+  status: A joint Elbow made. · The view shows the pose of the mechanism.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 95030.758
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+
+=== 11. a click where the turned arm is drawn picks its top face
+  panel:
+    + h2: "Výběr"
+    + p: "Stěna: Vysunutí 3 – protější víko"
+    + p.hint.body
+    +   "Vysunutí 3: 3600 mm³, 30 × 15 × 8 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 3"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 3"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
+  view: 2 scene(s) set
+  scene:
+    + face e3 #10 #0ea5e9 opacity 0.3 posed with its body
+    + face e3 #10 #f97316 opacity 0.5 posed with its body
+
+=== 12. a picture of the model: the arm in the pose
+  panel:
+    - h2: "Výběr"
+    - p: "Stěna: Vysunutí 3 – protější víko"
+    - p.hint.body
+    -   "Vysunutí 3: 3600 mm³, 30 × 15 × 8 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 3"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 3"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
+  status: Picture of the model saved (1600 × 1200): the bodies shown, without the selection, sketches, planes and dimensions. · The view shows the pose of the mechanism.
+  view: 1 scene(s) set
+  scene:
+    - face e3 #10 #0ea5e9 opacity 0.3 posed with its body
+    - face e3 #10 #f97316 opacity 0.5 posed with its body
+  view: image 1600 × 1200, camera current, 3 bodies #4e79a7 #f28e2b #e15759, 124 segments, posed: #e15759 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+  download: model.png
+
+=== 13. the collisions are asked in the pose: the turned arm touches nothing; the form offers "As modelled"
+  engine: query("interference", {}, {}) -> ok
+  toolbar:
+    +   button.active title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
+    + label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    +   input type=checkbox unchecked
+    +   "As modelled"
+    + div.buttons
+    +   button.primary: "Ask again"
+    +   button: "Close"
+    + p.hint: "No two bodies collide; 3 pair(s) checked. Bodies that only touch do not count."
+  status: No collisions: 3 pair(s) checked. · The view shows the pose of the mechanism.
+  view: 1 scene(s) set
+
+=== 14. asked as modelled: the plate and the arm collide, and the view shows the model as modelled while the answer is shown
+  engine: query("interference", {}, {"geometry":"modelled"}) -> ok
+  panel:
+    +   input type=checkbox checked
+    -   input type=checkbox unchecked
+    + div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
+    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   small: "1200 mm³"
+    - p.hint: "No two bodies collide; 3 pair(s) checked. Bodies that only touch do not count."
+  status: Collisions: 1 pair(s) of bodies share a volume. · The view shows the model as modelled, as the answer of the query was asked.  [error]
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + line #26303c width 1.5: 744 numbers, sum 98605.758
+    - bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 95030.758
+
+=== 15. the query closed: the view shows the pose again
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button.active title="Check which bodies share a volume": "Collisions"
+  panel:
+    - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    - label title="The bodies to check against each other; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="The smallest shared volume that counts."
+    -   "Threshold (optional)"
+    -   span.field
+    -     input.value value="" placeholder="0.001"
+    -     span.unit: "mm³"
+    - label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    -   input type=checkbox checked
+    -   "As modelled"
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
+    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   small: "1200 mm³"
+  status: The view shows the pose of the mechanism.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 95030.758
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+
+=== 16. at 45° the arm reaches into the plate: the pair picked, its two bodies highlighted where the pose puts them
+  engine: execute({"type":"setPose","values":{"joint1":0.7853981633974483}}) -> ok
+  engine: query("interference", {}, {}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0.7853981633974483}}}
+  toolbar:
+    +   button.active title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
+    + label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    +   input type=checkbox unchecked
+    +   "As modelled"
+    + div.buttons
+    +   button.primary: "Ask again"
+    +   button: "Close"
+    + div.row.selected title="Highlight the two bodies. One reaches 1.716 mm into the other"
+    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   small: "23.55 mm³"
+    +           input value="45"
+    -           input value="90"
+    +         input.pose type=range value="45" title="-90° to 90°"
+    -         input.pose type=range value="90" title="-90° to 90°"
+  status: Collisions: 1 pair(s) of bodies share a volume. · The view shows the pose of the mechanism.  [error]
+  view: 3 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0.707, -0.707, 0] [0.707, 0.707, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 98633.549
+    - bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 95030.758
+    + face e1 #0 #f97316 opacity 0.45
+    + face e1 #1 #f97316 opacity 0.45
+    + face e1 #2 #f97316 opacity 0.45
+    + face e1 #3 #f97316 opacity 0.45
+    + face e1 #4 #f97316 opacity 0.45
+    + face e1 #5 #f97316 opacity 0.45
+    + face e3 #9 #dc2626 opacity 0.45 posed with its body
+    + face e3 #10 #dc2626 opacity 0.45 posed with its body
+    + face e3 #11 #dc2626 opacity 0.45 posed with its body
+    + face e3 #12 #dc2626 opacity 0.45 posed with its body
+    + face e3 #13 #dc2626 opacity 0.45 posed with its body
+    + face e3 #14 #dc2626 opacity 0.45 posed with its body
+
+=== 17. in the sketch the view shows the model as modelled, and the status line says so
+  engine: execute({"type":"setPose","values":{"joint1":1.5707963267948966}}) -> ok
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":1.5707963267948966}}}
+  toolbar:
+    +   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    +   button title="Klikněte na místo bodu.": "Bod"
+    +   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    +   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    + div.group
+    +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    +   button.primary: "Dokončit skicu"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -   button.active title="Check which bodies share a volume": "Collisions"
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected.editing
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Skica: Skica 2"
+    + div#sketch-status
+    +   p.badge.open: "Stupně volnosti: 4"
+    +   p.hint: "Uzavřených oblastí: 1"
+    + p.hint: "Volné (v pohledu modře): body p5, p6, p7, p8."
+    + div.buttons
+    +   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    + h2: "Výběr (0)"
+    + div.buttons
+    +   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    +   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    +   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    +   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    +   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    +   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    +   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    +   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    +   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    +   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    +   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    - label title="The bodies to check against each other; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="The smallest shared volume that counts."
+    -   "Threshold (optional)"
+    -   span.field
+    -     input.value value="" placeholder="0.001"
+    -     span.unit: "mm³"
+    - label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    -   input type=checkbox unchecked
+    -   "As modelled"
+    +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - div.row.selected title="Highlight the two bodies. One reaches 1.716 mm into the other"
+    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   small: "23.55 mm³"
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - div.mech-link
+    -   div.mech-head
+    -     span.name: "Base (link1)"
+    -     button.link title="Change the name and the bodies of the link": "Edit"
+    -     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    -   p.hint: "Bodies: Vysunutí 1"
+    -   div.mech-children
+    -     div.mech-joint
+    -       div.mech-head
+    -         span.name: "Elbow (joint1): revolute about the axis Z"
+    -         button.link title="Change the joint": "Edit"
+    -         button.link title="Remove the joint; its child link then stands as modelled": "Remove"
+    -       label
+    -         "Angle (° or an expression in radians)"
+    -         span.field
+    -           input value="45"
+    -       label.slider
+    -         span.hint: "Pose, limits -90° to 90°"
+    -         input.pose type=range value="45" title="-90° to 90°"
+    -       div.mech-children
+    -         div.mech-link
+    -           div.mech-head
+    -             span.name: "Arm (link2)"
+    -             button.link title="Change the name and the bodies of the link": "Edit"
+    -             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    -           p.hint: "Bodies: Vysunutí 3"
+    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    +   button disabled: "Konstrukční"
+    +   button disabled title="Delete": "Smazat"
+    + h2: "Vazby a kóty (4)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c6"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c7"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Vodorovně"
+    +     small: "c8"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c9"
+    +   button.icon title="Smazat vazbu": "✕"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button title="A joint moves its child link against its parent link": "New joint"
+    -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout. · The view shows the model as modelled: sketches and features are edited there.
+  view: 3 scene(s) set
+  scene:
+    + bodies: e1, e2
+    + line #26303c width 1.5: 672 numbers, sum 92083.758
+    - bodies: e1, e2, e3 posed [0.707, -0.707, 0] [0.707, 0.707, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 98633.549
+    + line #1d4ed8 width 2 onTop: 24 numbers, sum 2070
+    + points #1d4ed8 size 7: 12 numbers, sum 1035
+    + points #a21caf size 7: 3 numbers, sum 0
+    - line #5b7aa8 width 1.5: 24 numbers, sum 2070
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+    - face e1 #0 #f97316 opacity 0.45
+    - face e1 #1 #f97316 opacity 0.45
+    - face e1 #2 #f97316 opacity 0.45
+    - face e1 #3 #f97316 opacity 0.45
+    - face e1 #4 #f97316 opacity 0.45
+    - face e1 #5 #f97316 opacity 0.45
+    - face e3 #9 #dc2626 opacity 0.45 posed with its body
+    - face e3 #10 #dc2626 opacity 0.45 posed with its body
+    - face e3 #11 #dc2626 opacity 0.45 posed with its body
+    - face e3 #12 #dc2626 opacity 0.45 posed with its body
+    - face e3 #13 #dc2626 opacity 0.45 posed with its body
+    - face e3 #14 #dc2626 opacity 0.45 posed with its body
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [95, 30, 10]
+
+=== 18. back in the model: the pose
+  toolbar:
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+    -   button title="Klikněte na místo bodu.": "Bod"
+    -   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+    -   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
+    -   button.primary: "Dokončit skicu"
+    - div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected.editing
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Skica"
+    + label
+    +   "Název"
+    +   input value="Skica 2"
+    - h2: "Skica: Skica 2"
+    - div#sketch-status
+    -   p.badge.open: "Stupně volnosti: 4"
+    -   p.hint: "Uzavřených oblastí: 1"
+    - p.hint: "Volné (v pohledu modře): body p5, p6, p7, p8."
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + div.mech-link
+    +   div.mech-head
+    +     span.name: "Base (link1)"
+    +     button.link title="Change the name and the bodies of the link": "Edit"
+    +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +   p.hint: "Bodies: Vysunutí 1"
+    +   div.mech-children
+    +     div.mech-joint
+    +       div.mech-head
+    +         span.name: "Elbow (joint1): revolute about the axis Z"
+    +         button.link title="Change the joint": "Edit"
+    +         button.link title="Remove the joint; its child link then stands as modelled": "Remove"
+    +       label
+    +         "Angle (° or an expression in radians)"
+    +         span.field
+    +           input value="90"
+    +       label.slider
+    +         span.hint: "Pose, limits -90° to 90°"
+    +         input.pose type=range value="90" title="-90° to 90°"
+    +       div.mech-children
+    +         div.mech-link
+    +           div.mech-head
+    +             span.name: "Arm (link2)"
+    +             button.link title="Change the name and the bodies of the link": "Edit"
+    +             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +           p.hint: "Bodies: Vysunutí 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    - h2: "Výběr (0)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    - div.buttons
+    -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    - div.buttons
+    -   button disabled: "Konstrukční"
+    -   button disabled title="Delete": "Smazat"
+    - h2: "Vazby a kóty (4)"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovně"
+    -     small: "c6"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Svisle"
+    -     small: "c7"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Vodorovně"
+    -     small: "c8"
+    -   button.icon title="Smazat vazbu": "✕"
+    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   span.name
+    -     "Svisle"
+    -     small: "c9"
+    -   button.icon title="Smazat vazbu": "✕"
+  status: Skica dokončena. · The view shows the pose of the mechanism.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 95030.758
+    - bodies: e1, e2
+    - line #26303c width 1.5: 672 numbers, sum 92083.758
+    + line #f97316 width 2.5: 24 numbers, sum 2070
+    - line #1d4ed8 width 2 onTop: 24 numbers, sum 2070
+    - points #1d4ed8 size 7: 12 numbers, sum 1035
+    - points #a21caf size 7: 3 numbers, sum 0
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+
+=== 19. the value follows the parameter q: the slider is disabled, the field shows the expression and its value
+  engine: execute({"type":"setParameter","name":"q","expr":"0.5"}) -> ok
+  engine: execute({"type":"setPose","values":{"joint1":"q"}}) -> ok
+  document: {"parameters":[{"name":"q","expr":"0.5"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0.5,"expressions":{"value":"q"}}}}
+  panel:
+    + h2: "Parameters (1)"
+    + div.constraint
+    +   input.pname value="q" title="Parameter name; renaming also rewrites the expressions that use it"
+    +   input.expr value="0.5" placeholder="expression, e.g. 2 * a"
+    +   small.computed: "= 0.5"
+    +   button.icon title="Delete parameter": "✕"
+    - h2: "Parameters (0)"
+    +           input value="q"
+    +           small.computed: "= 28.64789°"
+    -           input value="90"
+    +         input.pose type=range value="28.64789" disabled title="The value follows its expression; type a number into the field to set it by hand"
+    -         input.pose type=range value="90" title="-90° to 90°"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0.878, -0.479, 0] [0.479, 0.878, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 99094.552
+    - bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 95030.758
+
+=== 20. q = 3 is outside the limits: the joint is in error, the arm is drawn with it at zero and marked, the status line names the joint
+  engine: execute({"type":"setParameter","name":"q","expr":"3"}) -> ok
+  document: {"parameters":[{"name":"q","expr":"3"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  panel:
+    +   input.expr value="3" placeholder="expression, e.g. 2 * a"
+    +   small.computed: "= 3"
+    -   input.expr value="0.5" placeholder="expression, e.g. 2 * a"
+    -   small.computed: "= 0.5"
+    +     div.mech-joint.error
+    -     div.mech-joint
+    +           small.computed: "= 171.887339°"
+    -           small.computed: "= 28.64789°"
+    +         input.pose type=range value="90" disabled title="The value follows its expression; type a number into the field to set it by hand"
+    +       p.issue.error: "The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)"
+    -         input.pose type=range value="28.64789" disabled title="The value follows its expression; type a number into the field to set it by hand"
+    +           p.issue.warning: "Not in its pose: the joint Elbow has no motion, so the link is drawn with that joint at zero and a query about its bodies fails."
+  status: Skica dokončena. · The view shows the pose of the mechanism. The joint Elbow has no motion (The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)): Arm drawn with it at zero.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + line #26303c width 1.5: 744 numbers, sum 98605.758
+    - bodies: e1, e2, e3 posed [0.878, -0.479, 0] [0.479, 0.878, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 99094.552
+    + label "not posed: Elbow" problem at [45, 17.5, 8]
+
+=== 21. the collisions cannot be asked in the pose: the arm is blocked, the form says why
+  engine: query("interference", {}, {}) -> failed: interference: the pose of the body "e3" is not known: the joint "joint1" has no motion (jointOutOfLimits: The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)). The bodies beyond it can be read as modelled with geometry: 'modelled'
+  toolbar:
+    +   button.active title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  panel:
+    + h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    + label title="The bodies to check against each other; without it all bodies."
+    +   "Bodies (optional)"
+    +   button.link: "Add"
+    + label title="The smallest shared volume that counts."
+    +   "Threshold (optional)"
+    +   span.field
+    +     input.value value="" placeholder="0.001"
+    +     span.unit: "mm³"
+    + label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    +   input type=checkbox unchecked
+    +   "As modelled"
+    + div.buttons
+    +   button.primary: "Ask again"
+    +   button: "Close"
+    + p.issue.error: "interference: the pose of the body "e3" is not known: the joint "joint1" has no motion (jointOutOfLimits: The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)). The bodies beyond it can be read as modelled with geometry: 'modelled'"
+  status: interference: the pose of the body "e3" is not known: the joint "joint1" has no motion (jointOutOfLimits: The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)). The bodies beyond it can be read as modelled with geometry: 'modelled' · The view shows the pose of the mechanism. The joint Elbow has no motion (The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)): Arm drawn with it at zero.  [error]
+  view: 1 scene(s) set
+
+=== 22. as modelled they can: the plate and the arm collide there
+  engine: query("interference", {}, {"geometry":"modelled"}) -> ok
+  panel:
+    +   input type=checkbox checked
+    -   input type=checkbox unchecked
+    + div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
+    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   small: "1200 mm³"
+    - p.issue.error: "interference: the pose of the body "e3" is not known: the joint "joint1" has no motion (jointOutOfLimits: The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)). The bodies beyond it can be read as modelled with geometry: 'modelled'"
+  status: Collisions: 1 pair(s) of bodies share a volume. · The view shows the model as modelled, as the answer of the query was asked.  [error]
+  view: 1 scene(s) set
+  scene:
+    - label "not posed: Elbow" problem at [45, 17.5, 8]
+
+=== 23. a number typed into the field replaces the expression: the arm is posed again
+  engine: execute({"type":"setPose","values":{"joint1":0.5235987755982988}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0.5235987755982988}}}
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button.active title="Check which bodies share a volume": "Collisions"
+  panel:
+    - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    - label title="The bodies to check against each other; without it all bodies."
+    -   "Bodies (optional)"
+    -   button.link: "Add"
+    - label title="The smallest shared volume that counts."
+    -   "Threshold (optional)"
+    -   span.field
+    -     input.value value="" placeholder="0.001"
+    -     span.unit: "mm³"
+    - label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
+    -   input type=checkbox checked
+    -   "As modelled"
+    - div.buttons
+    -   button.primary: "Ask again"
+    -   button: "Close"
+    - div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
+    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   small: "1200 mm³"
+    +     div.mech-joint
+    -     div.mech-joint.error
+    +           input value="30"
+    -           input value="q"
+    -           small.computed: "= 171.887339°"
+    +         input.pose type=range value="30" title="-90° to 90°"
+    -         input.pose type=range value="90" disabled title="The value follows its expression; type a number into the field to set it by hand"
+    -       p.issue.error: "The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)"
+    -           p.issue.warning: "Not in its pose: the joint Elbow has no motion, so the link is drawn with that joint at zero and a query about its bodies fails."
+    +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: The view shows the pose of the mechanism.
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, e2, e3 posed [0.866, -0.5, 0] [0.5, 0.866, 0] [0, 0, 1] + [0, 0, 0]
+    + line #26303c width 1.5: 744 numbers, sum 99076.635
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+
+=== 24. reset pose: one setPose, every value without an expression to zero
+  engine: execute({"type":"setPose","values":{"joint1":0}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0}}}
+  panel:
+    +           input value="0"
+    -           input value="30"
+    +         input.pose type=range value="0" title="-90° to 90°"
+    -         input.pose type=range value="30" title="-90° to 90°"
+  status: Pose reset: Elbow.
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + line #26303c width 1.5: 744 numbers, sum 98605.758
+    - bodies: e1, e2, e3 posed [0.866, -0.5, 0] [0.5, 0.866, 0] [0, 0, 1] + [0, 0, 0]
+    - line #26303c width 1.5: 744 numbers, sum 99076.635
+
+=== 25. the marker after the plate: the mechanism of that state, the arm has no body there
+  engine: getState("e1")
+  toolbar:
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    -   button title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    + div.row.ok.later
+    - div.row.ok
+    + div.row.ok.selected.later
+    - div.row.ok.selected
+    + div.row.ok.later
+    - div.row.ok
+    + button.link: "Zobrazit celý model"
+  panel:
+    +           p.hint: "Bodies: e3 (missing)"
+    +           p.issue.warning: "The model has no body e3: the link lists it, and a body made under that ID will be in the link."
+    -           p.hint: "Bodies: Vysunutí 3"
+    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    + line #8b9bb4 width 1: 24 numbers, sum 701.145
+    + line #8b9bb4 width 1: 24 numbers, sum 467.43
+    + line #8b9bb4 width 1: 24 numbers, sum 233.715
+    - bodies: e1, e2, e3
+    - line #26303c width 1.5: 744 numbers, sum 98605.758
+    - line #8b9bb4 width 1: 24 numbers, sum 735.918
+    - line #8b9bb4 width 1: 24 numbers, sum 490.612
+    - line #8b9bb4 width 1: 24 numbers, sum 245.306
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    - line #f97316 width 2.5: 24 numbers, sum 2070
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.044
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+
+=== 26. removing the link Base, which the joint names, is refused with the reason
+  engine: execute({"type":"removeLink","id":"link1"}) -> invalidCommand: removeLink.id: the link "link1" is named by the joint "joint1"; remove or change it first, in the same batch
+  toolbar:
+    +   button title="Check which bodies share a volume": "Collisions"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+  timeline:
+    + div.row.ok
+    - div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    - div.row.ok.later
+    + div.row.ok.selected
+    - div.row.ok.selected.later
+    + div.row.ok
+    - div.row.ok.later
+    - button.link: "Zobrazit celý model"
+  panel:
+    +           p.hint: "Bodies: Vysunutí 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    -           p.hint: "Bodies: e3 (missing)"
+    -           p.issue.warning: "The model has no body e3: the link lists it, and a body made under that ID will be in the link."
+  status: removeLink.id: the link "link1" is named by the joint "joint1"; remove or change it first, in the same batch  [error]
+  view: 1 scene(s) set
+  scene:
+    + bodies: e1, e2, e3
+    + line #26303c width 1.5: 744 numbers, sum 98605.758
+    + line #8b9bb4 width 1: 24 numbers, sum 735.918
+    + line #8b9bb4 width 1: 24 numbers, sum 490.612
+    + line #8b9bb4 width 1: 24 numbers, sum 245.306
+    - bodies: e1
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #8b9bb4 width 1: 24 numbers, sum 701.145
+    - line #8b9bb4 width 1: 24 numbers, sum 467.43
+    - line #8b9bb4 width 1: 24 numbers, sum 233.715
+    + line #f97316 width 2.5: 24 numbers, sum 2070
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.044
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+
+=== 27. the form of the joint, filled in from the document
+  panel:
+    + h2: "Joint Elbow"
+    + label
+    +   "ID"
+    +   input value="joint1" disabled
+    + label
+    +   "Name (empty: the ID)"
+    +   input value="Elbow" placeholder="joint1"
+    + label
+    +   "Kind"
+    +   select value="revolute"
+    +     option selected value="revolute": "Revolute"
+    +     option value="continuous": "Continuous (no limits)"
+    +     option value="prismatic": "Prismatic (a slide)"
+    +     option value="fixed": "Fixed"
+    + label
+    +   "Parent link"
+    +   select value="link1"
+    +     option selected value="link1": "Base"
+    +     option value="link2": "Arm"
+    + label
+    +   "Child link (moves)"
+    +   select value="link2"
+    +     option value="link1": "Base"
+    +     option selected value="link2": "Arm"
+    + label
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    + label
+    +   "Lower limit (° or an expression in radians)"
+    +   input value="-90"
+    + label
+    +   "Upper limit (° or an expression in radians)"
+    +   input value="90"
+    + label
+    +   "Angle (° or an expression in radians)"
+    +   input value="0"
+    +   button.primary: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button title="A joint moves its child link against its parent link": "New joint"
+    -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 0 scene(s) set
+
+=== 28. another kind: the numbers start from the defaults of its unit
+  panel:
+    +   select value="prismatic"
+    +     option value="revolute": "Revolute"
+    -   select value="revolute"
+    -     option selected value="revolute": "Revolute"
+    +     option selected value="prismatic": "Prismatic (a slide)"
+    -     option value="prismatic": "Prismatic (a slide)"
+    + p.hint: "The child slides along the direction of the axis."
+    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    +   "Lower limit (mm or an expression)"
+    +   input value="0"
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-90"
+    +   "Upper limit (mm or an expression)"
+    +   input value="100"
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="90"
+    +   "Travel (mm or an expression)"
+    -   "Angle (° or an expression in radians)"
+  view: 0 scene(s) set
+
+=== 29. the joint removed: one removeJoint, the arm stands as modelled
+  engine: execute({"type":"removeJoint","id":"joint1"}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{}}
+  panel:
+    + div.mech-link
+    +   div.mech-head
+    +     span.name: "Arm (link2)"
+    +     button.link title="Change the name and the bodies of the link": "Edit"
+    +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    +   p.hint: "Bodies: Vysunutí 3"
+    -   div.mech-children
+    -     div.mech-joint
+    -       div.mech-head
+    -         span.name: "Elbow (joint1): revolute about the axis Z"
+    -         button.link title="Change the joint": "Edit"
+    -         button.link title="Remove the joint; its child link then stands as modelled": "Remove"
+    -       label
+    -         "Angle (° or an expression in radians)"
+    -         span.field
+    -           input value="0"
+    -       label.slider
+    -         span.hint: "Pose, limits -90° to 90°"
+    -         input.pose type=range value="0" title="-90° to 90°"
+    -       div.mech-children
+    -         div.mech-link
+    -           div.mech-head
+    -             span.name: "Arm (link2)"
+    -             button.link title="Change the name and the bodies of the link": "Edit"
+    -             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
+    -           p.hint: "Bodies: Vysunutí 3"
+    - h2: "Joint Elbow"
+    - label
+    -   "ID"
+    -   input value="joint1" disabled
+    - label
+    -   "Name (empty: the ID)"
+    -   input value="Elbow" placeholder="joint1"
+    - label
+    -   "Kind"
+    -   select value="prismatic"
+    -     option value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -     option selected value="prismatic": "Prismatic (a slide)"
+    -     option value="fixed": "Fixed"
+    - label
+    -   "Parent link"
+    -   select value="link1"
+    -     option selected value="link1": "Base"
+    -     option value="link2": "Arm"
+    - label
+    -   "Child link (moves)"
+    -   select value="link2"
+    -     option value="link1": "Base"
+    -     option selected value="link2": "Arm"
+    - label
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    - p.hint: "The child slides along the direction of the axis."
+    - label
+    -   "Lower limit (mm or an expression)"
+    -   input value="0"
+    - label
+    -   "Upper limit (mm or an expression)"
+    -   input value="100"
+    - label
+    -   "Travel (mm or an expression)"
+    -   input value="0"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  status: The joint Elbow removed.
+  view: 1 scene(s) set

@@ -69,9 +69,14 @@ const taper: UpgradeStep = { name: '2b-taper', run: (o) => o };
 // `null` for one that is missing.)
 const bodyProperties: UpgradeStep = { name: '3a-body-properties', run: (o) => ('bodyProperties' in o ? o : { ...o, bodyProperties: {} }) };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties];
+// D49 (5a): the section `mechanism`. As for body properties: a build without the step would drop the
+// section without a word. It gives a document without the field an empty mechanism and leaves
+// a field that is there, whatever it holds, to the validation.
+const mechanism: UpgradeStep = { name: '5a-mechanism', run: (o) => ('mechanism' in o ? o : { ...o, mechanism: { links: {}, joints: {} } }) };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
-export const SCHEMA_PENDING = 0;
+export const SCHEMA_PENDING = 1;
 
 // The version a build with these steps saves, and the names it saves next to it.
 export const savedVersion = (upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING): number => upgrades.length + 1 - pending;

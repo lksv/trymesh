@@ -218,6 +218,20 @@ describe('MCP server: bodies', () => {
     await session.close();
   });
 
+  it('a query in a pose prints the pose as a second text beside the answer (D49); without a pose there is one text', async () => {
+    const session = await connect();
+    await build(session);
+    await session.call('execute', { command: { type: 'batch', commands: [{ type: 'setLink', id: 'wheel', bodies: ['Wheel'] }, { type: 'setLink', id: 'ground', bodies: ['base'] }, { type: 'setJoint', id: 'lift', joint: { type: 'prismatic', parent: 'ground', child: 'wheel', axis: { kind: 'base', axis: 'Z' }, lower: 0, upper: 10, value: 0 } }] } });
+    const texts = async (args: Record<string, unknown>) => ((await session.client.callTool({ name: 'query', arguments: args })) as { content: { text: string }[] }).content.map((item) => item.text);
+    const lifted = await texts({ query: 'interference', after: { type: 'setPose', values: { lift: 5 } } });
+    expect(lifted).toHaveLength(2);
+    expect(JSON.parse(lifted[0]).pairs).toEqual([]); // lifted by 5 the wheel clears the base
+    expect(JSON.parse(lifted[1])).toEqual({ pose: { lift: 5 } });
+    expect(await texts({ query: 'interference' })).toHaveLength(1);
+    expect(await texts({ query: 'interference', after: { type: 'setPose', values: { lift: 5 } }, geometry: 'modelled' })).toHaveLength(1);
+    await session.close();
+  });
+
   it('export_stl without a list takes the printed bodies (D48); a listed reference body is written', async () => {
     const session = await connect();
     await build(session);

@@ -1,11 +1,12 @@
 // The generic form of a query (D39): every query of the catalog of the engine can be asked from
 // the app, with a form built from the description of its arguments. One query is open at a time,
 // in the model panel. Its state is one object the app holds and only this module reads and writes.
-import { type AnyQuery, type ArgKind, type ArgPath, type ArgSpecs, type FaceName, type Id, QUERIES, type QueryName, type QueryOutcome, type ResultUnit, faceKey } from '@trymesh/engine';
+import { type AnyQuery, type ArgKind, type ArgPath, type ArgSpecs, type FaceName, type Id, QUERIES, type QueryName, type QueryOptions, type QueryOutcome, type ResultUnit, faceKey } from '@trymesh/engine';
 import { h } from '../dom';
 import { plainNumber, resultText } from '../fields';
 import type { Note, PanelHost, ViewPick } from '../host';
 import { faceLabel } from '../issue-text';
+import { holdsPose } from '../pose';
 import { CONTROLS, type Form } from '../queries/controls';
 import { QUERY_VIEWS, type SceneAdditions, type ViewPanel } from '../queries/index';
 
@@ -17,12 +18,16 @@ import { QUERY_VIEWS, type SceneAdditions, type ViewPanel } from '../queries/ind
 //   while the marker is `at`, hidden while it is elsewhere, dropped when the engine reports
 //   a change of the document. It keeps the arguments of the form it was asked from (`args`), so
 //   that a view draws what was asked and not what the form shows meanwhile, and the arguments
-//   the engine really got (`asked`: those of the form after `prepare` of the view).
+//   the engine really got (`asked`: those of the form after `prepare` of the view), and whether it
+//   was asked about the model as modelled (`modelled`, D49).
+// - `modelled`: the box *As modelled* of the form is ticked; it is offered while the shown state
+//   holds a pose of the mechanism.
 export interface OpenQuery {
   name: QueryName;
   draft: Record<string, unknown>;
   armed?: ArgPath;
-  answer?: { at: Id | null; args: Record<string, unknown>; asked: unknown; outcome: QueryOutcome<unknown>; picked?: number };
+  modelled?: boolean;
+  answer?: { at: Id | null; args: Record<string, unknown>; asked: unknown; outcome: QueryOutcome<unknown>; picked?: number; modelled: boolean };
 }
 // `note`: the note of the last answer, while it is the one the status line shows.
 export interface QueryPanel {
@@ -113,6 +118,18 @@ export function openQuery(panel: QueryPanel, host: PanelHost, name: QueryName): 
   host.refresh();
 }
 
+// The choice of the geometry is offered while the state shown holds a pose of the mechanism (a link
+// moved or blocked), for a query that does not answer as modelled anyway (D49).
+const offersModelled = (entry: AnyQuery, host: PanelHost): boolean => entry.geometry !== 'modelled' && holdsPose(host.view().evaluation.mechanism);
+
+// Is the answer that is shown one about the model as modelled: asked so, or of a query that always
+// answers so? The view then shows the model as modelled too, so that what it highlights is where the
+// answer found it.
+export function answeredAsModelled(panel: QueryPanel, host: PanelHost): boolean {
+  const answer = shownAnswer(panel, host);
+  return panel.open !== undefined && answer !== undefined && (answer.modelled || entryOf(panel.open.name).geometry === 'modelled');
+}
+
 export function closeQuery(panel: QueryPanel, host: PanelHost): void {
   panel.open = undefined;
   host.refresh();
@@ -150,8 +167,11 @@ export function askQuery(panel: QueryPanel, host: PanelHost): void {
   const view = viewOf(open.name);
   const args = structuredClone(open.draft);
   const asked = view?.prepare ? view.prepare(args as never) : args;
-  const outcome = host.engine.query(open.name, asked as never, host.marker ? { at: host.marker } : {}) as QueryOutcome<unknown>;
-  open.answer = { at: host.marker, args, asked, outcome };
+  // in the pose of the state at the marker, or as modelled when the form asks so (D49)
+  const modelled = open.modelled === true && offersModelled(entryOf(open.name), host);
+  const options: QueryOptions = { ...(host.marker ? { at: host.marker } : {}), ...(modelled ? { geometry: 'modelled' as const } : {}) };
+  const outcome = host.engine.query(open.name, asked as never, options) as QueryOutcome<unknown>;
+  open.answer = { at: host.marker, args, asked, outcome, modelled };
   open.armed = undefined;
   const note = outcome.ok ? view?.note?.(outcome.result as never, viewPanel(panel, host, open.answer)) : { text: outcome.error.message, error: true };
   if (note) {
@@ -274,10 +294,15 @@ export function queryPanel(panel: QueryPanel, host: PanelHost): HTMLElement[] {
     title: (spec, name) => (spec as { title?: string }).title ?? name,
   };
   // an error names its argument by its path: the row of that argument is marked
-  const rows = Object.entries(entry.args).map(([name, arg]) => {
+  const rows: HTMLElement[] = Object.entries(entry.args).map(([name, arg]) => {
     const wrong = failed?.arg?.[0] === name;
     return h('label', { className: wrong ? 'invalid' : '', title: wrong ? (failed?.message ?? '') : (arg.summary ?? '') }, `${arg.title}${arg.optional ? ' (optional)' : ''}`, ...CONTROLS[arg.kind](arg as never, open.draft[name], [name], form, open.draft));
   });
+  // the model as modelled instead of the pose of the mechanism (D49)
+  if (offersModelled(entry, host)) {
+    const box = h('input', { type: 'checkbox', checked: open.modelled === true, onchange: () => (open.modelled = box.checked) });
+    rows.push(h('label', { className: 'check', title: 'Ask about the bodies where they are modelled, not where the pose of the mechanism puts them' }, box, 'As modelled'));
+  } else if (entry.geometry === 'modelled' && holdsPose(host.view().evaluation.mechanism)) rows.push(h('p', { className: 'hint' }, 'This query answers for the model as modelled, whatever the pose of the mechanism.'));
   const out: HTMLElement[] = [
     h('h2', { title: entry.summary }, entry.title),
     ...rows,

@@ -27,6 +27,7 @@ Modules of the app (`packages/app/src`), run by `pnpm dev`:
 | `features/<type>.ts` | The entry of one type; for the extrusion, the plane and the pattern with the form (`FeatureForm`: the draft and its defaults, the command, the panel, what it wants picked in the view, asked of its state at every pointer event, what a move and a click mean, what it draws) |
 | `panels/model.ts`, `parameters.ts`, `sketch.ts` | The panels, as functions over the host |
 | `panels/body.ts` | The properties of a body (D48): the line of a body, the form of a selected body, the entries whose body is gone |
+| `panels/mechanism.ts`, `pose.ts`, `axis-picker.ts` | The mechanism (D49): the panel (the tree of links and joints, the value of a joint with its slider, *Reset pose*, the forms of a link and a joint); the pose of a body for the view, a pick and a picture; the picker of an axis, shared with the form of the pattern |
 | `panels/query.ts` | The generic form of a query (D39): the menu of the queries of the catalog, the form built from the description of the arguments, asking, the life of an answer, the tree of an answer without a view. Its state (`QueryPanel`: the open query, its draft, the armed control, the answer) is an object the app holds |
 | `queries/controls.ts` | `CONTROLS`: a control per kind of argument, typed over the kinds, so a new kind does not compile without one |
 | `queries/index.ts`, `queries/measure.ts`, `queries/interference.ts`, `queries/section.ts`, `queries/gap.ts`, `queries/print.ts` | `QUERY_VIEWS`: the optional view of a query (rows in place of the tree, additions to the scene, the note), and the views there are; the collisions are the view of `interference`, the cut model the view of `section` |
@@ -66,6 +67,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `features/index.ts` | the registry `FEATURE_TYPES`, `FEATURE_TYPE_INFO`, `specOf`, `requireRef`, `producesTool`, `generatorOf` |
 | `schema.ts` | the schema of the document as named upgrade steps: `UPGRADES`, `SCHEMA_PENDING`, the version a build saves and the runner |
 | `sections/spec.ts`, `sections/fields.ts`, `sections/body-properties.ts`, `sections/index.ts` | the sections of the document (D48): what a section is (`SectionSpec`, `SectionInfo`); the numeric fields of an entry through `Fields` (read, resolve, write back, rename); the section `bodyProperties` (validation, commands, the result, `printedBodies`, `bodyPropertiesWithoutBody`); the registry `DOCUMENT_SECTIONS` with `SECTION_INFO`, `namedBySections` and `takenOver` |
+| `sections/mechanism.ts` | the section `mechanism` (D49): validation of the section whole (a forest of joints), the five commands with the limits and their tolerance, the result (`motionOf`, the transforms of the links, joints in error, what is written back), and what the readers of the pose ask: `poseOfBody`, `motionsTo`, `carriedBy`, `poseNote`, the text of a blocked body |
 | `document.ts` | commands, `validateDocument`, `fieldsOf`, `featureInput`, `featureRefs` |
 | `evaluate.ts` | `Evaluator`: the cache, the replay of the timeline, the prelude of a step |
 | `query/args.ts`, `query/spec.ts` | how the arguments of a query are described and the type that follows; what a query is given (`QueryContext`, `QuerySpec`, the map `Queries`) |
@@ -78,6 +80,8 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/mass.ts` | the query `mass`: the integrals of a mesh (`massIntegrals`), where the density of a body comes from (`massSourceOf`, the seam with body properties), the bodies put together, the tensor and the moment about an axis |
 | `query/hardware-hole.ts` | the query `hardwareHole` (D46): the shape and the label of a hole for a piece of hardware from the catalogs |
 | `query/print.ts` | the query `print`: the print frame of an orientation (`frameOfDirection`, `turned`), the pass over the triangles (`printPass`: the box, the faces on the bed, the overhangs), the lists and their limits |
+| `query/pose.ts` | the posed geometry of a context (D49): `movedBody` remembered by the solid and the transform, `poseOf` (the bodies of a state read lazily in the pose, a blocked one throws), `pairInFrame` and `framed` (a pair in the frame of its first body) |
+| `query/mechanism.ts` | the query `mechanism` (D49): the resolved mechanism of a state, and what hangs on a joint |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/stl.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the format `stl`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |

@@ -30,6 +30,8 @@ import {
   type SketchFeature,
   type SketchToolName,
   type BodyPropertiesResult,
+  type MechanismResult,
+  QueryFailure,
   bodyFileName,
   bodyPropertiesWithoutBody,
   constraintOperands,
@@ -37,6 +39,7 @@ import {
   faceParts,
   freshIds,
   isDimension,
+  poseNote,
   printedBodies,
   sketchTool,
   takenOver,
@@ -54,7 +57,24 @@ export interface Tool {
   run(engine: Engine, args: Record<string, unknown>): unknown;
 }
 
-export type ToolOutcome = { ok: true; result: Json } | { ok: false; error: string };
+// `about`: a note beside the result that is not part of it (the pose a query answered for, D49);
+// the server prints it as a second text.
+export type ToolOutcome = { ok: true; result: Json; about?: Json } | { ok: false; error: string };
+
+// What a tool returns when it has a note beside its result.
+export class Noted {
+  constructor(
+    readonly result: unknown,
+    readonly about: Json,
+  ) {}
+}
+// The answer of a tool computed in the pose of `mechanism`: with the note of the joints that are
+// not at zero when a link is moved, the result alone otherwise (a document without a pose answers
+// as before the mechanism).
+function posed(result: unknown, mechanism: MechanismResult | undefined): unknown {
+  const note = poseNote(mechanism);
+  return note ? new Noted(result, { pose: Object.fromEntries(Object.entries(note.pose).map(([joint, value]) => [joint, round(value)])) }) : result;
+}
 
 // What a tool may answer with besides plain data. A result goes through JSON (`callTool`, the bridge
 // to the app), so bytes do not survive it: a file travels as base64 in this envelope, and the
@@ -164,18 +184,58 @@ function parametersInfo(state: EngineState): { parameters: Record<string, unknow
 
 // What is not a feature state but the caller should know: checks that fail, parameters in error,
 // body properties whose density or mass cannot be evaluated (own or inherited by a copy), and, for
-// the state at the end of the timeline (`whole`), entries of body properties whose body is gone.
+// the state at the end of the timeline (`whole`), entries of body properties whose body is gone and
+// the problems of the mechanism (D49): joints in error, links with bodies the model does not have,
+// bodies in no link. At a point of the construction (`at`) these would name every joint whose
+// sketch comes later and every body not made yet; the query `mechanism` answers there.
 function documentProblems(state: EngineState, whole = true): Record<string, unknown> {
   const { parameters, checks } = parametersInfo(state);
   const failedChecks = checks.filter((check) => check.status !== 'ok');
   const parameterErrors = parameters.filter((parameter) => parameter.error !== undefined);
   const bodyPropertyErrors = Object.entries(state.evaluation.bodyProperties).flatMap(([body, result]) => Object.entries(result.fieldErrors ?? {}).map(([field, error]) => ({ body, field, message: error.message })));
   const withoutBody = whole ? bodyPropertiesWithoutBody(state.document.bodyProperties, state.evaluation.bodyProperties) : [];
+  const { mechanism } = state.evaluation;
+  const jointErrors = whole ? Object.entries(mechanism.joints).flatMap(([joint, result]) => (result.error ? [{ joint, code: result.error.code, message: result.error.message }] : [])) : [];
+  const linksMissingBodies = whole ? Object.entries(mechanism.links).flatMap(([link, result]) => (result.missing.length ? [{ link, missing: result.missing }] : [])) : [];
+  const bodiesInNoLink = whole ? mechanism.unassigned : [];
   return {
     ...(failedChecks.length ? { failedChecks } : {}),
     ...(parameterErrors.length ? { parameterErrors } : {}),
     ...(bodyPropertyErrors.length ? { bodyPropertyErrors } : {}),
     ...(withoutBody.length ? { bodyPropertiesWithoutBody: withoutBody } : {}),
+    ...(jointErrors.length ? { jointErrors } : {}),
+    ...(linksMissingBodies.length ? { linksMissingBodies } : {}),
+    ...(bodiesInNoLink.length ? { bodiesInNoLink } : {}),
+  };
+}
+
+// The mechanism as get_model prints it (D49), when there is a link: the links with their bodies, the
+// joints with their numbers (rounded so that a limit read here is accepted as a value: the
+// tolerance of the limits is wider than the rounding) and expressions, the roots when there are
+// several. The bodies of get_model stay as modelled.
+function mechanismInfo(state: EngineState): { mechanism?: Record<string, unknown> } {
+  const { links, joints } = state.document.mechanism;
+  if (Object.keys(links).length === 0) return {};
+  const { roots } = state.evaluation.mechanism;
+  return {
+    mechanism: {
+      links: Object.entries(links).map(([id, link]) => ({ id, ...(link.name !== undefined ? { name: link.name } : {}), bodies: link.bodies })),
+      joints: Object.entries(joints).map(([id, joint]) => {
+        const numbers = joint as unknown as Record<string, unknown>;
+        return {
+          id,
+          ...(joint.name !== undefined ? { name: joint.name } : {}),
+          type: joint.type,
+          parent: joint.parent,
+          child: joint.child,
+          ...('axis' in joint ? { axis: joint.axis as unknown as Json } : {}),
+          ...Object.fromEntries(['lower', 'upper', 'value'].flatMap((field) => (typeof numbers[field] === 'number' ? [[field, round(numbers[field] as number)]] : []))),
+          ...(joint.expressions ? { expressions: joint.expressions } : {}),
+          ...(state.evaluation.mechanism.joints[id]?.status === 'error' ? { status: 'error' } : {}),
+        };
+      }),
+      ...(roots.length > 1 ? { roots } : {}),
+    },
   };
 }
 
@@ -246,6 +306,7 @@ function modelSummary(state: EngineState, whole = true): unknown {
     bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length, ...propertiesInfo(state, id) })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
+    ...mechanismInfo(state),
     ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
@@ -253,7 +314,8 @@ function modelSummary(state: EngineState, whole = true): unknown {
 }
 
 // A body as `get_body` prints it. The tool keeps its own check that the body exists and its own
-// text; the faces and the edges come from the query `body` of the engine, which computes them.
+// text; the volume, the bounds, the faces and the edges come from the query `body` of the engine,
+// which computes them in the pose of the document (D49), so one answer is not half posed.
 function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown {
   const state = stateAt(engine, at);
   const body = Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id) ? state.evaluation.bodies[id] : undefined;
@@ -266,12 +328,14 @@ function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown
     ...(edge.kind === 'line' ? { from: edge.from.map(round), to: edge.to.map(round), ...(edge.gaps ? { gaps: true } : {}) } : {}),
     ...(edge.kind === 'circle' ? { center: edge.circle.center.map(round), radius: round(edge.circle.radius), axis: edge.circle.axis.map(round) } : {}),
   });
-  return {
+  return posed({
     id,
-    ...solidInfo(body),
+    volume: round(answer.result.volume),
+    min: answer.result.bounds.min.map(round),
+    max: answer.result.bounds.max.map(round),
     faces: answer.result.faces.map((face) => ({ name: face.name as unknown as Json, label: faceLabel(face.name), planar: face.surface.kind === 'plane', area: round(face.area), ...(face.meshNormal ? { normal: face.meshNormal.map(round) } : {}) })),
     edges: answer.result.edges.map((edge) => ({ name: edge.name as unknown as Json, label: `${faceLabel(edge.name.a)} | ${faceLabel(edge.name.b)}`, kind: edge.kind, ...edgeShape(edge) })),
-  };
+  }, state.evaluation.mechanism);
 }
 
 const plural = (count: number): string => `${count} ${count === 1 ? 'stupeň' : count >= 2 && count <= 4 ? 'stupně' : 'stupňů'} volnosti`;
@@ -509,7 +573,8 @@ export function tools(): Tool[] {
     {
       name: 'get_model',
       description:
-        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). Without `at` also `bodyPropertiesWithoutBody`: entries of body properties whose body is gone, which a body made again under that ID takes over. `at` = the state after the given feature.',
+        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
+        'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature.',
       inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'ID feature; model se vyhodnotí jen po ni' } }, additionalProperties: false },
       run: (engine, args) => {
         const at = optionalText(args, 'at');
@@ -598,10 +663,18 @@ export function tools(): Tool[] {
         if (threshold !== undefined && (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0)) throw new ToolError('argument "threshold": a volume in mm³, zero or more, is expected');
         // one body has nothing to collide with: an empty answer would read as "no collisions"
         if (bodies !== undefined && new Set(bodies).size < 2) throw new ToolError('argument "bodies": at least two different bodies are needed to check pairs; leave the list out to check all bodies');
-        const report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
+        let report: ReturnType<Engine['interference']>;
+        try {
+          report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
+        } catch (error) {
+          // a body beyond a joint that has no motion: its pose is not known (D49)
+          if (error instanceof QueryFailure) throw new ToolError(`${error.code}: ${error.message}`);
+          throw error;
+        }
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = (pair: Interference) => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
-        return { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+        const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+        return posed(answer, stateAt(engine, at).evaluation.mechanism);
       },
     },
     {
@@ -609,7 +682,8 @@ export function tools(): Tool[] {
       description:
         `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section Queries. ` +
         'Without `at` and `after` the answer is for the current model. `at` asks about the state after that feature. `after` is a command: the answer is for the model the document would have after it, and nothing is written, ' +
-        'so a parameter can be stepped and each step asked about. With both, the document after the command is evaluated up to `at`. Numbers in the answer are rounded to six decimal places.',
+        'so a parameter can be stepped and each step asked about (a pose: `after: { type: "setPose", values: { ... } }`). With both, the document after the command is evaluated up to `at`. Numbers in the answer are rounded to six decimal places. ' +
+        'The answer is for the pose of the mechanism (also with `at`); when a link is moved, `pose` beside the answer names the joints that are not at zero. `geometry: "modelled"` asks about the model as modelled instead.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -617,16 +691,23 @@ export function tools(): Tool[] {
           args: { type: 'object', description: 'The arguments of the query, by name; see describe_api.' },
           at: { type: 'string', description: 'Feature ID; the state after it' },
           after: { type: 'object', description: 'A command (as for execute) to preview first; the query is asked about the result and the document does not change.' },
+          geometry: { type: 'string', enum: ['modelled'], description: 'modelled: the answer is for the bodies as modelled, whatever pose the mechanism holds.' },
         },
         required: ['query'],
         additionalProperties: false,
       },
       run: (engine, args) => {
         const name = text(args, 'query');
+        const geometry = optionalText(args, 'geometry');
+        if (geometry !== undefined && geometry !== 'modelled') throw new ToolError('argument "geometry": "modelled" or nothing is expected');
         // the preview and the query run together where the engine is; nothing is written
-        const answer = engine.query(name as QueryName, named(args.args) as never, askedState(engine, args));
+        const options = askedState(engine, args);
+        const answer = engine.query(name as QueryName, named(args.args) as never, { ...options, ...(geometry ? { geometry } : {}) });
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
-        return roundedResult(answer.result, (QUERIES as Record<string, AnyQuery>)[name].significant);
+        const spec = (QUERIES as Record<string, AnyQuery>)[name];
+        const result = roundedResult(answer.result, spec.significant);
+        if (geometry === 'modelled' || spec.geometry === 'modelled') return result;
+        return posed(result, (options.state ?? engine.getState(options.at)).evaluation.mechanism);
       },
     },
     {
@@ -779,7 +860,10 @@ export function callTool(engine: Engine, name: string, args: Record<string, unkn
   const tool = tools().find((candidate) => candidate.name === name) as Tool;
   try {
     // přes JSON: typovaná pole (Float64Array) se nepřenášejí a výsledek musí projít mostem beze změny
-    return { ok: true, result: JSON.parse(JSON.stringify(tool.run(engine, args) ?? null)) as Json };
+    const value = tool.run(engine, args);
+    const json = (item: unknown): Json => JSON.parse(JSON.stringify(item ?? null)) as Json;
+    // a note beside the result (the pose it was answered for) travels apart from it
+    return value instanceof Noted ? { ok: true, result: json(value.result), about: json(value.about) } : { ok: true, result: json(value) };
   } catch (error) {
     if (error instanceof ToolError) return { ok: false, error: error.message };
     throw error;

@@ -11,6 +11,7 @@ import {
   type Frame,
   type Id,
   type Issue,
+  type MechanismResult,
   type PlaneRef,
   type SectionResult,
   type Vec2,
@@ -29,15 +30,17 @@ import { insideFill, keptSegments } from './draw';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
-import { type QueryPanel, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
+import { type QueryPanel, answeredAsModelled, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
+import { type MechanismPanel, blockedNote } from './panels/mechanism';
 import { modelPanel } from './panels/model';
-import { savePicture, viewCapability } from './picture';
+import { drawPicture, savePicture, viewCapability } from './picture';
+import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
 import { DEFAULT_POLYGON } from './sketch-commands';
 import { type View, Viewport } from './viewport';
-import { bodyName, faceLabel, featureName, issueText } from './issue-text';
+import { bodyName, faceLabel, featureName, issueText, takenOverText } from './issue-text';
 
 type Pick = ViewPick;
 type Mode = { kind: 'model' } | SketchMode | AnyDraft;
@@ -63,6 +66,7 @@ export class App implements SketchHost, SceneHost {
   private showBasePlanes = true;
   pending?: Feature['type']; // a new feature of this type waits for its plane to be picked
   private readonly queries: QueryPanel = {}; // the query open in the model panel, with its answer
+  private readonly mechanism: MechanismPanel = {}; // the form open in the panel of the mechanism, the pose a slider previews
   note: Note = { text: '', error: false };
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
@@ -118,19 +122,35 @@ export class App implements SketchHost, SceneHost {
   }
 
   // Stav, který se právě zobrazuje: model po značce pozice, po upravované feature, nebo náhled.
+  // In the model mode a slider of the mechanism being dragged previews a pose (D49).
   view(): EngineState {
     if (this.cache) return this.cache;
     const m = this.mode;
     if (m.kind === 'sketch') this.cache = m.preview ?? this.engine.getState(m.id);
-    else if (m.kind === 'model') this.cache = this.marker ? this.engine.getState(this.marker) : this.engine.getState();
+    else if (m.kind === 'model') this.cache = this.mechanism.preview ?? (this.marker ? this.engine.getState(this.marker) : this.engine.getState());
     else this.cache = m.preview ?? this.stateBefore(m.index);
     return this.cache;
   }
+  // Before the first feature there is no state of the engine: it is the whole one without what the
+  // timeline makes. The mechanism keeps its joints and the transforms of its links (nothing at that
+  // place reads them: a form shows the model as modelled), and its links have no body.
   stateBefore(index: number): EngineState {
     const previous = this.doc.features[index - 1];
     if (previous) return this.engine.getState(previous.id);
     const state = this.engine.getState();
-    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [], bodyProperties: {} } };
+    const { mechanism } = state.evaluation;
+    const links = Object.fromEntries(Object.entries(mechanism.links).map(([id, link]) => [id, { ...link, bodies: [], missing: [...link.bodies, ...link.missing] }]));
+    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [], bodyProperties: {}, mechanism: { ...mechanism, links, unassigned: [] } } };
+  }
+  // The mechanism whose pose the view shows (D49): that of the shown state in the model mode. A
+  // sketch and a form show the model as modelled, where sketches, planes and the references of
+  // features are; so does the answer of a query asked as modelled while it is shown.
+  shownMechanism(): MechanismResult | undefined {
+    if (this.mode.kind !== 'model' || answeredAsModelled(this.queries, this)) return undefined;
+    return this.view().evaluation.mechanism;
+  }
+  pose(): Pose {
+    return poseOf(this.shownMechanism());
   }
   invalidate(): void {
     this.cache = undefined;
@@ -146,7 +166,8 @@ export class App implements SketchHost, SceneHost {
   // během práce nevrací, takže se ID smazané entity znovu nepoužije. An ID a section of the
   // document still names (the feature of body properties whose body is gone) counts as used.
   readonly newId = (prefix: string): Id => {
-    const used = new Set<Id>(namedBySections(this.doc));
+    // the links and the joints of the mechanism (D49) have IDs of their own
+    const used = new Set<Id>([...namedBySections(this.doc), ...Object.keys(this.doc.mechanism.links), ...Object.keys(this.doc.mechanism.joints)]);
     for (const f of this.doc.features) {
       used.add(f.id);
       if (f.type === 'sketch') for (const group of [f.points, f.curves, f.constraints, f.external]) for (const id of Object.keys(group)) used.add(id);
@@ -211,9 +232,21 @@ export class App implements SketchHost, SceneHost {
 
   say(text: string, error = false): void {
     this.note = { text, error };
+    this.renderStatus();
+  }
+  // The note, and after it which of the two the view shows while the document holds a pose of the
+  // mechanism (D49): the pose, or the model as modelled.
+  private renderStatus(): void {
     const bar = byId('status');
-    bar.textContent = text;
-    bar.classList.toggle('error', error);
+    const pose = this.poseText();
+    bar.replaceChildren(this.note.text, ...(pose ? [h('span', { className: 'pose' }, `${this.note.text ? ' · ' : ''}${pose}`)] : []));
+    bar.classList.toggle('error', this.note.error);
+  }
+  private poseText(): string {
+    const shown = this.shownMechanism();
+    if (shown) return holdsPose(shown) ? `The view shows the pose of the mechanism.${blockedNote(this, shown)}` : '';
+    if (this.mode.kind === 'model') return holdsPose(this.view().evaluation.mechanism) ? 'The view shows the model as modelled, as the answer of the query was asked.' : '';
+    return holdsPose(this.engine.getState().evaluation.mechanism) ? 'The view shows the model as modelled: sketches and features are edited there.' : '';
   }
 
   // Provede příkaz; neplatný příkaz dokument nezmění a zpráva se ukáže ve stavovém řádku.
@@ -224,10 +257,10 @@ export class App implements SketchHost, SceneHost {
     if (!result.ok) return this.say(result.error.message, true), false;
     // a check the command made fail takes precedence over the ordinary message
     const failed = this.failedChecks(result.state).filter((name) => !before.includes(name));
-    // properties an entry of the document kept for an ID the command used again (D48)
+    // what an entry of a section kept for an ID the command used again (D48, D49)
     const taken = takenOver(now.document, command);
     if (failed.length > 0) this.say(`Check failed: ${failed.join('; ')}`, true);
-    else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}An ID that body properties name is now used again: ${taken.join(', ')}. A body made under it takes those properties; if it is another thing, remove them in the model panel.`);
+    else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}${takenOverText(now.document, taken)}`);
     else if (done !== undefined) this.say(done);
     else if (this.note.error) this.say(''); // stará chyba po úspěšném příkazu už neplatí
     return true;
@@ -240,6 +273,7 @@ export class App implements SketchHost, SceneHost {
 
   refresh(): void {
     this.cancelDrag(); // dokument se mohl změnit pod rozpracovaným tažením
+    this.mechanism.preview = undefined; // a pose previewed by a slider ends with its drag
     this.invalidate();
     const m = this.mode;
     // Značka, jejíž feature zmizela (undo, smazání), spadne na feature před ní.
@@ -261,6 +295,7 @@ export class App implements SketchHost, SceneHost {
     this.renderTimeline();
     this.renderPanel();
     this.renderScene();
+    this.renderStatus();
   }
 
   // Zahodí rozpracované tažení bodu i jeho náhled. Vrací, zda nějaké běželo.
@@ -494,7 +529,7 @@ export class App implements SketchHost, SceneHost {
     const panel = byId('panel');
     if (m.kind === 'sketch') panel.replaceChildren(...sketchPanel(this, m));
     else if (isDraft(m)) panel.replaceChildren(...m.form.panel(m, this));
-    else panel.replaceChildren(...modelPanel(this, this.queries));
+    else panel.replaceChildren(...modelPanel(this, this.queries, this.mechanism));
   }
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
@@ -541,8 +576,10 @@ export class App implements SketchHost, SceneHost {
     // the section the view shows: only the model mode draws what a query adds
     const answer = this.mode.kind === 'model' && this.queries.open?.name === 'section' ? shownAnswer(this.queries, this) : undefined;
     const shown = answer?.outcome.ok ? (answer.outcome.result as SectionResult) : undefined;
+    // the bodies where the view puts them: in the pose, or as modelled (D49)
+    const pose = this.pose();
     try {
-      const said = await savePicture(this.pictures, state, visible, shown, (name, base64) => download(name, Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)), 'image/png'));
+      const said = await savePicture({ image: (request) => drawPicture(this.viewport, request, pose) }, state, visible, shown, (name, base64) => download(name, Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)), 'image/png'));
       this.say(said.text, said.error);
     } catch (error) {
       this.say(`The picture could not be drawn: ${error instanceof Error ? error.message : String(error)}`, true);
@@ -550,7 +587,7 @@ export class App implements SketchHost, SceneHost {
   }
 
   private fit(): void {
-    const { min, max } = modelBounds(this.view());
+    const { min, max } = modelBounds(this.view(), this.pose());
     this.viewport.fit(min, max);
   }
 
@@ -569,6 +606,7 @@ export class App implements SketchHost, SceneHost {
   // Co je pod kurzorem: hrana má přednost před stěnou, stěna před rovinou.
   pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
     const state = this.view();
+    const pose = this.pose(); // the bodies are picked where the view draws them (D49)
     const hit = this.viewport.pickBody(event.clientX, event.clientY); // the view skips what is cut away
     // A cut model: nothing is picked through the filled cut. A ray that meets a filled region
     // before anything that is drawn would otherwise pick the far wall of the body, or a body
@@ -589,7 +627,7 @@ export class App implements SketchHost, SceneHost {
         if (this.bodyHidden(body)) continue;
         data.edges.forEach((edge, index) => {
           if (edge.kind === 'coplanar') return;
-          const s = keptSegments(edge.segments, cut?.clip); // an edge that is cut away is not drawn
+          const s = keptSegments(placedSegments(edge.segments, pose(body).transform), cut?.clip); // an edge that is cut away is not drawn
           for (let i = 0; i < s.length; i += 6) {
             const [a, b] = [project(s[i], s[i + 1], s[i + 2]), project(s[i + 3], s[i + 4], s[i + 5])];
             const [dx, dy] = [b.x - a.x, b.y - a.y];

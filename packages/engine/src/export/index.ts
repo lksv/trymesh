@@ -37,7 +37,8 @@ export function runExport(format: string, options: unknown, evaluation: Evaluati
   if (!checked.ok) return refused(checked.code, `${format}: ${checked.message}`, checked.arg);
   let exported: Exported;
   try {
-    exported = spec.run(queryContext(`export:${format}`, evaluation, internals, deps), checked.value as never);
+    // an export always gets the bodies as modelled, whatever the pose
+    exported = spec.run(queryContext(`export:${format}`, evaluation, internals, deps, 'modelled'), checked.value as never);
   } catch (error) {
     if (error instanceof QueryFailure) return refused(error.code, `${format}: ${error.message}`, error.arg);
     throw error;

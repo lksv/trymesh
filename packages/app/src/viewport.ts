@@ -1,6 +1,6 @@
 // 3D pohled: vykreslí popis scény přes three.js a nabízí pomůcky pro výběr (paprsek, průmět na
 // obrazovku, zásah tělesa). O dokumentu a enginu neví nic kromě tvaru sítě tělesa.
-import type { Frame, Id, Solid, Vec3 } from '@trymesh/engine';
+import type { Frame, Id, RigidTransform, Solid, Vec3 } from '@trymesh/engine';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
@@ -23,12 +23,13 @@ export interface HalfSpace {
 }
 export interface SceneModel {
   // `color`: the colour of the body's properties (D48), else the colour of every body; `opacity`
-  // below 1 draws it see-through (an auxiliary body)
-  bodies: { id: Id; solid: Solid; color?: number; opacity?: number }[];
+  // below 1 draws it see-through (an auxiliary body). `transform`: where the pose of the mechanism
+  // puts the body (D49), applied to its mesh as it is drawn and picked; none: as modelled.
+  bodies: { id: Id; solid: Solid; color?: number; opacity?: number; transform?: RigidTransform }[];
   lines: LineSet[];
   points: { positions: number[]; color: number; size: number }[]; // vždy přes tělesa
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // první smyčka obrys, další díry
-  faces: { solid: Solid; faceId: number; color: number; opacity: number }[]; // zvýrazněné stěny
+  faces: { solid: Solid; faceId: number; color: number; opacity: number; transform?: RigidTransform }[]; // zvýrazněné stěny; `transform` that of the body
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
   // The model is cut: the bodies and their highlighted faces are not drawn in this half-space,
   // and a body is not picked there. Lines and fills are drawn as given: who builds the scene cuts
@@ -38,7 +39,7 @@ export interface SceneModel {
 // The model of a picture (D43): bodies each in its colour, lines and fills, and the half-space
 // that is cut away. Nothing of a user's view is in it: no labels, points or highlighted faces.
 export interface PictureModel {
-  bodies: { solid: Solid; color: number }[];
+  bodies: { solid: Solid; color: number; transform?: RigidTransform }[]; // `transform`: the pose of the body (D49)
   lines: LineSet[];
   fills: SceneModel['fills'];
   clip?: HalfSpace;
@@ -173,8 +174,9 @@ export class Viewport implements View {
 
     // Síť tělesa se staví jednou pro každý objekt Solid; engine nezměněná tělesa vrací stejná.
     const meshes = new Map<Solid, THREE.Mesh>();
-    this.bodies = model.bodies.map(({ id, solid, color, opacity }) => {
+    this.bodies = model.bodies.map(({ id, solid, color, opacity, transform }) => {
       const mesh = this.bodyMeshes.get(solid) ?? new THREE.Mesh(triangleGeometry(solid), this.bodyMaterial);
+      placed(mesh, transform); // the pose of the body (D49): drawn and picked there
       // a body with a colour or an opacity of its own has a material of its own for this scene
       const translucent = opacity !== undefined && opacity < 1;
       mesh.material =
@@ -192,7 +194,7 @@ export class Viewport implements View {
     for (const face of model.faces) {
       const geometry = this.own(triangleGeometry(face.solid, face.faceId));
       const material = this.own(new THREE.MeshBasicMaterial({ color: face.color, transparent: true, opacity: face.opacity, side: THREE.DoubleSide, depthWrite: false, clippingPlanes: clipping }));
-      this.content.add(new THREE.Mesh(geometry, material));
+      this.content.add(placed(new THREE.Mesh(geometry, material), face.transform));
     }
     for (const fill of model.fills) {
       const mesh = fillMesh(fill, (item) => this.own(item));
@@ -341,9 +343,9 @@ export class Viewport implements View {
     try {
       const scene = new THREE.Scene();
       const clipping = clippingOf(model.clip);
-      for (const { solid, color } of model.bodies) {
+      for (const { solid, color, transform } of model.bodies) {
         const material = own(new THREE.MeshStandardMaterial({ color, ...BODY_MATERIAL, side: clipping ? THREE.DoubleSide : THREE.FrontSide, clippingPlanes: clipping }));
-        scene.add(new THREE.Mesh(own(triangleGeometry(solid)), material));
+        scene.add(placed(new THREE.Mesh(own(triangleGeometry(solid)), material), transform));
       }
       for (const fill of model.fills) {
         const mesh = fillMesh(fill, own);
@@ -372,7 +374,7 @@ export class Viewport implements View {
         scale = currentScale(this.camera.zoom, this.container.clientWidth, this.container.clientHeight, width, height);
       } else {
         // fitted to the bodies, and turned as the three vectors of the fitted camera say
-        const fitted = fittedCamera(camera.from, camera.up, model.bodies.map((body) => body.solid), width, height);
+        const fitted = fittedCamera(camera.from, camera.up, model.bodies, width, height);
         const back = new THREE.Vector3(...fitted.back);
         eye.position.set(...fitted.center).addScaledVector(back, DISTANCE);
         eye.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...fitted.right), new THREE.Vector3(...fitted.up), back));
@@ -423,6 +425,20 @@ export class Viewport implements View {
     this.controls.update();
     this.requestRender();
   }
+}
+
+// A mesh put where a rigid transform takes it (the pose of a body, D49), or as modelled. The world
+// matrix is brought up to date at once, so that a pick before the next frame hits it there.
+function placed(mesh: THREE.Mesh, transform: RigidTransform | undefined): THREE.Mesh {
+  mesh.matrixAutoUpdate = false;
+  if (!transform) mesh.matrix.identity();
+  else {
+    const [a, b, c] = transform.matrix;
+    const t = transform.translation;
+    mesh.matrix.set(a[0], a[1], a[2], t[0], b[0], b[1], b[2], t[1], c[0], c[1], c[2], t[2], 0, 0, 0, 1);
+  }
+  mesh.updateMatrixWorld(true);
+  return mesh;
 }
 
 // A filled polygon in the plane of a frame: the first loop is the outline, the others are holes.

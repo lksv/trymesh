@@ -11,13 +11,14 @@ import type { BodyResult, Command, Document, Evaluation, Id } from '../types';
 import { has } from '../util';
 import { type Dict, isObject } from '../validation';
 import { bodyProperties } from './body-properties';
+import { mechanism } from './mechanism';
 import type { SectionInfo, SectionSpec } from './spec';
 
 export type SectionName = Exclude<keyof Document, 'schemaVersion' | 'schemaSteps' | 'settings' | 'parameters' | 'checks' | 'features'>;
 export type Sections = Pick<Document, SectionName>;
 export type SectionResults = Pick<Evaluation, SectionName>;
 
-export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties };
+export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism };
 
 const NAMES = Object.keys(DOCUMENT_SECTIONS) as SectionName[];
 // An entry as code that handles any section reads it.
@@ -65,19 +66,24 @@ export function evaluateSections(doc: Document, bodies: Readonly<Record<Id, Body
     let memory = kept.get(name);
     if (!memory) kept.set(name, (memory = new Map()));
     const result = evaluated.result as Record<string, unknown>;
+    const stableOf = (key: string, value: unknown): unknown => {
+      const text = JSON.stringify(value);
+      let known = (memory as Map<string, Map<string, unknown>>).get(key);
+      if (!known) (memory as Map<string, Map<string, unknown>>).set(key, (known = new Map()));
+      const found = known.get(text) ?? value;
+      known.delete(text);
+      known.set(text, found);
+      if (known.size > RESULTS_KEPT) known.delete(known.keys().next().value as string);
+      return found;
+    };
+    const nested = specOf(name).entries ?? [];
     const stable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(result)) {
-      const text = JSON.stringify(value);
-      let known = memory.get(key);
-      if (!known) memory.set(key, (known = new Map()));
-      const found = known.get(text);
-      stable[key] = found ?? value;
-      known.delete(text);
-      known.set(text, stable[key]);
-      if (known.size > RESULTS_KEPT) known.delete(known.keys().next().value as string);
+      const entries = nested.includes(key) && isObject(value) ? Object.fromEntries(Object.entries(value).map(([inner, item]) => [inner, stableOf(`${key}\u0000${inner}`, item)])) : value;
+      stable[key] = stableOf(key, entries);
     }
     results[name] = stable;
-    if (evaluated.written !== undefined) (written ??= {})[name] = evaluated.written as Sections[typeof name];
+    if (evaluated.written !== undefined) (written ??= {})[name] = evaluated.written as never;
   }
   return { results: results as unknown as SectionResults, ...(written ? { written } : {}) };
 }

@@ -52,14 +52,13 @@ const evaluated = (doc: Document, bodies: Record<Id, number> = BODIES) =>
 describe('the section and its upgrade step', () => {
   it('is always in the document, after the timeline; an empty one is `{}`', () => {
     expect(emptyDocument().bodyProperties).toEqual({});
-    expect(Object.keys(emptyDocument()).slice(-2)).toEqual(['features', 'bodyProperties']);
+    expect(Object.keys(emptyDocument()).slice(-3)).toEqual(['features', 'bodyProperties', 'mechanism']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {
     const step = UPGRADES.find((entry) => entry.name === '3a-body-properties');
     expect(step).toBeDefined();
-    expect(UPGRADES.at(-1)).toBe(step); // the last of the list
-    expect(SCHEMA_PENDING).toBe(0);
+    expect(UPGRADES.indexOf(step as never)).toBe(3); // the fourth of the list (5a-mechanism follows)
     const older = { schemaVersion: 4, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] };
     expect(step?.run(older)).toEqual({ ...older, bodyProperties: {} });
     expect(step?.run({ ...older, bodyProperties: null })).toEqual({ ...older, bodyProperties: null });
@@ -74,12 +73,13 @@ describe('the section and its upgrade step', () => {
     const doc = apply(base(), set('motor', { mass: 280 }));
     const saved = JSON.parse(JSON.stringify(doc));
     expect(saved.schemaVersion).toBe(5);
-    expect(saved.schemaSteps).toBeUndefined();
+    expect(saved.schemaSteps).toEqual(SCHEMA_PENDING ? ['5a-mechanism'] : undefined);
     expect(validateDocument(saved)).toEqual(doc);
     // a document of the branch d36/3a before the merge (version 4 naming the step) loads the same
-    expect(validateDocument({ ...saved, schemaVersion: 4, schemaSteps: ['3a-body-properties'] })).toEqual(doc);
-    // a build without the step (master before the merge): refused by its version
-    expect(() => upgradeDocument(saved, UPGRADES.slice(0, -1), 0)).toThrow(/the schema version 5 is newer than this build reads/);
+    const { mechanism: _mechanism, ...without } = saved;
+    expect(validateDocument({ ...without, schemaVersion: 4, schemaSteps: ['3a-body-properties'] })).toEqual(doc);
+    // a build without the step (master before the merge of 3a): refused by its version
+    expect(() => upgradeDocument({ ...without, schemaVersion: 5, schemaSteps: undefined }, UPGRADES.slice(0, 3), 0)).toThrow(/the schema version 5 is newer than this build reads/);
   });
 
   it('an entry is strict: a field this build does not know is refused, not dropped', () => {

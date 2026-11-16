@@ -115,6 +115,7 @@ export function createEngine(deps: Deps): Engine {
     const refused = (code: 'invalidArguments' | 'notAvailable', message: string, arg: string): QueryOutcome<never> => ({ ok: false, error: { code, message, arg: [arg] } });
     let asked: Evaluation;
     if (typeof options !== 'object' || options === null) return refused('invalidArguments', `${name}: the options are an object with \`at\` or \`state\``, 'options');
+    if (options.geometry !== undefined && options.geometry !== 'modelled') return refused('invalidArguments', `${name}: \`geometry\` is 'modelled' or not given`, 'geometry');
     if (options.state !== undefined) {
       if (options.at !== undefined) return refused('invalidArguments', `${name}: \`at\` or \`state\` is given, not both`, 'state');
       if (typeof options.state !== 'object' || options.state === null || !internals.has(options.state.evaluation)) return refused('invalidArguments', `${name}: \`state\` is not a state this engine handed out`, 'state');
@@ -128,7 +129,7 @@ export function createEngine(deps: Deps): Engine {
 
   // The methods that were queries before the catalog keep their own checks and their own texts,
   // and throw; then they run the entry of the catalog that `query` runs, over the same context.
-  const contextOf = (name: string, of: EngineState) => queryContext(name, of.evaluation, internals.get(of.evaluation) as Internals, queryDeps);
+  const contextOf = (name: string, of: EngineState, geometry?: 'modelled') => queryContext(name, of.evaluation, internals.get(of.evaluation) as Internals, queryDeps, geometry);
   const sketchOf = (id: Id, what: string): void => {
     if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: skica "${id}" neexistuje`);
   };
@@ -228,9 +229,10 @@ export function createEngine(deps: Deps): Engine {
       if (bodies !== undefined && (!Array.isArray(bodies) || bodies.some((id) => typeof id !== 'string'))) throw new Error('exportMesh: bodies is a list of body IDs');
       for (const id of bodies ?? []) if (!has(all, id)) throw new Error(`exportMesh: the body "${id}" does not exist`);
       // the entry of the catalog that `export` runs: one file with the chosen bodies
-      return EXPORT_FORMATS.stl.run(contextOf('export:stl', stateAt()), bodies === undefined ? {} : { bodies }).files[0].bytes;
+      return EXPORT_FORMATS.stl.run(contextOf('export:stl', stateAt(), 'modelled'), bodies === undefined ? {} : { bodies }).files[0].bytes;
     },
 
+    // In the pose of the document; a body whose pose is not known throws its `QueryFailure`.
     interference(options = {}) {
       const asked = stateAt(options.at);
       checkInterferenceOptions(asked.evaluation.bodies, options.bodies, options.threshold);
@@ -239,7 +241,7 @@ export function createEngine(deps: Deps): Engine {
 
     query(name, args, options = {}) {
       const asked = askedState(typeof name === 'string' ? name : 'query', options);
-      return 'ok' in asked ? asked : (runQuery(name, args, asked.evaluation, asked.internals, queryDeps) as QueryOutcome<never>);
+      return 'ok' in asked ? asked : (runQuery(name, args, asked.evaluation, asked.internals, queryDeps, options.geometry) as QueryOutcome<never>);
     },
 
     export(format, options, queryOptions = {}) {

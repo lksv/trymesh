@@ -12,7 +12,9 @@ import { closest, coordinatePrecision, meshAccuracy } from '../mesh-distance';
 import type { BodyResult, FaceName, Id, Solid, Truncated, Vec3 } from '../types';
 import type { ArgSpecs } from './args';
 import { interference } from './interference';
+import { framed } from './pose';
 import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
+import { transformPoint } from '../solid';
 
 // - `bodies`: only pairs among these; without it every pair of bodies of the state. One pair is
 //   asked by naming its two bodies.
@@ -110,7 +112,10 @@ interface Remembered {
 // a guard.
 type PairAnswer = Gap | 'apart' | { refused: string };
 function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer {
-  const [A, B] = [context.bodies[a], context.bodies[b]]; // from the context: the same code answers for a pose
+  // from the context, in the frame of the first body: the pair is measured where the two stand to
+  // each other, and the two points are moved back into the pose
+  const pair = framed(context.bodies, a, b);
+  const [A, B] = [pair.a, pair.b];
   const precision = coordinatePrecision(A, B);
   // A distance within the precision of the coordinates is zero, and zero is closer than any
   // search distance: the pair is looked for at least that far.
@@ -141,7 +146,8 @@ function gapOf(context: QueryContext, a: Id, b: Id, within: number): PairAnswer 
   const names = context.state.evaluation.faceNames;
   // remembered the other way round when the mesh of `a` was the second one then
   const [onA, onB, faceA, faceB] = first === A.solid ? [measured.onFirst, measured.onSecond, measured.faceFirst, measured.faceSecond] : [measured.onSecond, measured.onFirst, measured.faceSecond, measured.faceFirst];
-  return { a, b, distance: measured.distance, between: { a: [...onA], b: [...onB], faceA: names[faceA], faceB: names[faceB] }, accuracy: meshAccuracy(context, [a, b]) };
+  const back = (point: Vec3): Vec3 => (pair.back ? transformPoint(pair.back, point) : [...point]);
+  return { a, b, distance: measured.distance, between: { a: back(onA), b: back(onB), faceA: names[faceA], faceB: names[faceB] }, accuracy: meshAccuracy({ bodies: { [a]: A, [b]: B }, state: context.state }, [a, b]) };
 }
 
 export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {

@@ -2,7 +2,9 @@
 // an arm between two joints, against the real adapters. Package 3a (D48) writes its part: "bodies
 // with materials and a motor as a reference part with the mass of its data sheet", and what the
 // mass query, the print exports, the print query and the IDs a section names do with them. The
-// part of 5a (the mechanism and the posed queries) comes with that package.
+// part of 5a (D49): "two revolute joints; the pose stepped through the range of one joint with the
+// collisions asked at each step; the mass of what hangs beyond the first joint", with what is posed,
+// what stays as modelled and a joint in error (docs/d36/5a-mechanism/calls.ts).
 //
 // The model, every shape a cylinder along Z from a circle of its own sketch on XY (mm):
 // - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder (0, 0), up to z = 8.
@@ -12,7 +14,9 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Id, type MassProperties, SCHEMA_PENDING, UPGRADES, emptySketch, takenOver, namedBySections, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Id, type MassProperties, QUERIES, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, emptySketch, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { newEngine, run } from './kit';
 
@@ -257,11 +261,12 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
   });
 
   it('e. save and load: version 5 with the step of the section, and a field this build does not know is refused', () => {
-    expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-1)?.name).toBe('3a-body-properties');
+    // the branch d36/5a: its step is pending after the one of 3a (the merge makes it version 6)
+    expect(SCHEMA_PENDING).toBe(1);
+    expect(UPGRADES.map((step) => step.name).slice(-2)).toEqual(['3a-body-properties', '5a-mechanism']);
     const saved = JSON.parse(engine.save());
     expect(saved.schemaVersion).toBe(5);
-    expect(saved.schemaSteps).toBeUndefined();
+    expect(saved.schemaSteps).toEqual(['5a-mechanism']);
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
     expect(loaded.ok && loaded.state.document.bodyProperties).toEqual(document.bodyProperties);
@@ -272,5 +277,346 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
 
   it('f. the description for the AI: the section, its commands and its numeric fields', () => {
     expect(SECTION_INFO.bodyProperties.fields.map((field) => `${field.owner}: ${field.path} (${field.spec.unit})`)).toEqual(['body: density (g/cm3)', 'body: mass (g)']);
+  });
+});
+
+// ---------------------------------------------------------------- the part of 5a (D49)
+
+const DEG = Math.PI / 180;
+const SHOULDER = { kind: 'sketchPoint', sketch: 'layout', point: 'shoulder' } as const;
+const ELBOW = { kind: 'sketchPoint', sketch: 'layout', point: 'elbow' } as const;
+const elbowJoint = (lower: number | string, upper: number | string, value: number | string = 0): Command => ({ type: 'setJoint', id: 'elbow', joint: { type: 'revolute', parent: 'upper', child: 'forearm', axis: ELBOW, lower, upper, value } });
+const mechanismOfTheArm = (): Command => ({
+  type: 'batch',
+  commands: [
+    { type: 'setLink', id: 'base', bodies: ['base'] },
+    { type: 'setLink', id: 'upper', name: 'Upper arm', bodies: LINK },
+    { type: 'setLink', id: 'forearm', bodies: ['forearm'] },
+    { type: 'setJoint', id: 'shoulder', joint: { type: 'revolute', parent: 'base', child: 'upper', axis: SHOULDER, lower: 'deg(-90)', upper: 'deg(90)', value: 0 } },
+    elbowJoint('deg(-135)', 'deg(135)'),
+  ],
+});
+const pose = (values: Record<Id, number | string>): Command => ({ type: 'setPose', values });
+const names = (list: { a: Id; b: Id }[]): string[] => list.map((pair) => `${pair.a}|${pair.b}`);
+const unwrap = <T>(outcome: { ok: true; result: T } | { ok: false; error: { code: string; message: string } }): T => {
+  if (!outcome.ok) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+  return outcome.result;
+};
+const previewed = (engine: Engine, command: Command, at?: Id): EngineState => {
+  const result = engine.preview(command, at);
+  if (!result.ok) throw new Error(result.error.message);
+  return result.state;
+};
+const crossOf = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dotOf = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+describe('scenario 13, the part of 5a: two revolute joints, the pose stepped through the range of one joint with the collisions at each step, the mass beyond the first joint', () => {
+  let engine: Engine;
+  let booleans = 0; // calls of the kernel for a boolean, counted over the real kernel
+  beforeAll(async () => {
+    const kernel = await createManifoldKernel();
+    const counted = new Proxy(kernel, { get: (target, property, receiver) => (property === 'boolean' ? (...args: Parameters<typeof kernel.boolean>) => (booleans++, target.boolean(...args)) : Reflect.get(target, property, receiver)) });
+    engine = createEngine({ solver: await createPlanegcsSolver(), kernel: counted });
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'base', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'reference', mass: 0.9 } },
+      ],
+    });
+  });
+
+  it('a. three links and two joints in one batch and one undo step; the limits by an expression in degrees, the fields hold radians', () => {
+    const before = engine.getState().evaluation;
+    const state = run(engine, mechanismOfTheArm());
+    const { mechanism } = state.evaluation;
+    expect(mechanism.roots).toEqual(['base']);
+    expect(mechanism.unassigned).toEqual([]);
+    expect(Object.values(mechanism.joints).map((joint) => joint.status)).toEqual(['ok', 'ok']);
+    expect(mechanism.joints.elbow.axis).toEqual({ origin: [120, 0, 0], direction: [0, 0, 1] });
+    const elbow = state.document.mechanism.joints.elbow;
+    expect(elbow.type === 'revolute' && elbow.expressions).toEqual({ lower: 'deg(-135)', upper: 'deg(135)' });
+    near(elbow.type === 'revolute' ? elbow.lower : undefined, -135 * DEG, 12);
+    // the mechanism moves no body of the evaluation and recomputes no geometry
+    for (const id of Object.keys(before.bodies)) expect(state.evaluation.bodies[id]).toBe(before.bodies[id]);
+    engine.undo();
+    expect(engine.getState().document.mechanism).toEqual({ links: {}, joints: {} });
+    engine.redo();
+    expect(Object.keys(engine.getState().document.mechanism.joints)).toEqual(['shoulder', 'elbow']);
+  });
+
+  it('a. a link built one command at a time is a root; a body goes from one link to another in one batch; a forgotten copy is named', () => {
+    const halfBuilt = previewed(engine, { type: 'setLink', id: 'gripper', bodies: [] }).evaluation.mechanism;
+    expect([halfBuilt.roots, halfBuilt.unassigned]).toEqual([['base', 'gripper'], []]);
+    const moved = previewed(engine, { type: 'batch', commands: [{ type: 'setLink', id: 'upper', bodies: LINK.filter((body) => body !== 'motor') }, { type: 'setLink', id: 'base', bodies: ['base', 'motor'] }] });
+    expect(moved.document.mechanism.links.base.bodies).toEqual(['base', 'motor']);
+    expect(previewed(engine, { type: 'setLink', id: 'upper', bodies: LINK.slice(0, -1) }).evaluation.mechanism.unassigned).toEqual(['screws/3']);
+  });
+
+  it('a. what the commands refuse', () => {
+    const messages = (
+      [
+        { type: 'setLink', id: 'forearm', bodies: ['forearm', 'motor'] },
+        { type: 'setLink', id: 'tool', bodies: ['nope'] },
+        { type: 'removeLink', id: 'upper' },
+        { type: 'setJoint', id: 'loop', joint: { type: 'fixed', parent: 'forearm', child: 'base' } },
+        { type: 'setJoint', id: 'second', joint: { type: 'fixed', parent: 'base', child: 'forearm' } },
+        { type: 'setJoint', id: 'wrist', joint: { type: 'revolute', parent: 'forearm', child: 'nope', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0 } },
+        { type: 'setJoint', id: 'shoulder', joint: { type: 'revolute', parent: 'base', child: 'upper', axis: { kind: 'base', axis: 'Z' }, lower: -90, upper: 90, value: 0 } },
+        { type: 'setJoint', id: 'shoulder', joint: { type: 'revolute', parent: 'base', child: 'upper', axis: { kind: 'base', axis: 'Z' }, lower: 1, upper: -1, value: 0 } },
+        pose({ elbow: 3 }),
+        pose({ nope: 0 }),
+        { type: 'setJoint', id: 'wrist', joint: { type: 'revolute', parent: 'forearm', child: 'base', axis: { kind: 'sketchPoint', sketch: 'layout', point: 'wrist' }, lower: -1, upper: 1, value: 0 } },
+      ] as Command[]
+    ).map((command) => refusal(engine, command));
+    expect(messages).toEqual([
+      expect.stringContaining('the body "motor" is in the link "upper"'),
+      expect.stringContaining('no feature of the document creates the body "nope"'),
+      expect.stringContaining('the link "upper" is named by the joints "shoulder", "elbow"'),
+      expect.stringContaining('would hang on itself'),
+      expect.stringContaining('the link "forearm" is the child of the joints "elbow" and "second"'),
+      expect.stringContaining('"nope", which is not a link of the mechanism'),
+      expect.stringMatching(/setJoint\.joint\.lower: the value -90 is not in the interval/),
+      expect.stringContaining('the lower limit 1 rad is above the upper limit -1 rad'),
+      expect.stringContaining('the value 3 rad is outside the limits of the joint'),
+      expect.stringContaining('the mechanism has no joint "nope"; its joints are shoulder, elbow'),
+      expect.stringContaining('the sketch "layout" has no entity "wrist"'),
+    ]);
+    expect(engine.getState().document.mechanism.joints.shoulder).toMatchObject({ lower: -90 * DEG });
+  });
+
+  it('b. the elbow stepped through its range: the collisions are asked over each previewed step and nothing is written', () => {
+    const elbow = engine.getState().evaluation.mechanism.joints.elbow;
+    const [lower, upper] = [elbow.lower as number, elbow.upper as number];
+    const steps = 11; // -135° to 135° by 27°
+    const undoable = engine.getState().canUndo;
+    const sweep = Array.from({ length: steps }, (_, i) => {
+      const value = lower + ((upper - lower) * i) / (steps - 1); // the last one may round past the limit: within the tolerance it is the limit
+      const report = unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ elbow: value })) }));
+      return { degrees: Math.round(value / DEG), pairs: names(report.pairs), fits: names(report.fits), failed: names(report.failed) };
+    });
+    for (const step of sweep) {
+      // the forearm runs into the screws and the motor beyond about a quarter turn (90.7° and 91.2°), and into nothing below it
+      if (Math.abs(step.degrees) <= 81) expect(step.pairs, `${step.degrees}°`).toEqual([]);
+      else expect(step.pairs.filter((pair) => !/^forearm\|(motor|screw)/.test(pair)), `${step.degrees}°`).toEqual([]);
+      if (Math.abs(step.degrees) >= 108) expect(step.pairs, `${step.degrees}°`).toContain('forearm|motor');
+      // the pin of the elbow is a fit where it is turned against its hole, and never a collision; a step the
+      // kernel refused for it has nothing else in `failed`; the pin of the shoulder is in no list
+      expect(step.fits.filter((pair) => pair !== 'forearm|upper'), `${step.degrees}°`).toEqual([]);
+      expect(step.failed.filter((pair) => pair !== 'forearm|upper'), `${step.degrees}°`).toEqual([]);
+      expect([...step.pairs, ...step.fits, ...step.failed]).not.toContain('base|upper');
+    }
+    // As measured through the real kernel: no step of this sweep is refused for the pin (one pose in
+    // thirty is, design.md, "Verified before the implementation"), so every step is pinned.
+    const screws = (...copies: number[]) => ['forearm|motor', 'forearm|screw', ...copies.map((copy) => `forearm|screws/${copy}`)];
+    const expected: Record<number, string[]> = { [-135]: screws(1, 2, 3), [-108]: screws(3), 108: screws(1), 135: screws(1, 2, 3) };
+    expect(sweep).toEqual(sweep.map((step) => ({ degrees: step.degrees, pairs: expected[step.degrees] ?? [], fits: step.degrees === 0 ? [] : ['forearm|upper'], failed: [] })));
+    expect(sweep.map((step) => step.degrees)).toEqual([-135, -108, -81, -54, -27, 0, 27, 54, 81, 108, 135]);
+    // as modelled no step has a pair; nothing was written
+    expect(unwrap(engine.query('interference', {})).pairs).toEqual([]);
+    expect(engine.getState().canUndo).toBe(undoable);
+    expect(engine.getState().document.mechanism.joints.elbow).toMatchObject({ value: 0 });
+  });
+
+  it('b. a step computes only the pairs across the joint that moved; the same step asked again computes nothing', () => {
+    const state = previewed(engine, pose({ elbow: 0.37 }));
+    booleans = 0;
+    unwrap(engine.query('interference', {}, { state }));
+    // the forearm against the other seven bodies at most (boxes that do not meet cost nothing)
+    expect(booleans).toBeGreaterThan(0);
+    expect(booleans).toBeLessThanOrEqual(7);
+    booleans = 0;
+    unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ elbow: 0.37 })) }));
+    expect(booleans).toBe(0);
+    // the shoulder turned: the pairs within the arm keep their relation, only those against the base are new
+    unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ shoulder: 0.2, elbow: 0.37 })) }));
+    booleans = 0;
+    unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ shoulder: 0.25, elbow: 0.37 })) }));
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'forearm', 'motor'] }, { state: previewed(engine, pose({ shoulder: 0.3, elbow: 0.37 })) }));
+    expect(report.checked).toBe(3);
+    expect(booleans).toBeLessThanOrEqual(7); // the base against the seven bodies of the arm
+  });
+
+  it('b. the smallest gap in a pose: the forearm comes near the motor with the elbow at 1.2, and the points are in the pose', () => {
+    const args = { bodies: ['forearm', 'motor'], within: 30 };
+    const modelled = unwrap(engine.query('gap', args));
+    expect([modelled.pairs, modelled.apart]).toEqual([[], 1]);
+    const bent = unwrap(engine.query('gap', args, { state: previewed(engine, pose({ elbow: 1.2 })) }));
+    const pair = bent.pairs[0];
+    // centre to centre less both radii: the forearm turned about (120, 0), the motor at (60, 0)
+    const centre = [120 + 60 * Math.cos(1.2), 60 * Math.sin(1.2)];
+    expect(pair.distance).toBeCloseTo(Math.hypot(centre[0] - 60, centre[1]) - 70 - 14, 1);
+    if (pair.contact !== undefined) throw new Error('expected a distance');
+    // the point on the forearm lies on its rim in the pose, not where it is modelled
+    expect(Math.hypot(pair.between.a[0] - centre[0], pair.between.a[1] - centre[1])).toBeCloseTo(70, 1);
+    expect(Math.hypot(pair.between.b[0] - 60, pair.between.b[1])).toBeCloseTo(14, 1);
+  });
+
+  it('b. a written pose is one command and one undo step; undo brings the arm back', () => {
+    const state = run(engine, pose({ shoulder: 0.3, elbow: 0.8 }));
+    expect(state.evaluation.mechanism.joints.elbow.value).toBe(0.8);
+    expect(state.evaluation.mechanism.links.forearm.transform).not.toEqual(state.evaluation.mechanism.links.base.transform);
+    engine.undo();
+    expect(engine.getState().evaluation.mechanism.joints.elbow.value).toBe(0);
+  });
+
+  it('b. a coupled motion: both values follow one parameter and the sweep steps the parameter', () => {
+    run(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'q', expr: '0' }, pose({ shoulder: 'q', elbow: '-2 * q' })] });
+    for (const q of [0.2, 0.4]) {
+      const state = previewed(engine, { type: 'setParameter', name: 'q', expr: String(q) });
+      expect(state.evaluation.mechanism.joints.elbow.value).toBeCloseTo(-2 * q, 12);
+      expect(unwrap(engine.query('interference', {}, { state })).pairs).toEqual([]);
+    }
+    // the values in the document are written back by the recompute, as every numeric field is
+    expect(run(engine, { type: 'setParameter', name: 'q', expr: '0.1' }).document.mechanism.joints.elbow).toMatchObject({ value: -0.2, expressions: { value: '-2 * q' } });
+    // a number takes a joint out of the coupling
+    const state = run(engine, pose({ shoulder: 0, elbow: 0 }));
+    expect(state.document.mechanism.joints.elbow.expressions).toEqual({ lower: 'deg(-135)', upper: 'deg(135)' });
+  });
+
+  it('b. a limit that follows a parameter, widened and used in one batch', () => {
+    run(engine, { type: 'setParameter', name: 'reach', expr: '2.2' });
+    run(engine, elbowJoint('-reach', 'reach'));
+    expect(engine.execute({ type: 'batch', commands: [{ type: 'setParameter', name: 'reach', expr: '2.6' }, pose({ elbow: 2.5 })] }).ok).toBe(true);
+    // a value a hair beyond the limit is the limit
+    const state = run(engine, pose({ elbow: 2.6 + 5e-5 }));
+    expect(state.document.mechanism.joints.elbow).toMatchObject({ value: 2.6 });
+    run(engine, pose({ elbow: 0 }), elbowJoint('deg(-135)', 'deg(135)'));
+  });
+
+  it('c. the mass of what hangs beyond the shoulder, in a pose, and the torque the shoulder holds against gravity', () => {
+    const beyond = (elbow: number, gravity = [0, -9.81, 0]) => {
+      const options = { state: previewed(engine, pose({ elbow })) };
+      const mechanism = unwrap(engine.query('mechanism', { beyond: 'shoulder' }, options));
+      const carried = mechanism.beyond;
+      if (!carried || carried.missing.length) throw new Error('expected what the shoulder carries, all of it');
+      const axis = mechanism.joints.shoulder.axisInPose as { origin: number[]; direction: number[] };
+      const load = massOf(engine, { bodies: carried.bodies }, options);
+      const r = load.centerOfMass.map((x, i) => x - axis.origin[i]);
+      return { carried, load, torque: dotOf(axis.direction, crossOf(r, gravity)) * load.mass * 1e-6 };
+    };
+    const stretched = beyond(0);
+    expect(stretched.carried).toEqual({ joint: 'shoulder', links: ['upper', 'forearm'], bodies: [...LINK, 'forearm'], missing: [] });
+    const folded = beyond(2.3);
+    // the mass does not depend on the pose, its centre does: folded, the lever is shorter
+    near(folded.load.mass, stretched.load.mass, 5); // the moved mesh is rounded to single precision
+    expect(folded.load.centerOfMass[0]).toBeLessThan(stretched.load.centerOfMass[0]);
+    expect(Math.abs(folded.torque)).toBeLessThan(Math.abs(stretched.torque));
+    expect(stretched.torque).toBeLessThan(0);
+    // gravity along the axis: no torque, whatever the lever
+    expect(beyond(1.2, [0, 0, -9.81]).torque).toBeCloseTo(0, 12);
+  });
+
+  it('d. what is posed and what stays as modelled: the bodies of the evaluation, an export and the print query stay', () => {
+    const atZero = engine.getState();
+    const file = unwrap(engine.export('stl', { bodies: ['forearm'] })).files[0].bytes;
+    const printed = unwrap(engine.query('print', { bodies: ['forearm'], orientations: [{ by: { up: [0, 0, 1] } }] }));
+    const bent = run(engine, pose({ elbow: 1 }));
+    expect(bent.evaluation.bodies.forearm).toBe(atZero.evaluation.bodies.forearm);
+    expect(unwrap(engine.export('stl', { bodies: ['forearm'] })).files[0].bytes).toEqual(file);
+    expect(engine.exportMesh('stl', ['forearm'])).toEqual(file);
+    expect(unwrap(engine.query('print', { bodies: ['forearm'], orientations: [{ by: { up: [0, 0, 1] } }] }))).toEqual(printed);
+    // a query reads the posed body: its description has the bounds in the pose
+    const posed = unwrap(engine.query('body', { body: 'forearm' }));
+    expect(posed.bounds.max[1]).toBeGreaterThan(atZero.evaluation.bodies.forearm.bounds.max[1] + 50);
+    expect(unwrap(engine.query('body', { body: 'forearm' }, { geometry: 'modelled' })).bounds).toEqual(atZero.evaluation.bodies.forearm.bounds);
+    // what a tool says beside its answer
+    expect(poseNote(bent.evaluation.mechanism)).toEqual({ pose: { elbow: 1 } });
+    expect(poseNote(atZero.evaluation.mechanism)).toBeUndefined();
+    expect(QUERIES.print.geometry).toBe('modelled');
+    engine.undo();
+  });
+
+  it('d. a state after a feature is posed like any other: as modelled where the pose is zero, failing loudly before the axis of a bent joint', () => {
+    // the pose zero: at the point before the sketch of the axes the joints are in error and block nothing
+    const early = engine.getState('elbowPin').evaluation.mechanism;
+    expect([early.joints.elbow.error?.code, early.links.forearm.blockedBy]).toEqual(['brokenReference', undefined]);
+    expect(unwrap(engine.query('interference', {}, { at: 'elbowPin' }))).toEqual(unwrap(engine.query('interference', {}, { at: 'elbowPin', geometry: 'modelled' })));
+    // bent: after the sketch of the axes it is posed like the finished model, with `at` and `after` together
+    const atLayout = previewed(engine, pose({ elbow: 1.2 }), 'layout');
+    expect(atLayout.evaluation.mechanism.links.forearm.blockedBy).toBeUndefined();
+    expect(unwrap(engine.query('interference', {}, { state: atLayout })).fits).toEqual(expect.arrayContaining([expect.objectContaining({ a: 'forearm', b: 'upper' })]));
+    run(engine, pose({ elbow: 1.2 }));
+    const all = engine.query('interference', {}, { at: 'elbowPin' });
+    expect(all).toMatchObject({ ok: false, error: { code: 'failed', message: expect.stringContaining('the joint "elbow" has no motion') } });
+    expect(!all.ok && all.error.message).toContain('"setPose", "values": { "elbow": 0 }');
+    // a query about bodies that do not move still answers
+    expect(unwrap(engine.query('body', { body: 'upper' }, { at: 'elbowPin' })).bounds.min).toEqual(engine.getState().evaluation.bodies.upper.bounds.min);
+    // the ways to the blocked body that write nothing: the joint previewed at zero, or the model as modelled
+    const modelled = engine.getState().evaluation.bodies.forearm.bounds;
+    expect(unwrap(engine.query('body', { body: 'forearm' }, { state: previewed(engine, pose({ elbow: 0 }), 'elbowPin') })).bounds).toEqual(modelled);
+    expect(unwrap(engine.query('body', { body: 'forearm' }, { at: 'elbowPin', geometry: 'modelled' })).bounds).toEqual(modelled);
+    engine.undo();
+  });
+
+  it('e. a joint in error: an axis broken at zero blocks nothing, bent it blocks what hangs on it', () => {
+    let state = run(engine, { type: 'setSuppressed', id: 'layout', suppressed: true });
+    expect(state.evaluation.mechanism.joints.elbow).toMatchObject({ status: 'error', error: { code: 'brokenReference' } });
+    expect(state.evaluation.mechanism.links.forearm.blockedBy).toBeUndefined();
+    expect(engine.query('interference', {}).ok).toBe(true);
+    engine.undo();
+    run(engine, pose({ elbow: 1 }));
+    state = run(engine, { type: 'setSuppressed', id: 'layout', suppressed: true });
+    expect(state.evaluation.mechanism.links.forearm.blockedBy).toBe('elbow');
+    expect(engine.query('interference', { bodies: ['base', 'forearm'] })).toMatchObject({ ok: false, error: { code: 'failed' } });
+    expect(engine.query('body', { body: 'base' }).ok).toBe(true);
+    expect(() => engine.interference({ bodies: ['base', 'forearm'] })).toThrow(/the joint "elbow" has no motion/);
+    expect(engine.query('interference', { bodies: ['base', 'forearm'] }, { geometry: 'modelled' }).ok).toBe(true);
+    engine.undo();
+    engine.undo();
+  });
+
+  it('e. a parameter that takes a value out of its limits: the joint is in error and the field keeps its last valid number', () => {
+    run(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'q', expr: '0.5' }, pose({ elbow: 'q' })] });
+    const state = run(engine, { type: 'setParameter', name: 'q', expr: '4' });
+    expect(state.evaluation.mechanism.joints.elbow.error).toMatchObject({ code: 'jointOutOfLimits' });
+    expect(state.document.mechanism.joints.elbow).toMatchObject({ value: 0.5, expressions: { value: 'q' } });
+    expect(state.evaluation.mechanism.links.forearm.blockedBy).toBe('elbow');
+    engine.undo();
+    engine.undo();
+  });
+
+  it('e. a body the link lists and the model no longer has: the link poses the others and says which is missing', () => {
+    const state = run(engine, { type: 'setSuppressed', id: 'motor', suppressed: true });
+    expect(state.evaluation.mechanism.links.upper.missing).toEqual(['motor']);
+    expect(carriedBy(state.document.mechanism, state.evaluation.mechanism, 'shoulder').missing).toEqual(['motor']);
+    engine.undo();
+  });
+
+  it('f. save and load: the step is pending on the branch, a field this build does not know is refused, a removed axis loads', () => {
+    expect(SCHEMA_PENDING).toBe(1);
+    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    const saved = JSON.parse(engine.save());
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([5, ['5a-mechanism']]);
+    const elbow = saved.mechanism.joints.elbow;
+    expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, effort: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('effort') } });
+    // a document of master with 3a (version 5, no names) gets the empty mechanism
+    const { mechanism: _mechanism, schemaSteps: _steps, ...older } = saved;
+    const loaded = engine.load(JSON.stringify(older));
+    expect(loaded.ok && loaded.state.document.mechanism).toEqual({ links: {}, joints: {} });
+    // the sketch of the axes removed: the reference is checked by a command that sets it, not by a load
+    engine.load(JSON.stringify(saved));
+    run(engine, { type: 'removeFeature', id: 'layout' });
+    const again = engine.load(engine.save());
+    expect(again.ok && again.state.evaluation.mechanism.joints.elbow.error?.code).toBe('brokenReference');
+    expect(engine.load(JSON.stringify(saved)).ok).toBe(true);
+    // the IDs the section names: the bodies of the links, the sketch and the points of the axes
+    expect(namedBySections(engine.getState().document)).toEqual(expect.arrayContaining(['forearm', 'screws/3', 'screws', 'layout', 'shoulder', 'elbow']));
+  });
+
+  it('f. the description for the AI: the numeric fields of a joint by its kind', () => {
+    expect(SECTION_INFO.mechanism.fields.map((field) => `${field.owner}: ${field.path} (${field.spec.unit}, when ${field.when?.path} is ${field.when?.equals})`)).toEqual([
+      'joint: lower (rad, when type is revolute)',
+      'joint: upper (rad, when type is revolute)',
+      'joint: value (rad, when type is revolute)',
+      'joint: value (rad, when type is continuous)',
+      'joint: lower (mm, when type is prismatic)',
+      'joint: upper (mm, when type is prismatic)',
+      'joint: value (mm, when type is prismatic)',
+    ]);
   });
 });

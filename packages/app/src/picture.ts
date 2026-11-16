@@ -5,6 +5,7 @@
 import type { EngineState, Id, SectionResult } from '@trymesh/engine';
 import { type ImageRequest, type RenderedImage, type ViewCapability, cutOf } from '@trymesh/mcp/view-image';
 import { COLOR, keptSegments, loopSegments } from './draw';
+import { type Pose, placedCorners, placedSegments, poseOf } from './pose';
 import type { PictureModel, View } from './viewport';
 
 // The colours of bodies, in the order of the bodies of the state; after the last the first
@@ -31,26 +32,39 @@ const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 // - A body keeps its colour whatever else is drawn: the colour goes by its place in the state.
 // - A body the cut leaves nothing of (its box lies in the half-space that is cut away) is not
 //   drawn and is listed in `cutAway`, so that an answer does not name a colour nobody can see.
-export function pictureModel(request: ImageRequest): { model: PictureModel; bodies: RenderedImage['bodies']; cutAway: Id[] } {
+// - A body is drawn where `pose` puts it (D49), with its edges and its box: by default the pose of
+//   the mechanism of the state, as the view draws it in the model mode. The cut of a section is in
+//   the pose already (the query answers there).
+export function pictureModel(request: ImageRequest, pose: Pose = poseOf(request.state.evaluation.mechanism)): { model: PictureModel; bodies: RenderedImage['bodies']; cutAway: Id[] } {
   const all = Object.keys(request.state.evaluation.bodies);
   const asked = request.bodies ? all.filter((id) => request.bodies?.includes(id)) : all;
   const colorOf = (id: Id): { color: number; name: string } => PALETTE[Math.max(0, all.indexOf(id)) % PALETTE.length];
   const clip = request.cut ? { origin: request.cut.frame.origin, normal: request.cut.frame.normal } : undefined;
-  // the lowest corner of the box of a body above the plane of the cut, along its normal
+  // the lowest corner of the box of a body above the plane of the cut, along its normal (the
+  // corners of the box as modelled, moved to the pose)
   const gone = (id: Id): boolean => {
     if (!clip) return false;
-    const { min, max } = request.state.evaluation.bodies[id].bounds;
-    const lowest = [0, 1, 2].reduce((sum, axis) => sum + clip.normal[axis] * ((clip.normal[axis] > 0 ? min[axis] : max[axis]) - clip.origin[axis]), 0);
+    const corners = placedCorners(request.state.evaluation.bodies[id].bounds, pose(id).transform);
+    const lowest = Math.min(...corners.map((corner) => [0, 1, 2].reduce((sum, axis) => sum + clip.normal[axis] * (corner[axis] - clip.origin[axis]), 0)));
     return lowest >= 0;
   };
   const cutAway = asked.filter(gone);
   const drawn = asked.filter((id) => !cutAway.includes(id));
   const edges: number[] = [];
-  for (const id of drawn) for (const edge of request.state.evaluation.bodies[id].edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) edges.push(edge.segments[i]);
+  for (const id of drawn) {
+    for (const edge of request.state.evaluation.bodies[id].edges) {
+      if (edge.kind === 'coplanar') continue;
+      const segments = placedSegments(edge.segments, pose(id).transform);
+      for (let i = 0; i < segments.length; i++) edges.push(segments[i]);
+    }
+  }
   const regions = request.cut?.regions ?? [];
   const frame = request.cut?.frame;
   const model: PictureModel = {
-    bodies: drawn.map((id) => ({ solid: request.state.evaluation.bodies[id].solid, color: colorOf(id).color })),
+    bodies: drawn.map((id) => {
+      const { transform } = pose(id);
+      return { solid: request.state.evaluation.bodies[id].solid, color: colorOf(id).color, ...(transform ? { transform } : {}) };
+    }),
     lines: [
       { segments: keptSegments(edges, clip), color: COLOR.edge, width: 1.5 },
       ...(frame ? [{ segments: regions.flatMap((region) => region.loops.flatMap((loop) => loopSegments(frame, loop))), color: COLOR.edge, width: 1.5, overFills: true }] : []),
@@ -62,13 +76,16 @@ export function pictureModel(request: ImageRequest): { model: PictureModel; bodi
   return { model, bodies: drawn.map((id) => ({ body: id, color: hex(colorOf(id).color), colorName: colorOf(id).name, ...(cut.has(id) ? { cutColor: hex(shaded(colorOf(id).color)) } : {}) })), cutAway };
 }
 
-export const viewCapability = (view: View): ViewCapability => ({
-  async image(request) {
-    const { model, bodies, cutAway } = pictureModel(request);
-    const { base64, scale } = await view.image(model, request.camera, request.width, request.height);
-    return { base64, width: request.width, height: request.height, scale, bodies, cutAway };
-  },
-});
+// A picture drawn by a view. `pose`: where the bodies go, by default the pose of the mechanism of
+// the state (the operation `view_image` draws the pose the document holds); the button of the app
+// draws them where its view does.
+export async function drawPicture(view: View, request: ImageRequest, pose?: Pose): Promise<RenderedImage> {
+  const { model, bodies, cutAway } = pictureModel(request, pose);
+  const { base64, scale } = await view.image(model, request.camera, request.width, request.height);
+  return { base64, width: request.width, height: request.height, scale, bodies, cutAway };
+}
+
+export const viewCapability = (view: View): ViewCapability => ({ image: (request) => drawPicture(view, request) });
 
 // The size of a picture saved by the button of the app.
 export const SAVED = { width: 1600, height: 1200 };

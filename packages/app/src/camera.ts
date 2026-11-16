@@ -2,7 +2,8 @@
 // what is drawn, the scale of a picture from the user's camera, and the rows of pixels read back
 // from a render target. `viewport.ts` draws with them; they are plain numbers so that a test can
 // check them.
-import type { Solid, Vec3 } from '@trymesh/engine';
+import type { RigidTransform, Solid, Vec3 } from '@trymesh/engine';
+import { placePoint } from './pose';
 
 const MARGIN = 0.05; // of a picture fitted to its bodies, on every side
 const EMPTY = 20; // nothing to draw: a box of 40 mm about the origin
@@ -27,16 +28,18 @@ export interface FittedCamera {
 
 // The camera of a view fitted to bodies: it stands in the direction `from` of what it looks at,
 // with `up` as far up in the picture as the direction allows, and shows all points of the bodies
-// with a margin of a twentieth of the picture on every side. (`up` must not be along `from`.)
-export function fittedCamera(from: Vec3, up: Vec3, solids: readonly Solid[], width: number, height: number): FittedCamera {
+// with a margin of a twentieth of the picture on every side. (`up` must not be along `from`.) A body
+// with a transform is fitted where the transform puts it (the pose of the mechanism, D49).
+export function fittedCamera(from: Vec3, up: Vec3, bodies: readonly { solid: Solid; transform?: RigidTransform }[], width: number, height: number): FittedCamera {
   const back = unit(from);
   const right = unit(cross(up, back));
   const above = cross(back, right);
   const low: Vec3 = [Infinity, Infinity, Infinity];
   const high: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const { positions } of solids) {
+  for (const { solid, transform } of bodies) {
+    const { positions } = solid;
     for (let i = 0; i < positions.length; i += 3) {
-      const point: Vec3 = [positions[i], positions[i + 1], positions[i + 2]];
+      const point: Vec3 = transform ? placePoint(transform, positions[i], positions[i + 1], positions[i + 2]) : [positions[i], positions[i + 1], positions[i + 2]];
       [dot(point, right), dot(point, above), dot(point, back)].forEach((along, axis) => {
         low[axis] = Math.min(low[axis], along);
         high[axis] = Math.max(high[axis], along);

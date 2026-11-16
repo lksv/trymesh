@@ -47,6 +47,9 @@ export interface SectionSpec<S, R> {
   // The IDs of features and sketch entities the section names, and for a derived ID also the ID it
   // is derived from (the feature of the body `screws/2`).
   names(section: S): Id[];
+  // Top-level keys of the result whose values are records: each entry is kept stable on its own as
+  // well (the links and the joints of the mechanism), not only the record as a whole.
+  entries?: readonly string[];
   // After the timeline: the result, from the document, the bodies of the state, the environment of
   // the parameters and the state of the recompute the bodies come from (the frames and the points of
   // the sketches, for an axis through a sketch point); and the section with the numbers written back

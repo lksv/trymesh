@@ -1073,6 +1073,110 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'properties');
   });
 
+  it('the mechanism: links and a joint made in the panel, the slider, the pose in the view, the query as modelled, a blocked link (D49)', async () => {
+    const h = await threeBodies();
+    h.record('a model of three bodies: the panel of the mechanism offers a new link');
+    h.press('panel', 'New link');
+    h.record('the form of a new link: a generated ID, a name, the bodies of the model');
+    h.type(h.field('Name (empty: the ID)'), 'Base');
+    tick(h, 'Vysunutí 1');
+    h.press('panel', 'OK');
+    h.record('the link Base with the plate: one setLink; the other bodies are in no link');
+    h.press('panel', 'New link');
+    h.type(h.field('Name (empty: the ID)'), 'Arm');
+    tick(h, 'Vysunutí 3');
+    h.press('panel', 'OK');
+    h.record('the link Arm with the third body');
+    h.press('panel', 'New joint');
+    h.record('the form of a new joint: revolute about Z, the parent the first link, the child the next one');
+    h.type(h.field('Name (empty: the ID)'), 'Elbow');
+    h.type(h.field('Lower limit (° or an expression in radians)'), '-90');
+    h.type(h.field('Upper limit (° or an expression in radians)'), '90');
+    h.press('panel', 'OK');
+    h.record('the joint Elbow: one setJoint; the tree has Arm under Elbow under Base');
+
+    // ----- the slider: a preview while dragged, one command when released
+    const slider = (): HTMLInputElement => {
+      const found = h.document.querySelector<HTMLInputElement>('#panel input.pose');
+      if (!found) throw new Error('there is no slider');
+      return found;
+    };
+    h.type(slider(), '45');
+    h.record('the slider dragged to 45°: a preview, the view shows the arm turned, the document is unchanged');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ value: 0 });
+    h.type(slider(), '90');
+    h.type(slider(), '90', true);
+    h.record('the slider released at 90°: one setPose, the status line says the view shows the pose');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ value: Math.PI / 2 });
+    h.press('toolbar', '↶ Zpět');
+    h.record('undo: the drag was one step, the arm is back as modelled');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ value: 0 });
+    h.press('toolbar', '↷ Znovu');
+    h.record('redo: turned again');
+    h.click(at(-17.5, 45, 8));
+    h.record('a click where the turned arm is drawn picks its top face');
+    h.key('Escape');
+    h.press('toolbar', 'Save picture');
+    await until(() => h.downloads.length > 0, 'the picture to be saved');
+    h.record('a picture of the model: the arm in the pose');
+
+    // ----- the collisions in the pose and as modelled
+    h.press('toolbar', 'Collisions');
+    h.record('the collisions are asked in the pose: the turned arm touches nothing; the form offers "As modelled"');
+    tick(h, 'As modelled');
+    h.press('panel', 'Ask again');
+    h.record('asked as modelled: the plate and the arm collide, and the view shows the model as modelled while the answer is shown');
+    h.press('panel', 'Close');
+    h.record('the query closed: the view shows the pose again');
+    h.type(slider(), '45', true);
+    h.press('toolbar', 'Collisions');
+    (h.document.querySelector('#panel div.row') as HTMLElement).click();
+    h.record('at 45° the arm reaches into the plate: the pair picked, its two bodies highlighted where the pose puts them');
+    h.press('panel', 'Close');
+    h.type(slider(), '90', true);
+
+    // ----- a sketch is edited as modelled
+    doubleClick(h, 'Skica 2');
+    h.record('in the sketch the view shows the model as modelled, and the status line says so');
+    h.press('toolbar', 'Dokončit skicu');
+    h.record('back in the model: the pose');
+
+    // ----- the value by an expression, a value out of the limits that blocks the link
+    outside(h, { type: 'setParameter', name: 'q', expr: '0.5' });
+    h.type(h.field('Angle (° or an expression in radians)'), 'q', true);
+    h.record('the value follows the parameter q: the slider is disabled, the field shows the expression and its value');
+    outside(h, { type: 'setParameter', name: 'q', expr: '3' });
+    h.record('q = 3 is outside the limits: the joint is in error, the arm is drawn with it at zero and marked, the status line names the joint');
+    h.press('toolbar', 'Collisions');
+    h.record('the collisions cannot be asked in the pose: the arm is blocked, the form says why');
+    tick(h, 'As modelled');
+    h.press('panel', 'Ask again');
+    h.record('as modelled they can: the plate and the arm collide there');
+    h.press('panel', 'Close');
+    h.type(h.field('Angle (° or an expression in radians)'), '30', true);
+    h.record('a number typed into the field replaces the expression: the arm is posed again');
+    h.press('panel', 'Reset pose');
+    h.record('reset pose: one setPose, every value without an expression to zero');
+
+    // ----- the marker, the state before the first feature, removing
+    h.rowIcon('Vysunutí 1', '⇤');
+    h.record('the marker after the plate: the mechanism of that state, the arm has no body there');
+    h.press('timeline', 'Zobrazit celý model');
+    const before = (h.app as { stateBefore(index: number): import('@trymesh/engine').EngineState }).stateBefore(0).evaluation.mechanism;
+    expect(before.links.link1).toMatchObject({ bodies: [], missing: ['e1'] });
+    expect(before.unassigned).toEqual([]);
+    h.press('panel', 'Remove');
+    h.record('removing the link Base, which the joint names, is refused with the reason');
+    h.press('panel', 'Edit', 1);
+    h.record('the form of the joint, filled in from the document');
+    h.choose('Kind', 'prismatic');
+    h.record('another kind: the numbers start from the defaults of its unit');
+    h.press('panel', 'Cancel');
+    h.press('panel', 'Remove', 1);
+    h.record('the joint removed: one removeJoint, the arm stands as modelled');
+    await matches(h, 'mechanism');
+  });
+
   it('the bridge to the MCP server: commands of the AI while a form is open, a load and a load that fails', async () => {
     const bridge = await startBridge(0);
     bridgeUrl.value = `http://127.0.0.1:${bridge.port}`;

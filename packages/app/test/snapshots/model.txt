@@ -113,6 +113,7 @@
           option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
           option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -169,6 +170,12 @@
         input.pname value="" placeholder="name"
         input.expr value="" placeholder="condition, e.g. a < b"
         button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   status: Vysunutí přidáno.
   view: 41 scene(s) set
   scene:
@@ -804,6 +811,7 @@
     -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -855,9 +863,6 @@
     +     input value="10"
     +     small.computed data-field="offset" data-unit="mm"
     + p#draft-problem.issue.warning
-    + div.buttons
-    +   button.primary: "OK"
-    +   button: "Zrušit"
     - h2: "Model"
     - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
     - h2: "Výběr"
@@ -873,6 +878,13 @@
     -   input.pname value="" placeholder="name"
     -   input.expr value="" placeholder="condition, e.g. a < b"
     -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   status: Zadejte posun; kliknutím v pohledu lze změnit základ.
   view: 1 scene(s) set
   scene:
@@ -914,6 +926,7 @@
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -976,6 +989,8 @@
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     - h2: "Nová rovina"
     - p: "Základ: rovina XZ"
     - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
@@ -985,7 +1000,9 @@
     -     input value="10"
     -     small.computed data-field="offset" data-unit="mm"
     - p#draft-problem.issue.warning
-    - div.buttons
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Rovina přidáno.
@@ -1220,6 +1237,7 @@
     -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1318,9 +1336,6 @@
     +     input value=""
     +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
-    + div.buttons
-    +   button.primary: "OK"
-    +   button: "Zrušit"
     - h2: "Model"
     - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
     - h2: "Parameters (2)"
@@ -1349,6 +1364,13 @@
     -   input.pname value="" placeholder="name"
     -   input.expr value="" placeholder="condition, e.g. a < b"
     -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   view: 3 scene(s) set
   scene:
     + line #26303c width 1.5: 744 numbers, sum 98825.758
@@ -1395,6 +1417,7 @@
     +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1542,10 +1565,14 @@
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     -     input value=""
     -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
-    - div.buttons
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Změna uložena.
@@ -3756,7 +3783,7 @@
   view: 2 scene(s) set
 
 === 90. a new document
-  engine: load("{\"schemaVersion\":5,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{}}") -> ok
+  engine: load("{\"schemaVersion\":5,\"schemaSteps\":[\"5a-mechanism\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}}}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
   toolbar:
@@ -3825,6 +3852,12 @@
     -   small.computed: "= 10"
     -   button.icon title="Delete parameter": "✕"
     - div.constraint
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - div.buttons
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   status: Nový dokument.
   view: 1 scene(s) set
   scene:

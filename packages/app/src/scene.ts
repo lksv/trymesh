@@ -1,11 +1,12 @@
 // The scene of the model: bodies and their outlines, planes, the sketches that are not being
 // edited, and what is highlighted, hovered and selected. The sketch mode and an open form add
 // theirs afterwards (sketch-mode.ts, `overlay` of a form).
-import { type EngineState, type Id, type Solid, type Vec3, faceKey } from '@trymesh/engine';
+import { type EngineState, type Id, type Vec3, faceKey } from '@trymesh/engine';
 import { COLOR, keptSegments, loopSegments, planeSquare, pushPolyline, toWorld } from './draw';
 import { uiOf } from './features/index';
 import { type PanelHost, type ViewPick, pickKey } from './host';
 import { type QueryPanel, queryScene } from './panels/query';
+import { AS_MODELLED, type Pose, placedBox, placedCorners, placedSegments } from './pose';
 import type { SceneAdditions } from './queries/index';
 import { polyline, sketchView } from './sketch-view';
 import type { HalfSpace, SceneModel } from './viewport';
@@ -16,15 +17,18 @@ export interface SceneHost extends PanelHost {
   bodyHidden(body: Id): boolean; // a body is hidden at the feature that created it
   planes(state: EngineState): Extract<ViewPick, { kind: 'plane' }>[]; // the planes that are shown and can be picked
   readonly hover?: ViewPick; // under the pointer in the model
+  // Where the view puts the bodies (D49): the pose of the mechanism of the shown state in the model
+  // mode, as modelled in a sketch and in a form.
+  pose(): Pose;
 }
 
 // An auxiliary body (kept-free space, an envelope) is drawn see-through.
 export const AUXILIARY_OPACITY = 0.35;
 
-// The box of what a state shows: its bodies and the points of its sketches. An empty model has
-// a box of 40 mm, and a small one is padded to it, so that the view does not zoom in further.
-const BOXES = new WeakMap<Solid, { min: Vec3; max: Vec3 }>();
-export function modelBounds(state: EngineState): { min: Vec3; max: Vec3 } {
+// The box of what a state shows: its bodies (where the pose puts them) and the points of its
+// sketches. An empty model has a box of 40 mm, and a small one is padded to it, so that the view
+// does not zoom in further.
+export function modelBounds(state: EngineState, pose: Pose = AS_MODELLED): { min: Vec3; max: Vec3 } {
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
   const grow = (p: ArrayLike<number>, offset = 0) => {
@@ -33,17 +37,8 @@ export function modelBounds(state: EngineState): { min: Vec3; max: Vec3 } {
       max[axis] = Math.max(max[axis], p[offset + axis]);
     }
   };
-  for (const body of Object.values(state.evaluation.bodies)) {
-    let box = BOXES.get(body.solid);
-    if (!box) {
-      const [lo, hi]: [Vec3, Vec3] = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
-      for (let i = 0; i < body.solid.positions.length; i++) {
-        lo[i % 3] = Math.min(lo[i % 3], body.solid.positions[i]);
-        hi[i % 3] = Math.max(hi[i % 3], body.solid.positions[i]);
-      }
-      box = { min: lo, max: hi };
-      BOXES.set(body.solid, box);
-    }
+  for (const [id, body] of Object.entries(state.evaluation.bodies)) {
+    const box = placedBox(body.solid, pose(id).transform);
     grow(box.min);
     grow(box.max);
   }
@@ -61,16 +56,21 @@ export function modelBounds(state: EngineState): { min: Vec3; max: Vec3 } {
 
 // Puts what a view of a query adds into the scene: a face given by its name is resolved to its
 // mesh, a body is drawn in its colour, and what an addition says about a body the user has hidden
-// is left out (a face, a coloured body, a fill or a line that names its body).
-function addToScene(model: SceneModel, additions: Partial<SceneAdditions>, state: EngineState, host: SceneHost): void {
+// is left out (a face, a coloured body, a fill or a line that names its body). A body or a face
+// goes where the pose puts its body (D49); coordinates of an answer are in the pose already.
+function addToScene(model: SceneModel, additions: Partial<SceneAdditions>, state: EngineState, host: SceneHost, pose: Pose): void {
   const { bodies, faceNames } = state.evaluation;
   const shown = (id: Id | undefined): boolean => id === undefined || (Object.prototype.hasOwnProperty.call(bodies, id) && !host.bodyHidden(id));
-  for (const { body: id, color } of additions.bodies ?? []) if (shown(id)) for (const face of bodies[id].faces) model.faces.push({ solid: bodies[id].solid, faceId: face.id, color, opacity: 0.45 });
+  const placed = (id: Id) => {
+    const { transform } = pose(id);
+    return transform ? { transform } : {};
+  };
+  for (const { body: id, color } of additions.bodies ?? []) if (shown(id)) for (const face of bodies[id].faces) model.faces.push({ solid: bodies[id].solid, faceId: face.id, color, opacity: 0.45, ...placed(id) });
   for (const { body: id, face, color, opacity } of additions.faces ?? []) {
     if (!shown(id)) continue;
     const key = faceKey(face);
     const number = bodies[id].faces.find((own) => faceKey(faceNames[own.id]) === key)?.id;
-    if (number !== undefined) model.faces.push({ solid: bodies[id].solid, faceId: number, color, opacity });
+    if (number !== undefined) model.faces.push({ solid: bodies[id].solid, faceId: number, color, opacity, ...placed(id) });
   }
   for (const { body, ...line } of additions.lines ?? []) if (shown(body)) model.lines.push(line);
   model.points.push(...(additions.points ?? []));
@@ -88,10 +88,13 @@ export function shownCut(additions: Partial<SceneAdditions>, host: SceneHost): {
 }
 
 // The scene of the model as it is shown. `sketch`: the sketch being edited, which the sketch mode
-// draws itself, and the edge of a body under the pointer of its projection tool.
+// draws itself, and the edge of a body under the pointer of its projection tool. A body, its
+// outline and its highlighted faces and edges go where the pose puts it (D49); a body whose link is
+// blocked is drawn by the transform of its link and marked with the joint that blocks it.
 export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: Id; hoverEdge?: ViewPick } | undefined): SceneModel {
   const state = host.view();
   const { evaluation, document: doc } = state;
+  const pose = host.pose();
   const inModel = !sketch && !host.draft;
   const model: SceneModel = { bodies: [], lines: [], points: [], fills: [], faces: [], labels: [] };
   const highlighted = host.feature(host.selectedFeature);
@@ -103,18 +106,35 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
 
   // tělesa a jejich obrysy
   const outline: number[] = [];
+  const blocked = new Map<Id, Id[]>(); // joint → the bodies it keeps from their pose
   for (const [id, body] of Object.entries(evaluation.bodies)) {
     if (host.bodyHidden(id)) continue;
+    const { transform, blockedBy } = pose(id);
+    const placed = transform ? { transform } : {};
     // a body in the colour of its properties, an auxiliary body translucent (D48)
     const properties = Object.prototype.hasOwnProperty.call(evaluation.bodyProperties, id) ? evaluation.bodyProperties[id] : undefined;
-    model.bodies.push({ id, solid: body.solid, ...(properties?.color ? { color: Number.parseInt(properties.color.slice(1), 16) } : {}), ...(properties?.use === 'auxiliary' ? { opacity: AUXILIARY_OPACITY } : {}) });
-    for (const edge of body.edges) if (edge.kind !== 'coplanar') for (let i = 0; i < edge.segments.length; i++) outline.push(edge.segments[i]);
+    model.bodies.push({ id, solid: body.solid, ...(properties?.color ? { color: Number.parseInt(properties.color.slice(1), 16) } : {}), ...(properties?.use === 'auxiliary' ? { opacity: AUXILIARY_OPACITY } : {}), ...placed });
+    for (const edge of body.edges) {
+      if (edge.kind === 'coplanar') continue;
+      const segments = placedSegments(edge.segments, transform);
+      for (let i = 0; i < segments.length; i++) outline.push(segments[i]);
+    }
     // the faces of the selected extrusion, or of the copies the selected pattern made
     const owns = highlighted && inModel ? uiOf(highlighted.type).ownsFace : undefined;
-    if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3 });
+    if (highlighted && owns) for (const face of body.faces) if (owns(highlighted, evaluation.faceNames[face.id])) model.faces.push({ solid: body.solid, faceId: face.id, color: COLOR.select, opacity: 0.3, ...placed });
+    if (blockedBy !== undefined) blocked.set(blockedBy, [...(blocked.get(blockedBy) ?? []), id]);
   }
   model.lines.push({ segments: keptSegments(outline, clip), color: COLOR.edge, width: 1.5 });
-  addToScene(model, additions, state, host);
+  // a body that is not in its pose is marked at the top of its box, with the joint that blocks it
+  for (const [joint, ids] of blocked) {
+    for (const id of ids) {
+      const corners = placedCorners(evaluation.bodies[id].bounds, pose(id).transform);
+      const middle = [0, 1].map((axis) => corners.reduce((sum, corner) => sum + corner[axis], 0) / corners.length);
+      const top = Math.max(...corners.map((corner) => corner[2]));
+      model.labels.push({ at: [middle[0], middle[1], top], text: `not posed: ${state.document.mechanism.joints[joint]?.name ?? joint}`, tone: 'problem' });
+    }
+  }
+  addToScene(model, additions, state, host, pose);
 
   // roviny
   const square = planeSquare(host.planeSize(state));
@@ -139,9 +159,10 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
   // výběr a zvýraznění v modelu
   for (const [pick, color, opacity] of [[host.hover, COLOR.hover, 0.3], [sketch?.hoverEdge, COLOR.hover, 0.3], [host.selected, COLOR.select, 0.5]] as [ViewPick | undefined, number, number][]) {
     const body = pick && pick.kind !== 'plane' ? evaluation.bodies[pick.body] : undefined;
-    if (!pick || !body) continue;
-    if (pick.kind === 'face') model.faces.push({ solid: body.solid, faceId: pick.faceId, color, opacity });
-    else if (pick.kind === 'edge' && body.edges[pick.index]) model.lines.push({ segments: keptSegments(body.edges[pick.index].segments, clip), color, width: 4, onTop: true });
+    if (!pick || pick.kind === 'plane' || !body) continue;
+    const { transform } = pose(pick.body);
+    if (pick.kind === 'face') model.faces.push({ solid: body.solid, faceId: pick.faceId, color, opacity, ...(transform ? { transform } : {}) });
+    else if (pick.kind === 'edge' && body.edges[pick.index]) model.lines.push({ segments: keptSegments(placedSegments(body.edges[pick.index].segments, transform), clip), color, width: 4, onTop: true });
   }
   return model;
 }

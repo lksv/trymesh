@@ -15,10 +15,10 @@
 // two is cut out of the description). `RigidTransform` moves there from solid.ts, because the
 // evaluation now publishes one per link.
 
-import type { AxisRef, Expr, ExpressionError, Id, Input, Vec3 } from '../../../packages/engine/src/index';
+import type { AxisRef, Expr, ExpressionError, Id, Input, Issue, Vec3 } from '../../../packages/engine/src/index';
 // Internal to the engine today; published with the result of the mechanism.
 import type { RigidTransform } from '../../../packages/engine/src/solid';
-import type { ArgSpecs, BodyResultAfter, EngineAfter, IssueAfter, QuantitySpec, QueryArgs, QueryName, QueryOptions, QueryOutcome, QueryResult, UpgradeStep } from '../00-prep/contract';
+import type { ArgSpecs, BodyResultAfter, EngineAfter, QuantitySpec, QueryArgs, QueryName, QueryOptions, QueryOutcome, QueryResult, UpgradeStep } from '../00-prep/contract';
 
 // ================================================================ the section of the document
 
@@ -169,7 +169,10 @@ export interface JointResult {
   // is in error and blocks nothing. A model whose pose is zero stays readable while a sketch of
   // an axis is being repaired.
   status: 'ok' | 'error';
-  error?: IssueAfter;
+  // The issue of the engine: since the implementation `Evaluation` has the mechanism, and `IssueCode`
+  // of the engine has the two codes of this package (`IssueAfter` of the draft has an example code
+  // of the preparatory step besides, which the engine does not).
+  error?: Issue;
   fieldErrors?: { value?: ExpressionError; lower?: ExpressionError; upper?: ExpressionError };
   // The numbers used; a field in error is left out.
   value?: number;

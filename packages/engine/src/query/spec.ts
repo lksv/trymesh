@@ -77,6 +77,10 @@ export interface QuerySpec<S, Result> {
   // for a program. A generic form shows an angle in degrees and writes the unit after a number;
   // a number under a key that is not listed is shown bare.
   units?: ResultUnits;
+  // `modelled`: the query always computes from the model as modelled, whatever pose the mechanism
+  // holds (D49); its context is the one an export gets. The print query: a part is printed as it is
+  // modelled.
+  geometry?: 'modelled';
   // A property, not a method, so that its parameter is checked strictly against the map below.
   // A query that builds on another calls its `run` with the same context.
   // - It does not throw for what its caller can cause. For what only the computation finds out it
@@ -94,6 +98,7 @@ export interface AnyQuery {
   args: ArgSpecs;
   significant?: { readonly [key: string]: number };
   units?: ResultUnits;
+  geometry?: 'modelled';
   run: (context: QueryContext, args: never) => unknown;
 }
 

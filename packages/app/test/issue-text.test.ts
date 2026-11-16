@@ -1,7 +1,7 @@
 // The texts the app makes of recompute issues: bodies, features and copies of a pattern are named.
-import { type Issue, type NumberSpec } from '@trymesh/engine';
+import { type Issue, type NumberSpec, emptyDocument } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
-import { angleProblem, bodyName, faceLabel, featureName, issueText, refName } from '../src/issue-text';
+import { angleProblem, bodyName, faceLabel, featureName, issueText, refName, takenOverText } from '../src/issue-text';
 
 const NAMES: Record<string, string> = { plate: 'Plate', hole: 'Hole', P: 'Pattern 5', S1: 'Sketch 1' };
 const nameOf = (id: string): string | undefined => (Object.hasOwn(NAMES, id) ? NAMES[id] : undefined);
@@ -75,5 +75,17 @@ describe('an angle typed in degrees', () => {
     expect(angleProblem(4, { title: 'Helix', unit: 'rad', max: { value: Math.PI / 2, open: true } })).toBe('Helix: 229.183118° must be below 90°');
     expect(angleProblem(Math.PI / 2, { title: 'Helix', unit: 'rad', max: { value: Math.PI / 2, open: true } })).toBe('Helix: 90° must be below 90°');
     expect(angleProblem(500, { title: 'Count', unit: 'count', max: { value: 200 } })).toBeUndefined();
+  });
+});
+
+describe('an ID a section of the document still names, used again', () => {
+  it('body properties (D48) and the mechanism (D49) each say what they give to what was made under it', () => {
+    const doc = { ...emptyDocument(), bodyProperties: { e1: { name: 'Plate' } }, mechanism: { links: { arm: { bodies: ['e1', 'e3'] } }, joints: { elbow: { type: 'continuous', parent: 'arm', child: 'arm2', axis: { kind: 'sketchPoint', sketch: 's2', point: 'p1' }, value: 0 } } } } as never;
+    expect(takenOverText(doc, ['e3'])).toBe('An ID that the mechanism names is now used again: e3. A body made under it is in its link, and a sketch or a point made under it carries the axis of its joint; if it is another thing, change the mechanism in the model panel.');
+    expect(takenOverText(doc, ['s2', 'p1'])).toContain('the mechanism names is now used again: s2, p1.');
+    // an ID both name: both sentences
+    expect(takenOverText(doc, ['e1'])).toBe(
+      'An ID that body properties name is now used again: e1. A body made under it takes those properties; if it is another thing, remove them in the model panel. An ID that the mechanism names is now used again: e1. A body made under it is in its link, and a sketch or a point made under it carries the axis of its joint; if it is another thing, change the mechanism in the model panel.',
+    );
   });
 });

@@ -4,7 +4,7 @@
 //
 // The test runs in the Node environment and makes the window itself: the adapters load their WASM
 // as in Node, and only then the globals the app reads (`window`, `document`) are set.
-import { type Command, type Document, type Engine, type Frame, type Id, type Vec3, createEngine } from '@trymesh/engine';
+import { type Command, type Document, type Engine, type Frame, type Id, type RigidTransform, type Vec3, createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { Window } from 'happy-dom';
@@ -48,9 +48,9 @@ export class StubView implements View {
   ray(clientX: number, clientY: number): { origin: Vec3; direction: Vec3 } {
     return { origin: [clientX - FAR * LOOK[0], clientY - FAR * LOOK[1], -FAR * LOOK[2]], direction: LOOK };
   }
-  // The nearest triangle of the bodies of the scene under the ray; of a cut model, the nearest
-  // point that is not cut away (the bodies are then drawn two-sided, and this view hits a triangle
-  // from either side anyway).
+  // The nearest triangle of the bodies of the scene under the ray, each where its transform puts it
+  // (the pose of the mechanism); of a cut model, the nearest point that is not cut away (the bodies
+  // are then drawn two-sided, and this view hits a triangle from either side anyway).
   pickBody(clientX: number, clientY: number): BodyHit | undefined {
     const { origin, direction } = this.ray(clientX, clientY);
     const clip = this.scene.clip;
@@ -58,8 +58,8 @@ export class StubView implements View {
     const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    for (const { id, solid } of this.scene.bodies) {
-      const corner = (index: number): Vec3 => [solid.positions[3 * index], solid.positions[3 * index + 1], solid.positions[3 * index + 2]];
+    for (const { id, solid, transform } of this.scene.bodies) {
+      const corner = (index: number): Vec3 => placed(transform, [solid.positions[3 * index], solid.positions[3 * index + 1], solid.positions[3 * index + 2]]);
       for (let triangle = 0; triangle < solid.triangles.length / 3; triangle++) {
         const [a, b, c] = [corner(solid.triangles[3 * triangle]), corner(solid.triangles[3 * triangle + 1]), corner(solid.triangles[3 * triangle + 2])];
         const [e1, e2] = [sub(b, a), sub(c, a)];
@@ -99,7 +99,8 @@ export class StubView implements View {
     const fills = model.fills.map((fill) => `#${fill.color.toString(16).padStart(6, '0')}`).join(' ');
     const segments = model.lines.reduce((sum, set) => sum + set.segments.length / 6, 0);
     const cut = model.clip ? `, cut at ${numbers(model.clip.origin)} normal ${numbers(model.clip.normal)}, ${model.fills.length} fill(s) ${fills}` : '';
-    this.calls.push(`image ${width} × ${height}, camera ${camera === 'current' ? 'current' : `from ${numbers(camera.from)} up ${numbers(camera.up)}`}, ${model.bodies.length} bodies ${colours}, ${segments} segments${cut}`);
+    const posed = model.bodies.filter((body) => body.transform).map((body) => `${hex(body.color)} ${transformText(body.transform as RigidTransform)}`);
+    this.calls.push(`image ${width} × ${height}, camera ${camera === 'current' ? 'current' : `from ${numbers(camera.from)} up ${numbers(camera.up)}`}, ${model.bodies.length} bodies ${colours}, ${segments} segments${cut}${posed.length ? `, posed: ${posed.join(', ')}` : ''}`);
     return { base64: 'UE5H', scale: 0.25 };
   }
 }
@@ -114,16 +115,20 @@ const numbers = (values: ArrayLike<number>): string => `[${Array.from(values, ro
 // A list of coordinates as its length and a sum that depends on the order.
 const digest = (values: ArrayLike<number>): string => `${values.length} numbers, sum ${round(Array.from(values).reduce((sum, value, i) => sum + value * ((i % 7) + 1), 0))}`;
 const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
+// A point where a transform puts it; without one, as it is.
+const placed = (t: RigidTransform | undefined, p: Vec3): Vec3 => (t ? [0, 1, 2].map((row) => t.matrix[row][0] * p[0] + t.matrix[row][1] * p[1] + t.matrix[row][2] * p[2] + t.translation[row]) as Vec3 : p);
+// The pose of a body in the scene (D49): the rows of the matrix and the shift.
+const transformText = (t: RigidTransform): string => `posed ${t.matrix.map((row) => numbers(row)).join(' ')} + ${numbers(t.translation)}`;
 
 function sceneText(scene: SceneModel): string[] {
   const owner = (solid: unknown): string => scene.bodies.find((body) => body.solid === solid)?.id ?? '(a body that is not shown)';
   return [
-    `bodies: ${scene.bodies.map((body) => `${body.id}${body.color === undefined ? '' : ` ${hex(body.color)}`}${body.opacity === undefined ? '' : ` opacity ${body.opacity}`}`).join(', ') || '(none)'}`,
+    `bodies: ${scene.bodies.map((body) => `${body.id}${body.color === undefined ? '' : ` ${hex(body.color)}`}${body.opacity === undefined ? '' : ` opacity ${body.opacity}`}${body.transform ? ` ${transformText(body.transform)}` : ''}`).join(', ') || '(none)'}`,
     ...(scene.clip ? [`clip: cut away above ${numbers(scene.clip.origin)} along ${numbers(scene.clip.normal)}`] : []),
     ...scene.lines.filter((set) => set.segments.length > 0).map((set) => `line ${hex(set.color)} width ${set.width}${set.dashed ? ' dashed' : ''}${set.onTop ? ' onTop' : ''}${set.overFills ? ' overFills' : ''}: ${digest(set.segments)}`),
     ...scene.points.filter((set) => set.positions.length > 0).map((set) => `points ${hex(set.color)} size ${set.size}: ${digest(set.positions)}`),
     ...scene.fills.map((fill) => `fill ${hex(fill.color)} opacity ${fill.opacity}${fill.onTop ? ' onTop' : ''} at ${numbers(fill.frame.origin)} normal ${numbers(fill.frame.normal)}: ${fill.loops.map((loop) => digest(loop)).join(' | ')}`),
-    ...scene.faces.map((face) => `face ${owner(face.solid)} #${face.faceId} ${hex(face.color)} opacity ${face.opacity}`),
+    ...scene.faces.map((face) => `face ${owner(face.solid)} #${face.faceId} ${hex(face.color)} opacity ${face.opacity}${face.transform ? ' posed with its body' : ''}`),
     ...scene.labels.map((label) => `label "${label.text}" ${label.tone ?? ''} at ${numbers(label.at)}`),
   ];
 }
@@ -267,7 +272,7 @@ export async function startApp(): Promise<Harness> {
   const app = new App(engine, view);
 
   const lines: string[] = [];
-  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}' };
+  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; mechanism: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}', mechanism: '{"links":{},"joints":{}}' };
   const region = (id: Region): string[] => Array.from((document.getElementById(id) as HTMLElement).childNodes).flatMap((child) => domText(child));
   const section = (title: string, changed: string[]): void => {
     if (changed.length) lines.push(`  ${title}:`, ...changed.map((line) => `    ${line}`));
@@ -297,6 +302,10 @@ export async function startApp(): Promise<Harness> {
     const properties = JSON.stringify(doc.bodyProperties);
     if (properties !== last.properties) lines.push(`  bodyProperties: ${properties}`);
     last.properties = properties;
+    // the mechanism (D49), when it changed; a document without links and joints says nothing
+    const mechanism = JSON.stringify(doc.mechanism);
+    if (mechanism !== last.mechanism) lines.push(`  mechanism: ${mechanism}`);
+    last.mechanism = mechanism;
     // what a user sees: only the parts that changed
     for (const id of ['toolbar', 'timeline', 'panel'] as const) {
       const now = region(id);

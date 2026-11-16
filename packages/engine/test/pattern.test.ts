@@ -68,8 +68,8 @@ describe('the pattern feature', () => {
   it('the source: extrusions that add or cut, before the pattern, each once; or one body', () => {
     const doc = base();
     expect(feature(run(doc, add(pattern('P', { type: 'features', features: ['B', 'H'] }))), 'P').source).toEqual({ type: 'features', features: ['B', 'H'] }); // the order of the command
-    invalid(doc, add(pattern('P', { type: 'features', features: ['A'] })), /feature "A" is not an extrusion with the operation add or cut/);
-    invalid(doc, add(pattern('P', { type: 'features', features: ['S1'] })), /feature "S1" is not an extrusion with the operation add or cut/);
+    invalid(doc, add(pattern('P', { type: 'features', features: ['A'] })), /feature "A" is not a feature that applies a tool \(an extrusion with the operation add or cut, a hole\)/);
+    invalid(doc, add(pattern('P', { type: 'features', features: ['S1'] })), /feature "S1" is not a feature that applies a tool/);
     invalid(doc, add(pattern('P', { type: 'features', features: [] })), /source\.features: a non-empty list of feature IDs is expected/);
     invalid(doc, add(pattern('P', { type: 'features', features: 'H' as never })), /source\.features: a non-empty list/);
     invalid(doc, add(pattern('P', { type: 'features', features: ['H', 'H'] })), /a feature is listed twice/);

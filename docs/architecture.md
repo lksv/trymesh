@@ -43,6 +43,7 @@ The design is split by area (D37, part 5), so that work on one area changes one 
 | [architecture/sketch.md](architecture/sketch.md) | The sketch, its solution, its diagnosis and the sketch tools | Skica; Řešení skici (D12); Diagnostika skici (D32); Sketch tools (D35, point 7) |
 | [architecture/naming.md](architecture/naming.md) | Names of faces and edges, the plane of a sketch on a face, profiles and regions | Pojmenování; Stěny; Hrany (D22); Rovina skici na stěně; Profily a oblasti |
 | [architecture/extrude.md](architecture/extrude.md) | The extrusion, its extent and targets, the offset of a profile and a wall along curves, the taper, profile generators | Extrude; Extent and targets (D35, point 2); Extent up to a plane (D47); Profile offset and a wall (D44); Taper (D45); Profile generators (D35, point 3) |
+| [architecture/hole.md](architecture/hole.md) | The hole feature, its tool of stacked sections, the hardware catalogs and the query `hardwareHole` | Hole (D46); The hardware catalogs (D46); The query `hardwareHole` (D46) |
 | [architecture/pattern.md](architecture/pattern.md) | The pattern of bodies and of features | Pattern (D35, point 4) |
 | [architecture/ports.md](architecture/ports.md) | The contracts of `SketchSolver` and `SolidKernel` | Porty; SketchSolver; SolidKernel |
 | [architecture/recompute.md](architecture/recompute.md) | The replay of the features, its cache and the states of errors | Přepočet |

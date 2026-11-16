@@ -21,6 +21,9 @@ export {
 export { generatorOf, producesTool } from './features/index';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
 export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
+export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow, SocketHeadScrewRow } from './catalogs/hardware';
+export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
+export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';
 export { QUERIES } from './query/index';

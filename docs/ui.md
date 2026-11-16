@@ -20,6 +20,7 @@ The functions are split by area (D37, part 5), one file per panel or form, each 
 | [ui/plane.md](ui/plane.md) | A plane of its own | Vlastní rovina |
 | [ui/sketch.md](ui/sketch.md) | Starting a sketch, drawing, constraints and dimensions | Skica: založení; Skica: kreslení; Skica: vazby a kóty; Implementation status |
 | [ui/extrude.md](ui/extrude.md) | The form of the extrusion | Extrude |
+| [ui/hole.md](ui/hole.md) | The form of the hole, with the sizes from the catalogs | Hole (D46) |
 | [ui/pattern.md](ui/pattern.md) | The form of the pattern | Pattern (D35, point 4) |
 | [ui/bodies.md](ui/bodies.md) | Collisions, volume and export; the properties of a body | Bodies: collisions, volume and export (D35, point 5); The properties of a body (D48) |
 | [ui/queries.md](ui/queries.md) | The generic form of a query, measuring, the views of queries | Queries (D39); The section view (D38); The gap view (D40); The print view (D42); Implementation status |

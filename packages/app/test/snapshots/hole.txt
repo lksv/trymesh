@@ -1,0 +1,1072 @@
+
+=== 1. a hole needs a sketch
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button disabled title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+        button disabled title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+  status: A hole needs a sketch with its points. Draw one first.  [error]
+  view: 1 scene(s) set
+  scene:
+      bodies: (none)
+      line #8b9bb4 width 1: 24 numbers, sum 509.223
+      line #8b9bb4 width 1: 24 numbers, sum 339.482
+      line #8b9bb4 width 1: 24 numbers, sum 169.741
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. a new hole: the latest sketch, its body the target, a plain hole through all backward, no point ticked yet
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":2},{"type":"addExternal","sketch":"s2","id":"x1","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x2","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c2"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x3","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c3"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x4","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c4"}},"kind":"line"}}]}) -> ok
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x3)
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s2","id":"p4","x":10,"y":10}]}) -> ok
+  engine: diagnoseSketch("s2")
+  engine: getState("s2")
+  engine: diagnoseSketch("s2")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s2","id":"p5","x":30,"y":10}]}) -> ok
+  engine: getState("s2")  (x3)
+  features: s1, e1, s2
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature s2:
+      {"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}
+      point p4: {"x":10,"y":10}
+      point p5: {"x":30,"y":10}
+      external x1: {"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}
+      external x2: {"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c2"}},"kind":"line"}
+      external x3: {"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c3"}},"kind":"line"}
+      external x4: {"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c4"}},"kind":"line"}
+  toolbar:
+    +   button: "Export STL"
+    -   button disabled: "Export STL"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+    +   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Skica 1"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Vysunutí 1"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected
+    +   span.dot: "●"
+    +   span.name: "Skica 2"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+    + h2: "New hole"
+    + label
+    +   "Sketch"
+    +   select value="s2"
+    +     option value="s1": "Skica 1"
+    +     option selected value="s2": "Skica 2"
+    + fieldset
+    +   legend: "Points"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "origin of the sketch"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p4"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p5"
+    +   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    + label
+    +   "Kind"
+    +   select value="plain"
+    +     option selected value="plain": "Plain"
+    +     option value="counterbore": "Counterbore"
+    +     option value="countersink": "Countersink"
+    +     option value="nutPocket": "Nut pocket"
+    + label
+    +   "Diameter (mm or an expression)"
+    +   span.field
+    +     input value="3"
+    +     small.computed data-field="shape/diameter" data-unit="mm"
+    + label
+    +   "Extent"
+    +   select value="throughAll"
+    +     option selected value="throughAll": "Through all"
+    +     option value="distance": "Distance"
+    + label
+    +   "Side"
+    +   select value="backward"
+    +     option selected value="backward": "Against the normal"
+    +     option value="forward": "Along the normal"
+    + p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+    + fieldset.targets
+    +   legend: "Target bodies"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Vysunutí 1"
+    + label
+    +   "Label (for people and a parts list; empty = none)"
+    +   input value=""
+    + fieldset
+    +   legend: "From the catalog"
+    +   label
+    +     "For"
+    +     select value="clearance"
+    +       option selected value="clearance": "Clearance hole"
+    +       option value="socketHead": "Socket head cap screw"
+    +       option value="countersunk": "Countersunk screw"
+    +       option value="nutPocket": "Hex nut"
+    +       option value="heatSetInsert": "Heat-set insert"
+    +   label
+    +     "Size"
+    +     select value="M2"
+    +       option selected value="M2": "M2"
+    +       option value="M2.5": "M2.5"
+    +       option value="M3": "M3"
+    +       option value="M3.5": "M3.5"
+    +       option value="M4": "M4"
+    +   label
+    +     "Series of the through hole"
+    +     select value="medium"
+    +       option value="fine": "Fine"
+    +       option selected value="medium": "Medium"
+    +       option value="coarse": "Coarse"
+    +   label
+    +     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    +     input value=""
+    +   div.buttons
+    +     button: "Fill from the catalog"
+    + p#draft-problem.issue.error
+    + div.buttons
+    +   button.primary disabled: "OK"
+    +   button: "Zrušit"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: Tick the points of the sketch; the sizes of a screw, a nut or an insert come from the catalog.
+  view: 25 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + line #5b7aa8 width 1.5: 24 numbers, sum 1400
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - bodies: (none)
+    - line #8b9bb4 width 1: 24 numbers, sum 509.223
+    - line #8b9bb4 width 1: 24 numbers, sum 339.482
+    - line #8b9bb4 width 1: 24 numbers, sum 169.741
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 10] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [40, 30, 10]
+
+=== 3. a point ticked: the engine previews the hole
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("s2")
+  panel:
+    +     input type=checkbox checked
+    -     input type=checkbox unchecked
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 408 numbers, sum 14956.204
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 4. a counterbore: the diameter kept, the head empty, the preview asks for it
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("s2")
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":null,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDiameter: čeká se konečné číslo
+  engine: getState("s2")  (x2)
+  panel:
+    +     input type=checkbox checked
+    -     input type=checkbox unchecked
+    +   select value="counterbore"
+    +     option value="plain": "Plain"
+    +     option selected value="counterbore": "Counterbore"
+    -   select value="plain"
+    -     option selected value="plain": "Plain"
+    -     option value="counterbore": "Counterbore"
+    +   "Head diameter (mm or an expression)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="shape/headDiameter" data-unit="mm"
+    + label
+    +   "Head depth (mm or an expression)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="shape/headDepth" data-unit="mm"
+    + label
+    + p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: čeká se konečné číslo"
+    - p#draft-problem.issue.warning
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 408 numbers, sum 14956.204
+
+=== 5. the head typed: the preview has the counterbore at both points
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDepth: čeká se konečné číslo
+  engine: getState("s2")
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  panel:
+    +     input value="6"
+    -     input value=""
+    +     input value="3"
+    -     input value=""
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: čeká se konečné číslo"
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1944 numbers, sum 94197.787
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 6. a head not wider than the bore: the preview says why
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":3,"headDepth":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  panel:
+    +     input value="3"
+    -     input value="6"
+    + p#draft-problem.issue.error: "The dimensions do not make a hole. (the head of 3 mm is not wider than the bore of 3 mm)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 1944 numbers, sum 94197.787
+
+=== 7. a blind hole as deep as its head: refused by the preview
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-10},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("s2")
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-2},"targets":["e1"]},"index":3}, "d1") -> ok
+  panel:
+    +     input value="6"
+    -     input value="3"
+    +   select value="distance"
+    +     option value="throughAll": "Through all"
+    +     option selected value="distance": "Distance"
+    + label
+    +   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    -   select value="throughAll"
+    -     option selected value="throughAll": "Through all"
+    -     option value="distance": "Distance"
+    +   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    +   span.field
+    +     input value="-2"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    -   "Side"
+    -   select value="backward"
+    -     option selected value="backward": "Against the normal"
+    -     option value="forward": "Along the normal"
+    - p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+    + p#draft-problem.issue.error: "The dimensions do not make a hole. (the head is 3 mm deep and the hole 2 mm: the head has to be shallower than the hole)"
+    - p#draft-problem.issue.error: "The dimensions do not make a hole. (the head of 3 mm is not wider than the bore of 3 mm)"
+  view: 3 scene(s) set
+
+=== 8. OK: the hole is in the document with its label
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"},"index":3}, "d1") -> ok
+  engine: getState("s2")
+  engine: execute({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"},"index":3}) -> ok
+  features: s1, e1, s2, d1
+  feature d1:
+      {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Hole 1"
+    +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "New hole"
+    - label
+    -   "Sketch"
+    -   select value="s2"
+    -     option value="s1": "Skica 1"
+    -     option selected value="s2": "Skica 2"
+    - fieldset
+    -   legend: "Points"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "origin of the sketch"
+    -   label.check
+    -     input type=checkbox checked
+    -     "p4"
+    -   label.check
+    -     input type=checkbox checked
+    -     "p5"
+    -   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    - label
+    -   "Kind"
+    -   select value="counterbore"
+    -     option value="plain": "Plain"
+    -     option selected value="counterbore": "Counterbore"
+    -     option value="countersink": "Countersink"
+    -     option value="nutPocket": "Nut pocket"
+    - label
+    -   "Diameter (mm or an expression)"
+    -   span.field
+    -     input value="3"
+    -     small.computed data-field="shape/diameter" data-unit="mm"
+    - label
+    -   "Head diameter (mm or an expression)"
+    -   span.field
+    -     input value="6"
+    -     small.computed data-field="shape/headDiameter" data-unit="mm"
+    - label
+    -   "Head depth (mm or an expression)"
+    -   span.field
+    -     input value="3"
+    -     small.computed data-field="shape/headDepth" data-unit="mm"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option value="throughAll": "Through all"
+    -     option selected value="distance": "Distance"
+    - label
+    -   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    -   span.field
+    -     input value="-2"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - fieldset.targets
+    -   legend: "Target bodies"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Vysunutí 1"
+    - label
+    -   "Label (for people and a parts list; empty = none)"
+    -   input value=""
+    - fieldset
+    -   legend: "From the catalog"
+    -   label
+    -     "For"
+    -     select value="clearance"
+    -       option selected value="clearance": "Clearance hole"
+    -       option value="socketHead": "Socket head cap screw"
+    -       option value="countersunk": "Countersunk screw"
+    -       option value="nutPocket": "Hex nut"
+    -       option value="heatSetInsert": "Heat-set insert"
+    -   label
+    -     "Size"
+    -     select value="M2"
+    -       option selected value="M2": "M2"
+    -       option value="M2.5": "M2.5"
+    -       option value="M3": "M3"
+    -       option value="M3.5": "M3.5"
+    -       option value="M4": "M4"
+    -   label
+    -     "Series of the through hole"
+    -     select value="medium"
+    -       option value="fine": "Fine"
+    -       option selected value="medium": "Medium"
+    -       option value="coarse": "Coarse"
+    -   label
+    -     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    -     input value=""
+    -   div.buttons
+    -     button: "Fill from the catalog"
+    - p#draft-problem.issue.error: "The dimensions do not make a hole. (the head is 3 mm deep and the hole 2 mm: the head has to be shallower than the hole)"
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Hole přidáno.
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1944 numbers, sum 96630.678
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 9. selected: the summary names the label, the shape, the depth and the points; its faces are highlighted
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Hole"
+    + label
+    +   "Název"
+    +   input value="Hole 1"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Skica 2; bodies: Vysunutí 1."
+    + p.hint: "The hole is 6 mm deep, its head 3 mm."
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face e1 #7 #f97316 opacity 0.3
+    + face e1 #8 #f97316 opacity 0.3
+    + face e1 #9 #f97316 opacity 0.3
+    + face e1 #10 #f97316 opacity 0.3
+    + face e1 #11 #f97316 opacity 0.3
+    + face e1 #12 #f97316 opacity 0.3
+
+=== 10. from the catalog for a countersunk screw: the sizes both of its catalogs have (no M3.5)
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}}, "d1") -> ok
+  engine: getState("s2")  (x2)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected.editing
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Úprava: Hole 1"
+    + label
+    +   "Sketch"
+    +   select value="s2"
+    +     option value="s1": "Skica 1"
+    +     option selected value="s2": "Skica 2"
+    + fieldset
+    +   legend: "Points"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "origin of the sketch"
+    +   label.check
+    +     input type=checkbox checked
+    +     "p4"
+    +   label.check
+    +     input type=checkbox checked
+    +     "p5"
+    +   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    + label
+    +   "Kind"
+    +   select value="counterbore"
+    +     option value="plain": "Plain"
+    +     option selected value="counterbore": "Counterbore"
+    +     option value="countersink": "Countersink"
+    +     option value="nutPocket": "Nut pocket"
+    + label
+    +   "Diameter (mm or an expression)"
+    +   span.field
+    +     input value="3"
+    +     small.computed data-field="shape/diameter" data-unit="mm"
+    + label
+    +   "Head diameter (mm or an expression)"
+    +   span.field
+    +     input value="6"
+    +     small.computed data-field="shape/headDiameter" data-unit="mm"
+    + label
+    +   "Head depth (mm or an expression)"
+    +   span.field
+    +     input value="3"
+    +     small.computed data-field="shape/headDepth" data-unit="mm"
+    + label
+    +   "Extent"
+    +   select value="distance"
+    +     option value="throughAll": "Through all"
+    +     option selected value="distance": "Distance"
+    + label
+    +   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    +   span.field
+    +     input value="-6"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    + fieldset.targets
+    +   legend: "Target bodies"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Vysunutí 1"
+    - h2: "Hole"
+    +   "Label (for people and a parts list; empty = none)"
+    +   input value="M3 socket head cap screw"
+    + fieldset
+    +   legend: "From the catalog"
+    +   label
+    +     "For"
+    +     select value="countersunk"
+    +       option value="clearance": "Clearance hole"
+    +       option value="socketHead": "Socket head cap screw"
+    +       option selected value="countersunk": "Countersunk screw"
+    +       option value="nutPocket": "Hex nut"
+    +       option value="heatSetInsert": "Heat-set insert"
+    +   label
+    +     "Size"
+    +     select value="M2"
+    +       option selected value="M2": "M2"
+    +       option value="M2.5": "M2.5"
+    +       option value="M3": "M3"
+    +       option value="M4": "M4"
+    +   label
+    +     "Series of the through hole"
+    +     select value="medium"
+    +       option value="fine": "Fine"
+    +       option selected value="medium": "Medium"
+    +       option value="coarse": "Coarse"
+    +   label
+    +     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    +     input value=""
+    +   div.buttons
+    +     button: "Fill from the catalog"
+    + p#draft-problem.issue.warning
+    -   "Název"
+    -   input value="Hole 1"
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Skica 2; bodies: Vysunutí 1."
+    - p.hint: "The hole is 6 mm deep, its head 3 mm."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  view: 1 scene(s) set
+  scene:
+    - face e1 #7 #f97316 opacity 0.3
+    - face e1 #8 #f97316 opacity 0.3
+    - face e1 #9 #f97316 opacity 0.3
+    - face e1 #10 #f97316 opacity 0.3
+    - face e1 #11 #f97316 opacity 0.3
+    - face e1 #12 #f97316 opacity 0.3
+
+=== 11. filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label; the extent stays and the status line says so
+  engine: query("hardwareHole", {"use":"countersunk","size":"M2","fit":"medium","allowance":"0.2"}) -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
+  engine: getState("s2")
+  panel:
+    +   select value="countersink"
+    -   select value="counterbore"
+    +     option value="counterbore": "Counterbore"
+    +     option selected value="countersink": "Countersink"
+    -     option selected value="counterbore": "Counterbore"
+    -     option value="countersink": "Countersink"
+    +     input value="2.4 + 0.2"
+    +     small.computed data-field="shape/diameter" data-unit="mm": "= 2.6 mm"
+    -     input value="3"
+    -     small.computed data-field="shape/diameter" data-unit="mm"
+    +     input value="4.7 + 0.2"
+    +     small.computed data-field="shape/headDiameter" data-unit="mm": "= 4.9 mm"
+    -     input value="6"
+    -     small.computed data-field="shape/headDiameter" data-unit="mm"
+    +   "Angle of the countersink (° or an expression in radians)"
+    -   "Head depth (mm or an expression)"
+    +     input value="deg(90)"
+    +     small.computed data-field="shape/angle" data-unit="rad": "= 90°"
+    -     input value="3"
+    -     small.computed data-field="shape/headDepth" data-unit="mm"
+    +   input value="M2 countersunk screw"
+    -   input value="M3 socket head cap screw"
+    +     input value="0.2"
+    -     input value=""
+  status: M2 countersunk screw: the sizes from clearanceHoles and countersunkScrews; the extent stays a distance of -6 mm.
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1332 numbers, sum 66949.145
+    - line #26303c width 1.5: 1944 numbers, sum 96630.678
+
+=== 12. filled for a heat-set insert: a plain hole, the depth of the insert as the distance, the start and the direction kept
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":1,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
+  engine: getState("s2")
+  engine: query("hardwareHole", {"use":"heatSetInsert","size":"M3x4x4.5","fit":"medium","allowance":"0.2"}) -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: getState("s2")
+  panel:
+    +   select value="plain"
+    +     option selected value="plain": "Plain"
+    -   select value="countersink"
+    -     option value="plain": "Plain"
+    +     option value="countersink": "Countersink"
+    -     option selected value="countersink": "Countersink"
+    +     input value="4.2 + 0.2"
+    +     small.computed data-field="shape/diameter" data-unit="mm": "= 4.4 mm"
+    -     input value="2.4 + 0.2"
+    -     small.computed data-field="shape/diameter" data-unit="mm": "= 2.6 mm"
+    -   "Head diameter (mm or an expression)"
+    -   span.field
+    -     input value="4.7 + 0.2"
+    -     small.computed data-field="shape/headDiameter" data-unit="mm": "= 4.9 mm"
+    - label
+    -   "Angle of the countersink (° or an expression in radians)"
+    -   span.field
+    -     input value="deg(90)"
+    -     small.computed data-field="shape/angle" data-unit="rad": "= 90°"
+    - label
+    +     input value="1"
+    -     input value="0"
+    +     input value="-5"
+    -     input value="-6"
+    +   input value="M3x4x4.5 heat-set insert"
+    -   input value="M2 countersunk screw"
+    +     select value="heatSetInsert"
+    -     select value="countersunk"
+    +       option value="countersunk": "Countersunk screw"
+    -       option selected value="countersunk": "Countersunk screw"
+    +       option selected value="heatSetInsert": "Heat-set insert"
+    -       option value="heatSetInsert": "Heat-set insert"
+    +     select value="M3x4x4.5"
+    +       option value="M3x3x4.5": "M3x3x4.5"
+    +       option selected value="M3x4x4.5": "M3x4x4.5"
+    +       option value="M3x5x4.5": "M3x5x4.5"
+    +       option value="M3x6x4.5": "M3x6x4.5"
+    +       option value="M3x8x4.5": "M3x8x4.5"
+    +       option value="M3x10x4.5": "M3x10x4.5"
+    +       option value="M3x3x5": "M3x3x5"
+    +       option value="M3x4x5": "M3x4x5"
+    +       option value="M3x5x5": "M3x5x5"
+    +       option value="M3x6x5": "M3x6x5"
+    +       option value="M3x8x5": "M3x8x5"
+    +       option value="M4x3x5": "M4x3x5"
+    +       option value="M4x4x5.5": "M4x4x5.5"
+    +       option value="M4x5x5.5": "M4x5x5.5"
+    +       option value="M4x6x5.5": "M4x6x5.5"
+    +       option value="M4x4x6": "M4x4x6"
+    +       option value="M4x5x6": "M4x5x6"
+    +       option value="M4x6x6": "M4x6x6"
+    +       option value="M4x8x6": "M4x8x6"
+    +       option value="M4x10x6": "M4x10x6"
+    -     select value="M2"
+    -       option selected value="M2": "M2"
+    -       option value="M2.5": "M2.5"
+    -       option value="M3": "M3"
+    -       option value="M4": "M4"
+    -     "Series of the through hole"
+    -     select value="medium"
+    -       option value="fine": "Fine"
+    -       option selected value="medium": "Medium"
+    -       option value="coarse": "Coarse"
+    -   label
+  status: M3x4x4.5 heat-set insert: the sizes from heatSetInserts; the extent is now a distance of -5 mm from a start of 1 mm.
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 864 numbers, sum 43520.827
+    - line #26303c width 1.5: 1332 numbers, sum 66949.145
+
+=== 13. an allowance that is no expression: the status line says why, the draft stays
+  engine: query("hardwareHole", {"use":"heatSetInsert","size":"M3x4x4.5","fit":"medium","allowance":"0.2 +"}) -> invalidArguments: hardwareHole: allowance: "0.2 +" is not an expression of a number: the expression is incomplete
+  panel:
+    +     input value="0.2 +"
+    -     input value="0.2"
+  status: hardwareHole: allowance: "0.2 +" is not an expression of a number: the expression is incomplete  [error]
+  view: 0 scene(s) set
+
+=== 14. edited: a plain hole without a label
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: getState("s2")
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}, "d1") -> ok
+  engine: getState("s2")
+  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}) -> ok
+  feature d1:
+    + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":4.4},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"expressions":{"shape/diameter":"4.2 + 0.2"}}
+    - {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body, around an axis": "Pattern"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected.editing
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    - h2: "Úprava: Hole 1"
+    - label
+    -   "Sketch"
+    -   select value="s2"
+    -     option value="s1": "Skica 1"
+    -     option selected value="s2": "Skica 2"
+    - fieldset
+    -   legend: "Points"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "origin of the sketch"
+    -   label.check
+    -     input type=checkbox checked
+    -     "p4"
+    -   label.check
+    -     input type=checkbox checked
+    -     "p5"
+    -   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    - label
+    -   "Kind"
+    -   select value="plain"
+    -     option selected value="plain": "Plain"
+    -     option value="counterbore": "Counterbore"
+    -     option value="countersink": "Countersink"
+    -     option value="nutPocket": "Nut pocket"
+    - label
+    -   "Diameter (mm or an expression)"
+    -   span.field
+    -     input value="4.2 + 0.2"
+    -     small.computed data-field="shape/diameter" data-unit="mm": "= 4.4 mm"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option value="throughAll": "Through all"
+    -     option selected value="distance": "Distance"
+    - label
+    -   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="1"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    -   span.field
+    -     input value="-5"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - fieldset.targets
+    -   legend: "Target bodies"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Vysunutí 1"
+    - label
+    -   "Label (for people and a parts list; empty = none)"
+    -   input value="M3x4x4.5 heat-set insert"
+    - fieldset
+    -   legend: "From the catalog"
+    -   label
+    -     "For"
+    -     select value="heatSetInsert"
+    -       option value="clearance": "Clearance hole"
+    -       option value="socketHead": "Socket head cap screw"
+    -       option value="countersunk": "Countersunk screw"
+    -       option value="nutPocket": "Hex nut"
+    -       option selected value="heatSetInsert": "Heat-set insert"
+    -   label
+    -     "Size"
+    -     select value="M3x4x4.5"
+    -       option value="M3x3x4.5": "M3x3x4.5"
+    -       option selected value="M3x4x4.5": "M3x4x4.5"
+    -       option value="M3x5x4.5": "M3x5x4.5"
+    -       option value="M3x6x4.5": "M3x6x4.5"
+    -       option value="M3x8x4.5": "M3x8x4.5"
+    -       option value="M3x10x4.5": "M3x10x4.5"
+    -       option value="M3x3x5": "M3x3x5"
+    -       option value="M3x4x5": "M3x4x5"
+    -       option value="M3x5x5": "M3x5x5"
+    -       option value="M3x6x5": "M3x6x5"
+    -       option value="M3x8x5": "M3x8x5"
+    -       option value="M4x3x5": "M4x3x5"
+    -       option value="M4x4x5.5": "M4x4x5.5"
+    -       option value="M4x5x5.5": "M4x5x5.5"
+    -       option value="M4x6x5.5": "M4x6x5.5"
+    -       option value="M4x4x6": "M4x4x6"
+    -       option value="M4x5x6": "M4x5x6"
+    -       option value="M4x6x6": "M4x6x6"
+    -       option value="M4x8x6": "M4x8x6"
+    -       option value="M4x10x6": "M4x10x6"
+    -   label
+    -     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    -     input value="0.2 +"
+    -   div.buttons
+    -     button: "Fill from the catalog"
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Změna uložena.
+  view: 4 scene(s) set

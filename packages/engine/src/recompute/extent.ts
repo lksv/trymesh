@@ -25,20 +25,39 @@ export interface TiltedSpan {
 // the feature reports `noEffect`. The extent `upTo` is measured by `upToSpan`.
 export function toolSpan(extent: Exclude<ExtrudeFeature['extent'], { type: 'upTo' }>, frame: Frame, targets: Solid[]): [number, number] {
   if (extent.type === 'distance') return [extent.start, extent.start + extent.distance];
-  let [low, high, reach] = [0, 0, Math.max(...frame.origin.map(Math.abs))];
+  return throughAll(extent.side, frame, targets).span;
+}
+
+// What "through all" measures (D46 asks for the parts a hole needs):
+// - `span`: the interval of the tool, as `toolSpan` answers it;
+// - `reach`: how far the targets go from the sketch plane on the side asked for, without the
+//   overshoot (zero when no vertex of a target lies on that side; for `both` the larger of the two
+//   sides). It is measured on float32 positions against a frame in doubles, so a target that ends
+//   in the sketch plane has a reach of noise, not of zero;
+// - `scale`: the largest coordinate of the targets and of the sketch plane, which the overshoot and
+//   the resolution of the kernel adapter follow;
+// - `overshoot`: what is added beyond the reach.
+export interface ThroughAll {
+  span: [number, number];
+  reach: number;
+  scale: number;
+  overshoot: number;
+}
+export function throughAll(side: 'forward' | 'backward' | 'both', frame: Frame, targets: Solid[]): ThroughAll {
+  let [low, high, scale] = [0, 0, Math.max(...frame.origin.map(Math.abs))];
   for (const solid of targets) {
     const p = solid.positions;
     for (let i = 0; i < p.length; i += 3) {
       const along = (p[i] - frame.origin[0]) * frame.normal[0] + (p[i + 1] - frame.origin[1]) * frame.normal[1] + (p[i + 2] - frame.origin[2]) * frame.normal[2];
       low = Math.min(low, along);
       high = Math.max(high, along);
-      reach = Math.max(reach, Math.abs(p[i]), Math.abs(p[i + 1]), Math.abs(p[i + 2]));
+      scale = Math.max(scale, Math.abs(p[i]), Math.abs(p[i + 1]), Math.abs(p[i + 2]));
     }
   }
-  const overshoot = Math.max(1, 0.01 * reach);
-  if (extent.side === 'forward') return [0, high + overshoot];
-  if (extent.side === 'backward') return [0, low - overshoot];
-  return [low - overshoot, high + overshoot];
+  const overshoot = Math.max(1, 0.01 * scale);
+  if (side === 'forward') return { span: [0, high + overshoot], reach: high, scale, overshoot };
+  if (side === 'backward') return { span: [0, low - overshoot], reach: -low, scale, overshoot };
+  return { span: [low - overshoot, high + overshoot], reach: Math.max(high, -low), scale, overshoot };
 }
 
 // ---------------------------------------------------------------- up to a plane (D47)

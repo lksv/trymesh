@@ -6,6 +6,7 @@ import { type Deps, type DragTarget, type EvaluateOptions, Evaluator, type Place
 import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
 import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
 import { generatorOf, producesTool } from '../src/index';
+import { DATA_CATALOGS, catalogTable } from '../src/data-catalogs';
 import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, wallOutline } from '../src/recompute/outline';
 import type { Outline, ProfileProblem } from '../src/recompute/state';
 import { type Region, type SketchGeometry, detectProfile } from '../src/sketch';
@@ -295,20 +296,20 @@ describe('a module per feature type (D37): what the move could have changed unse
     refused(doc, to('Z'), /feature "Z" musí ležet před odkazující feature/);
     refused(doc, to('nope'), /feature "nope" neexistuje/);
     refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
-    refused(doc, to('A', 'PL'), /feature "PL" není extrude/);
+    refused(doc, to('A', 'PL'), /feature "PL" není a feature that names faces/);
     expect((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x.edge.a.feature).toBe('H');
   });
 
   it('only an extrusion that adds or cuts is a source of a pattern or says so', () => {
     const doc = model();
-    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not an extrusion with the operation add or cut`));
+    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not a feature that applies a tool \\(an extrusion with the operation add or cut, a hole\\)`));
     expect(doc.features.filter(producesTool).map((f) => f.id)).toEqual(['H']);
     expect(doc.features.map((f) => [f.id, generatorOf(f)]).filter(([, generator]) => generator !== undefined)).toEqual([['G', 'involuteGear']]);
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern/);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole']);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
@@ -620,5 +621,18 @@ describe('the offset of a profile and a wall (D44): findings of the review', () 
     // a wall thinner than the tolerance: the two sides of its one curve
     const thin = flat({ a: [0, 0], b: [20, 0] }, [['ab', line('a', 'b')]]);
     expect(wall(thin, ['ab'], 1e-7)).toMatchObject({ refs: ['ab'], message: expect.stringMatching(/the (two sides of the )?curve "ab"/) });
+  });
+});
+
+// The review of D46 (package 2c of D36), what needs no adapter.
+describe('the hardware catalogs: the review of D46', () => {
+  it('catalogTable takes catalogs, not any object', () => {
+    // @ts-expect-error a map of numbers is no map of catalogs
+    const wrong = (): unknown => catalogTable({ nuts: 7 }, 'nuts');
+    expect(typeof wrong).toBe('function');
+    expect(catalogTable(DATA_CATALOGS, 'hexNuts', 'M3')).toMatchObject({ rows: { M3: { acrossFlats: 5.5 } } });
+    // the source of the inserts says where its check differs and where it has none
+    expect(DATA_CATALOGS.heatSetInserts.source).toMatch(/0\.1 mm smaller at 5 \(M3\) and 6 \(M4\)/);
+    expect(DATA_CATALOGS.heatSetInserts.source).toMatch(/for M4 with an outer diameter of 5 and 5\.5 no second source/);
   });
 });

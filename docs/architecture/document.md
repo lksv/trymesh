@@ -34,7 +34,7 @@ interface Document {
   bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature;
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;   // a hole: hole.md (D46)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 

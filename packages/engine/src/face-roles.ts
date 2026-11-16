@@ -5,6 +5,11 @@
 // are built from it, so a new role is one member of the union and one entry here.
 // - Such a field is a text (an ID) or a whole number, and is always there: a key cannot be built
 //   from an object, and a field that may be missing would give two faces one key.
+// - A text field may hold any ID a sketch can have, the derived ID of a point of projected
+//   geometry (`rim/center`) included, although the key separates its fields by slashes. The key
+//   stays unambiguous because at most one field of a role holds a free ID; the others are from
+//   a closed set of words (`side` of a wall side) or whole numbers (`flat` of a nut pocket). A new
+//   role keeps that rule.
 // - The compiler ties the union and the catalog: a role without an entry does not compile, nor an
 //   entry that leaves out a field of the name or gives it the other kind. A role whose name has
 //   a field of another type, or an optional one, has no entry that compiles.
@@ -23,6 +28,10 @@ export const FACE_ROLES: { [R in FaceName['role']]: FaceRoleSpec<R> } = {
   endCap: { title: 'end cap', parts: {} },
   wallSide: { title: 'side of a wall', parts: { curve: { title: 'curve of the chain', kind: 'text' }, side: { title: 'side of the curve (left or right)', kind: 'text' } } },
   wallEnd: { title: 'end of a wall', parts: { point: { title: 'point the chain ends at', kind: 'text' } } },
+  holeBore: { title: 'bore of a hole', parts: { point: { title: 'point of the hole', kind: 'text' } } },
+  holeHead: { title: 'head of a hole', parts: { point: { title: 'point of the hole', kind: 'text' } } },
+  holeFlat: { title: 'flat of a nut pocket', parts: { point: { title: 'point of the hole', kind: 'text' }, flat: { title: 'flat, from 1', kind: 'integer' } } },
+  holeSeat: { title: 'seat of a hole', parts: {} },
 };
 
 // A catalog of roles as code that handles any role reads it. The functions below take one so that

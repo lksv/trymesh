@@ -2,7 +2,7 @@
 // - A query added to the catalog without a row in the two tables below does not compile.
 // - The test runs every query through the tool, and compares what the types let through: the names
 //   of the arguments of an entry and which of them are optional.
-import { type AnyQuery, type Command, DATA_CATALOGS, type Engine, QUERIES, type QueryArgs, type QueryName, specProblems } from '@trymesh/engine';
+import { type AnyQuery, type Command, type Engine, QUERIES, type QueryArgs, type QueryName, specProblems } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { apiDescription, apiText, argumentText } from '../src/api';
 import { callTool, changesDocument, tools } from '../src/tools';
@@ -44,12 +44,13 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   sketchDiagnosis: { sketch: 's' },
   constraintExplanation: { sketch: 's', constraint: 'r' },
   body: { body: 'low' },
-  catalog: { name: Object.keys(DATA_CATALOGS)[0] ?? 'none' },
+  catalog: { name: 'clearanceHoles' },
   measure: { from: { kind: 'face', body: 'low', face: { feature: 'low', role: 'startCap' } }, to: { kind: 'face', body: 'low', face: { feature: 'low', role: 'endCap' } } },
   section: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
   gap: {},
   mass: { bodies: ['low'], density: 1 },
   print: { orientations: [{ by: { up: [0, 0, 1] } }] },
+  hardwareHole: { use: 'countersunk', size: 'M3', allowance: 'holeComp' },
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -64,6 +65,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   gap: { bodies: 'optional', within: 'optional', maxPairs: 'optional' },
   mass: { bodies: 'required', density: 'optional', densities: 'optional', fill: 'optional', about: 'optional' },
   print: { bodies: 'optional', orientations: 'required', bed: 'optional', overhang: 'optional', minArea: 'optional', maxFaces: 'optional' },
+  hardwareHole: { use: 'required', size: 'required', fit: 'optional', allowance: 'optional' },
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -79,12 +81,6 @@ describe('the catalog of queries', () => {
   it.each(ENTRIES)('%s is reached by the tool query and described to the AI', (name) => {
     const engine = model();
     const answer = call(engine, { query: name, args: FIXTURES[name as QueryName] });
-    // the engine has no data catalog yet, so the query `catalog` has nothing to answer with; the
-    // first catalog makes this branch fail, and its name is then the fixture by itself
-    if (name === 'catalog' && Object.keys(DATA_CATALOGS).length === 0) {
-      expect(answer).toEqual({ error: 'notAvailable: catalog: name: there is no catalog "none"; the engine has no catalog yet' });
-      return;
-    }
     expect(answer?.error, JSON.stringify(answer)).toBeUndefined();
     expect(answer).toEqual(JSON.parse(JSON.stringify(answer))); // plain JSON
     const described = apiDescription().queries.find((entry) => entry.query === name);
@@ -177,5 +173,18 @@ describe('the tool query', () => {
     expect(call(engine, { query: 'interference', bodies: ['low'] })).toEqual({ error: 'unknown argument "bodies"; the tool takes query, args, at, after' });
     expect(call(engine, { query: 'interference', args: ['low'] })).toEqual({ error: 'argument "args": an object is expected' });
     expect(call(engine, { query: 'interference', after: 'undo' })).toEqual({ error: 'argument "after": an object is expected' });
+  });
+});
+
+describe('the query hardwareHole through the tool (D46)', () => {
+  it('the angle of a countersink survives the rounding of the tool and goes into a feature as it came', () => {
+    const engine = model();
+    execute(engine, { type: 'setParameter', name: 'holeComp', expr: '0.2' });
+    const preset = call(engine, { query: 'hardwareHole', args: { use: 'countersunk', size: 'M3', allowance: 'holeComp' } });
+    expect(preset).toEqual({ shape: { type: 'countersink', diameter: '3.4 + holeComp', headDiameter: '6.72 + holeComp', angle: 'deg(90)' }, label: 'M3 countersunk screw', from: ['clearanceHoles', 'countersunkScrews'] });
+    execute(engine, { type: 'addFeature', feature: { id: 'H', name: 'H', suppressed: false, type: 'hole', sketch: 's', points: ['origin'], shape: preset.shape, extent: { type: 'throughAll', side: 'forward' }, targets: ['low'], label: preset.label } });
+    const feature = engine.getState().document.features.find((f) => f.id === 'H');
+    expect(feature).toMatchObject({ shape: { type: 'countersink', angle: Math.PI / 2 }, expressions: { 'shape/angle': 'deg(90)' } });
+    expect(call(engine, { query: 'hardwareHole', args: { use: 'nutPocket', size: 'nope' } })).toEqual({ error: expect.stringMatching(/^notAvailable: hardwareHole: size: the catalog clearanceHoles has no size "nope"/) });
   });
 });

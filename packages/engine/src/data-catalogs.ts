@@ -6,9 +6,11 @@
 // - An untyped caller (MCP) uses the query `catalog`, which answers with the table without its row
 //   type. The description for the AI lists the catalogs by name and summary only, so it does not
 //   grow with the tables.
-// A package adds a catalog as a module with its row type, one line in the map `Catalogs` (by
-// declaration merging) and one entry of `DATA_CATALOGS`.
+// A package adds a catalog as a module with its row type in `catalogs/` (the hardware of D46 in
+// `catalogs/hardware.ts`), one line in the map `Catalogs` (by declaration merging) and one entry of
+// `DATA_CATALOGS`.
 import type { Unit } from './catalog';
+import { clearanceHoles, countersunkScrews, heatSetInserts, hexNuts, socketHeadScrews } from './catalogs/hardware';
 import { MATERIALS } from './catalogs/materials';
 import { has } from './util';
 
@@ -33,12 +35,13 @@ export interface CatalogTable {
 export interface Catalogs {}
 export type CatalogSet = { [N in keyof Catalogs]: Catalogs[N] extends { [K in keyof Catalogs[N]]: number | string } ? DataCatalog<Catalogs[N]> : never };
 
-export const DATA_CATALOGS: CatalogSet = { materials: MATERIALS };
+export const DATA_CATALOGS: CatalogSet = { clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts, materials: MATERIALS };
 
 // The table of the catalog `name`, with all its rows or with the one row `key`. A row type written
-// as an interface is not a dictionary to the compiler, so the rows are copied. Returns what is
+// as an interface is not a dictionary to the compiler, so a catalog is taken with its columns and
+// rows as objects and the rows are copied. Returns what is
 // missing instead of a table: the name or the key.
-export function catalogTable(catalogs: { readonly [name: string]: DataCatalog<never> | CatalogTable }, name: string, key?: string): CatalogTable | { missing: 'name' | 'key' } {
+export function catalogTable(catalogs: { readonly [name: string]: { title: string; summary: string; source: string; columns: object; rows: object } }, name: string, key?: string): CatalogTable | { missing: 'name' | 'key' } {
   if (!has(catalogs, name)) return { missing: 'name' };
   const catalog = catalogs[name] as CatalogTable;
   if (key !== undefined && !has(catalog.rows, key)) return { missing: 'key' };

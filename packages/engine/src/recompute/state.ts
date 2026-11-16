@@ -40,10 +40,15 @@ export interface ToolRecipe {
   // direction the copy points in.
   build(targets: Solid[], firstFaceId: number, placement?: Placement): BuiltTool;
 }
-// What a tool build returns, whatever the tool is (a prism today; recompute/tool-*.ts).
+// What a tool build returns, whatever the tool is (recompute/tool-*.ts).
+// `refuseChange`: the tool must not change a target (D46: a hole whose head is as deep as the
+// targets reach, which only a tool that misses them may be). `applyTool` applies it like any tool
+// and then reads the mark: every target unchanged is the usual `noEffect`; a target changed is the
+// error with this code and detail, and no body is changed.
 export interface BuiltTool {
   solid: Solid;
   faces: { name: FaceName; info: FaceInfo }[]; // nové stěny; číslo stěny = firstFaceId + index
+  refuseChange?: { code: IssueCode; detail: string };
 }
 export interface Placement {
   transform: RigidTransform;

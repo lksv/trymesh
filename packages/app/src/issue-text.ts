@@ -6,9 +6,21 @@ export type NameOf = (feature: Id) => string | undefined;
 // The name of a body from its properties (D48); undefined when the shown model has no such body.
 export type BodyNameOf = (body: Id) => string | undefined;
 
-export const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko', wallSide: 'side of a wall', wallEnd: 'end of a wall' };
-// What tells apart the faces of a wall: the side of its curve, the point of its end.
-const wallPart = (name: FaceName): string => (name.role === 'wallSide' ? ` (${name.side} of ${name.curve})` : name.role === 'wallEnd' ? ` (at ${name.point})` : '');
+export const ROLES: Record<FaceName['role'], string> = {
+  side: 'bok',
+  startCap: 'víko ve skice',
+  endCap: 'protější víko',
+  wallSide: 'side of a wall',
+  wallEnd: 'end of a wall',
+  holeBore: 'bore of a hole',
+  holeHead: 'head of a hole',
+  holeFlat: 'flat of a nut pocket',
+  holeSeat: 'seat of a hole',
+};
+// What tells apart the faces of a wall and of a hole: the side of its curve, the point of its end
+// or of the hole, the number of a flat.
+const wallPart = (name: FaceName): string =>
+  name.role === 'wallSide' ? ` (${name.side} of ${name.curve})` : name.role === 'wallEnd' || name.role === 'holeBore' || name.role === 'holeHead' ? ` (at ${name.point})` : name.role === 'holeFlat' ? ` (${name.flat} at ${name.point})` : '';
 
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;

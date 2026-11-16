@@ -236,3 +236,71 @@ describe('an extrusion without an offset (D44)', () => {
     expect(hash.digest('hex')).toBe('666e3a9c7aa781c5d11d058cb048f37175c7714bcf48de5b1bde7013fecc0911');
   });
 });
+
+// The review of D46 (package 2c of D36): the hole feature.
+describe('the hole: the review of D46', () => {
+  const COUNTERBORE = { type: 'counterbore', diameter: 3.4, headDiameter: 6, headDepth: 3 } as const;
+  const NUT = { type: 'nutPocket', diameter: 3.4, acrossFlats: 5.5, headDepth: 2.4, rotation: 0 } as const;
+  const THROUGH = { type: 'throughAll', side: 'backward' } as const;
+  const fixed = (sketch: string, id: string, x: number, y: number): Command => batch({ type: 'addPoint', sketch, id, x, y }, constrain(sketch, `f${id}`, { type: 'fixed', point: id, x, y }));
+  // the plate E1 of 40 × 30 × 10 and a sketch T on its top with the given points
+  const top = (...points: [string, number, number][]) => {
+    const engine = plate();
+    run(engine, addSketch('T', onFace('E1', cap('E1'))), ...points.map(([id, x, y]) => fixed('T', id, x, y)));
+    return engine;
+  };
+  const hole = (sketch: string, points: string[], shape: object, extent: object, targets = ['E1']): Command =>
+    ({ type: 'addFeature', feature: { id: 'H', name: 'H', suppressed: false, type: 'hole', sketch, points, shape, extent, targets } }) as Command;
+  const ofHole = (state: ReturnType<typeof run>, body = 'E1') => faceNames(state, body).filter((name) => name.startsWith('H/'));
+
+  it('a point whose ID holds a pipe: its own faces, also beside a point whose ID is its prefix', () => {
+    const engine = top(['x|1', 10, 10], ['x', 30, 10]);
+    const alone = run(engine, hole('T', ['x|1'], NUT, THROUGH));
+    expect(status(alone).H).toBe('ok');
+    expect(ofHole(alone)).toEqual(['H/holeBore/x|1', 'H/holeFlat/1/x|1', 'H/holeFlat/2/x|1', 'H/holeFlat/3/x|1', 'H/holeFlat/4/x|1', 'H/holeFlat/5/x|1', 'H/holeFlat/6/x|1', 'H/holeSeat']);
+    const both = engine.preview({ type: 'updateFeature', id: 'H', patch: { points: ['x|1', 'x'] } });
+    if (!both.ok) throw new Error(both.error.message);
+    expect(status(both.state).H).toBe('ok');
+    const bores = ofHole(both.state).filter((name) => name.startsWith('H/holeBore/'));
+    expect(bores).toEqual(['H/holeBore/x', 'H/holeBore/x|1']);
+    // each bore lies at its own point
+    const surface = (point: string) => both.state.evaluation.faceSurfaces[both.state.evaluation.faceNames.findIndex((name) => name.feature === 'H' && name.role === 'holeBore' && name.point === point)];
+    expect(surface('x|1')).toMatchObject({ kind: 'cylinder', origin: [10, 10, 10] });
+    expect(surface('x')).toMatchObject({ kind: 'cylinder', origin: [30, 10, 10] });
+  });
+
+  it('a head or a blind bore not longer than the resolution of the kernel is refused, not built wrong', () => {
+    // the largest coordinate is 40: the resolution is 0.004
+    const engine = top(['p', 10, 10]);
+    const errorOf = (shape: object, extent: object) => {
+      const state = engine.preview(hole('T', ['p'], shape, extent));
+      if (!state.ok) throw new Error(state.error.message);
+      return state.state.evaluation.features.H.error;
+    };
+    expect(errorOf(COUNTERBORE, { type: 'distance', start: 0, distance: -3.00001 })).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the bore below the head has to be longer than 0\.004 mm/) });
+    expect(errorOf(COUNTERBORE, { type: 'distance', start: 0, distance: -3.003 })?.code).toBe('invalidHole');
+    expect(errorOf(COUNTERBORE, { type: 'distance', start: 0, distance: -3.01 })).toBeUndefined();
+    expect(errorOf({ ...COUNTERBORE, headDepth: 0.0005 }, THROUGH)).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the head is 0\.0005 mm deep, not more than the resolution of the kernel/) });
+    // a countersink of 179.9°: its cone is 0.0011 deep
+    expect(errorOf({ type: 'countersink', diameter: 3.4, headDiameter: 6, angle: 'deg(179.9)' }, THROUGH)?.code).toBe('invalidHole');
+    expect(errorOf({ type: 'plain', diameter: 3 }, { type: 'distance', start: 0, distance: -0.003 })).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the hole is 0\.003 mm deep/) });
+    expect(errorOf({ type: 'plain', diameter: 3 }, { type: 'distance', start: 0, distance: -0.01 })).toBeUndefined();
+  });
+
+  it('a target wholly inside a head marked to change nothing is invalidHole, not emptyResult', () => {
+    const engine = plate();
+    run(engine, addSketch('S2', XY), rectangle('S2', 'q', 9, 9, 2, 2, null), { type: 'addFeature', feature: { id: 'Q', name: 'Q', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S2', regions: [{ outerLoop: rectLoop('q').sort() }] }, extent: { type: 'distance', start: 0, distance: -1 }, operation: 'new' } });
+    run(engine, addSketch('T', XY), fixed('T', 'p', 10, 10));
+    const state = run(engine, hole('T', ['p'], COUNTERBORE, THROUGH, ['Q']));
+    expect(state.evaluation.features.H.error).toMatchObject({ code: 'invalidHole', refs: ['Q'] });
+  });
+
+  it('a head wholly outside the targets with through all is not detected (a limit, pinned)', () => {
+    // the sketch 5 above a plate 10 thick: the reach is 15, the bore cuts the plate, the head is in the air
+    const engine = plate();
+    run(engine, { type: 'addFeature', feature: { id: 'PL', name: 'PL', suppressed: false, type: 'plane', base: XY, offset: 15 } }, addSketch('T', { kind: 'plane', feature: 'PL' }), fixed('T', 'p', 10, 10));
+    const state = run(engine, hole('T', ['p'], COUNTERBORE, THROUGH));
+    expect(status(state).H).toBe('ok');
+    expect(ofHole(state)).toEqual(['H/holeBore/p']);
+  });
+});

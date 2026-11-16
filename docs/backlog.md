@@ -122,7 +122,7 @@ Sketches of a cheap variant for each, in the manner of D35: what the cheap varia
 - Uses: countersink (a circle, `taper` of 45°), chamfer of a hole edge, chamfer of the bottom edge of a part (a slab from `profile/offset: -c` over `distance: c` with 45°, the rest straight above it), dovetail, a 45° roof instead of a horizontal overhang.
 - Later: chamfered ends as fields of one extrusion (the tool becomes a stack of three sections), which covers most of what an edge chamfer would be used for on prisms. Twist stays a separate row.
 
-**Hole feature with a hardware catalog.** A feature type `hole`: a sketch, a list of its points, a description of the hole, an extent and targets like a cut.
+**Hole feature with a hardware catalog.** Done (D46, [d36/2c-hole/design.md](d36/2c-hole/design.md)) except the bearing seats, deferred by the owner to step 3. A feature type `hole`: a sketch, a list of its points, a description of the hole, an extent and targets like a cut.
 
 - One feature makes a hole at every listed point, along the normal of the sketch plane. It stores a tool recipe, so a pattern repeats it like any cut.
 - The description is a variant by kind: plain, counterbore (head diameter and depth), countersink (head diameter and angle), nut pocket (across flats, depth, rotation). A hole for a heat-set insert or a bearing seat is one of these with catalog values. Every dimension is a numeric field of the catalog, so it takes an expression.

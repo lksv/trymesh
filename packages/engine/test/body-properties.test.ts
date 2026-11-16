@@ -69,11 +69,11 @@ describe('the section and its upgrade step', () => {
     expect(validateDocument({ schemaVersion: 1, settings: { chordTolerance: 0.01 }, features: [] }).bodyProperties).toEqual({});
   });
 
-  it('a document saved with the section has version 5 and is not given the step twice; a build without the step refuses it', () => {
+  it('a document saved with the section has version 6 and is not given the step twice; a build without the step refuses it', () => {
     const doc = apply(base(), set('motor', { mass: 280 }));
     const saved = JSON.parse(JSON.stringify(doc));
-    expect(saved.schemaVersion).toBe(5);
-    expect(saved.schemaSteps).toEqual(SCHEMA_PENDING ? ['5a-mechanism'] : undefined);
+    expect(saved.schemaVersion).toBe(6);
+    expect(saved.schemaSteps).toEqual(SCHEMA_PENDING ? UPGRADES.slice(-SCHEMA_PENDING).map((entry) => entry.name) : undefined);
     expect(validateDocument(saved)).toEqual(doc);
     // a document of the branch d36/3a before the merge (version 4 naming the step) loads the same
     const { mechanism: _mechanism, ...without } = saved;

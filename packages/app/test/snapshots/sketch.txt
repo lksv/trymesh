@@ -1,6 +1,6 @@
 
 === 1. the app starts empty
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

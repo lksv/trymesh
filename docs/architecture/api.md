@@ -322,7 +322,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 5.
+**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 6.
 
 **The schema is a list of named upgrade steps (D37, `schema.ts`).** `UPGRADES` holds the steps in order; on `master` the version a build saves is their number plus one. A step changes only the shape of the raw document, before the validation, which judges the content.
 
@@ -331,8 +331,8 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 | `d35-profiles-and-parameters` | 1 → 2 | An extrusion gets `profile`, `extent` with a zero start and the list `targets`; the document gets `parameters` and `checks` (what is there anyway is kept for the validation to judge) |
 | `d37-schema-steps` | 2 → 3 | Converts nothing. A build from before the list accepts version 2 and rebuilds the document from the fields it knows, so it would strip a document of a branch without a word; from version 3 on it refuses |
 | `2b-taper` | 3 → 4 | Converts nothing (D45). A build without it would drop the field `extent/taper` of an extent on load; with the step it refuses a document that may hold one. Merged 2026-11-16 |
-| `3a-body-properties` | 4 → 5 | The section `bodyProperties` (D48): a document without the field gets `{}`; a field that is there, whatever it holds (`null` included), is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Pending on the branch `d36/3a` until its merge (the branch saves version 4 with `schemaSteps: ['3a-body-properties']`) |
-| `5a-mechanism` | 5 → 6 | The section `mechanism` (D49): a document without the field gets `{ links: {}, joints: {} }`; a field that is there, whatever it holds, is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Pending on the branch `d36/5a` until its merge (the branch saves version 5 with `schemaSteps: ['5a-mechanism']`) |
+| `3a-body-properties` | 4 → 5 | The section `bodyProperties` (D48): a document without the field gets `{}`; a field that is there, whatever it holds (`null` included), is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Merged 2026-11-16 |
+| `5a-mechanism` | 5 → 6 | The section `mechanism` (D49): a document without the field gets `{ links: {}, joints: {} }`; a field that is there, whatever it holds, is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Merged 2026-11-16 |
 
 - **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
 - **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.

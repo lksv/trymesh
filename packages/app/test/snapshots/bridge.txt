@@ -80,7 +80,7 @@
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
       {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":5}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -438,7 +438,7 @@
   engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
   engine: getState("e3")
   engine: getState("s2")  (x2)
-  engine: load("{\"schemaVersion\": 99}") -> invalidDocument: document: the schema version 99 is newer than this build reads (it saves 5); open the document with a newer build
+  engine: load("{\"schemaVersion\": 99}") -> invalidDocument: document: the schema version 99 is newer than this build reads (it saves 6); open the document with a newer build
   engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
   engine: getState("e3")
   engine: getState("s2")  (x2)
@@ -573,7 +573,7 @@
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: AI: otevření dokumentu selhalo: document: the schema version 99 is newer than this build reads (it saves 5); open the document with a newer build  [error]
+  status: AI: otevření dokumentu selhalo: document: the schema version 99 is newer than this build reads (it saves 6); open the document with a newer build  [error]
   view: 2 scene(s) set
   scene:
     + bodies: e1, e2, e3, e4
@@ -583,7 +583,7 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
 === 11. a load: the app starts over with the new document
-  engine: load("{\"schemaVersion\":5,\"schemaSteps\":[\"5a-mechanism\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}}}") -> ok
+  engine: load("{\"schemaVersion\":6,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}}}") -> ok
   features: (none)
   toolbar:
     +   button disabled: "Export STL"

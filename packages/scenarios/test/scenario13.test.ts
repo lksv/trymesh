@@ -260,13 +260,13 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: version 5 with the step of the section, and a field this build does not know is refused', () => {
-    // the branch d36/5a: its step is pending after the one of 3a (the merge makes it version 6)
-    expect(SCHEMA_PENDING).toBe(1);
+  it('e. save and load: version 6, the step of the section before the one of 5a, and a field this build does not know is refused', () => {
+    // master after the merge of 5a: no step is pending, the step of 3a is the one before the last
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.map((step) => step.name).slice(-2)).toEqual(['3a-body-properties', '5a-mechanism']);
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaVersion).toBe(5);
-    expect(saved.schemaSteps).toEqual(['5a-mechanism']);
+    expect(saved.schemaVersion).toBe(6);
+    expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
     expect(loaded.ok && loaded.state.document.bodyProperties).toEqual(document.bodyProperties);
@@ -587,16 +587,16 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     engine.undo();
   });
 
-  it('f. save and load: the step is pending on the branch, a field this build does not know is refused, a removed axis loads', () => {
-    expect(SCHEMA_PENDING).toBe(1);
+  it('f. save and load: version 6, a field this build does not know is refused, a removed axis loads', () => {
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([5, ['5a-mechanism']]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([6, undefined]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, effort: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('effort') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
-    const { mechanism: _mechanism, schemaSteps: _steps, ...older } = saved;
-    const loaded = engine.load(JSON.stringify(older));
+    const { mechanism: _mechanism, ...older } = saved;
+    const loaded = engine.load(JSON.stringify({ ...older, schemaVersion: 5 }));
     expect(loaded.ok && loaded.state.document.mechanism).toEqual({ links: {}, joints: {} });
     // the sketch of the axes removed: the reference is checked by a command that sets it, not by a load
     engine.load(JSON.stringify(saved));

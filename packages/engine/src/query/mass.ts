@@ -12,10 +12,10 @@ const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }
 
 // - `bodies`: the bodies taken as one rigid piece (a link of a mechanism); one body is a list of
 //   one. A body named twice counts once.
-// - `densities`: the density of single bodies, by body ID. It wins over everything else and is
-//   taken as it is (an effective density).
+// - `densities`: the density of single bodies, by body ID. It wins over everything but the use
+//   `auxiliary` and is taken as it is (an effective density).
 // - `density`: the density of every listed body that has none of its own: none in `densities`
-//   and none in the document (`massSourceOf`).
+//   and none in the document (`massSourceOf`: the density or the mass of its body properties).
 // - `fill`: the part of the volume that is material, for a printed part with infill. It goes
 //   with `density`: the mass and the inertia of the bodies that take `density` are multiplied by
 //   it, and no other body is touched (a motor given in `densities`, a body with a density or
@@ -26,7 +26,7 @@ const DENSITY = { title: 'Density', unit: 'g/cm3', min: { value: 0, open: true }
 // - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it.
 export const MASS_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece.' },
-  density: { kind: 'number', title: 'Density', summary: 'Of every listed body that has none of its own.', optional: true, spec: DENSITY },
+  density: { kind: 'number', title: 'Density', summary: 'Of every listed body whose properties state neither a density nor a mass.', optional: true, spec: DENSITY },
   densities: { kind: 'record', keys: 'body', of: { kind: 'number', spec: DENSITY }, title: 'Density by body', summary: 'Of single bodies; taken as it is, before `density`.', optional: true },
   fill: {
     kind: 'number',
@@ -55,7 +55,9 @@ export const MASS_ARGS = {
 //   a horizontal axis is at a distance and has no lever.)
 // - `bodies`: every listed body by itself: its mass, its volume, the density of its material
 //   (before the fill factor; for a body with an explicit mass, that mass over its volume), the
-//   fill factor that was applied to it (1 when none was) and its centre of mass. In the units
+//   fill factor that was applied to it (1 when none was), where its mass came from (`from`) and
+//   its centre of mass.
+// - `skipped`: the auxiliary bodies listed (body properties, D48), which have no mass. In the units
 //   of the answer, mass (g) = density (g/cm3) × fill × volume (mm3) / 1000.
 export interface MassProperties {
   mass: number; // g
@@ -63,8 +65,12 @@ export interface MassProperties {
   centerOfMass: Vec3; // mm
   inertia: [Vec3, Vec3, Vec3]; // g·mm2
   about?: { moment: number; distance: number }; // g·mm2, mm
-  bodies: { body: Id; mass: number; volume: number; density: number; fill: number; centerOfMass: Vec3 }[];
+  bodies: { body: Id; mass: number; volume: number; density: number; fill: number; from: MassFrom; centerOfMass: Vec3 }[];
+  skipped?: Id[]; // the auxiliary bodies listed: they have no mass (body properties, D48)
 }
+// Where the mass of a body came from: `densities` of the call, the `mass` or the `density` of its
+// properties in the document (D48), or `argument`: the `density` of the call for every other body.
+export type MassFrom = 'densities' | 'mass' | 'density' | 'argument';
 
 declare module './spec' {
   interface Queries {
@@ -158,14 +164,24 @@ function tensor([xx, yy, zz, xy, yz, zx]: Second): [Vec3, Vec3, Vec3] {
 
 // ---------------------------------------------------------------- where the density comes from
 
-// What the document says about the mass of a body: a density, or an explicit mass for a bought
-// part with a data sheet. The seam with body properties (package 3a of D36): today no body has
-// anything of its own and this is undefined for every body; 3a makes it read its section of the
-// document. It reads the document, not the geometry of a body, so the state of the context is
-// the right place. With an explicit mass the body counts with the density that gives it that
-// mass, spread evenly. `fill` of the call applies to neither kind.
+// What the document says about the mass of a body (body properties, D48), from the result of the
+// recompute that the state of the context has: a density, or an explicit mass for a bought part
+// with a data sheet or a weighed part; `auxiliary` for a body that is no physical thing and has
+// no mass, also when a caller names it; undefined when the document states neither. A body whose
+// mass or density (own or inherited from the body it was copied from) cannot be evaluated fails the
+// query: a reader must not take it for a body that states nothing. With an explicit mass the body
+// counts with the density that gives it that mass, spread evenly. `fill` of the call applies to
+// neither kind.
 export type MassSource = { density: number } | { mass: number };
-export function massSourceOf(_context: QueryContext, _body: Id): MassSource | undefined {
+export function massSourceOf(context: QueryContext, body: Id): MassSource | 'auxiliary' | undefined {
+  const all = context.state.evaluation.bodyProperties;
+  const properties = has(all, body) ? all[body] : undefined;
+  if (!properties) return undefined;
+  if (properties.use === 'auxiliary') return 'auxiliary';
+  const field = properties.fieldErrors?.mass ? 'mass' : properties.fieldErrors?.density ? 'density' : undefined;
+  if (field) throw new QueryFailure('failed', `bodies: the ${field} of the body "${body}" in its properties cannot be evaluated: ${properties.fieldErrors?.[field]?.message}`, ['bodies']);
+  if (properties.massFrom === 'mass' && properties.mass !== undefined) return { mass: properties.mass };
+  if (properties.massFrom === 'density' && properties.density !== undefined) return { density: properties.density };
   return undefined;
 }
 
@@ -176,11 +192,11 @@ const GRAMS_PER_MM3 = 1e-3; // a density in g/cm3 times this is in g/mm3
 export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
   title: 'Mass properties',
   summary:
-    'Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.',
+    'Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.',
   returns:
     '`mass` (g), `volume` (mm3), `centerOfMass` (mm, model coordinates), `inertia` (g·mm2; the tensor about the centre of mass in the axes of the model, three rows; off the diagonal the negative products of inertia, as URDF writes them; 1 g·mm2 = 1e-9 kg·m2), ' +
     '`about` (with an axis: `moment` in g·mm2 and `distance`, the perpendicular distance of the centre of mass from the axis in mm; not the lever of the weight, which depends on the direction of gravity), ' +
-    '`bodies` (each body with its `mass`, `volume`, the `density` of its material in g/cm3, the `fill` factor applied to it and its `centerOfMass`; mass in g = density × fill × volume in mm3 / 1000). Bodies that overlap are counted twice.',
+    '`bodies` (each body with its `mass`, `volume`, the `density` of its material in g/cm3, the `fill` factor applied to it, `from`: where its mass came from (`densities`, `mass` or `density` of its properties, or `argument`), and its `centerOfMass`; mass in g = density × fill × volume in mm3 / 1000), `skipped` (the auxiliary bodies listed, which have no mass). Bodies that overlap are counted twice.',
   args: MASS_ARGS,
   significant: { mass: 6, inertia: 6, moment: 6 },
   units: { mass: 'g', volume: 'mm3', density: 'g/cm3', centerOfMass: 'mm', inertia: 'g·mm2', moment: 'g·mm2', distance: 'mm' },
@@ -188,7 +204,14 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     const pieces: { unit: MassIntegrals; perVolume: number }[] = [];
     const bodies: MassProperties['bodies'] = [];
     // a body named twice counts once
+    const skipped: Id[] = [];
     for (const id of new Set(args.bodies)) {
+      // the body's own properties first: an auxiliary body adds nothing and is listed apart
+      const own = massSourceOf(context, id);
+      if (own === 'auxiliary') {
+        skipped.push(id);
+        continue;
+      }
       const solid = context.bodies[id].solid; // from the context: the same code answers for a pose
       // one pass over the triangles, remembered by the mesh
       const unit = context.memo([solid], 'integrals', () => massIntegrals(solid));
@@ -196,15 +219,17 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       // Whose density: the call's by body, then the body's own, then the call's for all. An own
       // key of the record only: a body may have an ID that every object has by inheritance.
       const named = args.densities !== undefined && has(args.densities, id) ? { density: args.densities[id] } : undefined;
-      const own = named ?? massSourceOf(context, id);
-      const source = own ?? (args.density === undefined ? undefined : { density: args.density });
-      if (!source) throw new QueryFailure('invalidArguments', `density: the body "${id}" has no density of its own: give \`density\`, or its density in \`densities\``, ['density']);
+      const stated = named ?? own;
+      const source = stated ?? (args.density === undefined ? undefined : { density: args.density });
+      if (!source) throw new QueryFailure('invalidArguments', `density: the body "${id}" has no density of its own: give \`density\`, or its density in \`densities\`, or set its properties (setBodyMaterial, setBodyProperties)`, ['density']);
       const density = 'mass' in source ? source.mass / unit.volume / GRAMS_PER_MM3 : source.density; // g/cm3, of the material
-      const fill = own ? 1 : args.fill; // the fill factor goes with the fallback `density` only
+      const fill = stated ? 1 : args.fill; // the fill factor goes with the fallback `density` only
       const perVolume = density * GRAMS_PER_MM3 * fill; // g per mm3
+      const from = named ? 'densities' : own ? ('mass' in own ? 'mass' : 'density') : 'argument';
       pieces.push({ unit, perVolume });
-      bodies.push({ body: id, mass: perVolume * unit.volume, volume: unit.volume, density, fill, centerOfMass: [...unit.centroid] });
+      bodies.push({ body: id, mass: perVolume * unit.volume, volume: unit.volume, density, fill, from, centerOfMass: [...unit.centroid] });
     }
+    if (pieces.length === 0) throw new QueryFailure('failed', `bodies: every listed body is auxiliary and has no mass (${skipped.join(', ')})`, ['bodies']);
     // a fill factor that reached no body was meant for something: say so instead of ignoring it
     if (args.fill !== 1 && bodies.every((body) => body.fill === 1)) {
       throw new QueryFailure('invalidArguments', 'fill: the fill factor applies to the bodies that take `density`, and none of the listed bodies does: give their densities as effective ones', ['fill']);
@@ -214,7 +239,7 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     // beyond the largest number: no answer is better than one with numbers that are not numbers.
     if (!(whole.mass > 0) || ![whole.mass, ...whole.center, ...whole.central].every(Number.isFinite)) throw new QueryFailure('failed', 'the mass of the bodies is zero or too large to compute with: check the densities and the fill factor');
     const inertia = tensor(whole.central);
-    const result: MassProperties = { mass: whole.mass, volume: bodies.reduce((sum, body) => sum + body.volume, 0), centerOfMass: whole.center, inertia, bodies };
+    const result: MassProperties = { mass: whole.mass, volume: bodies.reduce((sum, body) => sum + body.volume, 0), centerOfMass: whole.center, inertia, bodies, ...(skipped.length ? { skipped } : {}) };
     if (!args.about) return result;
     const axis = context.axis(args.about); // a base axis or a sketch point: never posed
     if ('problem' in axis) throw new QueryFailure('notAvailable', 'about: the axis is not in the state asked about', ['about']);

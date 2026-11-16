@@ -29,7 +29,7 @@
           option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
           option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
           option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
@@ -167,7 +167,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -459,7 +459,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -580,7 +580,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -696,7 +696,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -817,7 +817,43 @@
     + p: "Stěna: Vysunutí 1 – protější víko"
     + p.hint.body
     +   "Vysunutí 1: 14400 mm³, 40 × 30 × 12 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 1"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
   view: 1 scene(s) set
   scene:
     + face e1 #1 #f97316 opacity 0.5
@@ -859,7 +895,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
@@ -937,7 +973,43 @@
     - p: "Stěna: Vysunutí 1 – protější víko"
     - p.hint.body
     -   "Vysunutí 1: 14400 mm³, 40 × 30 × 12 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 1"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 1"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
     - h2: "Parameters (0)"
     +   span.name
     +     "Úsečka"
@@ -1496,7 +1568,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -1667,7 +1739,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -1990,7 +2062,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -2170,7 +2242,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -2310,7 +2382,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -2433,7 +2505,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
@@ -3001,7 +3073,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -3201,7 +3273,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -3386,7 +3458,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -3564,7 +3636,43 @@
     + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 4"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 4"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
     - h2: "Model"
     - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
   view: 1 scene(s) set
@@ -3596,7 +3704,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -3685,22 +3793,39 @@
     +   "circle (circle of the sketch)"
     +   select value="c7"
     +     option selected value="c7": "c7 ⌀ 20"
-    + label
+    - h2: "Vysunutí"
     +   "Number of teeth"
     +   span.field
     +     input value="14"
     +     small.computed data-field="profile/params/teeth" data-unit="count"
-    + label
+    -   "Název"
+    -   input value="Vysunutí 4"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p.hint.body
+    -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 4"
     +   "Pressure angle (° or an expression in radians)"
     +   span.field
     +     input value="25"
     +     small.computed data-field="profile/params/pressureAngle" data-unit="rad"
-    + label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 4"
     +   "Backlash (mm or an expression)"
     +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/backlash" data-unit="mm"
-    + label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
     +   "Rotation (° or an expression in radians)"
     +   span.field
     +     input value="0"
@@ -3710,44 +3835,45 @@
     +   "Internal (the cut that makes a ring gear)"
     + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
     +   "In mesh with"
-    +   select value=""
+    -   "Material from the catalog"
     +     option selected value="": "(none)"
     + p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°"
-    + label
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     +   "Operace"
     +   select value="new"
     +     option selected value="new": "Nové těleso"
     +     option value="add": "Přidat k tělesu"
     +     option value="cut": "Odebrat z tělesa"
-    + label
+    -   "Material"
+    -   input value=""
     +   "Extent"
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
-    + label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
-    +   span.field
+    -   "Mass (g)"
     +     input value="0"
     +     small.computed data-field="extent/start" data-unit="mm"
-    - h2: "Vysunutí"
+    -     input value=""
     +   "Distance (mm or an expression; negative = against the normal)"
-    +   span.field
+    -   "Colour"
     +     input value="6"
     +     small.computed data-field="extent/distance" data-unit="mm"
     + p#draft-problem.issue.warning
-    -   "Název"
-    -   input value="Vysunutí 4"
+    + div.buttons
     +   button.primary: "OK"
     +   button: "Zrušit"
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    - p.hint.body
-    -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -     input type=color value="#aab7c6"
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -3802,7 +3928,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -3878,39 +4004,64 @@
     - h2: "Úprava: Vysunutí 4"
     +   "Název"
     +   input value="Vysunutí 4"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p.hint.body
+    +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 4"
     -   "Profile"
     -   select value="involuteGear"
     -     option value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option selected value="involuteGear": "Involute gear"
-    - label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 4"
     -   "Skica"
     -   select value="s3"
     -     option value="s1": "Skica 1"
     -     option value="s2": "Skica 2"
     -     option selected value="s3": "Skica 3"
-    - label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
     -   "circle (circle of the sketch)"
     -   select value="c7"
     -     option selected value="c7": "c7 ⌀ 20"
-    - label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     -   "Number of teeth"
     -   span.field
     -     input value="14"
     -     small.computed data-field="profile/params/teeth" data-unit="count"
-    - label
+    +   "Material"
+    +   input value=""
     -   "Pressure angle (° or an expression in radians)"
     -   span.field
     -     input value="25"
     -     small.computed data-field="profile/params/pressureAngle" data-unit="rad"
-    - label
+    +   "Density (g/cm3)"
     -   "Backlash (mm or an expression)"
-    -   span.field
+    +     input value=""
     -     input value="0"
     -     small.computed data-field="profile/params/backlash" data-unit="mm"
-    - label
+    +   "Mass (g)"
     -   "Rotation (° or an expression in radians)"
-    -   span.field
+    +     input value=""
     -     input value="0"
     -     small.computed data-field="profile/params/rotation" data-unit="rad"
     - label.check
@@ -3921,7 +4072,7 @@
     -   select value=""
     -     option selected value="": "(none)"
     - p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°"
-    - label
+    +   "Colour"
     -   "Operace"
     -   select value="new"
     -     option selected value="new": "Nové těleso"
@@ -3935,23 +4086,7 @@
     -     option value="upTo": "Up to a plane or face"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
-    -   span.field
-    -     input value="0"
-    -     small.computed data-field="extent/start" data-unit="mm"
-    - label
-    -   "Distance (mm or an expression; negative = against the normal)"
-    -   span.field
-    -     input value="6"
-    -     small.computed data-field="extent/distance" data-unit="mm"
-    - p#draft-problem.issue.warning
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    + p.hint.body
-    +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +     input type=color value="#aab7c6"
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -3963,6 +4098,15 @@
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="6"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - p#draft-problem.issue.warning
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   view: 1 scene(s) set
@@ -4010,7 +4154,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -4083,7 +4227,7 @@
     -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
   panel:
     + h2: "Úprava: Pattern 1"
-    + label
+    - h2: "Vysunutí"
     +   "Repeat"
     +   select value="features"
     +     option selected value="features": "Features (extrusions that add or cut)"
@@ -4094,19 +4238,36 @@
     +     input type=checkbox checked
     +     "Vysunutí 3"
     + p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
-    + label
+    -   "Název"
+    -   input value="Vysunutí 4"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p.hint.body
+    -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 4"
     +   "Axis"
     +   select value="sketchPoint"
     +     option value="X": "Axis X"
     +     option value="Y": "Axis Y"
     +     option value="Z": "Axis Z"
     +     option selected value="sketchPoint": "Through a point of a sketch"
-    + label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 4"
     +   "Sketch"
     +   select value="s1"
     +     option selected value="s1": "Skica 1"
     +     option value="s2": "Skica 2"
-    + label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
     +   "Point"
     +   select value="p5"
     +     option value="origin": "origin of the sketch"
@@ -4116,35 +4277,40 @@
     +     option value="p4": "p4"
     +     option selected value="p5": "p5"
     + p.hint: "The axis is the normal of the sketch plane through the point."
-    + label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     +   "Count with the original (a whole number or an expression)"
-    +   span.field
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
     +     input value="4"
     +     small.computed data-field="transform/count" data-unit="count"
-    + label
+    -     input value=""
     +   "Span"
     +   select value="angle"
     +     option value="full": "Full circle"
     +     option selected value="angle": "Angle between the first and the last copy"
-    - h2: "Vysunutí"
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
     +   "Angle (° or an expression in radians)"
-    +   span.field
+    -   "Colour"
     +     input value="90"
     +     small.computed data-field="transform/span/angle" data-unit="rad"
     + p#draft-bodies.hint
     + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Vysunutí 3, copy 2 of Vysunutí 3, copy 3 of Vysunutí 3)"
-    -   "Název"
-    -   input value="Vysunutí 4"
+    + div.buttons
     +   button.primary: "OK"
     +   button: "Zrušit"
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    - p.hint.body
-    -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -     input type=color value="#aab7c6"
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -4211,7 +4377,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -4284,9 +4450,22 @@
     -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
   panel:
     + h2: "Vysunutí"
-    - h2: "Úprava: Pattern 1"
+    + label
     +   "Název"
     +   input value="Vysunutí 4"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p.hint.body
+    +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 4"
+    - h2: "Úprava: Pattern 1"
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 4"
     -   "Repeat"
     -   select value="features"
     -     option selected value="features": "Features (extrusions that add or cut)"
@@ -4297,19 +4476,33 @@
     -     input type=checkbox unchecked
     -     "Vysunutí 3"
     - p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
-    - label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
     -   "Axis"
     -   select value="sketchPoint"
     -     option value="X": "Axis X"
     -     option value="Y": "Axis Y"
     -     option value="Z": "Axis Z"
     -     option selected value="sketchPoint": "Through a point of a sketch"
-    - label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
     -   "Sketch"
     -   select value="s1"
     -     option selected value="s1": "Skica 1"
     -     option value="s2": "Skica 2"
-    - label
+    +   "Material"
+    +   input value=""
     -   "Point"
     -   select value="p5"
     -     option value="origin": "origin of the sketch"
@@ -4319,31 +4512,21 @@
     -     option value="p4": "p4"
     -     option selected value="p5": "p5"
     - p.hint: "The axis is the normal of the sketch plane through the point."
-    - label
+    +   "Density (g/cm3)"
     -   "Count with the original (a whole number or an expression)"
-    -   span.field
+    +     input value=""
     -     input value="4"
     -     small.computed data-field="transform/count" data-unit="count"
-    - label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
     -   "Span"
     -   select value="angle"
     -     option value="full": "Full circle"
     -     option selected value="angle": "Angle between the first and the last copy"
-    - label
+    +   "Colour"
     -   "Angle (° or an expression in radians)"
-    -   span.field
-    -     input value="90"
-    -     small.computed data-field="transform/span/angle" data-unit="rad"
-    - p#draft-bodies.hint
-    - p#draft-problem.issue.error
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    + p.hint.body
-    +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +     input type=color value="#aab7c6"
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -4355,6 +4538,11 @@
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
+    -     input value="90"
+    -     small.computed data-field="transform/span/angle" data-unit="rad"
+    - p#draft-bodies.hint
+    - p#draft-problem.issue.error
+    - div.buttons
     -   button.primary disabled: "OK"
     -   button: "Zrušit"
   view: 1 scene(s) set
@@ -4402,7 +4590,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -4494,7 +4682,43 @@
     - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 4"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 4"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -4575,7 +4799,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -4726,7 +4950,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
@@ -4922,7 +5146,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -5205,7 +5429,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:

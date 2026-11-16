@@ -950,6 +950,46 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'model');
   });
 
+  it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {
+    const h = await start();
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.press('panel', 'OK');
+    const body = h.engine.getState().evaluation.features[h.engine.getState().document.features[1].id].bodies[0];
+    h.row('Vysunutí 1').click();
+    h.record('the extrusion selected: the form of the properties of its body, empty, with the defaults as placeholders');
+    h.choose('Material from the catalog', 'PETG');
+    h.record('PETG from the catalog: the label and the density of the data sheet in the document; the line of the body has the material and the mass');
+    h.type(h.field('Name'), 'Base plate', true);
+    h.record('a name: the line, the form and the heading use it');
+    h.type(h.field('Density (g/cm3)'), 'nope * 2', true);
+    h.record('a density that does not evaluate: refused, the status line says why');
+    h.type(h.field('Mass (g)'), '280', true);
+    h.choose('Use', 'reference');
+    h.record('a weighed mass and the use reference: the mass wins over the density, the export of the model has no printed body');
+    h.type(h.field('Colour'), '#30343A', true);
+    h.record('a colour: stored in lower case, the view draws the body in it');
+    h.choose('Use', 'auxiliary');
+    h.record('auxiliary: the view draws it see-through, it has no mass');
+    h.press('panel', 'Smazat');
+    h.record('the extrusion deleted: its properties stay, listed as without a body');
+    h.press('panel', 'Remove');
+    h.record('removed: the document has no properties');
+    h.engine.undo();
+    h.engine.undo();
+    h.record('undo twice: the extrusion and its properties are back');
+    expect(Object.keys(h.engine.getState().document.bodyProperties)).toEqual([body]);
+    h.row('Vysunutí 1').click();
+    h.press('panel', 'Clear the properties');
+    h.record('the properties cleared by the button of the form');
+    await matches(h, 'properties');
+  });
+
   it('the bridge to the MCP server: commands of the AI while a form is open, a load and a load that fails', async () => {
     const bridge = await startBridge(0);
     bridgeUrl.value = `http://127.0.0.1:${bridge.port}`;

@@ -7,7 +7,7 @@ import { applyCommand, emptyDocument, emptySketch, featureInput, fieldsOf, valid
 import { type Move, MAX_INTERVALS, taperRings } from '../src/recompute/outline';
 import type { Outline } from '../src/recompute/state';
 import { tapers } from '../src/recompute/taper';
-import { UPGRADES, upgradeDocument } from '../src/schema';
+import { SCHEMA_PENDING, UPGRADES, upgradeDocument } from '../src/schema';
 import type { OutlineCurve } from '../src/sketch';
 import { circleBetween } from '../src/surfaces';
 
@@ -106,8 +106,9 @@ describe('the upgrade step 2b-taper', () => {
     expect(validateDocument(saved)).toEqual(doc);
     // A build without the step, nothing pending: master before the merge refuses the version (the
     // step is counted in it), a build of a branch that kept the step pending refuses its name.
+    // (the steps pending on a branch stay pending in the build without it)
     const before = UPGRADES.filter((step) => step.name !== '2b-taper');
-    expect(() => upgradeDocument(saved, before, 0)).toThrow(/is newer than this build reads|"2b-taper"/);
+    expect(() => upgradeDocument(saved, before, SCHEMA_PENDING)).toThrow(/is newer than this build reads|"2b-taper"/);
   });
 });
 

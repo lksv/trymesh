@@ -22,6 +22,54 @@ export interface Document {
   parameters: Parameter[]; // named parameters; the order is for display only
   checks: Check[]; // checks: expressions that are supposed to hold
   features: Feature[]; // časová osa
+  // Properties of bodies by body ID (D48), also of a derived one (`<pattern>/<number>`): always
+  // present, `{}` when nothing is set. Not part of the timeline: a change of a property recomputes
+  // no geometry. An entry whose body no state has stays (the feature was removed or suppressed,
+  // the count of a pattern dropped) and is taken over by a body that appears under its ID again;
+  // `get_model` lists such entries, the command removeBodyProperties removes one.
+  bodyProperties: Record<Id, BodyProperties>;
+}
+
+// What a body is used as. It decides who reads the body:
+// - `part`: a printed part of the design. The default.
+// - `reference`: a bought or given part (a motor, a bearing, a board), modelled so that the design
+//   fits around it. It is not printed: the print exports and the print query leave it out when
+//   they are given no list of bodies. It has a mass and belongs to the mechanism.
+// - `auxiliary`: not a physical thing (kept-free space, the envelope of a motion, a jig that only
+//   helps the modelling). It takes part in the interference and gap queries, which is what it is
+//   for. It is in no list a reader makes by itself and it never has a mass, also when a caller
+//   names it.
+// A body the caller lists is taken as listed: a print export of a list with a reference body
+// writes that body.
+export type BodyUse = 'part' | 'reference' | 'auxiliary';
+
+// The properties of one body. Every field is optional; a field that is not there is inherited from
+// the body this one was copied from (a copy made by a pattern of a body), or has its default. An
+// entry with no field is not stored.
+// - `name`: for people; not inherited. Non-empty, no leading or trailing space, at most 200
+//   characters. Without it the body is named after the feature that created it.
+// - `color`: `#rrggbb`; upper case is accepted and stored in lower case.
+// - `material`: a label for people and for a parts list, such as "PETG"; the same rules as `name`.
+//   The catalog `materials` fills `material` and `density` together (command setBodyMaterial) and
+//   the document keeps the number, so a corrected catalog does not change an old model.
+// - `density`: g/cm3, the effective density of the body as it is made (a printed part has shells
+//   and infill, so it is less than that of the material). A numeric field (`<body>/density`):
+//   above 0, at most 25.
+// - `mass`: g, the mass of the whole body from a data sheet or a scale; when it is there the density
+//   is not used for the mass. A numeric field (`<body>/mass`), above 0.
+// - `expressions`: the expressions of the two numeric fields by field name (`density`, `mass`), by
+//   the rule of `FeatureBase.expressions`: the field holds the last valid number.
+// Inheritance is field by field with one exception: `density` and `mass` say together what the body
+// weighs and are inherited together. An entry that states either of the two inherits neither, so
+// a copy given another material is weighed by its own density and not by the mass of its source.
+export interface BodyProperties {
+  name?: string;
+  color?: string;
+  material?: string;
+  use?: BodyUse;
+  density?: number;
+  mass?: number;
+  expressions?: { density?: Expr; mass?: Expr };
 }
 
 // An expression over parameters. Units are the same as for numbers: lengths in millimetres, angles in
@@ -31,7 +79,9 @@ export interface Document {
 export type Expr = string;
 
 // The address of a numeric field inside a feature, parts separated by slashes (not allowed in IDs):
-// 'offset', 'extent/start', 'extent/distance', 'constraints/<id>/value'.
+// 'offset', 'extent/start', 'extent/distance', 'constraints/<id>/value'. A numeric field of an
+// entry of a section of the document (body properties) is addressed by the key of the entry,
+// a slash and the field: 'motor/density', 'screws/2/mass' (the field is the last part).
 export type FieldPath = string;
 
 // The name is an identifier (letters, digits, underscore) because it is used in expressions.
@@ -372,6 +422,38 @@ export interface Evaluation {
   faceSurfaces: Surface[]; // the surface of every face, index = number of the face, like `faceNames`
   parameters: Record<string, ParameterResult>; // values and errors of parameters
   checks: Record<string, CheckResult>; // check results by name
+  bodyProperties: Record<Id, BodyPropertiesResult>; // by body of the state, in the order of `bodies`
+}
+
+// The properties of a body of the state, with what it inherits and the defaults filled in. Computed
+// after the timeline, with the parameters and the checks, from the document and the volume of the
+// body; no step of a feature reads it, so a change of a property recomputes no geometry. A result
+// equal to the last one of the same body is the same object.
+// The mass, in this order:
+// 1. An auxiliary body has none.
+// 2. The pair `density` and `mass` is the own one when the entry states either, else the inherited
+//    one.
+// 3. With a `mass` in that pair: the mass, `massFrom: 'mass'`. If its expression is in error there
+//    is no mass; the density does not step in for a weighed value that cannot be read.
+// 4. Else with a `density`: density · volume / 1000 (g from g/cm3 and mm3), `massFrom: 'density'`;
+//    none if it is in error.
+// 5. Else none.
+// A field in error is reported in `fieldErrors` and left out of the result; nothing takes its
+// place. `fieldErrors` holds the errors of the pair that is used, the own one or the inherited one,
+// so "in error" and "not stated" can be told apart for a copy too.
+export interface BodyPropertiesResult {
+  name: string; // the own name, else that of the creating feature; a copy adds ` / <number>`
+  color?: string;
+  material?: string;
+  use: BodyUse;
+  density?: number; // g/cm3
+  mass?: number; // g, by the rule above
+  massFrom?: 'mass' | 'density';
+  // The body this one was copied from (the source of the pattern that made it): the nearest one. A
+  // field may come from further up a chain of patterns; the chain is followed through `from` of the
+  // source.
+  from?: Id;
+  fieldErrors?: { density?: ExpressionError; mass?: ExpressionError };
 }
 
 export type ParameterResult = { ok: true; value: number } | { ok: false; error: ExpressionError };
@@ -623,8 +705,37 @@ export type Command =
   | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
   | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
   | { type: 'removeExternal'; sketch: Id; id: Id }
+  // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
+  // of the document can create: the feature exists and its type creates a body of that ID (an
+  // extrusion with the operation new; `<pattern>/<number>` of a pattern of a body). Whether the body
+  // exists in the model is not asked: the count of a pattern may be an expression and a feature may
+  // be suppressed.
+  // - setBodyProperties merges `patch` into the entry of the body, creating it; an entry left with
+  //   no field is removed.
+  // - setBodyMaterial takes the row `material` of the catalog `materials` and writes its key into
+  //   `material` and its density into `density` (a number; the expression goes). `mass` stays. A key
+  //   the catalog does not have is an invalid command. A material of one's own is setBodyProperties
+  //   with `material` and `density`.
+  // - removeBodyProperties removes the entry; it asks only that the entry is there, so it also
+  //   removes an entry whose body is gone.
+  // An error of an expression names the field by `<body>/<field>` in `error.expression.path`.
+  | { type: 'setBodyProperties'; body: Id; patch: BodyPropertiesPatch }
+  | { type: 'setBodyMaterial'; body: Id; material: string }
+  | { type: 'removeBodyProperties'; body: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
+
+// What setBodyProperties changes: the fields it names. `null` removes a field (the body then
+// inherits it or has its default); a number in a numeric field removes its expression, a string
+// sets one, as in updateFeature. A field the properties do not have is an invalid command.
+export interface BodyPropertiesPatch {
+  name?: string | null;
+  color?: string | null;
+  material?: string | null;
+  use?: BodyUse | null;
+  density?: number | Expr | null;
+  mass?: number | Expr | null;
+}
 
 // Slučovací změna (viz příkaz updateFeature).
 export type Patch<T> = T extends number
@@ -740,7 +851,7 @@ export interface Engine {
   explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation; // ze kterých vazeb daná vazba plyne
   load(json: string): CommandResult;
   save(): string;
-  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // all bodies without a list; '3mf' později
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // without a list the printed bodies (use `part`); '3mf' později
   interference(options?: InterferenceOptions): InterferenceReport; // which bodies share a volume
   // Asks a query of the catalog by its name. Everything new is asked this way; the methods above
   // that are queries stay for their callers. The catalog (names, arguments, what each returns) is

@@ -133,6 +133,8 @@ export const pattern: FeatureModule<PatternFeature> = {
   // Copies are numbered from 1. Whether the copy with that number exists shows in the recompute:
   // the count may be an expression.
   createsBody: (f, local) => f.source.type === 'body' && local !== undefined && /^[1-9][0-9]*$/.test(local),
+  // a copy takes after the body it was copied from (body properties, D48)
+  bodySource: (f) => (f.source.type === 'body' ? f.source.body : undefined),
   namesFaces: false,
   producesTool: () => false,
   patch: { fields: ['source', 'transform'] },

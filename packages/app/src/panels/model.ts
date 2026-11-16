@@ -1,10 +1,10 @@
 // The panel of the model: the plane a new sketch or plane waits for, the selected feature with
 // its bodies, the selection in the view, and below them the open query and the parameters.
-import { type Id, bodyFileName } from '@trymesh/engine';
-import { download, fmt, h } from '../dom';
+import { h } from '../dom';
 import type { PanelHost } from '../host';
 import { FEATURE_UI, uiOf } from '../features/index';
 import { FEATURE_TYPES } from '../labels';
+import { bodyForm, bodyRows, orphanRows } from './body';
 import { type QueryPanel, queryPanel } from './query';
 import { parametersPanel } from './parameters';
 
@@ -35,37 +35,21 @@ export function modelPanel(host: PanelHost, queries: QueryPanel): HTMLElement[] 
       ),
     );
     out.push(...uiOf(f.type).summary(host, f, result));
-    // the bodies the feature created, each with its volume, size and its own export
+    // the bodies the feature created, each with its properties, volume, size and its own export;
+    // the form of the properties when it created one
     out.push(...bodyRows(host, result?.bodies ?? []));
+    if (result?.bodies.length === 1 && !(host.selected && host.selected.kind !== 'plane' && host.selected.body === result.bodies[0])) out.push(...bodyForm(host, result.bodies[0]));
   } else {
     out.push(h('h2', {}, 'Model'), h('p', { className: 'hint' }, 'Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem.'));
   }
   if (host.selected) {
     out.push(h('h2', {}, 'Výběr'), h('p', {}, host.describe(host.selected)));
-    if (host.selected.kind !== 'plane') out.push(...bodyRows(host, [host.selected.body]));
+    if (host.selected.kind !== 'plane') out.push(...bodyRows(host, [host.selected.body]), ...bodyForm(host, host.selected.body));
   }
+  out.push(...orphanRows(host));
   out.push(...queryPanel(queries, host));
   out.push(...parametersPanel(host));
   return out;
-}
-
-// A line per body: name, volume, size of its box, and the export of that body alone. The file
-// is named by the body ID (a copy of a pattern: `planets%2F1.stl`).
-function bodyRows(host: PanelHost, ids: Id[]): HTMLElement[] {
-  const bodies = host.view().evaluation.bodies;
-  return ids
-    .filter((id) => Object.prototype.hasOwnProperty.call(bodies, id))
-    .map((id) => {
-      const { volume, bounds } = bodies[id];
-      const size = bounds.max.map((high, axis) => fmt(high - bounds.min[axis])).join(' × ');
-      const exportable = Object.prototype.hasOwnProperty.call(host.engine.getState().evaluation.bodies, id);
-      return h(
-        'p',
-        { className: 'hint body' },
-        `${host.bodyName(id)}: ${fmt(volume)} mm³, ${size} mm `,
-        h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, as it is at the end of the timeline', onclick: () => download(`${bodyFileName(id)}.stl`, new Uint8Array(host.engine.exportMesh('stl', [id])), 'model/stl') }),
-      );
-    });
 }
 
 // ---------------------------------------------------------------- collisions

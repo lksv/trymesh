@@ -100,7 +100,7 @@ type Corners = [Vec3, Vec3];
 const blockOf = ([low, high]: Corners): Solid => prism([[low[0], low[1]], [high[0], low[1]], [high[0], high[1]], [low[0], high[1]]], low[2], high[2], (side) => 2 + side);
 function contextOf(solids: Record<string, Solid>, axis: { origin: Vec3; direction: Vec3 } | { problem: 'brokenReference' } = { origin: [0, 0, 0], direction: [0, 0, 1] }): QueryContext {
   const bodies = Object.fromEntries(Object.entries(solids).map(([id, solid]) => [id, { solid }]));
-  return { bodies, memo: (_owners: unknown, _key: string, compute: () => unknown) => compute(), axis: () => axis } as unknown as QueryContext;
+  return { state: { evaluation: { bodyProperties: {} } }, bodies, memo: (_owners: unknown, _key: string, compute: () => unknown) => compute(), axis: () => axis } as unknown as QueryContext;
 }
 // The same answers from the formulas of a box, with nothing of the code under test: a box of the
 // mass m and the sides s has m·s²/12 along each side about its centre.

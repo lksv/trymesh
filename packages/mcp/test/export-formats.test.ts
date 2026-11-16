@@ -70,7 +70,7 @@ describe('the catalog of export formats', () => {
     const text = apiText();
     expect(text).toContain('# Export formats');
     expect(text).toContain('- stl (STL): Bodies as triangle meshes in binary STL');
-    expect(text).toContain('  - bodies: a list, at least 1, each item the ID of a body. The bodies to export, each once, in this order; without it all bodies.');
+    expect(text).toContain('  - bodies: a list, at least 1, each item the ID of a body. The bodies to export, each once, in this order, whatever their use; without it the printed bodies (use `part`: not the reference and auxiliary bodies of the body properties).');
     expect(text).toContain('  - perBody: true or false. A folder with one file per body');
     expect(text).toContain('export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;');
   });

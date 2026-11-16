@@ -4,6 +4,7 @@ import { atPath, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { specOf } from './features/index';
 import { issue, lookup } from './recompute/services';
+import { type KeptResults, type Sections, evaluateSections } from './sections/index';
 import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, WriteBack } from './recompute/state';
 import { type FaceInfo, analyzeBody, surfaceOf } from './solid';
 import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id, Surface } from './types';
@@ -37,17 +38,28 @@ export class Evaluator {
   private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
   private readonly initial = new WeakMap<Document['settings'], State>();
   private readonly published = new WeakMap<FaceInfo[], Surface[]>();
+  private readonly kept: KeptResults = new Map(); // the last result of every key of a section
 
   constructor(private readonly deps: Deps) {}
 
   // `state`: the state of the recompute the evaluation was made from, for what reads more than the
   // evaluation publishes (the queries).
-  evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
+  // `sections`: the sections of the document (body properties) whose numbers the recompute wrote
+  // back, for the engine to put into the document with the features.
+  evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; state: State; writeBacks: Map<Id, WriteBack>; trace: Trace; sections?: Partial<Sections> } {
     const { state: final, writeBacks, trace } = this.run(doc, options);
     const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
-    return { evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks }, state: final, writeBacks, trace };
+    // after the timeline, as the checks: no step of a feature reads a section
+    const sections = evaluateSections(doc, bodies, parameters, this.kept);
+    return {
+      evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks, ...sections.results },
+      state: final,
+      writeBacks,
+      trace,
+      ...(sections.written ? { sections: sections.written } : {}),
+    };
   }
 
   // The published surfaces of a face table. The table is replaced, never changed, so the list is kept

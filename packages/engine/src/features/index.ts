@@ -3,7 +3,7 @@
 // included. Validation of references, the order on the timeline, `updateFeature`, the recompute and
 // the description of the API for the AI all read the registry.
 import { bodyOwner, entityOf } from '../sketch-content';
-import type { Document, Feature } from '../types';
+import type { Document, Feature, Id } from '../types';
 import { ORIGIN } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';
 import { extrude } from './extrude';
@@ -27,6 +27,27 @@ export const specOf = (f: Feature): FeatureModule<Feature> => FEATURE_TYPES[f.ty
 export const producesTool = (f: Feature): boolean => specOf(f).producesTool(f);
 // The generator of the profile of the feature, when it has a profile that comes from one.
 export const generatorOf = (f: Feature): string | undefined => specOf(f).generator?.(f);
+
+// Why no feature of the document can create the body (D48): the feature is not there, or its type
+// does not create a body of that ID. The order on the timeline is not asked: a section of the
+// document has no place on it. Undefined when a feature can.
+export function bodyProblem(doc: Document, body: Id): string | undefined {
+  const { feature, local } = bodyOwner(body);
+  const f = doc.features.find((candidate) => candidate.id === feature);
+  if (!f) return `no feature of the document creates the body "${body}": the feature "${feature}" is not in the document`;
+  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1)`;
+  return undefined;
+}
+
+// The body a body was copied from (D48), by the registry: undefined when its feature is not in the
+// document, does not create it, or copies it from none.
+export function bodySource(doc: Document, body: Id): Id | undefined {
+  const { feature, local } = bodyOwner(body);
+  const f = doc.features.find((candidate) => candidate.id === feature);
+  if (!f) return undefined;
+  const spec = specOf(f);
+  return spec.createsBody(f, local) ? spec.bodySource?.(f, local) : undefined;
+}
 
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:

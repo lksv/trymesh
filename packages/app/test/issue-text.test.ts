@@ -17,6 +17,14 @@ describe('names for a human', () => {
     expect(featureName('constructor', nameOf)).toBe('(constructor)');
   });
 
+  it('a body with a name of its own (D48) is named by it, in a line and in the refs of an issue', () => {
+    const bodyNameOf = (id: string): string | undefined => (id === 'P/2' ? 'Odd screw' : undefined);
+    expect(bodyName('P/2', nameOf, bodyNameOf)).toBe('Odd screw');
+    expect(bodyName('P/3', nameOf, bodyNameOf)).toBe('Pattern 5 / 3');
+    expect(refName('P/2', nameOf, bodyNameOf)).toBe('Odd screw');
+    expect(issueText({ code: 'noEffect', message: 'missed', refs: ['P/2', 'plate'] }, nameOf, bodyNameOf)).toBe('missed (Odd screw, Plate)');
+  });
+
   it('a face names its feature, its role and the copies it went through', () => {
     expect(faceLabel({ feature: 'plate', role: 'endCap' }, nameOf)).toBe('Plate – protější víko');
     expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }] }, nameOf)).toBe('Hole – bok, copy 2 of Pattern 5');

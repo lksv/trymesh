@@ -18,6 +18,9 @@ import {
   bodyOwner,
   emptyDocument,
   faceKey,
+  namedBySections,
+  printedBodies,
+  takenOver,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
 import type { ViewCapability } from '@trymesh/mcp/view-image';
@@ -101,8 +104,13 @@ export class App implements SketchHost, SceneHost {
   nameOf(id: Id): string {
     return featureName(id, this.featureNames);
   }
+  // A body by the name of its properties (D48): of the shown model, else of the whole one.
+  readonly bodyNames = (body: Id): string | undefined => {
+    for (const { evaluation } of [this.view(), this.engine.getState()]) if (Object.prototype.hasOwnProperty.call(evaluation.bodyProperties, body)) return evaluation.bodyProperties[body].name;
+    return undefined;
+  };
   bodyName(body: Id): string {
-    return bodyName(body, this.featureNames);
+    return bodyName(body, this.featureNames, this.bodyNames);
   }
   // A body is hidden at the feature that created it; the copies of a pattern all at once.
   bodyHidden(body: Id): boolean {
@@ -122,7 +130,7 @@ export class App implements SketchHost, SceneHost {
     const previous = this.doc.features[index - 1];
     if (previous) return this.engine.getState(previous.id);
     const state = this.engine.getState();
-    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [] } };
+    return { ...state, evaluation: { ...state.evaluation, features: {}, bodies: {}, faceNames: [], faceSurfaces: [], bodyProperties: {} } };
   }
   invalidate(): void {
     this.cache = undefined;
@@ -135,9 +143,10 @@ export class App implements SketchHost, SceneHost {
   }
 
   // ID nové entity: předpona a pořadové číslo, které se v dokumentu ještě nevyskytuje. Čítač se
-  // během práce nevrací, takže se ID smazané entity znovu nepoužije.
+  // během práce nevrací, takže se ID smazané entity znovu nepoužije. An ID a section of the
+  // document still names (the feature of body properties whose body is gone) counts as used.
   readonly newId = (prefix: string): Id => {
-    const used = new Set<Id>();
+    const used = new Set<Id>(namedBySections(this.doc));
     for (const f of this.doc.features) {
       used.add(f.id);
       if (f.type === 'sketch') for (const group of [f.points, f.curves, f.constraints, f.external]) for (const id of Object.keys(group)) used.add(id);
@@ -209,12 +218,16 @@ export class App implements SketchHost, SceneHost {
 
   // Provede příkaz; neplatný příkaz dokument nezmění a zpráva se ukáže ve stavovém řádku.
   run(command: Command, done?: string): boolean {
-    const before = this.failedChecks(this.engine.getState());
+    const now = this.engine.getState();
+    const before = this.failedChecks(now);
     const result = this.engine.execute(command);
     if (!result.ok) return this.say(result.error.message, true), false;
     // a check the command made fail takes precedence over the ordinary message
     const failed = this.failedChecks(result.state).filter((name) => !before.includes(name));
+    // properties an entry of the document kept for an ID the command used again (D48)
+    const taken = takenOver(now.document, command);
     if (failed.length > 0) this.say(`Check failed: ${failed.join('; ')}`, true);
+    else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}Body properties kept for ${taken.join(', ')} apply to what was made under that ID; remove them in the model panel if it is something else.`);
     else if (done !== undefined) this.say(done);
     else if (this.note.error) this.say(''); // stará chyba po úspěšném příkazu už neplatí
     return true;
@@ -311,7 +324,8 @@ export class App implements SketchHost, SceneHost {
         button('Nový', () => this.newDocument(), { title: 'Prázdný dokument' }),
         button('Otevřít', () => file.click()),
         button('Uložit', () => download('model.trymesh.json', this.engine.save(), 'application/json')),
-        button('Export STL', () => download('model.stl', new Uint8Array(this.engine.exportMesh('stl')), 'model/stl'), { disabled: Object.keys(state.evaluation.bodies).length === 0 }),
+        // the printed bodies into one file (D48); a reference or auxiliary body by the link of its line
+        button('Export STL', () => download('model.stl', new Uint8Array(this.engine.exportMesh('stl')), 'model/stl'), { disabled: printedBodies(state.evaluation.bodyProperties).length === 0 }),
         file,
       ),
       group(
@@ -485,7 +499,7 @@ export class App implements SketchHost, SceneHost {
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
   issueText(issue: Issue): string {
-    return issueText(issue, this.featureNames);
+    return issueText(issue, this.featureNames, this.bodyNames);
   }
 
   issues(result: FeatureResult | undefined): HTMLElement[] {

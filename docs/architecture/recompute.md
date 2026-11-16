@@ -19,6 +19,7 @@ interface Evaluation {
   faceSurfaces: Surface[];                  // the surface of every face, same index (D37)
   parameters: Record<string, ParameterResult>;   // values and errors of parameters
   checks: Record<string, CheckResult>;           // 'ok' | 'failed' | 'error' by check name
+  bodyProperties: Record<Id, BodyPropertiesResult>;   // by body of the state (D48), see the document
 }
 
 interface BodyResult {
@@ -69,6 +70,7 @@ interface FeatureResult {
 - Feature ve stavu `error` se chová jako prázdná operace a přehrávání pokračuje. Co na ní závisí, skončí také v chybě.
 - Feature ve stavu `warning` výsledek má a závislé features s ním pracují normálně.
 - Potlačená feature (`suppressed`) se chová jako prázdná operace, stejně jako feature v chybě. Co na ní závisí, skončí v `brokenReference`, promítnutí v `brokenProjection`.
+- **The sections of the document** (body properties, D48) are evaluated after the timeline, with the parameters and the checks (`evaluateSections`): from the document, the bodies of the state and the environment of the parameters. Nothing in the timeline is recomputed for a change of one. `Evaluator.evaluate` returns, next to the write-backs of features, the sections whose numbers of expressions changed (`sections`), and `settle` of the engine puts them into the document in the same undo step. The last result of every key is kept, so an equal result is the same object.
 - `upTo` ukončí přehrávání u zadané feature. Náhled při úpravě feature uprostřed logu tak nepočítá nic za ní.
 
 **Tabulka čísel stěn.** Čísla stěn jsou součástí memoizovaného stavu, ne vlastností jednoho běhu. Stav po každé feature nese tabulku jmen; feature, která vytváří nové stěny, přidá jejich jména na konec tabulky předchozího stavu. Číslo stěny je tak funkcí začátku logu a sedí i tehdy, když se začátek bere z cache. Tabulka je jedna společná pro všechna tělesa, čísla se neukládají do dokumentu.

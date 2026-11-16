@@ -62,9 +62,17 @@ const schemaSteps: UpgradeStep = { name: 'd37-schema-steps', run: (o) => o };
 // drop the field of the extent on load, so it has to refuse the document instead.
 const taper: UpgradeStep = { name: '2b-taper', run: (o) => o };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper];
+// D48 (3a): the section `bodyProperties`. A build without the step would drop the section on load
+// without a word, so it has to refuse the document instead. It gives a document that has no such
+// field the empty section; a field that is there, whatever it holds (`null` included), is left for
+// the validation to judge. (The step from version 1 is looser: it takes a `parameters` that is
+// `null` for one that is missing.)
+const bodyProperties: UpgradeStep = { name: '3a-body-properties', run: (o) => ('bodyProperties' in o ? o : { ...o, bodyProperties: {} }) };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
-export const SCHEMA_PENDING = 0;
+// The branch d36/3a: its step `3a-body-properties` is pending until the merge.
+export const SCHEMA_PENDING = 1;
 
 // The version a build with these steps saves, and the names it saves next to it.
 export const savedVersion = (upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING): number => upgrades.length + 1 - pending;

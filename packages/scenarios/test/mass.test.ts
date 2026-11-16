@@ -44,7 +44,7 @@ describe('the query mass', () => {
     const m = found.mass;
     expect(found.inertia).toEqual([near([(m * (900 + 100)) / 12, 0, 0], 2), near([0, (m * (1600 + 100)) / 12, 0], 2), near([0, 0, (m * (1600 + 900)) / 12], 2)]);
     expect(found.about).toBeUndefined();
-    expect(found.bodies).toEqual([{ body: 'A', mass: found.mass, volume: found.volume, density: PLA, fill: 1, centerOfMass: near([20, 15, 5], 4) }]);
+    expect(found.bodies).toEqual([{ body: 'A', mass: found.mass, volume: found.volume, density: PLA, fill: 1, from: 'argument', centerOfMass: near([20, 15, 5], 4) }]);
     // in the units of the answer: mass = density × fill × volume / 1000
     expect(found.bodies[0].mass).toBeCloseTo((found.bodies[0].density * found.bodies[0].fill * found.bodies[0].volume) / 1000, 9);
   });
@@ -110,8 +110,8 @@ describe('the query mass', () => {
     // B is a bought part with its own density, A is printed with 40 % of its volume as material
     const mixed = mass(engine, { bodies: ['A', 'B'], densities: { B: 2.9 }, density: PLA, fill: 0.4 });
     expect(mixed.bodies).toEqual([
-      { body: 'A', mass: expect.closeTo(14.88 * 0.4, 6), volume: expect.closeTo(12000, 3), density: PLA, fill: 0.4, centerOfMass: expect.anything() },
-      { body: 'B', mass: expect.closeTo(8.7, 6), volume: expect.closeTo(3000, 3), density: 2.9, fill: 1, centerOfMass: expect.anything() },
+      { body: 'A', mass: expect.closeTo(14.88 * 0.4, 6), volume: expect.closeTo(12000, 3), density: PLA, fill: 0.4, from: 'argument', centerOfMass: expect.anything() },
+      { body: 'B', mass: expect.closeTo(8.7, 6), volume: expect.closeTo(3000, 3), density: 2.9, fill: 1, from: 'densities', centerOfMass: expect.anything() },
     ]);
     expect(mixed.mass).toBeCloseTo(14.88 * 0.4 + 8.7, 6);
     // the inertia scales with the fill factor as the mass does

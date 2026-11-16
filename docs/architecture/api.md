@@ -15,7 +15,7 @@ interface Engine {
   explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation;
   load(json: string): CommandResult;
   save(): string;
-  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // all bodies without a list; '3mf' později
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array;   // without a list the printed bodies (D48); '3mf' později
   interference(options?: { bodies?: Id[]; threshold?: number; at?: Id }): InterferenceReport;   // see Bodies below
   query<N extends QueryName>(name: N, args: QueryArgs<N>, options?: QueryOptions): QueryOutcome<QueryResult<N>>;   // see Queries below
   export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;   // see Export formats below
@@ -184,13 +184,13 @@ interface ExportFile { path: string; mediaType: string; bytes: Uint8Array; about
 - **`about`** says what a file holds, as plain JSON for the answer of a tool (`bodies` and `triangles` for STL).
 - **`empty`**: an export that holds nothing worth writing says why (`the model has no body to export`). It is not an error of the format (`exportMesh` of an empty list gives a file without triangles); a caller that writes files refuses with the text.
 - **`Engine.export(format, options, queryOptions)`** answers like `query`: the state is chosen by `at` or `state`, the options are checked against the description of the format with the same checker (`invalidArguments`, `notAvailable` with the path of the option), a `QueryFailure` of the format becomes the answer, and nothing throws for a wrong input. The context of a format always has the bodies as modelled.
-- **`stl`** (`export/stl.ts`): options `bodies` (each once, in the order of the list; all without it; an empty list is refused) and `perBody`. One file `model.stl`, or with `perBody` a set with a file per body named `bodyFileName(id).stl`. `exportMesh('stl', bodies?)` keeps its checks and its texts and returns the bytes of the same entry.
+- **`stl`** (`export/stl.ts`): options `bodies` (each once, in the order of the list, whatever their use; without it the printed bodies, `printedBodies` of the body properties (D48); an empty list is refused) and `perBody`. A model whose bodies are all reference or auxiliary bodies exports nothing and says so in `empty`. One file `model.stl`, or with `perBody` a set with a file per body named `bodyFileName(id).stl`. `exportMesh('stl', bodies?)` keeps its checks and its texts and returns the bytes of the same entry.
 
 ### Bodies: volume, export and interference (D35, point 5)
 
 **Volume and bounds.** `BodyResult` carries `volume` (mm³) and `bounds` (`min` and `max` of the box along the axes of the model). They are computed with the faces and edges of the body and remembered by the identity of its mesh. A caller that cannot see the model (AI through MCP) checks with them what it built.
 
-**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list all bodies. A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters, names too long for a file system and names a system reserves are left to the caller that writes files.
+**Export.** `exportMesh('stl', bodies?)` writes the listed bodies in the order of the list, each once; without a list the printed bodies (the use `part` of the body properties, D48; all bodies of a document without properties). A body that does not exist throws: it is the caller's mistake, like `getState` with an unknown feature. `bodyFileName(id)` gives a file name for one body: letters, digits, dot, dash and underscore stay and every other character becomes `%XX` per byte of its UTF-8 form, the percent sign included, so two IDs never give one name (`planets/1` is `planets%2F1`). Names that differ only in the case of letters, names too long for a file system and names a system reserves are left to the caller that writes files.
 
 **Interference.** `interference({ bodies?, threshold?, at? })` answers which bodies share a volume.
 
@@ -254,6 +254,10 @@ type Command =
   | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
   | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
   | { type: 'removeExternal'; sketch: Id; id: Id }
+  // body properties (D48), a section of the document; see the document
+  | { type: 'setBodyProperties'; body: Id; patch: BodyPropertiesPatch }   // null removes a field
+  | { type: 'setBodyMaterial'; body: Id; material: string }                // a row of the catalog materials
+  | { type: 'removeBodyProperties'; body: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
 ```
@@ -287,6 +291,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 
 - **Krok undo vzniká jen změnou obsahu dokumentu.** Přejmenování na stejné jméno nebo tažení plně určeného bodu historii nezaplní.
 - **Tažení, které solver nevyřeší,** dokument ani stav enginu nezmění; konflikt z neúspěšného pokusu ukáže jen `preview`.
+- **A command of a section of the document** (body properties) makes an undo step like any other: `differs` compares the sections too (`sectionsDiffer`).
 - **`getState(at)` s neznámou feature vyhodí výjimku; `preview(cmd, at)`** vrátí `invalidCommand`, když `at` v dokumentu po příkazu není. Tichý přepočet celé osy by zakryl chybu volajícího.
 - **Posluchači (`subscribe`)** dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine: vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní o zprávu nepřipraví a vyhodí se až nakonec; stav je v té chvíli už zapsaný.
 - **Nový bod a nová křivka ruší razítko řešení skici,** protože zapisují řešené proměnné přímo. Skica se pak při přepočtu vyřeší znovu, i kdyby se otisk vstupů solveru shodoval.
@@ -307,6 +312,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 | `d35-profiles-and-parameters` | 1 → 2 | An extrusion gets `profile`, `extent` with a zero start and the list `targets`; the document gets `parameters` and `checks` (what is there anyway is kept for the validation to judge) |
 | `d37-schema-steps` | 2 → 3 | Converts nothing. A build from before the list accepts version 2 and rebuilds the document from the fields it knows, so it would strip a document of a branch without a word; from version 3 on it refuses |
 | `2b-taper` | 3 → 4 | Converts nothing (D45). A build without it would drop the field `extent/taper` of an extent on load; with the step it refuses a document that may hold one. Merged 2026-11-16 |
+| `3a-body-properties` | 4 → 5 | The section `bodyProperties` (D48): a document without the field gets `{}`; a field that is there, whatever it holds (`null` included), is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Pending on the branch `d36/3a` until its merge (the branch saves version 4 with `schemaSteps: ['3a-body-properties']`) |
 
 - **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
 - **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.

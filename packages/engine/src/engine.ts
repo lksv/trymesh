@@ -6,6 +6,7 @@ import { INTERFERENCE_THRESHOLD, checkInterferenceOptions } from './interference
 import { EXPORT_FORMATS, runExport } from './export/index';
 import { type Internals, Memo, queryContext } from './query/context';
 import { QUERIES, runQuery } from './query/index';
+import { sectionsDiffer } from './sections/index';
 import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOptions, QueryOutcome } from './types';
 
 export function createEngine(deps: Deps): Engine {
@@ -68,7 +69,8 @@ export function createEngine(deps: Deps): Engine {
     (a.settings.chordTolerance !== b.settings.chordTolerance ||
       JSON.stringify([a.parameters, a.checks]) !== JSON.stringify([b.parameters, b.checks]) ||
       a.features.length !== b.features.length ||
-      a.features.some((feature, i) => feature !== b.features[i] && JSON.stringify(feature) !== JSON.stringify(b.features[i])));
+      a.features.some((feature, i) => feature !== b.features[i] && JSON.stringify(feature) !== JSON.stringify(b.features[i])) ||
+      sectionsDiffer(a, b));
   const invalid = (error: unknown, code: 'invalidCommand' | 'invalidDocument'): CommandResult => {
     if (!(error instanceof CommandError) && !(error instanceof SyntaxError)) throw error;
     const commandIndex = error instanceof CommandError ? error.commandIndex : undefined;
@@ -81,8 +83,9 @@ export function createEngine(deps: Deps): Engine {
   // numeric fields and, for sketches solved along the way, the solved variables and the stamp. The
   // cache is re-hung onto the new feature objects.
   const settle = (doc: Document, drag?: DragTarget): { document: Document; evaluation: Evaluation } => {
-    const { evaluation: result, writeBacks, trace } = evaluate(doc, { drag });
-    if (writeBacks.size === 0) return { document: doc, evaluation: result };
+    const { evaluation: result, writeBacks, trace, sections } = evaluate(doc, { drag });
+    // the numbers of the expressions of a section (body properties), in the same undo step
+    if (writeBacks.size === 0) return { document: sections ? { ...doc, ...sections } : doc, evaluation: result };
     const replaced = new Map<Id, Feature>();
     const features = doc.features.map((feature) => {
       const written: WriteBack | undefined = writeBacks.get(feature.id);
@@ -91,7 +94,7 @@ export function createEngine(deps: Deps): Engine {
       replaced.set(feature.id, next);
       return next;
     });
-    const document = { ...doc, features };
+    const document = { ...doc, features, ...sections };
     evaluator.rehang(document, replaced, trace);
     return { document, evaluation: result };
   };
@@ -217,7 +220,8 @@ export function createEngine(deps: Deps): Engine {
       return JSON.stringify(document);
     },
 
-    // Without a list all bodies, otherwise the listed ones in the order of the list, each once.
+    // Without a list the printed bodies (the format `stl` decides), otherwise the listed ones in the
+    // order of the list, each once.
     exportMesh(format, bodies) {
       if (format !== 'stl') throw new Error(`export: formát ${String(format)} není podporovaný`);
       const all = evaluation.bodies;

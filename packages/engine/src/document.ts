@@ -37,6 +37,7 @@ import {
   string,
 } from './validation';
 import { FEATURE_TYPES, FEATURE_TYPE_INFO, refContext, requireRef, specOf } from './features/index';
+import { applySectionCommand, emptySections, renamedSections, validateSections } from './sections/index';
 import type { FeatureModule } from './features/module';
 import { constraint, curve, externalRef } from './features/sketch';
 
@@ -65,7 +66,7 @@ export { MAX_PATTERN_COUNT } from './features/pattern';
 
 export { SCHEMA_VERSION } from './schema';
 
-export const emptyDocument = (): Document => ({ ...schemaHeader(), settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] });
+export const emptyDocument = (): Document => ({ ...schemaHeader(), settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [], ...emptySections() });
 
 const sketchIds = (s: SketchFeature): Id[] => [s.points, s.curves, s.constraints, s.external].flatMap((group) => Object.keys(group));
 
@@ -104,7 +105,7 @@ function validated(spec: FeatureModule<Feature>, doc: Document, before: number |
   return expressions ? { ...checked, expressions } : checked;
 }
 
-const EMPTY: Document = { ...schemaHeader(), settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [] };
+const EMPTY: Document = emptyDocument();
 const fieldCache = new WeakMap<Feature, FieldInfo[]>();
 
 // Numeric fields of a feature that accept an expression: driving inputs only, not the coordinates
@@ -245,7 +246,8 @@ export function validateDocument(value: unknown): Document {
   const parameters = named<Parameter>(o.parameters, 'document.parameters', 'number', parameterName);
   const checks = named<Check>(o.checks, 'document.checks', 'check', checkName);
   if (!Array.isArray(o.features)) fail('dokument.features: čeká se seznam');
-  const doc: Document = { ...schemaHeader(), settings: { chordTolerance }, parameters, checks, features: [] };
+  // the sections (body properties) after the timeline; the form of their references only, as for every reference
+  const doc: Document = { ...schemaHeader(), settings: { chordTolerance }, parameters, checks, features: [], ...validateSections(o) };
   const ids = new Set<Id>();
   (o.features as unknown[]).forEach((item, i) => {
     const f = feature(doc, undefined, item, `features[${i}]`, 'load');
@@ -481,6 +483,7 @@ export function applyCommand(doc: Document, command: Command): Document {
           const expressions = Object.fromEntries(Object.entries(f.expressions).map(([path, expr]) => [path, renameInExpression(expr, from, to)]));
           return Object.keys(expressions).every((path) => expressions[path] === f.expressions?.[path]) ? f : { ...f, expressions };
         }),
+        ...renamedSections(doc, from, to),
       };
     }
 
@@ -633,6 +636,7 @@ export function applyCommand(doc: Document, command: Command): Document {
       });
 
     default:
-      return fail(`neznámý příkaz "${String(cmd.type)}"`);
+      // a command of a section of the document (body properties), or none at all
+      return applySectionCommand(doc, cmd) ?? fail(`neznámý příkaz "${String(cmd.type)}"`);
   }
 }

@@ -3,6 +3,8 @@ import { type FaceName, type Id, type Issue, type IssueCode, type NumberSpec, bo
 
 // The name of a feature of the document; undefined when the document has no such feature.
 export type NameOf = (feature: Id) => string | undefined;
+// The name of a body from its properties (D48); undefined when the shown model has no such body.
+export type BodyNameOf = (body: Id) => string | undefined;
 
 export const ROLES: Record<FaceName['role'], string> = { side: 'bok', startCap: 'víko ve skice', endCap: 'protější víko', wallSide: 'side of a wall', wallEnd: 'end of a wall' };
 // What tells apart the faces of a wall: the side of its curve, the point of its end.
@@ -11,8 +13,11 @@ const wallPart = (name: FaceName): string => (name.role === 'wallSide' ? ` (${na
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;
 
-// A body is named after the feature that created it; a copy made by a pattern adds its number.
-export function bodyName(body: Id, nameOf: NameOf): string {
+// A body is named by its properties (D48), which name it after the feature that created it unless
+// it has a name of its own; a copy made by a pattern adds its number.
+export function bodyName(body: Id, nameOf: NameOf, bodyNameOf?: BodyNameOf): string {
+  const named = bodyNameOf?.(body);
+  if (named !== undefined) return named;
   const { feature, local } = bodyOwner(body);
   return local === undefined ? featureName(feature, nameOf) : `${featureName(feature, nameOf)} / ${local}`;
 }
@@ -23,7 +28,9 @@ export const faceLabel = (name: FaceName, nameOf: NameOf): string =>
 
 // A string in `refs`: a feature or a body the document has is named; anything else (a feature that
 // is gone, a point of a sketch such as `x1/center`) stays the ID it is.
-export function refName(ref: string, nameOf: NameOf): string {
+export function refName(ref: string, nameOf: NameOf, bodyNameOf?: BodyNameOf): string {
+  const named = bodyNameOf?.(ref);
+  if (named !== undefined) return named;
   const { feature, local } = bodyOwner(ref);
   const name = nameOf(feature);
   return name === undefined ? ref : local === undefined ? name : `${name} / ${local}`;
@@ -41,10 +48,10 @@ const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference
 
 // The message of the engine with what the issue is about appended. A pattern names the copy that
 // failed or had no effect as `{ copy, feature }` in refs, whatever the issue is.
-export function issueText(issue: Issue, nameOf: NameOf): string {
+export function issueText(issue: Issue, nameOf: NameOf, bodyNameOf?: BodyNameOf): string {
   const named = (issue.refs ?? []).flatMap((ref): string[] => {
     if (isCopy(ref)) return [`copy ${ref.copy} of ${refName(ref.feature, nameOf)}`];
-    return typeof ref === 'string' && NAMED.includes(issue.code) ? [refName(ref, nameOf)] : [];
+    return typeof ref === 'string' && NAMED.includes(issue.code) ? [refName(ref, nameOf, bodyNameOf)] : [];
   });
   return named.length ? `${issue.message} (${named.join(', ')})` : issue.message;
 }

@@ -273,7 +273,8 @@ function contextOf(parts: Record<string, Part>): { context: QueryContext; name: 
     const x = found.part.xOf?.(found.face) ?? frameOfDirection(normal).x;
     return { origin: [0, 0, 0], x, y: cross3(normal, x), normal };
   };
-  const context = { state: { evaluation: { faceNames } }, bodies, frame, face: (name: FaceName) => owner.get(name)?.face } as unknown as QueryContext;
+  const bodyProperties = Object.fromEntries(Object.keys(bodies).map((id) => [id, { name: id, use: 'part' }]));
+  const context = { state: { evaluation: { faceNames, bodyProperties } }, bodies, frame, face: (name: FaceName) => owner.get(name)?.face } as unknown as QueryContext;
   return { context, name: (face) => faceNames[face] };
 }
 type Args = Parameters<typeof print.run>[1];

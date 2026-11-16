@@ -5,6 +5,7 @@
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds, entityOf } from './document';
 import { evaluateNumber } from './expression';
+import { namedBySections } from './sections/index';
 import type { Command, Document, Expr, Id, ParameterResult, SketchFeature, SketchResult, Vec2 } from './types';
 import { ORIGIN, dist2, has } from './util';
 
@@ -369,9 +370,11 @@ function textsOf(value: unknown, into: Set<string>): Set<string> {
 // A supplier of IDs the document does not have: `<prefix><kind><number>`, counted up from 1 for
 // every kind. IDs it has handed out are not handed out again, and neither is any text the
 // features of the document contain: an ID that a region of a profile still names, though its
-// curve was removed, stays taken.
+// curve was removed, stays taken; so does an ID a section of the document names (the feature of an
+// entry of body properties whose body is gone, D48).
 export function freshIds(doc: Document, prefix = ''): NewId {
-  const used = textsOf(doc.features, documentIds(doc));
+  // an ID a section of the document still names (an entry of body properties) is not handed out
+  const used = textsOf(doc.features, new Set([...documentIds(doc), ...namedBySections(doc)]));
   const counters = new Map<string, number>();
   return (kind) => {
     let n = counters.get(kind) ?? 1;

@@ -9,7 +9,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Opening and sav
 | Nový dokument | `load` s prázdným dokumentem | |
 | Uložit | `save()` | |
 | Otevřít | `load(json)` | |
-| Export sítě | `exportMesh('stl')` | |
+| Export sítě | `exportMesh('stl')`: the printed bodies (D48) | `printedBodies(evaluation.bodyProperties)` enables the button |
 | Export of one body | `exportMesh('stl', [body])` | `bodyFileName(body)` for the file name |
 | Undo, redo | `undo()`, `redo()` | `canUndo`, `canRedo` |
 | Překreslení po změně | `subscribe(listener)` | celý `EngineState` |
@@ -19,7 +19,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Opening and sav
 
 | Funkce | Příkaz / volání | Čte |
 |---|---|---|
-| Vykreslit tělesa | | `bodies[id].solid` |
+| Vykreslit tělesa | | `bodies[id].solid`; the colour and the use of `bodyProperties[id]` (D48) |
 | Vykreslit obrysy | | `bodies[id].edges[i].segments` (úsečky; hrany druhu `coplanar` se nekreslí) |
 | Vykreslit skici ve 3D | | `features[id].plane`, `sketch.points`, `sketch.radii`, `document` (křivky) |
 | Vykreslit roviny | | `features[id].plane` |

@@ -752,6 +752,44 @@ describe('model, tělesa a příkazy', () => {
     expect(ok(engine, 'get_sketch', { sketch: 's2' }).frame).toMatchObject({ origin: [0, 0, 10], normal: [0, 0, 1] });
   });
 
+  it('body properties (D48): get_model per body, errors and entries without a body; execute names what it took over', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
+    const plate = (id: string): Command => ({ type: 'addFeature', feature: { id, name: 'Plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    execute(engine, plate('e'));
+    let answer = execute(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'w', expr: '280' }, { type: 'setBodyProperties', body: 'e', patch: { name: 'Motor', color: '#30343A', use: 'reference', material: 'steel', mass: 'w' } }] });
+    expect(answer).not.toHaveProperty('takenOver');
+    expect(ok(engine, 'get_model').bodies[0]).toEqual({ id: 'e', volume: expect.closeTo(12000, 2), min: [0, 0, 0], max: [40, 30, 10], faces: 6, edges: 12, name: 'Motor', color: '#30343a', material: 'steel', use: 'reference', mass: 280, massFrom: 'mass' });
+    execute(engine, { type: 'setBodyMaterial', body: 'e', material: 'PETG' });
+    execute(engine, { type: 'setBodyProperties', body: 'e', patch: { mass: null, use: null, name: null, color: null } });
+    expect(ok(engine, 'get_model').bodies[0]).toMatchObject({ material: 'PETG', density: 1.27, mass: 15.24, massFrom: 'density' });
+    expect(ok(engine, 'get_model').bodies[0]).not.toHaveProperty('use');
+    // a mass that cannot be evaluated: in every answer that lists problems
+    execute(engine, { type: 'setBodyProperties', body: 'e', patch: { mass: 'w' } });
+    answer = execute(engine, { type: 'removeParameter', name: 'w' });
+    expect(answer.bodyPropertyErrors).toEqual([{ body: 'e', field: 'mass', message: 'unknown name "w"' }]);
+    expect(ok(engine, 'get_model').bodyPropertyErrors).toEqual([{ body: 'e', field: 'mass', message: 'unknown name "w"' }]);
+    expect(ok(engine, 'preview', { command: { type: 'setBodyProperties', body: 'e', patch: { mass: 1 } } })).not.toHaveProperty('bodyPropertyErrors');
+    // the feature removed: its entry stays and is listed, but not for a state after a feature
+    answer = execute(engine, { type: 'removeFeature', id: 'e' });
+    expect(answer.bodyPropertiesWithoutBody).toEqual(['e']);
+    expect(ok(engine, 'get_model').bodyPropertiesWithoutBody).toEqual(['e']);
+    expect(ok(engine, 'get_model', { at: 's' })).not.toHaveProperty('bodyPropertiesWithoutBody');
+    // made again under the ID: execute says that it took the entry over
+    answer = execute(engine, plate('e'));
+    expect(answer.takenOver).toEqual(['e']);
+    expect(ok(engine, 'get_model').bodies[0]).toMatchObject({ id: 'e', material: 'PETG' });
+    // the generated description: the section, its commands and its fields
+    const text = apiText();
+    expect(text).toContain('# Sections of the document');
+    expect(text).toContain('- bodyProperties (Body properties): ');
+    expect(text).toContain('  commands: setBodyProperties, setBodyMaterial, removeBodyProperties');
+    expect(text).toContain('- body properties of a body: <body>/density (Density, g/cm3, in the interval (0, 25])');
+    expect(text).toContain('- materials (Printing materials): ');
+    expect(text).toContain('setBodyMaterial (it copies the density, do not type a density from memory)');
+  });
+
   it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {
     const engine = newEngine();
     rectangle(engine, true);

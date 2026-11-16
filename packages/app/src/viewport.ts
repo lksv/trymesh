@@ -22,7 +22,9 @@ export interface HalfSpace {
   normal: Vec3;
 }
 export interface SceneModel {
-  bodies: { id: Id; solid: Solid }[];
+  // `color`: the colour of the body's properties (D48), else the colour of every body; `opacity`
+  // below 1 draws it see-through (an auxiliary body)
+  bodies: { id: Id; solid: Solid; color?: number; opacity?: number }[];
   lines: LineSet[];
   points: { positions: number[]; color: number; size: number }[]; // vždy přes tělesa
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // první smyčka obrys, další díry
@@ -171,8 +173,15 @@ export class Viewport implements View {
 
     // Síť tělesa se staví jednou pro každý objekt Solid; engine nezměněná tělesa vrací stejná.
     const meshes = new Map<Solid, THREE.Mesh>();
-    this.bodies = model.bodies.map(({ id, solid }) => {
+    this.bodies = model.bodies.map(({ id, solid, color, opacity }) => {
       const mesh = this.bodyMeshes.get(solid) ?? new THREE.Mesh(triangleGeometry(solid), this.bodyMaterial);
+      // a body with a colour or an opacity of its own has a material of its own for this scene
+      const translucent = opacity !== undefined && opacity < 1;
+      mesh.material =
+        color === undefined && !translucent
+          ? this.bodyMaterial
+          : this.own(new THREE.MeshStandardMaterial({ color: color ?? 0xaab7c6, ...BODY_MATERIAL, side, clippingPlanes: clipping, ...(translucent ? { transparent: true, opacity, depthWrite: false } : {}) }));
+      mesh.renderOrder = translucent ? 2 : 0;
       meshes.set(solid, mesh);
       this.content.add(mesh);
       return { id, mesh };

@@ -16,6 +16,8 @@ import {
   type ArgKind,
   type NumberSpec,
   QUERIES,
+  SECTION_INFO,
+  type SectionInfo,
   SKETCH_TOOLS,
   type SketchToolInput,
   type SketchToolName,
@@ -41,7 +43,8 @@ const CONVENTIONS = [
   'An extent of a distance may taper: `extent: { type: "distance", start, distance, taper }`, the angle in radians between a side face and the direction of the extrusion (in expressions `deg(x)`), strictly between −π/2 and π/2. The profile of the sketch (after its offset) holds at the start of the extent; at the far end it is moved by |distance| · tan(taper) with the rule of the offset. A positive taper widens away from the start, whichever way `distance` points (the outline grows, holes shrink), a negative one narrows. Uses: a draft on a rib or a boss `deg(-2)`; a roof that prints without support `deg(-45)`; a countersink from the face the head sits in, a cut with a negative `distance` (into the body) and a negative taper of half the included angle of the cone, followed by a straight bore; the same from the bore: `start` at the bottom of the cone, `distance` up to the face and a positive taper; a chamfer of the bottom edge against elephant foot, a slab with `profile/offset: -c`, `distance: c` and `deg(45)` under the body. The side of a line is a tilted plane (a sketch may stand on it; its origin stays where the plane meets the sketch plane), the side of an arc or a circle a cone (`kind: "cone"` with `apex`, `axis` from the apex towards the face, `halfAngle` = |taper|); the faces keep the names of the straight extrusion, and the rims of a cone against a cap, a coaxial cylinder or cone are circles a sketch can project. The field `extent/taper` is optional like `profile/offset` (setField adds it, `{ extent: { taper: null } }` removes it). A taper on a generated profile or on an extent through all is an invalid command; a taper under which the far profile cannot be built (a curve vanishes, loops touch) ends the feature in invalidProfile, with a message that says it is the far end and names the curves.',
   'Instead of regions, the profile of an extrusion may come from a profile generator: `profile` is `{ type: "generated", generator, sketch, operands, params, refs }` (section Profile generators). `operands` name entities of the sketch, `params` take numbers, expressions and flags (what is left out gets its default), `refs` name earlier features. The generator reads only the solved operands, so the sketch needs no closed regions; pitch circles of gears in mesh touch and should be construction circles. Operation, extent and targets work as for any extrusion. The result of the feature carries `facts` (for a gear its module, diameters and the rotation used): read them with get_model to verify what was built. updateFeature merges the dictionaries by entry: `{ profile: { params: { teeth: 24 } } }` changes one parameter, `null` returns a parameter to its default or removes a reference.',
   'Gears: a gear is an extrusion with the generator involuteGear over its pitch circle; the module follows from the circle diameter and the tooth count, so dimension the circle with an expression such as `"module * Zs"`. Give every gear after the first one `refs: { meshWith: <the gear it meshes with> }`: the rotation is then computed and stays right when tooth counts change. A ring gear is a cut with `internal: true` into solid material. The warnings gearMesh (the reference could not be used, the parameter rotation was used) and gearInterference show up in `problems`.',
-  'Every body in get_model and get_body has its volume in mm³ and its bounding box (`min`, `max`); use them to verify what you built. check_interference tells which bodies collide (`pairs`) and should follow any change to parts that must not overlap. Bodies that only touch do not count; a pin in a hole of the same diameter may be listed in `fits`, which is not a collision: round faces are polygons and their corners need not coincide. Each pair has a `depth`, how deep one body reaches into the other; a fit is no deeper than the chord tolerance (`tolerance` in the answer). export_stl saves all bodies into one file, or with `perBody` one file per body for printing.',
+  'Every body in get_model and get_body has its volume in mm³ and its bounding box (`min`, `max`); use them to verify what you built. check_interference tells which bodies collide (`pairs`) and should follow any change to parts that must not overlap. Bodies that only touch do not count; a pin in a hole of the same diameter may be listed in `fits`, which is not a collision: round faces are polygons and their corners need not coincide. Each pair has a `depth`, how deep one body reaches into the other; a fit is no deeper than the chord tolerance (`tolerance` in the answer). export_stl saves the printed bodies into one file, or with `perBody` one file per body for printing.',
+  'Body properties (command setBodyProperties, section Sections of the document) say what a body is: a name, a colour `#rrggbb`, a material label, and its use: `part` (printed; the default), `reference` (a bought or given part such as a motor: not printed by an export or a print query that gets no list of bodies, but it has a mass) or `auxiliary` (kept-free space, an envelope: neither printed nor weighed, still checked for collisions). Give a printed part its material from the catalog with setBodyMaterial (it copies the density, do not type a density from memory); give a bought part its `mass` in grams from its data sheet, and a weighed part its weighed mass. A copy made by a pattern of a body takes after its source (colour, material, use, and the density and the mass as a pair), so set the source and only what a copy does differently. The mass query reads these properties. get_model shows them per body; an entry whose body is gone stays (listed in `bodyPropertiesWithoutBody`) and is taken over by a body made again under that ID, which execute reports in `takenOver`.',
   'A pattern (feature type pattern) repeats its source around an axis. `source` is `{ type: "features", features: [...] }` (extrusions with the operation add or cut; for every copy the tool of each is built again in the turned position and applied to the targets of that extrusion, so a cut through all is measured in the direction of the copy) or `{ type: "body", body }` (the copies are new bodies). `transform` is `{ type: "circular", axis, count, span }`: `axis` is `{ kind: "base", axis: "X" | "Y" | "Z" }` or `{ kind: "sketchPoint", sketch, point }` (the normal of the sketch plane through that point). A positive angle turns counter-clockwise seen against the axis (right-hand rule; around Z it takes X towards Y); around a sketch point that is counter-clockwise in the coordinates of the sketch, so a sketch on the base plane XZ (normal −Y) turns the other way than the base axis Y. `count` includes the original, so 4 holes around a circle are count 4 and three more copies; `span` is `{ type: "full" }` (the step is the full circle divided by the count) or `{ type: "angle", angle }` (the angle between the first and the last copy). The pattern is atomic: if one copy fails, the pattern is in error, the model stays as it was before it and `refs` of the error start with `{ copy, feature }`. Copies that leave some of their targets unchanged are listed in the warning `noEffect` as `{ copy, feature, targets }` with those targets; a copy that falls onto what is cut already (the last of 5 copies over an angle of 2π lands on the original) is one of them. A pattern of features takes one boolean per copy and target on a body that keeps growing: tens of copies are fine, 200 holes take tens of seconds; a pattern of a body is cheap.',
   'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
   'Promítnutá hrana (addExternal) je ve skice pevná křivka: úsečka má odvozené body `<id>/a` a `<id>/b`, kružnice `<id>/center`. Jde k nim vázat a kótovat.',
@@ -103,9 +106,13 @@ export function expressionSyntax(): { syntax: string; functions: { name: string;
   };
 }
 
-// Numeric fields that accept an expression: feature fields and dimension values.
+// Numeric fields that accept an expression: feature fields, dimension values, and the fields of the
+// entries of the sections of the document (`<key>/<field>`, the key of the entry first).
 export function numericFields(): { owner: string; path: string; description: string }[] {
   return [
+    ...Object.values(SECTION_INFO as Record<string, SectionInfo>).flatMap((info) =>
+      info.fields.map((field) => ({ owner: `${info.title.toLowerCase()} of a ${field.owner}`, path: `<${field.owner}>/${field.path}`, description: fieldText(field.spec) + (field.when ? ` (only when ${field.when.path} is ${field.when.equals})` : '') })),
+    ),
     ...Object.entries(FEATURE_TYPE_INFO).flatMap(([type, info]) =>
       info.fields.map((field) => ({ owner: type, path: field.path, description: fieldText(field.spec) + (field.when ? ` (only when ${field.when.path} is ${field.when.equals})` : '') })),
     ),
@@ -170,6 +177,7 @@ export function apiDescription(): {
   operations: QueryDescription[];
   catalogs: ReturnType<typeof dataCatalogs>;
   exports: ReturnType<typeof exportFormats>;
+  sections: ReturnType<typeof documentSections>;
   types: string;
 } {
   return {
@@ -184,8 +192,21 @@ export function apiDescription(): {
     operations: hostOperations(),
     catalogs: dataCatalogs(),
     exports: exportFormats(),
+    sections: documentSections(),
     types: engineTypes(),
   };
+}
+
+// The sections of the document (D48): what each holds, the commands that change it and its numeric
+// fields, from the registry of the engine.
+export function documentSections(): { section: string; title: string; summary: string; commands: string[]; fields: string[] }[] {
+  return Object.entries(SECTION_INFO as Record<string, SectionInfo>).map(([section, info]) => ({
+    section,
+    title: info.title,
+    summary: info.summary,
+    commands: [...info.commands],
+    fields: info.fields.map((field) => `<${field.owner}>/${field.path} (${fieldText(field.spec)})`),
+  }));
 }
 
 // The sketch tools of the engine (the tool sketch_tool runs them): inputs and the IDs they return.
@@ -314,7 +335,7 @@ export function exportFormats(): { format: string; title: string; summary: strin
 
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, sections, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -371,8 +392,12 @@ export function apiText(): string {
     'Constants:',
     ...expressions.constants.map((constant) => `- ${constant.name}: ${constant.summary}`),
     '',
+    '# Sections of the document',
+    'Parts of the document beside the timeline, keyed by an ID of the model; a change of one recomputes no geometry. Each is changed by its own commands (shapes in the types below) and read from `evaluation` of the state and from get_model.',
+    ...sections.map((entry) => [`- ${entry.section} (${entry.title}): ${entry.summary}`, `  commands: ${entry.commands.join(', ')}`, ...(entry.fields.length ? [`  numeric fields: ${entry.fields.join('; ')}`] : [])].join('\n')),
+    '',
     '# Numeric fields',
-    'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField.',
+    'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField; a field of an entry of a section is given in its command (setBodyProperties) and keeps its expression in `expressions` of the entry under the field name.',
     ...fields.map((field) => `- ${field.owner}: ${field.path} (${field.description})`),
     '',
     '# Sketch tools',

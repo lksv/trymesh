@@ -109,7 +109,7 @@
           option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
           option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
           option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
         button title="Check which bodies share a volume": "Collisions"
       div.group
@@ -192,7 +192,43 @@
     + p: "Stěna: Vysunutí 1 – protější víko"
     + p.hint.body
     +   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 1"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
   view: 2 scene(s) set
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
@@ -228,7 +264,43 @@
     - p: "Hrana (úsečka): Vysunutí 1 – protější víko × Vysunutí 1 – bok"
     - p.hint.body
     -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 1"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 1"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
   view: 1 scene(s) set
   scene:
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 250
@@ -250,7 +322,43 @@
     + p.hint: "Nové těleso, distance 10 mm, regions: 1."
     + p.hint.body
     +   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 1"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
     - h2: "Model"
     - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
   view: 1 scene(s) set
@@ -275,6 +383,10 @@
     -   input value="Vysunutí 1"
     +   "Deska: 12000 mm³, 40 × 30 × 10 mm"
     -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+    + h2: "Properties of Deska"
+    - h2: "Properties of Vysunutí 1"
+    +   input value="" placeholder="Deska"
+    -   input value="" placeholder="Vysunutí 1"
   view: 1 scene(s) set
 
 === 9. suppressed: its body is gone
@@ -292,7 +404,43 @@
     -   button: "Potlačit"
     - p.hint.body
     -   "Deska: 12000 mm³, 40 × 30 × 10 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Deska"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Deska"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
   view: 1 scene(s) set
   scene:
     + bodies: e2, e3
@@ -321,7 +469,43 @@
     -   button: "Obnovit"
     + p.hint.body
     +   "Deska: 12000 mm³, 40 × 30 × 10 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Deska"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Deska"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
   view: 1 scene(s) set
   scene:
     + bodies: e1, e2, e3
@@ -353,7 +537,43 @@
     - p.hint: "Nové těleso, distance 10 mm, regions: 1."
     - p.hint.body
     -   "Deska: 12000 mm³, 40 × 30 × 10 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Deska"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Deska"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
   view: 1 scene(s) set
   scene:
     - face e1 #0 #f97316 opacity 0.3
@@ -578,7 +798,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -686,7 +906,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -990,7 +1210,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
@@ -1163,7 +1383,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
@@ -1219,24 +1439,73 @@
     - h2: "Úprava: Vysunutí 3"
     +   "Název"
     +   input value="Vysunutí 3"
-    -   "Profile"
-    -   select value="regions"
-    -     option selected value="regions": "Sketch regions"
-    -     option value="wall": "Wall along curves"
-    -     option value="involuteGear": "Involute gear"
-    - label
-    -   "Skica"
-    -   select value="s2"
-    -     option value="s1": "Skica 1"
-    -     option selected value="s2": "Skica 2"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    + div.buttons
     +   button.primary: "Upravit"
     +   button: "Potlačit"
     +   button: "Smazat"
     + p.hint: "Nové těleso, distance h + 3 = 13 mm, regions: 1."
     + p.hint.body
     +   "Vysunutí 3: 5850 mm³, 30 × 15 × 13 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Vysunutí 3"
+    -   "Profile"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
+    -     option value="involuteGear": "Involute gear"
+    +   "Name"
+    +   input value="" placeholder="Vysunutí 3"
+    -   "Skica"
+    -   select value="s2"
+    -     option value="s1": "Skica 1"
+    -     option selected value="s2": "Skica 2"
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    -   "Operace"
+    -   select value="new"
+    -     option selected value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    +   "Material"
+    +   input value=""
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="upTo": "Up to a plane or face"
+    +   "Density (g/cm3)"
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    +     input value=""
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    +   "Mass (g)"
+    -   "Distance (mm or an expression; negative = against the normal)"
+    +     input value=""
+    -     input value="h + 3"
+    -     small.computed data-field="extent/distance" data-unit="mm": "= 13 mm"
+    +   "Colour"
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +     input type=color value="#aab7c6"
     + h2: "Parameters (2)"
     + div.constraint
     +   input.pname value="w" title="Parameter name; renaming also rewrites the expressions that use it"
@@ -1263,37 +1532,6 @@
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
-    -   button: "Zrušit výběr oblastí"
-    - label
-    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
-    -   span.field
-    -     input value=""
-    -     small.computed data-field="profile/offset" data-unit="mm"
-    - label
-    -   "Operace"
-    -   select value="new"
-    -     option selected value="new": "Nové těleso"
-    -     option value="add": "Přidat k tělesu"
-    -     option value="cut": "Odebrat z tělesa"
-    - label
-    -   "Extent"
-    -   select value="distance"
-    -     option selected value="distance": "Distance"
-    -     option value="throughAll" disabled: "Through all (a cut only)"
-    -     option value="upTo": "Up to a plane or face"
-    - label
-    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
-    -   span.field
-    -     input value="0"
-    -     small.computed data-field="extent/start" data-unit="mm"
-    - label
-    -   "Distance (mm or an expression; negative = against the normal)"
-    -   span.field
-    -     input value="h + 3"
-    -     small.computed data-field="extent/distance" data-unit="mm": "= 13 mm"
-    - label
-    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
-    -   span.field
     -     input value=""
     -     small.computed data-field="extent/taper" data-unit="rad"
     - p#draft-problem.issue.warning
@@ -1334,7 +1572,43 @@
     - p.hint: "Nové těleso, distance h + 3 = 13 mm, regions: 1."
     - p.hint.body
     -   "Vysunutí 3: 5850 mm³, 30 × 15 × 13 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Vysunutí 3"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 3"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
     +   input.expr value="100" placeholder="expression, e.g. 2 * a"
     +   small.computed: "= 100"
     -   input.expr value="40" placeholder="expression, e.g. 2 * a"
@@ -2576,7 +2850,43 @@
     + p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
     + p.hint.body
     +   "Deska: 12000 mm³, 40 × 30 × 10 mm"
-    +   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Deska"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Deska"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
   view: 2 scene(s) set
   scene:
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 160
@@ -2588,7 +2898,43 @@
     - p: "Hrana (úsečka): Deska – bok × Deska – víko ve skice"
     - p.hint.body
     -   "Deska: 12000 mm³, 40 × 30 × 10 mm"
-    -   button.link title="This body alone, as it is at the end of the timeline": "Export STL"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Deska"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Deska"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
   view: 2 scene(s) set
   scene:
     + line #0ea5e9 width 4 onTop: 300 numbers, sum 41718.589
@@ -2869,7 +3215,7 @@
 
 === 78. the query Mass properties: two bodies added to the list, the density typed with its unit, a density by body
   panel:
-    + h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    + h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     + label title="Taken together as one rigid piece."
     +   "Bodies"
     +   div.item
@@ -2887,7 +3233,7 @@
     +       option value="e3": "Vysunutí 3"
     +     button.icon title="Remove": "✕"
     +   button.link: "Add"
-    + label title="Of every listed body that has none of its own."
+    + label title="Of every listed body whose properties state neither a density nor a mass."
     +   "Density (optional)"
     +   span.field
     +     input.value value="1.24"
@@ -2944,6 +3290,7 @@
     +     p.answer: "volume: 12000 mm³"
     +     p.answer: "density: 1.24 g/cm³"
     +     p.answer: "fill: 1"
+    +     p.answer: "from: argument"
     +     p.answer: "centerOfMass: [20 mm, 15 mm, 5 mm]"
     +   div.tree
     +     p.answer: "2"
@@ -2952,17 +3299,18 @@
     +     p.answer: "volume: 783.332471 mm³"
     +     p.answer: "density: 7.8 g/cm³"
     +     p.answer: "fill: 1"
+    +     p.answer: "from: densities"
     +     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
   view: 1 scene(s) set
 
 === 80. asked without the density for all: refused at the density for the body that has none, its row marked
-  engine: query("mass", {"bodies":["e1","e2"],"densities":{"e2":7.8}}, {}) -> invalidArguments: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`
+  engine: query("mass", {"bodies":["e1","e2"],"densities":{"e2":7.8}}, {}) -> invalidArguments: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)
   panel:
-    + label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
-    - label title="Of every listed body that has none of its own."
+    + label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
+    - label title="Of every listed body whose properties state neither a density nor a mass."
     +     input.value value=""
     -     input.value value="1.24"
-    + p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    + p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
     - p.answer: "mass: 20.99 g"
     - p.answer: "volume: 12783.332471 mm³"
     - p.answer: "centerOfMass: [40.376354 mm, 15 mm, 5 mm]"
@@ -2980,6 +3328,7 @@
     -     p.answer: "volume: 12000 mm³"
     -     p.answer: "density: 1.24 g/cm³"
     -     p.answer: "fill: 1"
+    -     p.answer: "from: argument"
     -     p.answer: "centerOfMass: [20 mm, 15 mm, 5 mm]"
     -   div.tree
     -     p.answer: "2"
@@ -2988,19 +3337,20 @@
     -     p.answer: "volume: 783.332471 mm³"
     -     p.answer: "density: 7.8 g/cm³"
     -     p.answer: "fill: 1"
+    -     p.answer: "from: densities"
     -     p.answer: "centerOfMass: [90 mm, 15 mm, 5 mm]"
-  status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`  [error]
+  status: mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)  [error]
   view: 1 scene(s) set
 
 === 81. the query Print check: an orientation by a direction, one by a face chosen from the lists of its body, and a bed
   panel:
     + h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
-    + label title="Each is a print of its own; without it all bodies."
+    + label title="Each is a print of its own; without it the printed bodies (use `part`; not the reference and auxiliary bodies)."
     +   "Bodies (optional)"
     +   button.link: "Add"
     + label title="Each says what is up, by a direction or by the face that lies on the bed."
     +   "Orientations"
-    - h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece, from the volume and a density. Until bodies have a material of their own the density is given here: `density` for all, `densities` by body. A fill factor scales a printed part with infill.": "Mass properties"
+    - h2 title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     - label title="Taken together as one rigid piece."
     -   "Bodies"
     +     div.fields
@@ -3075,7 +3425,7 @@
     +         span.unit: "mm"
     + label title="From the vertical: a face that looks down and leans more than this is an overhang."
     +   "Overhang angle (optional)"
-    - label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    - label.invalid title="mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
     -   "Density (optional)"
     +     input.value value="" placeholder="45"
     +     span.unit: "°"
@@ -3112,7 +3462,7 @@
     -     option value="point": "Through a sketch point"
     +   button.primary: "Ask"
     -   button.primary: "Ask again"
-    - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`"
+    - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
   status: 
   view: 2 scene(s) set
 
@@ -3243,7 +3593,7 @@
 === 87. the print check closed
   panel:
     - h2 title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
-    - label title="Each is a print of its own; without it all bodies."
+    - label title="Each is a print of its own; without it the printed bodies (use `part`; not the reference and auxiliary bodies)."
     -   "Bodies (optional)"
     -   button.link: "Add"
     - label title="Each says what is up, by a direction or by the face that lies on the bed."
@@ -3396,7 +3746,7 @@
   view: 2 scene(s) set
 
 === 90. a new document
-  engine: load("{\"schemaVersion\":4,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[]}") -> ok
+  engine: load("{\"schemaVersion\":4,\"schemaSteps\":[\"3a-body-properties\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{}}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":4}
   toolbar:

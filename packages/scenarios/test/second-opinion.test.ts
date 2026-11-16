@@ -48,33 +48,34 @@ describe('the second opinion of the kernel (D50), below the engine ordering', ()
     }
   });
 
-  it('6. flush faces askew make no collision: nothing in `pairs` or `fits`; the plate two metres away at ±88° and the pin at k = 52 stay failed', () => {
-    const flush = built(...flushModel());
-    // k = 0 and 2 at the origin and k = 2 two metres away are refused and cleared as nothing;
-    // the others are answered by the adapter
-    const cases: [string, number, number, 'cleared' | 'failed'][] = [
-      ['plate', 0, 0, 'cleared'],
-      ['plate', 0, 2, 'cleared'],
-      ['washer', 2000, 2, 'cleared'],
-      // the limit of the design ("1 of 189"): noise of flush faces with a point that seems deep
-      ['plate', 2000, 0, 'failed'],
-      ['plate', 2000, -1, 'failed'],
-    ];
-    for (const [child, away, k, where] of cases) {
-      const place = askew(away);
-      const label = `${child}, ${away} mm away, turned to k = ${k} (${angleOf(k, -88, 88).toFixed(3)}°)`;
-      const parent = placed(flush.upper, place);
-      const moved = turned(flush[child], place, ELBOW, Z, angleOf(k, -88, 88));
-      expect(refused(parent, moved), label).toBe(true);
-      const report = judged(parent, moved);
-      expect([report.pairs, report.fits], label).toEqual([[], []]);
-      if (where === 'cleared') expect(report, label).toMatchObject({ failed: [], cleared: [{ kind: 'nothing' }] });
-      else {
-        expect(report.cleared, label).toBeUndefined();
-        expect(report.failed[0]?.message, label).toMatch(FAILED_PHRASE);
-      }
+  // 6. Flush faces askew make no collision: nothing in `pairs` or `fits`. One test per pose, so
+  // that none of them comes near the time limit under load (review of D50, finding 2).
+  // k = 0 and 2 at the origin and k = 2 two metres away are refused and cleared as nothing; the
+  // plate two metres away at ±88° stays failed: the limit of the design ("1 of 189"), noise of
+  // flush faces with a point that seems deep.
+  const flush = built(...flushModel());
+  it.each([
+    ['plate', 0, 0, 'cleared'],
+    ['plate', 0, 2, 'cleared'],
+    ['washer', 2000, 2, 'cleared'],
+    ['plate', 2000, 0, 'failed'],
+    ['plate', 2000, -1, 'failed'],
+  ] as const)('6. flush faces askew: the %s, %i mm away, turned to k = %i, is %s and no collision', (child, away, k, where) => {
+    const place = askew(away);
+    const label = `${child}, ${away} mm away, turned to k = ${k} (${angleOf(k, -88, 88).toFixed(3)}°)`;
+    const parent = placed(flush.upper, place);
+    const moved = turned(flush[child], place, ELBOW, Z, angleOf(k, -88, 88));
+    expect(refused(parent, moved), label).toBe(true);
+    const report = judged(parent, moved);
+    expect([report.pairs, report.fits], label).toEqual([[], []]);
+    if (where === 'cleared') expect(report, label).toMatchObject({ failed: [], cleared: [{ kind: 'nothing' }] });
+    else {
+      expect(report.cleared, label).toBeUndefined();
+      expect(report.failed[0]?.message, label).toMatch(FAILED_PHRASE);
     }
-    // the pin askew at k = 52 (−63.753°): 0.06 mm³ of noise with a point 0.4 mm deep
+  });
+
+  it('6. the pin askew at k = 52 (−63.753°) stays failed: 0.06 mm³ of noise with a point 0.4 mm deep', () => {
     const place = askew();
     const child = turned(pins.forearm, place, ELBOW, Z, angleOf(52, -88, 88));
     const parent = placed(pins.upper, place);

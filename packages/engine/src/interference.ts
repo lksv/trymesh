@@ -79,9 +79,10 @@ function measure(common: Solid, volume: number, a: BodyResult, b: BodyResult, to
 // (2026-11-16): the arm of scenario 13 gives 512 to 888 triangles with the axis of its joint along
 // a coordinate axis (0.1 to 0.2 s) and 1,806 to 7,452 askew (0.7 to 2.4 s); the largest
 // intersection of two parts of the joint of scenario 9 (the housing and itself turned a little)
-// has 9,174 and takes 3.7 s, as much through the kernel's verified answer. The bound lies above
-// all of them, so it never changes what the tests pin, and holds a refused pair to about five
-// seconds.
+// has 9,174 and takes 3.7 s, as much through the kernel's verified answer. A fit askew near the
+// bound, where the search for sheets runs (a pin of radius 12 at a chord tolerance of 0.003 and
+// 0.0015), took 5.0 s at 11,768 triangles and 7.5 s at 10,018. The bound lies above every mesh
+// the tests pin and holds a refused pair to about five to eight seconds.
 export const SECOND_OPINION_TRIANGLES = 12000;
 
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -195,9 +196,12 @@ export function interferenceReport(
         continue;
       }
       const second = result.asComputed;
-      const kind = second && verdictOf(second, threshold, tolerance);
-      if (!second || kind === undefined) report.failed.push({ a, b, message: result.message });
-      else if (kind === 'collision') report.failed.push({ a, b, message: failedMessage(result.message, second) });
+      if (!second) {
+        report.failed.push({ a, b, message: result.message });
+        continue;
+      }
+      const kind = verdictOf(second, threshold, tolerance);
+      if (kind === 'collision') report.failed.push({ a, b, message: failedMessage(result.message, second) });
       else (report.cleared ??= []).push({ a, b, kind, volume: second.volume, depth: second.depth });
     }
   }

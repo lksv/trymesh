@@ -37,9 +37,9 @@ describe('the views of the collisions and of the gap with cleared pairs (D50)', 
       expect.stringMatching(/^Cleared by a mesh the kernel did not verify: /),
       'body forearm × body uppercleared: a fit, 0.031 mm³',
       'body plate × body uppercleared: shares nothing',
-      'body r × body s: could not be computed (refused; as computed the two share 6.04 mm³, 0.0394 mm deep, which the kernel could not verify)',
+      'body r × body s: not verified, neither colliding nor clear (refused; as computed the two share 6.04 mm³, 0.0394 mm deep, which the kernel could not verify)',
     ]);
-    expect(interferenceView.note?.(result, panelOf())).toEqual({ text: 'No collisions: 6 pair(s) checked. 1 fit(s) within the chord tolerance. 2 pair(s) cleared by a mesh the kernel did not verify. 1 pair(s) could not be computed.', error: true });
+    expect(interferenceView.note?.(result, panelOf())).toEqual({ text: 'No collisions: 6 pair(s) checked. 1 fit(s) within the chord tolerance. 2 pair(s) cleared by a mesh the kernel did not verify. 1 pair(s) could not be verified.', error: true });
     // the picked row counts through the collisions, the fits and the cleared pairs
     expect(interferenceView.scene?.(result, {} as never, panelOf(2))).toMatchObject({ bodies: [{ body: 'plate' }, { body: 'upper' }] });
     // an answer without cleared pairs is shown as before

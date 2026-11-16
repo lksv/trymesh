@@ -73,7 +73,7 @@ Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné
 Záruky implementace:
 1. Výstup `boolean` je uzavřené těleso.
 2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.
-3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. Průnik engine používá jen v dotazu na kolize těles (`interference`), kde ho zajímá objem, ne stěny: adaptér Manifoldu u průniku záruku neplní, nástroj před ním neupravuje a výsledek jen vyčistí a ověří; když ho ověřit nedokáže, skončí výjimkou, and the query then asks the intersection as computed (below) and may clear the pair by it, or reports it as failed.
+3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. The engine uses an intersection only in the query of collisions (`interference`), which wants its volume, not its faces: the Manifold adapter does not keep this guarantee for an intersection, does not adjust the tool before it and only cleans and verifies the result; when it cannot verify it, it throws, and the query then asks for the intersection as computed (below) and may clear the pair by it, or reports it as failed.
 4. Stejný vstup dá vždy stejný výstup.
 
 Když adaptér výsledek zaručit nedokáže, skončí výjimkou a engine ji ohlásí jako `kernelFailure`. Potichu vadné těleso vrátit nesmí. Výjimkou končí i vadný vstup: neuzavřená nebo dovnitř orientovaná síť, nesedící počet čísel stěn.

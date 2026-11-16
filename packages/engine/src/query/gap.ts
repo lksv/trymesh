@@ -40,7 +40,8 @@ export const GAP_ARGS = {
 //   `collision` (they share a volume above its threshold; also a body that lies wholly inside the
 //   material of the other, whose surfaces do not meet), `fit` (round faces within the chord
 //   tolerance of each other), `touching` (neither: flush faces, or less than that query reports),
-//   `unknown` (the surfaces meet and the kernel could not compute what they share). A pair that
+//   `unknown` (the surfaces meet and the kernel could not verify what they share; the measure of
+//   the collisions is not carried here). A pair that
 //   query lists in `cleared` (D50) is a fit when it was cleared as one and touches otherwise.
 // - `between`, for a distance above zero: the two points the gap lies between, `a` on the body
 //   `a`, and the face each lies on. Where a point lies on an edge or a corner, the face named is
@@ -177,7 +178,7 @@ export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
   returns:
     '`pairs`: the pairs closer than `within`, the closest first, at most `maxPairs`, each with `a`, `b` (`a` is the smaller ID) and `distance` (mm, measured on the meshes). ' +
     'A distance above zero comes with `between` (the two points `a` and `b` and the face each lies on, `faceA` and `faceB`: the feature to change) and `accuracy` (mm: an estimate of how far the meshes may be from the exact shapes). ' +
-    'A distance of zero comes with `contact`: `touching` (flush faces), `fit` (round faces within the chord tolerance), `collision` (a shared volume, also a body wholly inside another) or `unknown` (the kernel could not compute what they share). ' +
+    'A distance of zero comes with `contact`: `touching` (flush faces), `fit` (round faces within the chord tolerance), `collision` (a shared volume, also a body wholly inside another) or `unknown` (the kernel could not verify what they share). ' +
     '`close`: how many pairs are closer than `within`. `apart`: how many are further apart (not measured). `failed`: pairs that could not be measured, with the reason, at most `maxPairs`; `refused`: how many. `checked`: pairs examined. `truncated` when either list was cut. ' +
     '`cleared` (only when it has an entry, not cut): pairs `{ a, b }` whose answer rests on a pair the query `interference` cleared by an intersection the kernel computed and did not verify.',
   args: GAP_ARGS,

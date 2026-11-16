@@ -77,11 +77,15 @@ const newEngine = (): Engine => {
   });
 };
 afterAll(() => {
-  // the second opinion was asked about every model, saw collisions and fits, and cleared fits
-  expect(SECOND.asked).toBeGreaterThan(20);
+  // Over the whole file (57 reports on 2026-11-16: 35 verified collisions all failed, 12 of 12 fits
+  // cleared as fits, 48 pairs cleared as nothing, no verified clear pair left failed) the second
+  // opinion saw collisions and fits and cleared every fit. Only when the file ran whole: a test
+  // picked by name (`-t`) asks too little for the totals (review of D50, finding 1).
+  if (SECOND.asked < 50) return;
   expect(SECOND.collisions).toBeGreaterThan(20);
+  expect(SECOND.fits).toBeGreaterThan(5);
   expect(SECOND.clearedFits).toBe(SECOND.fits);
-  console.log(`bodies: the second opinion over ${SECOND.asked} reports: ${SECOND.collisions} verified collisions all failed, ${SECOND.clearedFits} of ${SECOND.fits} fits cleared as fits, ${SECOND.clearedNothing} pairs cleared as nothing, ${SECOND.notCleared} verified clear pairs left failed`);
+  expect(SECOND.notCleared).toBe(0);
 });
 
 // A plate A 40 × 30 × 10 and a block B 20 × 20 × 10 that enters it by 10 × 10 × 5 mm at a corner.

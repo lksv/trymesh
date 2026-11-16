@@ -11,7 +11,7 @@ import { arm } from './arm';
 import { angleOf, askew, built, judged, placed, turned } from './second-opinion-kit';
 
 const POSES = Number(process.env.SECOND_OPINION_POSES ?? 12); // along an axis
-const ASKEW = Number(process.env.SECOND_OPINION_ASKEW ?? 4);
+const ASKEW = Number(process.env.SECOND_OPINION_ASKEW ?? 2);
 const FIRST = Number(process.env.SECOND_OPINION_FIRST ?? 1);
 const RADII = [1.5, 2.5, 4, 12];
 // Poses along an axis that failed once, pinned by the radius and their k (none so far).

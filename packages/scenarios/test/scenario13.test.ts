@@ -626,7 +626,7 @@ describe('scenario 13, the part of D50: the steps the kernel refuses for the pin
     const steps = Array.from({ length: 40 }, (_, i) => stepAt(i + 1));
     const refused = steps.filter((step) => refusals[step.k] > 0);
     // As measured: one step of the 40 is refused, k = 5 (−72.130°), where the mesh as computed is a
-    // fit of 0.031 mm³. With the second opinion alone (5a) the pin was in `failed` there.
+    // fit of 0.031 mm³. Without the second opinion (5a alone) the pin was in `failed` there.
     expect(refused.length, 'a refused step: otherwise the test tests nothing').toBeGreaterThan(0);
     expect(refused.map((step) => step.k)).toContain(5);
     for (const step of steps) {

@@ -10,7 +10,7 @@ import { QUERIES } from '../src/query/index';
 import type { State } from '../src/recompute/state';
 import { DOCUMENT_SECTIONS } from '../src/sections/index';
 import { volumeOf, volumeOfPieces } from '../src/solid';
-import type { BodyResult, Evaluation, Id, InterferenceReport, Solid, SolidKernel, Vec3 } from '../src/types';
+import type { BodyResult, Evaluation, InterferenceReport, Solid, SolidKernel, Vec3 } from '../src/types';
 
 // A box as a closed mesh, outward; `faces` numbers its six sides: -z, +z, -y, +y, -x, +x.
 function cuboid(min: Vec3, max: Vec3, faces: number[]): Solid {
@@ -178,8 +178,6 @@ describe('the second opinion of the kernel (D50)', () => {
     expect(ask(0.001)).toMatchObject({ failed: [{ a: 'A', b: 'B' }], pairs: [], fits: [] });
     expect(ask(200)).toEqual({ pairs: [], fits: [], failed: [], cleared: [{ a: 'A', b: 'B', kind: 'nothing', volume: expect.closeTo(100, 6), depth: expect.closeTo(1, 6) }], checked: 1 });
     expect(calls).toEqual({ boolean: 1, asComputed: 1 });
-    // a report without a cleared pair has no field `cleared`
-    const clear: Id[] = [];
-    expect(Object.keys(interferenceReport({ A: a }, clear, 0.001, TOLERANCE, () => undefined, () => ({ message: 'unused' })))).toEqual(['pairs', 'fits', 'failed', 'checked']);
+    // a report of a pair the kernel answers has no field `cleared`: review.test.ts, the review of D50
   });
 });

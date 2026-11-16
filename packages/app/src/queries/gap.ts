@@ -19,7 +19,7 @@ const CONTACT: Record<Extract<Gap, { contact: string }>['contact'], { text: stri
   touching: { text: 'touching', title: 'The two bodies touch and share no volume: flush faces' },
   fit: { text: 'fit', title: 'Round faces reach into each other by no more than the chord tolerance: a pin in a hole of the same diameter' },
   collision: { text: 'collision', title: 'The two bodies share a volume' },
-  unknown: { text: 'touching or colliding', title: 'The surfaces meet, and the kernel could not compute what the two bodies share' },
+  unknown: { text: 'touching or colliding', title: 'The surfaces meet, and the kernel could not verify what the two bodies share' },
 };
 
 export const gapView: QueryView<'gap'> = {

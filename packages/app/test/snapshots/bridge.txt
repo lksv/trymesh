@@ -544,6 +544,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s2"
@@ -710,6 +712,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s2"

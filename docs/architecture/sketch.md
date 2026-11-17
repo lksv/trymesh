@@ -37,6 +37,8 @@ Co se skutečně promítne, plyne z druhu hrany a z polohy roviny:
 - Kruhová hrana se promítá vždy jako celá kružnice, i když je hrana jen její částí.
 - **Promítnutí, které nejde vyhodnotit, skicu neshodí.** Když hrana zanikla, nejde ji promítnout nebo by se promítla jako jiný druh křivky, než říká `kind` (`unsupportedProjection`), skica dostane varování a promítnutá křivka zůstane zmrazená na posledních platných hodnotách ze `solved.external`. Vazby na ni platí dál. Pokud žádné platné hodnoty nejsou (promítnutí se nepovedlo nikdy), vazby na tuto křivku se při řešení vynechají a varování je vyjmenuje.
 
+**Points and circles as operands of a generator (D61).** A profile generator of an extrusion reads entities of a sketch by the kinds its catalog lists: a circle (an own one, construction or not, or a projected one) with its solved centre and radius, or a point (an own point, the origin, or a point of projected geometry such as `<id>/center`) with its solved position. A command verifies the kind (`entityOf`); an entity removed later is a broken reference of the extrusion, not of the sketch ([extrude.md](extrude.md), "Profile generators").
+
 **Připravenost na elipsu.** Promítání do šikmé roviny přidá variantu `ellipse` do `Curve`, do `kind` a `Projected` a do portu solveru odpovídající vazby. Zbytek návrhu se nemění: `fixed` v `SolveInput` pracuje s obecnými ID a kód, který zpracovává křivky, musí neznámou variantu odmítnout chybou, ne ji tiše přeskočit. Kružnice promítnutá s `kind: 'circle'`, jejíž rovina se později naklonila, skončí varováním a zůstane zmrazená; uživatel promítnutí založí znovu jako elipsu.
 
 ## Řešení skici (D12)

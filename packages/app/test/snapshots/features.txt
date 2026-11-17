@@ -206,6 +206,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s1"
@@ -535,6 +537,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s1"
@@ -653,6 +657,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s1"
@@ -806,6 +812,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s1"
@@ -1266,6 +1274,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s2"
@@ -1730,6 +1740,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s2"
@@ -2861,6 +2873,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s3"
@@ -2986,22 +3000,25 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/backlash" data-unit="mm"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
-    - div.buttons
-    -   button: "Zrušit výběr oblastí"
+    + label
     +   "Rotation (° or an expression in radians)"
-    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/rotation" data-unit="rad"
     + label.check
     +   input type=checkbox unchecked
     +   "Internal (the cut that makes a ring gear)"
-    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    +   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +     small.computed data-field="profile/params/shift" data-unit="none"
+    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
     +   "In mesh with"
     +   select value=""
     +     option selected value="": "(none)"
-    + p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°"
-    -     input value=""
+    + p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°, shift 0"
     -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
@@ -3036,8 +3053,8 @@
   panel:
     +     input value="12"
     -     input value="18"
-    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    - p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°"
+    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
+    - p#draft-facts.hint: "module 1.111111 mm, pitch ⌀ 20 mm, tip ⌀ 22.222222 mm, root ⌀ 17.222222 mm, rotation 0°, shift 0"
   view: 1 scene(s) set
   scene:
     + line #26303c width 1.5: 3852 numbers, sum 679268.366
@@ -3069,8 +3086,8 @@
     -     input value="20"
     +   input type=checkbox checked
     -   input type=checkbox unchecked
-    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 16.666667 mm, root ⌀ 24.166667 mm, rotation 0°"
-    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 16.666667 mm, root ⌀ 24.166667 mm, rotation 0°, shift 0"
+    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
   view: 2 scene(s) set
   scene:
     + line #26303c width 1.5: 4860 numbers, sum 874372.887
@@ -3113,10 +3130,9 @@
     -     option selected value="c7": "c7 ⌀ 20"
     - label
     -   "Number of teeth"
-    +     input value=""
-    +     small.computed data-field="profile/offset" data-unit="mm"
     -     input value="12"
     -     small.computed data-field="profile/params/teeth" data-unit="count"
+    - label
     -   "Pressure angle (° or an expression in radians)"
     -   span.field
     -     input value="25"
@@ -3134,12 +3150,16 @@
     - label.check
     -   input type=checkbox checked
     -   "Internal (the cut that makes a ring gear)"
-    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
+    - label
+    -   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   span.field
+    +     small.computed data-field="profile/offset" data-unit="mm"
+    -     small.computed data-field="profile/params/shift" data-unit="none"
+    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
     -   "In mesh with"
     -   select value=""
     -     option selected value="": "(none)"
-    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 16.666667 mm, root ⌀ 24.166667 mm, rotation 0°"
-    - label
+    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 16.666667 mm, root ⌀ 24.166667 mm, rotation 0°, shift 0"
     + label
     +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
     +   span.field
@@ -3196,22 +3216,25 @@
     +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/backlash" data-unit="mm"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
-    - div.buttons
-    -   button: "Zrušit výběr oblastí"
+    + label
     +   "Rotation (° or an expression in radians)"
-    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +   span.field
     +     input value="0"
     +     small.computed data-field="profile/params/rotation" data-unit="rad"
     + label.check
     +   input type=checkbox unchecked
     +   "Internal (the cut that makes a ring gear)"
-    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    - div.buttons
+    -   button: "Zrušit výběr oblastí"
+    +   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    +     small.computed data-field="profile/params/shift" data-unit="none"
+    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
     +   "In mesh with"
     +   select value=""
     +     option selected value="": "(none)"
-    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
-    -     input value=""
+    + p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     -     small.computed data-field="profile/offset" data-unit="mm"
     - label
     -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
@@ -3369,6 +3392,8 @@
     -     option value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option selected value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s3"
@@ -3402,11 +3427,16 @@
     - label.check
     -   input type=checkbox unchecked
     -   "Internal (the cut that makes a ring gear)"
-    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
+    - label
+    -   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/params/shift" data-unit="none"
+    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
     -   "In mesh with"
     -   select value=""
     -     option selected value="": "(none)"
-    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p#draft-facts.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - label
     -   "Operace"
     -   select value="new"
@@ -3570,6 +3600,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s1"
@@ -3785,6 +3817,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s1"
@@ -3870,7 +3904,7 @@
     +   button: "Potlačit"
     +   button: "Smazat"
     + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
@@ -3919,9 +3953,9 @@
     + face e4 #11 #f97316 opacity 0.3
 
 === 66. the form of the gear, a change typed
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")  (x3)
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -4031,21 +4065,18 @@
     +     option value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option selected value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s3"
     +     option value="s1": "Skica 1"
     +     option value="s2": "Skica 2"
     +     option selected value="s3": "Skica 3"
-    + label
+    - h2: "Vysunutí"
     +   "circle (circle of the sketch)"
     +   select value="c7"
     +     option selected value="c7": "c7 ⌀ 20"
-    - h2: "Vysunutí"
-    +   "Number of teeth"
-    +   span.field
-    +     input value="14"
-    +     small.computed data-field="profile/params/teeth" data-unit="count"
     -   "Název"
     -   input value="Vysunutí 4"
     - div.buttons
@@ -4053,39 +4084,33 @@
     -   button: "Potlačit"
     -   button: "Smazat"
     - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     - h2: "Properties of Vysunutí 4"
+    +   "Number of teeth"
+    +   span.field
+    +     input value="14"
+    +     small.computed data-field="profile/params/teeth" data-unit="count"
+    -   "Name"
+    -   input value="" placeholder="Vysunutí 4"
     +   "Pressure angle (° or an expression in radians)"
     +   span.field
     +     input value="25"
     +     small.computed data-field="profile/params/pressureAngle" data-unit="rad"
-    -   "Name"
-    -   input value="" placeholder="Vysunutí 4"
-    +   "Backlash (mm or an expression)"
-    +   span.field
-    +     input value="0"
-    +     small.computed data-field="profile/params/backlash" data-unit="mm"
     -   "Use"
     -   select value=""
     -     option selected value="": "Default: Printed part"
     -     option value="part": "Printed part"
     -     option value="reference": "Reference part (not printed)"
     -     option value="auxiliary": "Auxiliary (no mass, not printed)"
-    +   "Rotation (° or an expression in radians)"
+    +   "Backlash (mm or an expression)"
     +   span.field
     +     input value="0"
-    +     small.computed data-field="profile/params/rotation" data-unit="rad"
-    + label.check
-    +   input type=checkbox unchecked
-    +   "Internal (the cut that makes a ring gear)"
-    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
-    +   "In mesh with"
+    +     small.computed data-field="profile/params/backlash" data-unit="mm"
     -   "Material from the catalog"
-    +     option selected value="": "(none)"
-    + p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°"
+    -   select value=""
     -     option selected value="": "—"
     -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
     -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
@@ -4093,21 +4118,35 @@
     -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
     -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
     -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    +   "Rotation (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="profile/params/rotation" data-unit="rad"
+    + label.check
+    +   input type=checkbox unchecked
+    +   "Internal (the cut that makes a ring gear)"
+    -   "Material"
+    -   input value=""
+    +   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   "Density (g/cm3)"
+    +     small.computed data-field="profile/params/shift" data-unit="none"
+    + label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
+    +   "In mesh with"
+    +   select value=""
+    +     option selected value="": "(none)"
+    + p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°, shift 0"
     +   "Operace"
     +   select value="new"
     +     option selected value="new": "Nové těleso"
     +     option value="add": "Přidat k tělesu"
     +     option value="cut": "Odebrat z tělesa"
-    -   "Material"
-    -   input value=""
+    + label
     +   "Extent"
     +   select value="distance"
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
-    -   "Density (g/cm3)"
-    -   span.field
-    -     input value=""
+    + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   "Mass (g)"
     +     input value="0"
@@ -4272,7 +4311,7 @@
     +   button: "Potlačit"
     +   button: "Smazat"
     + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
@@ -4282,6 +4321,8 @@
     -     option value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option selected value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     +   "Name"
     +   input value="" placeholder="Vysunutí 4"
     -   "Skica"
@@ -4324,17 +4365,20 @@
     -     small.computed data-field="profile/params/backlash" data-unit="mm"
     +   "Mass (g)"
     -   "Rotation (° or an expression in radians)"
-    +     input value=""
     -     input value="0"
     -     small.computed data-field="profile/params/rotation" data-unit="rad"
     - label.check
     -   input type=checkbox unchecked
     -   "Internal (the cut that makes a ring gear)"
-    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`."
+    - label
+    -   "Profile shift coefficient (a number or an expression; empty = 0)"
+    -   span.field
+    -     small.computed data-field="profile/params/shift" data-unit="none"
+    - label title="An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`."
     -   "In mesh with"
     -   select value=""
     -     option selected value="": "(none)"
-    - p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°"
+    - p#draft-facts.hint: "module 1.428571 mm, pitch ⌀ 20 mm, tip ⌀ 22.857143 mm, root ⌀ 16.428571 mm, rotation 0°, shift 0"
     +   "Colour"
     -   "Operace"
     -   select value="new"
@@ -4517,7 +4561,7 @@
     -   button: "Potlačit"
     -   button: "Smazat"
     - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
@@ -4755,7 +4799,7 @@
     +   button: "Potlačit"
     +   button: "Smazat"
     + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
@@ -4990,7 +5034,7 @@
     -   button: "Potlačit"
     -   button: "Smazat"
     - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
-    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°"
+    - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"

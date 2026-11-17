@@ -629,6 +629,52 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'offset');
   });
 
+  it('the generators of 5d: a GT2 pulley at a point, a cycloidal disc over a circle, the profile shift of a gear typed and emptied (D61)', async () => {
+    const h = await start();
+    const SHIFT = 'Profile shift coefficient (a number or an expression; empty = 0)';
+    // a sketch with a point and a construction circle of radius 25 about the origin, made by the AI
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch('s', 'Drive', { kind: 'base', plane: 'XY' }) },
+        { type: 'addPoint', sketch: 's', id: 'axis', x: 60, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'pins', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+      ],
+    });
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'gt2Pulley');
+    h.record('a GT2 pulley: its operand is a point, the select lists the origin and the points of the sketch; the example of the catalog, 20 grooves');
+    h.choose('center (point of the sketch)', 'axis');
+    h.type(h.field('Number of grooves'), '40');
+    h.record('at the point, 40 grooves: the facts follow the preview');
+    h.press('panel', 'OK');
+    h.record('the pulley');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'cycloidalDisc');
+    h.record('a cycloidal disc over the circle: the example of the catalog, its facts');
+    h.type(h.field('Input angle (° or an expression in radians)'), '90');
+    h.type(h.field(DISTANCE), '3');
+    h.press('panel', 'OK');
+    h.record('the disc at the input angle 90°');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'involuteGear');
+    h.record('a gear: the shift is empty, the draft has none');
+    h.type(h.field(SHIFT), '0.3');
+    h.record('a shift typed: the tip and the root move, the facts say the shift');
+    h.press('panel', 'OK');
+    h.record('the gear with its shift');
+    doubleClick(h, 'Vysunutí 3');
+    h.record('editing: the field shows the shift');
+    h.type(h.field(SHIFT), '');
+    h.record('the field emptied: the draft has no shift, the patch removes it');
+    h.press('panel', 'OK');
+    h.record('OK: the shift is removed from the feature');
+    await matches(h, 'generators');
+  });
+
   it('a taper on the extent of an extrusion (D45)', async () => {
     const h = await start();
     h.press('toolbar', 'Skica');

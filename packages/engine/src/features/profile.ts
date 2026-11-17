@@ -55,7 +55,8 @@ export const PROFILE_FIELD_SPECS: FieldSpec[] = [
 
 // What `null` in a patch may remove from a profile that does not have it: the offset of regions
 // (an optional field), an entry of a dictionary the generator catalog knows (a parameter returns to
-// its default, a reference is not set) and the dictionary of references itself. Anything else that
+// its default, an optional one is removed, a reference is not set) and the dictionary of references
+// itself. Anything else that
 // is not there is a typo.
 export function removableFromProfile(profile: ProfileSource, path: string[]): boolean {
   if (profile.type === 'regions') return path.length === 1 && path[0] === 'offset';
@@ -70,7 +71,8 @@ export function removableFromProfile(profile: ProfileSource, path: string[]): bo
 }
 
 // The profile source of a feature. A generated profile follows the generator catalog: operands
-// and references by its names, parameters with its ranges and defaults, in the order of the catalog.
+// and references by its names, parameters with its ranges and defaults, in the order of the catalog;
+// an optional parameter is stored only when it is given.
 // The offset of regions is stored only when it is given (also a zero), and a wall takes own curves
 // of its sketch: whether they form a chain depends on solved positions and shows in the recompute.
 export function profileSource(context: ValidationContext, v: unknown, what: string): ProfileSource {
@@ -112,6 +114,7 @@ export function profileSource(context: ValidationContext, v: unknown, what: stri
     const value = givenParams[name];
     const at = `${what}.params.${name}`;
     if (isFlag(param)) params[name] = value === undefined ? param.default : boolean(value, at);
+    else if (value === undefined && param.optional) continue; // its absence is its default
     else if (value === undefined && param.default === undefined) fail(`${at}: the parameter is required`);
     else params[name] = fields.number(value === undefined ? param.default : value, `profile/params/${name}`, param, at);
   }

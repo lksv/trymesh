@@ -31,7 +31,8 @@ import { FACE_ROLES } from '../00-prep/contract';
 //   - Every face of the tool is moved along its own surface: a plane along its normal,
 //     a cylinder and a cone by their radius; neighbours meet where the moved surfaces meet, so an
 //     outer corner of the tool stays sharp (the pocket is up to 1.73 times the clearance away
-//     from it) and no face is added or lost.
+//     from it) and no face is added or lost, but for one without extent (a carried face that is a
+//     polygon of the curve two other faces cross in, which goes with no moved description).
 //   - How exact it is: the moved surfaces are exact, and between two planar faces so is the
 //     pocket (but for a face narrower than the chord tolerance, which may lie off its moved
 //     surface by up to that). A round face is a polygon in the mesh: there the pocket may be nearer to the tool
@@ -39,7 +40,8 @@ import { FACE_ROLES } from '../00-prep/contract';
 //     face meets another face at a slant by up to `ROUND_ALLOWANCE` of the clearance more (0.87
 //     of the clearance was measured where two cylinders cross). `gap` measures what it is.
 //   - A tool that cannot be moved that way is the error `invalidClearance`, and so is a clearance
-//     under ten precisions of the coordinates.
+//     under ten precisions of the coordinates, or, on a tool with a face that is not planar, not
+//     more than `CHORDS_PER_CLEARANCE` chord tolerances.
 //   - `setField` reaches the field also while the feature does not have it (its description has
 //     the default 0, the rule of D44); `updateFeature` with `{ clearance: null }` removes it,
 //     and a patch to another operation removes it by itself.
@@ -218,7 +220,10 @@ declare module '../../../packages/engine/src/features/module' {
 //     volumes together and `VOLUME_AREA_FACTOR` · p · the two areas together. When the port
 //     refuses that intersection the volume is not checked;
 //   - sheets, for all three: area in triangles that lie back to back within the sheet tolerance
-//     (`areaOf` with and without it), by face number; the sum over the numbers of max(0, result
+//     (the centroid of the triangle, its three vertices and the middles of its edges each within
+//     it of a triangle facing the other way: normals within 2.6° of opposite, more for two
+//     triangles that share no vertex when one is narrower than twice the tolerance), by face
+//     number; the sum over the numbers of max(0, result
 //     - operands) may be at most `SHEET_AREA_FLOOR`: a wall of the tool left inside the result,
 //     a face that should be gone. The sheet tolerance is `SHEET_TOLERANCE` · p, at most
 //     `SHEET_CHORD_SHARE` of `chordTolerance` (the gaps between two polygons of one circle are
@@ -238,7 +243,7 @@ export const VOLUME_TOLERANCE = 1e-6; // a share of the two volumes together
 export const VOLUME_AREA_FACTOR = 0.1; // times p, per mm² of the two surfaces together; to be confirmed far from the origin
 export const SHEET_TOLERANCE = 10; // in precisions of the coordinates (`coordinatePrecision` over the two operands)
 export const SHEET_CHORD_SHARE = 0.1; // the sheet tolerance is never more than this share of the chord tolerance
-export const SHEET_FLOOR = 2; // ... and never less than this many precisions of the coordinates
+export const SHEET_FLOOR = 0.5; // ... and never less than this many precisions of the coordinates (2 before the revision)
 export const SHEET_AREA_FLOOR = 0.001; // mm²: new sheet area a result may hold, over all face numbers together
 
 // The box on one side of a plane that holds everything of `body` on that side: one face in the
@@ -253,10 +258,12 @@ export declare function halfSpaceBox(body: Solid, plane: Pick<Frame, 'origin' | 
 export const SPLIT_MARGIN = 0.05;
 
 // A body with every face moved outwards by `clearance` along its own surface.
-// - `solid`: the same vertices, moved; the triangles of round faces as they were, the planar
-//   faces triangulated again from their moved outline. The face numbers are those of the body:
-//   the caller gives the moved faces numbers and names of their own.
-// - `infos`: the moved description of every face of the body, by its number.
+// - `solid`: the vertices moved, less those the move passes over (an edge the move turns round
+//   is collapsed into its vertex with more faces); the triangles of round faces as they were,
+//   the planar faces triangulated again from their moved outline. The face numbers are those of
+//   the body: the caller gives the moved faces numbers and names of their own. A carried face
+//   without extent has none: its triangles carry the number of one of the two faces it lies on.
+// - `infos`: the moved description of every face of the body that has triangles, by its number.
 export interface MovedBody {
   solid: Solid;
   infos: ReadonlyMap<number, FaceInfo>;
@@ -267,13 +274,20 @@ export interface MovedBody {
 // - `closes`: a hole (a cylinder with the material outside) has a radius no larger than the
 //   clearance.
 // - `vertex`: a vertex cannot lie on all the moved surfaces of its faces, or a narrow face carried
-//   along at a vertex ends farther than the chord tolerance from its moved surface.
-// - `outline`: the moved outline of a planar face crosses itself.
-// - `turned`: a triangle of a round face turned over.
+//   along at a vertex ends farther than the chord tolerance from its moved surface (a carried face
+//   without extent, all of whose vertices lie within the chord tolerance on its own surface and on
+//   those of the same two other faces whose normals there are at least 1° apart, is exempt:
+//   revision after the verification), or a face would lose every triangle, or a vertex that was
+//   not passed over would vanish, or the moved mesh is pinched at a vertex.
+// - `outline`: the moved outline of a planar face crosses itself, or the moved mesh is not closed.
+// - `turned`: a triangle of a round, swept or carried face turned over (against its three vertices
+//   before the move, or, where a collapse changed it, against the moved surface at its centroid).
 // - `crosses`: an edge of the moved mesh goes through a triangle of it.
-// - `tooNear`: a point of the moved surface is nearer to the body than the clearance allows.
+// - `tooNear`: a point of the moved surface is nearer to the body than the clearance allows (a point
+//   of a round face also against the exact surface of its own face).
 // - `tooSmall`: the clearance is under ten precisions of the coordinates, which the checks cannot
-//   tell from none (no faces).
+//   tell from none, or, on a tool with a face that is not planar, not more than
+//   `CHORDS_PER_CLEARANCE` chord tolerances (no faces).
 export interface MoveProblem {
   reason: 'noSurface' | 'bothSides' | 'closes' | 'vertex' | 'outline' | 'turned' | 'crosses' | 'tooNear' | 'tooSmall';
   faces: FaceNameAfter[];
@@ -290,6 +304,11 @@ export declare function movedOutwards(body: Solid, faceInfos: readonly FaceInfo[
 // the round face then span a wider angle than the chord tolerance gave them (design.md, "The
 // checks of the moved tool").
 export const ROUND_ALLOWANCE = 0.15;
+// On a tool with a face that is not planar, a clearance has to be more than this many chord
+// tolerances of the document (revision after the verification): a margin, so that the bound of a
+// round face, c (1 − ROUND_ALLOWANCE) less the chord tolerance, is more than 0.35 c; the bound
+// reaches nothing only at about 1.18 chord tolerances.
+export const CHORDS_PER_CLEARANCE = 2;
 
 // ================================================================ what the package does not add
 

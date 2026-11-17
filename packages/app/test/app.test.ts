@@ -8,7 +8,7 @@
 // has to change one has changed behaviour, and says in its message what and why. To write the
 // snapshots again: `npx vitest run packages/app/test/app.test.ts -u`.
 import { writeFileSync } from 'node:fs';
-import { type Command, emptyDocument } from '@trymesh/engine';
+import { type Command, emptyDocument, emptySketch } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
 import { readZip } from '../../engine/test/zip-reader';
@@ -1159,6 +1159,56 @@ describe('the app, driven as a user drives it', () => {
     h.press('toolbar', 'Nový');
     h.record('a new document');
     await matches(h, 'model');
+  });
+
+  it('a combine of finished bodies with a clearance, and a split of a body by a plane (D56)', async () => {
+    const h = await start();
+    // two bodies built by commands: a plate and a block that stands in it
+    const box = (id: string, x0: number, y0: number, x1: number, y1: number, z0: number, z1: number): Command[] => {
+      const sketch = `${id}S`;
+      const corners: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      return [
+        { type: 'addFeature', feature: emptySketch(sketch, `${id} sketch`, { kind: 'base', plane: 'XY' }) },
+        ...corners.flatMap(([x, y], i): Command[] => [
+          { type: 'addPoint', sketch, id: `${id}p${i}`, x, y },
+          { type: 'addConstraint', sketch, id: `${id}f${i}`, constraint: { type: 'fixed', point: `${id}p${i}`, x, y } },
+        ]),
+        ...corners.map((_, i): Command => ({ type: 'addCurve', sketch, id: `${id}l${i}`, curve: { type: 'line', a: `${id}p${i}`, b: `${id}p${(i + 1) % 4}` } })),
+        { type: 'addFeature', feature: { id, name: id === 'plate' ? 'Plate' : 'Block', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}l${i}`) }] }, extent: { type: 'distance', start: z0, distance: z1 - z0 }, operation: 'new' } },
+      ];
+    };
+    outside(h, { type: 'batch', commands: [...box('plate', 0, 0, 40, 30, 0, 10), ...box('block', 10, 10, 20, 20, 5, 15)] });
+    h.record('a plate and a block that stands in it');
+
+    h.press('toolbar', 'Combine');
+    h.record('a new combine: a difference that keeps its tools, no target yet');
+    h.choose('Target', 'plate');
+    tick(h, 'Block');
+    h.record('the plate less the block: the preview');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.record('with a clearance of 0.3: the pocket is the block grown by it');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.0001');
+    h.record('a clearance too small to tell from none: the form says why');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.choose('Operation', 'union');
+    h.record('a union: no clearance offered');
+    h.choose('Operation', 'difference');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.press('panel', 'OK');
+    h.record('OK: the combine is in the document');
+    expect(h.engine.getState().document.features.find((f) => f.type === 'combine')).toMatchObject({ operation: 'difference', target: 'plate', tools: ['block'], keepTools: true, clearance: 0.3 });
+    h.row('Combine 1').click();
+    h.record('selected: the summary');
+
+    h.press('toolbar', 'Split');
+    h.record('a new split of the latest body, the block, by XY until a plane is picked: XY does not cut it, the form says so');
+    h.click(at(35, 25, 10));
+    h.record('the top of the plate picked: the block split by its plane');
+    h.choose('New body', 'forward');
+    h.press('panel', 'OK');
+    h.record('OK: the split is in the document, the part above the plate a body of its own');
+    expect(Object.keys(h.engine.getState().evaluation.bodies)).toContain(h.engine.getState().document.features.find((f) => f.type === 'split')?.id);
+    await matches(h, 'combine-split');
   });
 
   it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {

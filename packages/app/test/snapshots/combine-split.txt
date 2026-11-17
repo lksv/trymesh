@@ -1,0 +1,756 @@
+
+=== 1. a plate and a block that stands in it
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"plateS","name":"plate sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}}},{"type":"addPoint","sketch":"plateS","id":"platep0","x":0,"y":0},{"type":"addConstraint","sketch":"plateS","id":"platef0","constraint":{"type":"fixed","point":"platep0","x":0,"y":0}},{"type":"addPoint","sketch":"plateS","id":"platep1","x":40,"y":0},{"type":"addConstraint","sketch":"plateS","id":"platef1","constraint":{"type":"fixed","point":"platep1","x":40,"y":0}},{"type":"addPoint","sketch":"plateS","id":"platep2","x":40,"y":30},{"type":"addConstraint","sketch":"plateS","id":"platef2","constraint":{"type":"fixed","point":"platep2","x":40,"y":30}},{"type":"addPoint","sketch":"plateS","id":"platep3","x":0,"y":30},{"type":"addConstraint","sketch":"plateS","id":"platef3","constraint":{"type":"fixed","point":"platep3","x":0,"y":30}},{"type":"addCurve","sketch":"plateS","id":"platel0","curve":{"type":"line","a":"platep0","b":"platep1"}},{"type":"addCurve","sketch":"plateS","id":"platel1","curve":{"type":"line","a":"platep1","b":"platep2"}},{"type":"addCurve","sketch":"plateS","id":"platel2","curve":{"type":"line","a":"platep2","b":"platep3"}},{"type":"addCurve","sketch":"plateS","id":"platel3","curve":{"type":"line","a":"platep3","b":"platep0"}},{"type":"addFeature","feature":{"id":"plate","name":"Plate","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"plateS","regions":[{"outerLoop":["platel0","platel1","platel2","platel3"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}},{"type":"addFeature","feature":{"id":"blockS","name":"block sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}}},{"type":"addPoint","sketch":"blockS","id":"blockp0","x":10,"y":10},{"type":"addConstraint","sketch":"blockS","id":"blockf0","constraint":{"type":"fixed","point":"blockp0","x":10,"y":10}},{"type":"addPoint","sketch":"blockS","id":"blockp1","x":20,"y":10},{"type":"addConstraint","sketch":"blockS","id":"blockf1","constraint":{"type":"fixed","point":"blockp1","x":20,"y":10}},{"type":"addPoint","sketch":"blockS","id":"blockp2","x":20,"y":20},{"type":"addConstraint","sketch":"blockS","id":"blockf2","constraint":{"type":"fixed","point":"blockp2","x":20,"y":20}},{"type":"addPoint","sketch":"blockS","id":"blockp3","x":10,"y":20},{"type":"addConstraint","sketch":"blockS","id":"blockf3","constraint":{"type":"fixed","point":"blockp3","x":10,"y":20}},{"type":"addCurve","sketch":"blockS","id":"blockl0","curve":{"type":"line","a":"blockp0","b":"blockp1"}},{"type":"addCurve","sketch":"blockS","id":"blockl1","curve":{"type":"line","a":"blockp1","b":"blockp2"}},{"type":"addCurve","sketch":"blockS","id":"blockl2","curve":{"type":"line","a":"blockp2","b":"blockp3"}},{"type":"addCurve","sketch":"blockS","id":"blockl3","curve":{"type":"line","a":"blockp3","b":"blockp0"}},{"type":"addFeature","feature":{"id":"block","name":"Block","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"blockS","regions":[{"outerLoop":["blockl0","blockl1","blockl2","blockl3"]}]},"extent":{"type":"distance","start":5,"distance":10},"operation":"new"}}]}) -> ok
+  features: plateS, plate, blockS, block
+  feature plateS:
+      {"id":"plateS","name":"plate sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point platep0: {"x":0,"y":0}
+      point platep1: {"x":40,"y":0}
+      point platep2: {"x":40,"y":30}
+      point platep3: {"x":0,"y":30}
+      curve platel0: {"type":"line","a":"platep0","b":"platep1"}
+      curve platel1: {"type":"line","a":"platep1","b":"platep2"}
+      curve platel2: {"type":"line","a":"platep2","b":"platep3"}
+      curve platel3: {"type":"line","a":"platep3","b":"platep0"}
+      constraint platef0: {"type":"fixed","point":"platep0","x":0,"y":0}
+      constraint platef1: {"type":"fixed","point":"platep1","x":40,"y":0}
+      constraint platef2: {"type":"fixed","point":"platep2","x":40,"y":30}
+      constraint platef3: {"type":"fixed","point":"platep3","x":0,"y":30}
+  feature plate:
+      {"id":"plate","name":"Plate","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"plateS","regions":[{"outerLoop":["platel0","platel1","platel2","platel3"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature blockS:
+      {"id":"blockS","name":"block sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point blockp0: {"x":10,"y":10}
+      point blockp1: {"x":20,"y":10}
+      point blockp2: {"x":20,"y":20}
+      point blockp3: {"x":10,"y":20}
+      curve blockl0: {"type":"line","a":"blockp0","b":"blockp1"}
+      curve blockl1: {"type":"line","a":"blockp1","b":"blockp2"}
+      curve blockl2: {"type":"line","a":"blockp2","b":"blockp3"}
+      curve blockl3: {"type":"line","a":"blockp3","b":"blockp0"}
+      constraint blockf0: {"type":"fixed","point":"blockp0","x":10,"y":10}
+      constraint blockf1: {"type":"fixed","point":"blockp1","x":20,"y":10}
+      constraint blockf2: {"type":"fixed","point":"blockp2","x":20,"y":20}
+      constraint blockf3: {"type":"fixed","point":"blockp3","x":10,"y":20}
+  feature block:
+      {"id":"block","name":"Block","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"blockS","regions":[{"outerLoop":["blockl0","blockl1","blockl2","blockl3"]}]},"extent":{"type":"distance","start":5,"distance":10},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+        select value="" title="Export the model in a format of the engine"
+          option selected value="": "Export…"
+          option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+          option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+          option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+          option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+        button title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "plate sketch"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Plate"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "block sketch"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Block"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Začněte skicou: tlačítko Skica a výběr roviny.
+  view: 2 scene(s) set
+  scene:
+      bodies: plate, block
+      line #26303c width 1.5: 144 numbers, sum 7940
+      line #8b9bb4 width 1: 24 numbers, sum 383.681
+      line #8b9bb4 width 1: 24 numbers, sum 255.788
+      line #8b9bb4 width 1: 24 numbers, sum 127.894
+      line #5b7aa8 width 1.5: 24 numbers, sum 1400
+      line #5b7aa8 width 1.5: 24 numbers, sum 990
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.271
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.271
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.271
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. a new combine: a difference that keeps its tools, no target yet
+  engine: getState("block")  (x3)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -   button title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "New combine"
+    + label
+    +   "Operation"
+    +   select value="difference"
+    +     option value="union": "Union (join the tools to the target)"
+    +     option selected value="difference": "Difference (subtract the tools)"
+    +     option value="intersection": "Intersection (keep what the target shares with the tools)"
+    + label
+    +   "Target"
+    +   select value=""
+    +     option selected value="": "(choose a body)"
+    +     option value="plate": "Plate"
+    +     option value="block": "Block"
+    + fieldset
+    +   legend: "Tools"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "Plate"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "Block"
+    + label.check
+    +   input type=checkbox checked
+    +   "Keep the tools (unticked: the tool bodies leave the model)"
+    + label
+    +   "Clearance (mm or an expression; empty for none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="clearance" data-unit="mm"
+    + p.hint: "With a clearance every face of a tool is moved outwards by it before the tool is subtracted; the faces of the pocket are named after the faces of the tool."
+    + p.hint: "A click on a body in the view adds it to the tools or takes it out; the first click of a new combine sets the target."
+    + p#draft-problem.issue.error
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary disabled: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Click the target body, then the tools.
+  view: 1 scene(s) set
+
+=== 3. the plate less the block: the preview
+  engine: getState("block")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true},"index":4}, "c1") -> ok
+  engine: getState("block")
+  panel:
+    +   select value="plate"
+    +     option selected value="plate": "Plate"
+    -   select value=""
+    -     option selected value="": "(choose a body)"
+    -     option value="plate": "Plate"
+    +     input type=checkbox checked
+    -     input type=checkbox unchecked
+    -     "Plate"
+    -   label.check
+    -     input type=checkbox unchecked
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 216 numbers, sum 11280
+    - line #26303c width 1.5: 144 numbers, sum 7940
+
+=== 4. with a clearance of 0.3: the pocket is the block grown by it
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.3},"index":4}, "c1") -> ok
+  panel:
+    +     input value="0.3"
+    -     input value=""
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 216 numbers, sum 11261.4
+    - line #26303c width 1.5: 216 numbers, sum 11280
+
+=== 5. a clearance too small to tell from none: the form says why
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.0001},"index":4}, "c1") -> ok
+  panel:
+    +     input value="0.0001"
+    -     input value="0.3"
+    + p#draft-problem.issue.error: "The tool cannot be moved outwards by the clearance without a change of its shape. (a clearance of 0.0001 mm is under ten precisions of the coordinates (0.00020 mm), which cannot be told from none) (Block)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 144 numbers, sum 7940
+    - line #26303c width 1.5: 216 numbers, sum 11261.4
+
+=== 6. a union: no clearance offered
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.3},"index":4}, "c1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"union","target":"plate","tools":["block"],"keepTools":true},"index":4}, "c1") -> ok
+  engine: getState("block")
+  panel:
+    +   select value="union"
+    +     option selected value="union": "Union (join the tools to the target)"
+    +     option value="difference": "Difference (subtract the tools)"
+    -   select value="difference"
+    -     option value="union": "Union (join the tools to the target)"
+    -     option selected value="difference": "Difference (subtract the tools)"
+    - label
+    -   "Clearance (mm or an expression; empty for none)"
+    -   span.field
+    -     input value="0.0001"
+    -     small.computed data-field="clearance" data-unit="mm"
+    - p.hint: "With a clearance every face of a tool is moved outwards by it before the tool is subtracted; the faces of the pocket are named after the faces of the tool."
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error: "The tool cannot be moved outwards by the clearance without a change of its shape. (a clearance of 0.0001 mm is under ten precisions of the coordinates (0.00020 mm), which cannot be told from none) (Block)"
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 216 numbers, sum 11810
+    - line #26303c width 1.5: 144 numbers, sum 7940
+
+=== 7. OK: the combine is in the document
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true},"index":4}, "c1") -> ok
+  engine: getState("block")
+  engine: preview({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.3},"index":4}, "c1") -> ok
+  engine: getState("block")
+  engine: execute({"type":"addFeature","feature":{"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.3},"index":4}) -> ok
+  features: plateS, plate, blockS, block, c1
+  feature c1:
+      {"id":"c1","name":"Combine 1","suppressed":false,"type":"combine","operation":"difference","target":"plate","tools":["block"],"keepTools":true,"clearance":0.3}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Combine 1"
+    +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New combine"
+    - label
+    -   "Operation"
+    -   select value="union"
+    -     option selected value="union": "Union (join the tools to the target)"
+    -     option value="difference": "Difference (subtract the tools)"
+    -     option value="intersection": "Intersection (keep what the target shares with the tools)"
+    - label
+    -   "Target"
+    -   select value="plate"
+    -     option selected value="plate": "Plate"
+    -     option value="block": "Block"
+    - fieldset
+    -   legend: "Tools"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Block"
+    - label.check
+    -   input type=checkbox checked
+    -   "Keep the tools (unticked: the tool bodies leave the model)"
+    - p.hint: "A click on a body in the view adds it to the tools or takes it out; the first click of a new combine sets the target."
+    - p#draft-problem.issue.warning
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Combine přidáno.
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 216 numbers, sum 11261.4
+    - line #26303c width 1.5: 216 numbers, sum 11810
+
+=== 8. selected: the summary
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Combine"
+    + label
+    +   "Název"
+    +   input value="Combine 1"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Difference of Plate with Block (kept), clearance 0.3 mm."
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face plate #12 #f97316 opacity 0.3
+    + face plate #14 #f97316 opacity 0.3
+    + face plate #15 #f97316 opacity 0.3
+    + face plate #16 #f97316 opacity 0.3
+    + face plate #17 #f97316 opacity 0.3
+
+=== 9. a new split of the latest body, the block, by XY until a plane is picked: XY does not cut it, the form says so
+  engine: getState("c1")
+  engine: preview({"type":"addFeature","feature":{"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"base","plane":"XY"},"side":"backward"},"index":5}, "s1") -> ok
+  engine: getState("c1")
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -   button title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "New split"
+    - h2: "Combine"
+    +   "Body"
+    +   select value="block"
+    +     option value="plate": "Plate"
+    +     option selected value="block": "Block"
+    + p: "Plane: rovina XY"
+    -   "Název"
+    -   input value="Combine 1"
+    +   button: "Picking… (click to stop)"
+    + label
+    +   "New body"
+    +   select value="backward"
+    +     option value="forward": "The part in front of the plane (where its normal points)"
+    +     option selected value="backward": "The part behind the plane"
+    + p.hint: "The body keeps its ID and the other part; later features that name it reach that part only."
+    + p#draft-problem.issue.error: "Operace by odebrala celé těleso. (the plane does not cut the body: one part would be nothing) (Block)"
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Difference of Plate with Block (kept), clearance 0.3 mm."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Click a plane or a planar face in the view: the body is split by its plane.
+  view: 1 scene(s) set
+  scene:
+    - face plate #12 #f97316 opacity 0.3
+    - face plate #14 #f97316 opacity 0.3
+    - face plate #15 #f97316 opacity 0.3
+    - face plate #16 #f97316 opacity 0.3
+    - face plate #17 #f97316 opacity 0.3
+
+=== 10. the top of the plate picked: the block split by its plane
+  engine: preview({"type":"addFeature","feature":{"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"face","body":"plate","face":{"feature":"plate","role":"endCap"}},"side":"backward"},"index":5}, "s1") -> ok
+  engine: getState("c1")
+  panel:
+    + p: "Plane: stěna Plate – protější víko (Plate)"
+    - p: "Plane: rovina XY"
+    +   button: "Pick"
+    -   button: "Picking… (click to stop)"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.error: "Operace by odebrala celé těleso. (the plane does not cut the body: one part would be nothing) (Block)"
+  status: Plane: stěna Plate – protější víko (Plate).
+  view: 2 scene(s) set
+  scene:
+    + bodies: plate, block, s1
+    + line #26303c width 1.5: 288 numbers, sum 15181.4
+    - bodies: plate, block
+    - line #26303c width 1.5: 216 numbers, sum 11261.4
+    + face plate #1 #0ea5e9 opacity 0.3
+
+=== 11. OK: the split is in the document, the part above the plate a body of its own
+  engine: preview({"type":"addFeature","feature":{"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"face","body":"plate","face":{"feature":"plate","role":"endCap"}},"side":"forward"},"index":5}, "s1") -> ok
+  engine: getState("c1")  (x2)
+  engine: execute({"type":"addFeature","feature":{"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"face","body":"plate","face":{"feature":"plate","role":"endCap"}},"side":"forward"},"index":5}) -> ok
+  features: plateS, plate, blockS, block, c1, s1
+  feature s1:
+      {"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"face","body":"plate","face":{"feature":"plate","role":"endCap"}},"side":"forward"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Split 1"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New split"
+    - label
+    -   "Body"
+    -   select value="block"
+    -     option value="plate": "Plate"
+    -     option selected value="block": "Block"
+    - p: "Plane: stěna Plate – protější víko (Plate)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick"
+    - label
+    -   "New body"
+    -   select value="backward"
+    -     option value="forward": "The part in front of the plane (where its normal points)"
+    -     option selected value="backward": "The part behind the plane"
+    - p.hint: "The body keeps its ID and the other part; later features that name it reach that part only."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Split přidáno.
+  view: 3 scene(s) set
+  scene:
+    + line #26303c width 1.5: 288 numbers, sum 15106.4
+    - line #26303c width 1.5: 288 numbers, sum 15181.4
+    - face plate #1 #0ea5e9 opacity 0.3

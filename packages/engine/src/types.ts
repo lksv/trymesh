@@ -164,7 +164,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | CombineFeature | SplitFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -364,6 +364,77 @@ export interface HoleFeature extends FeatureBase {
   label?: string;
 }
 
+// A boolean of finished bodies (D56). The target is changed and keeps its ID, its place in the
+// model, its properties and its link; the tools are used up or kept.
+// - `operation`: `union` (the target with the tools joined to it), `difference` (the target less
+//   the tools), `intersection` (what the target shares with every tool). With several tools the
+//   operation is made with one after another, in the order of the list.
+// - `target`: a body. `tools`: one or more bodies, none twice, none the target.
+// - `keepTools`: false: the tool bodies leave the model with this feature; a later feature that
+//   names one ends in `brokenReference`, and an entry of body properties or of a link that names
+//   one is left without its body. True: they stay as they are (a motor subtracted from its mount
+//   stays a body). There is no default.
+// - `clearance` (numeric field `clearance`, mm, 0 or more, optional, only with `difference`): every
+//   tool is subtracted moved outwards by that much, each face along its own surface, so the pocket
+//   is wider than the tool by the clearance; the tool body itself does not change. Absent or 0
+//   (also an expression that gives 0) is a plain difference. `setField` reaches it also while the
+//   feature does not have it; `updateFeature` with `{ clearance: null }` removes it, and a patch
+//   to another operation removes it by itself.
+//   - The moved faces are exact surfaces; the pocket is exact between planar faces. A round face is
+//     a polygon: there the pocket may be nearer to the tool than the clearance by the chord
+//     tolerance, and next to an edge where a round face meets another at a slant by up to 0.15 of
+//     the clearance more. An outer corner of the tool stays sharp. A face narrower than the chord
+//     tolerance that only marks where two other faces cross (the crescent between a countersink
+//     and its bore) has no face in the pocket.
+//   - A tool that cannot be moved without a change of its shape is the error `invalidClearance`.
+// - Faces. Without a clearance a face of the result keeps the name it had on the target or on the
+//   tool; where a face of a tool lies flush on a face of the target and the two overlap, the
+//   overlapped part carries the name of the tool's face (for an intersection: of the target's).
+//   A face may then lie on two bodies, the target and a kept tool. With a clearance above 0 the
+//   faces the tools leave on the target are new faces: the name of the face of the tool with
+//   a copy tag appended, `{ pattern: <this feature>, index: <the number of the tool in `tools`,
+//   from 1> }`. The number follows the place in `tools`.
+// - Errors: `brokenReference`, `emptyResult` (nothing of the target would be left; for an
+//   intersection: the target and a tool share nothing), `invalidClearance`, `kernelFailure` (the
+//   kernel refused, or its result did not pass the checks of the engine: its volume against the
+//   volumes of the two bodies and what they share, and no faces left back to back). The warning
+//   `noEffect` names the tools that did not change the target; tools that are not kept leave the
+//   model all the same. In error the feature changes nothing and no tool leaves.
+export interface CombineFeature extends FeatureBase {
+  type: 'combine';
+  operation: BooleanOp;
+  target: Id;
+  tools: Id[];
+  keepTools: boolean;
+  clearance?: number;
+}
+
+// A split of a body by a plane (D56): a cut that keeps what it cuts off.
+// - `body`: the body that is split. It keeps its ID, its properties and its link, and the part on
+//   the other side of the plane than `side`.
+// - `plane`: a base plane, a plane feature or a planar face of a body, as the plane of a sketch;
+//   for a face the whole plane it lies in. Resolved in the state before the feature.
+// - `side`: the part that becomes the new body with the ID of the feature: `forward` is the part
+//   the normal of the plane points to (for a face: out of its body; XY: +Z, XZ: −Y, YZ: +X; a plane
+//   feature: as its base), `backward` the other.
+// - Where the plane passes through material, both bodies get the cut face `{ feature: <this
+//   feature>, role: 'splitFace' }`, one name on two bodies; a sketch stands on it, with the normal
+//   out of the body it stands on. A body of pieces on both sides of the plane is taken apart
+//   without a cut face. A face of the body in the plane keeps its name, but where it is the
+//   underside of an overhang and the plane also cuts material beside it, the part the cut face
+//   lies on takes the name of the cut face.
+// - Later features that name the body work on the part that keeps its ID, without a word: a
+//   feature meant for both parts lists both bodies.
+// - The new body takes after the body it was cut from (body properties, D48); it is in no link.
+// - Errors: `brokenReference`, `nonPlanarFace`, `emptyResult` (the plane does not cut the body),
+//   `kernelFailure`. In error the body stays whole and there is no new body.
+export interface SplitFeature extends FeatureBase {
+  type: 'split';
+  body: Id;
+  plane: PlaneRef;
+  side: 'forward' | 'backward';
+}
+
 // The shape of one hole, a variant by `type`. The wider part (the head) is at the mouth of the hole,
 // where the extent starts. No field has a default.
 // - `plain`: a cylinder of `diameter`.
@@ -503,8 +574,11 @@ export type FaceName = (
   | { feature: Id; role: 'holeHead'; point: Id }
   | { feature: Id; role: 'holeFlat'; point: Id; flat: number }
   | { feature: Id; role: 'holeSeat' }
+  | { feature: Id; role: 'splitFace' } // the face a split cuts, on both bodies (D56)
 ) & { copy?: CopyTag[] };
 
+// `pattern` names the feature that made the copy: a pattern, or a combine with a clearance, whose
+// tag numbers the tool whose moved face it is (D56); the field keeps its name.
 export interface CopyTag {
   pattern: Id;
   index: number;
@@ -828,6 +902,13 @@ export interface Issue {
 // feature types it is an error.
 // invalidExtent: the extent `upTo` cannot reach its plane (parallel to the direction, through the
 // start of the tool, or a gap as large as the way to it).
+// invalidClearance: a tool of a combine cannot be moved outwards by the clearance without a change
+// of its shape (D56). `refs` start with the tool body and name the faces concerned: a hole no
+// wider than twice the clearance closes, two parts of the tool are nearer than twice the clearance
+// (a slot, two pins, the tips of a C), a vertex cannot follow its faces, a face has material on
+// both sides, a face has no description; or the clearance is too small to be told from none (under
+// ten precisions of the coordinates, or not more than twice the chord tolerance on a tool with
+// round faces), with no faces in `refs`.
 // invalidHole: the dimensions do not make a hole.
 // - The head is not wider than the bore (for a nut pocket: the bore does not fit between the flats).
 // - The head is as deep as the hole or deeper. For "through all" the hole is as deep as the targets
@@ -849,6 +930,7 @@ export type ErrorCode =
   | 'invalidExpression'
   | 'invalidExtent'
   | 'invalidHole'
+  | 'invalidClearance'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
@@ -1097,7 +1179,9 @@ export type FeaturePatch =
   | Patch<Pick<PlaneFeature, 'base' | 'offset'>>
   | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>
   | Patch<Pick<PatternFeature, 'source' | 'transform'>>
-  | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>;
+  | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>
+  | Patch<Pick<CombineFeature, 'operation' | 'target' | 'tools' | 'keepTools' | 'clearance'>>
+  | Patch<Pick<SplitFeature, 'body' | 'plane' | 'side'>>;
 
 // ---------------------------------------------------------------- queries
 

@@ -32,6 +32,7 @@ export const FACE_ROLES: { [R in FaceName['role']]: FaceRoleSpec<R> } = {
   holeHead: { title: 'head of a hole', parts: { point: { title: 'point of the hole', kind: 'text' } } },
   holeFlat: { title: 'flat of a nut pocket', parts: { point: { title: 'point of the hole', kind: 'text' }, flat: { title: 'flat, from 1', kind: 'integer' } } },
   holeSeat: { title: 'seat of a hole', parts: {} },
+  splitFace: { title: 'cut face of a split', parts: {} },
 };
 
 // A catalog of roles as code that handles any role reads it. The functions below take one so that

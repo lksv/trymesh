@@ -35,7 +35,7 @@ interface Document {
   mechanism: Mechanism;                          // a section of the document, see The mechanism (D49)
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;   // a hole: hole.md (D46)
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | CombineFeature | SplitFeature;   // a hole: hole.md (D46); combine and split: combine.md (D56)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 

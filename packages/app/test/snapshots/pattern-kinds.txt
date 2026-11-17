@@ -65,6 +65,8 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
       div.group
         select value="" title="Ask a query about the model"
           option selected value="": "Queries…"
@@ -171,6 +173,8 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -723,6 +727,8 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -854,7 +860,7 @@
     +   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     + h2: "Properties of Mirror 1 / 1"
-    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    + p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
     + label
     +   "Name"
     +   input value="" placeholder="Mirror 1 / 1"
@@ -933,7 +939,7 @@
     -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     - h2: "Properties of Mirror 1 / 1"
-    - p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    - p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
     - label
     -   "Name"
     -   input value="" placeholder="Mirror 1 / 1"
@@ -1016,7 +1022,7 @@
     +   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     + h2: "Properties of Mirror 1 / 1"
-    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    + p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
     + label
     +   "Name"
     +   input value="" placeholder="Mirror 1 / 1"
@@ -1081,6 +1087,8 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -1164,7 +1172,7 @@
     -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     - h2: "Properties of Mirror 1 / 1"
-    - p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    - p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
     +   "Kind"
     +   select value="linear"
     +     option value="circular": "Around an axis"
@@ -1272,6 +1280,8 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"

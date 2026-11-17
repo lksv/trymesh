@@ -1,6 +1,6 @@
 # 3d Boolean of bodies, subtraction with a clearance, split by a plane (D56)
 
-**State: design, written on 2026-11-17 against `master` at `633a6ca` (every package of steps 1 and 2, 3a, 5a, 5e and 5f merged), rebased on `c2a506c` (the compressed 3MF of 2g, nothing in the areas of 3d), with the decisions that depend on the kernel measured against the real library (`manifold-3d` 3.5.5) and the real adapter ("Measured"), and revised after its reviews ("Reviews"). Not implemented.** The first version and the fixes of round 1 were written by Claude Fable 5.2; the rest by Claude Opus 5.5. Three rounds of review ("Reviews"). It needs only the preparatory step. It adds two feature types, no member to the kernel port, and one check to the kernel adapter.
+**State: design, written on 2026-11-17 against `master` at `633a6ca` (every package of steps 1 and 2, 3a, 5a, 5e and 5f merged), rebased on `c2a506c` (the compressed 3MF of 2g, nothing in the areas of 3d), with the decisions that depend on the kernel measured against the real library (`manifold-3d` 3.5.5) and the real adapter ("Measured"), and revised after its reviews ("Reviews"); revised once more after the verification before the implementation ("Revision after the verification"). Implemented on the branch `d36/3d` by Claude Opus 5.5, not merged yet; see "As implemented".** The first version and the fixes of round 1 were written by Claude Fable 5.2; the rest by Claude Opus 5.5. Three rounds of review ("Reviews"). It needs only the preparatory step. It adds two feature types, no member to the kernel port, and one check to the kernel adapter.
 
 Files: [contract.ts](contract.ts) (the two feature types, the face role, the issue code, the functions of the recompute), [calls.ts](calls.ts) (its part of validation scenario 13).
 
@@ -588,6 +588,21 @@ Decided by the coordinator of D36 within the autonomy the owner gave, written an
 - **Contradiction 3 is removed with a chord tolerance of 0.01 near the origin and at 450 mm, not with 0.001.** With 0.001 the sheet tolerance is 10⁻⁴; a union whose polygon is turned by under a tenth of a side leaves crescents of at most 1 to 2.5 · 10⁻⁴, and where the kernel cuts them into small triangles near the crossing of the two polygons, those triangles are thinner than the tolerance at all seven points: a sheet by any rule of thickness. A lower tolerance would miss the wall left inside, a higher one more crescents. Kept refused, a known limit ("Known limits", the sheet tolerance).
 - What has to stay seen, still seen: the wall left inside a union of a pin with the same polygon turned in space (refused by sheets at every place and both chord tolerances, but 1 of 4 at 2000 mm with 0.001 that the adapter refused first); the 80 unions of F: none flagged; the leftovers of H dropped as before (3 of 20 at 2000 mm refused); the families of "Verified", 2, the same verdicts case by case. The joins of D lose a little: along an axis 10 flagged (were 12), the same 1 wrong volume and 7 remnants; tilted 55 flagged (were 57), 5 wrong volumes of at most 5.4 · 10⁻³ mm³ (were 4), 24 remnants of at most 1.2 mm² (were 23).
 - The one wrong union of "Verified", 2 (near-flush, 2000 mm, turned: 24498.887 mm³ against 24500.076, 1.19 mm³ off, the tolerance 0.81): the port refused the intersection of the volume check, so the volume was not checked (as designed) and the result held no new sheet. A known limit ("Known limits", the sheet tolerance).
+
+## As implemented
+
+On the branch `d36/3d`, by Claude Opus 5.5, after the revision. The owner's three open questions follow the recommendations of "Open": the clearance by faces, joining cut-apart parts a known limit, the rule for an imported tool recorded for 3b (3b is not in the tree). The code is described in [docs/architecture/combine.md](../../architecture/combine.md), the forms in [docs/ui/combine.md](../../ui/combine.md), the tests in [docs/architecture/verification.md](../../architecture/verification.md).
+
+Where it differs from the text above, or says what the text left open:
+
+- **No `onlyFields` in the validators.** The other feature types do not refuse a field they do not know either; a combine and a split follow them.
+- **`bodyRefs`** is exported from the engine (`features/index.ts`): the bodies a feature names, which the summary of a split needs to list the later features that still name only the body. `featureRefs` maps a body to the feature that made it and cannot tell the body of a split from its new part.
+- **`faceLabel` and `issueText` take an optional `typeOf`.** `app.ts` passes the types of the features, so a tag of a combine reads "in the pocket of tool N of …"; the other callers of `faceLabel` (the plane text of a form, the query panel) still read every tag as a copy.
+- **`REF_LABEL.pattern`** reads "a feature that tags copied faces (a pattern, or a combine as a difference)"; the message of a refused tag changed with it.
+- **The body panel** says "Made from … (a copy, or a part split off)" instead of "A copy of …".
+- **The checks of `movedOutwards`** are those of the revision and its two rounds of review; the fuzz is in the repository as `spikes/moved-fuzz.spike.ts` (120 bodies by default) with the four bodies of the second round pinned as `tooNear`.
+- **No schema step.** A document with a combine or a split cannot be written by an older build (it does not know the types and refuses them on load, which is loud), and a copy tag of a combine is a reference to a removed feature after the combine is removed, which every build loads and reports; `SCHEMA_PENDING` stays 0.
+- **Codex's ledge of 0.001** between a cone and its bore is refused (`vertex`) by the final rules, not exempted; the known limit of "A narrow face carried along" covers the case where it would be exempted.
 
 ## Open
 

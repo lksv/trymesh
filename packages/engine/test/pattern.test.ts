@@ -353,7 +353,7 @@ describe('bodies and faces of copies', () => {
     expect(run(doc, onFace({ ...top(), copy: [] })).features.find((f) => f.id === 'S2')).toMatchObject({ plane: { face: top() } });
     expect(run(doc, onFace({ ...top(), copy: [] })).features.find((f) => f.id === 'S2')).not.toHaveProperty('plane.face.copy');
     invalid(doc, onFace(top([{ pattern: 'X', index: 1 }])), /feature "X" neexistuje/);
-    invalid(doc, onFace(top([{ pattern: 'H', index: 1 }])), /feature "H" není pole \(pattern\)/);
+    invalid(doc, onFace(top([{ pattern: 'H', index: 1 }])), /feature "H" není a feature that tags copied faces \(a pattern, or a combine as a difference\)/);
     for (const index of [0, 1.5, -1]) invalid(doc, onFace(top([{ pattern: 'Q', index }])), /copy\[0\]\.index: the number of a copy is an integer from 1/);
     invalid(doc, onFace({ ...top(), copy: 'Q' }), /copy: a list of \{ pattern, index \} is expected/);
     invalid(doc, onFace({ ...top(), copy: [{ index: 1 }] }), /copy\[0\]\.pattern/);

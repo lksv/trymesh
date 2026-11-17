@@ -81,6 +81,8 @@ Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné
 
 **No face number in both operands of a union or a difference** (D56). The adapter tells the faces of the tool from those of the body by their numbers, and two bodies of a model may share numbers (the two parts of a split, two bodies cut by one feature, a body and the pocket a kept tool left in another): measured, a union of two such bodies came out with a wrong volume without a word in about half the cases tried. An implementation throws for such operands (the Manifold adapter: `the operands of a union share the face number …`), so a caller that forgets gets an exception and not a wrong body. A tool of an extrusion has new numbers anyway; `booleanOfBodies` (`recompute/body-boolean.ts`) gives the tool numbers of its own for the call and puts them back. An intersection may share numbers (the collisions ask it so).
 
+The engine asks the port for an intersection as a body as well since D56 (a combine with the operation `intersection`), and for the intersection that checks the volume of a union and a difference of two bodies. It does not trust the port blindly there: `booleanOfBodies` ([combine.md](combine.md)) checks the volume of a union and a difference against the identity with the intersection, the sheets left in the result, and drops the pieces of an intersection that are all sheet; a result that fails is `kernelFailure`.
+
 Záruky implementace:
 1. Výstup `boolean` je uzavřené těleso.
 2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.

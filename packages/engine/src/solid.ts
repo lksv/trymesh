@@ -308,7 +308,7 @@ function pieces(solid: Solid): number[][] {
 }
 
 // The connected pieces of a mesh, each a mesh over the same positions.
-const pieceSolids = (solid: Solid): Solid[] =>
+export const pieceSolids = (solid: Solid): Solid[] =>
   pieces(solid).map((triangles) => ({
     positions: solid.positions,
     triangles: Uint32Array.from(triangles.flatMap((t) => [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]])),

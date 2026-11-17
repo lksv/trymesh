@@ -181,6 +181,7 @@ export const pattern: FeatureModule<PatternFeature> = {
   bodySource: (f) => (f.source.type === 'body' ? f.source.body : undefined),
   namesFaces: false,
   producesTool: () => false,
+  tagsFaces: () => true,
   patch: { fields: ['source', 'transform'] },
   step,
 };

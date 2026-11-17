@@ -3,6 +3,13 @@ import type { Command, EngineState, FaceName, SketchFeature } from '@trymesh/eng
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { booleanOfBodies, sheetTriangles } from '../../engine/src/recompute/body-boolean';
+import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
+import { volumeOf as volumeOf56 } from '../../engine/src/solid';
+import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
+
+const kernel56 = await createManifoldKernel();
 
 const plate = (width = 40, height = 30, thickness = 10) => {
   const engine = newEngine();
@@ -391,5 +398,56 @@ describe('the export of an outline: the review of D54', () => {
       counts.push(new TextDecoder().decode(answer.result.files[0].bytes).split('\r\n').filter((value, k) => value === '42' && k % 2 === 0).length);
     }
     expect(counts).toEqual(Array(12).fill(4)); // were 5 or 6 in eleven of them
+  });
+});
+
+// D56: cases the reviews of the design of the boolean of bodies and of its revision measured.
+describe('the boolean of bodies and the clearance (D56): cases of the reviews', () => {
+  const engineOf = (...commands: Command[]): EngineState => run(newEngine(), batch(...commands));
+
+  it('a ledge 0.001 wide between a countersink and its bore (codex): refused, never moved with a description off its triangles', () => {
+    // before the fix it was accepted and 48 triangles of the ledge lay 0.177 off the plane published for them
+    const state = engineOf(...box56('A', -5, -5, 5, 5, 0, 4), ...cylinder56('sink', 0, 0, 1.001, 2, 4.0001, 'cut', ['A'], 'deg(44.98)'), ...cylinder56('bore', 0, 0, 1, -1, 5, 'cut', ['A']));
+    const moved = movedOutwards(solidOf56(state, 'A'), infosOf56(state), state.evaluation.faceNames, 0.3, 0.01, kernel56);
+    expect(isMoveProblem(moved) && moved.reason).toBe('vertex');
+  });
+
+  it('a riser 0.005 high between two parallel planes is no crescent: it is moved with its faces, and the pocket keeps its description', () => {
+    const state = engineOf(...box56('A', 0, 0, 20, 10, 0, 5), ...box56('step', 10, -1, 21, 11, 4.995, 6, 'cut', ['A']), ...cylinder56('hole', 10, 5, 2, -1, 7, 'cut', ['A']));
+    const riser = faceNumber56(state, { feature: 'step', role: 'side', curve: 'stepL3' });
+    const moved = movedOutwards(solidOf56(state, 'A'), infosOf56(state), state.evaluation.faceNames, 0.2, 0.01, kernel56);
+    if (isMoveProblem(moved)) throw new Error(`${moved.reason}: ${moved.detail}`);
+    expect(moved.infos.has(riser) && moved.solid.faceIds.includes(riser)).toBe(true);
+  });
+
+  it('a slab thinner than the sheet tolerance whose two sides are strips across each other is all sheet, at 450 and 2000 mm, however narrow the strips', () => {
+    for (const [z, eps] of [[450, 2.25e-4], [2000, 1e-3]]) {
+      for (const n of [8, 100]) {
+        const step = z === 450 ? 2 ** -15 : 2 ** -13; // a step of single precision there
+        const positions: number[] = [];
+        const at = (x: number, y: number, top: boolean, i: number): number => (positions.push(x, y, top ? z + 3 * step + (i % 2) * step : z + (i % 2) * step), positions.length / 3 - 1);
+        const grid = (top: boolean): number[][] => Array.from({ length: n + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => at((i * 0.2) / n, (j * 0.2) / n, top, top ? j : i)));
+        const [T, B] = [grid(true), grid(false)];
+        const triangles: number[] = [];
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) triangles.push(T[i][j], T[i + 1][j], T[i + 1][j + 1], T[i][j], T[i + 1][j + 1], T[i][j + 1], B[i][j], B[i + 1][j + 1], B[i + 1][j], B[i][j], B[i][j + 1], B[i + 1][j + 1]);
+        for (let k = 0; k < n; k++) for (const [a, b, c, d] of [[B[k][0], B[k + 1][0], T[k + 1][0], T[k][0]], [B[n][k], B[n][k + 1], T[n][k + 1], T[n][k]], [B[k + 1][n], B[k][n], T[k][n], T[k + 1][n]], [B[0][k + 1], B[0][k], T[0][k], T[0][k + 1]]]) triangles.push(a, b, c, a, c, d);
+        const slab = { positions: Float32Array.from(positions), triangles: Uint32Array.from(triangles), faceIds: new Uint32Array(triangles.length / 3) };
+        const sheet = sheetTriangles(slab, eps);
+        expect(sheet.slice(0, 4 * n * n).every((flag) => flag === 1)).toBe(true);
+      }
+    }
+  });
+
+  it('a crescent between a pin and its hole turned by half a polygon side is no sheet: the union of the two is right', () => {
+    const state = engineOf(...box56('plate', -10, -10, 10, 10, 0, 5), ...cylinder56('hole', 0, 0, 3, -1, 6, 'cut', ['plate']), ...cylinder56('pin', 0, 0, 3, 0, 5));
+    const turned = solidOf56(state, 'pin');
+    const angle = Math.PI / 30; // the circle of radius 3 is a polygon of more sides than 30: half a side or less
+    const positions = Float32Array.from(turned.positions, (value, i) => (i % 3 === 0 ? value * Math.cos(angle) - turned.positions[i + 1] * Math.sin(angle) : i % 3 === 1 ? turned.positions[i - 1] * Math.sin(angle) + value * Math.cos(angle) : value));
+    const [plate, pin] = [solidOf56(state, 'plate'), { ...turned, positions }];
+    const result = booleanOfBodies(kernel56, 'union', plate, pin, state.evaluation.faceNames.length, 0.01);
+    expect(result.changed).toBe(true);
+    // the crescents between the two polygons are gaps through the plate: the union is the two less what they share
+    const shared = kernel56.boolean('intersection', plate, { ...pin, faceIds: pin.faceIds.map((face) => face + 1000) });
+    expect(volumeOf56(result.solid)).toBeCloseTo(volumeOf56(plate) + volumeOf56(pin) - volumeOf56(shared), 3);
   });
 });

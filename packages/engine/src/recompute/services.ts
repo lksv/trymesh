@@ -33,6 +33,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
   invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
   invalidHole: 'The dimensions do not make a hole.',
+  invalidClearance: 'The tool cannot be moved outwards by the clearance without a change of its shape.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };

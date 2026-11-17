@@ -320,7 +320,7 @@ function modelSummary(state: EngineState, whole = true): unknown {
 function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown {
   const state = stateAt(engine, at);
   const body = Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id) ? state.evaluation.bodies[id] : undefined;
-  if (!body) throw new ToolError(`the body "${id}" does not exist at this point of the timeline (a body ID is the ID of an extrusion with the operation new, or "<pattern>/<number>" for a copy made by a pattern; get_model lists the bodies)`);
+  if (!body) throw new ToolError(`the body "${id}" does not exist at this point of the timeline (a body ID is the ID of an extrusion with the operation new or of a split, or "<pattern>/<number>" for a copy made by a pattern; get_model lists the bodies)`);
   const answer = engine.query('body', { body: id }, at === undefined ? {} : { at });
   if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
   const edgeShape = (edge: BodyEdge): Record<string, unknown> => ({
@@ -641,7 +641,7 @@ export function tools(): Tool[] {
     {
       name: 'get_body',
       description: 'Těleso podrobně: stěny (jméno, rovinnost, plocha, normála) a hrany (jméno, druh, konce). Jména stěn a hran se používají v odkazech: rovina skici na stěně, promítnutí hrany.',
-      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'ID feature; stav po ní' } }, required: ['body'], additionalProperties: false },
+      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new or of a split, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'ID feature; stav po ní' } }, required: ['body'], additionalProperties: false },
       run: (engine, args) => bodyDetail(engine, optionalText(args, 'at'), text(args, 'body')),
     },
     {

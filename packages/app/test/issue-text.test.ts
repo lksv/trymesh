@@ -1,5 +1,5 @@
 // The texts the app makes of recompute issues: bodies, features and copies of a pattern are named.
-import { type Issue, type NumberSpec, emptyDocument } from '@trymesh/engine';
+import { type FaceName, type Issue, type NumberSpec, emptyDocument } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { angleProblem, bodyName, faceLabel, featureName, issueText, refName, takenOverText } from '../src/issue-text';
 
@@ -49,6 +49,18 @@ describe('the text of an issue', () => {
     // refs of other issues are constraints or field paths and stay out of the text
     expect(text({ code: 'sketchConflict', message: 'Vazby si odporují.', refs: ['plate', 'k2'] })).toBe('Vazby si odporují.');
     expect(text({ code: 'invalidExpression', message: 'Výraz nejde vyhodnotit.', refs: ['extent/distance'] })).toBe('Výraz nejde vyhodnotit.');
+  });
+
+  it('a combine (D56): an invalidClearance names its tool and the faces, a kernelFailure its tool; a tag of a combine reads as its pocket', () => {
+    const names: Record<string, string> = { K: 'Pocket', motor: 'Motor', P: 'Screws' };
+    const nameOf = (id: string) => names[id];
+    const typeOf = (id: string) => (id === 'K' ? 'combine' : id === 'P' ? 'pattern' : undefined) as 'combine' | 'pattern' | undefined;
+    const wall: FaceName = { feature: 'motor', role: 'side', curve: 'c' };
+    const issue: Issue = { code: 'invalidClearance', message: 'The tool cannot be moved.', refs: ['motor', wall, { feature: 'motor', role: 'endCap' }] };
+    expect(issueText(issue, nameOf, undefined, typeOf)).toBe('The tool cannot be moved. (Motor, Motor – bok, Motor – protější víko)');
+    expect(issueText({ code: 'kernelFailure', message: 'Failed.', refs: ['motor'] }, nameOf)).toBe('Failed. (Motor)');
+    expect(faceLabel({ ...wall, copy: [{ pattern: 'P', index: 2 }, { pattern: 'K', index: 4 }] }, nameOf, typeOf)).toBe('Motor – bok, copy 2 of Screws, in the pocket of tool 4 of Pocket');
+    expect(faceLabel({ feature: 'S', role: 'splitFace' }, (id) => (id === 'S' ? 'Split' : undefined))).toBe('Split – cut face of a split');
   });
 
   it('a pattern names the copy once, by the name of its feature, whatever the issue is', () => {

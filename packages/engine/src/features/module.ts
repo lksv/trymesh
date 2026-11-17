@@ -39,6 +39,10 @@ export interface FeatureModule<F extends Feature> {
   namesFaces: boolean; // does the feature name faces of bodies?
   // Does the feature leave a tool recipe that a pattern can repeat?
   producesTool(f: F): boolean;
+  // May a copy tag of a face name (`CopyTag`, a reference of the kind `pattern`) name the feature?
+  // A pattern always; a combine as a difference, whose tools moved by a clearance leave tagged faces
+  // (D56). Absent: never.
+  tagsFaces?(f: F): boolean;
   // The generator of its profile, when it has a profile and the profile comes from one.
   generator?(f: F): string | undefined;
   // A failed expression of a field is a warning and the step runs with the last valid value, instead

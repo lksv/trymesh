@@ -48,6 +48,8 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
       div.group
         select value="" title="Ask a query about the model"
           option selected value="": "Queries…"
@@ -536,7 +538,7 @@
     +   "Pattern / 1 [reference]: 12000 mm³, 40 × 30 × 10 mm"
     -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
     + h2: "Properties of Pattern / 1"
-    + p.hint: "A copy of Vysunutí 1: what is left empty is taken from it."
+    + p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
     - h2: "Properties of Vysunutí 1"
     +   input value="" placeholder="Pattern / 1"
     -   input value="" placeholder="Vysunutí 1"

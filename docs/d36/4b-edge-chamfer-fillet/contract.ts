@@ -26,16 +26,20 @@ import type { FaceInfoD, RevolveExtent, RevolveSetup } from '../4a-revolve/contr
 //   - circular between two faces about one axis whose profile in a half plane through the axis is
 //     a straight line: a plane across the axis, a cylinder, a cone (kind `circle`). Not a circle
 //     with a sphere or a torus (the rim of a dome).
-//   An edge ends at one planar face, whose plane the chamfer or fillet ends in (an arc: a plane
-//   through its axis), or runs on smoothly into the next edge of a face (a line of an outline with
-//   round corners into the arc of the corner); that next edge has to be in the same feature. A
-//   convex and a concave edge of one feature must not meet at a vertex.
+//   An edge ends at another edge of the feature (both end in their mitre, the plane through the
+//   vertex halving the angle of the two in the face they share), at one planar face, whose plane
+//   the chamfer or fillet ends in (an arc: a plane through its axis), or runs on smoothly into the
+//   next edge of a face (a line of an outline with round corners into the arc of the corner; also
+//   across a seam where both faces of the edge continue into flush faces); that next edge has to be
+//   in the same feature. A convex and a concave edge of one feature must not meet at a vertex. The
+//   pieces of an edge (an earlier cut through it) need one blend.
 // - A convex edge (the material inside the angle of the faces) is cut, a concave one gets material
 //   added; one feature may hold both.
 // - Faces: one new face per edge, `{ feature, role: 'chamfer' | 'fillet', edge: <the place of the
 //   edge in `edges`, from 0> }`, exact: a plane (a chamfer of a straight edge), a cylinder (a fillet
 //   of one), a cone, a plane across the axis or a cylinder (a chamfer of a circular edge), a torus
-//   (a fillet of one). The two faces of the edge keep their names and get narrower; at an end where
+//   (a fillet of one; a sphere where the centre of its arc lies on the axis). The two faces of the
+//   edge keep their names and get narrower; at an end where
 //   the face it ends at lies behind the chamfer (the riser of a step) that face grows by what is
 //   left in its plane, under its own name.
 // - Where three fillets meet at a vertex the corner is a crease (0.225 r proud of a rolling ball at
@@ -85,7 +89,9 @@ declare module '../00-prep/contract' {
   // second edge where the reason is a pair. The detail says which:
   // - its kind, or the surfaces of its faces (a sphere, a torus, a cylinder along a plane);
   // - its faces meet at less than 0.01 rad from flat or from folded;
-  // - an end has no face besides its own, two or more, a round face that does not continue a face
+  // - the side of a face along the edge is not clear (its triangles along it disagree);
+  // - the pieces of the edge need different chamfers (another side of a face, another angle);
+  // - an end has no face besides its own, two or more that are not a seam, a round face that does not continue a face
   //   of the edge, (a straight edge) a plane within 0.01 rad of the edge, (an arc) a plane that
   //   does not hold its axis;
   // - the edge runs on smoothly into the second edge in `refs`, which is not in the feature;
@@ -95,10 +101,12 @@ declare module '../00-prep/contract' {
   // - a face of the edge would vanish (a radius larger than the face is wide);
   // - the new face of the edge would vanish;
   // - the tool reached material it must not touch: next to a convex edge, within the size outside
-  //   its faces (a slot narrower than the size), or next to a concave edge a hollow within the size
-  //   inside them (the foot of a boss that reaches the edge of the plate);
+  //   its faces (a slot narrower than the size, a piece of the body), or next to a concave edge
+  //   a hollow just inside them (the foot of a boss that reaches the edge of the plate), seen in
+  //   a face of the tool left in the result or in more volume taken than the tools' wedges hold;
   // - it reaches the axis of a circular edge;
-  // - the faces at the two ends of a straight edge meet within it.
+  // - the faces at the two ends of a straight edge meet within it;
+  // - the tools would have more triangles than 4a's MAX_REVOLVE_TRIANGLES.
   interface IssueCodes {
     unsupportedEdge: true;
     blendDoesNotFit: true;
@@ -139,13 +147,16 @@ export const BLEND_FACTS = {
 // ================================================================ what the spike fixed
 
 // An end of the blend that lies on a round face (a cylinder, a cone; a sphere or a torus at the end
-// of an arc) is moved off it by this many chord tolerances, away from the corner; an end on a plane
-// stays on it. The polygon of a round face lies up to the chord tolerance inside its surface; a tool
+// of an arc) is moved off it, away from the corner, until it is this many chord tolerances from it:
+// a chamfer's end along the chamfer's own line (its surface stays exact), a fillet's along the
+// normal of the face. An end on a plane stays on it. The polygon of a round face lies up to the chord tolerance inside its surface; a tool
 // whose end stands on the exact surface grazes it (measured: 7.5 % of 3 600 random edges refused,
 // ledges in the rest; with the lift none of 7 192).
 export const BLEND_LIFT = 1.5;
-// The tool reaches past both faces by max(size, BLEND_OVERSHOOT × chord tolerance), the size being
-// the distance or the radius (measured: smaller fixed overshoots leave caps and strips of the tool).
+// The tool reaches past both faces: past a convex edge (outside the body) by max(size,
+// BLEND_OVERSHOOT × chord tolerance), the size being the distance or the radius (measured: smaller
+// fixed overshoots leave caps and strips of the tool); past a concave edge (into the body) by
+// BLEND_OVERSHOOT × chord tolerance only (the size pierced a wall thinner than it behind the corner).
 export const BLEND_OVERSHOOT = 4;
 // The smallest angle, in radians, between the faces of an edge and flat or folded, and between
 // a straight edge and the plane of a face it ends at.
@@ -154,6 +165,12 @@ export const BLEND_MIN_ANGLE = 0.01;
 // length of the edge; a sliver up to that is given to the new face of the edge, more is
 // `blendDoesNotFit`. Measured: 0 in every case that fits.
 export const BLEND_SLIVER = 1e-4;
+// The volume check: what the feature cut or added may exceed what the parts of its tools inside
+// their wedges hold (the profile closed along the two faces) by at most BLEND_VOLUME × the chord
+// tolerance × the area of the strips the blends eat (twice the setback times the length of each
+// piece), plus 10⁻³ mm³; more is `blendDoesNotFit` (material swallowed by the overshoot). Measured:
+// at most 0.28 of the bound on 3 600 random edges; equal to the last digit with mitres.
+export const BLEND_VOLUME = 0.5;
 
 // ================================================================ the recompute
 
@@ -170,8 +187,8 @@ export declare function blendStep(kind: BlendKind, feature: Id, body: Id, edges:
 // through the axis of a circular one.
 // - `beta`: the angle between the two faces on the side the tool goes, (BLEND_MIN_ANGLE,
 //   π − BLEND_MIN_ANGLE). The directions along the faces are exact (from `FaceInfo`); their signs
-//   come from one triangle of each face along a segment of the piece: its inside lies on the left
-//   of its side i → j, n × (pⱼ − pᵢ).
+//   come from the triangles of each face along the segments of the piece, whose insides lie on the
+//   left of their sides i → j, n × (pⱼ − pᵢ), summed weighted by area; an unclear sum refuses.
 // - `convex`: the material lies inside the angle (the direction along `b` points to the inside of
 //   `a`): cut; otherwise added.
 // - `round`: whether face `a` and face `b` are round (the lift).
@@ -200,8 +217,8 @@ export interface BlendProfile {
 }
 export declare function blendProfile(kind: BlendKind, size: number, corner: BlendCorner, chordTolerance: number): BlendProfile;
 
-// Where the tool of a piece of a straight edge ends: the plane of the face at the end, or the plane
-// across the edge at a smooth end.
+// Where the tool of a piece of a straight edge ends: the mitre with another edge of the feature,
+// the plane of the face at the end, or the plane across the edge at a smooth end or a seam.
 export interface EndPlane {
   point: Vec3;
   normal: Vec3;
@@ -222,21 +239,31 @@ export interface BlendTool {
 // would cross within the profile the caller has refused it (`blendDoesNotFit`).
 export declare function edgePrism(profile: BlendProfile, frame: Frame, ends: [EndPlane, EndPlane], firstFaceId: number, kernel: Pick<SolidKernel, 'triangulate'>): BlendTool;
 
-// The tool of a piece of a circular edge is 4a's `buildRevolve` with this setup: the profile as the
-// one region of a `RevolveSetup` in a frame whose origin is the centre of the circle, X the radial
-// direction at the start of the piece and Y the axis (so (ρ, z) are the coordinates of the
-// profile), turned by a whole turn or by the arc of the piece. `sideOf` gives the blend its exact
+// The tool of a piece of a circular edge is 4a's `buildRevolve` with this setup: the profile, and its
+// exact blend, carried from the coordinates of the corner into (ρ, z) by `place` (the edge's point
+// in (ρ, z), the unit direction of face `a` there, and the unit direction across it towards face
+// `b`), as the one region of a `RevolveSetup` in a frame whose origin is the centre of the circle,
+// X the radial direction at the start of the piece (for a whole circle the model's X projected
+// across the axis, its Y where the axis is within 0.1 rad of X) and Y the axis, turned by a whole
+// turn or by the arc of the piece. 4a's rules give the blend its surface: a cone, a plane across
+// the axis or a cylinder for a chamfer, a torus with a signed major radius or a sphere for
+// a fillet. `sideOf` gives the blend its exact
 // shape (the line of the chamfer, the circle of the fillet), so that 4a computes its surface;
 // the faces of the result are those of 4a's build: the caps of a partial turn, then the sides in
 // the order of their keys. An overshoot towards the axis is shortened to stay at half the distance
 // of the blend from it; a blend that reaches the axis has been refused (`blendDoesNotFit`).
+export interface CornerPlace {
+  point: Vec2;
+  alongA: Vec2;
+  acrossTowardsB: Vec2;
+}
 export interface BlendRevolve {
   setup: RevolveSetup;
   extent: RevolveExtent;
   frame: Frame;
   sideOf: ResolvedProfile['sideOf'];
 }
-export declare function blendRevolveSetup(profile: BlendProfile, circle: Circle3, piece: { start: Vec3; angle?: number }, chordTolerance: number): BlendRevolve;
+export declare function blendRevolveSetup(profile: BlendProfile, place: CornerPlace, circle: Circle3, piece: { start: Vec3; angle?: number }, chordTolerance: number): BlendRevolve;
 
 // The unit normal of a surface at a point of it (solid.ts), without a sign: for a smooth end (a face
 // that continues a face of the edge has the same normal at the end point).

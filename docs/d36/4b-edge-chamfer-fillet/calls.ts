@@ -112,7 +112,8 @@ export function knobEdgeChecks(state: StateAfter): boolean {
   // the ring still clears the knob, 0.05 off the groove bottom, which the chamfer does not touch
   const gap = unwrap(engine.query('gap', { bodies: ['knob', 'oring'] })).pairs[0];
   const gapOk = gap !== undefined && 'between' in gap && Math.abs(gap.distance - 0.05) <= gap.accuracy + 0.01;
-  return footOk && mouthsOk && gapOk && engine.interference({ bodies: ['knob', 'oring'] }).pairs.length === 0 && allOk(state);
+  const report = unwrap(engine.query('interference', { bodies: ['knob', 'oring'] }));
+  return footOk && mouthsOk && gapOk && report.pairs.length === 0 && report.failed.length === 0 && allOk(state);
 }
 
 // ---------------------------------------------------------------- d. what is refused

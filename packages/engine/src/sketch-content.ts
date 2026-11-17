@@ -3,8 +3,8 @@
 // catalog and the utilities, so the sketch solver setup, the diagnosis and the feature modules can
 // all read it below the registry of feature types.
 import { CONSTRAINTS, type EntityKind } from './catalog';
-import type { Constraint, Curve, CurvePointName, CurveShape, Dimension, Document, ExternalRef, FieldPath, Id, PlaneRef, SketchFeature } from './types';
-import { ORIGIN, has, unreachable } from './util';
+import type { Constraint, Curve, CurvePointName, CurveShape, Dimension, Document, FieldPath, Id, PlaneRef, SketchFeature } from './types';
+import { has, unreachable } from './util';
 
 export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
   id,
@@ -43,24 +43,8 @@ export interface Entity {
   own: boolean; // false = počátek nebo promítnutá geometrie: solver s ní nehýbe
 }
 
-// Odvozené entity promítnuté geometrie plynou z `kind`: `<id>`, `<id>/a`, `<id>/b` u úsečky,
-// `<id>`, `<id>/center` u kružnice.
-export function derivedPoints(id: Id, ref: ExternalRef): Id[] {
-  return ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`];
-}
-
-export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
-  if (id === ORIGIN) return { kind: 'point', own: false };
-  if (has(sketch.points, id)) return { kind: 'point', own: true };
-  if (has(sketch.curves, id)) return { kind: sketch.curves[id].type, own: true };
-  if (has(sketch.external, id)) return { kind: sketch.external[id].kind, own: false };
-  const slash = id.indexOf('/');
-  if (slash > 0) {
-    const parent = id.slice(0, slash);
-    if (has(sketch.external, parent) && derivedPoints(parent, sketch.external[parent]).includes(id)) return { kind: 'point', own: false };
-  }
-  return undefined;
-}
+// What an ID is in a sketch (`entityOf`) and the derived points of an entry of `external` are in
+// references/index.ts, by the registry of the kinds of entries.
 
 // The points a curve is given by, by the kind of the curve (D52): the fields of the shape other
 // than `type`, so the table cannot name a point a curve does not have.

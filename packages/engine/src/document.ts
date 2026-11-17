@@ -16,7 +16,8 @@ import type {
 } from './types';
 import { CONSTRAINTS } from './catalog';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
-import { CURVE_POINTS, bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, isDimension, isDriving } from './sketch-content';
+import { CURVE_POINTS, bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, isDimension, isDriving } from './sketch-content';
+import { entityOf, externalRef, updateProblem } from './references/index';
 import { schemaHeader, upgradeDocument } from './schema';
 import { has } from './util';
 import {
@@ -41,7 +42,7 @@ import { applySectionCommand, emptySections, renamedSections, validateSections }
 import { MAX_INSERT_DEPTH } from './sections/documents';
 import type { SectionContext } from './sections/spec';
 import type { FeatureModule } from './features/module';
-import { constraint, constraintRuleProblem, curve, externalRef } from './features/sketch';
+import { constraint, constraintRuleProblem, curve } from './features/sketch';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -54,14 +55,13 @@ export {
   constraintPath,
   CURVE_POINTS,
   curvePoints,
-  derivedPoints,
   documentIds,
   duplicateOf,
   emptySketch,
-  entityOf,
   isDimension,
   isDriving,
 } from './sketch-content';
+export { derivedPoints, entityOf } from './references/index';
 export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
 export { FEATURE_TYPE_INFO } from './features/index';
 export type { FeatureTypeInfo } from './features/module';
@@ -388,6 +388,11 @@ function unique(doc: Document, v: unknown, what: string): Id {
   return id;
 }
 
+// What the validator of an entry of `external` gets in a command: the references of the sketch at
+// its place, and a fresh reader of numeric fields over no expressions, as addConstraint has (a kind
+// with fields hands its expressions on; the edge has none).
+const entryContext = (doc: Document, index: number) => ({ ...refContext(doc, index), fields: new Fields('add', {}, () => evaluateParameters(doc.parameters)) });
+
 function editSketch(doc: Document, id: unknown, edit: (sketch: SketchFeature, index: number) => SketchFeature): Document {
   const index = indexOf(doc, id, 'sketch');
   const f = doc.features[index];
@@ -694,16 +699,20 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addExternal':
       return editSketch(doc, cmd.sketch, (s, index) => ({
         ...s,
-        external: { ...s.external, [unique(doc, cmd.id, 'addExternal.id')]: externalRef(refContext(doc, index), cmd.ref, 'addExternal.ref') },
+        external: (() => {
+          const id = unique(doc, cmd.id, 'addExternal.id');
+          return { ...s.external, [id]: externalRef(entryContext(doc, index), s, id, cmd.ref, 'addExternal.ref') };
+        })(),
       }));
 
     case 'updateExternal':
       return editSketch(doc, cmd.sketch, (s, index) => {
         const id = string(cmd.id, 'updateExternal.id');
         if (!has(s.external, id)) fail(`updateExternal: promítnutí "${id}" ve skice není`);
-        const ref = externalRef(refContext(doc, index), cmd.ref, 'updateExternal.ref');
+        const ref = externalRef(entryContext(doc, index), s, id, cmd.ref, 'updateExternal.ref');
         // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
-        if (ref.kind !== s.external[id].kind) fail('updateExternal: druh promítnutí změnit nejde');
+        const problem = updateProblem(s, id, s.external[id], ref);
+        if (problem) fail(`updateExternal: ${problem}`);
         // Zmrazené hodnoty patřily původní hraně.
         return { ...s, external: { ...s.external, [id]: ref }, solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
       });

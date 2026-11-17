@@ -9,7 +9,7 @@
 //   a constraint, a sketch point among the features the state evaluated. A sketch that did not
 //   evaluate (it is in error) is among them, so it is a valid argument.
 import { checkNumber } from '../catalog';
-import { entityOf } from '../sketch-content';
+import { entityOf } from '../references/index';
 import type { ArgPath, Document, Evaluation, Feature, Id, SketchFeature } from '../types';
 import { edgeKey, faceKey, faceText, has, sameEdgeName, sameFaceName } from '../util';
 import { CommandError, type RefContext, axisRef, edgeName, faceName, isObject, planeRef } from '../validation';

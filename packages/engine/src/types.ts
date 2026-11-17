@@ -326,6 +326,10 @@ export type CurvePointName = 'a' | 'b' | 'center' | 'start' | 'end';
 
 export type ProjectionKind = 'line' | 'circle';
 
+// An entry of `external` of a sketch: reference geometry, fixed for the solver (today the
+// projection of an edge of a body, `type: 'edge'`). Later kinds of entry, reference or derived
+// geometry (a mirror or a pattern of own curves), are further members of this union and share the
+// commands addExternal, updateExternal and removeExternal (D64).
 // kind: jako co se hrana promítá
 export interface ExternalRef {
   type: 'edge';

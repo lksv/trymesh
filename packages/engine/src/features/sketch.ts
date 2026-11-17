@@ -2,25 +2,16 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { frame as frameOf, issue, lookup } from '../recompute/services';
+import { externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
+import { derivedPoints, entityOf } from '../references/index';
+import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from '../sketch';
-import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, derivedPoints, emptySketch, entityOf, isDriving } from '../sketch-content';
-import { analyzeBody, projectEdge } from '../solid';
-import type { Constraint, Curve, ExternalRef, FeatureResult, Id, Issue, IssueCode, Projected, SketchFeature, SolveInput, SolveResult } from '../types';
+import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
+import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, SketchFeature, SolveInput, SolveResult } from '../types';
 import { ORIGIN, has, unreachable } from '../util';
-import { type Dict, type FeatureRef, type Fields, type RefContext, type ValidationContext, boolean, edgeName, faceRefs, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, requireFace, string } from '../validation';
+import { type Dict, type Fields, type ValidationContext, boolean, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
-
-export function externalRef(context: RefContext, v: unknown, what: string): ExternalRef {
-  const o = object(v, what);
-  if (o.type !== 'edge') fail(`${what}: promítnout jde jen hranu`);
-  const body = string(o.body, `${what}.body`);
-  context.requireRef({ id: body, kind: 'body' }, what);
-  const edge = edgeName(o.edge, `${what}.edge`);
-  for (const face of [edge.a, edge.b]) requireFace(context, face, `${what}.edge`);
-  return { type: 'edge', body, edge, kind: oneOf(o.kind, ['line', 'circle'] as const, `${what}.kind`) };
-}
 
 // Křivka smí odkazovat jen na vlastní body skici a na počátek.
 export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
@@ -103,22 +94,6 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
   return result;
 }
 
-function projected(v: unknown, what: string): Projected {
-  const o = object(v, what);
-  const vec2 = (value: unknown, name: string): [number, number] => {
-    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: čeká se dvojice čísel`);
-    const pair = value as unknown[];
-    return [finite(pair[0], `${what}.${name}`), finite(pair[1], `${what}.${name}`)];
-  };
-  if (o.kind === 'line') return { kind: 'line', a: vec2(o.a, 'a'), b: vec2(o.b, 'b') };
-  if (o.kind === 'circle') {
-    const radius = finite(o.radius, `${what}.radius`);
-    if (radius <= 0) fail(`${what}.radius: poloměr musí být kladný`);
-    return { kind: 'circle', center: vec2(o.center, 'center'), radius };
-  }
-  return fail(`${what}.kind: čeká se line nebo circle`);
-}
-
 function sketchFeature(o: Dict, what: string, context: ValidationContext): SketchFeature {
   const { fields } = context;
   const sketch = emptySketch(newId(o.id, `${what}.id`), string(o.name, `${what}.name`), planeRef(context, o.plane, `${what}.plane`));
@@ -135,7 +110,7 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
     const p = object(value, `${what}.points.${id}`);
     sketch.points[id] = { x: finite(p.x, `${what}.points.${id}.x`), y: finite(p.y, `${what}.points.${id}.y`) };
   }
-  for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(context, value, `${what}.external.${id}`);
+  for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(context, sketch, id, value, `${what}.external.${id}`);
   for (const [id, value] of entries(o.curves, 'curves')) sketch.curves[id] = curve(sketch, value, `${what}.curves.${id}`);
   for (const [id, value] of Object.entries(object(o.radii, `${what}.radii`))) {
     if (!has(sketch.curves, id) || sketch.curves[id].type !== 'circle') fail(`${what}.radii: "${id}" není kružnice`);
@@ -147,8 +122,9 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
   const solved = object(o.solved, `${what}.solved`);
   sketch.solved.inputs = string(solved.inputs, `${what}.solved.inputs`);
   for (const [id, value] of Object.entries(object(solved.external, `${what}.solved.external`))) {
-    const stored = projected(value, `${what}.solved.external.${id}`);
-    if (!has(sketch.external, id) || sketch.external[id].kind !== stored.kind) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
+    // the form of the value first, then whether it fits its entry
+    const stored = storedValue(value, `${what}.solved.external.${id}`);
+    if (!has(sketch.external, id) || kindOf(sketch.external[id]).value(stored, sketch.external[id], `${what}.solved.external.${id}`) === undefined) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
     sketch.solved.external[id] = stored;
   }
   return sketch;
@@ -159,22 +135,12 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   if (typeof frame === 'string') return failed(frame, [feature.plane]);
   const warnings: Issue[] = badFields.length ? [issue('invalidExpression', badFields, 'the field keeps its last valid value')] : [];
 
-  // 1. promítnutá geometrie ze stavu těles před skicou
+  // 1. the reference geometry from the state before the sketch (the registry of kinds); an entry
+  // that cannot be computed keeps its last valid value
+  const { resolved, lost } = resolveReferences(feature, { state, frame });
   const external: Record<Id, Projected> = {};
-  const lost: [Id, IssueCode][] = [];
-  for (const id of Object.keys(feature.external).sort()) {
-    const ref = feature.external[id];
-    const solid = lookup(state.bodies, ref.body);
-    const projected = solid ? projectEdge(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), ref.edge, ref.kind, frame, state.faceInfos, state.chordTolerance) : 'brokenProjection';
-    if (typeof projected !== 'string') external[id] = projected;
-    else {
-      // Promítnutí, které nejde vyhodnotit, skicu neshodí: křivka zůstane na posledních platných hodnotách.
-      const frozen = lookup(feature.solved.external, id);
-      if (frozen && frozen.kind === ref.kind) external[id] = frozen;
-      lost.push([id, projected]);
-    }
-  }
-  const setup = solverSetup(feature, external);
+  for (const [id, reference] of Object.entries(resolved)) if (reference.value) external[id] = reference.value;
+  const setup = solverSetup(feature, resolved);
   for (const [id, code] of lost) {
     const skipped = setup.skipped.filter((c) => constraintOperands(feature.constraints[c]).some((operand) => operand === id || operand.startsWith(`${id}/`)));
     warnings.push(issue(code, [id, ...skipped], skipped.length ? 'vazby na ni se při řešení vynechaly' : undefined));
@@ -230,11 +196,7 @@ export const sketch: FeatureModule<SketchFeature> = {
   validate: sketchFeature,
   refs: (f) => [
     ...planeRefs(f.plane, 'plane'),
-    ...Object.entries(f.external).flatMap(([id, ref]): FeatureRef[] => [
-      { path: `external/${id}`, id: ref.body, kind: 'body' },
-      ...faceRefs(ref.edge.a, `external/${id}`),
-      ...faceRefs(ref.edge.b, `external/${id}`),
-    ]),
+    ...Object.entries(f.external).flatMap(([id, ref]) => kindOf(ref).refs(ref, `external/${id}`)),
   ],
   createsBody: () => false,
   namesFaces: false,

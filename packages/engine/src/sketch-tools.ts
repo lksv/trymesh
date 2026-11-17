@@ -5,7 +5,8 @@
 // the features that name its curves in the same batch (the fillet), the document.
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds } from './document';
-import { CURVE_POINTS, constraintOperands, duplicateOf, entityOf } from './sketch-content';
+import { entityOf, kindOf } from './references/index';
+import { CURVE_POINTS, constraintOperands, duplicateOf } from './sketch-content';
 import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
 import { pointJoins } from './sketch';
@@ -566,7 +567,7 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
       patched.push(feature.id);
     } else if (source?.sketch === id && source.type === 'wall' && lines.some((line) => source.curves.includes(line))) shortened.push(feature.id);
     if ((feature.type === 'sketch' && planeOn(feature.plane, starting)) || (feature.type === 'plane' && planeOn(feature.base, starting))) moved.push(feature.id);
-    if (feature.type === 'sketch' && Object.values(feature.external).some((ref) => sideOf(ref.edge.a, lines) || sideOf(ref.edge.b, lines))) shortened.push(feature.id);
+    if (feature.type === 'sketch' && Object.values(feature.external).some((ref) => kindOf(ref).faces(ref).some((face) => sideOf(face, lines)))) shortened.push(feature.id);
   }
   return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved, shortened } };
 }

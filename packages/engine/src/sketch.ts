@@ -1,6 +1,7 @@
 // Skica: vstup solveru a razítko, referenční kóty, detekce profilů a oblastí.
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
-import { constraintOperands, derivedPoints, isDimension } from './sketch-content';
+import type { ResolvedReference } from './references/spec';
+import { constraintOperands, isDimension } from './sketch-content';
 import type { Constraint, Curve, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2, unreachable } from './util';
 
@@ -18,8 +19,10 @@ export interface SolverSetup {
   skipped: Id[]; // vazby vynechané, protože jejich promítnutá geometrie nemá žádné platné hodnoty
 }
 
-// `external`: hodnoty promítnuté geometrie, které jsou k dispozici (čerstvé nebo zmrazené).
-export function solverSetup(sketch: SketchFeature, external: Record<Id, Projected>): SolverSetup {
+// `references`: the resolved entries of `external` (fresh or frozen values and their geometry,
+// references/index.ts). Their points and curves enter the input in the order of the entry IDs, and
+// every point and circle of them is fixed in that order; the stamp holds the values by entry ID.
+export function solverSetup(sketch: SketchFeature, references: Record<Id, ResolvedReference>): SolverSetup {
   const points: Record<Id, Point2> = { [ORIGIN]: { x: 0, y: 0 }, ...sketch.points };
   const radii: Record<Id, number> = { ...sketch.radii };
   const curves: Record<Id, Curve> = {};
@@ -28,20 +31,12 @@ export function solverSetup(sketch: SketchFeature, external: Record<Id, Projecte
     const { construction: _construction, ...shape } = c;
     curves[id] = shape as Curve;
   }
-  for (const id of Object.keys(sketch.external).sort()) {
-    const value = external[id];
-    if (!value) continue;
-    if (value.kind === 'line') {
-      points[`${id}/a`] = { x: value.a[0], y: value.a[1] };
-      points[`${id}/b`] = { x: value.b[0], y: value.b[1] };
-      curves[id] = { type: 'line', a: `${id}/a`, b: `${id}/b` };
-      fixed.push(`${id}/a`, `${id}/b`);
-    } else {
-      points[`${id}/center`] = { x: value.center[0], y: value.center[1] };
-      radii[id] = value.radius;
-      curves[id] = { type: 'circle', center: `${id}/center` };
-      fixed.push(`${id}/center`, id);
-    }
+  for (const id of Object.keys(references).sort()) {
+    const { geometry } = references[id];
+    Object.assign(points, geometry.points);
+    Object.assign(radii, geometry.radii);
+    Object.assign(curves, geometry.curves);
+    fixed.push(...Object.keys(geometry.points), ...Object.keys(geometry.curves).filter((curve) => geometry.curves[curve].type === 'circle'));
   }
   const constraints: Record<Id, Constraint> = {};
   const skipped: Id[] = [];
@@ -51,7 +46,10 @@ export function solverSetup(sketch: SketchFeature, external: Record<Id, Projecte
     else if (!isDimension(c) || c.driving) constraints[id] = c; // referenční kóty počítá engine
   }
   const used: Record<Id, Projected> = {};
-  for (const id of Object.keys(sketch.external)) if (external[id]) used[id] = external[id];
+  for (const id of Object.keys(sketch.external)) {
+    const value = has(references, id) ? references[id].value : undefined;
+    if (value) used[id] = value;
+  }
   const stamp = fingerprint(stableStringify({ curves, constraints, external: used }));
   return { input: { points, radii, curves, constraints, fixed }, stamp, skipped: skipped.sort() };
 }
@@ -788,22 +786,3 @@ export function polygonNesting(loops: Loop[]): boolean[][] {
 }
 
 export const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
-
-// Promítnutá geometrie jako body a poloměry (pro výsledek skici).
-export function externalGeometry(sketch: SketchFeature, external: Record<Id, Projected>): SketchGeometry {
-  const points: Record<Id, Point2> = {};
-  const radii: Record<Id, number> = {};
-  for (const [id, ref] of Object.entries(sketch.external)) {
-    const value = external[id];
-    if (!value) continue;
-    const ids = derivedPoints(id, ref);
-    if (value.kind === 'line') {
-      points[ids[0]] = { x: value.a[0], y: value.a[1] };
-      points[ids[1]] = { x: value.b[0], y: value.b[1] };
-    } else {
-      points[ids[0]] = { x: value.center[0], y: value.center[1] };
-      radii[id] = value.radius;
-    }
-  }
-  return { points, radii };
-}

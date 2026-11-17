@@ -397,6 +397,16 @@ As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINT
 - `packages/engine/test/curve-kinds.test.ts` checks `CURVE_KINDS` and that `unreachable` throws.
 - **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E9, E11 to E14, E16, E18, E20, E21 and `document.ts` (E5), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind.
 
+### Part 1: the kinds of reference geometry as a registry
+
+As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `index.ts`; `externalGeometry` removed; `entityOf` and `derivedPoints` moved out of `sketch-content.ts` (`document.ts` re-exports them from `references/index.ts`, so the public surface is the same); `solverSetup(sketch, references)` takes the resolved entries; the step asks `resolveReferences`; the refs of a sketch, the fillet's `shortened` and `updateExternal` read the kind. No test and no public type changed. Beside the contract:
+
+- **The values.** The value of each kind is in `ReferenceValues` (`spec.ts`), keyed by the name of the kind, in place of the contract's map `ReferenceKinds`; `StoredValue` is their union, and `storedValue` (`index.ts`) reads a stored value by its form before it is matched with its entry. The edge's `value` returns the stored object itself once it fits, so a frozen value is the object `load` made, as before.
+- **`DerivedKindSpec`, `SolvedOwn`** stay in the contract (6c writes them); `GeometrySource` and the slots of `EntryGeometry` (`joins`, `keys`, `hidden`) are declared in `spec.ts` and read by nothing yet.
+- **The commands** validate an entry with `entryContext` (`document.ts`): the references of the sketch at its place and a fresh reader of numeric fields over no expressions. The expressions it reads are not handed on yet: the edge has no field (6c writes the cleanup).
+- **Checked before and after**, in a copy of `master` and in the tree: a plate with a projected line and circle, constraints on both, a projection that is lost (its edge removed, the frozen value used), the saved document loaded again, and the fixture `v1-plate.json` give the same documents (stamps, stored values), the same results and the same meshes, byte for byte.
+- The vocabulary of step 6 is written into `docs/architecture/sketch.md` and the rule of the face key into `docs/architecture/naming.md`.
+
 ## Rows for the indexes
 
 **docs/d36/README.md**, the row of 6a, column "Design now":

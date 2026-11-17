@@ -87,19 +87,27 @@ export interface IndexedMesh {
 }
 
 export const MESH_LIMITS = {
-  // The most triangles of a stored mesh. A provisional number (design.md, "Measured", 5, and
-  // "Open", 5): it keeps a document, a load and a first look at a body within reason. It does not
-  // keep a query under a given time: a real collision with a mesh of 38 000 triangles takes 3 to
-  // 19 s by its depth, with 105 000 triangles 18 to 55 s.
+  // The most triangles of a mesh that an import reads and `addMesh` stores. A provisional number
+  // (design.md, "Measured", 5, and "Open", 5) that may be lowered: it keeps a document, a load and
+  // a first look at a body within reason. It does not keep a query under a given time: a real
+  // collision with a mesh of 38 000 triangles takes 3 to 19 s by its depth, with 105 000
+  // triangles 18 to 55 s.
   triangles: 100_000,
+  // The most triangles of a stored mesh that a load accepts. Never lowered, so that a document
+  // saved under a higher limit of an import still loads; at least `triangles`.
+  stored: 100_000,
   // The fewest: a tetrahedron.
   fewest: 4,
   // An import adds a note to its report above this: seconds per real collision with the body, and
   // more the deeper the collision is.
   note: 20_000,
   // A shell encloses something when its mean thickness (twice its volume over its surface) is
-  // above this part of the largest coordinate of the mesh.
+  // above this part of its own size (the largest side of its own bounds). A policy, independent
+  // of where the shell stands and of the other shells.
   thinnest: 1e-6,
+  // The most solid angles check 7 sums for one mesh (about 1.5 s); above it the mesh is
+  // `tooLarge`. Only shells nested deep in one another come near it.
+  windings: 10_000_000,
 } as const;
 
 // What is wrong with the edges of a mesh that is not closed.
@@ -123,6 +131,12 @@ export interface MeshShell {
   triangles: number; // how many
   volume: number; // signed: negative when the shell faces inwards
   area: number;
+  // By the winding of the other shells at a point of it (check 7): `solid` (outwards, the others
+  // wind 0 times), `hollow` (inwards, at least once), `insideOut` (inwards, 0 times: refused by
+  // check 7, turned over by the importer), `nested` (outwards, at least once: in the material of
+  // another shell, a hollow written outwards or a part inside a part; read and reported),
+  // `undecided` (no point away from other shells: refused).
+  kind: 'solid' | 'hollow' | 'insideOut' | 'nested' | 'undecided';
 }
 
 // `mesh.ts`: the mesh as numbers. It imports types.ts, util.ts and validation.ts (for
@@ -131,14 +145,22 @@ export interface MeshShell {
 //   result by the entry object (a weak map), so an entry is decoded once; it throws `CommandError`
 //   for a text that is not canonical base64 of whole triples.
 // - `meshDefects`: the count of the edges that are wrong.
-// - `withoutWalls`: leaves out every pair of triangles on the same three vertices that face
-//   opposite ways (the common face of two solids written one after the other with the same cut,
-//   or a sheet without thickness) and the positions nothing names afterwards; `walls` is the
-//   number of pairs. Decided by the indices alone. Only the importer calls it, after the weld: a
-//   stored mesh is what is left.
-// - `meshProblem`: why a mesh cannot be stored; undefined when it can. In this order:
-//   1. more than `MESH_LIMITS.triangles` triangles (`tooLarge`); everything below is `notASolid`;
-//      fewer than `MESH_LIMITS.fewest`;
+// - `withoutWalls`: the wall between two solids written one after the other with the same cut.
+//   A candidate is a pair of triangles on the same three vertices that face opposite ways (a
+//   group of more than two triangles on one set of vertices is none); candidates joined through
+//   shared edges make a wall. A wall is left out, with the positions nothing names afterwards,
+//   only when along every edge of its border there are exactly two other triangles, running the
+//   edge opposite ways, one on each side of the wall: the one that runs the edge as the partner
+//   of the wall triangle there does lies behind that triangle or in its plane, the other in front
+//   of it or in its plane, not both in the plane (the side by the sign of the volume of the
+//   triangle and the third vertex, from the float32 positions). Otherwise its pairs stay and the
+//   checks refuse the mesh for its edges. `walls` is the number of pairs left out. Only the
+//   importer calls it, after the weld: a stored mesh is what is left.
+// - `meshProblem`: why a mesh cannot be stored; undefined when it can. `limit` is
+//   `MESH_LIMITS.triangles` for an import and `addMesh`, `MESH_LIMITS.stored` for a load. In this
+//   order:
+//   1. more than `limit` triangles (`tooLarge`); everything below is `notASolid` but the bound
+//      of check 7; fewer than `MESH_LIMITS.fewest`;
 //   2. a coordinate that is not finite or is beyond ±1e9 (the bound of a number of the document);
 //   3. an index without a position, a position no triangle names, a triangle that names a vertex
 //      twice;
@@ -146,17 +168,21 @@ export interface MeshShell {
 //      `isClosed` of the kernel adapter); `defects` has the three counts;
 //   5. a volume that is not positive: the triangles face inwards;
 //   6. a shell that encloses nothing: its mean thickness is not above `MESH_LIMITS.thinnest` of
-//      the largest coordinate (the library would drop it without a word);
-//   7. a shell that faces inwards and is not a hollow of a solid: the other triangles of the mesh
-//      have to wind once around one of its vertices (the sum of their solid angles seen from the
-//      vertex, over 4π, rounds to 1). Beside a solid such a shell hides a collision.
+//      its own size (the library drops a shell far thinner than that without a word);
+//   7. a shell that faces inwards and is not a hollow of a solid: the other shells have to wind
+//      around a point of it a whole number of times, at least once. The point is the centroid of
+//      a triangle of the shell; a centroid whose winding is not within 1e-3 of a whole number lies
+//      on another shell and the next one is taken; none: refused. Only the shells whose bounds
+//      hold the point are summed (a closed shell winds 0 times outside its bounds), found through
+//      a grid of the bounds; more than `MESH_LIMITS.windings` solid angles in all is `tooLarge`.
+//      Beside a solid such a shell hides a collision.
 //   Not checked: that the surface does not pass through itself, that two shells do not overlap.
-// - `shellsOf`: the pieces of the surface.
+// - `shellsOf`: the pieces of the surface, each with what check 7 says of it (`kind`).
 export declare function storedMesh(mesh: IndexedMesh, name?: string): StoredMesh;
 export declare function indexedMesh(stored: StoredMesh): IndexedMesh;
 export declare function meshDefects(mesh: IndexedMesh): MeshDefects;
 export declare function withoutWalls(mesh: IndexedMesh): { mesh: IndexedMesh; walls: number };
-export declare function meshProblem(mesh: IndexedMesh): MeshProblem | undefined;
+export declare function meshProblem(mesh: IndexedMesh, limit?: number): MeshProblem | undefined;
 export declare function shellsOf(mesh: IndexedMesh): MeshShell[];
 
 // What the description for the AI and the forms read about the section (`SECTION_INFO.meshes`).
@@ -237,12 +263,14 @@ export interface MeshReport {
   vertices: number;
   triangles: number;
   shells: number; // connected pieces of the surface
-  cavities: number; // of them, pieces that face inwards (a hollow, if it lies inside another piece)
-  turnedOver: boolean; // the whole mesh was inside out and was turned over
+  cavities: number; // of them, hollows: pieces that face inwards inside another piece
+  turned: number; // shells that were inside out and were turned over (all of them when the whole file was)
+  nested: number; // outward shells in the material of others (a hollow written outwards, or an overlap); read
   volume: number; // mm³; an overlap of two shells counts twice
   bounds: { min: Vec3; max: Vec3 }; // mm, in the frame of the file
   // In words, for the caller to read: more than one shell (shells that overlap are counted twice
-  // in the volume and in a collision with them, and are not detected); more than
+  // in the volume and in a collision with them, and are found only at one point of each); shells
+  // nested in material; shells turned over; more than
   // `MESH_LIMITS.note` triangles (a real collision with the body takes seconds, more the deeper
   // it is); bounds below 1 mm or above 10 m (is `unit` right?).
   notes: string[];
@@ -252,8 +280,8 @@ export interface MeshReport {
 // - `unreadable`: the bytes are not a file of the format.
 // - `notASolid`: the triangles do not close a solid (`meshProblem`, checks 1 to 7); `defects` has
 //   the counts when the edges are the reason.
-// - `tooLarge`: more than `MESH_LIMITS.triangles` triangles; the message says how many. Decided
-//   from the count of the file, before the weld.
+// - `tooLarge`: more than `MESH_LIMITS.triangles` triangles (the message says how many; decided
+//   from the count of the file, before the weld), or more work than the bound of check 7.
 export type ImportOutcome =
   | { ok: true; mesh: StoredMesh; report: MeshReport }
   | { ok: false; error: { code: 'invalidArguments' | 'unreadable' | 'notASolid' | 'tooLarge'; message: string; arg?: ArgPath; defects?: MeshDefects } };
@@ -264,9 +292,10 @@ export type ImportOutcome =
 // 2. The weld: corners at the same float32 position (−0 taken as 0) become one vertex. Triangles
 //    that lose a corner by it are left out and counted (`dropped`). No tolerance.
 // 3. `withoutWalls` (`walls`).
-// 4. `meshProblem`, whose code and message are the refusal; a closed mesh with a negative volume
-//    is turned over whole first (`turnedOver`).
-// 5. The report, and the mesh in its stored form with `name`.
+// 4. When the mesh is closed: a negative volume turns it over whole; then `shellsOf`, and every
+//    shell of the kind `insideOut` is turned over (`turned` counts both); `nested` is counted.
+// 5. `meshProblem` with `MESH_LIMITS.triangles`, whose code and message are the refusal.
+// 6. The report, and the mesh in its stored form with `name`.
 // The same bytes and options give the same mesh.
 export declare function importMesh<F extends ImportFormat>(format: F, bytes: Uint8Array, options?: ImportOptions<F>, name?: string): ImportOutcome;
 
@@ -406,8 +435,9 @@ export type ErrorCodeAfter3b = ErrorCode | 'importedTarget';
 
 // ================================================================ the commands
 
-// - addMesh: adds a stored mesh under `id`. The mesh is checked in full (`meshProblem`); an ID the
-//   section already has is an invalid command.
+// - addMesh: adds a stored mesh under `id`. The mesh is checked in full (`meshProblem` with
+//   `MESH_LIMITS.triangles`; a load checks with `MESH_LIMITS.stored`); an ID the section already
+//   has is an invalid command.
 // - removeMesh: removes the entry. Refused while a feature of the document names the mesh
 //   (suppressed or not; the message lists the features): remove or re-point them first, in the
 //   same batch.
@@ -487,8 +517,9 @@ export interface EngineAfter3b extends Omit<Engine, 'execute' | 'preview' | 'get
 // - `path`: the file. `format`: a key of `IMPORT_FORMATS`; without it the extension of the path
 //   decides. `options`: those of the format.
 // - `id`: the ID of the stored mesh; without it the name of the file without its extension,
-//   reduced to letters, digits and underscores (`mesh` when nothing is left, or when that is
-//   `origin`), with `_2`, `_3`, … when the section has it: the tool reads the stored meshes of
+//   reduced to letters, digits and underscores (`mesh` when that is no ID by the rule of `newId`
+//   of validation.ts: empty, `origin`, or a property every object has, such as `constructor` or
+//   `__proto__`), with `_2`, `_3`, … when the section has it: the tool reads the stored meshes of
 //   the engine the other tools use (`get_model`) before it sends the command.
 // - `name`: the name of the stored mesh; without it the name of the file.
 export interface ImportMeshArgs {

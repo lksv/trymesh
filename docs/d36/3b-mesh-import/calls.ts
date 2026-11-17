@@ -33,7 +33,7 @@ import type {
   StoredMesh,
   StoredMeshShown,
 } from './contract';
-import { IMPORT_FORMATS, MESHES_INFO, MESH_IMPORT_STEP, MESH_LIMITS, PLACEMENT_FIELDS, importMesh, indexedMesh, meshDefects, meshProblem, storedMesh } from './contract';
+import { IMPORT_FORMATS, MESHES_INFO, MESH_IMPORT_STEP, MESH_LIMITS, PLACEMENT_FIELDS, importMesh, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, withoutWalls } from './contract';
 
 declare const engine: EngineAfter3b; // the arm
 declare const shop: Engine; // a second engine, in which the part that is "bought" is modelled
@@ -77,7 +77,7 @@ export function motorFile(): Uint8Array {
   return file;
 }
 
-// Reading it: one shell, nothing left out, not turned over; the volume is that of the body the
+// Reading it: one shell, nothing left out, turned or nested; the volume is that of the body the
 // file was written from, to the last digit (measured for 22 bodies), and the bounds are its box.
 export function readMotor(): boolean {
   const { mesh, report } = read(importMesh('stl', motorFile(), {}, 'motor.stl'));
@@ -89,7 +89,8 @@ export function readMotor(): boolean {
     report.walls === 0 &&
     report.shells === 1 &&
     report.cavities === 0 &&
-    !report.turnedOver &&
+    report.turned === 0 &&
+    report.nested === 0 &&
     report.triangles === can.solid.triangles.length / 3 &&
     report.volume === can.volume &&
     report.bounds.min[2] === 0 &&
@@ -108,6 +109,27 @@ export function stacked(): boolean {
   const made = shop.execute({ type: 'batch', commands: [...box('low', 0, 0, 42, 42, 0, 10), ...box('stack', 0, 0, 42, 42, 10, 30), ...box('high', 0, 0, 42, 42, 30, 40)] });
   const { report } = read(importMesh('stl', made.ok ? shop.exportMesh('stl', ['low', 'stack', 'high']) : fail(made.error.message)));
   return report.walls === 4 && report.shells === 1 && Math.abs(report.volume - 42 * 42 * 40) < 1e-6;
+}
+
+// A pair of opposite triangles is left out only between two solids that both face outwards. Two
+// tetrahedra on one base, the second written inwards on the same side of it: without the guard
+// the base would be left out and the rest pass every check (measured: volume 83.3, the library
+// takes it, a collision in the second is hidden); with it the base stays, its three edges have
+// four triangles each, and the mesh is no solid. The same two outwards on opposite sides of the
+// base are one solid.
+export function glued(): { walls: number; overused: number; problem: string | undefined; stackedWalls: number } {
+  const positions = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 20, 20, 5]);
+  const outward = [0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2];
+  const second = (apex: number): number[] => [0, 1, 2, 0, apex, 1, 1, apex, 2, 0, 2, apex]; // its base faces +Z
+  const inwards = withoutWalls({ positions, triangles: Uint32Array.from([...outward, ...second(4)]) });
+  const below = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 2, 2, -5]);
+  const stacked = withoutWalls({ positions: below, triangles: Uint32Array.from([...outward, ...second(4)]) });
+  return {
+    walls: inwards.walls, // 0
+    overused: meshDefects(inwards.mesh).overused, // 3
+    problem: meshProblem(inwards.mesh)?.code, // 'notASolid'
+    stackedWalls: stacked.walls, // 1; what is left is closed, of volume 250
+  };
 }
 
 // The same triangles as ASCII give the same stored mesh, text for text; the format tells the two
@@ -150,7 +172,7 @@ export function refused(): string[] {
 
 // The checks of a stored mesh are the engine's own, the ones `addMesh` and a load make: a mesh
 // built by hand goes through the same function.
-export function tetrahedron(): { stored: StoredMesh; insideOut: string | undefined; open: number; beside: string | undefined } {
+export function tetrahedron(): { stored: StoredMesh; insideOut: string | undefined; open: number; beside: string | undefined; kinds: string[] } {
   const mesh: IndexedMesh = { positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) };
   const turned: IndexedMesh = { positions: mesh.positions, triangles: Uint32Array.from([0, 1, 2, 0, 3, 1, 1, 3, 2, 0, 2, 3]) };
   const holed: IndexedMesh = { positions: mesh.positions, triangles: mesh.triangles.slice(0, 9) };
@@ -165,7 +187,8 @@ export function tetrahedron(): { stored: StoredMesh; insideOut: string | undefin
     stored: storedMesh(mesh, 'tetrahedron'), // 48 bytes each: 64 characters of base64
     insideOut: meshProblem(turned)?.code, // 'notASolid': the volume is not positive
     open: meshDefects(holed).open, // 3
-    beside: meshProblem(two)?.code, // 'notASolid' (check 7)
+    beside: meshProblem(two)?.code, // 'notASolid' (check 7); the importer would turn the second over
+    kinds: shellsOf(two).map((shell) => shell.kind), // ['solid', 'insideOut']
   };
 }
 

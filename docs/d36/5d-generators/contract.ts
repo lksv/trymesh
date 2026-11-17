@@ -18,6 +18,8 @@ export type GeneratorNameAfter = GeneratorName | 'cycloidalDisc' | 'gt2Pulley';
 // `OperandSpec.kinds` takes `point` already (`EntityKind`); what is new is the resolved form and
 // its resolution in recompute/profile.ts.
 export type ResolvedOperandAfter = { kind: 'circle'; center: Vec2; radius: number } | { kind: 'point'; at: Vec2 };
+// What a build function gets: `GeneratorInput` with operands of either kind.
+export type GeneratorInputAfter = Omit<GeneratorInput, 'operands'> & { operands: Record<string, ResolvedOperandAfter> };
 
 // An entry gets `example`: the required parameters of a profile that builds, for the example of the
 // description for the AI (in place of "the minimum, at least 18") and for a new draft in the app
@@ -40,7 +42,10 @@ export type GeneratorSpecAfter = GeneratorSpec & { example: Record<string, numbe
 //   parameter `rotation` is used, as for any other mesh that does not hold. A shifted centre
 //   distance (x1 + x2 ≠ 0) is not supported.
 // - Failures: the tooth is pointed at its tip, the teeth overlap at the root (both as today, now
-//   with the shift in the message), the root circle reaches the centre (r − m (1.25 − x) ≤ 0).
+//   with the shift in the message); the outer circle of the loop (the tip of a gear, the root of
+//   a ring) is not above the base circle (no involute flank); the inner circle of the loop (the
+//   root of a gear r − m (1.25 − x), the tip of a ring r − m (1 − x)) is not above 0. These are the
+//   bounds of the coefficient; the catalog gives it none.
 export const GEAR_SHIFT = { title: 'Profile shift coefficient', unit: 'none', default: 0 } as const satisfies NumberSpec;
 export const GEAR_SHIFT_FACT = { shift: 'profile shift coefficient x; the profile is moved by x · module away from the axis' } as const;
 
@@ -49,15 +54,17 @@ export const GEAR_SHIFT_FACT = { shift: 'profile shift coefficient x; the profil
 // `cycloidalDisc`: the disc of a cycloidal drive over the circle of its ring pins.
 // - Operand `circle`: the circle the centres of the ring pins lie on (radius R); its centre is the
 //   axis of the input and of the ring. A construction circle, or a projected one.
-// - The pins are taken to stand at the angles 2πk/N from the x axis of the sketch about that centre
-//   (a pin on the x axis and a circular pattern of it); the generator does not make them.
+// - The generator does not make the pins; it takes them at the angles of `pinAngle` (a pin there
+//   and a circular pattern of it).
 // - Parameters: `pins` N (a whole number, 3 to 500; the disc has N − 1 lobes), `pinRadius` Rr (mm,
 //   above 0), `eccentricity` E (mm, above 0), `clearance` (mm, 0 or more, default 0: the profile
 //   is moved inwards by it, which is the profile for pins larger by it), `rotation` (radians,
-//   default 0: the input angle, the direction of the eccentric from the centre of the ring).
+//   default 0: the input angle, the direction of the eccentric from the centre of the ring),
+//   `pinAngle` (radians, default 0: the pins stand at pinAngle + 2πk/N from the x axis of the
+//   sketch about the centre of the circle).
 // - The disc stands where it is in mesh at that input angle: its centre is E from the centre of the
-//   ring in the direction `rotation`, and it is turned by −rotation / (N − 1) (the reduction of
-//   a drive whose ring is fixed). A second disc of a two-disc drive is the same profile with
+//   ring in the direction `rotation`, and it is turned by pinAngle − (rotation − pinAngle) / (N − 1)
+//   (the reduction of a drive whose ring is fixed, for pins turned by pinAngle). A second disc of a two-disc drive is the same profile with
 //   `rotation` larger by π.
 // - The profile, in the frame of the disc (its centre at the origin, at the input angle 0), as
 //   published (design.md, "Sources"): x = R cos t − Rr' cos(t + ψ) − E cos(N t),
@@ -66,6 +73,8 @@ export const GEAR_SHIFT_FACT = { shift: 'profile shift coefficient x; the profil
 // - The polygon lies inside the exact profile everywhere: it is built for Rr' larger by the largest
 //   distance of its chords from the curve (with a margin), so a disc without clearance does not
 //   overlap its pins. It is smaller than the exact disc by at most twice the chord tolerance.
+// - Every failure is checked with the radius that is built (Rr' and the compensation of the chords);
+//   when only the compensation fails a check, more points are taken, within the limit of points.
 // - Failures (`invalidProfile` with the message): E · N ≥ R (the curve of the pin centres loops);
 //   Rr' not below the smallest radius of curvature of the curve of the pin centres where it bends
 //   towards the disc (the profile would turn back on itself: undercut); the pins overlap one
@@ -78,6 +87,7 @@ export const CYCLOIDAL_DISC_PARAMS = {
   eccentricity: { title: 'Eccentricity', unit: 'mm', min: { value: 0, open: true } },
   clearance: { title: 'Clearance (the profile moved inwards)', unit: 'mm', min: { value: 0 }, default: 0 },
   rotation: { title: 'Input angle', unit: 'rad', default: 0 },
+  pinAngle: { title: 'Angle of the first pin', unit: 'rad', default: 0 },
 } as const satisfies Record<string, NumberSpec>;
 export const CYCLOIDAL_DISC_FACTS = {
   pins: 'number of ring pins N',
@@ -90,7 +100,8 @@ export const CYCLOIDAL_DISC_FACTS = {
   outerDiameter: 'diameter of the circle the tips of the lobes reach, 2 (R − Rr − clearance + E)',
   innerDiameter: 'diameter of the circle of the bottoms between the lobes, 2 (R − Rr − clearance − E)',
   rotation: 'input angle used, radians',
-  discRotation: 'angle the disc is turned by, −rotation / (N − 1)',
+  pinAngle: 'angle of the first pin from the x axis of the sketch',
+  discRotation: 'angle the disc is turned by, pinAngle − (rotation − pinAngle) / (N − 1)',
   center: 'centre of the disc in model coordinates (the eccentric bore goes here)',
   ringCenter: 'centre of the circle of the pins in model coordinates',
   axis: 'direction of the axis in model coordinates',
@@ -139,8 +150,11 @@ export const GT2_PULLEY_OPERANDS = [{ field: 'center', kinds: ['point'] }] as co
 // The build functions of the two entries, pure functions like `involuteGear`: the solved operands,
 // the parameters, the frame and the chord tolerance in; regions, facts and warnings, or a failure
 // with a message, out.
-export declare function cycloidalDisc(input: GeneratorInput): GeneratorResult;
-export declare function gt2Pulley(input: GeneratorInput): GeneratorResult;
+export declare function cycloidalDisc(input: GeneratorInputAfter): GeneratorResult;
+export declare function gt2Pulley(input: GeneratorInputAfter): GeneratorResult;
+// A pulley at a point of a sketch on XY, as the recompute hands it over.
+export const gt2At = (frame: GeneratorInput['frame']): GeneratorResult =>
+  gt2Pulley({ operands: { center: { kind: 'point', at: [60, 0] } }, params: { teeth: 20, allowance: 0, rotation: 0 }, refs: {}, frame, chordTolerance: 0.01 });
 
 // ================================================================ what the package does not add
 

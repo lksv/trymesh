@@ -93,7 +93,7 @@ export function scenario9l(): boolean {
 
 // Below the base of the arm (z −20 to −14): the circle of the pins about the shoulder, a pin of
 // radius 2.5 on it at (25, 0) and its circular pattern (12 pins), and the disc over the circle.
-const DISC_PARAMS = { pins: 'nPins', pinRadius: 'pinR', eccentricity: 'ecc', clearance: 0, rotation: 0 };
+const DISC_PARAMS = { pins: 'nPins', pinRadius: 'pinR', eccentricity: 'ecc', clearance: 0, rotation: 0, pinAngle: 0 };
 function discFeature(id: Id, params: Record<string, number | string>): Command {
   return withGenerator({
     type: 'addFeature',
@@ -128,35 +128,59 @@ export function discFacts(state: EngineState): boolean {
   const named = Object.keys(CYCLOIDAL_DISC_FACTS).every((name) => name in f);
   return named && f.lobes === 11 && f.ratio === 11 && near(f.outerDiameter, 47) && near(f.innerDiameter, 43) && nearV(f.center, [1, 0, 0]) && nearV(f.ringCenter, [0, 0, 0]) && near(f.discRotation, 0);
 }
-// The disc and the pins share no volume, and the smallest gap is a few thousandths (the polygons of
-// both lie inside their exact shapes; the spike measured 0.0022 to 0.0032 in 2D).
-const pinsAndDisc = (): Id[] => ['disc', 'pin', ...Array.from({ length: 11 }, (_, k) => `ringPins/${k + 1}`)];
-export function clearOfThePins(state?: EngineState): boolean {
-  const options = state ? { state } : {};
-  const report = engine.query('interference', { bodies: pinsAndDisc() }, options);
-  if (!report.ok || report.result.pairs.some((pair) => pair.a === 'disc' || pair.b === 'disc')) return false;
-  const gap = engine.query('gap', { bodies: pinsAndDisc(), within: 1 }, options);
-  if (!gap.ok) return false;
-  const nearest = gap.result.pairs.find((pair) => pair.a === 'disc' || pair.b === 'disc');
-  return nearest !== undefined && nearest.distance < 0.03;
+// The disc and the pins share no volume and do not touch: no pair of the disc in any list of the
+// collision check (not a collision, not a fit, not failed, not cleared), and its smallest gap to
+// the pins is above zero and a few thousandths (the polygons of both lie inside their exact shapes;
+// the spike measured 0.0022 to 0.0032 in 2D).
+const PINS: Id[] = ['pin', ...Array.from({ length: 11 }, (_, k) => `ringPins/${k + 1}`)];
+const ofDisc = (disc: Id) => (pair: { a: Id; b: Id }): boolean => pair.a === disc || pair.b === disc;
+function nearestGap(disc: Id, state?: EngineState): number | undefined {
+  const gap = engine.query('gap', { bodies: [disc, ...PINS], within: 1 }, state ? { state } : {});
+  if (!gap.ok || gap.result.failed.some(ofDisc(disc))) return undefined;
+  const nearest = gap.result.pairs.find(ofDisc(disc));
+  return nearest !== undefined && nearest.contact === undefined ? nearest.distance : undefined;
+}
+export function clearOfThePins(disc: Id = 'disc', state?: EngineState): boolean {
+  const report = engine.query('interference', { bodies: [disc, ...PINS] }, state ? { state } : {});
+  if (!report.ok) return false;
+  const { pairs, fits, failed, cleared } = report.result;
+  if ([...pairs, ...fits, ...failed, ...(cleared ?? [])].some(ofDisc(disc))) return false;
+  const distance = nearestGap(disc, state);
+  return distance !== undefined && distance > 0 && distance < 0.03;
 }
 // A quarter turn of the input: the disc moves round the eccentric and turns back by 1/11 of that,
 // and still meets no pin. The second disc of a two-disc drive is the same with the input at π.
 export function turned(): boolean {
   const state = preview({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { rotation: 'deg(90)' } } } });
   const f = facts(state, 'disc');
-  return nearV(f.center, [0, 1, 0]) && near(f.discRotation, -Math.PI / 2 / 11) && clearOfThePins(state);
+  return nearV(f.center, [0, 1, 0]) && near(f.discRotation, -Math.PI / 2 / 11) && clearOfThePins('disc', state);
 }
 export function secondDisc(): boolean {
   const state = preview(discFeature('disc2', { ...DISC_PARAMS, rotation: 'pi' }));
-  return nearV(facts(state, 'disc2').center, [-1, 0, 0]);
+  return nearV(facts(state, 'disc2').center, [-1, 0, 0]) && clearOfThePins('disc2', state);
 }
+// Pins drawn half a pitch round: the pin at 15° (and its pattern with it). The disc with
+// `pinAngle` 15° meets them; without it, it would cut into them.
+export function pinsElsewhere(): boolean {
+  const pinsMoved: Command[] = [
+    { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/x', value: '25 * cos(deg(15))' },
+    { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/y', value: '25 * sin(deg(15))' },
+  ];
+  const withAngle = preview(...pinsMoved, { type: 'updateFeature', id: 'disc', patch: { profile: { params: { pinAngle: 'deg(15)' } } } });
+  const without = preview(...pinsMoved);
+  const collides = unwrapPairs(without).some(ofDisc('disc'));
+  // the disc turned by 15° · 12/11 = π/11 at the input angle 0
+  return near(facts(withAngle, 'disc').discRotation, Math.PI / 11) && clearOfThePins('disc', withAngle) && collides;
+}
+const unwrapPairs = (state: EngineState) => {
+  const report = engine.query('interference', { bodies: ['disc', ...PINS] }, { state });
+  return report.ok ? report.result.pairs : [];
+};
 // A print clearance of 0.1: the gap to the pins is at least that.
 export function withClearance(): boolean {
   const state = preview({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { clearance: 0.1 } } } });
-  const gap = engine.query('gap', { bodies: pinsAndDisc(), within: 1 }, { state });
-  const nearest = gap.ok ? gap.result.pairs.find((pair) => pair.a === 'disc' || pair.b === 'disc') : undefined;
-  return nearest !== undefined && nearest.distance >= 0.1 && nearest.distance < 0.13;
+  const distance = nearestGap('disc', state);
+  return distance !== undefined && distance >= 0.1 && distance < 0.13;
 }
 // What cannot be built is an error of the feature with the reason: E · N = 36 ≥ R = 25; pins of
 // radius 7 overlap (they touch at R sin(π/12) = 6.4705).
@@ -169,7 +193,8 @@ export function refusedDiscs(): boolean {
 // ================================================================ scenario 13: the GT2 belt stage
 
 // A pulley of 20 grooves on top of the motor (at (60, 0), z 38 to 44) and one of 40 above the elbow
-// (at (120, 0), z 16 to 22), each at a point of its own sketch.
+// (at (120, 0), z 16.5 to 22.5, clear of the forearm and the pin of the elbow, which end at 16),
+// each at a point of its own sketch.
 function pulley(id: Id, x: number, z: number, teeth: number): Command[] {
   const sketch = `${id}Sketch`;
   return [
@@ -187,7 +212,7 @@ function pulley(id: Id, x: number, z: number, teeth: number): Command[] {
   ];
 }
 export function beltStage(): EngineState {
-  return run(...pulley('motorPulley', 60, 38, 20), ...pulley('elbowPulley', 120, 16, 40));
+  return run(...pulley('motorPulley', 60, 38, 20), ...pulley('elbowPulley', 120, 16.5, 40));
 }
 // Gates' table: 12.73 / 12.22 and 25.46 / 24.96; the formula gives 12.224 and 24.957. One side face
 // each, `grooves`. The volume is the area of the outline times 6 (exact outline 103.020 and 460.278
@@ -214,7 +239,7 @@ export const examples = (): boolean => CYCLOIDAL_DISC_EXAMPLE.pins === 12 && GT2
 export function scenario13d(): boolean {
   run(arm());
   const stage = cycloidalStage();
-  const ok = discFacts(stage) && clearOfThePins() && turned() && secondDisc() && withClearance() && refusedDiscs();
+  const ok = discFacts(stage) && clearOfThePins() && turned() && secondDisc() && pinsElsewhere() && withClearance() && refusedDiscs();
   const belts = beltStage();
   return ok && pulleys(belts) && tooFewGrooves() && examples() && cylinder !== undefined;
 }

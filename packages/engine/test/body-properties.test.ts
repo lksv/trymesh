@@ -52,7 +52,7 @@ const evaluated = (doc: Document, bodies: Record<Id, number> = BODIES) =>
 describe('the section and its upgrade step', () => {
   it('is always in the document, after the timeline; an empty one is `{}`', () => {
     expect(emptyDocument().bodyProperties).toEqual({});
-    expect(Object.keys(emptyDocument()).slice(-3)).toEqual(['features', 'bodyProperties', 'mechanism']);
+    expect(Object.keys(emptyDocument()).slice(-4)).toEqual(['features', 'bodyProperties', 'mechanism', 'meshes']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {

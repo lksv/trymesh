@@ -23,7 +23,8 @@ export interface Start {
 export interface FeatureForm<F extends Feature, Extra> {
   // The draft of a new feature with its defaults, or why there cannot be one yet.
   draft(host: PanelHost, at: Start): { draft: Input<F>; extra: Extra; say?: string } | { problem: string };
-  command(draft: Input<F>, editing: boolean, index: number): Command;
+  // `extra`: what the form remembers (the mesh feature makes a new body a reference part by it)
+  command(draft: Input<F>, editing: boolean, index: number, extra?: Extra): Command;
   incomplete?(draft: Input<F>): boolean; // nothing to compute or to confirm yet
   panel(mode: DraftMode<F, Extra>, host: PanelHost): HTMLElement[];
   live?(mode: DraftMode<F, Extra>, host: PanelHost): void; // the parts of the panel that follow the preview without a rebuild
@@ -119,7 +120,7 @@ export function updatePreview(host: PanelHost): void {
     return;
   }
   const started = performance.now();
-  const result = host.engine.preview(m.form.command(m.draft, m.editing, m.index), m.draft.id);
+  const result = host.engine.preview(m.form.command(m.draft, m.editing, m.index, m.extra), m.draft.id);
   state.cost = performance.now() - started;
   m.preview = result.ok ? result.state : undefined;
   const outcome = result.ok ? result.state.evaluation.features[m.draft.id] : undefined;
@@ -167,7 +168,7 @@ function confirmDraft(host: PanelHost, m: AnyDraft): void {
   // The form is left as soon as the command is in: the refresh the engine triggers must not
   // preview the same change once more on top of the changed document (seconds for a slow pattern).
   host.drafting.confirming = true;
-  const done = host.run(m.form.command(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[(m.draft as Feature).type]} přidáno.`);
+  const done = host.run(m.form.command(m.draft, m.editing, m.index, m.extra), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[(m.draft as Feature).type]} přidáno.`);
   host.drafting.confirming = false;
   if (!done) return;
   if (!m.editing) host.inserted(m.draft.id);

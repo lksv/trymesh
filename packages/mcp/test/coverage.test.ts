@@ -4,7 +4,7 @@
 // hand. The table below names, for every method of `Engine`, the tools that reach it. A method
 // added to `Engine` without an entry does not compile, and an entry whose tool does not reach
 // the method fails the test.
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Command, Engine } from '@trymesh/engine';
@@ -30,7 +30,8 @@ const rename: Command = { type: 'renameFeature', id: 'a', name: 'disc' };
 // The order of the entries is the order the calls run in; `load` comes after `save` so that the
 // file it opens exists.
 const ENGINE_IN_MCP: Record<keyof Engine, Reach> = {
-  execute: { calls: [{ tool: 'execute', args: { command: rename } }] },
+  // import_mesh reads a file and sends addMesh (D55); the file is written before the calls
+  execute: { calls: [{ tool: 'execute', args: { command: rename } }, { tool: 'import_mesh', args: (dir) => ({ path: join(dir, 'part.stl') }) }] },
   preview: { calls: [{ tool: 'preview', args: { command: rename } }] },
   undo: { calls: [{ tool: 'undo' }] },
   redo: { calls: [{ tool: 'redo' }] },
@@ -74,6 +75,7 @@ describe('every method of the engine is reachable through MCP', () => {
     const engine = newEngine();
     const built = engine.execute(plate);
     if (!built.ok) throw new Error(built.error.message);
+    await writeFile(join(dir, 'part.stl'), engine.exportMesh('stl', ['a']));
     const recorded = recording(engine);
     called = recorded.called;
     session = await connect({ engine: recorded.engine });

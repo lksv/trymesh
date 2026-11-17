@@ -11,6 +11,7 @@ import {
   type Command,
   type CommandResult,
   type Constraint,
+  type Document,
   type Engine,
   type EngineState,
   type FaceName,
@@ -299,6 +300,29 @@ function updatableFields(feature: Feature): Record<string, Json> {
   return Object.fromEntries(FEATURE_TYPE_INFO[feature.type].updatable.flatMap((field): [string, Json][] => (fields[field] === undefined ? [] : [[field, fields[field] as Json]])));
 }
 
+// The stored meshes as get_model lists them (D55), when there are any: the ID, the name, the
+// triangles, the size of the bounds and the features that place each.
+function meshesInfo(state: EngineState): { meshes?: Json[] } {
+  const entries = Object.entries(state.evaluation.meshes);
+  if (entries.length === 0) return {};
+  return {
+    meshes: entries.map(([id, mesh]) => ({ id, ...(mesh.name !== undefined ? { name: mesh.name } : {}), triangles: mesh.triangles, size: mesh.bounds.max.map((high, axis) => round(high - mesh.bounds.min[axis])), usedBy: mesh.usedBy })),
+  };
+}
+
+// The document as get_document prints it: every stored mesh without its two texts of base64 (D55),
+// which would fill the context of a caller; save_document writes them.
+function documentShown(document: Document): unknown {
+  const entries = Object.entries(document.meshes);
+  if (entries.length === 0) return document;
+  return {
+    ...document,
+    meshes: Object.fromEntries(
+      entries.map(([id, mesh]) => [id, { ...(mesh.name !== undefined ? { name: mesh.name } : {}), omitted: `positions and triangles: ${mesh.positions.length + mesh.triangles.length} characters of base64; save_document writes them` }]),
+    ),
+  };
+}
+
 // `whole`: the state is that at the end of the timeline (no `at`).
 function modelSummary(state: EngineState, whole = true): unknown {
   const { document, evaluation } = state;
@@ -308,6 +332,7 @@ function modelSummary(state: EngineState, whole = true): unknown {
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
     ...mechanismInfo(state, whole),
+    ...meshesInfo(state),
     ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
@@ -527,8 +552,12 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
     const [next, now] = [result.state.document, state.document];
     if (command.type === 'dragPoint') return true;
     if (next === now) return false;
+    // everything but the features, a part that is the same object (a section, the stored meshes of
+    // megabytes) without writing it out
+    const parts = new Set([...Object.keys(next), ...Object.keys(now)].filter((key) => key !== 'features'));
+    const part = (document: Document, key: string): unknown => (document as unknown as Record<string, unknown>)[key];
     return (
-      JSON.stringify({ ...next, features: undefined }) !== JSON.stringify({ ...now, features: undefined }) ||
+      [...parts].some((key) => part(next, key) !== part(now, key) && JSON.stringify(part(next, key)) !== JSON.stringify(part(now, key))) ||
       next.features.length !== now.features.length ||
       next.features.some((feature, i) => feature !== now.features[i] && content(feature) !== content(now.features[i]))
     );
@@ -574,7 +603,7 @@ export function tools(): Tool[] {
     {
       name: 'get_model',
       description:
-        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
+        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), the stored meshes when there are any (ID, name, triangles, size of the bounds, the features that place each in `usedBy`), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
         'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature.',
       inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'ID feature; model se vyhodnotí jen po ni' } }, additionalProperties: false },
       run: (engine, args) => {
@@ -584,12 +613,12 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_document',
-      description: 'Dokument tak, jak se ukládá (log operací). `feature` vrátí jen jednu feature.',
+      description: 'Dokument tak, jak se ukládá (log operací). `feature` vrátí jen jednu feature. A stored mesh (the section `meshes`) is shown without its data: its name and how long its two texts are; save_document writes the whole document.',
       inputSchema: { type: 'object', properties: { feature: { type: 'string', description: 'ID feature' } }, additionalProperties: false },
       run: (engine, args) => {
         const { document } = engine.getState();
         const id = optionalText(args, 'feature');
-        if (id === undefined) return document;
+        if (id === undefined) return documentShown(document);
         const feature = document.features.find((f) => f.id === id);
         if (!feature) throw new ToolError(`feature "${id}" v dokumentu není`);
         return feature;

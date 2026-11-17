@@ -2,10 +2,10 @@
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { EXPORT_FORMATS, type Engine, exportPathProblem } from '@trymesh/engine';
+import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type ImportFormat, type MeshReport, exportPathProblem, importFormatOf, importMesh } from '@trymesh/engine';
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
@@ -38,6 +38,18 @@ const FILE_WORDING: Wording = {
 };
 
 const COMPACT_FROM = 20_000; // znaků
+
+// The ID a stored mesh gets from the name of its file (D55): the name without its extension reduced
+// to letters, digits and underscores; `mesh` when that is no ID (empty, `origin`, or a property every
+// object has); with `_2`, `_3`, … when the document has a stored mesh of that ID already.
+export function meshIdOf(file: string, taken: readonly string[]): string {
+  const stem = basename(file).replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_]/g, '_');
+  const base = stem === '' || stem === 'origin' || stem in Object.prototype ? 'mesh' : stem;
+  if (!taken.includes(base)) return base;
+  for (let n = 2; ; n++) if (!taken.includes(`${base}_${n}`)) return `${base}_${n}`;
+}
+const rounded = (value: unknown): unknown =>
+  typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
 
 export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const { engine, bridge } = options;
@@ -142,6 +154,66 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         await writeFile(target, json);
         remember(session, target);
         return { file: target, bytes: Buffer.byteLength(json) };
+      },
+    },
+    {
+      name: 'import_mesh',
+      description:
+        `Reads a mesh file (${Object.entries(IMPORT_FORMATS).map(([format, spec]) => `${format}: .${spec.extensions.join(', .')}`).join('; ')}) into a stored mesh of the document: the command addMesh, one undo step. The file has to hold a closed solid (refused otherwise, with the count of the edges that are wrong). ` +
+        'It answers with the ID of the stored mesh, the report of the import (triangles, shells, hollows, the volume, the bounds in mm, notes) and `next`: the batch that places the mesh as a body, a feature of the type mesh on the base plane XY and setBodyProperties with `use: "reference"`, to be changed (the frame, the offsets, the turns, the mass of the data sheet) and sent with execute. Options of the formats are in describe_api, section Import formats.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path of the file' },
+          format: { type: 'string', enum: Object.keys(IMPORT_FORMATS), description: 'the format; by default the extension of the path decides' },
+          options: { type: 'object', description: 'the options of the format, by name (STL: `unit`, one of mm, cm, m, in)' },
+          id: { type: 'string', description: 'the ID of the stored mesh; by default the name of the file' },
+          name: { type: 'string', description: 'the name of the stored mesh, for people; by default the name of the file' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const session = bridge?.session();
+        const target = path(args, true) as string;
+        const format = (args.format ?? importFormatOf(target)) as ImportFormat | undefined;
+        if (format === undefined) throw new Failure(`the format of "${basename(target)}" cannot be told from its extension; give \`format\` (${Object.keys(IMPORT_FORMATS).join(', ')})`);
+        let bytes: Uint8Array;
+        try {
+          bytes = new Uint8Array(await readFile(target));
+        } catch (error) {
+          throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const name = args.name === undefined || args.name === null ? basename(target) : args.name;
+        if (typeof name !== 'string') throw new Failure('argument "name": a text is expected');
+        const outcome = importMesh(format, bytes, (args.options ?? undefined) as never, name);
+        if (!outcome.ok) throw new Failure(`${outcome.error.code}: ${outcome.error.message}`);
+        // the ID: given, or from the name of the file, among the stored meshes of the engine the other tools use
+        const model = (await must(session, 'get_model')) as { features: { id: string }[]; meshes?: { id: string }[] };
+        const id = args.id === undefined || args.id === null ? meshIdOf(target, (model.meshes ?? []).map((mesh) => mesh.id)) : args.id;
+        const added = await call(session, 'execute', { command: { type: 'addMesh', id, mesh: outcome.mesh } });
+        if (!added.ok) throw new Failure(added.error);
+        // the feature takes the ID of the mesh when no feature has it
+        const features = new Set(model.features.map((feature) => feature.id));
+        let feature = String(id);
+        for (let n = 2; features.has(feature); n++) feature = `${id}_${n}`;
+        const command: Command = {
+          type: 'batch',
+          commands: [
+            { type: 'addFeature', feature: { id: feature, name: name.replace(/\.[^.]*$/, '') || feature, suppressed: false, type: 'mesh', mesh: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } },
+            { type: 'setBodyProperties', body: feature, patch: { use: 'reference' } },
+          ],
+        };
+        const report = rounded(outcome.report) as MeshReport;
+        return {
+          mesh: id,
+          file: target,
+          report,
+          next: {
+            say: `The mesh is stored as "${String(id)}"; nothing is placed yet. Change \`command\` as needed (the frame of \`placement\`, for a bought part best the sketch point at the centre of its bolt pattern; the offsets x, y, z and the turns rx, ry, rz in it; the feature ID) and send it with execute. Add the mass of the data sheet in grams to setBodyProperties (\`mass\`): neither the file nor this tool knows it.`,
+            command,
+          },
+        } as unknown as Json;
       },
     },
     {

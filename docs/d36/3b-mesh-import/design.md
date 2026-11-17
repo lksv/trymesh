@@ -1,6 +1,6 @@
 # 3b Import of a mesh as a reference body (D55)
 
-**State: design, fourth version, 2026-11-17, after three rounds of reviews, the last allowed (see "Reviews").** Written against the code of `master` at `633a6ca` and checked again at `c2a506c` (schema version 6; 3a, 5a and the compressed 3MF of 2g with the port `Deflater` merged; nothing of the latter changes this design but "Open", 3). The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. The package adds its part to validation scenario 13 (the arm): the motor as the mesh of a bought part.
+**State: implemented on the branch `d36/3b`, 2026-11-17 (see "As implemented"); the design is the fourth version, after three rounds of reviews, the last allowed (see "Reviews"). The owner decided the six questions of "Open" on 2026-11-17, all as recommended.** Written against the code of `master` at `633a6ca` and checked again at `c2a506c` (schema version 6; 3a, 5a and the compressed 3MF of 2g with the port `Deflater` merged; nothing of the latter changes this design but "Open", 3). The types are in [contract.ts](contract.ts), the scenario as calls in [calls.ts](calls.ts); both are checked by `npx tsc -p docs/d36/tsconfig.json`. The package adds its part to validation scenario 13 (the arm): the motor as the mesh of a bought part.
 
 The package adds a section to the document, a feature type and a face role. What is expensive to change later is where the mesh lives, the shape of a stored mesh, the placement and the name of the face, so those are decided in full; the app and the wording of the MCP answers are described and left to the implementation.
 
@@ -480,6 +480,8 @@ Notes for the plan, which this session does not edit:
 
 ## Open
 
+**Decided by the owner on 2026-11-17: all six as recommended.** (1) The mesh is stored inside the document. (2) No feature changes an imported body in this package. (3) 3MF import waits. (4) The batch that places a mesh makes it a reference part. (5) Imports read up to 100 000 triangles, with a note above 20 000. (6) Repair beyond the walls and the shells turned over stays deferred. The questions as they were put:
+
 For the owner:
 
 1. **The mesh is stored inside the document** (the question the backlog left open). The file grows by about half the size of the STL; everything else stays as it is. *Yes* keeps the design; *no* means a file beside the document, a port to read it and a document that is no longer one file.
@@ -579,6 +581,27 @@ agy could not run (HTTP 429, tried once). Codex gave 4 findings (3 major), the O
 | 10 | The prototype pairs within a group of more than two triangles on one set of vertices, the design does not | subagent | none (the same outcome) | noted | nothing |
 
 This was the last round the rule allows. What is still open is a known limit above: the conservative guard of the walls, the work bound, the scale of the library against check 6, overlaps found at one point only. The rules of the walls and of the shells after this round were run on built cases in the base frame and turned ("Measured", 11) and are to be tried on real files of assemblies ("To verify").
+
+## As implemented
+
+Implemented on the branch `d36/3b` on 2026-11-17, as designed but for what follows.
+
+- **Where the code differs, in small things.**
+  - `ImportFailure` (`import/spec.ts`), what `read` of a format throws, carries its code (`unreadable` or `tooLarge`), so a reader decides between the two (the count of a binary file above the limit is `tooLarge` before anything is welded) and the importer sorts no texts.
+  - `MeshLimit` is an `Error` with its `problem` (`tooLarge`), thrown out of `judgeShells` when the work goes above `MESH_LIMITS.work`, and caught by `meshProblem` and the importer.
+  - `meshProblem(mesh, limit?, shells?)` takes the shells already judged, so the importer judges them once after it turned groups over and the check does not judge them again.
+  - `frameRef` and `frameRefs` (the validator of a `FrameRef` and the references it makes) live in `validation.ts` beside `planeRef` and `axisRef`, not in `recompute/placement.ts`, which has only the frame and the transform.
+  - The placed solid is made by `transformSolid` of an unplaced solid kept per entry, not by moving the positions in the step: `transformSolid` records the copy (D57), so two bodies placed from one entry are one shape to the parts list, and the arithmetic is the same (double precision, rounded to float32).
+  - The report has one more note, for triangles left out by the weld.
+  - The step of the work bound (a box of 60 × 60 cells with 240 hollows, `tooLarge`) takes about 1.2 s in the test; replacing `Math.hypot` by `Math.sqrt` in the solid angle made it five times faster.
+  - The memo of `Evaluator` keeps `{ step, input }` per resolved feature and state; `rehang` carries `input`.
+  - `get_document` shows a stored mesh as `{ name, omitted: "positions and triangles: <n> characters of base64; …" }`. `changesDocument` compares every part of the two documents but the features only when it is another object, and then as JSON.
+  - `import_mesh` names the feature it proposes after the mesh (`nema17`), or `nema17_2` when a feature has that ID; the name of the feature is the name of the file without its extension. The report it returns is rounded to six decimal places.
+  - The app chooses a sketch point for the frame by two selects (the sketch, then its point, also the points of projected geometry), not by the picker of an axis: a frame needs only the point. `FeatureForm.command` gets the extra state of the form as a fourth argument (the box *A bought part*); the other forms ignore it. The harness of the app test records the stored meshes of the document by their names and the length of their data.
+  - Pinned values of other tests moved with the branch: the schema step of the branch in `schema.test.ts` and in the parts of 3a and 5a of `scenario13.test.ts`, the registry and the list of messages in `review.test.ts`, the step index in `mechanism.test.ts`, the role in `face-roles.test.ts`, the narrowing of a surface in `pattern.test.ts`, and the comparison of a saved document in `tangent.test.ts` (it leaves the header and an empty section out).
+- **The snapshots of the app** change in every file by the button *Mesh* on the toolbar and, where a document is loaded or saved, by the header (`schemaSteps`) and the empty section `meshes`; `mesh.txt` is new.
+- **Measured on the real kernel** (`packages/scenarios/test/mesh-import.test.ts`): the eight bodies of the arm through STL and back keep their volume to the last digit and the kernel takes them; a cube inside out beside a solid is taken by the kernel and the intersection of a probe in it has a volume of −8 mm³ (the probe inside out), not a collision; three boxes on one outline with their walls left out share 720 of 720 mm³ with a probe across both seams.
+- **Not done**, as designed: 3MF, STEP, repair, a search by place in the measure of a collision. Not tried yet in a browser with a large file ("To verify").
 
 ## Rows for the indexes
 

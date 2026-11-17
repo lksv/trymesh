@@ -134,7 +134,7 @@ export function grooveChecks({ fillets, state }: { fillets: FilletIds[]; state: 
   // the groove bottom (radius 15 + 0.8) and its centre on the axis
   const torusOk = tori.every((surface) => surface?.kind === 'torus' && near(surface.minorRadius, 0.8, 1e-9) && near(surface.majorRadius, 15.8, 1e-9) && near(surface.center[0], 0) && near(surface.center[1], 0));
   // the edges of a torus with the flank (a cone) and with the groove bottom (a cylinder) are circles:
-  // each pair meets in two circles, and the points of the edge choose the one it is
+  // the fillet touches each, so each pair meets in the one circle of touching
   const edges = state.evaluation.bodies['pulley'].edges.filter((edge) => fillets.some((ids) => [edge.name.a, edge.name.b].some((name) => sameName(name, side('pulley', ids.arc[0])))));
   return patched && torusOk && edges.length === 4 && edges.every((edge) => edge.kind === 'circle') && allOk(state);
 }
@@ -265,15 +265,18 @@ export function oringChecks(state: StateAfter): boolean {
   const gap = unwrap(engine.query('gap', { bodies: ['knob', 'oring'] })).pairs[0];
   const gapOk = gap !== undefined && 'between' in gap && Math.abs(gap.distance - 0.05) <= gap.accuracy + 0.01;
   // the mass of the ring in a rubber of 1.5 g/cm³: 2π² R r² of volume, less what the polygons leave
+  // (at most the chord tolerance over its area 4π² R r)
   const mass = unwrap(engine.query('mass', { bodies: ['oring'], density: 1.5 }));
   const ringVolume = 2 * Math.PI * Math.PI * 11.75 * 0.81;
-  return torusOk && grooveOk && gapOk && Math.abs(mass.volume - ringVolume) < 0.01 * 4 * Math.PI * Math.PI * 11.75 * 0.9 && engine.interference({ bodies: ['knob', 'oring'] }).pairs.length === 0;
+  const massOk = Math.abs(mass.mass - (1.5 * ringVolume) / 1000) < (1.5 * 0.01 * 4 * Math.PI * Math.PI * 11.75 * 0.9) / 1000;
+  return torusOk && grooveOk && gapOk && massOk && engine.interference({ bodies: ['knob', 'oring'] }).pairs.length === 0;
 }
 
 // ---------------------------------------------------------------- f. patterns of a revolve
 
-// A second groove, mirrored in the plane z = 7: the copy of the tool is built in the mirrored frame
-// and turned over by `applyTool`, and takes from the knob what the groove took. Previewed.
+// A second groove, mirrored in the plane z = 6.5 (at z 7 to 9, clear of the dome at 10): the copy of
+// the tool is built in the mirrored frame and turned over by `applyTool`, and takes from the knob
+// what the groove took. Previewed.
 export function mirroredGroove(): number {
   const before = engine.getState().evaluation.bodies['knob'].volume;
   // what the groove took: the knob as it was before the groove, less the knob now
@@ -282,7 +285,7 @@ export function mirroredGroove(): number {
     engine.preview({
       type: 'batch',
       commands: [
-        { type: 'addFeature', feature: { id: 'mid', name: 'mid', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 7 } },
+        { type: 'addFeature', feature: { id: 'mid', name: 'mid', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 6.5 } },
         { type: 'addFeature', feature: { id: 'twice', name: 'twice', suppressed: false, type: 'pattern', source: { type: 'features', features: ['ringGroove'] }, transform: { type: 'mirror', plane: { kind: 'plane', feature: 'mid' } } } },
       ],
     }),
@@ -290,9 +293,15 @@ export function mirroredGroove(): number {
   return before - preview.evaluation.bodies['knob'].volume - groove; // about 0: the copy took as much as the groove
 }
 // The same second groove as a linear pattern along the axis of the knob: a direction of the new
-// kind of `AxisRef`, the line `kax`. 4 apart along +Z puts it at z 8 to 10.
-export function linearGroove(): StateAfter {
-  return done(engine.preview({ type: 'addFeature', feature: { id: 'along', name: 'along', suppressed: false, type: 'pattern', source: { type: 'features', features: ['ringGroove'] }, transform: { type: 'linear', direction: KNOB_AXIS, count: 2, span: { type: 'spacing', spacing: 4 } } } }));
+// kind of `AxisRef`, the line `kax`. 3 apart along +Z puts it at z 7 to 9, and it takes what the
+// groove took, with the faces of the groove tagged as copy 1.
+export function linearGroove(): boolean {
+  const before = engine.getState().evaluation.bodies['knob'].volume;
+  const groove = engine.getState('knob').evaluation.bodies['knob'].volume - before;
+  const preview = done(engine.preview({ type: 'addFeature', feature: { id: 'along', name: 'along', suppressed: false, type: 'pattern', source: { type: 'features', features: ['ringGroove'] }, transform: { type: 'linear', direction: KNOB_AXIS, count: 2, span: { type: 'spacing', spacing: 3 } } } }));
+  const bottom = surfaceOf(preview, 'knob', { ...side('ringGroove', 'ga'), copy: [{ pattern: 'along', index: 1 }] });
+  const placed = bottom?.kind === 'plane' && near(Math.abs(bottom.origin[2]), 7);
+  return preview.evaluation.features['along'].status === 'ok' && placed && Math.abs(before - preview.evaluation.bodies['knob'].volume - groove) < 1;
 }
 
 // ---------------------------------------------------------------- g. what is refused
@@ -321,17 +330,19 @@ export const generated: Input<RevolveFeature['profile']> = {
   params: { teeth: 20 },
 };
 
-// The errors of the recompute, each in a preview: the code of the feature.
+// The errors of the recompute, each in a preview: the code of the feature. Asked before the groove
+// gets its round corners: the fillets add their arcs to the region of the pulley, so a region
+// named by `PULLEY_CURVES` alone is gone after them (`noProfile`).
 export function axisErrors(): Record<string, string | undefined> {
   const codeOf = (command: CommandAfter, id: Id): string | undefined => done(engine.preview(command)).evaluation.features[id]?.error?.code;
   return {
     // the axis Y is the normal of XZ, not a line in it
     notInPlane: codeOf(revolve('e1', { profile: regionsOf('pulleyS', PULLEY_CURVES), axis: { kind: 'base', axis: 'Y' }, extent: { type: 'full' }, operation: 'new' }), 'e1'), // invalidAxis
-    // a line of the sketch at x = 10 crosses the profile (from the bore at 4 to the rim at 20)
+    // a construction line of the sketch at x = 10 crosses the profile (from the bore at 4 to the rim at 20)
     lineThrough: codeOf(
       {
         type: 'batch',
-        commands: [...fixedPoint('pulleyS', 'm1', '10', '-5'), ...fixedPoint('pulleyS', 'm2', '10', '20'), line('pulleyS', 'mid', 'm1', 'm2', true), revolve('e3', { profile: regionsOf('pulleyS', PULLEY_CURVES), axis: { kind: 'sketchLine', sketch: 'pulleyS', line: 'mid' }, extent: { type: 'full' }, operation: 'new' })],
+        commands: [...fixedPoint('pulleyS', 'm1', '10', '-5'), ...fixedPoint('pulleyS', 'm2', '10', '20'), line('pulleyS', 'mline', 'm1', 'm2', true), revolve('e3', { profile: regionsOf('pulleyS', PULLEY_CURVES), axis: { kind: 'sketchLine', sketch: 'pulleyS', line: 'mline' }, extent: { type: 'full' }, operation: 'new' })],
       },
       'e3',
     ), // invalidAxis
@@ -343,7 +354,7 @@ export function axisErrors(): Record<string, string | undefined> {
           ...fixedPoint('pulleyS', 'z1', '50', '50'),
           ...fixedPoint('pulleyS', 'z2', '50', '50'),
           line('pulleyS', 'zl', 'z1', 'z2', true),
-          { type: 'addFeature', feature: { id: 'e4', name: 'e4', suppressed: false, type: 'pattern', source: { type: 'body', body: 'knob' }, transform: { type: 'circular', axis: { kind: 'sketchLine', sketch: 'pulleyS', line: 'zl' }, count: 3, span: { type: 'full' } } } },
+          { type: 'addFeature', feature: { id: 'e4', name: 'e4', suppressed: false, type: 'pattern', source: { type: 'body', body: 'pulley' }, transform: { type: 'circular', axis: { kind: 'sketchLine', sketch: 'pulleyS', line: 'zl' }, count: 3, span: { type: 'full' } } } },
         ],
       },
       'e4',
@@ -373,6 +384,7 @@ export function scenario14a(): boolean {
   parameters();
   const built = pulley();
   const first = pulleyChecks(built);
+  const errors = Object.values(axisErrors()).every((code) => code === 'invalidAxis');
   const rounded = grooveChecks(groove());
   const beforeHoles = engine.getState();
   const holes = topChecks(beforeHoles, lighteningHoles());
@@ -380,8 +392,7 @@ export function scenario14a(): boolean {
   const knobOk = knobChecks(knob()) && near(domeHeight(), 10, 1e-9);
   const ringOk = oringChecks(oring());
   const mirrorOk = Math.abs(mirroredGroove()) < 1;
-  const linearOk = allOk(linearGroove());
+  const linearOk = linearGroove();
   const refused = refusedCommands().every((message) => message !== 'accepted');
-  const errors = Object.values(axisErrors()).every((code) => code === 'invalidAxis');
   return first && rounded && holes && quarter && knobOk && ringOk && mirrorOk && linearOk && refused && errors && largerPulley() && roundTrip();
 }

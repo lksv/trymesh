@@ -29,9 +29,10 @@ import type { PatternFeatureD } from '../2e-pattern-mirror/contract';
 // - A command verifies the sketch and that the line is a line of it (`requireRef` with the kind
 //   `entity` and `accepts: ['line']`), as it verifies the point of `sketchPoint`.
 // - In the recompute (`axis(ref, state)` of recompute/services.ts) a sketch that did not evaluate
-//   or a line that is not in it is `brokenReference` with the sketch or the line in `refs`; a line
-//   whose ends are not further apart than `LENGTH_TOLERANCE` is `invalidAxis` with the line in
-//   `refs` (for a pattern and a joint as much as for a revolve).
+//   or a line that has no place in it is `brokenReference` with the sketch or the line in `refs`;
+//   a line whose ends are not further apart than `LENGTH_TOLERANCE` is `invalidAxis` with the line
+//   in `refs` (for a pattern and a joint as much as for a revolve). A projected line whose edge is
+//   gone keeps its last valid place in the sketch, and the axis follows it.
 // - The references of the axis are the sketch and the line (`axisRefs`), and the names a section
 //   of the document reserves (`namedBySections` of the mechanism) are the sketch and the line.
 // In the code it is a member of `AxisRef` in types.ts; the draft cannot change that type, so it
@@ -90,7 +91,8 @@ export interface RevolveFeature extends FeatureBase {
 // What `updateFeature` may change, by the rules of an extrusion: a profile or an extent of the
 // same `type` merges by field, another `type` replaces it and has to be complete; the axis is
 // a reference and is replaced whole; a change to `new` drops the targets unless the patch gives
-// them; `{ profile: { offset: null } }` removes the offset.
+// them; `{ profile: { offset: null } }` removes the offset. `null` may remove the offset and the
+// targets, nothing of the extent (a revolve has no taper and no gap).
 export type RevolvePatch = Patch<Pick<RevolveFeature, 'profile' | 'axis' | 'extent' | 'operation' | 'targets'>>;
 
 // The numeric fields of the extent.
@@ -172,10 +174,13 @@ export const PROFILE_SOURCE_OF_REVOLVE = (feature: RevolveFeature): ProfileSourc
 // - `sphere`: the side of an arc whose centre lies on the axis (within `LENGTH_TOLERANCE`), its
 //   centre that point of the axis.
 // - `torus`: the side of an arc whose centre lies off the axis: `center` is the point of the axis
-//   nearest to the centre of the arc, `axis` the direction of the axis (no sign), `majorRadius`
-//   the distance of the centre of the arc from the axis, `minorRadius` the radius of the arc. The
-//   major radius may be smaller than the minor one (the face is the part of a spindle torus the
-//   arc sweeps).
+//   nearest to the centre of the arc, `axis` the direction of the axis (no sign), `minorRadius`
+//   the radius of the arc, `majorRadius` the distance of the centre of the arc from the axis,
+//   signed: positive when the centre lies on the side of the axis the face lies on, negative when
+//   it lies across the axis (an ogive, a lemon: a part of a spindle torus). In every half plane
+//   through the axis that the face lies in, the centre of the tube is the point `majorRadius` from
+//   the axis towards that half plane. A ring torus is positive; the sign is what tells the two
+//   parts of a spindle torus apart, which meet a plane in different circles.
 // Neither can carry a sketch (`nonPlanarFace`). A general surface stays what no feature makes.
 export type SphereSurface = { kind: 'sphere'; center: Vec3; radius: number };
 export type TorusSurface = { kind: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number };
@@ -190,27 +195,38 @@ export type StateD = Omit<StateAfter, 'evaluation'> & { evaluation: EvaluationD 
 // for every one). New:
 // - a sphere and any plane: one circle; two spheres: one circle about the line of their centres;
 // - surfaces about one axis (a plane across it, a cylinder, a cone on the half its axis points
-//   along, a sphere whose centre is on it, a torus): the meeting points of their curves in a half
-//   plane through the axis (a line, a ray, a circle), up to two circles. A curve that only
-//   touches the other (an arc tangent to its neighbour, as a fillet of a sketch makes it) meets
-//   it in one point: within `LENGTH_TOLERANCE` it counts as touching;
+//   along, a sphere whose centre is on it, a torus by its signed major radius): the meeting points
+//   of their curves in a half plane through the axis (a line, a ray, a circle), off the axis, up
+//   to two circles. Touching is tested on the distance, both ways: a line whose distance from the
+//   centre of a circle, or two circles whose distance from each other, differs from the radius,
+//   or from the sum or the difference of the radii, by at most `LENGTH_TOLERANCE` meet in the one
+//   point of touching (an arc tangent to its neighbour, as a fillet of a sketch makes it, whether
+//   the solver left the two a hair apart or a hair across);
 // - a torus and a plane that holds its axis: the two circles of the tube in that plane.
 // Two faces of one surface, and surfaces that meet in no circle, give none.
 export declare function circlesBetween(a: SurfaceD, b: SurfaceD): Circle3[];
-// The circle of an edge: the only one of `circlesBetween`, or, of two or more, the one every point
-// of the edge (`points`: three numbers a point, the segments of the edge) is nearest to;
-// undefined when there is none, when the points are spread over two of them (the edge is two
-// circles), or when there are two and no points. `edgeKind` and `projectEdge` (solid.ts), the
+// The circle of an edge: the only one of `circlesBetween`, or, of two, the one every point of the
+// edge (`points`: three numbers a point, the segments of the edge) lies nearer to than half its
+// distance to the other; undefined when there is none, when a point does not (the edge is two
+// circles, or two circles too close for the polygons of the mesh to tell apart), or when there
+// are two and no points. It does not depend on how the edge is divided or cut short. `edgeKind` and `projectEdge` (solid.ts), the
 // description of a body and the shape of an entity (query/body.ts, query/entity.ts) and the
 // circles of a section (query/section.ts) all pass the points they have; the kind of an edge is
 // therefore decided after its segments are collected.
 export declare function circleBetween(a: SurfaceD, b: SurfaceD, points?: ArrayLike<number>): Circle3 | undefined;
 
 // What an entity of a query is (query/entity.ts) gets the two shapes. `convex`: the material is
-// on the side of the centre (a ball) or of the circle of the tube's centres (a ring); false for
-// a ball socket and a groove. Measured from a sphere is from its centre; from a torus along its
-// axis, as from a cylinder.
+// on the side of the centre (a ball) or of the centre of the tube (a ring; taken by the signed
+// major radius); false for a ball socket and a groove. Measured from a sphere is from its centre;
+// from a torus from its axis, as from a cylinder.
 export type EntityShapeD = EntityShape | { is: 'sphere'; center: Vec3; radius: number; convex: boolean } | { is: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number; convex: boolean };
+
+// A query whose argument is an axis (the kind `axis`, `mass` with `about`): `checkArgs` checks the
+// sketch and the line of a `sketchLine` before `run`, as it checks the point of a `sketchPoint`;
+// the context passes a line without length on as `invalidAxis` instead of `brokenReference`.
+export interface RefProblemD {
+  problem: 'brokenReference' | 'nonPlanarFace' | 'invalidAxis';
+}
 
 // ================================================================ the tool
 
@@ -222,7 +238,8 @@ export type EntityShapeD = EntityShape | { is: 'sphere'; center: Vec3; radius: n
 // - `axis`: the axis projected into the plane of the sketch: a point, a unit direction, and the
 //   side of it the profile lies on (+1 on the left of the direction, −1 on the right).
 // - `steps`: the turn is divided into that many equal steps, by the rule of an arc (`segments` of
-//   sketch.ts) at the largest distance of the profile from the axis, for half the chord tolerance.
+//   sketch.ts) at the largest distance of a vertex of `regions` from the axis, for half the chord
+//   tolerance (at most 4096, where the tolerance is no longer kept, as for an arc).
 // - `triangles`: how many the tool will have; above `MAX_REVOLVE_TRIANGLES` the setup refuses.
 export interface RevolveAxis {
   point: Vec2;
@@ -242,6 +259,10 @@ export declare function revolveSetup(profile: ResolvedProfile, line: { point: Ve
 // or of a copy of a pattern). Every vertex is placed through `toWorld(frame, u, v, w)` from
 // coordinates of the sketch, so in the left-handed frame of a mirrored copy the mesh is the
 // mirror image facing inwards, and `applyTool` turns it over (D53); the build does not correct it.
+// - The plane of a side from a line across the axis: the origin at the start `a` of the line turned
+//   to the start of the turn, Y the normal of the half plane of the profile there in the direction
+//   the angle grows (`cos(start)·side·ŵ − sin(start)·e`, not depending on `a`); the caps: the
+//   frame of the sketch turned to the start and to the end.
 // - A vertex of the profile on the axis is one vertex of the mesh; every other one is placed at
 //   `steps` angles of a whole turn, or at `steps + 1` of a partial one.
 // - Every edge of the polylines of the profile (each with the key of its curve) between two

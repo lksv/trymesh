@@ -657,8 +657,10 @@ export const THREE_MF_SUMMARY =
 // kernel have theirs. The one place that imports the library: `pako` 3.0.3 (licences MIT and
 // Zlib), `deflateRaw(bytes, { level: 6, legacyHash: true })`.
 // - Level 6 is the default of zlib; `legacyHash` selects the hash of zlib, with which the stream
-//   is that of zlib 1.2.12 at level 6 byte for byte (measured against `zlib` of Python and
-//   `node:zlib` on the model parts of the box and of the joint).
+//   is that of zlib at level 6 byte for byte: measured on the model parts of the box and of the
+//   joint against zlib 1.2.12 (the system's, which `zlib` of Python and `node:zlib` both are on
+//   the machine of the spike) and against a separate build of zlib 1.3.2. `pako` 2.1.0 and 2.2.0
+//   give the same streams with their defaults.
 // - Both options are stated, so no default of the library decides the bytes.
 // - Creating it is synchronous: there is nothing to load.
 export const PAKO = { package: 'pako', version: '3.0.3', options: { level: 6, legacyHash: true } } as const;

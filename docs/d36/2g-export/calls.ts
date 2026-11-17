@@ -379,7 +379,9 @@ export function boxAs3mfCompressed(): boolean {
   );
 }
 
-// The writer by itself: which entry is deflated.
+// Not of the scenario: a test of the adapter package, which may pin what its library writes.
+// The writer by itself: which entry is deflated. (The tests of the engine check the same rule
+// with their doubles and pin no stream of a library.)
 declare const noise: Uint8Array; // 4096 random bytes; the test asserts that the stream of the compressor for them is not shorter (4101 bytes in the spike)
 export function whichEntries(): boolean {
   const text = (length: number) => new TextEncoder().encode('a'.repeat(length));
@@ -393,7 +395,8 @@ export function whichEntries(): boolean {
   );
 }
 
-// The port in a test of the engine, which has no library: any compressor is one, and one that
+// Not of the scenario: tests of the engine (`packages/engine/test`, where the solver and the
+// kernel are fakes). The port in a test that has no library: any compressor is one, and one that
 // fails is a refusal of the export, not an exception. The engines of these calls have no body:
 // the package of an empty model has its three items all the same (the model part: 229 bytes),
 // so the compressor is called.
@@ -417,9 +420,14 @@ export function doubles(): (string | number)[] {
 
 // The part of the scenario after the addition: everything of `scenario12g` holds for the engine
 // with the compressor as well (the reader of the test inflates the items), and the file is small.
+// It pins no stream and no size of a deflated item, so it holds whichever library compresses.
 export function scenario12gCompressed(): boolean {
+  return boxAs3mfCompressed();
+}
+// The tests of the adapter and of the engine, beside the scenario.
+export function besideTheScenario(): boolean {
   const [byZlib, pinned, refused, wrong] = doubles();
-  return boxAs3mfCompressed() && whichEntries() && byZlib === 8 && pinned === 114 && refused === 'failed: 3mf: the compressor failed: out of memory' && wrong === 'failed: 3mf: the compressor failed: it answered with object where bytes are expected';
+  return whichEntries() && byZlib === 8 && pinned === 114 && refused === 'failed: 3mf: the compressor failed: out of memory' && wrong === 'failed: 3mf: the compressor failed: it answered with object where bytes are expected';
 }
 
 // Only with a yes of the owner to the second question of deflate.md: a set of files is saved by

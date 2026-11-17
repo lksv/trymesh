@@ -61,7 +61,7 @@ naming.md, "Faces of an insertion": every feature ID of a face name gets the pre
 
 ## Features on an inserted body
 
-Allowed: its planar faces are planar face numbers with exact planes, as for a body modelled here, and its round faces carry their axis (`along` included, moved by `transformFace`), so an axis of the kind `face` (D60) may name one. A body with a face of an imported mesh stays `importedTarget` (`isImported` reads the face table, wherever the face came from).
+Allowed: its planar faces are planar face numbers with exact planes, as for a body modelled here, and its round faces carry their axis (`along` included, moved by `transformFace`), so an axis of the kind `face` (D60) may name one. A chamfer or a fillet (D63) of an edge of an inserted body names the edge by its two prefixed faces; the recompute of the blend finds the edge by its key and takes it only when its name is the name asked for (`sameEdgeName`, as everywhere else). The faces a chamfer or a fillet of the inserted document made come in as any other, `{ feature: '<insertion>/<blend>', role: 'chamfer', edge: <i> }`, and may be referred to from the host. A body with a face of an imported mesh stays `importedTarget` (`isImported` reads the face table, wherever the face came from).
 
 ## MCP and the app
 

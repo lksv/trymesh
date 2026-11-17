@@ -186,3 +186,34 @@ describe('the axis of a round face in the app: the review of D60', () => {
     expect((m.draft as PatternFeature).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } });
   });
 });
+
+describe('the edge picker on an inserted body (D62 with D63)', () => {
+  // a disc of the radius 5 and the height 5 as a stored document, inserted, its top edge chamfered
+  const part = {
+    ...emptyDocument(),
+    features: [
+      { ...emptySketch('s', 'Disc', { kind: 'base', plane: 'XY' }), curves: { c: { type: 'circle', center: 'origin' } }, radii: { c: 5 } },
+      { id: 'disc', name: 'Disc', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' },
+    ],
+  };
+  it('lists the edge by the insertion and the names there, of its kind on the body, and the chamfer is computed', async () => {
+    const h = (harness = await startApp());
+    const edge = { a: { feature: 'i1/disc', role: 'endCap' }, b: { feature: 'i1/disc', role: 'side', curve: 'c' } };
+    const done = h.engine.execute({
+      type: 'batch',
+      commands: [
+        { type: 'addDocument', id: 'a', document: part as never },
+        { type: 'addFeature', feature: { id: 'i1', name: 'Part 1', suppressed: false, type: 'insert', document: 'a', placement: { frame: { kind: 'base', plane: 'XY' } } } },
+        { type: 'addFeature', feature: { id: 'k', name: 'Chamfer 1', suppressed: false, type: 'chamfer', body: 'i1/disc', edges: [edge as never], distance: 1 } },
+      ],
+    });
+    expect(done.ok).toBe(true);
+    expect(h.engine.getState().evaluation.features.k.status).toBe('ok');
+    h.row('Chamfer 1').dispatchEvent(new (h.document.defaultView as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('dblclick'));
+    const item = Array.from(h.document.querySelectorAll<HTMLElement>('#panel li')).map((li) => li.textContent ?? '');
+    expect(item).toHaveLength(1);
+    expect(item[0]).toContain('Part 1 › Disc');
+    expect(item[0]).not.toContain('not on the body');
+  });
+});
+

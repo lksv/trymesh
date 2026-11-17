@@ -10,6 +10,7 @@ import { Evaluator } from '../../engine/src/evaluate';
 import { validateDocument } from '../../engine/src/document';
 import { cylinder } from './arm';
 import { XY, newEngine } from './kit';
+import { chamfer, fillet } from './blend-kit';
 
 const exec = (engine: Engine, ...commands: Command[]): EngineState => {
   const result = engine.execute(commands.length === 1 ? commands[0] : { type: 'batch', commands });
@@ -241,3 +242,54 @@ describe('names that key like a real name are no reference to it', () => {
     expect(engine.query('measure', { from: { kind: 'face', body: 'p/1', face: real }, to: { kind: 'face', body: 'p/1', face: cap } }).ok).toBe(true);
   });
 });
+
+// Where 3c meets 4b (D63): a chamfer or a fillet on an edge of an inserted body, and an inserted
+// document that holds one.
+describe('chamfers and fillets of edges and inserted documents', () => {
+  let engine: Engine;
+  const top = (prefix: string): { a: FaceName; b: FaceName } => ({ a: { feature: `${prefix}ring`, role: 'endCap' } as FaceName, b: { feature: `${prefix}ring`, role: 'side', curve: 'ringCircle' } as FaceName });
+  beforeAll(() => {
+    engine = newEngine();
+    exec(engine, { type: 'addDocument', id: 'ring', document: ringPart() }, { type: 'addDocument', id: 'cut', document: ringPart([chamfer('c', 'ring', [top('')], 1)]) });
+  });
+
+  it('a chamfer of the outer top edge of an inserted ring: the edge found by its prefixed faces, the volume of the cut', () => {
+    const plain = preview(engine, insertion('a', 'ring'));
+    const state = preview(engine, insertion('a', 'ring'), chamfer('k', 'a/ring', [top('a/')], 1));
+    expect(state.evaluation.features.k.status).toBe('ok');
+    // a ring of the radius 11 loses a triangle of 1 × 1 swept about the axis at the radius 11 − 1/3
+    expect(plain.evaluation.bodies['a/ring'].volume - state.evaluation.bodies['a/ring'].volume).toBeCloseTo(Math.PI * (11 - 1 / 3), 0);
+    expect(state.evaluation.faceNames.some((name) => name.feature === 'k' && name.role === 'chamfer')).toBe(true);
+    // a fillet of the same edge
+    expect(preview(engine, insertion('a', 'ring'), fillet('f', 'a/ring', [top('a/')], 1)).evaluation.features.f.status).toBe('ok');
+  });
+
+  it('an edge whose name keys like a real one is no edge of the body', () => {
+    // a copy `p/1` of the ring by a pattern: its side is `{ ring, side, ringCircle, copy p:1 }`,
+    // whose key is also the key of `{ ring, side, curve: 'ringCircle/@p:1' }`, a name no feature makes
+    const shop = newEngine();
+    const doc = { ...ringPart(), features: [...ringPart().features, { id: 'p', name: 'p', suppressed: false, type: 'pattern', source: { type: 'body', body: 'ring' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: 30 } } }] };
+    expect(shop.load(JSON.stringify(doc)).ok).toBe(true);
+    const copy = (name: object): FaceName => ({ ...name, copy: [{ pattern: 'p', index: 1 }] }) as FaceName;
+    const real = { a: copy({ feature: 'ring', role: 'endCap' }), b: copy({ feature: 'ring', role: 'side', curve: 'ringCircle' }) };
+    const alias = { a: real.a, b: { feature: 'ring', role: 'side', curve: 'ringCircle/@p:1' } as FaceName };
+    expect(faceKey(alias.b)).toBe(faceKey(real.b));
+    expect(preview(shop, chamfer('k', 'p/1', [real], 1)).evaluation.features.k.status).toBe('ok');
+    expect(preview(shop, chamfer('k', 'p/1', [alias], 1)).evaluation.features.k.error).toMatchObject({ code: 'brokenReference' });
+  });
+
+  it('an inserted document that holds a chamfer: its face prefixed, referenced from the host as the axis of a pattern', () => {
+    const state = preview(engine, insertion('a', 'cut', { placement: { frame: XY, x: 50 } }));
+    expect(state.evaluation.features.a.status).toBe('ok');
+    const cone: FaceName = { feature: 'a/c', role: 'chamfer', edge: 0 } as FaceName;
+    expect(state.evaluation.faceNames.map((name) => faceKey(name))).toContain(faceKey(cone));
+    expect(faceKey(cone)).toBe('a/"c/chamfer/0"');
+    const patterned = preview(engine, insertion('a', 'cut', { placement: { frame: XY, x: 50 } }), { type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'pattern', source: { type: 'body', body: 'a/ring' }, transform: { type: 'circular', axis: { kind: 'face', body: 'a/ring', face: cone }, count: 2, span: { type: 'full' } } } as never });
+    expect(patterned.evaluation.features.p.status).toBe('ok');
+    expect(patterned.evaluation.bodies['p/1'].bounds.min[0]).toBeCloseTo(patterned.evaluation.bodies['a/ring'].bounds.min[0], 3);
+    // a chamfer in the host of an edge of the inserted chamfer face
+    const bottom = preview(engine, insertion('a', 'cut'), chamfer('k', 'a/ring', [{ a: { feature: 'a/ring', role: 'startCap' } as FaceName, b: { feature: 'a/ring', role: 'side', curve: 'ringCircle' } as FaceName }], 0.5));
+    expect(bottom.evaluation.features.k.status).toBe('ok');
+  });
+});
+

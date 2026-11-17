@@ -293,6 +293,10 @@ describe('the names of the faces of an insertion', () => {
     expect(form({ feature: 'kit/b/ring', role: 'endCap', copy: [{ pattern: 'kit/b/p', index: 1 }, { pattern: 'kit/kp', index: 1 }, { pattern: 'q', index: 2 }] })).not.toThrow();
     // a field of a role is no ID of a feature: a slash there is the derived ID of a projected point
     expect(form({ feature: 'H', role: 'holeBore', point: 'rim/center' })).not.toThrow();
+    // the faces of a chamfer and a fillet (D63) inside an inserted document, and copied there
+    expect(form({ feature: 'b1/c', role: 'chamfer', edge: 0 })()).toEqual({ feature: 'b1/c', role: 'chamfer', edge: 0 });
+    expect(form({ feature: 'kit/b/f', role: 'fillet', edge: 2, copy: [{ pattern: 'kit/b/p', index: 1 }] })).not.toThrow();
+    expect(faceKey({ feature: 'kit/b/f', role: 'fillet', edge: 2, copy: [{ pattern: 'kit/b/p', index: 1 }] } as FaceName)).toBe('kit/' + JSON.stringify('b/' + JSON.stringify('f/fillet/2/@p:1')));
   });
 
   it('the references of a prefixed name are to its owner, an insertion before the referring feature', () => {

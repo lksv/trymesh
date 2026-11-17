@@ -233,7 +233,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | InsertFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | ChamferFeature | FilletFeature | InsertFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -589,6 +589,63 @@ export interface RevolveFeature extends FeatureBase {
   targets?: Id[];
 }
 
+// A chamfer or a fillet of edges of one body (D63). What both types share:
+// - `body`: the body whose edges are chamfered or filleted. It keeps its ID; a feature that names it
+//   later reads it with the new faces.
+// - `edges`: at least one edge of that body, each named by its two faces as the query `body` lists
+//   them (the order of the two does not matter), none twice. Each has to be:
+//   - straight between two planar faces (kind `line`), the faces at more than 0.01 rad from flat
+//     and from folded; or
+//   - circular between two faces about one axis whose profile in a half plane through the axis is
+//     a straight line: a plane across the axis, a cylinder, a cone (kind `circle`). Not a circle
+//     with a sphere or a torus (the rim of a dome), not an edge of the kind `other`.
+// - A convex edge (the material inside the angle of the faces) is cut, a concave one gets material
+//   added; one feature may hold both, as long as a convex and a concave edge of it do not meet at
+//   a vertex (put them into two features).
+// - Where an edge ends: at another edge of the same feature that shares a face with it (smoothly;
+//   at the same angle to the shared face, in their mitre; both straight and convex at a convex
+//   corner of that face, each in the plane of the other's other face); at one planar face, whose
+//   plane the chamfer or fillet ends in (an arc: a plane through its axis; planes flush in one
+//   plane, a plate and a wall flush with its end, count as one); or it runs on smoothly
+//   into the next edge of a face (a line of an outline with round corners into the arc of the
+//   corner; also across a seam where both faces of the edge continue into flush faces), and that
+//   next edge has to be in the same feature: the error names it. An arc that meets another edge of
+//   the feature at an angle (the top loop of a D-shaped boss) is refused.
+// - Faces: one new face per edge, `{ feature, role: 'chamfer' | 'fillet', edge: <the place of the
+//   edge in `edges`, from 0> }`, exact: a plane (a chamfer of a straight edge; a sketch stands on
+//   it, its origin where it meets the first face of the edge at the end the projection of the edge
+//   calls `a`, Y along the edge), a cylinder (a fillet of one), a cone, a plane across the axis or
+//   a cylinder (a chamfer of a circular edge), a torus (a fillet of one; a sphere where the centre
+//   of its arc lies on the axis). Taking an edge out of the middle of the list renames the faces of
+//   the edges after it. The two faces of the edge keep their names and get narrower; an end face
+//   keeps its name and grows by what an added fillet leaves in its plane facing its way (more than
+//   a sliver facing the other way is refused, see blendDoesNotFit).
+// - Where three fillets meet at a vertex the corner is a crease (0.225 r proud of a rolling ball at
+//   the corner of a box); three chamfers meet exactly.
+// - The result tells in `facts`: `setback/<i>` (mm: how far from edge i the chamfer or fillet meets
+//   each of its two faces) and `cut/<i>` (true where material was cut, false where it was added).
+// - The feature creates no body and leaves no tool a pattern could repeat (a pattern of the body
+//   copies the chamfers and fillets with it).
+// - Errors: `brokenReference` (the body, or an edge it does not have, in `refs`), `unsupportedEdge`
+//   and `blendDoesNotFit` (see ErrorCode), `invalidExpression` (the size), `importedTarget`,
+//   `kernelFailure`. A feature in error changes nothing.
+// A chamfer by one distance along both faces: the numeric field `distance`, mm, above 0.
+export interface ChamferFeature extends FeatureBase {
+  type: 'chamfer';
+  body: Id;
+  edges: EdgeName[];
+  distance: number;
+}
+// A fillet of one radius: the numeric field `radius`, mm, above 0. It meets each face at the
+// setback `radius / tan(β / 2)` from the edge, β the angle between the faces on the side of the
+// fillet (`radius` for a right angle).
+export interface FilletFeature extends FeatureBase {
+  type: 'fillet';
+  body: Id;
+  edges: EdgeName[];
+  radius: number;
+}
+
 // The shape of one hole, a variant by `type`. The wider part (the head) is at the mouth of the hole,
 // where the extent starts. No field has a default.
 // - `plain`: a cylinder of `diameter`.
@@ -878,6 +935,8 @@ export type FaceName = (
   | { feature: Id; role: 'holeSeat' }
   | { feature: Id; role: 'mesh' }
   | { feature: Id; role: 'splitFace' } // the face a split cuts, on both bodies (D56)
+  | { feature: Id; role: 'chamfer'; edge: number } // the face of a chamfer of the edge at that place of `edges`, from 0 (D63)
+  | { feature: Id; role: 'fillet'; edge: number } // the face of a fillet of the edge at that place of `edges`, from 0 (D63)
 ) & { copy?: CopyTag[] };
 
 // `pattern` names the feature that made the copy: a pattern, or a combine with a clearance, whose
@@ -1296,6 +1355,31 @@ export interface Issue {
 //   message gives the angle or the distance.
 // - A revolve whose profile lies on both sides of its axis; `refs`: the axis and a curve on each
 //   side, the message says how far each reaches.
+// unsupportedEdge: an edge of a chamfer or a fillet cannot be chamfered or filleted (D63). `refs`:
+// the edge, and a second edge where the reason is a pair. The message says which:
+// - its kind, or the surfaces of its faces (a sphere, a torus, a cylinder along a plane);
+// - its faces meet at less than 0.01 rad from flat or from folded;
+// - the side of a face along the edge is not clear (its triangles along it disagree);
+// - the pieces of the edge need different chamfers (another side of a face);
+// - an end has no face besides its own, two or more that are not a seam, a round face that does
+//   not continue a face of the edge, (a straight edge) a plane within 0.01 rad of the edge, (an
+//   arc) a plane that does not hold its axis;
+// - the edge runs on smoothly into the second edge in `refs`, which is not in the feature: add it;
+// - a convex and a concave edge of the feature (both in `refs`) meet at a vertex: two features;
+// - it meets the second edge in `refs` at a vertex in a way the feature cannot join (an arc at an
+//   angle, different angles at a reflex corner), or their two tools leave a step there.
+// blendDoesNotFit: the chamfer or fillet does not fit (D63). `refs`: the edge and the face
+// concerned. The message says which:
+// - a face of the edge would vanish (a radius larger than the face is wide), or the new face would;
+// - the tool reached material it must not touch: next to a convex edge within the size outside
+//   its faces (a slot narrower than the size, a piece of the body), or next to a concave edge
+//   a hollow just inside them (the foot of a boss that reaches the edge of the plate);
+// - it reaches the axis of a circular edge;
+// - the ends of a straight piece meet within it (a piece shorter than the slant of its ends);
+// - it reaches past the end face in `refs`: deeper than a riser the edge ends at, into the
+//   material beyond it, or (added) standing out over a lower end wall;
+// - it is too small for the chord tolerance (it lies within the polygons of the faces);
+// - the tools would have more than 1 000 000 triangles (raise the chord tolerance).
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -1310,6 +1394,8 @@ export type ErrorCode =
   | 'importedTarget'
   | 'invalidClearance'
   | 'invalidAxis'
+  | 'unsupportedEdge'
+  | 'blendDoesNotFit'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
@@ -1606,6 +1692,8 @@ export type FeaturePatch =
   // `placement` merges field by field; its `frame` is a reference and is replaced whole
   | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>
   | Patch<Pick<RevolveFeature, 'profile' | 'axis' | 'extent' | 'operation' | 'targets'>>
+  | Patch<Pick<ChamferFeature, 'body' | 'edges' | 'distance'>>
+  | Patch<Pick<FilletFeature, 'body' | 'edges' | 'radius'>>
   // `parameters` merges key by key (`null` removes a value); `placement` as for a mesh feature
   | Patch<Pick<InsertFeature, 'document' | 'placement' | 'parameters' | 'bodies'>>;
 

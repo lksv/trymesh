@@ -114,6 +114,15 @@ describe('popis API', () => {
     expect(description).toContain("{ kind: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }");
     expect(description).toContain("| 'invalidAxis'");
     expect(description).toContain('A turned part (a pulley, a knob, a cone, a ball, an O-ring groove, a countersink) is a feature of the type revolve');
+    // D63: the chamfer and the fillet of edges, their roles and their two codes
+    expect(description).toContain('export interface ChamferFeature extends FeatureBase');
+    expect(description).toContain('export interface FilletFeature extends FeatureBase');
+    expect(description).toContain("role: 'chamfer'; edge: number");
+    expect(description).toContain("role: 'fillet'; edge: number");
+    expect(description).toContain("| 'unsupportedEdge'");
+    expect(description).toContain("| 'blendDoesNotFit'");
+    expect(description).toMatch(/- fillet \(Fillet\): Rounds edges of one body/);
+    expect(description).toContain('Edges are chamfered and rounded by the feature types chamfer and fillet');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu

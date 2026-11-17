@@ -8,6 +8,8 @@ import { booleanOfBodies, sheetTriangles } from '../../engine/src/recompute/body
 import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
 import { volumeOf as volumeOf56 } from '../../engine/src/solid';
 import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
+import { faceKey } from '@trymesh/engine';
+import { STEPPED, box, chamfer, edge, fillet, profileXZ } from './blend-kit';
 
 const kernel56 = await createManifoldKernel();
 
@@ -536,5 +538,93 @@ describe('review of 4a (D58)', () => {
     run(engine, { type: 'setLink', id: 'a', bodies: ['T'] }, { type: 'addFeature', feature: { id: 'T2', name: 'T2', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['k'] }] }, axis: { kind: 'base', axis: 'Z' }, extent: { type: 'full' }, operation: 'new' } }, { type: 'setLink', id: 'b', bodies: ['T2'] });
     const joint = run(engine, { type: 'setJoint', id: 'j', joint: { type: 'revolute', parent: 'a', child: 'b', axis: line, lower: -1, upper: 1, value: 0 } });
     expect(joint.evaluation.mechanism.joints.j.error?.message).toMatch(/the axis of the joint "j": the line of the axis has no length/);
+  });
+});
+
+describe('the review of D63: the chamfer and the fillet of edges', () => {
+  const applied = (state: EngineState, command: Command, body = 'E') => {
+    const engine = newEngine();
+    engine.load(JSON.stringify(state.document));
+    const before = engine.getState().evaluation.bodies[body].volume;
+    const result = engine.preview(command);
+    if (!result.ok) throw new Error(result.error.message);
+    const outcome = result.state.evaluation.features[(command as { feature: { id: string } }).feature.id];
+    return { code: outcome.error?.code, message: outcome.error?.message ?? '', refs: outcome.error?.refs ?? [], change: result.state.evaluation.bodies[body].volume - before, state: result.state };
+  };
+  // the area of the triangles of a face whose normal points along (+) and against (−) a direction
+  const facing = (state: EngineState, key: string, direction: [number, number, number]): [number, number] => {
+    const s = state.evaluation.bodies.E.solid;
+    const p = s.positions;
+    const sums: [number, number] = [0, 0];
+    for (let t = 0; t < s.faceIds.length; t++) {
+      if (faceKey(state.evaluation.faceNames[s.faceIds[t]]) !== key) continue;
+      const [i, j, k] = [s.triangles[3 * t], s.triangles[3 * t + 1], s.triangles[3 * t + 2]];
+      const u = [0, 1, 2].map((d) => p[3 * j + d] - p[3 * i + d]);
+      const v = [0, 1, 2].map((d) => p[3 * k + d] - p[3 * i + d]);
+      const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const along = n[0] * direction[0] + n[1] * direction[1] + n[2] * direction[2];
+      sums[along >= 0 ? 0 : 1] += Math.hypot(n[0], n[1], n[2]) / 2;
+    }
+    return sums;
+  };
+  const RISER_1: [number, number][] = [[0, 0], [60, 0], [60, 20], [30, 20], [30, 19], [0, 19]];
+  const highTop = edge(side('E', 'l2'), cap('E', 'startCap'));
+
+  it('a chamfer deeper than the riser its edge ends at: refused, the riser named; a smaller one keeps the riser facing its way', () => {
+    // the cap of the tool left 60.5 mm² facing +x in the riser (outward −x), and a sketch on the riser turned round
+    const S = profileXZ(RISER_1);
+    for (const make of [chamfer, fillet]) {
+      const deep = applied(S, make('c', 'E', [highTop], 12));
+      expect(deep.code).toBe('blendDoesNotFit');
+      expect(deep.message).toMatch(/reaches past the end face/);
+      expect((deep.refs as object[]).filter((ref) => 'role' in ref).map((ref) => faceKey(ref as FaceName))).toContain('E/side/l3');
+    }
+    const small = applied(S, chamfer('c', 'E', [highTop], 0.5));
+    expect(small.code).toBeUndefined();
+    expect(facing(small.state, 'E/side/l3', [1, 0, 0])[0]).toBe(0);
+    const sketched = applied(small.state, addSketch('on', onFace('E', side('E', 'l3'))));
+    expect(sketched.state.evaluation.features.on.plane?.normal[0]).toBeCloseTo(-1, 9);
+  });
+
+  it('the riser of 10 of the step: a chamfer of 12 is refused, a fillet of 12 leaves a sliver that goes to the fillet', () => {
+    const S = profileXZ(STEPPED);
+    expect(applied(S, chamfer('c', 'E', [highTop], 12)).code).toBe('blendDoesNotFit');
+    const round = applied(S, fillet('c', 'E', [highTop], 12));
+    if (round.code === undefined) expect(facing(round.state, 'E/side/l3', [1, 0, 0])[0]).toBe(0);
+    else expect(round.code).toBe('blendDoesNotFit');
+  });
+
+  it('an added blend at a concave edge that ends at a lower wall stands out over it: refused', () => {
+    const engine = newEngine();
+    box(engine, 60, 40, 5);
+    const S = run(
+      engine,
+      addSketch('t', onFace('E', cap('E'))),
+      rectangle('t', 'wa', 0, 0, 50, 5, null),
+      addExtrude('A', 't', [rectLoop('wa')], 30, 'add', 'E'),
+      addSketch('u', onFace('E', cap('E'))),
+      rectangle('u', 'wb', 0, 5, 5, 35, null),
+      addExtrude('B', 'u', [rectLoop('wb')], 1, 'add', 'E'),
+    );
+    for (const make of [chamfer, fillet]) {
+      const out = applied(S, make('c', 'E', [edge(cap('E'), side('A', 'wac'))], 4));
+      expect(out.code).toBe('blendDoesNotFit');
+      expect(out.message).toMatch(/standing out over that face/);
+    }
+  });
+
+  it('a concave edge whose ends are at a plate and a wall flush with it: the two planes are one end face', () => {
+    const engine = newEngine();
+    box(engine, 60, 40, 5);
+    const S = run(engine, addSketch('t', onFace('E', cap('E'))), rectangle('t', 'wa', 0, 0, 60, 5, null), addExtrude('A', 't', [rectLoop('wa')], 30, 'add', 'E'));
+    const inner = edge(cap('E'), side('A', 'wac'));
+    const flat = applied(S, chamfer('c', 'E', [inner], 4));
+    expect(flat.code).toBeUndefined();
+    expect(flat.change).toBeCloseTo(0.5 * 16 * 60, 2);
+    const round = applied(S, fillet('c', 'E', [inner], 4));
+    expect(round.code).toBeUndefined();
+    // the arc is a polygon inside the circle: a little more is added than the exact (1 − π/4) r² L
+    expect(round.change - (1 - Math.PI / 4) * 16 * 60).toBeGreaterThan(0);
+    expect(round.change - (1 - Math.PI / 4) * 16 * 60).toBeLessThan(2);
   });
 });

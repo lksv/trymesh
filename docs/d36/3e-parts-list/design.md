@@ -485,5 +485,23 @@ Deviations, each the smallest change that keeps the intent:
 - **The contract of 2g** (`docs/d36/2g-export/contract.ts`, `calls.ts`) maps the formats that package added, taken as every format but `stl`; with `partsCsv` in the catalog they take every format but `stl` and `partsCsv`, so that the type check of the contracts passes.
 - **Five tests pin the list of formats** (`stl, 3mf, dxf, svg`): each has `partsCsv` added. The twelve other snapshots of the app gain the query and the format in the two menus of the toolbar.
 
+- **The tool `query` is tested over a row of twelve copies** (`queries.test.ts`: the masses to six significant digits at any depth, the counts as they are, `after`, no note of a pose), not over the arm the design named; the arm is tested through the engine in scenario 13.
+
 Not done: the app was not run in a browser (the view is tested through the class `App` and its snapshot), and the CSV was not opened in a spreadsheet ("Open", 1).
+
+### The review of the implementation
+
+A full review by a fresh subagent (Opus 5.5), read-only, on the diff against `master`. It found no blocker and no major finding: it proved the bound of the comparison of sorted lines (two lines through one point have feet `|X| · sin θ` apart, so the coefficient 1 of the angle is exact and the code's 2 a margin) and ran 3000 random features against an all-pairs reference (no mismatch; 732 and 60 with the coefficient at 0.5 and 0.9); it checked that every step of the recompute keeps or replaces a body's `Solid` as `shapeOrigin` needs, the CSV against RFC 4180, the snapshots, the rounding of the tool and the paragraph of the conventions word for word.
+
+| Finding | Severity | What changed |
+|---|---|---|
+| A cut whose surface point is not finite made the bound NaN, and no pair of its feature was compared (3 for 2) | nit | Such a cut is skipped where an axis without a length is; `review.test.ts` |
+| No test held the comparison of sorted lines to all pairs on hard input | minor | A seeded property test of 1500 features in `review.test.ts` against an all-pairs comparison written out from `calls.ts` |
+| The comparison of sorted lines was in no document of the area | minor | `api.md` (the bound and why) and `verification.md` |
+| Below a milligram the CSV keeps fewer than six digits (nine decimals of `plain`) | nit | Said in the comment of `grams`, in `api.md` and in "Known limits" of this section |
+| The tool `query` was tested over another model than the arm | nit | Listed among the deviations above |
+| One cut far from the origin widens the bound for its whole feature | nit (time only) | Said in the comment; the counts do not change |
+| The indexes (`decisions.md`, `d36/README.md`) still say "designed" | nit | Left to the merge, as CLAUDE.md says |
+
+Known limit added: a mass below a milligram is written with fewer than six significant digits in the CSV, and one below 5 · 10⁻¹⁰ g as 0.
 

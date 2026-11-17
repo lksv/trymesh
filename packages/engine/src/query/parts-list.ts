@@ -205,13 +205,15 @@ export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: S
       const shape = surface(id, face.id);
       if (shape?.kind !== 'cylinder' && shape?.kind !== 'cone') continue;
       const length = len3(shape.axis);
-      if (!(length > 0)) continue;
+      const point = shape.kind === 'cylinder' ? shape.origin : shape.apex;
+      // a surface without a direction or with a number that is not finite has no line (the review of D57:
+      // one such cut made the bound of the comparison below NaN for its whole feature)
+      if (!(length > 0) || !Number.isFinite(length) || !point.every(Number.isFinite)) continue;
       let ofFeature = cuts.get(name.feature);
       if (!ofFeature) cuts.set(name.feature, (ofFeature = new Map()));
       const key = JSON.stringify([name.point, name.copy ?? []]);
       let cut = ofFeature.get(key);
       if (!cut) {
-        const point = shape.kind === 'cylinder' ? shape.origin : shape.apex;
         const direction: Vec3 = [shape.axis[0] / length, shape.axis[1] / length, shape.axis[2] / length];
         ofFeature.set(key, (cut = { point, direction, offAxis: len3(cross3(point, direction)), spans: new Map() }));
       }
@@ -260,6 +262,8 @@ export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: S
     // bound `reach` of each other there. Two cuts on one line (`sameLine`) have feet at most
     // 2 × its precision + the sine of the angle between them × the distance of a point of one from
     // the origin apart, so the bound keeps every such pair and the count is that of all pairs.
+    // The bound is one for the whole feature, from its cut furthest from the origin: one cut far
+    // away widens it for all, and the work tends back towards all pairs (the counts do not change).
     const along = (cut: Cut): number => {
       const [px, py, pz] = cut.point;
       const [dx, dy, dz] = cut.direction;

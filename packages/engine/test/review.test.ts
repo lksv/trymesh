@@ -10,6 +10,7 @@ import { DATA_CATALOGS, catalogTable } from '../src/data-catalogs';
 import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, wallOutline } from '../src/recompute/outline';
 import type { Outline, ProfileProblem } from '../src/recompute/state';
 import { type Region, type SketchGeometry, detectProfile } from '../src/sketch';
+import { holeCounts } from '../src/query/parts-list';
 import type { ArgSpecs } from '../src/query/args';
 import { checkArgs } from '../src/query/check';
 import type { EntityShape } from '../src/query/entity';
@@ -804,3 +805,101 @@ describe('the numbers, texts and arcs of an export: the review of D54', () => {
   });
 });
 
+
+// ---------------------------------------------------------------- the parts list (D57)
+
+describe('the review of D57: the count of holes', () => {
+  type V = [number, number, number];
+  const unit = (v: V): V => {
+    const length = Math.hypot(...v);
+    return [v[0] / length, v[1] / length, v[2] / length];
+  };
+  const crossOf = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const plus = (a: V, b: V, by = 1): V => [a[0] + by * b[0], a[1] + by * b[1], a[2] + by * b[2]];
+  const doc = { ...emptyDocument(), features: [{ id: 'h', name: 'h', suppressed: false, type: 'hole' } as never] };
+  // One cut per body: a triangle with two corners on the line and a surface of the given kind.
+  interface Given {
+    surface: { kind: 'cylinder'; origin: V; axis: V; radius: number } | { kind: 'cone'; apex: V; axis: V; halfAngle: number };
+    corners: V[];
+  }
+  const inputs = (cuts: Given[]) => ({
+    bodies: Object.fromEntries(cuts.map((cut, i) => [`b${i}`, { solid: { positions: Float32Array.from(cut.corners.flat()), triangles: Uint32Array.from([0, 1, 2]), faceIds: Uint32Array.from([i]) }, faces: [{ id: i }] }])),
+    names: cuts.map((_, i) => ({ feature: 'h', role: 'holeBore' as const, point: `p${i}` })),
+    surface: (_body: string, face: number) => cuts[face].surface,
+  });
+  const counted = (cuts: Given[]): number | undefined => {
+    const { bodies, names, surface } = inputs(cuts);
+    return holeCounts(doc, bodies, names, surface).get('h');
+  };
+
+  it('a surface point that is not finite is no cut, and the others are still joined', () => {
+    const along = (z0: number): V[] => [[1, 0, z0], [1, 0, z0 + 5], [2, 0, z0 + 5]];
+    for (const bad of [Infinity, NaN]) {
+      const cuts: Given[] = [
+        { surface: { kind: 'cylinder', origin: [0, 0, 0], axis: [0, 0, 1], radius: 1 }, corners: along(0) },
+        { surface: { kind: 'cylinder', origin: [0, 0, 5], axis: [0, 0, 1], radius: 1 }, corners: along(5) },
+        { surface: { kind: 'cylinder', origin: [bad, 0, 0], axis: [1, 0, 0], radius: 1 }, corners: along(0) },
+      ];
+      // before the fix the cut at infinity made the bound NaN and nothing was joined: 3
+      expect(counted(cuts), String(bad)).toBe(1);
+    }
+  });
+
+  it('the comparison of sorted lines counts as the comparison of all pairs: random near lines, leaning up to the tolerance, far along, far out', () => {
+    // all pairs, written out as calls.ts of the design has them
+    const reference = (cuts: Given[]): number => {
+      const lines = cuts.map((cut) => {
+        const point = cut.surface.kind === 'cylinder' ? cut.surface.origin : cut.surface.apex;
+        const direction = unit(cut.surface.axis);
+        let [from, to] = [Infinity, -Infinity];
+        const reach: V = [0, 0, 0];
+        for (const corner of cut.corners) {
+          const at: V = [Math.fround(corner[0]), Math.fround(corner[1]), Math.fround(corner[2])];
+          const t = (at[0] - point[0]) * direction[0] + (at[1] - point[1]) * direction[1] + (at[2] - point[2]) * direction[2];
+          [from, to] = [Math.min(from, t), Math.max(to, t)];
+          for (let axis = 0; axis < 3; axis++) reach[axis] = Math.max(reach[axis], Math.abs(at[axis]));
+        }
+        return { point, direction, from, to, reach };
+      });
+      type Line = (typeof lines)[number];
+      const length = (v: V): number => Math.hypot(...v);
+      const sameLine = (a: Line, b: Line): boolean => length(crossOf(a.direction, b.direction)) <= 1e-4 && length(crossOf(plus(b.point, a.point, -1), a.direction)) <= Math.max(1e-6, 1e-9 * Math.max(length(crossOf(a.point, a.direction)), length(crossOf(b.point, b.direction))));
+      const touch = (a: Line, b: Line): boolean => {
+        const offset = (b.point[0] - a.point[0]) * a.direction[0] + (b.point[1] - a.point[1]) * a.direction[1] + (b.point[2] - a.point[2]) * a.direction[2];
+        const alike = a.direction[0] * b.direction[0] + a.direction[1] * b.direction[1] + a.direction[2] * b.direction[2] > 0;
+        const [from, to] = alike ? [offset + b.from, offset + b.to] : [offset - b.to, offset - b.from];
+        const precision = Math.max(1e-6, 1e-6 * a.direction.reduce((sum, part, axis) => sum + Math.abs(part) * Math.max(a.reach[axis], b.reach[axis]), 0));
+        return from <= a.to + precision && a.from <= to + precision;
+      };
+      const group = lines.map((_, i) => i);
+      const find = (i: number): number => (group[i] === i ? i : (group[i] = find(group[i])));
+      for (let a = 0; a < lines.length; a++) for (let b = a + 1; b < lines.length; b++) if (sameLine(lines[a], lines[b]) && touch(lines[a], lines[b])) group[find(a)] = find(b);
+      return new Set(lines.map((_, i) => find(i))).size;
+    };
+    let seed = 1;
+    const random = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const direction = (): V => unit([random() * 2 - 1, random() * 2 - 1, random() * 2 - 1]);
+    let joined = 0;
+    for (let trial = 0; trial < 1500; trial++) {
+      const far = [1, 1e3, 1e5, 1e7, 1e9][trial % 5];
+      const base = direction();
+      const middle: V = [(random() * 2 - 1) * far, (random() * 2 - 1) * far, (random() * 2 - 1) * far];
+      const cuts: Given[] = Array.from({ length: 2 + Math.floor(random() * 8) }, (_, i) => {
+        const lean = i === 0 || random() < 0.3 ? 0 : (random() < 0.5 ? 0.9999 : random()) * 1e-4;
+        const about = unit(crossOf(base, direction()));
+        let axis = plus([base[0] * Math.cos(lean), base[1] * Math.cos(lean), base[2] * Math.cos(lean)], crossOf(about, base), Math.sin(lean));
+        if (random() < 0.5) axis = [-axis[0], -axis[1], -axis[2]];
+        const precision = Math.max(1e-6, 1e-9 * far);
+        const point = plus(plus(middle, base, (random() * 2 - 1) * far * 3), unit(crossOf(base, direction())), (random() < 0.5 ? 0.5 : random()) * precision);
+        const half = far * 10 + 10;
+        const corners = [plus(middle, axis, -half), plus(middle, axis, half), plus(plus(middle, axis, half), unit(crossOf(axis, [0.3, 0.5, 0.7])))];
+        return { surface: random() < 0.5 ? { kind: 'cylinder', origin: point, axis, radius: 1 } : { kind: 'cone', apex: point, axis, halfAngle: 0.5 }, corners };
+      });
+      const expected = reference(cuts);
+      if (expected < cuts.length) joined++;
+      expect(counted(cuts), `trial ${trial}`).toBe(expected);
+    }
+    // the test tests something: most features join some of their cuts
+    expect(joined).toBeGreaterThan(1000);
+  });
+});

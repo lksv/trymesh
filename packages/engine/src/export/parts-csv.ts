@@ -61,7 +61,8 @@ export type PartsCsvAbout = {
 };
 
 // A mass: six significant digits, as the tools print it, then written by `plain`: at most nine
-// decimals, no exponent (also from 1e21 on), no trailing zeros. Empty without one.
+// decimals, no exponent (also from 1e21 on), no trailing zeros. Empty without one. Below a
+// milligram the nine decimals keep fewer than six digits, and below 5e-10 g it is written 0.
 export const grams = (value: number | undefined): string => (value === undefined ? '' : plain(Number(value.toPrecision(6))));
 
 // The note of a row of bodies: what the row comes from, when it says.

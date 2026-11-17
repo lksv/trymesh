@@ -24,6 +24,10 @@ export interface State {
   planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
   sketches: Record<Id, SketchState>;
   tools: Record<Id, ToolRecipe>; // recepty nástrojů vysunutí s operací add a cut
+  // The chord tolerance of the document (D58), for the analysis of a body: of two circles two
+  // surfaces meet in, the points of an edge choose within a reach that grows with it. Set where the
+  // evaluator builds the state before the first feature; a change of the setting recomputes all.
+  chordTolerance: number;
 }
 
 // Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.

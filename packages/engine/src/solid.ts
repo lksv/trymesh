@@ -13,6 +13,10 @@ export type FaceInfo =
   // The side of an arc or a circle of a tapered extrusion. `axis` points from the apex towards the
   // face (a cone has two halves); `halfAngle` is between the axis and the surface.
   | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }
+  // A revolved arc or circle (D58): a sphere when its centre lies on the axis, otherwise a torus
+  // whose major radius is signed as `Surface` says.
+  | { planar: false; surface: 'sphere'; center: Vec3; radius: number }
+  | { planar: false; surface: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
   | { planar: false; surface: 'swept'; axis: Vec3 };
@@ -21,9 +25,18 @@ export type FaceInfo =
 // face is built.
 export function surfaceOf(info: FaceInfo): Surface {
   if (info.planar) return { kind: 'plane', origin: info.origin, normal: info.normal };
-  if (info.surface === 'cylinder') return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
-  if (info.surface === 'cone') return { kind: 'cone', apex: info.apex, axis: info.axis, halfAngle: info.halfAngle };
-  return { kind: 'swept', axis: info.axis };
+  switch (info.surface) {
+    case 'cylinder':
+      return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
+    case 'cone':
+      return { kind: 'cone', apex: info.apex, axis: info.axis, halfAngle: info.halfAngle };
+    case 'sphere':
+      return { kind: 'sphere', center: info.center, radius: info.radius };
+    case 'torus':
+      return { kind: 'torus', center: info.center, axis: info.axis, majorRadius: info.majorRadius, minorRadius: info.minorRadius };
+    case 'swept':
+      return { kind: 'swept', axis: info.axis };
+  }
 }
 
 export const toWorld = (frame: Frame, u: number, v: number, w = 0): Vec3 => [
@@ -111,7 +124,7 @@ export function shift(axis: Vec3, distance: number): RigidTransform {
   const [x, y, z] = mul3(axis, distance / len3(axis));
   return { matrix: IDENTITY.matrix.map((row) => [...row]) as [Vec3, Vec3, Vec3], translation: [x, y, z] };
 }
-// A published surface moved by a transform.
+// A published surface moved by a transform. Exhaustive: a kind forgotten here does not compile.
 export function transformSurface(t: RigidTransform, surface: Surface): Surface {
   switch (surface.kind) {
     case 'plane':
@@ -120,18 +133,32 @@ export function transformSurface(t: RigidTransform, surface: Surface): Surface {
       return { ...surface, origin: transformPoint(t, surface.origin), axis: transformVector(t, surface.axis) };
     case 'cone':
       return { ...surface, apex: transformPoint(t, surface.apex), axis: transformVector(t, surface.axis) };
+    case 'sphere':
+      return { ...surface, center: transformPoint(t, surface.center) };
+    case 'torus':
+      return { ...surface, center: transformPoint(t, surface.center), axis: transformVector(t, surface.axis) };
     case 'swept':
       return { ...surface, axis: transformVector(t, surface.axis) };
-    default:
+    case 'general':
       return surface;
   }
 }
 
+// A face description moved by a transform. Exhaustive, as `transformSurface`.
 export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
   if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
-  if (info.surface === 'cylinder') return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
-  if (info.surface === 'cone') return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
-  return { ...info, axis: transformVector(t, info.axis) };
+  switch (info.surface) {
+    case 'cylinder':
+      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+    case 'cone':
+      return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
+    case 'sphere':
+      return { ...info, center: transformPoint(t, info.center) };
+    case 'torus':
+      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+    case 'swept':
+      return { ...info, axis: transformVector(t, info.axis) };
+  }
 }
 
 // A copy of a solid in the transformed position, with its face numbers renumbered by `faceId`.
@@ -465,13 +492,17 @@ export interface BodyData {
   edges: Map<string, EdgeData>;
 }
 
-const cache = new WeakMap<Solid, BodyData>();
+const cache = new WeakMap<Solid, { tolerance: number; data: BodyData }>();
 
 // Stěny a hrany tělesa. Výsledek závisí jen na síti a na tabulce stěn, která se pro existující
 // čísla nemění, takže se pamatuje podle identity sítě.
-export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: FaceInfo[]): BodyData {
+// `chordTolerance`: the chord tolerance of the document, by which the kind of an edge between two
+// surfaces that meet in two circles is decided (`circleBetween` with the points of the edge, D58).
+// A change of the setting recomputes every feature, so a solid meets one tolerance; the memo keeps
+// it and analyses again for another.
+export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: FaceInfo[], chordTolerance: number): BodyData {
   const cached = cache.get(solid);
-  if (cached) return cached;
+  if (cached && cached.tolerance === chordTolerance) return cached.data;
   const p = solid.positions;
   const at = (i: number): Vec3 => [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
   const normalSum = new Map<number, Vec3>();
@@ -492,9 +523,11 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
     const [a, b] = faceKey(faceNames[id]) <= faceKey(faceNames[other]) ? [id, other] : [other, id];
     const name: EdgeName = { a: faceNames[a], b: faceNames[b] };
     let edge = edges.get(edgeKey(name));
-    if (!edge) edges.set(edgeKey(name), (edge = { a, b, name, kind: edgeKind(faceInfos[a], faceInfos[b]), segments: [] }));
+    if (!edge) edges.set(edgeKey(name), (edge = { a, b, name, kind: 'other', segments: [] }));
     edge.segments.push(...at(i), ...at(j));
   }
+  // the kind once the segments are collected: of two circles, the points of the edge choose
+  for (const edge of edges.values()) edge.kind = edgeKind(faceInfos[edge.a], faceInfos[edge.b], edge.segments, chordTolerance);
   const sorted = [...edges.entries()].sort((x, y) => (x[0] < y[0] ? -1 : 1));
   const bounds: BodyResult['bounds'] = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (let i = 0; i < p.length; i++) {
@@ -512,16 +545,17 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
     normalSum,
     edges: new Map(sorted),
   };
-  cache.set(solid, data);
+  cache.set(solid, { tolerance: chordTolerance, data });
   return data;
 }
 
 // The kind of the edge between two faces by their surfaces: two planes meet in a line (or are one
-// plane), surfaces that meet in a circle (`circleBetween`) in a circle, anything else in a general
-// curve (the edge of a cap with a swept side, two cylinders).
-function edgeKind(a: FaceInfo, b: FaceInfo): EdgeKind {
+// plane), surfaces that meet in a circle (`circleBetween`; of two circles the one the points of the
+// edge say) in a circle, anything else in a general curve (the edge of a cap with a swept side, two
+// cylinders).
+function edgeKind(a: FaceInfo, b: FaceInfo, points: ArrayLike<number>, chordTolerance: number): EdgeKind {
   if (a.planar && b.planar) return len3(cross3(a.normal, b.normal)) <= Math.sin(ANGLE_TOLERANCE) ? 'coplanar' : 'line';
-  return circleBetween(surfaceOf(a), surfaceOf(b)) ? 'circle' : 'other';
+  return circleBetween(surfaceOf(a), surfaceOf(b), points, chordTolerance) ? 'circle' : 'other';
 }
 
 // Normála rovinné stěny ven z tělesa: analytický směr, znaménko ze sítě. undefined = stěna v tělese není.
@@ -545,7 +579,8 @@ export function faceFrame(body: BodyData, id: number, info: FaceInfo): Frame | I
 
 // Promítne hranu tělesa do roviny skici. Přímka hrany se počítá analyticky z rovin obou stěn,
 // ze sítě se bere jen rozsah; kružnice celá analyticky.
-export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[]): Projected | IssueCode {
+// `chordTolerance`: as for `analyzeBody`, to choose among two circles by the points of the edge.
+export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[], chordTolerance: number): Projected | IssueCode {
   const edge = body.edges.get(edgeKey(name));
   if (!edge) return 'brokenProjection';
   if (edge.kind !== kind) return 'unsupportedProjection'; // coplanar, other, nebo jiný druh, než se uložilo
@@ -569,7 +604,7 @@ export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind
     return { kind: 'line', a: start, b: end };
   }
   if (edge.kind === 'circle') {
-    const circle = circleBetween(surfaceOf(a), surfaceOf(b));
+    const circle = circleBetween(surfaceOf(a), surfaceOf(b), edge.segments, chordTolerance);
     if (!circle) return 'brokenProjection'; // the kind `circle` was given by this function
     if (len3(cross3(circle.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // elipsa nebo úsečka
     return { kind: 'circle', center: toPlane(frame, circle.center), radius: circle.radius };

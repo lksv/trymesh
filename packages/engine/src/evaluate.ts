@@ -48,7 +48,7 @@ export class Evaluator {
   // back, for the engine to put into the document with the features.
   evaluate(doc: Document, options: EvaluateOptions = {}): { evaluation: Evaluation; state: State; writeBacks: Map<Id, WriteBack>; trace: Trace; sections?: Partial<Sections> } {
     const { state: final, writeBacks, trace } = this.run(doc, options);
-    const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
+    const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos, final.chordTolerance).result]));
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
     // after the timeline, as the checks: no step of a feature reads a section
@@ -113,7 +113,7 @@ export class Evaluator {
   }
 
   private run(doc: Document, options: EvaluateOptions): { state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
-    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {} };
+    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {}, chordTolerance: doc.settings.chordTolerance };
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
     const trace: Trace = new Map();

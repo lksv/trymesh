@@ -100,6 +100,13 @@ describe('popis API', () => {
     for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
     expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
     expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
+    // D58: the revolve, the axis of a line of a sketch, the sphere, the torus and the code invalidAxis
+    expect(description).toContain("type: 'revolve';");
+    expect(description).toContain("{ kind: 'sketchLine'; sketch: Id; line: Id }");
+    expect(description).toContain("{ kind: 'sphere'; center: Vec3; radius: number }");
+    expect(description).toContain("{ kind: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }");
+    expect(description).toContain("| 'invalidAxis'");
+    expect(description).toContain('A turned part (a pulley, a knob, a cone, a ball, an O-ring groove, a countersink) is a feature of the type revolve');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu

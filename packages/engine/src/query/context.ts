@@ -6,7 +6,7 @@ import { transformFrame, transformSurface } from '../solid';
 import type { Deflater, Document, Evaluation, SolidKernel } from '../types';
 import { faceKey, has } from '../util';
 import { poseOf } from './pose';
-import { type QueryContext, QueryFailure } from './spec';
+import { type QueryContext, QueryFailure, type RefProblem } from './spec';
 
 // Results of queries kept for as long as all the objects they were computed from live. A result is
 // reached through its owners one after another, each step a weak map, so it is dropped when any of
@@ -85,7 +85,7 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
   const { state } = internals;
   const pose = geometry === 'modelled' ? undefined : poseOf(internals.document.mechanism, evaluation.mechanism, modelledBodies);
   const bodies = pose ? pose.bodies : modelledBodies;
-  const problem = (code: string) => ({ problem: code === 'nonPlanarFace' ? ('nonPlanarFace' as const) : ('brokenReference' as const) });
+  const problem = (code: string): RefProblem => ({ problem: code === 'nonPlanarFace' || code === 'invalidAxis' ? code : 'brokenReference' });
   return {
     state: { document: internals.document, evaluation: modelled },
     bodies,

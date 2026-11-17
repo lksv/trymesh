@@ -1,5 +1,6 @@
-// The picker of an axis (`AxisRef`): a base axis, or the normal of a sketch plane led through
-// a point of the sketch. The form of a pattern and the form of a joint of the mechanism (D49) use
+// The picker of an axis (`AxisRef`): a base axis, the normal of a sketch plane led through
+// a point of the sketch, or a line of a sketch (D58: an own line, construction or not, or
+// a projected one; the kind is offered while a sketch has a line). The form of a pattern and the form of a joint of the mechanism (D49) use
 // it; what a change does to the axis is `changeAxis` of sketch-commands.ts. A linear pattern (D53)
 // uses it for a direction: only the direction of the axis counts, so it has no row of the point
 // (the reference keeps the point it has, `origin` for a new one). A grid has two directions, so the
@@ -7,9 +8,9 @@
 import type { AxisRef, Id } from '@trymesh/engine';
 import { h } from './dom';
 import type { PanelHost } from './host';
-import { type AxisChange, type AxisKind, axisKind } from './sketch-commands';
+import { type AxisChange, type AxisKind, axisKind, lineIds } from './sketch-commands';
 
-const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch' };
+const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch', sketchLine: 'Along a line of a sketch' };
 const DIRECTIONS: Record<AxisKind, string> = { ...AXES, sketchPoint: 'The normal of a sketch plane' };
 // The labels of the picker of a direction: its select, the select of its sketch, the button that
 // repairs a point that is gone.
@@ -30,7 +31,24 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   const labels = direction ? DIRECTIONS : AXES;
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
   const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
-  const out: HTMLElement[] = [select(direction ? direction.direction : 'Axis', (value) => set({ axis: value as AxisKind }), ...(Object.keys(labels) as AxisKind[]).map((kind) => option(kind, labels[kind], kind === axisKind(axis))))];
+  const linesOf = (id: Id): Id[] => {
+    const f = host.feature(id);
+    return f?.type === 'sketch' ? lineIds(f) : [];
+  };
+  const withLines = sketches.filter((id) => linesOf(id).length > 0);
+  const kinds = (Object.keys(labels) as AxisKind[]).filter((kind) => kind !== 'sketchLine' || withLines.length > 0 || axis.kind === 'sketchLine');
+  const out: HTMLElement[] = [select(direction ? direction.direction : 'Axis', (value) => set({ axis: value as AxisKind }), ...kinds.map((kind) => option(kind, labels[kind], kind === axisKind(axis))))];
+  if (axis.kind === 'sketchLine') {
+    const own = host.feature(axis.sketch);
+    const lines = sketches.includes(axis.sketch) ? linesOf(axis.sketch) : [];
+    const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && own.external[id] ? `${id} (projected)` : id);
+    out.push(
+      select(direction ? direction.sketch : 'Sketch', (value) => set({ sketch: value }), ...withLines.map((id) => option(id, host.nameOf(id), id === axis.sketch)), withLines.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)}${sketches.includes(axis.sketch) ? '' : ' (missing)'}`, true)),
+      select(direction ? `Line of the ${direction.direction.toLowerCase()}` : 'Line', (value) => set({ line: value }), ...lines.map((id) => option(id, label(id), id === axis.line)), lines.includes(axis.line) ? null : option(axis.line, `${axis.line} (missing)`, true)),
+      h('p', { className: 'hint' }, direction ? 'The direction runs along the line, from its point a to its point b.' : 'The axis runs along the line, from its point a to its point b; a positive angle turns by the right-hand rule about it.'),
+    );
+    return out;
+  }
   const sketch = axis.kind === 'sketchPoint' ? host.feature(axis.sketch) : undefined;
   const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
   if (axis.kind === 'sketchPoint' && direction) {

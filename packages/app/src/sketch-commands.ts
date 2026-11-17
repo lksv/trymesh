@@ -405,27 +405,45 @@ type CircularDraft = Extract<PatternTransformDraft, { type: 'circular' }>;
 type LinearDraft = Extract<PatternTransformDraft, { type: 'linear' }>;
 export type PatternSpan = CircularDraft['span'];
 export type LinearSpan = LinearDraft['span'];
-export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint';
-export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : 'sketchPoint');
-// One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism):
-// a base axis, or `sketchPoint` (the origin of the latest of `sketches` until `sketch` and `point`
-// say otherwise); another sketch starts at its origin.
+export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint' | 'sketchLine';
+export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : axis.kind);
+// The lines of a sketch an axis may run along (D58): its own lines, construction or not, then its
+// projected ones.
+export const lineIds = (sketch: SketchFeature): Id[] => [
+  ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
+  ...Object.entries(sketch.external).filter(([, ref]) => ref.kind === 'line').map(([id]) => id),
+];
+// One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism,
+// the form of a revolve): a base axis; `sketchPoint` (the origin of the latest of `sketches` until
+// `sketch` and `point` say otherwise; another sketch starts at its origin); or `sketchLine` (the
+// first line of the latest of `sketches` that has one, by `lines`, until `sketch` and `line` say
+// otherwise; another sketch starts at its first line). Without a sketch that has a line the kind
+// `sketchLine` changes nothing.
 export interface AxisChange {
   axis?: AxisKind;
   sketch?: Id;
   point?: Id;
+  line?: Id;
 }
-export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[]): AxisRef {
+export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[], lines: (sketch: Id) => Id[] = () => []): AxisRef {
   let out = axis;
   if (change.axis !== undefined && change.axis !== axisKind(out)) {
     const sketch = sketches[sketches.length - 1];
-    if (change.axis !== 'sketchPoint') out = { kind: 'base', axis: change.axis };
+    const withLine = [...sketches].reverse().find((id) => lines(id).length > 0);
+    if (change.axis === 'sketchLine') {
+      if (withLine !== undefined) out = { kind: 'sketchLine', sketch: withLine, line: lines(withLine)[0] };
+    } else if (change.axis !== 'sketchPoint') out = { kind: 'base', axis: change.axis };
     else if (sketch !== undefined) out = { kind: 'sketchPoint', sketch, point: 'origin' };
   }
   if (change.sketch !== undefined && out.kind === 'sketchPoint' && change.sketch !== out.sketch) out = { kind: 'sketchPoint', sketch: change.sketch, point: 'origin' };
+  if (change.sketch !== undefined && out.kind === 'sketchLine' && change.sketch !== out.sketch) out = { kind: 'sketchLine', sketch: change.sketch, line: lines(change.sketch)[0] ?? out.line };
   if (change.point !== undefined && out.kind === 'sketchPoint') out = { ...out, point: change.point };
+  if (change.line !== undefined && out.kind === 'sketchLine') out = { ...out, line: change.line };
   return out;
 }
+// An axis in a sentence: "the axis Z", "the normal through p1 of Sketch 1", "the line ka of knob".
+export const axisText = (axis: AxisRef, nameOf: (id: Id) => string): string =>
+  axis.kind === 'base' ? `the axis ${axis.axis}` : axis.kind === 'sketchPoint' ? `the normal through ${axis.point} of ${nameOf(axis.sketch)}` : `the line ${axis.line} of ${nameOf(axis.sketch)}`;
 // One change of the pattern form.
 // - `source`: the other kind of source, filled with the latest choice of that kind.
 // - `toggleFeature`: adds a source feature or removes it; the list keeps the order of the timeline.
@@ -492,6 +510,7 @@ export interface PatternChoices {
   tools: Id[];
   bodies: Id[];
   sketches: Id[];
+  lines?: (sketch: Id) => Id[]; // the lines of a sketch an axis may run along
 }
 const DEFAULT_ANGLE: PatternSpan = { type: 'angle', angle: Math.PI / 2 };
 const DEFAULT_SPAN: Record<LinearSpan['type'], LinearSpan> = { spacing: { type: 'spacing', spacing: 10 }, length: { type: 'length', length: 20 } };
@@ -540,25 +559,25 @@ function changeTransform(given: PatternTransformDraft, change: PatternChange, ch
   if (transform.type === 'linear') {
     const { second: had, ...rest } = transform;
     const span = change.span === 'spacing' || change.span === 'length' ? change.span : undefined;
-    const first = changeDirection(rest, { ...change, span }, choices.sketches, memory);
+    const first = changeDirection(rest, { ...change, span }, choices.sketches, memory, choices.lines);
     let second = change.grid === false ? undefined : (had ?? (change.grid ? (memory.second ?? newSecond(first.direction)) : undefined));
-    if (second && change.second) second = changeDirection(second, change.second, choices.sketches, { spacing: memory.secondSpacing, length: memory.secondLength });
+    if (second && change.second) second = changeDirection(second, change.second, choices.sketches, { spacing: memory.secondSpacing, length: memory.secondLength }, choices.lines);
     return second ? { ...first, second } : first;
   }
   let { span } = transform;
   if ((change.span === 'full' || change.span === 'angle') && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : (memory.angle ?? DEFAULT_ANGLE);
   if (change.angle !== undefined && span.type === 'angle') span = { type: 'angle', angle: change.angle };
-  return { ...transform, axis: changeAxis(transform.axis, change, choices.sketches), count, span };
+  return { ...transform, axis: changeAxis(transform.axis, change, choices.sketches, choices.lines), count, span };
 }
 
 // A direction of a linear pattern changed: the axis, the count, the span of another type (the one
 // of that type it had last, from `spans`), the value of the span.
-function changeDirection<D extends { direction: AxisRef; count: number | Expr; span: LinearSpan }>(d: D, change: DirectionChange, sketches: Id[], spans: { spacing?: LinearSpan; length?: LinearSpan }): D {
+function changeDirection<D extends { direction: AxisRef; count: number | Expr; span: LinearSpan }>(d: D, change: DirectionChange, sketches: Id[], spans: { spacing?: LinearSpan; length?: LinearSpan }, lines?: (sketch: Id) => Id[]): D {
   let { span } = d;
   if (change.span !== undefined && change.span !== span.type) span = spans[change.span] ?? DEFAULT_SPAN[change.span];
   if (change.spacing !== undefined && span.type === 'spacing') span = { type: 'spacing', spacing: change.spacing };
   if (change.length !== undefined && span.type === 'length') span = { type: 'length', length: change.length };
-  return { ...d, direction: changeAxis(d.direction, change, sketches), count: change.count ?? d.count, span };
+  return { ...d, direction: changeAxis(d.direction, change, sketches, lines), count: change.count ?? d.count, span };
 }
 // A new second direction: a base axis other than the first direction (Y, or X when the first is
 // Y), a count of 2 and a spacing of 10. It may still lie along a first direction that is the

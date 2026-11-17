@@ -11,6 +11,7 @@ import { h, markProblem } from '../dom';
 import { fieldText, parseField, unitLabel } from '../fields';
 import type { PanelHost } from '../host';
 import { angleProblem, faceLabel } from '../issue-text';
+import { lineIds } from '../sketch-commands';
 import { sketchView } from '../sketch-view';
 
 // What a control gets of the form.
@@ -169,13 +170,22 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     });
     return [select, pick(path, form, 'a plane or a planar face')];
   },
-  // A base axis, or a sketch and its point.
+  // A base axis, a sketch and its point, or a sketch and its line.
   axis: (_spec, value, path, form) => {
     const current = isRecord(value) ? value : {};
-    const chosen = current.kind === 'base' ? String(current.axis) : current.kind === 'sketchPoint' ? 'point' : undefined;
+    const chosen = current.kind === 'base' ? String(current.axis) : current.kind === 'sketchPoint' ? 'point' : current.kind === 'sketchLine' ? 'line' : undefined;
     const out: HTMLElement[] = [
-      choice([...BASE_AXES.map((axis) => [axis, axis] as const), ['point', 'Through a sketch point'] as const], chosen, (key) => form.set(path, key === undefined ? undefined : key === 'point' ? { kind: 'sketchPoint' } : { kind: 'base', axis: key }, true)),
+      choice([...BASE_AXES.map((axis) => [axis, axis] as const), ['point', 'Through a sketch point'] as const, ['line', 'Along a sketch line'] as const], chosen, (key) =>
+        form.set(path, key === undefined ? undefined : key === 'point' ? { kind: 'sketchPoint' } : key === 'line' ? { kind: 'sketchLine' } : { kind: 'base', axis: key }, true),
+      ),
     ];
+    if (current.kind === 'sketchLine') {
+      const feature = sketchOf(form, current.sketch);
+      out.push(
+        choice(sketches(form), typeof current.sketch === 'string' ? current.sketch : undefined, (sketch) => form.set(path, { kind: 'sketchLine', sketch }, true), 'sketch'),
+        choice(feature ? lineIds(feature).map((id) => [id, id] as const) : [], typeof current.line === 'string' ? current.line : undefined, (line) => form.set(path, { kind: 'sketchLine', sketch: current.sketch, line }), 'line'),
+      );
+    }
     if (current.kind === 'sketchPoint') {
       out.push(
         choice(sketches(form), typeof current.sketch === 'string' ? current.sketch : undefined, (sketch) => form.set(path, { kind: 'sketchPoint', sketch }, true), 'sketch'),

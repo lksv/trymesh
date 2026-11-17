@@ -892,6 +892,48 @@ describe('the app, driven as a user drives it', () => {
     return h;
   };
 
+  it('a revolve: the profile, the axis of a base axis or of a line of a sketch, a whole turn or an angle, the summary (D58)', async () => {
+    const h = await start();
+    h.press('toolbar', 'Revolve');
+    h.record('a revolve needs a sketch');
+    // a half profile on XZ beside the axis Z, and a construction line at x = 30 drawn from outside
+    const point = (id: string, x: number, y: number) => ({ type: 'addPoint', sketch: 'S', id, x, y }) as const;
+    const line = (id: string, a: string, b: string, construction = false) => ({ type: 'addCurve', sketch: 'S', id, curve: { type: 'line', a, b, ...(construction ? { construction } : {}) } }) as const;
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'S', name: 'Profile', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XZ' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } },
+        point('p1', 10, 0),
+        point('p2', 20, 0),
+        point('p3', 20, 10),
+        point('p4', 10, 10),
+        line('a', 'p1', 'p2'),
+        line('b', 'p2', 'p3'),
+        line('c', 'p3', 'p4'),
+        line('d', 'p4', 'p1'),
+      ],
+    });
+    h.row('Profile').click();
+    h.press('toolbar', 'Revolve');
+    h.record('a new revolve: the one region picked, the axis Z of the plane XZ, a whole turn, a new body; the preview has the ring and draws its axis');
+    h.choose('Extent', 'angle');
+    h.record('an angle: a start of 0° and 90°');
+    h.type(h.field('Angle (° or an expression in radians; negative turns the other way)'), '360');
+    h.record('an angle of a whole turn: the field refuses it');
+    h.type(h.field('Angle (° or an expression in radians; negative turns the other way)'), '-120');
+    h.choose('Axis', 'Y');
+    h.record('the axis Y, the normal of the sketch: invalidAxis in the preview');
+    h.choose('Axis', 'sketchLine');
+    h.record('along a line of a sketch: the first line of the latest sketch that has one');
+    h.choose('Line', 'b');
+    h.record('the line b, the rim of the profile: the profile lies on one side of it');
+    h.press('panel', 'OK');
+    h.record('OK: the revolve is in the document');
+    h.row('Revolve 1').click();
+    h.record('selected: the summary names the sketch, the axis and the angle');
+    await matches(h, 'revolve');
+  });
+
   it('the model: selection in the view, the selected feature, export, the timeline, parameters and checks, collisions', async () => {
     const h = await threeBodies();
     h.record('a model of three bodies');

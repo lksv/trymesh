@@ -24,7 +24,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
   | a constraint | a list of the constraints of the sketch chosen next to it |
   | an entity | what it is (a face, an edge, a sketch point, a body), then its body and its face or edge from lists, or its sketch and point; or *Pick in the view* |
   | a plane | a base plane or a plane feature from a list, or *Pick in the view* for a plane or a planar face |
-  | an axis | a base axis, or a sketch and its point |
+  | an axis | a base axis, a sketch and its point, or a sketch and its line (D58, *Along a sketch line*) |
   | a vector | three numbers |
   | a list | a row per item with *Add* and ✕ |
   | one of several alternatives | a list of the alternatives and the control of the chosen one |

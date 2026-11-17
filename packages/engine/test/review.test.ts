@@ -321,13 +321,13 @@ describe('a module per feature type (D37): what the move could have changed unse
 
   it('only an extrusion that adds or cuts is a source of a pattern or says so', () => {
     const doc = model();
-    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not a feature that applies a tool \\(an extrusion with the operation add or cut, a hole\\)`));
+    for (const id of ['PL', 'P', 'S1', 'A', 'G']) refused(doc, { type: 'addFeature', feature: pattern('P2', [id]) }, new RegExp(`feature "${id}" is not a feature that applies a tool \\(an extrusion or a revolve with the operation add or cut, a hole\\)`));
     expect(doc.features.filter(producesTool).map((f) => f.id)).toEqual(['H']);
     expect(doc.features.map((f) => [f.id, generatorOf(f)]).filter(([, generator]) => generator !== undefined)).toEqual([['G', 'involuteGear']]);
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole']);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'revolve']);
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
@@ -662,7 +662,7 @@ describe('the mechanism: the review of D49', () => {
   // that counts its booleans and finds nothing shared.
   const infos: FaceInfo[] = Array.from({ length: 6 }, () => ({ planar: true, origin: [0, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] }));
   const names = infos.map((_, i) => ({ feature: 'b', role: 'side', curve: String(i) }));
-  const boxAt = (x: number, y: number): BodyResult => analyzeBody(prism([[x, y], [x + 10, y], [x + 10, y + 10], [x, y + 10]], 0, 10, (side) => 2 + side), names as never, infos).result;
+  const boxAt = (x: number, y: number): BodyResult => analyzeBody(prism([[x, y], [x + 10, y], [x + 10, y + 10], [x, y + 10]], 0, 10, (side) => 2 + side), names as never, infos, 0.01).result;
   const EMPTY: Solid = { positions: new Float32Array(0), triangles: new Uint32Array(0), faceIds: new Uint32Array(0) };
   let booleans = 0;
   const kernel = { boolean: () => (booleans++, EMPTY) } as unknown as SolidKernel;

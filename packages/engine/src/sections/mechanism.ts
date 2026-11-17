@@ -454,10 +454,13 @@ export const mechanism: SectionSpec<Section, MechanismResult> = {
     return Object.keys(joints).every((key) => joints[key] === section.joints[key]) ? section : { ...section, joints };
   },
   // the feature of every body of every link (and a derived body itself); the sketch and the point of
-  // every axis, and the projected entity a derived point is of (`x1` of `x1/center`)
+  // every axis (or the sketch and the line), and the projected entity a derived point is of (`x1`
+  // of `x1/center`)
   names: (section) => [
     ...Object.values(section.links).flatMap((own) => own.bodies.flatMap((body) => (bodyOwner(body).local === undefined ? [body] : [body, bodyOwner(body).feature]))),
-    ...Object.values(section.joints).flatMap((j) => ('axis' in j && j.axis.kind === 'sketchPoint' ? [j.axis.sketch, j.axis.point, ...(j.axis.point.includes('/') ? [j.axis.point.split('/')[0]] : [])] : [])),
+    ...Object.values(section.joints).flatMap((j) =>
+      'axis' in j && j.axis.kind === 'sketchPoint' ? [j.axis.sketch, j.axis.point, ...(j.axis.point.includes('/') ? [j.axis.point.split('/')[0]] : [])] : 'axis' in j && j.axis.kind === 'sketchLine' ? [j.axis.sketch, j.axis.line] : [],
+    ),
   ],
   // the records of links and joints are kept stable entry by entry
   entries: ['links', 'joints'],

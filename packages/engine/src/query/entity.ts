@@ -13,6 +13,10 @@ import { type QueryContext, QueryFailure } from './spec';
 // - `plane`: a planar face. `normal` points out of the body.
 // - `cylinder`, `cone`: a face. `convex`: the material is on the side of the axis (a pin); false
 //   for a hole.
+// - `sphere`: a face. `convex`: the material is on the side of the centre (a ball); false for
+//   a socket.
+// - `torus`: a face. `majorRadius` is signed as in `Surface`. `convex`: the material is on the side
+//   of the centre of the tube (a ring, a bead); false for a groove.
 // - `swept`: a face swept along `axis` (the teeth of a gear): it has a direction and no position.
 // - `line`: an edge of the kind `line`, which is the edge of two planar faces: the line of its two
 //   planes. `from` and `to` are its ends, `direction` is a unit vector from `from` to `to`.
@@ -29,6 +33,8 @@ export type EntityShape =
   | { is: 'plane'; origin: Vec3; normal: Vec3 }
   | { is: 'cylinder'; origin: Vec3; axis: Vec3; radius: number; convex: boolean } // origin: a point of the axis
   | { is: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number; convex: boolean }
+  | { is: 'sphere'; center: Vec3; radius: number; convex: boolean }
+  | { is: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number; convex: boolean }
   | { is: 'swept'; axis: Vec3 }
   | { is: 'other' };
 
@@ -68,9 +74,16 @@ export function entityShape(context: QueryContext, ref: ShapedRef, arg: ArgPath)
     // which side the material is on comes from the description of the body, kept by its mesh
     const key = faceKey(ref.face);
     const convex = describeBody.run(context, { body: ref.body }).faces.find((face) => faceKey(face.name) === key)?.convex === true;
-    return surface.kind === 'cylinder'
-      ? { is: 'cylinder', origin: surface.origin, axis: unit3(surface.axis), radius: surface.radius, convex }
-      : { is: 'cone', apex: surface.apex, axis: unit3(surface.axis), halfAngle: surface.halfAngle, convex };
+    switch (surface.kind) {
+      case 'cylinder':
+        return { is: 'cylinder', origin: surface.origin, axis: unit3(surface.axis), radius: surface.radius, convex };
+      case 'cone':
+        return { is: 'cone', apex: surface.apex, axis: unit3(surface.axis), halfAngle: surface.halfAngle, convex };
+      case 'sphere':
+        return { is: 'sphere', center: surface.center, radius: surface.radius, convex };
+      case 'torus':
+        return { is: 'torus', center: surface.center, axis: unit3(surface.axis), majorRadius: surface.majorRadius, minorRadius: surface.minorRadius, convex };
+    }
   }
   const key = edgeKey(ref.edge);
   const edge = body.edges.find((candidate) => edgeKey(candidate.name) === key);
@@ -78,7 +91,7 @@ export function entityShape(context: QueryContext, ref: ShapedRef, arg: ArgPath)
   const [a, b] = [context.surface(ref.body, edge.name.a), context.surface(ref.body, edge.name.b)];
   if (!a || !b) return OTHER;
   if (edge.kind === 'circle') {
-    const circle = circleBetween(a, b);
+    const circle = circleBetween(a, b, edge.segments, context.state.document.settings.chordTolerance);
     return circle ? { is: 'circle', ...circle } : OTHER;
   }
   if (edge.kind !== 'line' || a.kind !== 'plane' || b.kind !== 'plane' || edge.segments.length < 6) return OTHER;

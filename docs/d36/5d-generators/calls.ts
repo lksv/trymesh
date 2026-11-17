@@ -91,16 +91,17 @@ export function scenario9l(): boolean {
 
 // ================================================================ scenario 13: the cycloidal stage
 
-// Below the base of the arm (z −20 to −14): the circle of the pins about the shoulder, a pin of
+// Below the base of the arm: the pins from z −20 to −10 and the disc from −20 to −17 (a second disc
+// of a two-disc drive from −16 to −13): the circle of the pins about the shoulder, a pin of
 // radius 2.5 on it at (25, 0) and its circular pattern (12 pins), and the disc over the circle.
 const DISC_PARAMS = { pins: 'nPins', pinRadius: 'pinR', eccentricity: 'ecc', clearance: 0, rotation: 0, pinAngle: 0 };
-function discFeature(id: Id, params: Record<string, number | string>): Command {
+function discFeature(id: Id, params: Record<string, number | string>, start = -20): Command {
   return withGenerator({
     type: 'addFeature',
     feature: {
       id, name: id, suppressed: false, type: 'extrude',
       profile: { type: 'generated', generator: 'cycloidalDisc' satisfies GeneratorNameAfter, sketch: 'cyclo', operands: { circle: 'pinCircle' }, params },
-      extent: { type: 'distance', start: -20, distance: 6 }, operation: 'new',
+      extent: { type: 'distance', start, distance: 3 }, operation: 'new',
     },
   });
 }
@@ -136,7 +137,7 @@ const PINS: Id[] = ['pin', ...Array.from({ length: 11 }, (_, k) => `ringPins/${k
 const ofDisc = (disc: Id) => (pair: { a: Id; b: Id }): boolean => pair.a === disc || pair.b === disc;
 function nearestGap(disc: Id, state?: EngineState): number | undefined {
   const gap = engine.query('gap', { bodies: [disc, ...PINS], within: 1 }, state ? { state } : {});
-  if (!gap.ok || gap.result.failed.some(ofDisc(disc))) return undefined;
+  if (!gap.ok || gap.result.failed.some(ofDisc(disc)) || (gap.result.cleared ?? []).some(ofDisc(disc))) return undefined;
   const nearest = gap.result.pairs.find(ofDisc(disc));
   return nearest !== undefined && nearest.contact === undefined ? nearest.distance : undefined;
 }
@@ -156,7 +157,7 @@ export function turned(): boolean {
   return nearV(f.center, [0, 1, 0]) && near(f.discRotation, -Math.PI / 2 / 11) && clearOfThePins('disc', state);
 }
 export function secondDisc(): boolean {
-  const state = preview(discFeature('disc2', { ...DISC_PARAMS, rotation: 'pi' }));
+  const state = preview(discFeature('disc2', { ...DISC_PARAMS, rotation: 'pi' }, -16));
   return nearV(facts(state, 'disc2').center, [-1, 0, 0]) && clearOfThePins('disc2', state);
 }
 // Pins drawn half a pitch round: the pin at 15° (and its pattern with it). The disc with

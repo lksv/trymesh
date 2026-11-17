@@ -1,6 +1,6 @@
 # 5d Generators: the cycloidal disc, the GT2 pulley, the profile shift of the gear (D61)
 
-**State: full design, 2026-11-17, against the code of `master` at `d080fa8`.** Written on Opus 5.5 (the owner's note of 2026-11-17: Fable is not available). Reviewed in two rounds ("Reviews"). Not implemented.
+**State: full design, 2026-11-17, against the code of `master` at `d080fa8`.** Written on Opus 5.5 (the owner's note of 2026-11-17: Fable is not available). Reviewed in three rounds ("Reviews"). Not implemented.
 
 Files: [contract.ts](contract.ts) (the two entries of the catalog, the parameter and the fact of the gear, a point as an operand, the example of an entry), [calls.ts](calls.ts) (its parts of validation scenarios 9 and 13).
 
@@ -76,14 +76,14 @@ The coefficient has no bounds in the catalog; these failures are its bounds, and
 
 **The polygon lies inside the exact disc.** A chord of a lobe lies inside the curve, a chord of a bottom between two lobes outside it (the curve bends around the pin there), so a polygon of points on the curve would enter the pins by up to the chord tolerance. The disc is therefore built for pins larger by the largest distance of its chords from the curve (with a margin of 0.1 %), found while the number of points is chosen: the polygon then lies inside the exact profile everywhere, at most twice the chord tolerance away from it, the rule of the tool of a ring gear. Measured on the disc of the scenario: 704 points, the chords within 3.2e-3 of the curve, the smallest distance to pins tessellated as the engine does 0.0022 to 0.0032 mm at four input angles, no overlap; with a clearance of 0.1 it is 0.103.
 
-**The checks see the radius that is built.** The compensation of the chords makes the pins of the build larger than `Rr + clearance` by the largest deviation of a chord (at most the chord tolerance). Every condition below is checked with that radius, not the one before the compensation: a disc just inside the limit of undercut would otherwise pass the check and be built past it (a review's case: R 25, N 12, E 2, Rr 2.5737, the limit 2.57372; with the chords of the tolerance 0.01 the compensated radius is past it). When the compensated radius fails where the uncompensated one passes, the generator takes more points (the deviation falls with the square of their number) until it passes, within `MAX_PROFILE_POINTS`; otherwise the failure says that the disc is within the chord tolerance of undercut.
+**The checks of the profile see the radius that is built.** The compensation of the chords makes the pins of the build larger than `Rr + clearance` by the largest deviation of a chord (at most the chord tolerance). The two conditions on the profile, the undercut and the circle of the bottoms, are checked with that radius, not the one before the compensation; the overlap of the pins is a condition on the pins themselves and uses their radius `Rr` alone, and `E · N < R` has no radius. A disc just inside the limit of undercut would otherwise pass the check and be built past it a disc just inside the limit of undercut would otherwise pass the check and be built past it (a review's case: R 25, N 12, E 2, Rr 2.5737, the limit 2.57372; with the chords of the tolerance 0.01 the compensated radius is past it). When the compensated radius fails a condition the uncompensated one passes, the generator takes more points (the deviation falls with the square of their number) until it passes, within `MAX_PROFILE_POINTS` (a review counted about 9 000 for that case); otherwise the failure names the condition and says that the disc is within the chord tolerance of it.
 
 **When the disc cannot be built** (`invalidProfile` with the message):
 
 - `E · N ≥ R`: the curve of the pin centres makes loops and the profile has no meaning (Sources, [S1]: the condition on the coefficient `E N / R < 1`).
 - The pins, taken with the clearance, are not smaller than the smallest radius of curvature of the curve of the pin centres where it bends towards the disc: the profile turns back on itself (undercut). Checked against a direct test ("Measured", the spike `undercut`): for five drives the polygon of the profile crosses itself at 1.05 times that radius and does not at 0.95 times.
 - The pins overlap one another: `Rr ≥ R sin(π/N)` (the clearance is not part of a pin).
-- The circle of the bottoms is not above zero: `R − Rr − clearance − E ≤ 0`.
+- The circle of the bottoms is not above zero: `R − Rr' − E ≤ 0`, with `Rr'` the compensated radius.
 - More points than `MAX_PROFILE_POINTS`, as for every generator.
 
 **Rejected:**
@@ -130,7 +130,7 @@ The coefficient has no bounds in the catalog; these failures are its bounds, and
 | File | What 5d does there |
 |---|---|
 | `types.ts` | two members of `GeneratorName` |
-| `generators.ts` | the parameter `shift` and the fact `shift` of the gear and the shift in `involuteGear`, `meshRotation` (the balance), the messages and the `summary` of the gear (it ends "No profile shift." today); the entries `cycloidalDisc` and `gt2Pulley` and their build functions (a module of their own each if `generators.ts` grows past reading: `generators/cycloid.ts`, `generators/gt2.ts`, imported by the catalog); `ResolvedOperand` with a point; `example` of `GeneratorSpec` |
+| `generators.ts` | `involuteGear` narrows its operand to the circle (the resolution gives each operand the kind its entry lists, and the gear lists a circle); the parameter `shift` and the fact `shift` of the gear and the shift in `involuteGear`, `meshRotation` (the balance), the messages and the `summary` of the gear (it ends "No profile shift." today); the entries `cycloidalDisc` and `gt2Pulley` and their build functions (a module of their own each if `generators.ts` grows past reading: `generators/cycloid.ts`, `generators/gt2.ts`, imported by the catalog); `ResolvedOperand` with a point; `example` of `GeneratorSpec` |
 | `recompute/profile.ts` | the resolution of an operand by its kind |
 | `packages/mcp/src/api.ts` | the example from the entry; the paragraph on gears says what the shift is and that gears in mesh must balance it |
 | `packages/app/src/sketch-commands.ts` | `FORM_DEFAULTS` gives way to `example` |
@@ -260,3 +260,18 @@ Each finding was checked against the code before it was acted on. The findings o
 Checked by the reviewers and found sound: the cycloid equations, their frame, winding and phase (recomputed by both at four input angles; the opposite turn overlaps by 1.6 to 3 mm), the failure conditions, the polygon-inside reasoning; the shift formulas against KHK, both conventions and the balance; all six diameters of the scenario-9 part and the interference limits; the GT2 outside diameters and the placement of the flank (√(0.445² − 0.4²) = 0.195, also against the code of FreeCAD); no schema step; `null` returning a parameter to its default; the deferrals.
 
 Round 1 had more than six findings with three serious ones, so a second round looks at the fixes ("Round 2").
+
+### Round 2 (2026-11-17): the fixes of round 1, at `1b5e1ac`
+
+The diff of the fixes of both packages, to the same reviewers: the internal subagent on Opus 5.5 at high effort (11 findings over both packages, 2 major), codex (5 findings, 1 major); agy was tried once more and was still out of quota. The findings on this package:
+
+| Finding | Who | Severity | Accepted? | What changed |
+|---|---|---|---|---|
+| "Every condition is checked with the radius that is built" contradicts the overlap of the pins, which uses the physical `Rr` (R 25, N 12, E 1, Rr 6.4, clearance 0.2: the pins do not overlap, pins with the clearance would) | codex, internal | minor / nit | Yes | The undercut and the circle of the bottoms use the compensated radius, the overlap `Rr`, `E · N < R` none; a failure names its condition |
+| `nearestGap` ignores `cleared` of the gap query | codex | minor | Yes (`query/gap.ts`) | A cleared pair of the disc fails the helper |
+| `involuteGear` reads its operand as a circle; with the union it has to narrow | internal | nit | Yes | Said in "Where the code lives" |
+| The second disc has the extent of the first and shares its volume | internal | nit | Yes | Discs 3 thick, the second from −16 |
+
+Found holding by both: the disc rotation with `pinAngle` (π/11 for the example; codex sampled it clear with the angle and 1.959 mm into the pins without it), the `setField` of a fixed point, the new failures of a shift and that they bound the coefficient both ways, the refinement within the limit of points (about 9 000 for the case at the edge of undercut), `GeneratorInputAfter` and `gt2At`, all diameters and limits of scenario 9.
+
+A third and last round reads the diff of these fixes ("Round 3").

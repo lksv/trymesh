@@ -201,11 +201,14 @@ export declare function kindOf(ref: ExternalRefAfter): ReferenceKindSpec<Externa
 // The validator of an entry of `external`: reads `type` and hands the entry to its kind. An unknown
 // type fails with the text of today while the registry has one kind ("promítnout jde jen hranu");
 // the package that adds the second kind makes the text list the kinds. `addExternal` and
-// `updateExternal` call it with a reader of numeric fields over the sketch's expressions.
+// `updateExternal` call it with a fresh reader of numeric fields over no expressions, as
+// `addConstraint` does, and hand the expressions it read on as changes (see `KindBase.validate`).
+// `load` calls it with the reader of the document, as for every field.
 export declare function externalRef(context: ValidationContext, sketch: SketchFeature, id: Id, entry: unknown, what: string): ExternalRefAfter;
 
 // What an update of an entry may not do (`updateExternal`), checked in this order, the text when it
-// does (the third part is written by the first package that can reach it, 6c or 6f):
+// does. 6a writes the second part, which is today's rule; the first and the third are written by
+// the first package that can reach them (6c for the source; 6c or 6f for a constrained entity):
 // - change the source of the entry (reference to derived or back);
 // - change the kind of an entity that stays (the same ID): for the edge, whose curve `<id>` is
 //   a line or a circle by `kind`, this is today's rule with today's text ("druh promítnutí změnit

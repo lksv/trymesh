@@ -66,7 +66,7 @@ export function taperedSection(profile: ResolvedProfile, extent: Distance & { ta
     // difference of two radii that are nearly equal.
     const turn = curve.type === 'circle' ? (curve.ccw ? 1 : -1) : Math.sign(curve.sweep);
     const apex = start - (curve.radius * distance) / (turn * shift);
-    surfaces.set(key, { planar: false, surface: 'cone', apex: [curve.center[0], curve.center[1], apex], axis: [0, 0, Math.sign(start - apex)], halfAngle: Math.abs(taper) });
+    surfaces.set(key, { planar: false, surface: 'cone', apex: [curve.center[0], curve.center[1], apex], axis: [0, 0, Math.sign(start - apex)], halfAngle: Math.abs(taper), along: [0, 0, 1] });
   }
   return {
     rings: rings.map((ring) => ({ w: start + ring.t * distance, regions: ring.regions })),

@@ -1977,6 +1977,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + label
     +   "Count with the original (a whole number or an expression)"
     +   span.field
@@ -2354,6 +2355,7 @@
     -     option value="Z": "Axis Z"
     -     option selected value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - label
     -   "Sketch"
     -   select value="s1"
@@ -2524,18 +2526,20 @@
   panel:
     + p: "Základ: stěna Vysunutí 2 – protější víko (Vysunutí 2)"
     + p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    + div.buttons
+    +   button: "Midplane with… (pick)"
+    - p.hint: "Klikněte v pohledu na rovinu nebo rovinnou stěnu, nebo zvolte základní rovinu:"
+    +   button: "Add a tilt"
     + label
     +   "Offset along the normal (mm or an expression)"
     +   span.field
     +     input value="10"
     +     small.computed data-field="offset" data-unit="mm"
     + p#draft-problem.issue.warning
-    - p.hint: "Klikněte v pohledu na rovinu nebo rovinnou stěnu, nebo zvolte základní rovinu:"
-    +   button.primary: "OK"
     -   button: "XY"
     -   button: "XZ"
     -   button: "YZ"
-    - div.buttons
+    +   button.primary: "OK"
   status: Zadejte posun; kliknutím v pohledu lze změnit základ.
   view: 2 scene(s) set
   scene:
@@ -2704,15 +2708,19 @@
     - h2: "Nová rovina"
     - p: "Základ: rovina XY"
     - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Midplane with… (pick)"
+    - div.buttons
+    -   button: "Add a tilt"
     - label
     -   "Offset along the normal (mm or an expression)"
     -   span.field
     -     input value="5"
     -     small.computed data-field="offset" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Rovina přidáno.
@@ -4696,6 +4704,7 @@
     +     option value="Z": "Axis Z"
     +     option selected value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     -   "Use"
     -   select value=""
     -     option selected value="": "Default: Printed part"
@@ -4951,6 +4960,7 @@
     -     option value="Z": "Axis Z"
     -     option selected value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     +   "Material from the catalog"
     +   select value=""
     +     option selected value="": "—"
@@ -5038,7 +5048,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.717
 
 === 71. the form of the plane
-  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":20}}, "r1") -> ok
+  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":20,"midplaneWith":null,"tilt":null}}, "r1") -> ok
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
     -   button title="Ctrl+Z": "↶ Zpět"
@@ -5149,11 +5159,13 @@
     + h2: "Úprava: Rovina 1"
     + p: "Základ: rovina XY"
     + p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    + div.buttons
+    +   button: "Midplane with… (pick)"
     - h2: "Vysunutí"
-    +   "Offset along the normal (mm or an expression)"
+    - label
     -   "Název"
     -   input value="Vysunutí 4"
-    - div.buttons
+    +   button: "Add a tilt"
     -   button.primary: "Upravit"
     -   button: "Potlačit"
     -   button: "Smazat"
@@ -5163,7 +5175,7 @@
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
     - h2: "Properties of Vysunutí 4"
-    - label
+    +   "Offset along the normal (mm or an expression)"
     -   "Name"
     -   input value="" placeholder="Vysunutí 4"
     - label
@@ -5246,7 +5258,7 @@
     - face e4 #11 #f97316 opacity 0.3
 
 === 72. an empty field: the engine refuses the preview
-  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":null}}, "r1") -> invalidCommand: updateFeature.patch.offset: čeká se konečné číslo
+  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":null,"midplaneWith":null,"tilt":null}}, "r1") -> invalidCommand: updateFeature.patch.offset: čeká se konečné číslo
   engine: getState("n1")
   panel:
     +     input value=""
@@ -5259,13 +5271,13 @@
     - fill #f97316 opacity 0.3 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 29.717
 
 === 73. OK is refused by the engine and the form stays
-  engine: execute({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":null}}) -> invalidCommand: updateFeature.patch.offset: čeká se konečné číslo
+  engine: execute({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":null,"midplaneWith":null,"tilt":null}}) -> invalidCommand: updateFeature.patch.offset: čeká se konečné číslo
   status: updateFeature.patch.offset: čeká se konečné číslo  [error]
   view: 0 scene(s) set
 
 === 74. a valid offset is saved
-  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":25}}, "r1") -> ok
-  engine: execute({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":25}}) -> ok
+  engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":25,"midplaneWith":null,"tilt":null}}, "r1") -> ok
+  engine: execute({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":25,"midplaneWith":null,"tilt":null}}) -> ok
   feature r1:
     + {"id":"r1","name":"Rovina 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":25}
     - {"id":"r1","name":"Rovina 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":20}
@@ -5396,15 +5408,19 @@
     - h2: "Úprava: Rovina 1"
     - p: "Základ: rovina XY"
     - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Midplane with… (pick)"
+    - div.buttons
+    -   button: "Add a tilt"
     - label
     -   "Offset along the normal (mm or an expression)"
     -   span.field
     -     input value=""
     -     small.computed data-field="offset" data-unit="mm"
     - p#draft-problem.issue.error: "updateFeature.patch.offset: čeká se konečné číslo"
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Změna uložena.

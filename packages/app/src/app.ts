@@ -32,7 +32,7 @@ import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
 import { exportMenu, takeExportSelection } from './panels/export';
 import { type QueryPanel, answeredAsModelled, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
-import { type MechanismPanel, blockedNote } from './panels/mechanism';
+import { type MechanismPanel, blockedNote, jointPicksFace, takeMechanismSelection } from './panels/mechanism';
 import { modelPanel } from './panels/model';
 import { drawPicture, savePicture, viewCapability } from './picture';
 import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
@@ -703,10 +703,16 @@ export class App implements SketchHost, SceneHost {
     // a form that asks for no pick of the view gets the bare event
     const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
     if (isDraft(m) && !wanted) return m.form.hover?.(m, event, undefined, this) ? this.renderScene() : undefined;
-    const hover = this.pick(event, isDraft(m) ? { ...wanted } : { edges: !this.pending, faces: true, planes: true });
+    const hover = this.pick(event, isDraft(m) ? { ...wanted } : this.modelPicks());
     if (pickKey(hover) === pickKey(this.hover)) return;
     this.hover = hover;
     this.renderScene();
+  }
+
+  // What the view picks outside a form: faces only while the form of a joint picks a round face for
+  // its axis (D60), otherwise edges too (not while a plane is awaited) and planes.
+  private modelPicks(): { edges?: boolean; faces: true; planes?: true } {
+    return jointPicksFace(this.mechanism) ? { faces: true } : { edges: !this.pending, faces: true, planes: true };
   }
 
   private onUp(event: PointerEvent): void {
@@ -724,7 +730,7 @@ export class App implements SketchHost, SceneHost {
     // a form gets its clicks from the app: the bare event, or what it asked to be picked
     const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
     if (isDraft(m) && !wanted) return m.form.click?.(m, event, undefined, this);
-    const pick = this.pick(event, isDraft(m) ? { ...wanted } : { edges: !this.pending, faces: true, planes: true });
+    const pick = this.pick(event, isDraft(m) ? { ...wanted } : this.modelPicks());
     if (isDraft(m)) return m.form.click?.(m, event, pick, this);
     const ref = this.planeRefOf(pick);
     if (this.pending) {
@@ -736,8 +742,8 @@ export class App implements SketchHost, SceneHost {
       }
       return;
     }
-    // an armed control of the open query or export takes the selection; the app then keeps none of its own
-    if (!pick || !(takeSelection(this.queries, pick) || takeExportSelection(this.queries, pick))) this.selected = pick;
+    // an armed control of the open query or export, or the joint form picking a face, takes the selection; the app then keeps none of its own
+    if (!pick || !(takeSelection(this.queries, pick) || takeExportSelection(this.queries, pick) || takeMechanismSelection(this, this.mechanism, pick))) this.selected = pick;
     this.renderPanel();
     this.renderScene();
   }

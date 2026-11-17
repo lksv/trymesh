@@ -1,13 +1,13 @@
 // The revolve in the app (D58): its form (the profile, regions of a sketch picked in the view with
 // their offset or a wall along curves, the axis, the extent of a whole turn or an angle, the
 // operation and the targets), its summary, and the axis it draws.
-import { type Command, type Feature, type Id, type Input, type RevolveFeature, type SketchFeature, type Vec3 } from '@trymesh/engine';
-import { fmt, h } from '../dom';
-import { axisRows } from '../axis-picker';
+import { type Command, type Id, type Input, type RevolveFeature, type SketchFeature, type Vec3 } from '@trymesh/engine';
+import { h } from '../dom';
+import { axisLabel, axisRows } from '../axis-picker';
 import { COLOR } from '../draw';
 import type { PanelHost } from '../host';
-import { OPERATIONS, shownValue } from '../labels';
-import { type AxisChange, axisText, changeAxis, lineIds } from '../sketch-commands';
+import { OPERATIONS, shownDegrees, shownValue } from '../labels';
+import { type AxisChange, changeAxis, lineIds } from '../sketch-commands';
 import type { SceneModel } from '../viewport';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { type DraftProfile, type ProfileChange, type ProfileHover, clickProfile, hoverProfile, profileOverlay, regionsFields, sketchRegions, wallFields } from './profile-picker';
@@ -257,7 +257,7 @@ export const revolve: FeatureUi<RevolveFeature, Extra> = {
     const offset = f.profile.type === 'regions' && f.profile.offset !== undefined ? `, offset ${shownValue(f, 'profile/offset', f.profile.offset)} mm` : '';
     const profile = f.profile.type === 'regions' ? `regions: ${f.profile.regions.length}${offset}` : `a wall ${shownValue(f, 'profile/thickness', f.profile.thickness)} mm thick along ${f.profile.curves.join(', ')}`;
     const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => host.bodyName(id)).join(', ')}` : '';
-    const out = [h('p', { className: 'hint' }, `Revolve of ${host.nameOf(f.profile.sketch)} about ${axisText(f.axis, (id) => host.nameOf(id))}, ${extent}; ${OPERATIONS[f.operation]}, ${profile}${targets}.`)];
+    const out = [h('p', { className: 'hint' }, `Revolve of ${host.nameOf(f.profile.sketch)} about ${axisLabel(host, f.axis)}, ${extent}; ${OPERATIONS[f.operation]}, ${profile}${targets}.`)];
     const steps = stepsText(host.view().evaluation.features[f.id]);
     if (steps) out.push(h('p', { className: 'hint' }, steps));
     return out;
@@ -267,5 +267,3 @@ export const revolve: FeatureUi<RevolveFeature, Extra> = {
   form,
 };
 
-// An angle of a summary in degrees, with its expression.
-const shownDegrees = (f: Feature, path: string, value: number): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${fmt((value * 180) / Math.PI)}°` : `${fmt((value * 180) / Math.PI)}°`);

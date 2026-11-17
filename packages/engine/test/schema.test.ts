@@ -14,15 +14,17 @@ const refused = (run: () => unknown, message: RegExp) => {
 };
 
 describe('the schema of the document', () => {
-  // master: no step is pending, so the build saves the version 7 (six steps) without names.
-  it('master: the version counts every step, and no name is saved', () => {
+  // The branch d36/5c: its step `5c-more-planes` is pending, so the build saves the version of master
+  // (7) and the name of the step. The merge sets SCHEMA_PENDING to 0, and this test to the version 8
+  // without names.
+  it('the branch d36/5c: the version of master and the name of the pending step', () => {
     // the names in their order are pinned: a version counts the steps by position, so the list only grows at its end
-    expect(UPGRADES.map((entry) => entry.name)).toEqual(['d35-profiles-and-parameters', 'd37-schema-steps', '2b-taper', '3a-body-properties', '5a-mechanism', '3b-mesh-import']);
-    expect(SCHEMA_PENDING).toBe(0);
+    expect(UPGRADES.map((entry) => entry.name)).toEqual(['d35-profiles-and-parameters', 'd37-schema-steps', '2b-taper', '3a-body-properties', '5a-mechanism', '3b-mesh-import', '5c-more-planes']);
+    expect(SCHEMA_PENDING).toBe(1);
     expect(SCHEMA_VERSION).toBe(7);
     expect(schemaProblems()).toEqual([]);
-    expect(schemaHeader()).toEqual({ schemaVersion: 7 });
-    const keys = ['schemaVersion', 'settings', 'parameters', 'checks', 'features', 'bodyProperties', 'mechanism', 'meshes'];
+    expect(schemaHeader()).toEqual({ schemaVersion: 7, schemaSteps: ['5c-more-planes'] });
+    const keys = ['schemaVersion', 'schemaSteps', 'settings', 'parameters', 'checks', 'features', 'bodyProperties', 'mechanism', 'meshes'];
     expect(Object.keys(emptyDocument())).toEqual(keys);
     expect(Object.keys(validateDocument(JSON.parse(JSON.stringify(emptyDocument()))))).toEqual(keys);
   });

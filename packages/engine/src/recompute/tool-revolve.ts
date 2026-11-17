@@ -291,11 +291,11 @@ function sideInfo(shape: ReturnType<ResolvedProfile['sideOf']>['shape'], axis: R
   if (shape.type === 'round') {
     const [t, r] = [tOf(shape.center), rOf(shape.center)];
     if (Math.abs(r) <= LENGTH_TOLERANCE) return { planar: false, surface: 'sphere', center: world(onAxis(t)), radius: shape.radius };
-    return { planar: false, surface: 'torus', center: world(onAxis(t)), axis: along, majorRadius: r, minorRadius: shape.radius };
+    return { planar: false, surface: 'torus', center: world(onAxis(t)), axis: along, majorRadius: r, minorRadius: shape.radius, along };
   }
   if (shape.type !== 'line') throw new Error('revolve: a side without an exact curve');
   const [ta, tb, ra, rb] = [tOf(shape.a), tOf(shape.b), rOf(shape.a), rOf(shape.b)];
-  if (Math.abs(ra - rb) <= LENGTH_TOLERANCE) return { planar: false, surface: 'cylinder', center: world(onAxis(0)), axis: along, radius: (ra + rb) / 2 };
+  if (Math.abs(ra - rb) <= LENGTH_TOLERANCE) return { planar: false, surface: 'cylinder', center: world(onAxis(0)), axis: along, radius: (ra + rb) / 2, along };
   if (Math.abs(ta - tb) <= LENGTH_TOLERANCE) {
     const r = Math.max(0, ra);
     const origin: Vec3 = [o[0] + ta * d[0] + r * Math.cos(start) * e[0], o[1] + ta * d[1] + r * Math.cos(start) * e[1], r * Math.sin(start) * side];
@@ -304,5 +304,5 @@ function sideInfo(shape: ReturnType<ResolvedProfile['sideOf']>['shape'], axis: R
   }
   const apex = ta + ((tb - ta) * (0 - ra)) / (rb - ra);
   const middle = (ta + tb) / 2;
-  return { planar: false, surface: 'cone', apex: world(onAxis(apex)), axis: zeroless(mul3(along, Math.sign(middle - apex))), halfAngle: Math.atan2(Math.abs(rb - ra), Math.abs(tb - ta)) };
+  return { planar: false, surface: 'cone', apex: world(onAxis(apex)), axis: zeroless(mul3(along, Math.sign(middle - apex))), halfAngle: Math.atan2(Math.abs(rb - ra), Math.abs(tb - ta)), along };
 }

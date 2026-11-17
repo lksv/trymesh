@@ -885,6 +885,10 @@
     + h2: "Nová rovina"
     + p: "Základ: rovina XZ"
     + p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    + div.buttons
+    +   button: "Midplane with… (pick)"
+    + div.buttons
+    +   button: "Add a tilt"
     + label
     +   "Offset along the normal (mm or an expression)"
     +   span.field
@@ -1036,15 +1040,19 @@
     - h2: "Nová rovina"
     - p: "Základ: rovina XZ"
     - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Midplane with… (pick)"
+    - div.buttons
+    -   button: "Add a tilt"
     - label
     -   "Offset along the normal (mm or an expression)"
     -   span.field
     -     input value="10"
     -     small.computed data-field="offset" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Rovina přidáno.
@@ -3375,6 +3383,7 @@
     +     option value="Z": "Z"
     +     option value="point": "Through a sketch point"
     +     option value="line": "Along a sketch line"
+    +     option value="face": "The axis of a round face"
     + div.buttons
     +   button.primary: "Ask"
     +   button: "Close"
@@ -3573,6 +3582,7 @@
     -     option value="Z": "Z"
     -     option value="point": "Through a sketch point"
     -     option value="line": "Along a sketch line"
+    -     option value="face": "The axis of a round face"
     +   button.primary: "Ask"
     -   button.primary: "Ask again"
     - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
@@ -3859,7 +3869,7 @@
   view: 2 scene(s) set
 
 === 90. a new document
-  engine: load("{\"schemaVersion\":7,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{}}") -> ok
+  engine: load("{\"schemaVersion\":7,\"schemaSteps\":[\"5c-more-planes\"],\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{}}") -> ok
   features: (none)
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   toolbar:

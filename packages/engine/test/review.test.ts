@@ -37,6 +37,7 @@ import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature,
 import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
 import { smallestCurvatureRadius } from '../src/generators/cycloid';
 import type { Frame } from '../src/types';
+import { midplaneFrame } from '../src/features/plane';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -339,7 +340,7 @@ describe('a module per feature type (D37): what the move could have changed unse
     expect(paths.slice(2, -5).every((path) => path.startsWith('profile/params/'))).toBe(true);
     expect(paths.length).toBeGreaterThan(7);
     expect(FEATURE_TYPE_INFO.extrude.updatable).toEqual(['profile', 'extent', 'operation', 'targets']);
-    expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset']);
+    expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset', 'midplaneWith', 'tilt']);
     expect(FEATURE_TYPE_INFO.pattern.updatable).toEqual(['source', 'transform']);
     expect(FEATURE_TYPE_INFO.sketch.updatable).toEqual([]);
   });
@@ -1100,5 +1101,31 @@ describe('the import of a mesh: regressions of the review of 3b (D55)', async ()
   it('a load refuses a stored mesh with more triangles than its limit before it decodes it', () => {
     const big = { positions: TETRA.positions, triangles: 'A'.repeat(16 * 100_000 + 4) };
     expect(() => validateDocument({ ...emptyDocument(), meshes: { big } })).toThrow(/document\.meshes\.big: the mesh has more than 100000 triangles/);
+  });
+});
+
+describe('the midplane: the review of D60', () => {
+  // The product of two perpendicular normals turned about an oblique axis is noise of either sign;
+  // the bisector chosen at a right angle depended on it and could flip on an unrelated edit.
+  it('two perpendicular planes turned about an oblique axis give the n1 − n2 bisector at every angle', () => {
+    const axis = [1, 2, 3].map((v) => v / Math.sqrt(14)) as Vec3;
+    const turn = (v: Vec3, angle: number): Vec3 => {
+      const [c, s] = [Math.cos(angle), Math.sin(angle)];
+      const k = axis;
+      const cross: Vec3 = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
+      const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+      return [0, 1, 2].map((i) => v[i] * c + cross[i] * s + k[i] * dot * (1 - c)) as Vec3;
+    };
+    const frame = (normal: Vec3, x: Vec3): Frame => ({ origin: [0, 0, 0], x, y: [normal[1] * x[2] - normal[2] * x[1], normal[2] * x[0] - normal[0] * x[2], normal[0] * x[1] - normal[1] * x[0]], normal });
+    let noisy = 0;
+    for (let degrees = 1; degrees < 360; degrees++) {
+      const angle = (degrees * Math.PI) / 180;
+      const [n1, n2] = [turn([1, 0, 0], angle), turn([0, 1, 0], angle)];
+      if (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] !== 0) noisy++;
+      const mid = midplaneFrame(frame(n1, turn([0, 1, 0], angle)), frame(n2, turn([0, 0, 1], angle)));
+      const expected = [0, 1, 2].map((i) => (n1[i] - n2[i]) / Math.SQRT2);
+      mid.normal.forEach((value, i) => expect(Math.abs(value - expected[i])).toBeLessThan(1e-12));
+    }
+    expect(noisy).toBeGreaterThan(100); // the case is real: most turns leave noise in the product
   });
 });

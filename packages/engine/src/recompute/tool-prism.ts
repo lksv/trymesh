@@ -98,7 +98,7 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
       const direction = sub3(toWorld(frame, shape.b[0], shape.b[1]), toWorld(frame, shape.a[0], shape.a[1]));
       faces.push({ name, info: { planar: true, origin: toWorld(frame, shape.a[0], shape.a[1]), y: frame.normal, normal: unit3(cross3(direction, frame.normal)) } });
     } else if (shape.type === 'round') {
-      faces.push({ name, info: { planar: false, surface: 'cylinder', center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius } });
+      faces.push({ name, info: { planar: false, surface: 'cylinder', center: toWorld(frame, shape.center[0], shape.center[1]), axis: frame.normal, radius: shape.radius, along: frame.normal } });
     } else {
       faces.push({ name, info: { planar: false, surface: 'swept', axis: frame.normal } });
     }

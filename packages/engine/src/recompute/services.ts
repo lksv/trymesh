@@ -3,7 +3,7 @@
 // the modules of the feature types; they are not handed over in a context that would grow with them.
 import { type FaceInfo, analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
-import { LENGTH_TOLERANCE, faceKey, has, sub3 } from '../util';
+import { LENGTH_TOLERANCE, dot3, faceKey, has, mul3, sub3, unit3 } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
@@ -36,7 +36,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidPattern: 'The counts, the directions and the spans do not make a pattern.',
   importedTarget: 'A target or a tool is an imported mesh, which no feature may change.',
   invalidClearance: 'The tool cannot be moved outwards by the clearance without a change of its shape.',
-  invalidAxis: 'The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it.',
+  invalidAxis: 'The axis cannot be used: its line has no length or its face has no axis; for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it; for the tilt of a plane it is not parallel to the plane.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };
@@ -61,8 +61,25 @@ export function frame(ref: PlaneRef, state: State): Frame | IssueCode {
 // a line without a place in it is `brokenReference`; a line whose ends are not more than
 // `LENGTH_TOLERANCE` apart is `invalidAxis` with the line in `refs` and `detail` saying so. A projected line whose edge is
 // gone keeps its last valid place in the sketch, and so does the axis.
+// The axis of a round face (D60): the line of its exact surface through the origin of a cylinder,
+// the apex of a cone or the centre of a torus, its unit direction turned to the sense the build
+// gave the face (`along`). A body or a face not in the state (the face not on that body) is
+// `brokenReference`; a face without an axis is `invalidAxis` with the axis in `refs`.
 export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3 } | { code: IssueCode; refs: unknown[]; detail?: string } {
   if (ref.kind === 'base') return { point: [0, 0, 0], direction: [ref.axis === 'X' ? 1 : 0, ref.axis === 'Y' ? 1 : 0, ref.axis === 'Z' ? 1 : 0] };
+  if (ref.kind === 'face') {
+    const solid = lookup(state.bodies, ref.body);
+    if (!solid) return { code: 'brokenReference', refs: [ref.body] };
+    const id = state.faceIds.get(faceKey(ref.face));
+    if (id === undefined || !analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance).normalSum.has(id)) return { code: 'brokenReference', refs: [ref.face] };
+    const info = state.faceInfos[id];
+    if (info.planar || (info.surface !== 'cylinder' && info.surface !== 'cone' && info.surface !== 'torus')) {
+      return { code: 'invalidAxis', refs: [ref], detail: `the face is ${info.planar ? 'a plane' : `a surface of the kind ${info.surface === 'mesh' ? 'general' : info.surface}`} and has no axis` };
+    }
+    const unit = unit3(info.axis);
+    const direction = dot3(unit, info.along) < 0 ? mul3(unit, -1) : unit;
+    return { point: info.surface === 'cone' ? info.apex : info.center, direction: [direction[0] + 0, direction[1] + 0, direction[2] + 0] };
+  }
   const sketch = lookup(state.sketches, ref.sketch);
   if (!sketch) return { code: 'brokenReference', refs: [ref.sketch] };
   if (ref.kind === 'sketchLine') {

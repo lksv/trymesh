@@ -59,6 +59,8 @@ A profile of a sketch turned about an axis that lies in the plane of the sketch:
 | an arc or a circle whose centre lies off the axis | a torus: the centre the point of the axis nearest to the centre of the arc, the minor radius that of the arc, the major radius the distance of its centre from the axis, positive on the side of the profile and negative across the axis |
 | the caps of a partial turn | planes through the axis |
 
+The cylinder, the cone and the torus carry `along` (D60), the direction of the axis of the revolve: the sense of the axis of the face for an `AxisRef` of the kind `face` ([naming.md](naming.md), "The axis of a round face").
+
 **A sketch on a face** (`faceFrame`, X = Y × N):
 
 | Face | Origin | Y | Normal |

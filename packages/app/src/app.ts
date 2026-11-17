@@ -32,7 +32,7 @@ import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
 import { exportMenu, takeExportSelection } from './panels/export';
 import { type QueryPanel, answeredAsModelled, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
-import { type MechanismPanel, blockedNote } from './panels/mechanism';
+import { type MechanismPanel, blockedNote, takeMechanismSelection } from './panels/mechanism';
 import { modelPanel } from './panels/model';
 import { drawPicture, savePicture, viewCapability } from './picture';
 import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
@@ -736,8 +736,8 @@ export class App implements SketchHost, SceneHost {
       }
       return;
     }
-    // an armed control of the open query or export takes the selection; the app then keeps none of its own
-    if (!pick || !(takeSelection(this.queries, pick) || takeExportSelection(this.queries, pick))) this.selected = pick;
+    // an armed control of the open query or export, or the joint form picking a face, takes the selection; the app then keeps none of its own
+    if (!pick || !(takeSelection(this.queries, pick) || takeExportSelection(this.queries, pick) || takeMechanismSelection(this, this.mechanism, pick))) this.selected = pick;
     this.renderPanel();
     this.renderScene();
   }

@@ -417,11 +417,12 @@ describe('rigid transforms', () => {
       near(plane.y, [0, 0, 1]);
       near(plane.normal, [1, 0, 0]);
     }
-    const cylinder = transformFace(quarter, { planar: false, surface: 'cylinder', center: [4, 0, 0], axis: [1, 0, 0], radius: 2 });
+    const cylinder = transformFace(quarter, { planar: false, surface: 'cylinder', center: [4, 0, 0], axis: [1, 0, 0], radius: 2, along: [-1, 0, 0] });
     expect(cylinder).toMatchObject({ planar: false, surface: 'cylinder', radius: 2 });
     if (!cylinder.planar && cylinder.surface === 'cylinder') {
       near(cylinder.center, [0, 4, 0]);
       near(cylinder.axis, [0, 1, 0]);
+      near(cylinder.along, [0, -1, 0]); // the sense of the axis turns with the copy (D60)
     }
     const swept = transformFace(quarter, { planar: false, surface: 'swept', axis: [1, 0, 0] });
     if (!swept.planar && swept.surface === 'swept') near(swept.axis, [0, 1, 0]);

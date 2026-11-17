@@ -168,7 +168,7 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
   const sideOf = (key: string): { name: FaceRole; info: FaceInfo } => {
     const [part, point, flat] = key.split('/');
     const [cx, cy] = centers.get(point) as Vec2;
-    if (part === BORE) return { name: { role: 'holeBore', point }, info: { planar: false, surface: 'cylinder', center: [cx, cy, 0], axis: [0, 0, 1], radius: boreR } };
+    if (part === BORE) return { name: { role: 'holeBore', point }, info: { planar: false, surface: 'cylinder', center: [cx, cy, 0], axis: [0, 0, 1], radius: boreR, along: [0, 0, 1] } };
     if (part === FLAT) {
       // a flat starts at its corner in the sketch plane, as the side of a line of an extrusion does
       const corner = (k: number): Vec2 => {
@@ -180,10 +180,10 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
       const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
       return { name: { role: 'holeFlat', point, flat: Number(flat) }, info: { planar: true, origin: [a[0], a[1], 0], y: [0, 0, 1], normal: [(b[1] - a[1]) / length, -(b[0] - a[0]) / length, 0] } };
     }
-    if (shape.type === 'counterbore') return { name: { role: 'holeHead', point }, info: { planar: false, surface: 'cylinder', center: [cx, cy, 0], axis: [0, 0, 1], radius: headR } };
+    if (shape.type === 'counterbore') return { name: { role: 'holeHead', point }, info: { planar: false, surface: 'cylinder', center: [cx, cy, 0], axis: [0, 0, 1], radius: headR, along: [0, 0, 1] } };
     // the cone of a countersink: its apex beyond the mouth along the hole, its axis back to the mouth
     const half = (shape as Extract<HoleShape, { type: 'countersink' }>).angle / 2;
-    return { name: { role: 'holeHead', point }, info: { planar: false, surface: 'cone', apex: [cx, cy, mouth + (sign * headR) / Math.tan(half)], axis: [0, 0, -sign], halfAngle: half } };
+    return { name: { role: 'holeHead', point }, info: { planar: false, surface: 'cone', apex: [cx, cy, mouth + (sign * headR) / Math.tan(half)], axis: [0, 0, -sign], halfAngle: half, along: [0, 0, 1] } };
   };
   // The sections of a tool `length` long from the mouth.
   const sections = (length: number): Section[] => {

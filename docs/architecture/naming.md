@@ -110,7 +110,39 @@ Směr „ven" se bere ze sítě: je to součet normál všech trojúhelníků s 
 
 Důsledek: kladná `distance` (i kladný `start`) u extrude ze skici na stěně vždy znamená ven z tělesa, záporná dovnitř.
 
-**Vlastní rovina** (`PlaneFeature`) přebírá souřadný systém základu posunutý o `offset` ve směru jeho normály.
+**Vlastní rovina** (`PlaneFeature`) přebírá souřadný systém základu posunutý o `offset` ve směru jeho normály; with the optional parts of D60 the frame is built as the next section says.
+
+### The plane feature (D60)
+
+The design and its reasons are [d36/5c-more-planes/design.md](../d36/5c-more-planes/design.md). The step (`features/plane.ts`) builds the frame in a fixed order, in the state before the feature, each part optional but the base:
+
+1. **The base**: `frame(base)` as for the plane of a sketch (a base plane, a plane feature, a planar face with the normal out of the body). Errors: `brokenReference`, `nonPlanarFace` with the base in `refs`.
+2. **The midplane** (`midplaneWith`): `frame(midplaneWith)` with the same errors and that reference in `refs`, then `midplaneFrame(base, second)`. With `n1`, `n2` the normals and `s1`, `s2` the signed distances from the two planes: when `n1 · n2 ≤ 0` the plane `s1 = s2` with the normal `normalize(n1 − n2)`, otherwise the plane `s1 = −s2` with the normal `normalize(n1 + n2)`; both vectors are at least √2 long, so it never fails. That is the bisector nearer to the base (the base turned by at most 45°), and for parallel planes the plane in the middle with the normal of the base. The frame is the frame of the base turned by the smallest rotation that takes `n1` to the new normal (about `n1 × n`; written as `v c + k × v + k (k · v) / (1 + c)`, stable for a small turn), its origin moved along the new normal into the midplane. It does not know where material is: two faces at a convex edge with an inner angle above 90° (neighbouring sides of a hexagonal prism) give the plane outside the body that touches it along the edge; the plane of symmetry is that midplane tilted by π/2 about the edge projected as a line. Where the two normals pass through a right angle the choice switches.
+3. **The tilt** (`tilt: { axis, angle }`): `axis(tilt.axis, state)` (its errors end the step), then `tiltedFrame(frame, line, angle)`: the axis has to be parallel to the plane of steps 1 and 2 within `ANGLE_TOLERANCE` (the sine of its angle to the plane at most `sin(1e-4)`), otherwise `invalidAxis` with the axis in `refs` and the angle in the message; its direction is then made exactly parallel (the part along the normal removed). The frame is moved along its normal until it contains the point of the axis and turned about the axis by `angle` (Rodrigues; the right-hand rule about the direction of the axis): its origin about the point of the axis, its x, y and normal as directions. So a point of the base plane on the axis keeps its sketch coordinates on the tilted plane, the angle 0 gives the base moved onto the axis, and the origin turned with it may lie far from the axis (131 mm up for a hinge 230 mm from the origin of its sketch).
+4. **The offset** along the normal of the plane of steps 1 to 3.
+
+The frame is published in `FeatureResult.plane` and `state.planes`, as before; a tilted plane also tells in its facts `axisPoint` and `axisDirection` (the axis used, its direction made parallel), from which the app draws the axis. A plane with neither optional field is the plane of before, to the last bit. `midplaneFrame` and `tiltedFrame` are exported pure functions over frames; the engine tests call them directly.
+
+**Document and validation.** `planeFeature` reads `midplaneWith` with `planeRef` and `tilt` as an object with exactly the fields `axis` (`axisRef`) and `angle` (`fields.number` at `tilt/angle`, `TILT_ANGLE`: radians from −π to π, both included, **without a default**). The references are `planeRefs(base, 'base')`, `planeRefs(midplaneWith, 'midplaneWith')` and `axisRefs(tilt.axis, 'tilt/axis')`, so a second plane or an axis of a later feature is an invalid command and `moveFeature` keeps a plane behind them. `updateFeature` may change `base`, `offset`, `midplaneWith` and `tilt`: the tilt merges by fields and its axis (a reference) is replaced whole, so `{ tilt: { angle } }` changes the angle of a plane that has a tilt and is refused on one without (the axis is missing); `{ midplaneWith: null }` and `{ tilt: null }` remove them (the module's `removable`), with the expression of `tilt/angle`. `setField` reaches `tilt/angle` only on a plane that has a tilt (D44: the field has no default). The upgrade step `5c-more-planes` ([api.md](api.md), `load`) makes a build without these fields refuse a document instead of dropping them.
+
+### The axis of a round face (D60)
+
+`AxisRef` has the kind `face` (`{ kind: 'face', body, face }`), the axis of a round face of a body, for every consumer of an axis (a pattern, its grid, a joint, the tilt of a plane, the revolve, the argument `axis` of a query). The body and the face are validated as for a sketch on a face (`requireRef` of the body, `requireFace`: the feature that named the face and every pattern of its copy tags before the referring feature); `axisRefs` lists the body, the face source and the patterns.
+
+`axis()` (`recompute/services.ts`): the body has to be in the state and the face on it (`analyzeBody(…).normalSum`), otherwise `brokenReference` with the body or the face in `refs`. A cylinder gives the line through its `center`, a cone through its `apex`, a torus through its `center`, each along the unit `axis` of its surface turned to point along `along`; a plane, a sphere, a swept or a general surface is `invalidAxis` with the axis in `refs` and the detail "the face is a plane and has no axis" (or "a surface of the kind sphere").
+
+**The sense** is the one the build gives the face, `along` of the round members of `FaceInfo` (`solid.ts`; internal, `Evaluation.faceSurfaces` publishes the surfaces as before). It is required on the cylinder, the cone and the torus, so that a later build of round faces does not compile until it says which sense it gives. `axis` of a surface does not carry it: a cylinder's has no sign, and a cone's points from its apex to the face, so it turns round with the sign of a taper or the direction of a hole.
+
+| Build | `along` |
+|---|---|
+| the side of an arc or a circle of an extrusion (`buildPrism`) | `frame.normal`, the normal of the sketch |
+| the cone of a tapered side (`recompute/taper.ts`) | `[0, 0, 1]` in the coordinates of the sketch, mapped to its normal by `local` of `buildStack` |
+| the bore, the counterbore and the countersink of a hole (`features/hole.ts`) | `[0, 0, 1]` likewise, whichever way the hole goes |
+| a cylinder, a cone or a torus of a revolve (`recompute/tool-revolve.ts`) | the direction of the axis of the revolve |
+| a copy of a pattern or of a mirror (`transformFace`) | moved as `axis` is; a mirrored copy has the mirror image |
+| a tool moved outwards by a clearance (`movedOutwards`, 3d) | kept: the face keeps its axis |
+
+So the axis of a bore of an extrusion or of a hole is the normal of its sketch: out of the body for a sketch on a face, and a joint about a bore drilled from the top turns counter-clockwise seen from above. In a posed query the axis of a face moves with its body (`query/context.ts`), while a `sketchLine` projected from the edge of that bore stays as modelled.
 
 ### Profily a oblasti
 

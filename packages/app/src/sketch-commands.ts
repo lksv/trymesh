@@ -9,6 +9,7 @@ import {
   type DimensionShape,
   type Expr,
   type ExtrudeFeature,
+  type FaceName,
   GENERATORS,
   type GeneratorName,
   type GeometricConstraint,
@@ -413,7 +414,7 @@ type CircularDraft = Extract<PatternTransformDraft, { type: 'circular' }>;
 type LinearDraft = Extract<PatternTransformDraft, { type: 'linear' }>;
 export type PatternSpan = CircularDraft['span'];
 export type LinearSpan = LinearDraft['span'];
-export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint' | 'sketchLine';
+export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint' | 'sketchLine' | 'face';
 export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : axis.kind);
 // The lines of a sketch an axis may run along (D58): its own lines, construction or not, then its
 // projected ones.
@@ -426,16 +427,19 @@ export const lineIds = (sketch: SketchFeature): Id[] => [
 // `sketch` and `point` say otherwise; another sketch starts at its origin); or `sketchLine` (the
 // first line of the latest of `sketches` that has one, by `lines`, until `sketch` and `line` say
 // otherwise; another sketch starts at its first line). Without a sketch that has a line the kind
-// `sketchLine` changes nothing.
+// `sketchLine` changes nothing. The axis of a round face (D60) comes only with `face`, the face
+// picked in the view; the kind `face` alone changes nothing.
 export interface AxisChange {
   axis?: AxisKind;
   sketch?: Id;
   point?: Id;
   line?: Id;
+  face?: { body: Id; face: FaceName };
 }
 export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[], lines: (sketch: Id) => Id[] = () => []): AxisRef {
   let out = axis;
-  if (change.axis !== undefined && change.axis !== axisKind(out)) {
+  if (change.face !== undefined) return { kind: 'face', body: change.face.body, face: change.face.face };
+  if (change.axis !== undefined && change.axis !== axisKind(out) && change.axis !== 'face') {
     const sketch = sketches[sketches.length - 1];
     const withLine = [...sketches].reverse().find((id) => lines(id).length > 0);
     if (change.axis === 'sketchLine') {
@@ -449,9 +453,16 @@ export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[], li
   if (change.line !== undefined && out.kind === 'sketchLine') out = { ...out, line: change.line };
   return out;
 }
-// An axis in a sentence: "the axis Z", "the normal through p1 of Sketch 1", "the line ka of knob".
-export const axisText = (axis: AxisRef, nameOf: (id: Id) => string): string =>
-  axis.kind === 'base' ? `the axis ${axis.axis}` : axis.kind === 'sketchPoint' ? `the normal through ${axis.point} of ${nameOf(axis.sketch)}` : `the line ${axis.line} of ${nameOf(axis.sketch)}`;
+// An axis in a sentence: "the axis Z", "the normal through p1 of Sketch 1", "the line ka of knob",
+// "the axis of the face <label>" (`faceText` names the face with its body).
+export const axisText = (axis: AxisRef, nameOf: (id: Id) => string, faceText: (body: Id, face: FaceName) => string): string =>
+  axis.kind === 'base'
+    ? `the axis ${axis.axis}`
+    : axis.kind === 'sketchPoint'
+      ? `the normal through ${axis.point} of ${nameOf(axis.sketch)}`
+      : axis.kind === 'sketchLine'
+        ? `the line ${axis.line} of ${nameOf(axis.sketch)}`
+        : `the axis of ${faceText(axis.body, axis.face)}`;
 // One change of the pattern form.
 // - `source`: the other kind of source, filled with the latest choice of that kind.
 // - `toggleFeature`: adds a source feature or removes it; the list keeps the order of the timeline.
@@ -595,7 +606,8 @@ const newSecond = (first: AxisRef): SecondDraft => ({ direction: { kind: 'base',
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
 export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
-  if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
+  // a second plane or a tilt the draft no longer has is removed by name (D60)
+  if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset, midplaneWith: draft.midplaneWith ?? null, tilt: draft.tilt ?? null } };
   // The draft holds every field of the source and the transform, so merging them replaces both; a
   // second direction the draft no longer has is removed by name (a patch of the same type merges).
   if (draft.type === 'pattern') {

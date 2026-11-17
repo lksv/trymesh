@@ -8,7 +8,7 @@
 // has to change one has changed behaviour, and says in its message what and why. To write the
 // snapshots again: `npx vitest run packages/app/test/app.test.ts -u`.
 import { writeFileSync } from 'node:fs';
-import { type Command, emptyDocument, emptySketch } from '@trymesh/engine';
+import { type Command, type PlaneFeature, emptyDocument, emptySketch } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
 import { readZip } from '../../engine/test/zip-reader';
@@ -70,6 +70,7 @@ const SECOND_COUNT = 'Count along the second direction (a whole number or an exp
 const SECOND_SPACING = 'Second spacing (mm or an expression; negative = against the direction)';
 const SECOND_LENGTH = 'Second length (mm or an expression; negative = against the direction)';
 const OFFSET = 'Offset along the normal (mm or an expression)';
+const TILT_ANGLE = 'Tilt angle (° or an expression in radians)';
 const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
 const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
 const TAPER = 'Taper (degrees or an expression; positive widens away from the start; empty = none)';
@@ -997,6 +998,74 @@ describe('the app, driven as a user drives it', () => {
     h.choose('Sketch', 'S');
     h.record('a new revolve in the second sketch, its profile moved to the first: the axis Z of the first, not the line of the second');
     await matches(h, 'revolve');
+  });
+
+  it('more planes: the midplane with a plane picked in the view, a tilt about an axis or about the axis of a round face (D60)', async () => {
+    const h = await start();
+    // a plate 40 × 30, 10 thick, with a bore of radius 3 about (10, 15)
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Kružnice');
+    h.click(at(10, 15));
+    h.click(at(13, 15));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.click(at(30, 10));
+    h.type(h.field(DISTANCE), '10');
+    h.press('panel', 'OK');
+    h.record('a plate with a bore');
+
+    h.press('toolbar', 'Rovina');
+    h.press('panel', 'XY');
+    h.record('a new plane on XY: the buttons of the midplane and of the tilt');
+    h.press('panel', 'Midplane with… (pick)');
+    h.record('the pick of the second plane armed');
+    h.click(at(30, 25, 10));
+    h.record('the top of the plate picked: the midplane of XY and the top, offset by 10');
+    h.type(h.field(OFFSET), '0');
+    h.press('panel', 'Add a tilt');
+    h.record('a tilt about the axis X by 30°: the preview draws the axis through the square');
+    h.type(h.field(TILT_ANGLE), '-20');
+    h.record('the angle typed in degrees');
+    h.press('panel', 'OK');
+    const first = h.engine.getState().document.features.find((f) => f.type === 'plane') as PlaneFeature;
+    expect(first).toMatchObject({ midplaneWith: { kind: 'face' }, tilt: { axis: { kind: 'base', axis: 'X' } }, offset: 0 });
+    expect(first.tilt?.angle).toBeCloseTo((-20 * Math.PI) / 180, 12);
+    h.row(first.name).click();
+    h.record('selected: the summary names the midplane and the tilt');
+    doubleClick(h, first.name);
+    h.press('panel', 'Remove the midplane');
+    h.press('panel', 'Remove the tilt');
+    h.record('both removed in the form: the plane on XY again');
+    h.press('panel', 'OK');
+    const edited = h.engine.getState().document.features.find((f) => f.id === first.id) as PlaneFeature;
+    expect([edited.midplaneWith, edited.tilt, edited.expressions?.['tilt/angle']]).toEqual([undefined, undefined, undefined]);
+
+    // a plane through the axis of the bore, turned from YZ
+    h.press('toolbar', 'Rovina');
+    h.press('panel', 'YZ');
+    h.type(h.field(OFFSET), '0');
+    h.press('panel', 'Add a tilt');
+    h.record('a tilt of YZ about X: the axis is across the plane, invalidAxis in the preview');
+    h.choose('Axis', 'face');
+    h.record('the kind of a round face arms the pick: the view picks faces');
+    h.click(at(30, 25, 10));
+    h.record('the top of the plate is flat: refused, the pick stays armed');
+    // the far wall of the bore, seen through its opening
+    h.click(at(11.8, 17.4, 8));
+    h.record('the bore picked: the plane through its axis, turned by 30° from YZ');
+    h.press('panel', 'OK');
+    const second = h.engine.getState().document.features.at(-1) as PlaneFeature;
+    expect(second.tilt?.axis).toMatchObject({ kind: 'face', face: { role: 'side' } });
+    const frame = h.engine.getState().evaluation.features[second.id]?.plane;
+    expect(frame?.normal[2]).toBeCloseTo(0, 9);
+    expect((10 - (frame?.origin[0] ?? NaN)) * (frame?.normal[0] ?? NaN) + (15 - (frame?.origin[1] ?? NaN)) * (frame?.normal[1] ?? NaN)).toBeCloseTo(0, 6);
+    h.row(second.name).click();
+    h.record('selected: the summary names the face of the axis');
+    await matches(h, 'planes');
   });
 
   it('the model: selection in the view, the selected feature, export, the timeline, parameters and checks, collisions', async () => {

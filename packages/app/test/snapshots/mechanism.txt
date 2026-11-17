@@ -325,6 +325,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     + label
     +   "Lower limit (° or an expression in radians)"
@@ -417,6 +418,7 @@
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     - label
     -   "Lower limit (° or an expression in radians)"
@@ -1428,6 +1430,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     + label
     +   "Lower limit (° or an expression in radians)"
@@ -1494,6 +1497,7 @@
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     - label
     -   "Lower limit (° or an expression in radians)"
@@ -1559,6 +1563,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     + label
     +   "Lower limit (° or an expression in radians)"
@@ -1625,6 +1630,7 @@
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     - label
     -   "Lower limit (° or an expression in radians)"
@@ -1698,6 +1704,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     + label
     +   "Lower limit (° or an expression in radians)"
@@ -1844,6 +1851,7 @@
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - p.hint: "The child slides along the direction of the axis."
     - label
     -   "Lower limit (mm or an expression)"

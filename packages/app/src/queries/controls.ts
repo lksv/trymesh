@@ -170,15 +170,21 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     });
     return [select, pick(path, form, 'a plane or a planar face')];
   },
-  // A base axis, a sketch and its point, or a sketch and its line.
+  // A base axis, a sketch and its point, a sketch and its line, or the axis of a round face selected
+  // in the view (D60: choosing the kind arms the pick).
   axis: (_spec, value, path, form) => {
     const current = isRecord(value) ? value : {};
-    const chosen = current.kind === 'base' ? String(current.axis) : current.kind === 'sketchPoint' ? 'point' : current.kind === 'sketchLine' ? 'line' : undefined;
+    const chosen = current.kind === 'base' ? String(current.axis) : current.kind === 'sketchPoint' ? 'point' : current.kind === 'sketchLine' ? 'line' : current.kind === 'face' ? 'face' : undefined;
     const out: HTMLElement[] = [
-      choice([...BASE_AXES.map((axis) => [axis, axis] as const), ['point', 'Through a sketch point'] as const, ['line', 'Along a sketch line'] as const], chosen, (key) =>
-        form.set(path, key === undefined ? undefined : key === 'point' ? { kind: 'sketchPoint' } : key === 'line' ? { kind: 'sketchLine' } : { kind: 'base', axis: key }, true),
-      ),
+      choice([...BASE_AXES.map((axis) => [axis, axis] as const), ['point', 'Through a sketch point'] as const, ['line', 'Along a sketch line'] as const, ['face', 'The axis of a round face'] as const], chosen, (key) => {
+        form.set(path, key === undefined ? undefined : key === 'point' ? { kind: 'sketchPoint' } : key === 'line' ? { kind: 'sketchLine' } : key === 'face' ? { kind: 'face' } : { kind: 'base', axis: key }, true);
+        if (key === 'face') form.arm(path);
+      }),
     ];
+    if (current.kind === 'face') {
+      if (isRecord(current.face)) out.push(h('span', {}, `${faceText(form, current.face as unknown as FaceName)} (${form.host.bodyName(String(current.body))})`));
+      out.push(pick(path, form, 'a cylinder, a cone or a torus'));
+    }
     if (current.kind === 'sketchLine') {
       const feature = sketchOf(form, current.sketch);
       out.push(

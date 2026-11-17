@@ -339,7 +339,7 @@ describe('a module per feature type (D37): what the move could have changed unse
     expect(paths.slice(2, -5).every((path) => path.startsWith('profile/params/'))).toBe(true);
     expect(paths.length).toBeGreaterThan(7);
     expect(FEATURE_TYPE_INFO.extrude.updatable).toEqual(['profile', 'extent', 'operation', 'targets']);
-    expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset']);
+    expect(FEATURE_TYPE_INFO.plane.updatable).toEqual(['base', 'offset', 'midplaneWith', 'tilt']);
     expect(FEATURE_TYPE_INFO.pattern.updatable).toEqual(['source', 'transform']);
     expect(FEATURE_TYPE_INFO.sketch.updatable).toEqual([]);
   });

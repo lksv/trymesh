@@ -52,6 +52,8 @@ export function selected(spec: ArgKind, pick: ViewPick): unknown {
     if (pick.kind === 'plane') return pick.ref;
     return pick.kind === 'face' && pick.planar ? { kind: 'face', body: pick.body, face: pick.name } : undefined;
   }
+  // the axis of a round face (D60); whether it has an axis is the engine's to say
+  if (spec.kind === 'axis') return pick.kind === 'face' && !pick.planar ? { kind: 'face', body: pick.body, face: pick.name } : undefined;
   return undefined;
 }
 // Is the reference complete enough to stand for the argument? (A body chosen without its face is not.)

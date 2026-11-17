@@ -67,6 +67,14 @@ function distance(surface: Surface, p: Vec3): number {
     // the distance from the line of the cone in the plane through the axis and the point
     return Math.abs(across * Math.cos(surface.halfAngle) - Math.abs(along) * Math.sin(surface.halfAngle));
   }
+  if (surface.kind === 'sphere') return Math.abs(length(minus(p, surface.center)) - surface.radius);
+  if (surface.kind === 'torus') {
+    // in the half plane of the point the centre of the tube lies at the signed major radius
+    const d = minus(p, surface.center);
+    const along = dot(d, surface.axis) / length(surface.axis);
+    const across = Math.sqrt(Math.max(0, dot(d, d) - along * along));
+    return Math.abs(Math.hypot(across - surface.majorRadius, along) - surface.minorRadius);
+  }
   return 0;
 }
 
@@ -88,7 +96,24 @@ const L: [number, number][] = [
   [10, 20],
   [5, 20],
 ];
-const TOOLS: { name: string; commands: Command[]; source: Id }[] = [
+// A half circle in T about its diameter, a line of the sketch: the axis of a revolve (D58).
+const HALF_DISC: Command = batch(
+  { type: 'addPoint', sketch: 'T', id: 'c0', x: 12, y: 15 },
+  { type: 'addPoint', sketch: 'T', id: 'c1', x: 12, y: 25 },
+  { type: 'addPoint', sketch: 'T', id: 'cc', x: 12, y: 20 },
+  { type: 'addCurve', sketch: 'T', id: 'arc', curve: { type: 'arc', center: 'cc', start: 'c0', end: 'c1' } },
+  { type: 'addCurve', sketch: 'T', id: 'dia', curve: { type: 'line', a: 'c1', b: 'c0' } },
+);
+const revolved = (id: Id, extent: object, operation: 'add' | 'cut'): Command => ({
+  type: 'addFeature',
+  feature: { id, name: id, suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'T', regions: [{ outerLoop: ['arc', 'dia'] }] }, axis: { kind: 'sketchLine', sketch: 'T', line: 'dia' }, extent, operation, targets: ['A'] } as never,
+});
+// `off`: how far a vertex of the body may lie from the surface of its face. A vertex the kernel puts
+// where a polygon of a sphere meets the plate lies on a chord of the sphere, within the chord
+// tolerance; every other kind of tool meets the plate along edges that lie on its surfaces.
+const TOOLS: { name: string; commands: Command[]; source: Id; off?: number }[] = [
+  { name: 'a revolve added, a whole turn', source: 'F', off: 0.01, commands: [HALF_DISC, revolved('F', { type: 'full' }, 'add')] },
+  { name: 'a revolve cut, a partial turn', source: 'F', off: 0.01, commands: [HALF_DISC, revolved('F', { type: 'angle', start: 'deg(-45)', angle: 'deg(270)' }, 'cut')] },
   { name: 'a prism added', source: 'F', commands: [polygon('T', 'L', L), extrusion('F', regions('T', loop('L', 6)), { type: 'distance', start: 0, distance: 5 }, 'add', ['A'])] },
   { name: 'a prism cut blind', source: 'F', commands: [polygon('T', 'L', L), extrusion('F', regions('T', loop('L', 6)), { type: 'distance', start: 0, distance: -3 }, 'cut', ['A'])] },
   { name: 'a prism cut through all', source: 'F', commands: [polygon('T', 'L', L), extrusion('F', regions('T', loop('L', 6)), { type: 'throughAll', side: 'backward' }, 'cut', ['A'])] },
@@ -125,7 +150,7 @@ describe('a tool in a mirrored placement is turned over (D53)', () => {
       expectAllOk(state);
       expect(Math.abs(once - before)).toBeGreaterThan(1);
       near(volumeOf(state, 'A') - once, once - before, 1e-3 * Math.max(1, Math.abs(once - before)));
-      expect(offSurface(state, 'A')).toBeLessThan(1e-4);
+      expect(offSurface(state, 'A')).toBeLessThan(tool.off ?? 1e-4);
       // the faces of the copy are those of the source with the tag of the mirror
       const own = faceNames(state, 'A').filter((name) => name.startsWith(`${tool.source}/`));
       expect(own.filter((name) => name.endsWith('@M:1')).map((name) => name.slice(0, -'@M:1'.length))).toEqual(own.filter((name) => !name.includes('@')));

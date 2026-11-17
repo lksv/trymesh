@@ -148,7 +148,7 @@ describe('příkazy časové osy', () => {
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: [] }) }, /targets/);
     // načtený dokument s takovým odkazem závisí na vlastníkovi tělesa
     expect(featureRefs(extrude('E2', 'S1', { operation: 'cut', targets: ['P/2'] }))).toEqual(['S1', 'P']);
-    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['combine', 'extrude', 'hole', 'mesh', 'pattern', 'plane', 'sketch', 'split']);
+    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['combine', 'extrude', 'hole', 'mesh', 'pattern', 'plane', 'revolve', 'sketch', 'split']);
     expect(FEATURE_TYPE_INFO.extrude).toMatchObject({ bodies: 'self', updatable: ['profile', 'extent', 'operation', 'targets'] });
     expect(FEATURE_TYPE_INFO.sketch).toMatchObject({ bodies: 'none', updatable: [] });
   });
@@ -427,7 +427,7 @@ describe('načtení dokumentu', () => {
     bad((d) => (d.features[1].expressions = { 'extent/depth': '5' }), /is not a numeric field/);
     bad((d) => (d.features[1].expressions = { 'extent/distance': '5 *' }), /the expression is incomplete/);
     bad((d) => (d.features[1].extent.distance = '5'), /an expression belongs in expressions/);
-    bad((d) => (d.features[1].type = 'revolve'), /čeká se jedna z hodnot/);
+    bad((d) => (d.features[1].type = 'loft'), /čeká se jedna z hodnot/);
     expect(() => validateDocument(null)).toThrow(/čeká se objekt/);
   });
 

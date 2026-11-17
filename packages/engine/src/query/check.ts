@@ -94,6 +94,11 @@ class Checker {
     return entityOf(sketch, point)?.kind === 'point' ? point : missing(path, `the sketch "${sketch.id}" has no point "${point}"`);
   }
 
+  private sketchLine(sketch: SketchFeature, value: unknown, path: ArgPath): Id {
+    const line = this.id(value, path, 'sketch line');
+    return entityOf(sketch, line)?.kind === 'line' ? line : missing(path, `the sketch "${sketch.id}" has no line "${line}"`);
+  }
+
   // A record of named values: the top level of the arguments and the kind `fields`.
   fields(specs: { readonly [name: string]: ArgKind & { optional?: boolean } }, value: unknown, path: ArgPath): Record<string, unknown> {
     if (!isObject(value)) return invalid(path.length ? path : ['arguments'], 'an object with the named arguments is expected');
@@ -160,6 +165,7 @@ class Checker {
       case 'axis': {
         const ref = shaped(path, (what) => axisRef(SHAPE_ONLY(this.scope.document), value, what));
         if (ref.kind === 'sketchPoint') this.sketchPoint(this.sketch(ref.sketch, [...path, 'sketch']), ref.point, [...path, 'point']);
+        if (ref.kind === 'sketchLine') this.sketchLine(this.sketch(ref.sketch, [...path, 'sketch']), ref.line, [...path, 'line']);
         return ref;
       }
       case 'vector':

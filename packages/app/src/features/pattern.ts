@@ -7,7 +7,7 @@ import { valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { bodyName } from '../issue-text';
 import { FIRST_DIRECTION, SECOND_DIRECTION, axisRows } from '../axis-picker';
-import { type LinearSpan, NEW_TRANSFORM, type PatternChange, type PatternChoices, type PatternKind, type PatternMemory, type PatternSpan, changePattern, draftCommand, patternIncomplete, patternSource, rememberPattern } from '../sketch-commands';
+import { type LinearSpan, NEW_TRANSFORM, type PatternChange, type PatternChoices, type PatternKind, type PatternMemory, type PatternSpan, changePattern, draftCommand, lineIds, patternIncomplete, patternSource, rememberPattern } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
 
@@ -28,6 +28,10 @@ function patternChoices(host: PanelHost, index: number): PatternChoices {
     tools: before.filter(producesTool).map((f) => f.id),
     bodies: Object.keys(host.stateBefore(index).evaluation.bodies),
     sketches: before.filter((f) => f.type === 'sketch').map((f) => f.id),
+    lines: (sketch) => {
+      const f = host.feature(sketch);
+      return f?.type === 'sketch' ? lineIds(f) : [];
+    },
   };
 }
 
@@ -215,7 +219,7 @@ export const pattern: FeatureUi<PatternFeature, Extra> = {
     if (t.type === 'linear') {
       // one direction: along what, and by which span, at `transform/` or `transform/second/`
       const way = (prefix: string, d: { direction: typeof t.direction; span: typeof t.span }): string => {
-        const along = d.direction.kind === 'base' ? `axis ${d.direction.axis}` : `the normal of ${host.nameOf(d.direction.sketch)}`;
+        const along = d.direction.kind === 'base' ? `axis ${d.direction.axis}` : d.direction.kind === 'sketchLine' ? `the line ${d.direction.line} of ${host.nameOf(d.direction.sketch)}` : `the normal of ${host.nameOf(d.direction.sketch)}`;
         const extent = d.span.type === 'spacing' ? `spacing ${field(`${prefix}/span/spacing`, d.span.spacing, 'mm')}` : `length ${field(`${prefix}/span/length`, d.span.length, 'mm')}`;
         return `along ${along}, ${extent}`;
       };
@@ -223,7 +227,7 @@ export const pattern: FeatureUi<PatternFeature, Extra> = {
       if (!t.second) return [h('p', { className: 'hint' }, `Count ${count} with the original, ${way('transform', t)}; ${source}.`)];
       return [h('p', { className: 'hint' }, `Count ${count} × ${field('transform/second/count', t.second.count, 'count')} with the original, ${way('transform', t)}, and ${way('transform/second', t.second)}; ${source}.`)];
     }
-    const around = t.axis.kind === 'base' ? `axis ${t.axis.axis}` : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
+    const around = t.axis.kind === 'base' ? `axis ${t.axis.axis}` : t.axis.kind === 'sketchLine' ? `the line ${t.axis.line} of ${host.nameOf(t.axis.sketch)}` : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
     const extent = t.span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', t.span.angle, 'rad')}`;
     return [h('p', { className: 'hint' }, `Count ${field('transform/count', t.count, 'count')} with the original, around ${around}, ${extent}; ${source}.`)];
   },

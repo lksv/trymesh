@@ -3,6 +3,8 @@
 // kernel, so the names of the faces are kept. The section view of the app and a picture of a cut
 // model draw from the same answer (`completeRegions`, `takenAt`).
 import { coordinatePrecision } from '../mesh-distance';
+import { toWorld } from '../solid';
+import { circleBetween } from '../surfaces';
 import type { FaceName, Frame, Id, Solid, Surface, Truncated, Vec2, Vec3 } from '../types';
 import { ANGLE_TOLERANCE, add3, cross2, cross3, dist2, dot2, dot3, len2, len3, mul3, sub2, sub3, unit3 } from '../util';
 import type { ArgSpecs } from './args';
@@ -469,17 +471,21 @@ const SINE = Math.sin(ANGLE_TOLERANCE);
 const parallel = (a: Vec3, b: Vec3): boolean => len3(cross3(unit3(a), unit3(b))) <= SINE;
 const perpendicular = (a: Vec3, b: Vec3): boolean => Math.abs(dot3(unit3(a), unit3(b))) <= SINE;
 
-// The circle a round surface is cut in by a plane across its axis, in the frame of the plane;
-// undefined for any other surface and any other way the plane meets it. `frame` is the plane the
-// section was taken at.
-function circleIn(surface: Surface | undefined, frame: Frame): { center: Vec2; radius: number } | undefined {
-  if (!surface || (surface.kind !== 'cylinder' && surface.kind !== 'cone') || !parallel(surface.axis, frame.normal)) return undefined;
-  const point = surface.kind === 'cylinder' ? surface.origin : surface.apex;
-  // where the axis meets the plane
-  const axis = unit3(surface.axis);
-  const along = dot3(sub3(frame.origin, point), frame.normal) / dot3(axis, frame.normal);
-  const meets = sub3(add3(point, mul3(axis, along)), frame.origin);
-  return { center: [dot3(meets, frame.x), dot3(meets, frame.y)], radius: surface.kind === 'cylinder' ? surface.radius : Math.abs(along) * Math.tan(surface.halfAngle) };
+// The circle a surface is cut in by the plane of the section, in the frame of the plane: the
+// circle of `circleBetween` of the surface and the plane (a cylinder or a cone across its axis,
+// a sphere by any plane, a torus across its axis or through it), of two the one the points of the
+// span say; undefined for any other surface and any other way the plane meets it. `frame` is the
+// plane the section was taken at, `points` the run in its coordinates, `tolerance` the chord
+// tolerance of the document. `asked` is the plane asked for, `below` above `frame`: a plane through
+// the axis of a torus is that plane only within `LENGTH_TOLERANCE`, so where the plane the section
+// was taken at meets no circle the asked one is tried.
+function circleIn(surface: Surface | undefined, frame: Frame, points: Vec2[], tolerance?: number, asked?: Frame): { center: Vec2; radius: number } | undefined {
+  if (!surface || surface.kind === 'plane') return undefined;
+  const world = points.flatMap((p) => toWorld(frame, p[0], p[1]));
+  const circle = circleBetween(surface, { kind: 'plane', origin: frame.origin, normal: frame.normal }, world, tolerance) ?? (asked ? circleBetween(surface, { kind: 'plane', origin: asked.origin, normal: asked.normal }, world, tolerance) : undefined);
+  if (!circle || !parallel(circle.axis, frame.normal)) return undefined;
+  const meets = sub3(circle.center, frame.origin);
+  return { center: [dot3(meets, frame.x), dot3(meets, frame.y)], radius: circle.radius };
 }
 // Is what the plane cuts out of the surface straight?
 function straightIn(surface: Surface | undefined, frame: Frame): boolean {
@@ -491,7 +497,10 @@ function straightIn(surface: Surface | undefined, frame: Frame): boolean {
 // The runs of segments of one face of a loop as spans, by the table at `SectionSpan`. A curve
 // comes with its points, and with its length summed from `lengths` of the loop (the length along
 // the mesh polygon, as the length of the loop is). `frame` is the plane the section was taken at.
-export function spansOf(loop: CutLoop, surfaceOf: (face: number) => Surface | undefined, nameOf: (face: number) => FaceName, frame: Frame): SectionSpan[] {
+// `tolerance`: the chord tolerance of the document, by which the points of a run choose among two
+// circles of a surface and the plane (`circleBetween`); without it such a run is no arc. `asked`:
+// the plane asked for, tried where `frame` meets no circle (`circleIn`).
+export function spansOf(loop: CutLoop, surfaceOf: (face: number) => Surface | undefined, nameOf: (face: number) => FaceName, frame: Frame, tolerance?: number, asked?: Frame): SectionSpan[] {
   const size = loop.points.length;
   const spans: SectionSpan[] = [];
   for (let first = 0; first < size; ) {
@@ -502,7 +511,7 @@ export function spansOf(loop: CutLoop, surfaceOf: (face: number) => Surface | un
     const [from, to] = [loop.points[first], loop.points[end % size]];
     const head = { face: nameOf(loop.faces[first]), from, to };
     const surface = surfaceOf(loop.faces[first]);
-    const circle = circleIn(surface, frame);
+    const circle = circleIn(surface, frame, [...points, to], tolerance, asked);
     if (circle) {
       // the angle the run turns by about the centre, summed along its corners
       const run = [...points, to];
@@ -601,7 +610,7 @@ export const section: QuerySpec<typeof SECTION_ARGS, SectionResult> = {
       if (loops.length === 0) continue; // also a body of which only slivers under three corners were left
       const entry: SectionOfBody = { body: id, area: loops.reduce((sum, loop) => sum + loop.area, 0), loops: loops.length }; // holes are negative
       result.bodies.push(entry);
-      const spans = new Map(loops.map((loop) => [loop, polylines ? [] : spansOf(loop, (face) => context.surface(id, names[face]), (face) => names[face], taken)]));
+      const spans = new Map(loops.map((loop) => [loop, polylines ? [] : spansOf(loop, (face) => context.surface(id, names[face]), (face) => names[face], taken, context.state.document.settings.chordTolerance, frame)]));
       const spansIn = (loop: CutLoop): SectionSpan[] => spans.get(loop) ?? [];
       const pointsOf = (loop: CutLoop): number => (polylines ? loop.points.length : spansIn(loop).reduce((points, span) => points + (span.kind === 'curve' ? span.count : 0), 0));
       if (fits(polylines ? loops.length : loops.reduce((sum, loop) => sum + spansIn(loop).length, 0))) outlined.push({ entry, loops, spansIn });

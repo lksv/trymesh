@@ -247,8 +247,8 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     const inertia = tensor(whole.central);
     const result: MassProperties = { mass: whole.mass, volume: bodies.reduce((sum, body) => sum + body.volume, 0), centerOfMass: whole.center, inertia, bodies, ...(skipped.length ? { skipped } : {}) };
     if (!args.about) return result;
-    const axis = context.axis(args.about); // a base axis or a sketch point: never posed
-    if ('problem' in axis) throw new QueryFailure('notAvailable', 'about: the axis is not in the state asked about', ['about']);
+    const axis = context.axis(args.about); // a base axis, a sketch point or a line of a sketch: never posed
+    if ('problem' in axis) throw new QueryFailure('notAvailable', axis.problem === 'invalidAxis' ? 'about: the line of the axis has no length' : 'about: the axis is not in the state asked about', ['about']);
     // About a line: the moment about the parallel line through the centre of mass, and the mass
     // times the square of the distance between the two (the parallel axis theorem).
     const along = mul3(axis.direction, 1 / len3(axis.direction));

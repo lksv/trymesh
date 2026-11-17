@@ -51,7 +51,7 @@ export { type PrintFrame, type PrintOrientation, type PrintPass, type PrintRepor
 export { type MassFrom, type MassIntegrals, type MassProperties, type MassSource, massIntegrals } from './query/mass';
 export { type CutLoop, type SectionLoop, type SectionOfBody, type SectionRegion, type SectionResult, type SectionSpan, SECTION_ARGS, completeRegions, cut, takenAt } from './query/section';
 export { type Closest, type MeshPart, closest, coordinatePrecision, meshAccuracy } from './mesh-distance';
-export { type Circle3, circleBetween } from './surfaces';
+export { type Circle3, circleBetween, circlesBetween } from './surfaces';
 export { argText, checkArgs, specProblems } from './query/check';
 export { SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES, type UpgradeStep } from './schema';
 export { DOCUMENT_SECTIONS, SECTION_INFO, type SectionName, namedBySections, takenOver } from './sections/index';

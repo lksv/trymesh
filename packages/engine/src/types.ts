@@ -215,7 +215,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -370,9 +370,9 @@ export type GeneratorName = 'involuteGear' | 'cycloidalDisc' | 'gt2Pulley'; // e
 // A pattern repeats its source by a list of isometries (turns, shifts, a mirror). The kind of the
 // transform is a variant: `circular` around an axis, `linear` along a direction, `mirror` in
 // a plane (PatternTransform).
-// - `features`: features that apply a tool: extrusions with the operation add or cut, holes. For
-//   every copy the tool of each of them is built in the transformed position and applied to the
-//   targets of that feature, in the order of the list. The features need not share targets; the
+// - `features`: features that apply a tool: extrusions and revolves with the operation add or cut,
+//   holes. For every copy the tool of each of them is built in the transformed position and
+//   applied to the targets of that feature, in the order of the list. The features need not share targets; the
 //   list lets a hole repeat with its pocket.
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
 //   numbered from 1 (a grid numbers its copies i + 1000 · j, with gaps: see PatternTransform; read
@@ -487,6 +487,48 @@ export interface SplitFeature extends FeatureBase {
   body: Id;
   plane: PlaneRef;
   side: 'forward' | 'backward';
+}
+
+// A revolve (D58): a profile of a sketch turned about an axis that lies in the plane of the sketch.
+// - `profile`: regions of the sketch (with an optional offset) or a wall along curves, as an
+//   extrusion takes them; not a generated profile.
+// - `axis`: an `AxisRef` that lies in the plane of the profile's sketch: its direction within
+//   1e-4 rad of the plane and a point of it within 1e-6 mm; the line used is its projection into
+//   the plane. A base axis serves a sketch on a base plane that holds it (Z for XZ and YZ); a line
+//   of a sketch (`sketchLine`) serves any plane, best a construction line of the profile's own
+//   sketch, or the line of the profile that lies on the axis (the diameter that closes a half
+//   circle). A line drawn along an edge of the profile that is not construction overlaps it and
+//   makes the sketch profile invalid.
+// - The profile lies on one side of the axis; it may touch it in a point or along a curve that lies
+//   on the axis (that curve makes no face). A ball is a half circle closed by a line on the axis.
+// - `extent`: `full`, a whole turn (no caps); or `angle` from `start` (field `extent/start`,
+//   radians, any value) by `angle` (field `extent/angle`, radians, not zero, strictly between −2π
+//   and 2π; negative turns the other way). Both turn by the right-hand rule about the direction of
+//   the axis; the profile of the sketch is at the angle 0, so with `start: 0` the start cap lies in
+//   the sketch plane. A turn symmetric about the sketch plane is `start: "-a / 2"`, `angle: "a"`.
+//   A whole turn is `full`, never an angle of 2π.
+// - `operation`, `targets`: as for an extrusion (`new` has no target and makes the body with the ID
+//   of the feature, `add` exactly one, `cut` one or more, none twice). A pattern repeats a revolve
+//   with the operation add or cut.
+// - Faces are named as for an extrusion of the same profile: `side` per curve (`wallSide`,
+//   `wallEnd` for a wall); a line across the axis gives a plane, a line parallel to it a cylinder,
+//   another line a cone, an arc or a circle a sphere when its centre lies on the axis and a torus
+//   otherwise; a curve on the axis makes no face. A partial turn has the caps `startCap` and
+//   `endCap`, planes through the axis.
+// - The mesh is within the chord tolerance of the exact body: the profile and the turn are each
+//   divided for half of it.
+// - Errors: `brokenReference`, `noProfile`, `invalidProfile` (as for an extrusion; also a tool of
+//   more than 1 000 000 triangles), `invalidAxis` (see ErrorCode), `emptyResult`, `kernelFailure`;
+//   the warning `noEffect` names the targets the tool missed.
+// The result tells in `facts`: `axisPoint` and `axisDirection` (the axis used, in model
+// coordinates, the direction a unit vector) and `steps` (the turn is a polygon of that many sides).
+export interface RevolveFeature extends FeatureBase {
+  type: 'revolve';
+  profile: Exclude<ProfileSource, { type: 'generated' }>;
+  axis: AxisRef;
+  extent: { type: 'full' } | { type: 'angle'; start: number; angle: number };
+  operation: 'new' | 'add' | 'cut';
+  targets?: Id[];
 }
 
 // The shape of one hole, a variant by `type`. The wider part (the head) is at the mouth of the hole,
@@ -612,9 +654,14 @@ export type PatternTransform =
 // The span of a direction of a linear pattern.
 export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };
 
-// An axis: a base axis of the model, or the normal of a sketch plane led through a point of the
-// sketch (an own point, the origin or a point of projected geometry).
-export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id };
+// An axis: a base axis of the model, the normal of a sketch plane led through a point of the
+// sketch (an own point, the origin or a point of projected geometry), or a line of a sketch
+// (`sketchLine`: an own line, construction or not, or a projected line). The axis of a line runs
+// through its point `a` in the direction from `a` to `b` (`<line>/a` to `<line>/b` for a projected
+// one), so a positive angle turns by the right-hand rule about that direction. A line whose ends
+// are not more than 1e-6 mm apart is the error `invalidAxis` of whoever uses it; a projected line
+// whose edge is gone keeps its last valid place.
+export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id } | { kind: 'sketchLine'; sketch: Id; line: Id };
 
 // Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
 // měří od začátku, kladná míří ve směru normály a nesmí být nula.
@@ -691,7 +738,7 @@ export type Extent =
 // surface, not planar, without edges.
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
-  | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
+  | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici); of a revolve: the profile at the start of a partial turn
   | { feature: Id; role: 'endCap' } // protější víko
   | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }
   | { feature: Id; role: 'wallEnd'; point: Id }
@@ -822,15 +869,22 @@ export interface Frame {
 // that made the face, not from the mesh.
 // - A sketch can stand only on a plane.
 // - A cylinder comes from an arc or a circle of a profile; a cone from a taper, a countersink or
-//   a revolved line; a swept surface (a planar curve moved along `axis`) from gear teeth; a general
-//   surface says nothing more.
+//   a revolved line; a sphere and a torus from a revolved arc or circle; a swept surface (a planar
+//   curve moved along `axis`) from gear teeth; a general surface says nothing more.
 // - A surface has no side: `normal` of a plane and `axis` of a cylinder carry no sign. Which side the
 //   material is on belongs to the face of a body. The exception is `axis` of a cone, which points
 //   from the apex towards the face, because a cone has two halves.
+// - `torus`: `center` is a point of its axis, `minorRadius` the radius of the tube and
+//   `majorRadius` the distance of the centre of the tube from the axis, signed: in every half plane
+//   through the axis that the face lies in, the centre of the tube is the point `majorRadius` from
+//   the axis towards that half plane (positive), or across the axis from it (negative: a face
+//   swept by an arc whose centre lies across the axis, an ogive or a lemon).
 export type Surface =
   | { kind: 'plane'; origin: Vec3; normal: Vec3 }
   | { kind: 'cylinder'; origin: Vec3; axis: Vec3; radius: number } // origin: a point of the axis
   | { kind: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number } // radians, between the axis and the surface
+  | { kind: 'sphere'; center: Vec3; radius: number }
+  | { kind: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }
   | { kind: 'swept'; axis: Vec3 }
   | { kind: 'general' };
 
@@ -1074,14 +1128,21 @@ export interface Issue {
 //   `transform/second/`), the message names the two copies ("the copies 1 and 1000 would stand in
 //   one place", "the copy 1001 would stand in the place of the original").
 // The pattern is in error as a whole and the model stays as it was before it.
-// importedTarget: a feature that applies a tool (an extrusion with the operation add or cut, a hole,
-// a pattern of them) has a target that is an imported body: the body of a feature of the type
+// importedTarget: a feature that applies a tool (an extrusion or a revolve with the operation add or
+// cut, a hole, a pattern of them) has a target that is an imported body: the body of a feature of the type
 // `mesh`, or a copy of it made by a pattern. `refs` name those targets, and no target is changed.
 // The kernel keeps its guarantee for flush faces only for faces it knows as planar, and a flat
 // region of an imported mesh is not one (D55).
 // A combine refuses an imported body in every role, the target and each tool (a tool would make
 // the target imported), also with a clearance, and a split refuses one as its body; `refs` name
 // those bodies (D56).
+// invalidAxis: the axis cannot be used.
+// - The line of an axis of the kind `sketchLine` has no length (any user: a revolve, a pattern,
+//   a joint); `refs`: the line.
+// - A revolve whose axis does not lie in the plane of the profile's sketch; `refs`: the axis, the
+//   message gives the angle or the distance.
+// - A revolve whose profile lies on both sides of its axis; `refs`: the axis and a curve on each
+//   side, the message says how far each reaches.
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -1095,6 +1156,7 @@ export type ErrorCode =
   | 'invalidPattern'
   | 'importedTarget'
   | 'invalidClearance'
+  | 'invalidAxis'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
@@ -1363,7 +1425,8 @@ export type FeaturePatch =
   | Patch<Pick<CombineFeature, 'operation' | 'target' | 'tools' | 'keepTools' | 'clearance'>>
   | Patch<Pick<SplitFeature, 'body' | 'plane' | 'side'>>
   // `placement` merges field by field; its `frame` is a reference and is replaced whole
-  | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>;
+  | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>
+  | Patch<Pick<RevolveFeature, 'profile' | 'axis' | 'extent' | 'operation' | 'targets'>>;
 
 // ---------------------------------------------------------------- queries
 

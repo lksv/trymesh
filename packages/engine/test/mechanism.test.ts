@@ -317,7 +317,7 @@ describe('posed bodies and a pair in the frame of its first body', () => {
   // of `a` and 6 to 11 of `b`.
   const infos: FaceInfo[] = Array.from({ length: 12 }, () => ({ planar: true, origin: [0, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] }));
   const names = infos.map((_, i) => ({ feature: i < 6 ? 'a' : 'b', role: 'side', curve: String(i) }));
-  const box = (x: number, first: number): BodyResult => analyzeBody(prism([[x, 0], [x + 10, 0], [x + 10, 10], [x, 10]], 0, 10, (side) => first + 2 + side), names as never, infos).result;
+  const box = (x: number, first: number): BodyResult => analyzeBody(prism([[x, 0], [x + 10, 0], [x + 10, 10], [x, 10]], 0, 10, (side) => first + 2 + side), names as never, infos, 0.01).result;
   const modelled = { a: box(0, 0), b: box(10, 6), c: box(30, 6) };
   const mechanismOf = (values: Record<Id, number>, axis = Z): { section: Mechanism; result: MechanismResult } => {
     const section: Mechanism = {

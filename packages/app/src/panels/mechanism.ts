@@ -9,7 +9,7 @@ import { axisRows } from '../axis-picker';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, unitLabel, valueText } from '../fields';
 import type { PanelHost } from '../host';
-import { changeAxis } from '../sketch-commands';
+import { changeAxis, lineIds } from '../sketch-commands';
 
 type JointType = Joint['type'];
 type Limited = Extract<Joint, { lower: number }>;
@@ -125,7 +125,7 @@ export function mechanismPanel(host: PanelHost, panel: MechanismPanel): HTMLElem
   const jointBlock = (id: Id): HTMLElement => {
     const joint = section.joints[id];
     const state = own(result.joints, id) ? result.joints[id] : undefined;
-    const about = 'axis' in joint ? ` ${joint.type === 'prismatic' ? 'along' : 'about'} ${joint.axis.kind === 'base' ? `the axis ${joint.axis.axis}` : `the normal through ${joint.axis.point} of ${host.nameOf(joint.axis.sketch)}`}` : '';
+    const about = 'axis' in joint ? ` ${joint.type === 'prismatic' ? 'along' : 'about'} ${joint.axis.kind === 'base' ? `the axis ${joint.axis.axis}` : joint.axis.kind === 'sketchLine' ? `the line ${joint.axis.line} of ${host.nameOf(joint.axis.sketch)}` : `the normal through ${joint.axis.point} of ${host.nameOf(joint.axis.sketch)}`}` : '';
     return h(
       'div',
       { className: `mech-joint ${state?.status === 'error' ? 'error' : ''}` },
@@ -370,7 +370,10 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
     h('label', {}, 'Kind', type),
     linkSelect('Parent link', 'parent'),
     linkSelect('Child link (moves)', 'child'),
-    ...(form.type === 'fixed' ? [] : axisRows(host, form.axis, sketches, (change) => ((form.axis = changeAxis(form.axis, change, sketches)), rebuild()), 'An axis through a point needs a sketch.')),
+    ...(form.type === 'fixed' ? [] : axisRows(host, form.axis, sketches, (change) => ((form.axis = changeAxis(form.axis, change, sketches, (id) => {
+      const f = host.feature(id);
+      return f?.type === 'sketch' ? lineIds(f) : [];
+    })), rebuild()), 'An axis through a point needs a sketch.')),
     ...(form.type === 'fixed' ? [] : [h('p', { className: 'hint' }, form.type === 'prismatic' ? 'The child slides along the direction of the axis.' : 'A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule).')]),
     ...JOINT_FIELDS[form.type].map(({ path, spec }) => number(path as NumberPath, spec.title)),
     ...(drive.length ? [h('p', { className: 'hint' }, 'The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):'), ...drive.map(({ path, spec }) => number(path as NumberPath, spec.title, spec.unit))] : []),

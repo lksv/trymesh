@@ -1,15 +1,14 @@
 // The extrusion in the app: its form with the profile (regions of a sketch picked in the view and
 // their offset, a wall along curves of a sketch picked in the view, or a profile generator of the
 // catalog), the extent and the targets; its summary; what it draws.
-import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Frame, type Id, type RegionRef, type SketchFeature, type SketchResult, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
+import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type RegionRef, type SketchFeature, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
 import { fmt, h } from '../dom';
-import { COLOR, pushPolyline } from '../draw';
-import { PICK_REACH, type PanelHost } from '../host';
+import type { PanelHost } from '../host';
 import { OPERATIONS, SIDES, factsText, lengthText, shownValue } from '../labels';
 import { type ExtentKind, type ExtentSide, type ExtrudeChange, type ExtrudeDraft, type ProfileKind, type RememberedProfiles, type UpToDraft, changeExtrude, draftCommand, noPlane, profileKind, rememberedProfile } from '../sketch-commands';
-import { type SketchView, hitCurve, insideLoop, polyline, sketchView } from '../sketch-view';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
+import { clickProfile, hoverProfile, profileOverlay, regionsFields, sketchRegions, wallFields } from './profile-picker';
 
 // What the form remembers beyond the draft.
 interface Extra {
@@ -23,34 +22,6 @@ interface Extra {
 type ExtrudeMode = DraftMode<ExtrudeFeature, Extra>;
 
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all', upTo: 'Up to a plane or face' };
-const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
-
-function sketchRegions(host: PanelHost, id: Id): { result: SketchResult; frame: Frame } | undefined {
-  if (!host.feature(id)) return undefined; // skica vysunutí mohla být smazána
-  const result = host.engine.getState(id).evaluation.features[id];
-  return result?.sketch && result.plane ? { result: result.sketch, frame: result.plane } : undefined;
-}
-
-function regionAt(host: PanelHost, event: PointerEvent, m: ExtrudeMode): RegionRef | undefined {
-  const info = sketchRegions(host, m.draft.profile.sketch);
-  const p = info && host.planePoint(event, info.frame)?.at;
-  if (!info || !p) return undefined;
-  return info.result.regions.find((region) => insideLoop(region.loops[0], p) && !region.loops.slice(1).some((hole) => insideLoop(hole, p)))?.ref;
-}
-
-// The curves a wall may follow: the own curves of its sketch, as the sketch mode sees them.
-function wallCurves(host: PanelHost, sketch: Id): { view: SketchView; frame: Frame } | undefined {
-  const feature = host.feature(sketch);
-  const info = sketchRegions(host, sketch);
-  return feature?.type === 'sketch' && info ? { view: sketchView(feature, info.result), frame: info.frame } : undefined;
-}
-// The own curve of the sketch nearest to the point where the pointer meets the sketch plane.
-function curveAt(host: PanelHost, event: PointerEvent, m: ExtrudeMode): Id | undefined {
-  const info = wallCurves(host, m.draft.profile.sketch);
-  const p = info && host.planePoint(event, info.frame)?.at;
-  if (!info || !p) return undefined;
-  return hitCurve(info.view, p, PICK_REACH * host.pixelSize(), (id) => !info.view.curves.get(id)?.own)?.id;
-}
 
 // Výchozí volby: jediná oblast se vybere sama; skica na stěně tělesa navrhne přidání k němu.
 function extrudeDefaults(host: PanelHost, sketch: SketchFeature, index: number): Pick<ExtrudeFeature, 'profile' | 'operation' | 'targets'> {
@@ -252,31 +223,6 @@ function upToFields(host: PanelHost, m: ExtrudeMode, extent: UpToDraft, set: (ch
   ];
 }
 
-// The part of the extrusion form for a profile of sketch regions. The offset is an optional field:
-// it is empty while the draft has none, and emptying it removes it.
-function regionsFields(host: PanelHost, m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'regions' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
-  const available = sketchRegions(host, profile.sketch)?.result.regions ?? [];
-  const stale = profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
-  return [
-    h('p', { className: 'hint' }, `Vybraných oblastí: ${profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
-    stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
-    h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
-    draftField(host, m, 'Offset (mm or an expression; positive grows the profile; empty = none)', 'profile/offset', (offset) => set({ offset: typeof offset === 'number' && Number.isNaN(offset) ? null : offset }, false)),
-  ];
-}
-
-// The part of the extrusion form for a wall along curves of the sketch.
-function wallFields(host: PanelHost, m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'wall' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
-  const own = wallCurves(host, profile.sketch)?.view.curves;
-  const stale = profile.curves.filter((id) => !own?.get(id)?.own);
-  return [
-    h('p', { className: 'hint' }, `Curves of the wall: ${profile.curves.length}. Click curves of the sketch in the view (construction curves too); they have to form one chain.`),
-    stale.length > 0 ? h('p', { className: 'issue warning' }, `${stale.length} of the chosen curves ${stale.length === 1 ? 'is' : 'are'} not in the sketch any more (${stale.join(', ')}). Clear the curves and choose them again.`) : null,
-    h('div', { className: 'buttons' }, h('button', { textContent: 'Clear the curves', disabled: profile.curves.length === 0, onclick: () => set({ curves: [] }) })),
-    draftField(host, m, 'Thickness (mm or an expression; half of it to each side of the curves)', 'profile/thickness', (thickness) => set({ thickness }, false)),
-  ];
-}
-
 // The part of the extrusion form for a generated profile, built from the generator catalog:
 // a select per operand, a field per number, a checkbox per flag and a select per reference. An
 // optional number is empty while the draft has none, and emptying it removes it.
@@ -352,14 +298,7 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
   picks: (m) => (m.extra.picking ? { faces: true, planes: true } : undefined),
   // No pick of the view: the form finds the region of its sketch under the pointer itself, and for
   // a wall the curve.
-  hover(m, event, _pick, host) {
-    const region = m.draft.profile.type === 'regions' ? regionAt(host, event, m) : undefined;
-    const curve = m.draft.profile.type === 'wall' ? curveAt(host, event, m) : undefined;
-    if (((region && m.extra.hover && sameRegion(region, m.extra.hover)) || region === m.extra.hover) && curve === m.extra.hoverCurve) return false;
-    m.extra.hover = region;
-    m.extra.hoverCurve = curve;
-    return true;
-  },
+  hover: (m, event, _pick, host) => hoverProfile(host, event, m.draft.profile, m.extra),
   click(m, event, pick, host) {
     if (m.extra.picking) {
       const plane = host.planeRefOf(pick);
@@ -372,41 +311,12 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
       draftChanged(host, true);
       return;
     }
-    const profile = m.draft.profile;
-    if (profile.type === 'wall') {
-      // a click toggles the curve; the list is kept sorted, as the engine stores it
-      const curve = curveAt(host, event, m);
-      if (curve === undefined) return;
-      const curves = profile.curves.includes(curve) ? profile.curves.filter((id) => id !== curve) : [...profile.curves, curve].sort();
-      m.draft = { ...m.draft, profile: { ...profile, curves } };
-      draftChanged(host);
-      return;
-    }
-    const region = profile.type === 'regions' ? regionAt(host, event, m) : undefined; // a generated profile has no regions to pick
-    if (!region || profile.type !== 'regions') return;
-    const at = profile.regions.findIndex((r) => sameRegion(r, region));
-    m.draft = { ...m.draft, profile: { ...profile, regions: at < 0 ? [...profile.regions, region] : profile.regions.filter((_, i) => i !== at) } };
+    const profile = clickProfile(host, event, m.draft.profile);
+    if (!profile) return;
+    m.draft = { ...m.draft, profile };
     draftChanged(host);
   },
-  overlay(m, scene, host) {
-    const info = sketchRegions(host, m.draft.profile.sketch);
-    const picked = m.draft.profile.type === 'regions' ? m.draft.profile.regions : undefined; // a generated profile shows no regions
-    for (const region of picked ? (info?.result.regions ?? []) : []) {
-      const chosen = picked!.some((r) => sameRegion(r, region.ref));
-      const hovered = m.extra.hover !== undefined && sameRegion(m.extra.hover, region.ref);
-      scene.fills.push({ frame: info!.frame, loops: region.loops, color: chosen ? COLOR.region : hovered ? COLOR.hover : COLOR.rubber, opacity: chosen ? (hovered ? 0.6 : 0.45) : hovered ? 0.35 : 0.15, onTop: true });
-    }
-    // a wall: the curves that can be chosen, the chosen ones and the one under the pointer
-    const wall = m.draft.profile.type === 'wall' ? m.draft.profile : undefined;
-    const curves = wall && wallCurves(host, wall.sketch);
-    if (!wall || !curves) return;
-    const [offered, chosen, hovered]: number[][] = [[], [], []];
-    for (const curve of curves.view.curves.values()) {
-      if (!curve.own) continue;
-      pushPolyline(curve.id === m.extra.hoverCurve ? hovered : wall.curves.includes(curve.id) ? chosen : offered, curves.frame, polyline(curve.shape));
-    }
-    scene.lines.push({ segments: offered, color: COLOR.rubber, width: 2, onTop: true }, { segments: chosen, color: COLOR.region, width: 4, onTop: true }, { segments: hovered, color: COLOR.hover, width: 4, onTop: true });
-  },
+  overlay: (m, scene, host) => profileOverlay(host, m.draft.profile, m.extra, scene),
 };
 
 export const extrude: FeatureUi<ExtrudeFeature, Extra> = {

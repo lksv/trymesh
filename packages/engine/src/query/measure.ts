@@ -26,6 +26,8 @@ export const MEASURE_ARGS = {
 // plane     | the plane      | its normal, out of the body
 // cylinder  | its axis       | the axis
 // cone      | its axis       | the axis
+// sphere    | its centre     | none
+// torus     | its axis       | the axis
 // swept     | none           | the direction it was swept along
 // other     | none           | none
 //
@@ -85,13 +87,17 @@ function referenceOf(shape: EntityShape): Reference | undefined {
       return { is: 'line', at: shape.origin, along: shape.axis };
     case 'cone':
       return { is: 'line', at: shape.apex, along: shape.axis };
+    case 'sphere':
+      return { is: 'point', at: shape.center };
+    case 'torus':
+      return { is: 'line', at: shape.center, along: shape.axis };
     case 'plane':
       return { is: 'plane', at: shape.origin, normal: shape.normal };
     default:
       return undefined;
   }
 }
-const directionOf = (shape: EntityShape): Vec3 | undefined => (shape.is === 'line' ? shape.direction : shape.is === 'plane' ? shape.normal : shape.is === 'circle' || shape.is === 'cylinder' || shape.is === 'cone' || shape.is === 'swept' ? shape.axis : undefined);
+const directionOf = (shape: EntityShape): Vec3 | undefined => (shape.is === 'line' ? shape.direction : shape.is === 'plane' ? shape.normal : shape.is === 'circle' || shape.is === 'cylinder' || shape.is === 'cone' || shape.is === 'torus' || shape.is === 'swept' ? shape.axis : undefined);
 
 const PARALLEL = Math.sin(ANGLE_TOLERANCE);
 const parallel = (a: Vec3, b: Vec3): boolean => len3(cross3(a, b)) <= PARALLEL;
@@ -164,10 +170,10 @@ function partOf(context: QueryContext, ref: ShapedRef, shape: EntityShape, arg: 
 
 export const measure: QuerySpec<typeof MEASURE_ARGS, Measurement> = {
   title: 'Measure',
-  summary: 'Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.',
+  summary: 'Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.',
   returns:
-    '`from`, `to`: what each entity is, by `is`: `plane` (`origin`, `normal` out of the body), `cylinder` (`origin`: a point of its axis, `axis`, `radius`, `convex`: true for a pin, false for a hole), `cone` (`apex`, `axis`, `halfAngle`, `convex`), `swept` (`axis`: the direction a face of gear teeth was swept along), `circle` (`center`, `axis`, `radius`), `line` (`from`, `to`, `direction`), `point` (`at`), `other` (nothing exact is known). ' +
-    '`distance` (mm, exact, never negative): between the plane, the axis, the line, the centre or the point of the two, taken without their ends; for two planes or a line and a plane only when they are parallel; absent for `swept` and `other`. Two cylinders: the distance of their axes. ' +
+    '`from`, `to`: what each entity is, by `is`: `plane` (`origin`, `normal` out of the body), `cylinder` (`origin`: a point of its axis, `axis`, `radius`, `convex`: true for a pin, false for a hole), `cone` (`apex`, `axis`, `halfAngle`, `convex`), `sphere` (`center`, `radius`, `convex`: true for a ball, false for a socket), `torus` (`center`: a point of its axis, `axis`, `majorRadius`, signed: the centre of the tube lies that far from the axis towards the face, or across the axis when negative, `minorRadius`, `convex`: true for a ring or a bead, false for a groove), `swept` (`axis`: the direction a face of gear teeth was swept along), `circle` (`center`, `axis`, `radius`), `line` (`from`, `to`, `direction`), `point` (`at`), `other` (nothing exact is known). ' +
+    '`distance` (mm, exact, never negative): between the plane, the axis, the line, the centre or the point of the two (a sphere: its centre; a torus: its axis), taken without their ends; for two planes or a line and a plane only when they are parallel; absent for `swept` and `other`. Two cylinders: the distance of their axes; two tori about one axis are 0 apart. ' +
     '`angle` (rad, exact): two planes 0 to π between the normals out of the bodies (π: the two sides of a wall), a plane and an axis or a line 0 to π/2 between the line and the plane, otherwise 0 to π/2; absent for a point and for `other`. ' +
     '`facing`: `away` (the two sides of a wall; `distance` is its thickness) or `towards` (the two walls of a slot), for planes that look opposite ways. ' +
     '`smallest`: the smallest distance between the two as they are on the bodies, with their outlines and ends, measured on the mesh, with the two points (`from`, `to`) and `accuracy` (mm, an estimate of how far the mesh may be from the exact shapes). For a hole next to a wall, `distance` is the axis to the wall and `smallest` the material left between them.',

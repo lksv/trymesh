@@ -42,6 +42,7 @@ type IssueCode =
   | 'invalidHole'                  // the dimensions do not make a hole (D46)
   | 'invalidPattern'               // a grid of more than 200 places, or with two places in one (D53)
   | 'invalidClearance'             // a tool of a combine cannot be moved by its clearance (D56)
+  | 'invalidAxis'                  // an axis of no length, or for a revolve not in the plane of its profile or with the profile on both sides of it (D58)
   // varování: feature výsledek má
   | 'sketchConflict' | 'brokenProjection' | 'degenerateProjection' | 'unsupportedProjection'
   | 'noEffect'

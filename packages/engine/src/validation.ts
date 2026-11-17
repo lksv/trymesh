@@ -235,11 +235,17 @@ export const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
 
 export function axisRef(context: RefContext, v: unknown, what: string): AxisRef {
   const o = object(v, what);
-  const kind = oneOf(o.kind, ['base', 'sketchPoint'] as const, `${what}.kind`);
-  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : ['kind', 'sketch', 'point'], what, `an axis of the kind ${kind}`);
+  const kind = oneOf(o.kind, ['base', 'sketchPoint', 'sketchLine'] as const, `${what}.kind`);
+  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : kind === 'sketchPoint' ? ['kind', 'sketch', 'point'] : ['kind', 'sketch', 'line'], what, `an axis of the kind ${kind}`);
   if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
   const sketch = string(o.sketch, `${what}.sketch`);
   context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  if (kind === 'sketchLine') {
+    // an own line, construction or not, or a projected one
+    const line = string(o.line, `${what}.line`);
+    context.requireRef({ id: line, kind: 'entity', sketch, accepts: ['line'] }, `${what}.line`);
+    return { kind, sketch, line };
+  }
   const point = string(o.point, `${what}.point`);
   context.requireRef({ id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
   return { kind, sketch, point };
@@ -269,5 +275,5 @@ export const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
     ? []
     : [
         { path, id: axis.sketch, kind: 'sketch' },
-        { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
+        axis.kind === 'sketchLine' ? { path, id: axis.line, kind: 'entity', sketch: axis.sketch, accepts: ['line'] } : { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
       ];

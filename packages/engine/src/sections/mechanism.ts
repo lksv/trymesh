@@ -331,7 +331,7 @@ function resolveJoint(id: Id, j: Joint, entry: EntryValues, state: State): Resol
   let axisFault: Issue | undefined;
   if ('axis' in j) {
     const line = axisOf(j.axis, state);
-    if ('code' in line) axisFault = issue(line.code, line.refs, `the axis of the joint "${id}"`);
+    if ('code' in line) axisFault = issue(line.code, line.refs, `the axis of the joint "${id}"${line.detail ? `: ${line.detail}` : ''}`);
     else axis = { origin: line.point, direction: unit3(line.direction) };
   }
   const error = faults[0] ?? axisFault;
@@ -454,10 +454,13 @@ export const mechanism: SectionSpec<Section, MechanismResult> = {
     return Object.keys(joints).every((key) => joints[key] === section.joints[key]) ? section : { ...section, joints };
   },
   // the feature of every body of every link (and a derived body itself); the sketch and the point of
-  // every axis, and the projected entity a derived point is of (`x1` of `x1/center`)
+  // every axis (or the sketch and the line), and the projected entity a derived point is of (`x1`
+  // of `x1/center`)
   names: (section) => [
     ...Object.values(section.links).flatMap((own) => own.bodies.flatMap((body) => (bodyOwner(body).local === undefined ? [body] : [body, bodyOwner(body).feature]))),
-    ...Object.values(section.joints).flatMap((j) => ('axis' in j && j.axis.kind === 'sketchPoint' ? [j.axis.sketch, j.axis.point, ...(j.axis.point.includes('/') ? [j.axis.point.split('/')[0]] : [])] : [])),
+    ...Object.values(section.joints).flatMap((j) =>
+      'axis' in j && j.axis.kind === 'sketchPoint' ? [j.axis.sketch, j.axis.point, ...(j.axis.point.includes('/') ? [j.axis.point.split('/')[0]] : [])] : 'axis' in j && j.axis.kind === 'sketchLine' ? [j.axis.sketch, j.axis.line] : [],
+    ),
   ],
   // the records of links and joints are kept stable entry by entry
   entries: ['links', 'joints'],

@@ -498,3 +498,43 @@ describe('the boolean of bodies and the clearance (D56): cases of the reviews', 
     expect(volumeOf56(result.solid)).toBeCloseTo(volumeOf56(plate) + volumeOf56(pin) - volumeOf56(shared), 3);
   });
 });
+
+// The review of D36 4a (D58), the revolve.
+describe('review of 4a (D58)', () => {
+  const XZ = { kind: 'base', plane: 'XZ' } as const;
+  const torus = (): ReturnType<typeof newEngine> => {
+    const engine = newEngine();
+    run(
+      engine,
+      addSketch('S', XZ),
+      { type: 'addPoint', sketch: 'S', id: 'c', x: 20, y: 0 },
+      { type: 'addCurve', sketch: 'S', id: 'k', curve: { type: 'circle', center: 'c' }, radius: 5 },
+      { type: 'addFeature', feature: { id: 'T', name: 'T', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['k'] }] }, axis: { kind: 'base', axis: 'Z' }, extent: { type: 'full' }, operation: 'new' } },
+    );
+    return engine;
+  };
+
+  it('a section through the axis of a torus gives the two circles of its tube as arcs, though it is taken `below` the plane', () => {
+    const engine = torus();
+    for (const plane of [XZ, { kind: 'base', plane: 'YZ' } as const]) {
+      const result = engine.query('section', { plane, bodies: ['T'] });
+      if (!result.ok) throw new Error(result.error.message);
+      const spans = result.result.bodies.flatMap((body) => body.regions ?? []).flatMap((region) => [region.outer, ...region.holes]).flatMap((loop) => loop.spans ?? []);
+      expect(spans.map((span) => span.kind)).toEqual(['arc', 'arc']);
+      for (const span of spans) if (span.kind === 'arc') expect(span.radius).toBeCloseTo(5, 6);
+    }
+  });
+
+  it('a line of no length as the axis of a revolve, a pattern or a joint says so in the message', () => {
+    const engine = torus();
+    run(engine, { type: 'addPoint', sketch: 'S', id: 'z0', x: 50, y: 50 }, { type: 'addPoint', sketch: 'S', id: 'z1', x: 50, y: 50 }, { type: 'addCurve', sketch: 'S', id: 'zl', curve: { type: 'line', a: 'z0', b: 'z1', construction: true } });
+    const line = { kind: 'sketchLine', sketch: 'S', line: 'zl' } as const;
+    const revolve = engine.preview({ type: 'updateFeature', id: 'T', patch: { axis: line } });
+    expect(revolve.ok && revolve.state.evaluation.features.T.error?.message).toMatch(/\(the line of the axis has no length\)$/);
+    const pattern = engine.preview({ type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'body', body: 'T' }, transform: { type: 'circular', axis: line, count: 2, span: { type: 'full' } } } });
+    expect(pattern.ok && pattern.state.evaluation.features.P.error?.message).toMatch(/the line of the axis has no length/);
+    run(engine, { type: 'setLink', id: 'a', bodies: ['T'] }, { type: 'addFeature', feature: { id: 'T2', name: 'T2', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['k'] }] }, axis: { kind: 'base', axis: 'Z' }, extent: { type: 'full' }, operation: 'new' } }, { type: 'setLink', id: 'b', bodies: ['T2'] });
+    const joint = run(engine, { type: 'setJoint', id: 'j', joint: { type: 'revolute', parent: 'a', child: 'b', axis: line, lower: -1, upper: 1, value: 0 } });
+    expect(joint.evaluation.mechanism.joints.j.error?.message).toMatch(/the axis of the joint "j": the line of the axis has no length/);
+  });
+});

@@ -207,7 +207,7 @@ function gridOf(transform: Linear, second: NonNullable<Linear['second']>, state:
 }
 
 // The transforms of the copies of a pattern without a grid, the original excluded: copy 1 first.
-function transformsOf(transform: PatternTransform, state: State): RigidTransform[] | { code: IssueCode; refs: unknown[] } {
+function transformsOf(transform: PatternTransform, state: State): RigidTransform[] | Refused {
   if (transform.type === 'mirror') {
     // the plane is resolved as the plane of a sketch is; its error is the error of the pattern
     const plane = frame(transform.plane, state);
@@ -235,7 +235,7 @@ export const pattern: FeatureModule<PatternFeature> = {
   info: {
     title: 'Pattern',
     summary:
-      'Repeats its source: a list of features that apply a tool: extrusions with the operation add or cut, holes (each copy of their tools is built again in its place and applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
+      'Repeats its source: a list of features that apply a tool: extrusions and revolves with the operation add or cut, holes (each copy of their tools is built again in its place and applied to the targets of the feature it comes from), or a finished body (the copies are new bodies `<pattern>/<number>`, numbered from 1). ' +
       'Three kinds of `transform`: `circular` turns the copies around an axis, over the full circle (`span: { type: "full" }`) or within an angle between the first and the last copy; `linear` shifts them along the direction of an axis by a `spacing` between neighbours or over a `length` between the original and the last copy, and with `second` (a direction, a count and a span of its own) makes a grid whose copy i steps along the first direction and j along the second has the number i + 1000 · j (at most 200 places, no two in one place); `mirror` makes one copy, number 1, the mirror image in a plane. The count includes the original.',
     // the count once per kind that has one: a condition names one value
     fields: [

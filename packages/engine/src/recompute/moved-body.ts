@@ -65,9 +65,14 @@ const widthOf = (v: Triangle): number => len3(normalOf(v)) / Math.max(len3(sub3(
 const centroidOf = (v: Triangle): Vec3 => mul3(add3(add3(v[0], v[1]), v[2]), 1 / 3);
 
 // The signed distance of a point from an exact surface, positive on the side `side` (+1 the side
-// its normal or radius points to), and the unit normal on that side. Undefined on the axis of
-// a round face and for a swept face, which has no single surface.
-function surfaceAt(info: FaceInfo, side: number, p: Vec3): { distance: number; normal: Vec3 } | undefined {
+// its normal or radius points to), and the normal on that side. Undefined on the axis of
+// a cylinder, at the centre of a sphere, and for a swept face, which has no single surface.
+// A sphere (D58): from its centre. A torus (D58): from the centre of its tube in the half plane of
+// the point, at the signed major radius. A point within `onAxis` of the axis of a cone or a torus
+// (the apex of a cone pin or a drill point, the tip of an ogive; float32 puts it a few precisions
+// off) has the same distance in every half plane and moves along the axis only: its normal is the
+// derivative of the distance along the axis, not of unit length (`minimalShift` takes it so).
+function surfaceAt(info: FaceInfo, side: number, p: Vec3, onAxis: number): { distance: number; normal: Vec3 } | undefined {
   if (info.planar) {
     const n = unit3(info.normal);
     return { distance: side * dot3(sub3(p, info.origin), n), normal: mul3(n, side) };
@@ -86,9 +91,32 @@ function surfaceAt(info: FaceInfo, side: number, p: Vec3): { distance: number; n
     const h = dot3(rel, a);
     const radial = sub3(rel, mul3(a, h));
     const r = len3(radial);
-    if (r < 1e-12) return undefined;
     const [cos, sin] = [Math.cos(info.halfAngle), Math.sin(info.halfAngle)];
+    if (r <= onAxis) return { distance: side * -h * sin, normal: mul3(a, -side * sin) };
     return { distance: side * (r * cos - h * sin), normal: mul3(sub3(mul3(radial, cos / r), mul3(a, sin)), side) };
+  }
+  if (info.surface === 'sphere') {
+    const rel = sub3(p, info.center);
+    const r = len3(rel);
+    if (r < 1e-12) return undefined;
+    return { distance: side * (r - info.radius), normal: mul3(rel, side / r) };
+  }
+  if (info.surface === 'torus') {
+    const a = unit3(info.axis);
+    const rel = sub3(p, info.center);
+    const h = dot3(rel, a);
+    const radial = sub3(rel, mul3(a, h));
+    const rho = len3(radial);
+    const R = info.majorRadius;
+    if (rho <= onAxis) {
+      const reach = Math.hypot(R, h);
+      if (reach < 1e-12) return undefined;
+      return { distance: side * (reach - info.minorRadius), normal: mul3(a, (side * h) / reach) };
+    }
+    const w = sub3(rel, mul3(radial, R / rho)); // from the centre of the tube in this half plane
+    const r = len3(w);
+    if (r < 1e-12) return undefined;
+    return { distance: side * (r - info.minorRadius), normal: mul3(w, side / r) };
   }
   return undefined;
 }
@@ -98,6 +126,9 @@ function movedInfo(info: FaceInfo, side: number, c: number): FaceInfo {
   if (info.planar) return { ...info, origin: add3(info.origin, mul3(unit3(info.normal), side * c)) };
   if (info.surface === 'cylinder') return { ...info, radius: info.radius + side * c };
   if (info.surface === 'cone') return { ...info, apex: add3(info.apex, mul3(unit3(info.axis), (-side * c) / Math.sin(info.halfAngle))) };
+  // D58: the radius of a sphere and the minor radius of a torus; the centre of the tube stays
+  if (info.surface === 'sphere') return { ...info, radius: info.radius + side * c };
+  if (info.surface === 'torus') return { ...info, minorRadius: info.minorRadius + side * c };
   return info;
 }
 
@@ -151,6 +182,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
   // On a round face the pocket may be nearer than the clearance by the chord tolerance and a share
   // of the clearance; at a clearance of twice the chord tolerance or less that leaves nothing.
   if (!(c > CHORDS_PER_CLEARANCE * chord) && [...new Set(solid.faceIds)].some((face) => infos[face] !== undefined && !infos[face].planar)) return problem('tooSmall', [], `a clearance of ${c} mm is not more than twice the chord tolerance of the document (${chord} mm), and the round faces of the body are polygons that coarse`);
+  const at0 = (i: number): Vec3 => [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
   const corners = (pos: ArrayLike<number>, t: number): Triangle => [0, 1, 2].map((k): Vec3 => [pos[3 * tri[3 * t + k]], pos[3 * tri[3 * t + k] + 1], pos[3 * tri[3 * t + k] + 2]]) as Triangle;
   const faces = [...new Set(solid.faceIds)].sort((a, b) => a - b);
   const missing = faces.filter((face) => infos[face] === undefined);
@@ -174,7 +206,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
     const face = solid.faceIds[t];
     if (swept(face)) continue;
     const v = corners(p, t);
-    const here = surfaceAt(infos[face], 1, centroidOf(v));
+    const here = surfaceAt(infos[face], 1, centroidOf(v), precision);
     if (!here) continue;
     const along = dot3(normalOf(v), here.normal);
     sums.set(face, (sums.get(face) ?? 0) + along);
@@ -192,11 +224,36 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
   }
   const both = [...against].filter(([face, area]) => area > 1e-6 * (total.get(face) as number)).map(([face]) => face);
   if (both.length) return problem('bothSides', both, `material lies on both sides of ${both.map(label).join(', ')}, so the face has no single way outwards`);
-  const closing = [...sides].filter(([face, side]) => {
+  // A hole, a socket or a groove whose radius the clearance takes away. A torus is decided per
+  // vertex as well: in its own half plane a vertex moves along the line from the centre of the tube,
+  // to the distance ρ′ = R + (ρ − R)(r + side·c)/r from the axis, and one that reaches the axis or
+  // passes it (the hole of a ring filled, the cavity of a lemon pinched shut) closes the face. A
+  // convex torus that never reaches the inner side of its tube (a round on the edge of a peg, an
+  // apple) keeps every vertex off the axis.
+  const closing = new Map<number, string>();
+  for (const [face, side] of sides) {
     const info = infos[face];
-    return !info.planar && info.surface === 'cylinder' && side < 0 && info.radius <= c;
-  });
-  if (closing.length) return problem('closes', closing.map(([face]) => face), `a hole of radius ${closing.map(([face]) => (infos[face] as { radius: number }).radius).join(', ')} mm closes at a clearance of ${c} mm`);
+    if (info.planar || side > 0) continue;
+    if (info.surface === 'cylinder' && info.radius <= c) closing.set(face, `the hole of radius ${info.radius} mm`);
+    if (info.surface === 'sphere' && info.radius <= c) closing.set(face, `the socket of radius ${info.radius} mm`);
+    if (info.surface === 'torus' && info.minorRadius <= c) closing.set(face, `the groove of radius ${info.minorRadius} mm`);
+  }
+  for (let t = 0; t < count; t++) {
+    const face = solid.faceIds[t];
+    const info = infos[face];
+    if (closing.has(face) || info.planar || info.surface !== 'torus' || !sides.has(face)) continue;
+    const a = unit3(info.axis);
+    const [R, r, side] = [info.majorRadius, info.minorRadius, sides.get(face) as number];
+    for (let k = 0; k < 3; k++) {
+      const rel = sub3(at0(tri[3 * t + k]), info.center);
+      const rho = len3(sub3(rel, mul3(a, dot3(rel, a))));
+      if (rho <= precision) continue; // on the axis: it moves along it
+      if (R + ((rho - R) * (r + side * c)) / r > precision) continue;
+      closing.set(face, R > 0 && side > 0 ? `the hole of radius ${R - r} mm of the ring ${label(face)}` : `${label(face)}, which reaches the axis`);
+      break;
+    }
+  }
+  if (closing.size) return problem('closes', closing.keys(), `${[...closing.values()].join(', ')} closes at a clearance of ${c} mm`);
 
   // 2. The vertices: each to where the moved surfaces of its faces meet.
   const conditions = new Map<number, { face?: number; n: Vec3 }[]>();
@@ -233,7 +290,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
       for (const condition of used) {
         if (condition.face === undefined) rows.push({ n: condition.n, r: c - dot3(sub3(point, from), condition.n) });
         else {
-          const here = surfaceAt(infos[condition.face], sides.get(condition.face) as number, point);
+          const here = surfaceAt(infos[condition.face], sides.get(condition.face) as number, point, precision);
           if (here) rows.push({ n: here.normal, r: c - here.distance });
         }
       }
@@ -389,8 +446,8 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
     const others = new Set<number>();
     for (const vertex of vertices) for (const other of facesOf.get(vertex) ?? []) if (other !== face && !swept(other) && !carried.has(other)) others.add(other);
     const on = (which: number, vertex: number): Vec3 | undefined => {
-      const here = surfaceAt(infos[which], 1, at(vertex));
-      return here !== undefined && Math.abs(here.distance) <= onCurve ? here.normal : undefined;
+      const here = surfaceAt(infos[which], 1, at(vertex), precision);
+      return here !== undefined && Math.abs(here.distance) <= onCurve ? unit3(here.normal) : undefined;
     };
     const shared = (g: number, h: number): boolean =>
       [...vertices].every((vertex) => {
@@ -404,7 +461,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
       continue;
     }
     for (const vertex of vertices) {
-      const here = surfaceAt(infos[face], sides.get(face) as number, moved3(vertex));
+      const here = surfaceAt(infos[face], sides.get(face) as number, moved3(vertex), precision);
       if (here && Math.abs(here.distance - c) > chord) return problem('vertex', [face], `the narrow face ${label(face)} ends ${Math.abs(here.distance - c).toPrecision(2)} mm off its moved surface, more than the chord tolerance`);
     }
   }
@@ -413,7 +470,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
     const pair = exempt.get(currentFaces[t]);
     if (!pair) continue;
     const centroid = centroidOf(cornersAt(positions, t));
-    const off = (which: number): number => Math.abs((surfaceAt(infos[which], sides.get(which) as number, centroid)?.distance ?? Infinity) - c);
+    const off = (which: number): number => Math.abs((surfaceAt(infos[which], sides.get(which) as number, centroid, precision)?.distance ?? Infinity) - c);
     currentFaces[t] = off(pair[0]) <= off(pair[1]) ? pair[0] : pair[1];
   }
 
@@ -537,7 +594,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
     const [face, own] = [currentFaces[t], ownFaces[t]];
     const bySurface = reshaped[t] === 1 && !swept(own);
     if (bySurface ? widthOf(after) < chord : widthOf(before) < chord * 1e-2 || widthOf(after) < chord * 1e-2) continue;
-    const here = bySurface ? surfaceAt(infos[own], sides.get(own) as number, centroidOf(after)) : undefined;
+    const here = bySurface ? surfaceAt(infos[own], sides.get(own) as number, centroidOf(after), precision) : undefined;
     if (dot3(here ? here.normal : normalOf(before), normalOf(after)) <= 0) turned.add(face);
   }
   if (turned.size) return problem('turned', turned, `triangles of ${[...turned].map(label).join(', ')} turn over: a hole or a gap narrower than twice the clearance`);
@@ -546,7 +603,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
   // the face each triangle of the result is measured as: the one it came from (an exempt face
   // stays carried there), or the planar face it was made again for
   const sampleFaces = Uint32Array.from(faceIds.map((face, i) => (source[i] >= 0 ? ownFaces[source[i]] : face)));
-  const ownDistance = (face: number, point: Vec3): number | undefined => (infos[face].planar || swept(face) || carried.has(face) ? undefined : surfaceAt(infos[face], sides.get(face) as number, point)?.distance);
+  const ownDistance = (face: number, point: Vec3): number | undefined => (infos[face].planar || swept(face) || carried.has(face) ? undefined : surfaceAt(infos[face], sides.get(face) as number, point, precision)?.distance);
   const near = tooNear(solid, result, sampleFaces, infos, c, chord, precision, carried, ownDistance);
   if (near) return problem('tooNear', [near.from, near.to], `the moved ${label(near.from)} comes within ${near.distance.toPrecision(3)} mm of ${label(near.to)}, nearer than the clearance of ${c} mm`);
 

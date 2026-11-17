@@ -3,7 +3,7 @@
 // the modules of the feature types; they are not handed over in a context that would grow with them.
 import { type FaceInfo, analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
-import { faceKey, has } from '../util';
+import { LENGTH_TOLERANCE, faceKey, has, sub3 } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
@@ -36,6 +36,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidPattern: 'The counts, the directions and the spans do not make a pattern.',
   importedTarget: 'A target or a tool is an imported mesh, which no feature may change.',
   invalidClearance: 'The tool cannot be moved outwards by the clearance without a change of its shape.',
+  invalidAxis: 'The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };
@@ -51,15 +52,27 @@ export function frame(ref: PlaneRef, state: State): Frame | IssueCode {
   const solid = lookup(state.bodies, ref.body);
   const id = state.faceIds.get(faceKey(ref.face));
   if (!solid || id === undefined) return 'brokenReference';
-  return faceFrame(analyzeBody(solid, state.faceNames, state.faceInfos), id, state.faceInfos[id]);
+  return faceFrame(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), id, state.faceInfos[id]);
 }
 
-// The line of an axis reference in a state: a base axis through the origin, or the normal of a sketch
-// through one of its solved points.
-export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3 } | { code: IssueCode; refs: unknown[] } {
+// The line of an axis reference in a state: a base axis through the origin, the normal of a sketch
+// through one of its solved points, or a line of a sketch through its point `a` from `a` to `b`
+// (the direction is then `b − a`, not of unit length). A sketch that did not evaluate, a point or
+// a line without a place in it is `brokenReference`; a line whose ends are not more than
+// `LENGTH_TOLERANCE` apart is `invalidAxis` with the line in `refs` and `detail` saying so. A projected line whose edge is
+// gone keeps its last valid place in the sketch, and so does the axis.
+export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3 } | { code: IssueCode; refs: unknown[]; detail?: string } {
   if (ref.kind === 'base') return { point: [0, 0, 0], direction: [ref.axis === 'X' ? 1 : 0, ref.axis === 'Y' ? 1 : 0, ref.axis === 'Z' ? 1 : 0] };
   const sketch = lookup(state.sketches, ref.sketch);
   if (!sketch) return { code: 'brokenReference', refs: [ref.sketch] };
+  if (ref.kind === 'sketchLine') {
+    const line = lookup(sketch.input.curves, ref.line);
+    const [a, b] = line?.type === 'line' ? [lookup(sketch.geometry.points, line.a), lookup(sketch.geometry.points, line.b)] : [];
+    if (!a || !b) return { code: 'brokenReference', refs: [ref.line] };
+    if (Math.hypot(b.x - a.x, b.y - a.y) <= LENGTH_TOLERANCE) return { code: 'invalidAxis', refs: [ref.line], detail: 'the line of the axis has no length' };
+    const from = toWorld(sketch.frame, a.x, a.y);
+    return { point: from, direction: sub3(toWorld(sketch.frame, b.x, b.y), from) };
+  }
   const at = lookup(sketch.geometry.points, ref.point);
   if (!at) return { code: 'brokenReference', refs: [ref.point] };
   return { point: toWorld(sketch.frame, at.x, at.y), direction: sketch.frame.normal };

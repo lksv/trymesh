@@ -158,7 +158,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   for (const id of Object.keys(feature.external).sort()) {
     const ref = feature.external[id];
     const solid = lookup(state.bodies, ref.body);
-    const projected = solid ? projectEdge(analyzeBody(solid, state.faceNames, state.faceInfos), ref.edge, ref.kind, frame, state.faceInfos) : 'brokenProjection';
+    const projected = solid ? projectEdge(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), ref.edge, ref.kind, frame, state.faceInfos, state.chordTolerance) : 'brokenProjection';
     if (typeof projected !== 'string') external[id] = projected;
     else {
       // Promítnutí, které nejde vyhodnotit, skicu neshodí: křivka zůstane na posledních platných hodnotách.

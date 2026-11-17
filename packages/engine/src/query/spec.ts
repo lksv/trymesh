@@ -58,8 +58,9 @@ export interface QueryContext {
   //   engine keeps them apart.
   memo<T>(owners: readonly [object, ...object[]], key: string, compute: () => T): T;
 }
+// `invalidAxis`: an axis of the kind `sketchLine` whose line has no length (D58).
 export interface RefProblem {
-  problem: 'brokenReference' | 'nonPlanarFace';
+  problem: 'brokenReference' | 'nonPlanarFace' | 'invalidAxis';
 }
 
 // The unit of a number of a result: the units of a numeric field, and those only a result has.

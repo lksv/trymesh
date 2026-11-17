@@ -13,10 +13,11 @@ import { mesh } from './mesh';
 import type { FeatureModule, FeatureTypeInfo } from './module';
 import { pattern } from './pattern';
 import { plane } from './plane';
+import { revolve } from './revolve';
 import { sketch } from './sketch';
 import { split } from './split';
 
-export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split };
+export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve };
 
 // The public part of the registry.
 export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(
@@ -95,7 +96,7 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
     const generator = spec.generator?.(target);
     if (generator === undefined || !ref.accepts?.includes(generator)) fail(`${what}: feature "${ref.id}" is not an extrusion with a profile from the generator ${(ref.accepts ?? []).join(' or ')}`);
   } else if (ref.kind === 'tool') {
-    if (!spec.producesTool(target)) fail(`${what}: feature "${ref.id}" is not a feature that applies a tool (an extrusion with the operation add or cut, a hole)`);
+    if (!spec.producesTool(target)) fail(`${what}: feature "${ref.id}" is not a feature that applies a tool (an extrusion or a revolve with the operation add or cut, a hole)`);
   } else {
     const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : ref.kind === 'pattern' ? (spec.tagsFaces?.(target) ?? false) : target.type === ref.kind;
     if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);

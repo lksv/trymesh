@@ -27,7 +27,7 @@ import {
   rangeText,
 } from '@trymesh/engine';
 import typesSource from '../../engine/src/types.ts?raw';
-import { HOST_OPERATIONS, type HostOperationSet } from './host';
+import { HOST_OPERATIONS, type HostOperationSet, OPERATION_STATE_ARGS } from './host';
 
 const CONVENTIONS = [
   'Délky jsou v milimetrech, úhly v radiánech. Souřadnice skici jsou v její rovině (osy X a Y skici), počátek skici je pevný bod s ID `origin`.',
@@ -58,6 +58,14 @@ const CONVENTIONS = [
     'Every query answers in the pose of the document, also with `at`; the tools query, check_interference and get_body then say `pose` beside the answer. A body beyond a joint that has no motion (its axis broken or, with `at`, not made yet while its value is not zero; a limit or an expression in error) cannot be read in the pose and the query fails naming the joint: read it with the joint previewed at zero (`after: setPose` with 0), or ask about the model as modelled with `geometry: "modelled"`. ' +
     'An axis, a sketch point or a plane given to a query is as modelled while the bodies are posed. Exports, get_model and the print query are always as modelled. ' +
     'A pair in `fits` across a joint is a pin in its hole, not a collision, and is there in nearly every turned pose; the kernel verifies nearly every such pose, and a pair it cannot verify is in `cleared` (clear, by a mesh the kernel computed and did not verify) or in `failed`. A pair in `failed` is neither clear nor colliding; its message says what the kernel computed and could not verify. Lay the axes of joints along the axes of the model where you can: askew to them a pair costs seconds.',
+  'A robot description is the export format `urdf` or `mjcf` (tool `export`, a directory): the description and one STL per body, in metres and kilograms. ' +
+    'It is the mechanism as modelled: one tree from one root link (`root` when there are several), the frame of a link at the axis of the joint that moves it with the axes of the model, the mass, the centre of mass and the inertia of each link from its bodies (a reference part with the mass of its properties, auxiliary bodies left out). ' +
+    'Every link a revolute, continuous or prismatic joint moves needs a mass, its own or on the links fixed to it; URDF needs `effort` (N·mm, N for a prismatic joint) and `velocity` (rad/s, mm/s) of every revolute and prismatic joint: set them with setJoint. ' +
+    'MJCF also writes a motor per joint with an effort, with `gearRatio`, and `rotorInertia · gearRatio²` as the armature of the joint (`rotorInertia` in g·mm², as the query mass), and the pose of the document as the keyframe `pose`. ' +
+    'setJoint keeps the drive of a joint it is not given (null removes a field). ' +
+    'MuJoCo collides the convex hulls of the meshes; the MJCF excludes the two links of a joint from each other, which URDF cannot say, so use the MJCF for MuJoCo. Parts nested in a housing touch it, so export such a model with `collision: "none"`. ' +
+    'A coupled motion (two values over one parameter) is written as free joints. `about` of the description says what was written and what was not. ' +
+    'The operation view_image takes `at` and `after` as the tool query does: `after: { type: "setPose", values: { … } }` draws a pose without writing it; a body beyond a joint without a motion is drawn with the joint at zero, and refused when a section is asked.',
   'A pattern (feature type pattern) repeats its source by one of three kinds of `transform`. `source` is `{ type: "features", features: [...] }` (features that apply a tool: extrusions with the operation add or cut, holes; for every copy the tool of each is built again in the place of the copy and applied to the targets of that feature, so a cut through all is measured in the direction of the copy) or `{ type: "body", body }` (the copies are new bodies `<pattern>/<number>`). ' +
     '(1) `{ type: "circular", axis, count, span }` turns the copies around an axis: `axis` is `{ kind: "base", axis: "X" | "Y" | "Z" }` or `{ kind: "sketchPoint", sketch, point }` (the normal of the sketch plane through that point). A positive angle turns counter-clockwise seen against the axis (right-hand rule; around Z it takes X towards Y); around a sketch point that is counter-clockwise in the coordinates of the sketch, so a sketch on the base plane XZ (normal −Y) turns the other way than the base axis Y. `span` is `{ type: "full" }` (the step is the full circle divided by the count) or `{ type: "angle", angle }` (the angle between the first and the last copy). ' +
     '(2) `{ type: "linear", direction, count, span }` shifts the copies along a direction: `direction` is an axis as above of which only the direction counts (a base axis points along its positive half, a sketch gives the normal of its plane, out of the body for a sketch on a face; use the point `origin`). `span` is `{ type: "spacing", spacing }` (mm between neighbours: copy k is shifted by k · spacing, so a larger count adds copies at the far end and keeps the numbers and places of the others; prefer it when something refers to a copy) or `{ type: "length", length }` (mm between the original and the last copy; a change of the count moves every copy); negative runs against the direction, zero is refused. ' +
@@ -336,12 +344,16 @@ export function dataCatalogs(): { catalog: string; title: string; summary: strin
 }
 
 // The operations of the app (host.ts), each a tool of its own: arguments and what each returns.
+// After the arguments of an operation `at` and `after`, which the path of every operation takes.
 export function hostOperations(operations: HostOperationSet = HOST_OPERATIONS): QueryDescription[] {
   return Object.entries(operations).map(([query, spec]) => ({
     query,
     title: spec.title,
     summary: spec.summary,
-    args: Object.entries(spec.args).map(([name, arg]) => ({ name, description: `${argumentText(arg)}${arg.summary ? `. ${arg.summary}` : ''}`, required: !arg.optional })),
+    args: [
+      ...Object.entries(spec.args).map(([name, arg]) => ({ name, description: `${argumentText(arg)}${arg.summary ? `. ${arg.summary}` : ''}`, required: !arg.optional })),
+      ...Object.entries(OPERATION_STATE_ARGS).map(([name, description]) => ({ name, description, required: false })),
+    ],
     returns: spec.returns,
   }));
 }
@@ -434,7 +446,7 @@ export function apiText(): string {
     ...queries.map(queryText),
     '',
     '# Operations of the app',
-    'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable.',
+    'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable. Every operation takes `at` and `after` as the tool query does: its other arguments are checked in that state and it works on it, and nothing is written.',
     ...(operations.length ? operations.map((entry) => [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  arguments:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  arguments: none']), `  returns: ${entry.returns}`].join('\n')) : ['(none yet)']),
     '',
     '# Catalogs',

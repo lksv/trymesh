@@ -29,7 +29,7 @@ export function fieldText(value: number | Expr, unit: Unit): string {
   return Number.isFinite(shown) ? plainNumber(unit === 'rad' ? shown * DEGREES : shown) : '';
 }
 
-const UNIT_LABEL: Record<Unit, string> = { mm: ' mm', rad: '°', count: '', none: '', mm2: ' mm²', mm3: ' mm³', g: ' g', 'g/cm3': ' g/cm³' };
+const UNIT_LABEL: Record<Unit, string> = { mm: ' mm', rad: '°', count: '', none: '', mm2: ' mm²', mm3: ' mm³', g: ' g', 'g/cm3': ' g/cm³', N: ' N', 'N·mm': ' N·mm', 'rad/s': ' rad/s', 'mm/s': ' mm/s', 'g·mm2': ' g·mm²' };
 
 // A number as it is shown: six decimal places, or that many significant digits (a value that is
 // small on purpose, which six decimal places would round to zero).

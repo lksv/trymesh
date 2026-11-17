@@ -1018,6 +1018,16 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('  commands: setLink, removeLink, setJoint, removeJoint, setPose');
     expect(text).toContain('after: { type: "setPose", values: { elbow: 1.2 } }');
     expect(text).toContain("{ type: 'setPose'; values: Record<Id, number | Expr> }");
+
+    // the drive of a joint (5b): in get_model as stored, and a field that fails in `jointDriveErrors`, not in `jointErrors`
+    execute(engine, { type: 'setSuppressed', id: 'f', suppressed: false });
+    answer = execute(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'torque', expr: '800' }, { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 'axes', point: 'pivot' }, lower: 'deg(-180)', upper: 'deg(180)', value: 0, effort: 'torque', velocity: 3 } }] });
+    expect(ok(engine, 'get_model').mechanism.joints[0]).toMatchObject({ effort: 800, velocity: 3, expressions: { effort: 'torque' } });
+    answer = execute(engine, { type: 'removeParameter', name: 'torque' });
+    expect(answer).not.toHaveProperty('jointErrors');
+    expect(answer.jointDriveErrors).toEqual([{ joint: 'turn', field: 'effort', message: expect.stringContaining('torque') }]);
+    expect(ok(engine, 'get_model').mechanism.joints[0]).not.toHaveProperty('status');
+    expect(ok(engine, 'get_model', { at: 'f' })).not.toHaveProperty('jointDriveErrors');
   });
 
   it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {

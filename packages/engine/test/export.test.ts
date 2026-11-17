@@ -36,7 +36,7 @@ describe('export formats', () => {
   });
 
   it('the catalog has STL, 3MF, the outline as DXF and SVG and the parts list as CSV, described', () => {
-    expect(Object.keys(EXPORT_FORMATS)).toEqual(['stl', '3mf', 'dxf', 'svg', 'partsCsv']);
+    expect(Object.keys(EXPORT_FORMATS)).toEqual(['stl', '3mf', 'dxf', 'svg', 'partsCsv', 'urdf', 'mjcf']);
     expect(Object.keys(EXPORT_FORMATS.stl.options)).toEqual(['bodies', 'perBody']);
   });
 

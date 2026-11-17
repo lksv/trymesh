@@ -8,7 +8,8 @@ import { apiDescription, apiText } from '../src/api';
 import { type ToolAnswer, callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
-// A disc `low`, and a disc `high` standing on it.
+// A disc `low`, and a disc `high` standing on it; each a link of a mechanism, `high` turning on
+// `low` about Z (for the robot descriptions), both of a density.
 function model(): Engine {
   const engine = newEngine();
   const disc = (id: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start, distance: 10 }, operation: 'new' } });
@@ -20,6 +21,11 @@ function model(): Engine {
         { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
         disc('low', 0),
         disc('high', 10),
+        { type: 'setBodyProperties', body: 'low', patch: { density: 1.2 } },
+        { type: 'setBodyProperties', body: 'high', patch: { density: 1.2 } },
+        { type: 'setLink', id: 'base', bodies: ['low'] },
+        { type: 'setLink', id: 'top', bodies: ['high'] },
+        { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'top', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0, effort: 500, velocity: 2 } },
       ],
     },
   });
@@ -38,6 +44,8 @@ const FIXTURES: { [F in ExportFormat]: ExportOptions<F> } = {
   dxf: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
   svg: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
   partsCsv: {},
+  urdf: { name: 'discs', meshPrefix: 'package://discs/' },
+  mjcf: { name: 'discs', root: 'base', collision: 'none' },
 };
 // Every option of every format and whether a caller may leave it out, as the type says.
 const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]: {} extends Pick<ExportOptions<F>, K> ? 'optional' : 'required' } } = {
@@ -46,6 +54,8 @@ const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]:
   dxf: { plane: 'required', offset: 'optional', bodies: 'optional' },
   svg: { plane: 'required', offset: 'optional', bodies: 'optional' },
   partsCsv: {},
+  urdf: { name: 'optional', root: 'optional', collision: 'optional', meshPrefix: 'optional' },
+  mjcf: { name: 'optional', root: 'optional', collision: 'optional' },
 };
 const ENTRIES = Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>);
 
@@ -81,6 +91,22 @@ describe('the catalog of export formats', () => {
     expect(text).toContain('  - bodies: a list, at least 1, each item the ID of a body. The bodies to export, each once, in this order, whatever their use; without it the printed bodies (use `part`: not the reference and auxiliary bodies of the body properties).');
     expect(text).toContain('  - perBody: true or false. A folder with one file per body');
     expect(text).toContain('export<F extends ExportFormat>(format: F, options: ExportOptions<F>, queryOptions?: QueryOptions): QueryOutcome<Exported>;');
+  });
+
+  it('the description of 5b: the robot formats with their options, the drive of a joint by its kind, `at` and `after` of every operation', () => {
+    const text = apiText();
+    expect(text).toContain('- urdf (URDF (robot)): The mechanism as a URDF robot description');
+    expect(text).toContain('  - meshPrefix: a text. Put before every mesh file name');
+    expect(text).toContain('- mjcf (MJCF (MuJoCo)): The mechanism as a MuJoCo model');
+    expect(text).toContain('  - collision: one of "meshes", "none". meshes (the default)');
+    expect(text).toContain('- mechanism of a joint: <joint>/effort (Effort, N·mm, positive (only when type is revolute))');
+    expect(text).toContain('- mechanism of a joint: <joint>/velocity (Velocity, mm/s, positive (only when type is prismatic))');
+    expect(text).toContain('- mechanism of a joint: <joint>/rotorInertia (Rotor inertia, g·mm2, non-negative (only when type is continuous))');
+    expect(text).not.toContain('<joint>/rotorInertia (Rotor inertia, g·mm2, non-negative (only when type is prismatic))');
+    expect(text).toContain('A robot description is the export format `urdf` or `mjcf`');
+    expect(text).toContain('setJoint keeps a drive field it is not given');
+    expect(text).toContain('  - at (optional): a feature ID. The model as it was after this feature.');
+    expect(text).toContain('  - after (optional): a command (as for execute) to preview first;');
   });
 });
 
@@ -119,7 +145,7 @@ describe('the tool that hands the files of an export to the server', () => {
 
   it('refuses in words: an unknown format or option, a body that is not there, a command that is not valid, an empty model', () => {
     const engine = model();
-    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv' });
+    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf' });
     expect(exported(engine, {})).toEqual({ error: expect.stringContaining('format') });
     expect(exported(engine, { format: 'stl', options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(exported(engine, { format: 'stl', options: { bodies: ['nope'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nope" is not in the state asked about' });

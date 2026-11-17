@@ -7,7 +7,7 @@
 //   of a cut model and the section view of the app are drawn from one answer.
 //
 // This module has no dependency on Node or on a browser: the server and the app share it.
-import { type EngineState, type Frame, type Id, type QueryOutcome, type RunArgsOf, SECTION_ARGS, type SectionResult, type Vec3, argText, completeRegions, takenAt } from '@trymesh/engine';
+import { type EngineState, type Frame, type Id, type QueryOutcome, type RunArgsOf, SECTION_ARGS, type SectionResult, type Vec3, argText, blockingJoints, completeRegions, poseNote, poseOfBody, takenAt } from '@trymesh/engine';
 import type { ArgSpecs } from '@trymesh/engine';
 import type { Host, HostOperation } from './host';
 import type { Json, ToolAnswer } from './tools';
@@ -101,8 +101,7 @@ declare module './host' {
 //   along its normal, a flip). What lies on the side the normal points to is cut away and the
 //   cut is filled. The three arguments are the descriptions of `SECTION_ARGS` themselves, with
 //   their titles and defaults.
-// - `at`: the model as it was after this feature. An argument here because the path of an
-//   operation has no `at` of its own (the tool `query` has).
+// The state is not an argument: `at` and `after` are on the path of every operation (5b, host.ts).
 // - `width`, `height`: the size of the picture in pixels.
 export const VIEW_IMAGE_ARGS = {
   view: { kind: 'choice', options: ['iso', 'front', 'back', 'left', 'right', 'top', 'bottom', 'current'], title: 'View', summary: 'iso without it. front is seen from −Y, left from −X, top from above. current is the camera of the app as the user left it, and only the camera: the picture is not fitted to the bodies, bodies hidden in the app are drawn, and a section shown in the app is not applied.', optional: true },
@@ -114,7 +113,6 @@ export const VIEW_IMAGE_ARGS = {
     optional: true,
     fields: { plane: SECTION_ARGS.plane, offset: SECTION_ARGS.offset, flip: SECTION_ARGS.flip },
   },
-  at: { kind: 'feature', title: 'After the feature', summary: 'The model as it was after this feature.', optional: true },
   width: { kind: 'number', title: 'Width', optional: true, spec: { title: 'Width in pixels', unit: 'count', integer: true, min: { value: 64 }, max: { value: 1600 }, default: 800 } },
   height: { kind: 'number', title: 'Height', optional: true, spec: { title: 'Height in pixels', unit: 'count', integer: true, min: { value: 64 }, max: { value: 1600 }, default: 600 } },
 } as const satisfies ArgSpecs;
@@ -142,31 +140,35 @@ export function cutOf(section: SectionResult, only?: readonly Id[]): ImageCut | 
   return { frame: takenAt(section), regions: drawn.map(({ body, region }) => ({ body, loops: [region.outer, ...region.holes].map((loop) => (loop.points ?? []).flatMap((point) => [point[0], point[1]])) })) };
 }
 
-// The model to draw: the state after `at`, the bodies checked against it, and the cut taken from
-// the query `section`, which resolves the plane in the state asked about and gives the loops
-// the cut is filled with.
-// - The arguments were checked against the state of the document now (the path of an operation
-//   has no other state). With `at` the bodies are looked up again here, in the state they are
-//   drawn from.
+// The model to draw: the state the path of the operation asked about (`at`, `after`), the bodies
+// looked up in it, and the cut taken from the query `section`, which resolves the plane in that
+// state and gives the loops the cut is filled with.
+// - The path checked the arguments in the same state; the bodies are looked up again here for
+//   a caller that hands a state of its own.
 // - A refusal names its argument as the check of the arguments does (`bodies[1]`,
 //   `section.plane`): a tool answers with a text, and the text is what a caller reads.
+// - With a section, a drawn body whose pose is not known (a link beyond a joint without a motion)
+//   is refused with the operation's own text: the section is a query, posed, and a cut drawn from
+//   another pose than the body would be wrong. Without one such a body is drawn with the joint at
+//   zero, as the view of the app draws it, and the answer says so.
 // - `budget`: the points the section is asked with.
-export function imageRequest(host: Host, args: ViewImageArgs, budget = SECTION_POINTS): ImageRequest | Refusal {
+export function imageRequest(host: Host, args: ViewImageArgs, state: EngineState, budget = SECTION_POINTS, after?: unknown): ImageRequest | Refusal {
   const { engine } = host;
-  const state = engine.getState(args.at);
   const missing = (args.bodies ?? []).findIndex((id) => !Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id));
-  if (missing >= 0) return refused('notAvailable', `bodies[${missing}]: the body "${args.bodies?.[missing]}" is not in the state after "${args.at}"`, ['bodies', missing]);
+  if (missing >= 0) return refused('notAvailable', `bodies[${missing}]: the body "${args.bodies?.[missing]}" is not in the state asked about`, ['bodies', missing]);
   const camera = args.view === undefined ? VIEWS.iso : args.view === 'current' ? 'current' : VIEWS[args.view];
   const request: ImageRequest = { state, camera, width: args.width, height: args.height, ...(args.bodies ? { bodies: args.bodies } : {}) };
   if (!args.section) return request;
+  const blocked = blockedBodies(state, args.bodies ?? Object.keys(state.evaluation.bodies));
+  if (blocked.length) return refused('failed', blockedSectionText(state, blocked, args.bodies ?? Object.keys(state.evaluation.bodies), after), ['section']);
   const { plane, offset, flip } = args.section;
-  const section = engine.query('section', { plane, offset, ...(flip ? { flip } : {}), ...(args.bodies ? { bodies: [...args.bodies] } : {}), outline: 'polylines', maxPoints: budget }, args.at === undefined ? {} : { at: args.at });
+  const section = engine.query('section', { plane, offset, ...(flip ? { flip } : {}), ...(args.bodies ? { bodies: [...args.bodies] } : {}), outline: 'polylines', maxPoints: budget }, { state });
   if (!section.ok) {
     // An error of the query names its own argument, and its text starts with the name of the
     // query and often with that argument. Here the plane, the offset and the flip sit under
-    // `section`; `bodies` and `at` are arguments of the operation as well.
+    // `section`; `bodies` is an argument of the operation as well.
     const { code, message, arg = [] } = section.error;
-    const path = arg[0] === 'bodies' || arg[0] === 'at' ? [...arg] : ['section', ...arg];
+    const path = arg[0] === 'bodies' ? [...arg] : ['section', ...arg];
     const said = message.replace(/^section: /, '');
     const own = arg.length && said.startsWith(`${argText(arg)}: `) ? said.slice(argText(arg).length + 2) : said;
     return refused(code, `${argText(path)}: ${own}`, path);
@@ -177,16 +179,65 @@ export function imageRequest(host: Host, args: ViewImageArgs, budget = SECTION_P
   return { ...request, cut };
 }
 
+// The bodies of a list whose pose is not known in the state: a link beyond a joint without a motion.
+function blockedBodies(state: EngineState, bodies: readonly Id[]): Id[] {
+  return bodies.filter((body) => {
+    const pose = poseOfBody(state.evaluation.mechanism, body);
+    return pose !== undefined && 'blockedBy' in pose;
+  });
+}
+
+// The refusal of a section through bodies whose pose is not known: the joints that block, and the
+// ways out of a picture: the bodies without them, and the joints at zero (with the caller's own
+// `after` in one batch) only where each can stand there: its only fault is its axis and its limits
+// allow zero, as the text of a query offers it.
+function blockedSectionText(state: EngineState, blocked: Id[], drawn: readonly Id[], after: unknown): string {
+  const { mechanism } = state.evaluation;
+  const section = state.document.mechanism;
+  const joints = [...new Set(blocked.flatMap((body) => blockingJoints(section, mechanism, body)))];
+  const faultOf = (joint: Id): string => {
+    const error = mechanism.joints[joint]?.error;
+    return error ? `${error.code}: ${error.message}` : 'in error';
+  };
+  const zeroable = joints.length > 0 && joints.every((joint) => {
+    const result = mechanism.joints[joint];
+    return result?.error?.code === 'brokenReference' && !((result.lower ?? 0) > 0) && !((result.upper ?? 0) < 0);
+  });
+  const others = drawn.filter((body) => !blocked.includes(body));
+  const pose = { type: 'setPose', values: Object.fromEntries(joints.map((joint) => [joint, 0])) };
+  const command = after === undefined || after === null ? pose : { type: 'batch', commands: [after, pose] };
+  return (
+    `section: the pose of ${blocked.length === 1 ? 'the body' : 'the bodies'} ${blocked.map((body) => `"${body}"`).join(', ')} is not known, so the section cannot be cut through ${blocked.length === 1 ? 'it' : 'them'}: ` +
+    `${joints.map((joint) => `the joint "${joint}" has no motion (${faultOf(joint)})`).join('; ')}. ` +
+    `Without a section the picture draws ${blocked.length === 1 ? 'it' : 'them'} with the joint at zero` +
+    (others.length ? `; a section of the other bodies: bodies: ${JSON.stringify(others)}` : '') +
+    (zeroable ? `; or the joints at zero, which writes nothing: after: ${JSON.stringify(command)}` : '')
+  );
+}
+
+// What a picture of a posed state says beside it: the joints that move the model with their values
+// (as the tools `query` and `get_body` put it), and the joints without a motion with the drawn
+// bodies beyond them, which are drawn with the joint standing at zero.
+function poseAbout(state: EngineState, drawn: readonly Id[]): { pose?: Record<Id, number>; blocked?: { joint: Id; bodies: Id[] }[] } {
+  const note = poseNote(state.evaluation.mechanism, state.document.mechanism);
+  const blocked = new Map<Id, Id[]>();
+  for (const body of drawn) {
+    const pose = poseOfBody(state.evaluation.mechanism, body);
+    if (pose !== undefined && 'blockedBy' in pose) blocked.set(pose.blockedBy, [...(blocked.get(pose.blockedBy) ?? []), body]);
+  }
+  return { ...(note ? { pose: note.pose } : {}), ...(blocked.size ? { blocked: [...blocked].map(([joint, bodies]) => ({ joint, bodies })) } : {}) };
+}
+
 export const viewImage: HostOperation<typeof VIEW_IMAGE_ARGS> = {
   title: 'View image',
   summary:
-    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane, optionally the model as it was after a feature. Every body has its own colour, listed with the picture. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
+    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane; with `at` the model as it was after a feature, with `after` a state that is not written (a pose: `after: { type: "setPose", values: { … } }`). Every body has its own colour, listed with the picture. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
   returns:
-    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`: the bodies of which something is drawn, each with its colour (`color` as #rrggbb and `colorName`) and, when the section goes through it, the colour its cut is filled with (`cutColor`, a darker shade of its colour). The edges of the bodies are drawn. With a section also `section.cut`, the bodies the plane goes through, and `section.cutAway`, the bodies it removes whole: a picture with nothing in it usually has the offset or the flip the wrong way round. A body has the colour of its place among the bodies of the state drawn, so a legend belongs to its own picture.',
+    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`: the bodies of which something is drawn, each with its colour (`color` as #rrggbb and `colorName`) and, when the section goes through it, the colour its cut is filled with (`cutColor`, a darker shade of its colour). The edges of the bodies are drawn. With a section also `section.cut`, the bodies the plane goes through, and `section.cutAway`, the bodies it removes whole: a picture with nothing in it usually has the offset or the flip the wrong way round. A body has the colour of its place among the bodies of the state drawn, so a legend belongs to its own picture. In a pose also `pose`, the joints that move the model with their values, and `blocked`: each joint without a motion with the drawn bodies beyond it, which are drawn with the joint at zero (with a section such a body is refused).',
   args: VIEW_IMAGE_ARGS,
-  async run(host, args) {
+  async run(host, args, state, path) {
     if (!host.view) return refused('notAvailable', 'the app that is connected has no view to draw a picture with. The queries section and body describe the shape in numbers without it.');
-    const request = imageRequest(host, args);
+    const request = imageRequest(host, args, state, SECTION_POINTS, path.after);
     if ('ok' in request) return request;
     const image = await host.view.image(request);
     if (image.base64.length > MAX_IMAGE_BASE64) return refused('failed', `the picture is too large to send (${image.base64.length} characters of ${MAX_IMAGE_BASE64}); ask for a smaller width and height`, ['width']);
@@ -194,6 +245,7 @@ export const viewImage: HostOperation<typeof VIEW_IMAGE_ARGS> = {
     const about: { [key: string]: Json } = { width: image.width, height: image.height, scale: round(image.scale), bodies: image.bodies.map((entry) => ({ ...entry })) };
     // which bodies the plane goes through is in the answer of the section; which it removes whole, the view knows
     if (request.cut) about.section = { cut: [...new Set(request.cut.regions.map((region) => region.body))], cutAway: image.cutAway };
+    Object.assign(about, poseAbout(state, image.bodies.map((entry) => entry.body)));
     return { ok: true, result: { kind: 'image', mediaType: 'image/png', base64: image.base64, about } };
   },
 };

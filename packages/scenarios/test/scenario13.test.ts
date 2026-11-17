@@ -6,7 +6,9 @@
 // collisions asked at each step; the mass of what hangs beyond the first joint", with what is posed,
 // what stays as modelled and a joint in error (docs/d36/5a-mechanism/calls.ts). The part of 3e
 // (D57): "what to print and what to buy", the query `partsList` and the file `partsCsv` over the
-// arm with inserts under the screws and three feet (docs/d36/3e-parts-list/calls.ts).
+// arm with inserts under the screws and three feet (docs/d36/3e-parts-list/calls.ts). The part of 5b
+// (D59): "the arm as URDF and as MJCF" with the drive of each joint (docs/d36/5b-robot-export/calls.ts);
+// its picture of a pose that is not written is in packages/mcp/test/view-image.test.ts.
 //
 // The model, every shape a cylinder along Z from a circle of its own sketch on XY (mm):
 // - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder (0, 0), up to z = 8.
@@ -16,7 +18,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -559,7 +561,7 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     const saved = JSON.parse(engine.save());
     expect([saved.schemaVersion, saved.schemaSteps]).toEqual([6, undefined]);
     const elbow = saved.mechanism.joints.elbow;
-    expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, effort: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('effort') } });
+    expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
     const { mechanism: _mechanism, ...older } = saved;
     const loaded = engine.load(JSON.stringify({ ...older, schemaVersion: 5 }));
@@ -579,10 +581,20 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
       'joint: lower (rad, when type is revolute)',
       'joint: upper (rad, when type is revolute)',
       'joint: value (rad, when type is revolute)',
+      'joint: effort (N·mm, when type is revolute)',
+      'joint: velocity (rad/s, when type is revolute)',
+      'joint: rotorInertia (g·mm2, when type is revolute)',
+      'joint: gearRatio (none, when type is revolute)',
       'joint: value (rad, when type is continuous)',
+      'joint: effort (N·mm, when type is continuous)',
+      'joint: velocity (rad/s, when type is continuous)',
+      'joint: rotorInertia (g·mm2, when type is continuous)',
+      'joint: gearRatio (none, when type is continuous)',
       'joint: lower (mm, when type is prismatic)',
       'joint: upper (mm, when type is prismatic)',
       'joint: value (mm, when type is prismatic)',
+      'joint: effort (N, when type is prismatic)',
+      'joint: velocity (mm/s, when type is prismatic)',
     ]);
   });
 });
@@ -905,5 +917,197 @@ describe('scenario 13, the part of 3e: what to print and what to buy, one questi
   it('h. an argument the query does not have is refused', () => {
     const outcome = engine.query('partsList', { bodies: ['base'] } as {});
     expect(outcome.ok ? 'ok' : outcome.error.code).toBe('invalidArguments');
+  });
+});
+
+// The part of 5b (D59, docs/d36/5b-robot-export/calls.ts): the arm with a drive on each joint, as
+// URDF and as MJCF. The numbers were measured with the prototype of the design and read back by
+// MuJoCo, urdf_parser_py and yourdfpy (design.md, "Measured").
+describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the drive of each joint', () => {
+  let engine: Engine;
+  const text = (file: ExportFile): string => new TextDecoder().decode(file.bytes);
+  const shoulder = (drive: object = {}): Command => ({ type: 'setJoint', id: 'shoulder', joint: { type: 'revolute', parent: 'base', child: 'upper', axis: SHOULDER, lower: 'deg(-90)', upper: 'deg(90)', value: 0, ...drive } } as Command);
+  const elbow = (drive: object = {}): Command => ({ type: 'setJoint', id: 'elbow', joint: { type: 'revolute', parent: 'upper', child: 'forearm', axis: ELBOW, lower: 'deg(-135)', upper: 'deg(135)', value: 0, ...drive } } as Command);
+  const exported = (format: 'urdf' | 'mjcf', options: object = {}, state?: EngineState | { at: Id }): Exported => unwrap(engine.export(format, options as never, state === undefined ? {} : 'at' in state ? state : { state }));
+  const refusal = (format: 'urdf' | 'mjcf', options: object = {}, state?: EngineState | { at: Id }) => {
+    const outcome = engine.export(format, options as never, state === undefined ? {} : 'at' in state ? state : { state });
+    if (outcome.ok) throw new Error('the export was not refused');
+    return outcome.error;
+  };
+  beforeAll(async () => {
+    engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() });
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'base', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { use: 'reference', mass: 280, color: '#30343a' } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'reference', mass: 0.9 } },
+      ],
+    });
+    run(engine, { type: 'batch', commands: [{ type: 'setLink', id: 'base', bodies: ['base'] }, { type: 'setLink', id: 'upper', name: 'Upper arm', bodies: LINK }, { type: 'setLink', id: 'forearm', bodies: ['forearm'] }, shoulder(), elbow()] });
+  });
+
+  it('a. MJCF needs no drive; URDF refuses until every revolute joint has an effort and a velocity, naming both joints at once', () => {
+    const mjcf = exported('mjcf');
+    expect(mjcf.layout).toBe('directory');
+    expect(mjcf.files.map((file) => file.path)).toEqual(['robot.xml', 'base.stl', 'upper.stl', 'motor.stl', 'screw.stl', 'screws_2F1.stl', 'screws_2F2.stl', 'screws_2F3.stl', 'forearm.stl']);
+    expect(text(mjcf.files[0])).not.toContain('<actuator>');
+    expect(refusal('urdf')).toEqual({ code: 'failed', message: `urdf: ${ROBOT_REFUSALS.urdfLimits.text}shoulder (effort, velocity); elbow (effort, velocity)` });
+  });
+
+  it('b. the drives in one batch and one undo step: a stepper with a gearbox at the shoulder, a servo at the elbow with its effort by an expression', () => {
+    const state = run(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'servoTorque', expr: '1100' }, shoulder({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 }), elbow({ effort: 'servoTorque', velocity: 6.2 })] });
+    expect(state.document.mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
+    expect(state.evaluation.mechanism.joints.shoulder.drive).toEqual({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 });
+    engine.undo();
+    expect(engine.getState().document.mechanism.joints.elbow).not.toHaveProperty('effort');
+    engine.redo();
+  });
+
+  it("b. a joint sent again without its drive (to widen its limits) keeps it; null removes it; a parameter's change is written back", () => {
+    const widened = previewed(engine, elbow({ lower: 'deg(-150)', upper: 'deg(150)' }));
+    expect(widened.evaluation.mechanism.joints.elbow.drive).toEqual({ effort: 1100, velocity: 6.2 });
+    expect(widened.document.mechanism.joints.elbow.expressions).toEqual({ effort: 'servoTorque', lower: 'deg(-150)', upper: 'deg(150)' });
+    const removed = previewed(engine, { type: 'batch', commands: [elbow({ effort: null, velocity: null })] });
+    expect(removed.evaluation.mechanism.joints.elbow.drive).toBeUndefined();
+    expect(removed.document.mechanism.joints.elbow.expressions).toEqual({ lower: 'deg(-135)', upper: 'deg(135)' });
+    // (a preview writes nothing back: its document keeps the numbers, its evaluation has the new one)
+    expect(previewed(engine, { type: 'setParameter', name: 'servoTorque', expr: '1500' }).evaluation.mechanism.joints.elbow.drive?.effort).toBe(1500);
+    const stronger = run(engine, { type: 'setParameter', name: 'servoTorque', expr: '1500' });
+    expect((stronger.document.mechanism.joints.elbow as { effort?: number }).effort).toBe(1500);
+    engine.undo();
+    expect((engine.getState().document.mechanism.joints.elbow as { effort?: number }).effort).toBe(1100);
+  });
+
+  it('c. URDF: the elbow 0.12 m from the frame of the upper arm, the limits in radians, the masses in kilograms from the frame of the link', () => {
+    const urdf = exported('urdf', { name: 'arm' });
+    const description = text(urdf.files[0]);
+    expect(urdf.files[0].path).toBe(ROBOT_FILES.urdf.path);
+    expect(description).toContain('<robot name="arm">');
+    expect(description).toContain('<joint name="elbow" type="revolute">\n    <origin xyz="0.12 0 0" rpy="0 0 0"/>');
+    expect(description).toContain('<joint name="shoulder" type="revolute">\n    <origin xyz="0 0 0" rpy="0 0 0"/>');
+    expect(description).toContain('<axis xyz="0 0 1"/>');
+    expect(description).toContain('<limit lower="-2.35619449" upper="2.35619449" effort="1.1" velocity="6.2"/>');
+    expect(description).toContain('<limit lower="-1.570796327" upper="1.570796327" effort="2" velocity="3"/>');
+    // the upper arm with the motor at 280 g and four screws at 0.9 g each
+    const upper = massOf(engine, { bodies: LINK }, { geometry: 'modelled' });
+    near(upper.mass, 280 + 4 * 0.9 + upper.bodies[0].mass);
+    near(upper.mass, 438.953225, 5);
+    expect(description).toContain('<origin xyz="0.06 0 0.016177152" rpy="0 0 0"/>\n      <mass value="0.438953225"/>');
+    // the forearm's product of inertia from its pin: the element of the tensor, minus the product
+    expect(description).toContain('ixz="-0.000000237793"');
+    // a material per colour, named by it; the visual of the motor refers to it
+    expect(description).toContain('<material name="#30343a"><color rgba="0.188235 0.203922 0.227451 1"/></material>');
+    expect(description).toContain('<visual name="motor"><geometry><mesh filename="motor.stl"/></geometry><material name="#30343a"/></visual>');
+    expect(description).toContain('<collision name="screws/1"><geometry><mesh filename="screws_2F1.stl"/></geometry></collision>');
+    const about = urdf.files[0].about as RobotAbout;
+    expect(about).toMatchObject({ root: 'base', links: ['base', 'upper', 'forearm'], joints: ['shoulder', 'elbow'] });
+    near(about.mass, exported('mjcf').files.slice(1).length > 0 ? massOf(engine, { bodies: ['base'] }, { geometry: 'modelled' }).mass + upper.mass + massOf(engine, { bodies: ['forearm'] }, { geometry: 'modelled' }).mass : 0, 6);
+    expect(about.notWritten).toEqual([
+      'joint "shoulder": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes the rotor as the armature of the joint and the gear in its motor',
+      'the two links of a joint are not excluded from contact: URDF cannot say it, so a reader that collides convex hulls (MuJoCo) may find the parts of a joint in contact at rest; for MuJoCo use the MJCF',
+    ]);
+    // a mesh per body, in metres in the frame of its link: the forearm moved by −120 mm in X
+    const mesh = urdf.files.find((file) => file.path === 'forearm.stl') as ExportFile;
+    expect(mesh.about as RobotMeshAbout).toEqual({ bodies: ['forearm'], triangles: engine.getState().evaluation.bodies.forearm.solid.triangles.length / 3, link: 'forearm' });
+    const view = new DataView(mesh.bytes.buffer, mesh.bytes.byteOffset);
+    const xs = Array.from({ length: (mesh.bytes.length - 84) / 50 }, (_, t) => [0, 1, 2].map((v) => view.getFloat32(84 + 50 * t + 12 + 12 * v, true))).flat();
+    expect(Math.min(...xs)).toBeCloseTo(-0.01, 6); // the plate reaches 70 mm round its centre, 60 mm beyond the elbow
+    expect(Math.max(...xs)).toBeCloseTo(0.13, 6);
+    // with a prefix for ROS
+    expect(text(exported('urdf', { meshPrefix: 'package://arm_description/' }).files[0])).toContain('<mesh filename="package://arm_description/motor.stl"/>');
+  });
+
+  it('d. MJCF: the motors, the armature, the excluded pairs, and the pose of the document as a keyframe', () => {
+    const xml = text(exported('mjcf', { name: 'arm' }).files[0]);
+    expect(xml).toContain('<compiler angle="radian" autolimits="true"/>');
+    // the armature of the shoulder: 5400 g·mm² · 5.18² = 144,894.96 g·mm² = 0.00014489496 kg·m²
+    expect(xml).toContain('<joint name="shoulder" type="hinge" pos="0 0 0" axis="0 0 1" range="-1.570796327 1.570796327" armature="0.00014489496"/>');
+    expect(xml).toContain('<motor name="shoulder" joint="shoulder" gear="5.18" ctrlrange="-0.386100386 0.386100386"/>');
+    expect(xml).toContain('<motor name="elbow" joint="elbow" gear="1" ctrlrange="-1.1 1.1"/>');
+    expect(xml).toContain('<exclude body1="base" body2="upper"/>');
+    expect(xml).toContain('<exclude body1="upper" body2="forearm"/>');
+    expect(xml).toContain('<body name="forearm" pos="0.12 0 0">');
+    expect(xml).not.toContain('<keyframe>');
+    expect((exported('mjcf').files[0].about as RobotAbout).notWritten).toEqual([
+      'joint "shoulder": velocity: a motor clamps its control, not the speed of the joint, so the velocity is not written',
+      'joint "elbow": velocity: a motor clamps its control, not the speed of the joint, so the velocity is not written',
+    ]);
+    // exported with a pose that is not written: the keyframe holds it, the bodies stay as modelled
+    const posed = text(exported('mjcf', {}, previewed(engine, pose({ shoulder: 0.3, elbow: -0.7 }))).files[0]);
+    expect(posed).toContain('<key name="pose" qpos="0.3 -0.7"/>');
+    expect(posed).toContain('<body name="forearm" pos="0.12 0 0">');
+    // collisions off: no exclusion, the geoms in no contact
+    const none = text(exported('mjcf', { collision: 'none' }).files[0]);
+    expect(none).not.toContain('<contact>');
+    expect(none).toContain('<geom name="motor" type="mesh" mesh="motor" rgba="0.188235 0.203922 0.227451 1" contype="0" conaffinity="0"/>');
+    expect(text(exported('urdf', { collision: 'none' }).files[0])).not.toContain('<collision');
+  });
+
+  it('e. what the export refuses or leaves out, each with what to do', () => {
+    // a second root is refused until `root` names one; the other tree is left out and named
+    const twoRoots = previewed(engine, { type: 'setLink', id: 'gripper', bodies: [] });
+    expect(refusal('urdf', {}, twoRoots)).toEqual({ code: 'invalidArguments', message: `urdf: ${ROBOT_REFUSALS.roots.text}base, gripper`, arg: ['root'] });
+    expect(exported('urdf', { root: 'base' }, twoRoots).files[0].about).toMatchObject({ root: 'base', leftOut: { links: ['gripper'] } });
+    expect(refusal('urdf', { root: 'upper' })).toMatchObject({ code: 'invalidArguments', arg: ['root'], message: expect.stringContaining(`${ROBOT_REFUSALS.notRoot.text}"shoulder"`) });
+    expect(refusal('mjcf', { root: 'nope' })).toMatchObject({ code: 'notAvailable', arg: ['root'], message: expect.stringContaining(`${ROBOT_REFUSALS.noSuchRoot.text}"nope"`) });
+    // the state after the forearm: the sketch of the axes comes later, so both joints are in error
+    const early = refusal('urdf', {}, { at: 'elbowPin' });
+    expect(early.message).toMatch(new RegExp(`^urdf: ${ROBOT_REFUSALS.jointInError.text}shoulder \\(brokenReference: .*\\); elbow \\(brokenReference: `));
+    // a forearm made auxiliary: the link a joint moves has no mass
+    expect(refusal('mjcf', {}, previewed(engine, { type: 'setBodyProperties', body: 'forearm', patch: { use: 'auxiliary' } })).message).toBe(`mjcf: ${ROBOT_REFUSALS.massless.text}forearm`);
+    // the motor on a link of its own, fixed to an upper arm whose plate is auxiliary: the moving link is only a frame
+    const frameOnly = previewed(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setLink', id: 'upper', bodies: LINK.filter((body) => body !== 'motor') },
+        { type: 'setLink', id: 'motor', bodies: ['motor'] },
+        { type: 'setJoint', id: 'mount', joint: { type: 'fixed', parent: 'upper', child: 'motor' } },
+        { type: 'setBodyProperties', body: 'upper', patch: { use: 'auxiliary' } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'auxiliary' } },
+      ],
+    });
+    const frame = exported('mjcf', {}, frameOnly);
+    expect(frame.files[0].about).toMatchObject({ links: ['base', 'upper', 'forearm', 'motor'], joints: ['shoulder', 'elbow', 'mount'], leftOut: { auxiliary: ['upper', 'screw', 'screws/1', 'screws/2', 'screws/3'] } });
+    expect(text(frame.files[0])).toContain('<body name="upper" pos="0 0 0">\n        <joint name="shoulder"');
+    expect(text(frame.files[0])).toContain('<body name="motor" pos="0 0 0">');
+    // equal limits: MuJoCo would turn the limit off, so the MJCF refuses; the URDF writes them
+    const locked = previewed(engine, elbow({ lower: 0, upper: 0 }));
+    expect(refusal('mjcf', {}, locked).message).toBe(`mjcf: ${ROBOT_REFUSALS.mjcfLocked.text}elbow`);
+    expect(text(exported('urdf', {}, locked).files[0])).toContain('<limit lower="0" upper="0" effort="1.1" velocity="6.2"/>');
+    // a body without a density or a mass: the text of the query mass, with the link
+    const noDensity = refusal('mjcf', {}, previewed(engine, { type: 'setBodyProperties', body: 'base', patch: { material: null, density: null } }));
+    expect(noDensity.message).toMatch(/^mjcf: the mass of a link cannot be computed: link "base": density: the body "base" has no density of its own/);
+    // a body of the model in no link is left out and named
+    const forgotten = exported('mjcf', {}, previewed(engine, { type: 'setLink', id: 'upper', bodies: LINK.slice(0, -1) }));
+    expect((forgotten.files[0].about as RobotAbout).leftOut).toEqual({ bodies: ['screws/3'] });
+    // a broken expression of an effort: the joint stays ok for the pose, both formats refuse
+    const broken = previewed(engine, { type: 'removeParameter', name: 'servoTorque' });
+    expect(broken.evaluation.mechanism.joints.elbow).toMatchObject({ status: 'ok', drive: { velocity: 6.2 }, driveErrors: { effort: { code: 'unknownName' } } });
+    expect(refusal('urdf', {}, broken).message).toMatch(new RegExp(`^urdf: ${ROBOT_REFUSALS.driveInError.text}elbow \\(effort: `));
+    expect(refusal('mjcf', {}, broken).message).toMatch(new RegExp(`^mjcf: ${ROBOT_REFUSALS.driveInError.text}elbow \\(effort: `));
+    // a pose beyond the joint is still read
+    const posedBroken = engine.preview({ type: 'batch', commands: [{ type: 'removeParameter', name: 'servoTorque' }, pose({ elbow: 0.5 })] });
+    expect(posedBroken.ok && posedBroken.state.evaluation.mechanism.links.forearm.blockedBy).toBeUndefined();
+    // the joint sent back whole with its broken expression unchanged (as the form of the app does) is
+    // taken, in the same batch as the removal of the parameter, and the effort stays in error
+    const resent = engine.preview({ type: 'batch', commands: [{ type: 'removeParameter', name: 'servoTorque' }, elbow({ effort: 'servoTorque', velocity: 6.2, lower: 'deg(-120)' })] });
+    expect(resent.ok && resent.state.evaluation.mechanism.joints.elbow.driveErrors?.effort).toBeTruthy();
+    expect(resent.ok && resent.state.evaluation.mechanism.joints.elbow.lower).toBeCloseTo((-120 * Math.PI) / 180, 12);
+    // a document without a link
+    const bare = previewed(engine, { type: 'batch', commands: ['shoulder', 'elbow'].map((id): Command => ({ type: 'removeJoint', id })).concat(['base', 'upper', 'forearm'].map((id): Command => ({ type: 'removeLink', id }))) });
+    expect(exported('urdf', {}, bare)).toEqual({ layout: 'directory', files: [], empty: NO_MECHANISM });
+  });
+
+  it('f. save and load: the drive is kept with its expression; no upgrade step (the joint validator refuses fields it does not know)', () => {
+    expect(SCHEMA_PENDING).toBe(0);
+    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    const saved = engine.save();
+    expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
+    const loaded = engine.load(saved);
+    expect(loaded.ok && loaded.state.document.mechanism.joints.shoulder).toMatchObject({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 });
   });
 });

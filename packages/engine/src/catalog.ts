@@ -15,8 +15,10 @@ export interface OperandSpec {
 // ---------------------------------------------------------------- numeric fields
 
 // Lengths are millimetres and angles radians; areas, volumes, masses and densities are derived (an
-// argument of a query such as a threshold on a shared volume, the properties of a body).
-export type Unit = 'mm' | 'rad' | 'count' | 'none' | 'mm2' | 'mm3' | 'g' | 'g/cm3';
+// argument of a query such as a threshold on a shared volume, the properties of a body). The drive
+// of a joint (5b) keeps them: a force in newtons, so a torque in N·mm, a speed in rad/s or mm/s, an
+// inertia in g·mm² (the unit of the query `mass`).
+export type Unit = 'mm' | 'rad' | 'count' | 'none' | 'mm2' | 'mm3' | 'g' | 'g/cm3' | 'N' | 'N·mm' | 'rad/s' | 'mm/s' | 'g·mm2';
 
 export interface Bound {
   value: number;

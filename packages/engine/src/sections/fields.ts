@@ -10,10 +10,12 @@ import type { Expr, ExpressionError } from '../types';
 import { has } from '../util';
 import { CommandError, type Dict, type FieldMode, Fields, fail, object, string } from '../validation';
 
-// A numeric field of an entry: its name in the entry and its description.
+// A numeric field of an entry: its name in the entry and its description. `optional`: an entry may
+// leave it out (the drive of a joint, 5b); `readEntryFields` skips a field that is not there.
 export interface EntryField {
   path: string;
   spec: NumberSpec;
+  optional?: true;
 }
 
 // The expressions of an entry as a document stores them: an object of texts by field.

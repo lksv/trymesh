@@ -32,7 +32,8 @@ export { ZIP_NAME_LIMIT, type ZipEntry, crc32, zip } from './export/zip';
 export type { MeshAbout } from './export/threemf';
 export type { OutlineAbout } from './export/outline';
 export { PARTS_CSV, type PartsCsvAbout, partsCsvText } from './export/parts-csv';
-export { csvField } from './export/text';
+export { csvField, significant } from './export/text';
+export { NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, meshName } from './export/robot';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';
 export { QUERIES } from './query/index';
 export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, Described, RunArgsOf } from './query/args';
@@ -50,7 +51,7 @@ export { SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES, type UpgradeStep } from './sc
 export { DOCUMENT_SECTIONS, SECTION_INFO, type SectionName, namedBySections, takenOver } from './sections/index';
 export type { SectionFieldSpec, SectionInfo } from './sections/spec';
 export { DENSITY, MASS, bodyPropertiesWithoutBody, partName, printedBodies } from './sections/body-properties';
-export { type Carried, JOINT_FIELDS, LIMIT_TOLERANCE, type PoseNote, carriedBy, poseNote, poseOfBody } from './sections/mechanism';
+export { type Carried, JOINT_DRIVE_FIELDS, JOINT_FIELDS, LIMIT_TOLERANCE, type PoseNote, blockingJoints, carriedBy, poseNote, poseOfBody } from './sections/mechanism';
 export { MECHANISM_ARGS, type MechanismAnswer } from './query/mechanism';
 export { PARTS_LIST_ARGS, type HardwareRow, type HoleCount, type PartRow, type PartsList, type PartsSum, holeCounts } from './query/parts-list';
 export { pairInFrame } from './query/pose';

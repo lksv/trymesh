@@ -349,7 +349,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, perBody: true })).toEqual({ error: 'unknown argument "perBody"; the tool takes format, path, options, overwrite, at, after' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
-    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv' });
+    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
@@ -395,6 +395,49 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'svg', path: join(dir, 'export-2g', 'none.svg'), options: { plane: { kind: 'base', plane: 'XY' } } })).toEqual({ error: expect.stringContaining('the plane cuts none of the bodies; "base" has a face in the plane') });
     await expect(readFile(join(dir, 'export-2g', 'none.svg'))).rejects.toThrow();
     await session.close();
+  });
+
+  it('export: a robot as URDF and as MJCF into one folder, the meshes shared, the second with overwrite (5b)', async () => {
+    const session = await connect();
+    const disc = (id: string, start: number) => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start, distance: 10 }, operation: 'new' } });
+    const built = await session.call('execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'addFeature', feature: { id: 's', name: 's', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } },
+          { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+          disc('low', 0),
+          disc('high', 10),
+          { type: 'setBodyMaterial', body: 'low', material: 'PLA' },
+          { type: 'setBodyMaterial', body: 'high', material: 'PLA' },
+          { type: 'setLink', id: 'base', bodies: ['low'] },
+          { type: 'setLink', id: 'top', bodies: ['high'] },
+          { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'top', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0 } },
+        ],
+      },
+    });
+    expect(built.error).toBeUndefined();
+    const folder = join(dir, 'export-5b', 'robot');
+    // URDF needs the drive: refused with the joint named, nothing written
+    expect(await session.call('export', { format: 'urdf', path: folder })).toEqual({ error: 'failed: urdf: URDF requires an effort and a velocity of every revolute and prismatic joint (setJoint with `effort` and `velocity`): turn (effort, velocity)' });
+    await expect(readdir(folder)).rejects.toThrow();
+    // the drive given in the state previewed: written, with `about` of every file
+    const after = { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'top', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0, effort: 500, velocity: 2 } };
+    const urdf = await session.call('export', { format: 'urdf', path: folder, options: { name: 'discs', meshPrefix: 'package://discs/' }, after });
+    expect(urdf.files.map((file: { path: string }) => file.path)).toEqual(['robot.urdf', 'low.stl', 'high.stl'].map((name) => join(folder, name)));
+    expect(urdf.files[0]).toMatchObject({ root: 'base', links: ['base', 'top'], joints: ['turn'] });
+    expect(urdf.files[1]).toMatchObject({ bodies: ['low'], link: 'base' });
+    expect(await readFile(join(folder, 'robot.urdf'), 'utf8')).toContain('<mesh filename="package://discs/low.stl"/>');
+    // the MJCF into the same folder: the meshes are the same files, so it needs `overwrite`
+    expect(await session.call('export', { format: 'mjcf', path: folder })).toEqual({ error: expect.stringMatching(/nothing was written, these files already exist: .*low\.stl/) });
+    const mjcf = await session.call('export', { format: 'mjcf', path: folder, overwrite: true });
+    expect(mjcf.files).toHaveLength(3);
+    expect((await readdir(folder)).sort()).toEqual(['high.stl', 'low.stl', 'robot.urdf', 'robot.xml']);
+    expect(await readFile(join(folder, 'robot.xml'), 'utf8')).toContain('<mujoco model="robot">');
+    // a document without a mechanism
+    const other = await connect();
+    expect(await other.call('export', { format: 'mjcf', path: folder })).toEqual({ error: 'the model has no mechanism: a robot description needs links and joints (setLink, setJoint)' });
+    await Promise.all([session.close(), other.close()]);
   });
 
   it('export_stl per body: a failure midway leaves the directory as it was, exports at once do not mix their files', async () => {

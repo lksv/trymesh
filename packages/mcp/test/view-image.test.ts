@@ -111,8 +111,22 @@ describe('the operation view_image', () => {
     expect(Object.keys(requests[0].state.evaluation.bodies)).toEqual(['disc', 'pin']);
     expect((picture.about?.bodies as { body: string }[]).map((entry) => entry.body)).toEqual(['disc', 'pin']);
     // a body of the document that the earlier state does not have yet
-    expect(await ask(host, { at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[1]: the body "late" is not in the state after "pin"' });
+    // the arguments are checked in the state asked about (5b): before, they were checked in the state now
+    expect(await ask(host, { at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[1]: the body "late" is not in the state asked about' });
     expect(requests).toHaveLength(1);
+    // a body that only a previewed command adds can be named with `after`, and one it removes cannot
+    const before = engine.save();
+    const extra: Command = { type: 'addFeature', feature: { id: 'extra', name: 'extra', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 30, distance: 5 }, operation: 'new' } };
+    await pictureOf(host, { bodies: ['extra'], after: extra });
+    expect(Object.keys(requests[1].state.evaluation.bodies)).toEqual(['disc', 'pin', 'late', 'extra']);
+    expect(await ask(host, { bodies: ['late'], after: { type: 'removeFeature', id: 'late' } })).toEqual({ ok: false, error: 'notAvailable: view_image: bodies[0]: the body "late" is not in the state asked about' });
+    // with both, the document after the command up to `at`; the command may add the feature `at` names
+    await pictureOf(host, { at: 'extra', after: extra });
+    expect(Object.keys(requests[2].state.evaluation.bodies)).toEqual(['disc', 'pin', 'late', 'extra']);
+    expect(await ask(host, { after: { type: 'removeFeature', id: 'nope' } })).toMatchObject({ ok: false, error: expect.stringMatching(/^after: invalidCommand: /) });
+    expect(await ask(host, { at: 7 })).toEqual({ ok: false, error: 'invalidArguments: view_image: at: a feature ID is expected' });
+    expect(await ask(host, { after: 'setPose' })).toEqual({ ok: false, error: 'invalidArguments: view_image: after: a command is expected' });
+    expect(engine.save()).toBe(before);
   });
 
   it('a section: the cut is the answer of the query section, in the plane it was taken at, a region per body', async () => {
@@ -170,15 +184,15 @@ describe('the operation view_image', () => {
   it('a section that does not fit its budget is refused, not drawn half filled; a refusal names its argument as the check does', () => {
     const { host } = hostOf(engine);
     const args = { width: 800, height: 600, section: { plane: { kind: 'base' as const, plane: 'XZ' as const }, offset: -1 } };
-    expect(imageRequest(host, args, 5)).toEqual({ ok: false, error: { code: 'failed', message: 'section: the section has 10 loops and points, too many to draw; name fewer bodies', arg: ['section'] } });
-    expect(imageRequest(host, args, 10)).toMatchObject({ cut: { regions: [{ body: 'disc' }, { body: 'pin' }] } });
+    expect(imageRequest(host, args, engine.getState(), 5)).toEqual({ ok: false, error: { code: 'failed', message: 'section: the section has 10 loops and points, too many to draw; name fewer bodies', arg: ['section'] } });
+    expect(imageRequest(host, args, engine.getState(), 10)).toMatchObject({ cut: { regions: [{ body: 'disc' }, { body: 'pin' }] } });
     // the plane of the section, under `section`; the bodies and the state are the operation's own
-    const round = imageRequest(host, { width: 800, height: 600, section: { plane: { kind: 'face', body: 'disc', face: { feature: 'disc', role: 'side', curve: 'k' } }, offset: 0 } });
+    const round = imageRequest(host, { width: 800, height: 600, section: { plane: { kind: 'face', body: 'disc', face: { feature: 'disc', role: 'side', curve: 'k' } }, offset: 0 } }, engine.getState());
     expect(round).toEqual({ ok: false, error: { code: 'notAvailable', message: 'section.plane: the face is not planar, so it gives no cutting plane', arg: ['section', 'plane'] } });
     // a face of a body that the earlier state does not have: the query checks the plane in that state
-    const early = imageRequest(host, { width: 800, height: 600, at: 'pin', section: { plane: { kind: 'face', body: 'late', face: { feature: 'late', role: 'endCap' } }, offset: 0 } });
+    const early = imageRequest(host, { width: 800, height: 600, section: { plane: { kind: 'face', body: 'late', face: { feature: 'late', role: 'endCap' } }, offset: 0 } }, engine.getState('pin'));
     expect(early).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['section', 'plane', 'body'], message: expect.stringMatching(/^section\.plane\.body: /) } });
-    expect(imageRequest(host, { width: 800, height: 600, at: 'pin', bodies: ['disc', 'late'] })).toEqual({ ok: false, error: { code: 'notAvailable', message: 'bodies[1]: the body "late" is not in the state after "pin"', arg: ['bodies', 1] } });
+    expect(imageRequest(host, { width: 800, height: 600, bodies: ['disc', 'late'] }, engine.getState('pin'))).toEqual({ ok: false, error: { code: 'notAvailable', message: 'bodies[1]: the body "late" is not in the state asked about', arg: ['bodies', 1] } });
   });
 
   it('a cut is taken only from a complete answer, and only of the bodies named', () => {
@@ -226,6 +240,72 @@ describe('the operation view_image', () => {
   });
 });
 
+// A picture of a state that is not written (5b, D59): the model with a mechanism. The disc is the
+// root `base`, the pin turns on it about Z (`turn`), and the block `late` turns on the pin about the
+// point `q` of a sketch `u` made after it (`lift`, at 0.5): in the state after `late` the sketch is
+// not made yet, so `lift` has no motion and blocks `late`.
+function posedModel(): Engine {
+  const engine = model();
+  const done = engine.execute({
+    type: 'batch',
+    commands: [
+      sketch('u'),
+      { type: 'addPoint', sketch: 'u', id: 'q', x: 20, y: 0 },
+      { type: 'setLink', id: 'base', bodies: ['disc'] },
+      { type: 'setLink', id: 'arm', bodies: ['pin'] },
+      { type: 'setLink', id: 'far', bodies: ['late'] },
+      { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'base', axis: 'Z' }, lower: -2, upper: 2, value: 0 } },
+      { type: 'setJoint', id: 'lift', joint: { type: 'revolute', parent: 'arm', child: 'far', axis: { kind: 'sketchPoint', sketch: 'u', point: 'q' }, lower: -1, upper: 1, value: 0.5 } },
+    ],
+  });
+  if (!done.ok) throw new Error(done.error.message);
+  return engine;
+}
+
+describe('view_image of a state that is not written (5b)', () => {
+  const engine = posedModel();
+
+  it('a pose by `after`: drawn posed, named in the answer, nothing written', async () => {
+    const { host, requests } = hostOf(engine);
+    const before = engine.save();
+    const picture = await pictureOf(host, { view: 'top', after: { type: 'setPose', values: { turn: 1.2 } } });
+    expect(picture.about).toMatchObject({ pose: { turn: 1.2, lift: 0.5 } });
+    expect(picture.about).not.toHaveProperty('blocked');
+    const { transform } = requests[0].state.evaluation.mechanism.links.arm;
+    expect(transform.matrix[0][0]).toBeCloseTo(Math.cos(1.2), 12);
+    expect(engine.save()).toBe(before);
+    expect(engine.getState().evaluation.mechanism.joints.turn.value).toBe(0);
+    // the pose of the document is named as well
+    expect((await pictureOf(host, {})).about).toMatchObject({ pose: { lift: 0.5 } });
+    // a command that does not apply: outside the limits of the joint
+    expect(await ask(host, { after: { type: 'setPose', values: { turn: 3 } } })).toMatchObject({ ok: false, error: expect.stringMatching(/^after: invalidCommand: setPose\.values\.turn: the value 3 rad is outside the limits/) });
+  });
+
+  it('a link beyond a joint without a motion: drawn with the joint at zero and named; with a section refused in the words of the operation', async () => {
+    const { host, requests } = hostOf(engine);
+    const picture = await pictureOf(host, { at: 'late' });
+    expect(requests[0].state.evaluation.mechanism.joints.lift.error?.code).toBe('brokenReference');
+    expect(picture.about).toMatchObject({ blocked: [{ joint: 'lift', bodies: ['late'] }] });
+    expect(picture.about).not.toHaveProperty('pose');
+    // a section is a query, posed: the body whose pose is not known is refused, with the ways out
+    const section = { plane: XZ, offset: -1 };
+    const refused = await ask(host, { at: 'late', section });
+    expect(refused).toEqual({
+      ok: false,
+      error:
+        'failed: view_image: section: the pose of the body "late" is not known, so the section cannot be cut through it: the joint "lift" has no motion (brokenReference: Odkaz vede na rovinu, stěnu, skicu nebo těleso, které v tomto místě časové osy neexistuje. (the axis of the joint "lift")). ' +
+        'Without a section the picture draws it with the joint at zero; a section of the other bodies: bodies: ["disc","pin"]; or the joints at zero, which writes nothing: after: {"type":"setPose","values":{"lift":0}}',
+    });
+    // with the caller's own `after`, the joints at zero are offered in one batch with it
+    const turned = { type: 'setPose', values: { turn: 0.3 } };
+    expect(await ask(host, { at: 'late', section, after: turned })).toMatchObject({ ok: false, error: expect.stringContaining(`after: {"type":"batch","commands":[${JSON.stringify(turned)},{"type":"setPose","values":{"lift":0}}]}`) });
+    // the ways out work
+    await pictureOf(host, { at: 'late', section, bodies: ['disc', 'pin'] });
+    await pictureOf(host, { at: 'late', section, after: { type: 'setPose', values: { lift: 0 } } });
+    expect(requests.at(-1)?.cut?.regions.map((region) => region.body)).toEqual(['disc', 'pin']);
+  });
+});
+
 describe('a picture on its way to a client', () => {
   let bridge: Bridge;
   beforeAll(async () => {
@@ -244,7 +324,7 @@ describe('a picture on its way to a client', () => {
     const tool = (await session.client.listTools()).tools.find((entry) => entry.name === 'view_image');
     expect(tool?.description).toMatch(/^A picture of the model, to check its shape by eye/);
     expect(tool?.description).toMatch(/It runs in the app: without a connected app it answers notAvailable\.$/);
-    expect(Object.keys((tool?.inputSchema as { properties: object }).properties)).toEqual(['view', 'bodies', 'section', 'at', 'width', 'height']);
+    expect(Object.keys((tool?.inputSchema as { properties: object }).properties)).toEqual(['view', 'bodies', 'section', 'width', 'height', 'at', 'after']);
     expect((tool?.inputSchema as { required: string[] }).required).toEqual([]);
     // no app: nothing to draw with, whatever the document of the server holds
     session.engine.execute(MODEL);
@@ -268,6 +348,16 @@ describe('a picture on its way to a client', () => {
     // a refusal comes back as the text of an error; the app is told of both calls
     expect(await session.call('view_image', { bodies: ['nope'] })).toEqual({ error: 'notAvailable: view_image: bodies[0]: the body "nope" is not in the state asked about' });
     expect(served).toEqual(['view_image ok', 'view_image notAvailable: view_image: bodies[0]: the body "nope" is not in the state asked about']);
+    // `at` and `after` through the bridge (5b): a body only a previewed command removes is refused,
+    // the state after a feature is drawn, and nothing of the app's document is written
+    const before = app.save();
+    expect(await session.call('view_image', { bodies: ['late'], after: { type: 'removeFeature', id: 'late' } })).toEqual({ error: 'notAvailable: view_image: bodies[0]: the body "late" is not in the state asked about' });
+    expect((await session.client.callTool({ name: 'view_image', arguments: { at: 'pin', after: { type: 'setParameter', name: 'q', expr: '1' } } })).isError).toBeUndefined();
+    expect(Object.keys(requests[1].state.evaluation.bodies)).toEqual(['disc', 'pin']);
+    expect(requests[1].state.document.parameters.map((parameter) => parameter.name)).toEqual(['q']);
+    expect(await session.call('view_image', { at: 'nope' })).toEqual({ error: 'notAvailable: view_image: at: the feature "nope" is not in the document' });
+    expect(app.save()).toBe(before);
+    expect((tool?.inputSchema as { properties: Record<string, { type?: string }> }).properties.after.type).toBe('object');
     expect(app.getState().canUndo).toBe(true);
     connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');

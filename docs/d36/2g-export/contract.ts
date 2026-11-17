@@ -75,7 +75,7 @@ export const FORMAT_TEXTS = {
       'The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. ' +
       'The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.',
   },
-} as const satisfies { [F in Exclude<ExportFormatAfter, 'stl' | 'partsCsv'>]: { title: string; summary: string } }; // partsCsv: the format of 3e (D57)
+} as const satisfies { [F in Exclude<ExportFormatAfter, 'stl' | 'partsCsv' | 'urdf' | 'mjcf'>]: { title: string; summary: string } }; // partsCsv: the format of 3e (D57); urdf, mjcf: of 5b (D59)
 
 // The entries (`export/threemf.ts`, `export/dxf.ts`, `export/svg.ts`). Each returns one file,
 // layout `file`:

@@ -2,13 +2,13 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
+import { type ResolvedReference, externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
 import { derivedPoints, entityOf } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { type SketchGeometry, joinPairs, joinsOf, measure, ownVariables, profileOf, sketchCurves, solverSetup } from '../sketch';
 import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
-import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, SketchFeature, SolveInput, SolveResult } from '../types';
+import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, ResultCurve, SketchFeature, SolveInput, SolveResult } from '../types';
 import { ORIGIN, has, unreachable } from '../util';
 import { type Dict, type Fields, type ValidationContext, boolean, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
@@ -130,6 +130,17 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
   return sketch;
 }
 
+// The curves of the result that are not own: those of the resolved entries, in the order of
+// `external` in the document and within an entry in the order of its kind.
+function resultCurves(feature: SketchFeature, resolved: Record<Id, ResolvedReference>): Record<Id, ResultCurve> {
+  const out: Record<Id, ResultCurve> = {};
+  for (const id of Object.keys(feature.external)) {
+    const geometry = resolved[id]?.geometry;
+    if (geometry) for (const [curve, shape] of Object.entries(geometry.curves)) out[curve] = { shape, source: 'reference', regions: geometry.regions.includes(curve) };
+  }
+  return out;
+}
+
 function step(feature: SketchFeature, { state, settings, deps, done, failed, drag, badFields }: StepContext): Step {
   const frame = frameOf(feature.plane, state);
   if (typeof frame === 'string') return failed(frame, [feature.plane]);
@@ -182,6 +193,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
     sketch: {
       points: geometry.points,
       radii: geometry.radii,
+      curves: resultCurves(feature, resolved),
       degreesOfFreedom: analysis?.degreesOfFreedom ?? 0,
       conflicting: result.conflicting,
       redundant: result.redundant,

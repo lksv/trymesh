@@ -32,6 +32,7 @@ import {
   anchorPosition,
   isFlag,
   placeAnchor,
+  referenceEntities,
   sketchTool,
 } from '@trymesh/engine';
 import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, unreachable } from './sketch-view';
@@ -448,7 +449,7 @@ export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axi
 // projected ones.
 export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
-  ...Object.entries(sketch.external).filter(([, ref]) => ref.kind === 'line').map(([id]) => id),
+  ...Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).filter(([, kind]) => kind === 'line').map(([id]) => id)),
 ];
 // One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism,
 // the form of a revolve): a base axis; `sketchPoint` (the origin of the latest of `sketches` until

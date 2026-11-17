@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands } from '@trymesh/engine';
+import { type Constraint, type CurveShape, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, referenceEntities } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -49,40 +49,37 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
   points.set(ORIGIN, { id: ORIGIN, at: [0, 0], own: false });
   for (const id of Object.keys(feature.points)) points.set(id, { id, at: at(id) as Vec2, own: true });
 
-  for (const [id, curve] of Object.entries(feature.curves)) {
-    const construction = curve.construction === true;
+  // the shape of a curve over the positions of its points (the radius of a circle given)
+  const shapeOf = (curve: CurveShape, radius: number): Shape => {
     switch (curve.type) {
       case 'line':
-        curves.set(id, { id, own: true, construction, points: [curve.a, curve.b], shape: { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 } });
-        break;
+        return { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 };
       case 'circle':
-        curves.set(id, { id, own: true, construction, points: [curve.center], shape: { type: 'circle', center: at(curve.center) as Vec2, radius: result.radii[id] ?? feature.radii[id] } });
-        break;
+        return { type: 'circle', center: at(curve.center) as Vec2, radius };
       case 'arc': {
         const [center, start, end] = [at(curve.center) as Vec2, at(curve.start) as Vec2, at(curve.end) as Vec2];
         const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
         const sweep = positive(Math.atan2(end[1] - center[1], end[0] - center[0]) - from) || TAU;
-        curves.set(id, { id, own: true, construction, points: [curve.center, curve.start, curve.end], shape: { type: 'arc', center, radius: dist(center, start), from, sweep } });
-        break;
+        return { type: 'arc', center, radius: dist(center, start), from, sweep };
       }
       default:
-        unreachable(curve, 'curve');
+        return unreachable(curve, 'curve');
     }
+  };
+  for (const [id, curve] of Object.entries(feature.curves)) {
+    curves.set(id, { id, own: true, construction: curve.construction === true, points: curvePoints(curve), shape: shapeOf(curve, result.radii[id] ?? feature.radii[id]) });
   }
-  // Promítnutá geometrie: jen ta, pro kterou přepočet má hodnoty.
-  for (const [id, ref] of Object.entries(feature.external)) {
-    if (ref.kind === 'line') {
-      const [a, b] = [at(`${id}/a`), at(`${id}/b`)];
-      if (!a || !b) continue;
-      points.set(`${id}/a`, { id: `${id}/a`, at: a, own: false });
-      points.set(`${id}/b`, { id: `${id}/b`, at: b, own: false });
-      curves.set(id, { id, own: false, construction: false, points: [`${id}/a`, `${id}/b`], shape: { type: 'line', a, b } });
-    } else {
-      const center = at(`${id}/center`);
-      const radius = result.radii[id];
-      if (!center || radius === undefined) continue;
-      points.set(`${id}/center`, { id: `${id}/center`, at: center, own: false });
-      curves.set(id, { id, own: false, construction: false, points: [`${id}/center`], shape: { type: 'circle', center, radius } });
+  // The entries of `external` (projected geometry): their points with a position and their curves
+  // the result has, in the order of the document and of the kind of each entry.
+  for (const entry of Object.keys(feature.external)) {
+    const entities = Object.entries(referenceEntities(feature, entry));
+    for (const [id, kind] of entities) {
+      const p = kind === 'point' ? at(id) : undefined;
+      if (p) points.set(id, { id, at: p, own: false });
+    }
+    for (const [id, kind] of entities) {
+      const curve = kind === 'point' ? undefined : result.curves[id];
+      if (curve) curves.set(id, { id, own: false, construction: false, points: curvePoints(curve.shape), shape: shapeOf(curve.shape, result.radii[id]) });
     }
   }
   return { points, curves, source: { sketch: feature, result } };

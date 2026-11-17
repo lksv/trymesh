@@ -9,6 +9,7 @@ import { deleteCommands } from './sketch-commands';
 import { freeEntities } from './sketch-diagnosis';
 import { type Place, SKETCH_TOOL_UI, type SketchPlaceTool, type SketchToolName, placePosition } from './sketch-tools';
 import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
+import { hoverMarks } from './references';
 import type { SceneModel } from './viewport';
 
 export interface SketchMode {
@@ -262,7 +263,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   if (!context) return;
   const { feature, view, result, frame } = context;
   const selected = new Set(m.selection);
-  const hovered = new Set(m.hoverConstraint && feature.constraints[m.hoverConstraint] ? operandsOf(feature.constraints[m.hoverConstraint]) : m.hover ? [m.hover] : []);
+  const hovered = new Set(m.hoverConstraint && feature.constraints[m.hoverConstraint] ? operandsOf(feature.constraints[m.hoverConstraint]) : m.hover ? hoverMarks(feature, m.hover) : []);
   // Diagnostika: volné entity modře, určené tmavě; označená vazba a vazby, ze kterých plyne.
   const diagnosis = host.engine.diagnoseSketch(m.id);
   const free = freeEntities(diagnosis, view);

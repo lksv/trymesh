@@ -1,7 +1,7 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
 // selection, the list of constraints and dimensions, the projected geometry, the options of the
 // active tool (its entry of SKETCH_TOOL_UI), and the row that re-points a point of a curve (D52).
-import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint } from '@trymesh/engine';
+import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint, referenceEntities } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
@@ -9,6 +9,7 @@ import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-
 import { type SketchHost, type SketchMode, addConstraints, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
 import { SKETCH_TOOL_UI } from '../sketch-tools';
 import { measure, operandsOf } from '../sketch-view';
+import { referenceUi } from '../references';
 
 // Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
 const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
@@ -231,9 +232,13 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
 
   // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
+  // A row by the kind of the entry (REFERENCE_UI); "bez geometrie" when no entity of it has a position.
   const warnings = host.view().evaluation.features[m.id]?.warnings ?? [];
   const projections = Object.entries(feature.external).map(([id, ref]) => {
     const problem = warnings.find((w) => w.code !== 'sketchConflict' && Array.isArray(w.refs) && w.refs[0] === id);
+    const ui = referenceUi(ref);
+    const shown = Object.keys(referenceEntities(feature, id)).some((entity) => view.points.has(entity) || view.curves.has(entity));
+    const repair = ui.repair;
     return h(
       'div',
       {
@@ -242,18 +247,20 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         onmouseenter: () => ((m.hover = id), host.renderScene()),
         onmouseleave: () => ((m.hover = undefined), host.renderScene()),
       },
-      h('span', { className: 'name' }, `${ref.kind === 'line' ? 'Úsečka' : 'Kružnice'} `, h('small', {}, `${id} · ${host.bodyName(ref.body)}${view.curves.has(id) ? '' : ' · bez geometrie'}`)),
-      h('button', {
-        className: 'icon',
-        textContent: '↻',
-        title: 'Promítnout znovu: klikněte potom na novou hranu tělesa',
-        onclick: () => {
-          setTool(host, 'project');
-          m.repair = id;
-          host.say('Klikněte na hranu, která má promítnutí nahradit (Esc ruší).');
-          host.renderPanel();
-        },
-      }),
+      h('span', { className: 'name' }, `${ui.title(ref)} `, h('small', {}, `${id} · ${ui.detail(ref, host)}${shown ? '' : ' · bez geometrie'}`)),
+      repair
+        ? h('button', {
+            className: 'icon',
+            textContent: '↻',
+            title: repair.title,
+            onclick: () => {
+              setTool(host, repair.tool);
+              m.repair = id;
+              host.say(repair.hint);
+              host.renderPanel();
+            },
+          })
+        : null,
       h('button', { className: 'icon', textContent: '✕', title: 'Zrušit promítnutí', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, 'Promítnutí zrušeno.') }),
     );
   });

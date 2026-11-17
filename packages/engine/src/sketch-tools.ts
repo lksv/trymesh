@@ -140,11 +140,12 @@ function pointAt(context: SketchToolContext, id: Id): Vec2 | undefined {
   return p ? [p.x, p.y] : undefined;
 }
 
-// The shape of an own or a projected curve; undefined when the sketch has no position for it.
+// The shape of an own curve or of a curve of the result that is not own (a projected one);
+// undefined when the sketch has no position for it.
 function shapeOf(context: SketchToolContext, id: Id): Shape | undefined {
   const { sketch, result } = context;
-  if (has(sketch.curves, id)) {
-    const curve = sketch.curves[id];
+  const curve = has(sketch.curves, id) ? sketch.curves[id] : result && has(result.curves, id) ? result.curves[id].shape : undefined;
+  if (curve) {
     switch (curve.type) {
       case 'line': {
         const [a, b] = [pointAt(context, curve.a), pointAt(context, curve.b)];
@@ -168,14 +169,6 @@ function shapeOf(context: SketchToolContext, id: Id): Shape | undefined {
       default:
         return unreachable(curve, 'curve');
     }
-  }
-  if (has(sketch.external, id)) {
-    if (sketch.external[id].kind === 'line') {
-      const [a, b] = [pointAt(context, `${id}/a`), pointAt(context, `${id}/b`)];
-      return a && b ? { type: 'line', a, b } : undefined;
-    }
-    const center = pointAt(context, `${id}/center`);
-    return center && result && has(result.radii, id) ? { type: 'circle', center, radius: result.radii[id] } : undefined;
   }
   return undefined;
 }

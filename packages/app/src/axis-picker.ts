@@ -10,6 +10,7 @@
 // picker of a direction takes the labels of its controls: no two controls of a form share a label.
 import type { AxisRef, FaceName, Id } from '@trymesh/engine';
 import { h } from './dom';
+import { entryEntities, entryTag } from './references';
 import type { PanelHost, ViewPick } from './host';
 import { faceLabel } from './issue-text';
 import { type AxisChange, type AxisKind, axisKind, axisText, lineIds } from './sketch-commands';
@@ -82,7 +83,7 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   if (axis.kind === 'sketchLine') {
     const own = host.feature(axis.sketch);
     const lines = sketches.includes(axis.sketch) ? linesOf(axis.sketch) : [];
-    const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && own.external[id] ? `${id} (projected)` : id);
+    const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && entryTag(own, id) ? `${id} (${entryTag(own, id)})` : id);
     out.push(
       select(direction ? direction.sketch : 'Sketch', (value) => set({ sketch: value }), ...withLines.map((id) => option(id, host.nameOf(id), id === axis.sketch)), withLines.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)}${sketches.includes(axis.sketch) ? '' : ' (missing)'}`, true)),
       select(direction ? `Line of the ${direction.direction.toLowerCase()}` : 'Line', (value) => set({ line: value }), ...lines.map((id) => option(id, label(id), id === axis.line)), lines.includes(axis.line) ? null : option(axis.line, `${axis.line} (missing)`, true)),
@@ -91,7 +92,7 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
     return out;
   }
   const sketch = axis.kind === 'sketchPoint' ? host.feature(axis.sketch) : undefined;
-  const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
+  const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch).filter((entity) => entity.kind === 'point').map((entity) => entity.id)] : [];
   if (axis.kind === 'sketchPoint' && direction) {
     // The point does not matter for a direction, but the engine checks it: a point that is gone
     // (removed, or given through MCP) is offered to be replaced by the origin of the sketch.

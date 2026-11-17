@@ -1426,9 +1426,23 @@ export type WarningCode =
 
 export type IssueCode = ErrorCode | WarningCode;
 
+// A curve of a sketch that is not its own (D64): the curve of an entry of `external` with values
+// (the projection of an edge today). `shape` runs over IDs whose positions are in
+// `SketchResult.points`; the radius of a circle is in `SketchResult.radii`. `regions`: whether the
+// curve forms regions of the profile (never for the projection of an edge).
+export interface ResultCurve {
+  shape: CurveShape;
+  source: 'reference' | 'derived';
+  regions: boolean;
+}
+
 export interface SketchResult {
   points: Record<Id, Point2>; // použité polohy, včetně promítnutých
   radii: Record<Id, number>;
+  // The curves that are not own, by their IDs: the entries of `external` in the order of the
+  // document, the curves of one entry in the order of its kind. An entry that never had values has
+  // none, as it has no points.
+  curves: Record<Id, ResultCurve>;
   degreesOfFreedom: number;
   conflicting: Id[];
   redundant: Id[];

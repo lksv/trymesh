@@ -61,7 +61,7 @@ export {
   isDimension,
   isDriving,
 } from './sketch-content';
-export { derivedPoints, entityOf } from './references/index';
+export { derivedPoints, entityOf, referenceEntities } from './references/index';
 export { CommandError, type FeatureRef, type FieldInfo, type RefKind } from './validation';
 export { FEATURE_TYPE_INFO } from './features/index';
 export type { FeatureTypeInfo } from './features/module';

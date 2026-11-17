@@ -1,10 +1,11 @@
 // The extrusion in the app: its form with the profile (regions of a sketch picked in the view and
 // their offset, a wall along curves of a sketch picked in the view, or a profile generator of the
 // catalog), the extent and the targets; its summary; what it draws.
-import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type RegionRef, type SketchFeature, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
+import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type RegionRef, type SketchFeature, generatorOf, isFlag } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import type { PanelHost } from '../host';
 import { OPERATIONS, SIDES, factsText, lengthText, shownValue } from '../labels';
+import { entryEntities, entryTag } from '../references';
 import { type ExtentKind, type ExtentSide, type ExtrudeChange, type ExtrudeDraft, type ProfileKind, type RememberedProfiles, type UpToDraft, changeExtrude, draftCommand, noPlane, profileKind, rememberedProfile } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -47,13 +48,13 @@ function operandChoices(host: PanelHost, sketch: Id, kinds: readonly string[]): 
     ? [
         { id: 'origin', label: 'origin' },
         ...Object.keys(f.points).map((id) => ({ id, label: id })),
-        ...Object.entries(f.external).flatMap(([id, ref]) => derivedPoints(id, ref).map((point) => ({ id: point, label: `${point} (projected)` }))),
+        ...entryEntities(f).filter((entity) => entity.kind === 'point').map((entity) => ({ id: entity.id, label: `${entity.id} (${entryTag(f, entity.id)})` })),
       ]
     : [];
   return [
     ...points,
     ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
-    ...Object.entries(f.external).filter(([, ref]) => kinds.includes(ref.kind)).map(([id]) => ({ id, label: `${id}${size(id)} (projected)` })),
+    ...entryEntities(f).filter((entity) => entity.kind !== 'point' && kinds.includes(entity.kind)).map(({ id }) => ({ id, label: `${id}${size(id)} (${entryTag(f, id)})` })),
   ];
 }
 // The first entity of each operand of a generator in a sketch; an operand without one is left out

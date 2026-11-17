@@ -1,6 +1,6 @@
 # 6a Preparatory part and shared vocabulary of step 6 (D64)
 
-**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews".** Nothing is implemented. The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
+**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews". Implemented 2026-11-17 in the branch `d36/6a`, the five parts in the order 4, 3, 1, 2, 5, as recorded in "As implemented".** The owner's open question was not answered before the implementation; it follows the recommendation (derived geometry as a kind of entry of `external`). The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
 
 Files: [contract.ts](contract.ts) (the types and signatures of the five parts and of the vocabulary), [calls.ts](calls.ts) (existing documents and calls as they stay, and how 6b, 6c, 6d, 6e and 6f plug in).
 
@@ -415,6 +415,15 @@ As designed: `SketchCurve`, `sketchCurves`, `joinPairs`, `joinsOf` and `profileO
 - **The wall** is `wallOfCurves(curves, joins, geometry, ids, …)` over the list and the joins of the state; `wallOutline` keeps its signature and builds them from the own content. A curve of the list that is not own is a broken reference of the wall, as a curve the sketch does not have was. `curveEnds(shape)` (`sketch.ts`) names the points at the ends of a line or an arc.
 - `joinPairs` takes the resolved entries and reads none of them yet: the declared joins and the join keys are 6c's and 6b's.
 - **Checked before and after**, as for part 1, with a wall along two lines and a region extruded with an offset added: the same documents, results and meshes, byte for byte. The tests of the taper and the offset, which compare outlines to the last digit, pass unchanged.
+
+### Part 5: the result and its readers
+
+As designed: `SketchResult.curves` (`ResultCurve` in `types.ts`), filled by the sketch step in the order of `external` and of the kind; `referenceEntities` and `curvePoints` exported by the engine; the app's view, its pickers, `lineIds`, the row of an entry (`REFERENCE_UI` in `packages/app/src/references/`) and the hover of a row read the entities of the entries; `get_sketch` lists them from the registry; the engine's `shapeOf` takes a curve that is not own from `result.curves`. One test changed, as the design says: the hand-made result of `packages/app/test/sketch-tools.test.ts` ("promítnutá kružnice je v pohledu…") got the curve `x`. The app's snapshots pass unchanged. Beside the contract:
+
+- **`ReferenceUi.repair`** is data, `{ title, tool, hint }`: the panel chooses the tool, sets the entry to repair and says the hint, which is what the button did. A function `start(host, m, id)` would have made the rows import the sketch mode, which imports the rows (the hover marks).
+- **The hover** of a row sets `m.hover` to the entry's ID as before; the scene marks `hoverMarks(sketch, id)`: the curves of an entry, or the entry itself when it has none. For an edge that is its curve, the ID it marked before.
+- **`describe_api`** does not show `SketchResult`: the type is after the marker `// --- přepočet` of `types.ts`, outside the part the description cuts out. The design's statement that it does was wrong; nothing changed for it.
+- **Checked before and after** in a copy of `master`: `get_sketch` of a sketch with a projected line and circle (and of the same sketch with the circle's projection lost, frozen) answers byte for byte as before; the documents, results and meshes are the same apart from the new field.
 
 ## Rows for the indexes
 

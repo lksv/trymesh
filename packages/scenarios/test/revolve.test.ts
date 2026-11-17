@@ -578,3 +578,161 @@ describe('where the revolve meets 3b and 3d', () => {
     expect(rows).toEqual(['3 × pulley, row/1, row/2', '1 × flip/1 mirrored of pulley']);
   });
 });
+
+// The review of the clearance of round faces (D58 with D56): which tori close is decided per vertex
+// (ρ′ = R + (ρ − R)(r + side·c)/r in its half plane); the apex of a cone on its axis moves along
+// the axis; concave spheres and tori shrink and close.
+describe('the clearance of the round faces of a revolve: review', () => {
+  const block = (engine: Engine) => run(engine, addSketch('P', XY), rectangle('P', 'r', -30, -30, 60, 60, null), addExtrude('block', 'P', [rectLoop('r')], -20));
+  const minus = (id: Id, tool: Id, clearance: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'combine', operation: 'difference', target: 'block', tools: [tool], keepTools: true, clearance } });
+  const moved = (state: EngineState, combineId: Id, name: ReturnType<typeof side>): Surface | undefined => {
+    const tagged = { ...name, copy: [{ pattern: combineId, index: 1 }] };
+    const face = state.evaluation.faceNames.findIndex((other) => JSON.stringify(other) === JSON.stringify(tagged));
+    return face < 0 ? undefined : state.evaluation.faceSurfaces[face];
+  };
+  // a peg of radius `radius` from z = −15 to −5 about Z with a round of 4 on its top edge
+  function roundedPeg(engine: Engine, id: Id, radius: number): void {
+    const s = `${id}S`;
+    run(
+      engine,
+      addSketch(s, XZ),
+      ...([[0, -15], [radius, -15], [radius, -9], [radius - 4, -9], [radius - 4, -5], [0, -5]] as const).map(([x, y], i): Command => ({ type: 'addPoint', sketch: s, id: `q${i}`, x, y })),
+      { type: 'addCurve', sketch: s, id: 'bottom', curve: { type: 'line', a: 'q0', b: 'q1' } },
+      { type: 'addCurve', sketch: s, id: 'wall', curve: { type: 'line', a: 'q1', b: 'q2' } },
+      { type: 'addCurve', sketch: s, id: 'round', curve: { type: 'arc', center: 'q3', start: 'q2', end: 'q4' } },
+      { type: 'addCurve', sketch: s, id: 'top', curve: { type: 'line', a: 'q4', b: 'q5' } },
+      { type: 'addCurve', sketch: s, id: 'axis', curve: { type: 'line', a: 'q5', b: 'q0' } },
+      revolve(id, s, ['bottom', 'wall', 'round', 'top', 'axis']),
+    );
+  }
+
+  it('a peg with a round on its top edge (a torus that never reaches the inner side of its tube) is moved, not closed', () => {
+    for (const [radius, clearance] of [[5, 0.5], [10, 2]] as const) {
+      const engine = newEngine();
+      block(engine);
+      roundedPeg(engine, 'peg', radius);
+      const state = run(engine, minus('K', 'peg', clearance));
+      expect(state.evaluation.features.K.status, `${radius}, ${clearance}`).toBe('ok');
+      expect(moved(state, 'K', side('peg', 'round'))).toMatchObject({ kind: 'torus', majorRadius: radius - 4, minorRadius: 4 + clearance });
+    }
+  });
+
+  it('an apple (an arc centred off the axis that ends on it) is moved at 0.1 and 0.5', () => {
+    for (const clearance of [0.1, 0.5]) {
+      const engine = newEngine();
+      block(engine);
+      const end = Math.sqrt(15);
+      const state = run(
+        engine,
+        addSketch('S', XZ),
+        { type: 'addPoint', sketch: 'S', id: 'a', x: 0, y: -10 - end },
+        { type: 'addPoint', sketch: 'S', id: 'b', x: 0, y: -10 + end },
+        { type: 'addPoint', sketch: 'S', id: 'c', x: 1, y: -10 },
+        { type: 'addCurve', sketch: 'S', id: 'arc', curve: { type: 'arc', center: 'c', start: 'a', end: 'b' } },
+        { type: 'addCurve', sketch: 'S', id: 'axis', curve: { type: 'line', a: 'b', b: 'a' } },
+        revolve('apple', 'S', ['arc', 'axis']),
+        minus('K', 'apple', clearance),
+      );
+      expect(state.evaluation.features.K.status, `${clearance}`).toBe('ok');
+      expect(moved(state, 'K', side('apple', 'arc'))).toMatchObject({ kind: 'torus', majorRadius: expect.closeTo(1, 9), minorRadius: expect.closeTo(4 + clearance, 9) });
+    }
+  });
+
+  it('a cone pin with its apex on the axis, at 0.1 and 0.5: the apex moves along the axis by c / sin α', () => {
+    for (const clearance of [0.1, 0.5]) {
+      const engine = newEngine();
+      block(engine);
+      const state = run(engine, addSketch('S', XZ), polygon('S', 'k', [[0, -15], [5, -15], [0, -5]]), revolve('pin', 'S', lines('k', 3)), minus('K', 'pin', clearance));
+      expect(state.evaluation.features.K.status, `${clearance}`).toBe('ok');
+      const cone = moved(state, 'K', side('pin', 'kl1'));
+      expect(cone?.kind).toBe('cone');
+      if (cone?.kind === 'cone') expect(cone.apex[2]).toBeCloseTo(-5 + clearance / Math.sin(Math.atan2(5, 10)), 9);
+    }
+    // about a line of a sketch off the origin: the apex lies off the axis by float noise
+    const engine = newEngine();
+    block(engine);
+    const x = 17.3;
+    const state = run(
+      engine,
+      addSketch('S', XZ),
+      polygon('S', 'k', [[x, -15], [x + 5, -15], [x, -5]]),
+      { type: 'addPoint', sketch: 'S', id: 'a0', x, y: -20 },
+      { type: 'addPoint', sketch: 'S', id: 'a1', x, y: 0 },
+      { type: 'addCurve', sketch: 'S', id: 'ax', curve: { type: 'line', a: 'a0', b: 'a1', construction: true } },
+      revolve('pin', 'S', lines('k', 3), undefined, { kind: 'sketchLine', sketch: 'S', line: 'ax' }),
+      minus('K', 'pin', 0.5),
+    );
+    expect(state.evaluation.features.K.status).toBe('ok');
+    const cone = moved(state, 'K', side('pin', 'kl1'));
+    if (cone?.kind !== 'cone') throw new Error('no cone');
+    expect(cone.apex[0]).toBeCloseTo(x, 6);
+    expect(cone.apex[2]).toBeCloseTo(-5 + 0.5 / Math.sin(Math.atan2(5, 10)), 6);
+  });
+
+  // a cylinder of radius 8 from z = −15 to 5 about Z, with something cut into it by a revolve
+  function tool(engine: Engine, cut: (sketch: Id) => Command[], curves: Id[]): void {
+    run(engine, addSketch('T', XZ), polygon('T', 't', [[0, -15], [8, -15], [8, 5], [0, 5]]), revolve('tool', 'T', lines('t', 4)), addSketch('C', XZ), ...cut('C'), revolve('hollow', 'C', curves, undefined, Z, 'cut', ['tool']));
+  }
+
+  it('a drill point (a concave cone with its apex on the axis) is moved', () => {
+    const engine = newEngine();
+    block(engine);
+    tool(engine, (s) => [polygon(s, 'd', [[0, -8], [3, -5], [3, 6], [0, 6]])], lines('d', 4));
+    const state = run(engine, minus('K', 'tool', 0.3));
+    expect(state.evaluation.features.K.status).toBe('ok');
+    const point = moved(state, 'K', side('hollow', 'dl0'));
+    expect(point?.kind).toBe('cone');
+  });
+
+  it('a concave sphere and a concave torus shrink by the clearance; the socket and the groove close when it reaches their radius', () => {
+    const socket = (radius: number) => (s: Id): Command[] => [halfDisc(s, 'h', 0, 5, radius)];
+    for (const [radius, clearance, outcome] of [[3, 0.5, 'ok'], [1, 1.5, 'the socket of radius 1 mm closes at a clearance of 1.5 mm']] as const) {
+      const engine = newEngine();
+      block(engine);
+      tool(engine, socket(radius), ['ha', 'hd']);
+      const state = run(engine, minus('K', 'tool', clearance));
+      if (outcome === 'ok') {
+        expect(state.evaluation.features.K.status).toBe('ok');
+        expect(moved(state, 'K', side('hollow', 'ha'))).toEqual({ kind: 'sphere', center: [0, 0, 5], radius: radius - clearance });
+      } else expect(state.evaluation.features.K.error?.message).toContain(outcome);
+    }
+    const groove = (minor: number) => (s: Id): Command[] => [{ type: 'addPoint', sketch: s, id: 'gc', x: 8, y: -5 }, { type: 'addCurve', sketch: s, id: 'g', curve: { type: 'circle', center: 'gc' }, radius: minor }];
+    for (const [minor, clearance, outcome] of [[2, 0.5, 'ok'], [1, 1.5, 'the groove of radius 1 mm closes at a clearance of 1.5 mm']] as const) {
+      const engine = newEngine();
+      block(engine);
+      tool(engine, groove(minor), ['g']);
+      const state = run(engine, minus('K', 'tool', clearance));
+      if (outcome === 'ok') {
+        expect(state.evaluation.features.K.status).toBe('ok');
+        expect(moved(state, 'K', side('hollow', 'g'))).toEqual({ kind: 'torus', center: [0, 0, -5], axis: [0, 0, 1], majorRadius: 8, minorRadius: minor - clearance });
+      } else expect(state.evaluation.features.K.error?.message).toContain(outcome);
+    }
+  });
+
+  it('a lemon-shaped cavity closes on the axis; a groove the clearance nearly fills: what they give', () => {
+    // the cavity of an ogive (R −15, r 18.03) in the tool: its tip is not trimmed, so the moved
+    // surface reaches across the axis near it and the move is refused as `closes` (a known limit)
+    const engine = newEngine();
+    block(engine);
+    tool(
+      engine,
+      (s) => [
+        { type: 'addPoint', sketch: s, id: 'a', x: 0, y: -12 },
+        { type: 'addPoint', sketch: s, id: 'b', x: 0, y: 8 },
+        { type: 'addPoint', sketch: s, id: 'c', x: -15, y: -2 },
+        { type: 'addCurve', sketch: s, id: 'arc', curve: { type: 'arc', center: 'c', start: 'a', end: 'b' } },
+        { type: 'addCurve', sketch: s, id: 'axis', curve: { type: 'line', a: 'b', b: 'a' } },
+      ],
+      ['arc', 'axis'],
+    );
+    const lemon = errorOf(engine, minus('K', 'tool', 1), 'K').error;
+    expect(lemon?.code).toBe('invalidClearance');
+    expect(lemon?.message).toMatch(/reaches the axis closes at a clearance of 1 mm/);
+    // a groove of radius 2 in a cylinder of radius 10 at a clearance of 1.9: the moved groove lies
+    // inside the moved cylinder; the move cannot place its vertices (`vertex`, a known limit)
+    const nearly = newEngine();
+    block(nearly);
+    run(nearly, addSketch('T', XZ), polygon('T', 't', [[0, -15], [10, -15], [10, 5], [0, 5]]), revolve('tool', 'T', lines('t', 4)), addSketch('C', XZ), { type: 'addPoint', sketch: 'C', id: 'gc', x: 10, y: -5 }, { type: 'addCurve', sketch: 'C', id: 'g', curve: { type: 'circle', center: 'gc' }, radius: 2 }, revolve('hollow', 'C', ['g'], undefined, Z, 'cut', ['tool']));
+    expect(errorOf(nearly, minus('K', 'tool', 1.9), 'K').error?.code).toBe('invalidClearance');
+  });
+});

@@ -110,6 +110,8 @@ function infoOf(surface: Surface): FaceInfo {
   if (surface.kind === 'cylinder') return { planar: false, surface: 'cylinder', center: surface.origin, axis: surface.axis, radius: surface.radius };
   if (surface.kind === 'cone') return { planar: false, surface: 'cone', apex: surface.apex, axis: surface.axis, halfAngle: surface.halfAngle };
   if (surface.kind === 'swept') return { planar: false, surface: 'swept', axis: surface.axis };
+  if (surface.kind === 'sphere') return { planar: false, surface: 'sphere', center: surface.center, radius: surface.radius };
+  if (surface.kind === 'torus') return { planar: false, surface: 'torus', center: surface.center, axis: surface.axis, majorRadius: surface.majorRadius, minorRadius: surface.minorRadius };
   throw new Error(`no description for a surface of the kind ${surface.kind}`);
 }
 function engineWith(chordTolerance: number): Engine {
@@ -194,4 +196,100 @@ test('a round face nearer to itself than the bound is tooNear (seeds 1, 2, 3, 5 
     const moved = movedOutwards(state.evaluation.bodies.b.solid, state.evaluation.faceSurfaces.map(infoOf), state.evaluation.faceNames, c, chord, kernel);
     expect(isMoveProblem(moved) && moved.reason).toBe('tooNear');
   }
+});
+
+// ---------------------------------------------------------------- revolved bodies (D58)
+
+// A revolved body about Z from a sketch on XZ: a ball, a ring, a peg with a round on its top edge,
+// a cylinder with a socket or a groove cut from a second sketch, an apple. Fixed points, so the
+// solver keeps them.
+function revolvedBody(next: () => number): Command[] {
+  let [sketch, pre] = ['rS', 'p'];
+  const commands: Command[] = [{ type: 'addFeature', feature: emptySketch(sketch, sketch, { kind: 'base', plane: 'XZ' }) }];
+  const points = (list: [number, number][], from = 0) => list.forEach(([x, y], i) => commands.push(...fixedPoint(sketch, `${pre}${from + i}`, x, y)));
+  const line = (id: Id, a: number, b: number) => commands.push({ type: 'addCurve', sketch, id, curve: { type: 'line', a: `p${a}`, b: `p${b}` } });
+  const arc = (id: Id, center: number, a: number, b: number) => commands.push({ type: 'addCurve', sketch, id, curve: { type: 'arc', center: `p${center}`, start: `p${a}`, end: `p${b}` } });
+  const revolve = (id: Id, curves: Id[], operation: Op = 'new', target?: Id): void => {
+    commands.push({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'revolve', profile: { type: 'regions', sketch, regions: [{ outerLoop: [...curves].sort() }] }, axis: { kind: 'base', axis: 'Z' }, extent: { type: 'full' }, operation, ...(target ? { targets: [target] } : {}) } });
+  };
+  const kind = Math.floor(next() * 6);
+  const r = 2 + next() * 8;
+  if (kind === 0) {
+    points([[0, -r], [0, r], [0, 0]]);
+    arc('a', 2, 0, 1);
+    line('d', 1, 0);
+    revolve('b', ['a', 'd']);
+  } else if (kind === 1) {
+    const R = r + 1 + next() * 10;
+    points([[R, 0]]);
+    commands.push({ type: 'addCurve', sketch, id: 'k', curve: { type: 'circle', center: 'p0' }, radius: r });
+    revolve('b', ['k']);
+  } else if (kind === 2) {
+    const round = 0.5 + next() * (r - 0.5);
+    const h = round + 1 + next() * 10;
+    points([[0, 0], [r, 0], [r, h - round], [r - round, h - round], [r - round, h], [0, h]]);
+    line('l0', 0, 1);
+    line('l1', 1, 2);
+    arc('a', 3, 2, 4);
+    line('l2', 4, 5);
+    line('l3', 5, 0);
+    revolve('b', ['l0', 'l1', 'a', 'l2', 'l3']);
+  } else if (kind === 3 || kind === 4) {
+    const h = 6 + next() * 10;
+    points([[0, 0], [r + 3, 0], [r + 3, h], [0, h]]);
+    for (let i = 0; i < 4; i++) line(`t${i}`, i, (i + 1) % 4);
+    revolve('b', ['t0', 't1', 't2', 't3']);
+    [sketch, pre] = ['cS', 'q'];
+    commands.push({ type: 'addFeature', feature: emptySketch(sketch, sketch, { kind: 'base', plane: 'XZ' }) }, ...fixedPoint(sketch, 'q3', 0, h));
+    const s = Math.min(r, h / 2) * (0.3 + next() * 0.5);
+    if (kind === 3) {
+      points([[0, h - s], [0, h + s]], 4);
+      commands.push({ type: 'addCurve', sketch, id: 'sa', curve: { type: 'arc', center: 'q3', start: 'q4', end: 'q5' } }, { type: 'addCurve', sketch, id: 'sd', curve: { type: 'line', a: 'q5', b: 'q4' } });
+      revolve('socket', ['sa', 'sd'], 'cut', 'b');
+    } else {
+      points([[r + 3, h / 2]], 4);
+      commands.push({ type: 'addCurve', sketch, id: 'g', curve: { type: 'circle', center: 'q4' }, radius: Math.min(s, 2.5) });
+      revolve('groove', ['g'], 'cut', 'b');
+    }
+  } else {
+    const off = next() * (r - 1);
+    const end = Math.sqrt(r * r - off * off);
+    points([[0, -end], [0, end], [off, 0]]);
+    arc('a', 2, 0, 1);
+    line('d', 1, 0);
+    revolve('b', ['a', 'd']);
+  }
+  return commands;
+}
+
+test('the fuzz of movedOutwards over revolved bodies: spheres and tori (D58)', () => {
+  const count = Number(process.env.MOVE_FUZZ_COUNT ?? 24);
+  const next = random(Number(process.env.MOVE_FUZZ_SEED ?? 5801));
+  const tally: Record<string, number> = {};
+  const tooNear: string[] = [];
+  let tried = 0;
+  for (let i = 0; i < count; i++) {
+    const chord = [0.01, 0.003, 0.03][i % 3];
+    const c = Math.exp(Math.log(0.1) + next() * (Math.log(2) - Math.log(0.1)));
+    const result = engineWith(chord).execute({ type: 'batch', commands: revolvedBody(next) });
+    if (!result.ok || !result.state.evaluation.bodies.b || Object.values(result.state.evaluation.features).some((f) => f.status === 'error')) continue;
+    const state = result.state;
+    const body = state.evaluation.bodies.b.solid;
+    tried++;
+    const moved = movedOutwards(body, state.evaluation.faceSurfaces.map(infoOf), state.evaluation.faceNames, c, chord, kernel);
+    if (isMoveProblem(moved)) {
+      tally[moved.reason] = (tally[moved.reason] ?? 0) + 1;
+      continue;
+    }
+    const first = state.evaluation.faceNames.length;
+    const pocket = kernel.boolean('difference', blockAround(body, c + 5, first), { ...moved.solid, faceIds: moved.solid.faceIds.map((f) => f + first + 10) });
+    const distance = closest({ solid: body }, { solid: pocket })?.distance ?? Infinity;
+    const inside = Math.abs(volumeOf(kernel.boolean('intersection', body, { ...pocket, faceIds: pocket.faceIds.map((f) => f + 1000) })));
+    if (inside > 1e-3 || !(volumeOf(moved.solid) > volumeOf(body))) tooNear.push(`#${i} c ${c.toFixed(3)} chord ${chord}: the pocket overlaps the body by ${inside.toExponential(2)} mm³`);
+    tally.accepted = (tally.accepted ?? 0) + 1;
+    if (distance < c * (1 - ROUND_ALLOWANCE) - chord - 1e-6) tooNear.push(`#${i} c ${c.toFixed(3)} chord ${chord}: the pocket ${distance.toFixed(4)} from the body`);
+  }
+  console.log(`${tried} revolved bodies: ${Object.entries(tally).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+  expect(tooNear).toEqual([]);
+  expect(tally.accepted ?? 0).toBeGreaterThan((2 / 3) * tried);
 });

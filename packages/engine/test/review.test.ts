@@ -38,6 +38,9 @@ import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
 import { smallestCurvatureRadius } from '../src/generators/cycloid';
 import type { Frame } from '../src/types';
 import { faceKey } from '../src/face-roles';
+import { type ExactCurve, exactStart, planeLevel } from '../src/recompute/extent';
+import type { Loop } from '../src/sketch';
+import { LENGTH_TOLERANCE } from '../src/util';
 import type { FaceName } from '../src/types';
 import { midplaneFrame } from '../src/features/plane';
 
@@ -1167,5 +1170,65 @@ describe('the midplane: the review of D60', () => {
       mid.normal.forEach((value, i) => expect(Math.abs(value - expected[i])).toBeLessThan(1e-12));
     }
     expect(noisy).toBeGreaterThan(100); // the case is real: most turns leave noise in the product
+  });
+});
+
+describe('the start of an extent at a plane: the design reviews of D66', () => {
+  const FRAME: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] };
+  // a plane through (0, 0, z) whose normal is turned from Z by `tilt` towards the direction `towards`
+  const tilted = (z: number, tilt: number, towards = 0) => ({ point: [0, 0, z] as Vec3, normal: [Math.sin(tilt) * Math.cos(towards), Math.sin(tilt) * Math.sin(towards), Math.cos(tilt)] as Vec3 });
+  const circleLoop = (cx: number, cy: number, r: number, n: number, start = 0): Loop => {
+    const xy: number[] = [];
+    for (let k = 0; k < n; k++) xy.push(cx + r * Math.cos(start + (2 * Math.PI * k) / n), cy + r * Math.sin(start + (2 * Math.PI * k) / n));
+    return { xy, keys: xy.filter((_, i) => i % 2 === 0).map((_, k) => `c:${k}`), curves: xy.filter((_, i) => i % 2 === 0).map(() => 'c'), exact: [{ key: 'c', forward: true, type: 'circle', center: [cx, cy], radius: r, ccw: true }] };
+  };
+  const region = (outer: Loop): Region => ({ ref: { outerLoop: ['c'] }, outer, holes: [] });
+  const levelOf = (plane: ReturnType<typeof tilted>, outline: ExactCurve[]) => planeLevel(plane, FRAME, outline);
+
+  it('the exact circle, not the vertices of the regions: a spread under the tolerance on an octagon is over it on the circle (round 1)', () => {
+    // a circle of radius 0.1 as an octagon with its vertices at multiples of π/4; the gradient points
+    // between two of them, at π/8, so the octagon sees cos(π/8) of the circle's spread
+    const tilt = Math.atan(1.04e-6 / 0.2);
+    const loop = circleLoop(0, 0, 0.1, 8);
+    const octagon: ExactCurve[] = [{ type: 'points', xy: loop.xy }];
+    const vertices = levelOf(tilted(0, tilt, Math.PI / 8), octagon);
+    expect('level' in vertices).toBe(true);
+    expect(levelOf(tilted(0, tilt, Math.PI / 8), exactStart([region(loop)]))).toEqual({ detail: expect.stringMatching(/its level differs by 1.04e-6 mm/) });
+    // accepted on the exact circle: every resampled ring of a taper (any vertices on the circle) stays within it
+    const accepted = Math.atan(0.98e-6 / 0.2);
+    const level = levelOf(tilted(0, accepted, Math.PI / 8), exactStart([region(loop)]));
+    expect('level' in level).toBe(true);
+    for (const n of [8, 23, 97]) {
+      const ring = circleLoop(0, 0, 0.1, n, 0.3);
+      const levels: number[] = [];
+      for (let k = 0; k < ring.xy.length; k += 2) {
+        const p = tilted(0, accepted, Math.PI / 8);
+        levels.push(-(p.normal[0] * ring.xy[k] + p.normal[1] * ring.xy[k + 1]) / p.normal[2]);
+      }
+      if ('level' in level) for (const at of levels) expect(Math.abs(at - level.level)).toBeLessThanOrEqual(LENGTH_TOLERANCE / 2 + 1e-15);
+    }
+  });
+
+  it('the ends of an arc are tested as points: an end joined off the circle widens the spread (round 2)', () => {
+    // an arc of the circle of radius 1 whose end the profile joined 1e-4 outside the circle
+    const tilt = Math.atan(0.99999e-6 / 2);
+    const loop: Loop = {
+      xy: [1.0001, 0, 0, 1, -1, 0],
+      keys: ['v:a', 'c:1', 'v:b'],
+      curves: ['arc', 'arc', 'line'],
+      exact: [
+        { key: 'arc', forward: true, type: 'arc', from: [1.0001, 0], to: [-1, 0], ends: ['a', 'b'], center: [0, 0], radius: 1, start: 0, sweep: Math.PI },
+        { key: 'line', forward: true, type: 'line', from: [-1, 0], to: [1.0001, 0], ends: ['b', 'a'] },
+      ],
+    };
+    const curves = exactStart([region(loop)]);
+    expect(curves).toEqual([
+      { type: 'circle', center: [0, 0], radius: 1 },
+      { type: 'points', xy: [1.0001, 0, -1, 0] },
+      { type: 'line', a: [-1, 0], b: [1.0001, 0] },
+    ]);
+    // the circle alone is within the tolerance; with the joined end it is not
+    expect('level' in levelOf(tilted(0, tilt), [curves[0]])).toBe(true);
+    expect(levelOf(tilted(0, tilt), curves)).toEqual({ detail: expect.stringMatching(/tilted against the sketch plane/) });
   });
 });

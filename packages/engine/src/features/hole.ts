@@ -1,16 +1,16 @@
 // The hole feature (D46): the same hole at every listed point of one sketch, along the normal of the
 // sketch plane, cut out of its targets by one tool, a stack of sections per point.
 import type { FieldSpec, NumberSpec } from '../catalog';
-import { throughAll } from '../recompute/extent';
-import { applyTool, lookup, toolResult } from '../recompute/services';
+import { type ExactCurve, planeLevel, resolveStart, throughAll } from '../recompute/extent';
+import { applyTool, frame as frameOf, lookup, toolResult } from '../recompute/services';
 import type { BuiltTool, Done, FaceRole, Step, StepContext, ToolRecipe } from '../recompute/state';
 import { type Ring, type Section, buildStack } from '../recompute/tool-stack';
 import { type Loop, type Region, segments } from '../sketch';
-import { type FaceInfo, transformFrame } from '../solid';
-import type { Facts, HoleExtent, HoleFeature, HoleShape, Id, Vec2 } from '../types';
+import { type FaceInfo, toWorld, transformFrame } from '../solid';
+import type { Facts, Frame, HoleExtent, HoleFeature, HoleShape, Id, Solid, Vec2 } from '../types';
 import { LENGTH_TOLERANCE, ORIGIN, has } from '../util';
 import { type Dict, type FeatureRef, type Fields, type ValidationContext, base, fail, object, oneOf, onlyFields, string } from '../validation';
-import { EXTENT_FIELD_SPECS, extentOf } from './extent';
+import { EXTENT_FIELD_SPECS, extentOf, extentRefs } from './extent';
 import type { FeatureModule } from './module';
 
 // ---------------------------------------------------------------- the document
@@ -112,6 +112,15 @@ const HEAD = 'h';
 const FLAT = 'f';
 const sideKey = (part: string, point: Id, flat?: number): string => (flat === undefined ? `${part}/${point}` : `${part}/${point}/${flat}`);
 
+// The scale of the guards against the resolution of the kernel adapter (a head and a blind bore
+// have to be longer than `1e-4 · scale`): the largest coordinate of the targets, of the sketch plane
+// and of the tool itself, its mouth and its far end (levels along the normal, D66). A mouth far
+// from the targets raises the resolution the adapter has, which the targets alone do not show.
+function toolScale(frame: Frame, targets: Solid[], mouth: number, far: number): number {
+  const at = (level: number): number => Math.max(...toWorld(frame, 0, 0, level).map(Math.abs));
+  return Math.max(throughAll('both', frame, targets, 0).scale, at(mouth), at(far));
+}
+
 function step(feature: HoleFeature, { state, settings, deps, done: finish, failed }: StepContext): Step {
   const sketch = lookup(state.sketches, feature.sketch);
   if (!sketch) return failed('brokenReference', [feature.sketch]);
@@ -122,15 +131,40 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
     if (!at) return failed('brokenReference', [point]);
     centers.set(point, [at.x, at.y]);
   }
-  const { shape, extent } = feature;
+  const { shape } = feature;
   const size = measured(shape);
   if ('detail' in size) return failed('invalidHole', undefined, size.detail);
   const { head, outer } = size;
+  const boreR = shape.diameter / 2;
+  const headR = shape.type === 'counterbore' || shape.type === 'countersink' ? shape.headDiameter / 2 : 0;
+  // The mouth from a plane (D66): resolved in the state before the feature, its level measured once
+  // over the exact outline of the hole at the mouth (the circles of the bore and of the head, the
+  // corners of a hexagon), before the guards below, whose scale includes the mouth.
+  const { from } = feature.extent;
+  let level = 0;
+  if (from) {
+    const resolved = frameOf(from, state);
+    if (typeof resolved === 'string') return failed(resolved, [from]);
+    // the corners of the hexagon of a nut pocket, as `loop` puts them
+    const corners = (cx: number, cy: number, r: number, rotation: number): number[] => [0, 1, 2, 3, 4, 5].flatMap((k) => [cx + r * Math.cos(rotation + (k * Math.PI) / 3), cy + r * Math.sin(rotation + (k * Math.PI) / 3)]);
+    const outline = [...centers.values()].flatMap(([cx, cy]): ExactCurve[] => [
+      { type: 'circle', center: [cx, cy], radius: boreR },
+      ...(headR > 0 ? [{ type: 'circle', center: [cx, cy], radius: headR } satisfies ExactCurve] : []),
+      ...(shape.type === 'nutPocket' ? [{ type: 'points', xy: corners(cx, cy, outer, shape.rotation) } satisfies ExactCurve] : []),
+    ]);
+    const measuredLevel = planeLevel({ point: resolved.origin, normal: resolved.normal }, sketch.frame, outline, 'hole');
+    if ('detail' in measuredLevel) return failed('invalidExtent', [from], measuredLevel.detail);
+    level = measuredLevel.level;
+  }
+  const extent = resolveStart(feature.extent, level);
+  // the mouth: the start of a distance, or the level of the plane for "through all"
+  const mouth = extent.type === 'distance' ? extent.start : level;
+  const bodies = feature.targets.flatMap((target) => lookup(state.bodies, target) ?? []);
   // A head and a blind bore have to be longer than the resolution of the kernel adapter, the δ
-  // "through all" compares its head with (1e-4 of the largest coordinate of the targets and of the
-  // sketch plane): shorter, the adapter takes their two ends for one plane and drops the face
-  // between them without an error.
-  const resolution = 1e-4 * Math.max(1, throughAll('both', sketch.frame, feature.targets.flatMap((target) => lookup(state.bodies, target) ?? [])).scale);
+  // "through all" compares its head with (1e-4 of the largest coordinate of the targets, of the
+  // sketch plane and of the tool): shorter, the adapter takes their two ends for one plane and drops
+  // the face between them without an error.
+  const resolution = 1e-4 * Math.max(1, toolScale(sketch.frame, bodies, mouth, extent.type === 'distance' ? mouth + extent.distance : mouth));
   const kernel = `the resolution of the kernel at the size of this model is ${mm(resolution)} mm`;
   if (head > 0 && head <= resolution) return failed('invalidHole', undefined, `the head is ${mm(head)} mm deep, not more than ${kernel}`);
   if (extent.type === 'distance' && Math.abs(extent.distance) - head <= resolution)
@@ -152,10 +186,7 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
 
   // The outlines in the coordinates of the sketch, computed once: every circle has the number of
   // sides of the largest circle of the hole; the hexagon has six.
-  const mouth = extent.type === 'distance' ? extent.start : 0;
   const sign = extent.type === 'distance' ? Math.sign(extent.distance) : extent.side === 'forward' ? 1 : -1;
-  const boreR = shape.diameter / 2;
-  const headR = shape.type === 'counterbore' || shape.type === 'countersink' ? shape.headDiameter / 2 : 0;
   const count = segments(2 * Math.PI, Math.max(boreR, headR), settings.chordTolerance);
   const bores = points.map(([point, center]) => region(loop(center, boreR, count, 0, () => sideKey(BORE, point))));
   const heads =
@@ -206,7 +237,7 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
       // A head has to leave more of the reach than the resolution of the kernel adapter for its
       // bore. A head as deep as the reach or deeper is built as long as the head and the overshoot,
       // and must not change a target: it may only touch targets that do not pass the mouth.
-      const through = throughAll(extent.side, frame, targets);
+      const through = throughAll(extent.side, frame, targets, mouth);
       const resolution = 1e-4 * Math.max(1, through.scale);
       if (head === 0 || through.reach > head + resolution) length = through.reach + through.overshoot;
       else {
@@ -219,10 +250,10 @@ function step(feature: HoleFeature, { state, settings, deps, done: finish, faile
     return refuse ? { ...placed, refuseChange: refuse } : placed;
   };
   const recipe: ToolRecipe = { operation: 'cut', targets: feature.targets, build };
-  // The depth of the head and of the hole for the feature itself: "through all" measured on the
-  // targets as they are before the feature.
-  const depth = extent.type === 'distance' ? Math.abs(extent.distance) : throughAll(extent.side, sketch.frame, feature.targets.flatMap((target) => lookup(state.bodies, target) ?? [])).reach;
-  const facts: Facts = { ...(head > 0 ? { headDepth: head } : {}), depth };
+  // The depth of the head and of the hole for the feature itself: "through all" measured from the
+  // mouth on the targets as they are before the feature; the level of the mouth with a plane `from`.
+  const depth = extent.type === 'distance' ? Math.abs(extent.distance) : throughAll(extent.side, sketch.frame, bodies, mouth).reach;
+  const facts: Facts = { ...(head > 0 ? { headDepth: head } : {}), depth, ...(from ? { startLevel: mouth } : {}) };
   const done: Done = (result, change) => finish({ ...result, facts }, change);
   return toolResult(feature.id, recipe, applyTool(recipe, state, deps.kernel), state, done, failed);
 }
@@ -232,7 +263,8 @@ export const hole: FeatureModule<HoleFeature> = {
     title: 'Hole',
     summary:
       'The same hole at every listed point of a sketch, along the normal of the sketch plane, cut out of the target bodies: plain, counterbore, countersink or a hexagon pocket for a nut, with the extent of a distance or through all forward or backward. ' +
-      'Ask the query hardwareHole for the shape and the label of a hole for a screw, a nut or a heat-set insert of a size; the feature stores the numbers. A pattern repeats a hole like a cut.',
+      'Ask the query hardwareHole for the shape and the label of a hole for a screw, a nut or a heat-set insert of a size; the feature stores the numbers. A pattern repeats a hole like a cut. ' +
+      'The mouth may start from a plane or a planar face parallel to the sketch (extent.from): a counterbore at the top of a part whose sketch is at the bottom is from that face, through all backward.',
     fields: [...SHAPE_FIELD_SPECS, ...HOLE_EXTENT_FIELD_SPECS],
     bodies: 'none',
   },
@@ -241,14 +273,16 @@ export const hole: FeatureModule<HoleFeature> = {
     { path: 'sketch', id: f.sketch, kind: 'sketch' },
     ...f.points.map((id): FeatureRef => ({ path: 'points', id, kind: 'entity', sketch: f.sketch, accepts: ['point'], notProjected: true })),
     ...f.targets.map((id): FeatureRef => ({ path: 'targets', id, kind: 'body' })),
+    ...extentRefs(f.extent),
   ],
   createsBody: () => false,
   namesFaces: true,
   producesTool: () => true,
   patch: {
     fields: ['sketch', 'points', 'shape', 'extent', 'targets', 'label'],
-    // `null` removes the label, also where the feature has none (a form sends it whenever its label is empty)
-    removable: (_f, path) => path.length === 1 && path[0] === 'label',
+    // `null` removes the label, also where the feature has none (a form sends it whenever its label
+    // is empty); so the plane the extent starts from (a form sends it whenever there is none)
+    removable: (_f, path) => (path.length === 1 && path[0] === 'label') || (path.length === 2 && path[0] === 'extent' && path[1] === 'from'),
   },
   step,
 };

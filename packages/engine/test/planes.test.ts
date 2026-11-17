@@ -255,7 +255,7 @@ describe('the upgrade step 5c-more-planes', () => {
     const step = UPGRADES.find((entry) => entry.name === '5c-more-planes');
     expect(step).toBeDefined();
     expect(UPGRADES[6]).toBe(step);
-    // merged; the step of 3c follows it
+    // merged; the steps of 3c and 2h follow it
     expect(SCHEMA_PENDING).toBe(0);
     const doc = run(base(), plane('P', { tilt: { axis: X, angle: 0.5 }, midplaneWith: { kind: 'face', body: 'E', face: TOP } }));
     const saved = JSON.parse(JSON.stringify({ ...doc, schemaVersion: 8 }));

@@ -34,7 +34,7 @@
       constraint blockf3: {"type":"fixed","point":"blockp3","x":10,"y":20}
   feature block:
       {"id":"block","name":"Block","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"blockS","regions":[{"outerLoop":["blockl0","blockl1","blockl2","blockl3"]}]},"extent":{"type":"distance","start":5,"distance":10},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

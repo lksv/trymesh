@@ -1,6 +1,6 @@
 
 === 1. a hole needs a sketch
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -241,6 +241,9 @@
     +   select value="throughAll"
     +     option selected value="throughAll": "Through all"
     +     option value="distance": "Distance"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Side"
     +   select value="backward"
@@ -410,14 +413,14 @@
     +   select value="distance"
     +     option value="throughAll": "Through all"
     +     option selected value="distance": "Distance"
-    + label
+    -   select value="throughAll"
+    -     option selected value="throughAll": "Through all"
+    -     option value="distance": "Distance"
     +   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
     +     input value="0"
     +     small.computed data-field="extent/start" data-unit="mm"
-    -   select value="throughAll"
-    -     option selected value="throughAll": "Through all"
-    -     option value="distance": "Distance"
+    + label
     +   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
     +   span.field
     +     input value="-2"
@@ -572,6 +575,11 @@
     -   select value="distance"
     -     option value="throughAll": "Through all"
     -     option selected value="distance": "Distance"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -620,9 +628,7 @@
     -   div.buttons
     -     button: "Fill from the catalog"
     - p#draft-problem.issue.error: "The dimensions do not make a hole. (the head is 3 mm deep and the hole 2 mm: the head has to be shallower than the hole)"
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Hole přidáno.
@@ -658,7 +664,7 @@
     + face e1 #12 #f97316 opacity 0.3
 
 === 10. from the catalog for a countersunk screw: the sizes both of its catalogs have (no M3.5)
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6,"from":null},"targets":["e1"],"label":"M3 socket head cap screw"}}, "d1") -> ok
   engine: getState("s2")  (x2)
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -772,11 +778,15 @@
     +   span.field
     +     input value="3"
     +     small.computed data-field="shape/headDepth" data-unit="mm"
-    + label
+    - h2: "Hole"
     +   "Extent"
     +   select value="distance"
     +     option value="throughAll": "Through all"
     +     option selected value="distance": "Distance"
+    + p: "Start at: Sketch plane"
+    -   "Název"
+    -   input value="Hole 1"
+    +   button: "Pick the start"
     + label
     +   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -792,7 +802,7 @@
     +   label.check
     +     input type=checkbox checked
     +     "Vysunutí 1"
-    - h2: "Hole"
+    + label
     +   "Label (for people and a parts list; empty = none)"
     +   input value="M3 socket head cap screw"
     + fieldset
@@ -824,10 +834,6 @@
     +   div.buttons
     +     button: "Fill from the catalog"
     + p#draft-problem.issue.warning
-    -   "Název"
-    -   input value="Hole 1"
-    +   button.primary: "OK"
-    +   button: "Zrušit"
     -   button.primary: "Upravit"
     -   button: "Potlačit"
     -   button: "Smazat"
@@ -846,7 +852,8 @@
     -   button: "Add"
     - h2: "Mechanism"
     - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
-    - div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -861,7 +868,7 @@
 
 === 11. filled from the catalog: a countersink with the allowance in its diameters, the angle in degrees, the label; the extent stays and the status line says so
   engine: query("hardwareHole", {"use":"countersunk","size":"M2","fit":"medium","allowance":"0.2"}) -> ok
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":0,"distance":-6,"from":null},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
   engine: getState("s2")
   panel:
     +   select value="countersink"
@@ -895,10 +902,10 @@
     - line #26303c width 1.5: 1944 numbers, sum 96630.678
 
 === 12. filled for a heat-set insert: a plain hole, the depth of the insert as the distance, the start and the direction kept
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":1,"distance":-6},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"countersink","diameter":"2.4 + 0.2","headDiameter":"4.7 + 0.2","angle":"deg(90)"},"extent":{"type":"distance","start":1,"distance":-6,"from":null},"targets":["e1"],"label":"M2 countersunk screw"}}, "d1") -> ok
   engine: getState("s2")
   engine: query("hardwareHole", {"use":"heatSetInsert","size":"M3x4x4.5","fit":"medium","allowance":"0.2"}) -> ok
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5,"from":null},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
   engine: getState("s2")
   panel:
     +   select value="plain"
@@ -980,11 +987,11 @@
   view: 0 scene(s) set
 
 === 14. edited: a plain hole without a label
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5,"from":null},"targets":["e1"],"label":"M3x4x4.5 heat-set insert"}}, "d1") -> ok
   engine: getState("s2")
-  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}, "d1") -> ok
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5,"from":null},"targets":["e1"],"label":null}}, "d1") -> ok
   engine: getState("s2")
-  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"label":null}}) -> ok
+  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":"4.2 + 0.2"},"extent":{"type":"distance","start":1,"distance":-5,"from":null},"targets":["e1"],"label":null}}) -> ok
   feature d1:
     + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":4.4},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"expressions":{"shape/diameter":"4.2 + 0.2"}}
     - {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
@@ -1110,6 +1117,11 @@
     -   select value="distance"
     -     option value="throughAll": "Through all"
     -     option selected value="distance": "Distance"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start of the mouth (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -1167,9 +1179,7 @@
     -   div.buttons
     -     button: "Fill from the catalog"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Změna uložena.

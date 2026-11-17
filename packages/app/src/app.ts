@@ -773,7 +773,7 @@ export class App implements SketchHost, SceneHost {
         this.pending = undefined;
         this.selected = undefined;
         this.refresh();
-      } else this.setMode({ kind: 'model' });
+      } else if (!m.form.cancel?.(m, this)) this.setMode({ kind: 'model' });
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && m.kind === 'sketch') {
       event.preventDefault();
       deleteSelection(this, m);

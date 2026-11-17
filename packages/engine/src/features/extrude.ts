@@ -1,5 +1,5 @@
 // The extrusion feature.
-import { type EndPlane, toolSpan, upToSpan } from '../recompute/extent';
+import { type EndPlane, exactStart, planeLevel, resolveStart, toolSpan, upToSpan } from '../recompute/extent';
 import { profile as resolveProfile } from '../recompute/profile';
 import { applyTool, frame as frameOf, toolResult, withFaces } from '../recompute/services';
 import { type BuiltTool, type Done, type Step, type StepContext, type ToolRecipe, ToolProblem } from '../recompute/state';
@@ -47,24 +47,38 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   const profile = resolveProfile(feature.id, feature.profile, state, settings.chordTolerance);
   // a generator, an offset and a wall explain their failure themselves; the general text of the code is about sketch curves
   if ('code' in profile) return profile.message === undefined ? failed(profile.code, profile.refs) : { state: finish({ status: 'error', error: { code: profile.code, message: profile.message, refs: profile.refs }, warnings: [] }) };
+  // A start at a plane (D66): the plane is resolved here, in the state before the feature, and its
+  // level measured once over the exact outline at the start; every build, the feature's own and
+  // each copy's, uses the resolved extent, so a copy carries its start with it.
+  const { from } = feature.extent;
+  let level = 0;
+  if (from) {
+    const resolved = frameOf(from, state);
+    if (typeof resolved === 'string') return failed(resolved, [from]);
+    const measured = planeLevel({ point: resolved.origin, normal: resolved.normal }, profile.frame, exactStart(profile.regions));
+    if ('detail' in measured) return failed('invalidExtent', [from], measured.detail);
+    level = measured.level;
+  }
+  const extent = resolveStart(feature.extent, level);
   // An extent up to a plane: the plane is resolved here, in the state before the feature, and kept
   // for every build; the lengths of the feature's own tool are measured here, so a plane it cannot
   // reach is an error of the step. A copy of a pattern measures its own in `build`.
-  const { extent: upTo } = feature;
   let endPlane: EndPlane | undefined;
   let lengths: Facts | undefined;
-  if (upTo.type === 'upTo') {
-    const resolved = frameOf(upTo.plane, state);
-    if (typeof resolved === 'string') return failed(resolved, [upTo.plane]);
+  if (extent.type === 'upTo') {
+    const resolved = frameOf(extent.plane, state);
+    if (typeof resolved === 'string') return failed(resolved, [extent.plane]);
     endPlane = { point: resolved.origin, normal: resolved.normal };
-    const measured = upToSpan(upTo, endPlane, profile.frame, profile.regions);
-    if ('detail' in measured) return failed('invalidExtent', [upTo.plane], measured.detail);
+    const measured = upToSpan(extent, endPlane, profile.frame, profile.regions);
+    if ('detail' in measured) return failed('invalidExtent', [extent.plane], measured.detail);
     lengths = { lengthMin: measured.lengthMin, lengthMax: measured.lengthMax, forward: measured.forward };
   }
+  // the effective start, only with a plane `from`
+  const start: Facts | undefined = from ? { startLevel: extent.type === 'throughAll' ? level : extent.start } : undefined;
   // What the profile generator published and warned about belongs to the result whatever the
   // application of the tool ends with, short of an error; so do the lengths an extent up to
-  // a plane gave.
-  const facts = profile.facts || lengths ? { ...profile.facts, ...lengths } : undefined;
+  // a plane gave and the start a plane gave.
+  const facts = profile.facts || lengths || start ? { ...profile.facts, ...lengths, ...start } : undefined;
   const done: Done = (result, change) => {
     const warnings = [...(profile.warnings ?? []), ...result.warnings];
     return finish({ ...result, status: result.status === 'ok' && warnings.length ? 'warning' : result.status, warnings, ...(facts ? { facts } : {}) }, change);
@@ -72,7 +86,6 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   // A taper that moves the far end by more than the length tolerance makes the tool a stack of
   // rings, computed here once: an outline that cannot be moved to the far end is an error of the
   // feature before any tool is built. Without such a taper the tool is the prism.
-  const { extent } = feature;
   let section: Section | undefined;
   if (tapers(extent)) {
     const tapered = taperedSection(profile, extent, settings.chordTolerance, feature.profile.type === 'wall');
@@ -85,10 +98,10 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
   const build: ToolRecipe['build'] = (targets, firstFaceId, placement) => {
     const frame = placement ? transformFrame(placement.transform, profile.frame) : profile.frame;
     let span: ReturnType<typeof upToSpan> | ReturnType<typeof toolSpan>;
-    if (feature.extent.type === 'upTo') {
-      span = upToSpan(feature.extent, endPlane as EndPlane, frame, profile.regions);
-      if ('detail' in span) throw new ToolProblem('invalidExtent', [feature.extent.plane], span.detail);
-    } else span = toolSpan(feature.extent, frame, targets);
+    if (extent.type === 'upTo') {
+      span = upToSpan(extent, endPlane as EndPlane, frame, profile.regions);
+      if ('detail' in span) throw new ToolProblem('invalidExtent', [extent.plane], span.detail);
+    } else span = toolSpan(extent, frame, targets, level);
     const tool = section ? buildStack(feature.id, section, frame, firstFaceId, deps.kernel, triangulation) : buildPrism(feature.id, profile.regions, frame, 'span' in span ? span.span : span, profile.sideOf, firstFaceId, deps.kernel, triangulation);
     return placement ? { ...tool, faces: tool.faces.map((face) => ({ ...face, name: { ...face.name, copy: [placement.copy] } })) } : tool;
   };
@@ -115,7 +128,8 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
       'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
       'The profile is a set of regions of a sketch (optionally moved by an offset), a wall along curves of a sketch that close no region (a rib, a ring), or comes from a profile generator (see Profile generators). ' +
       'An extent of a distance may taper (extent/taper): the sides tilt by the angle, lines give tilted planes and arcs and circles cones. ' +
-      'An extent upTo ends in a plane (a planar face, a plane feature or a base plane), tilted or not, on whichever side of the start it lies; the result tells the lengths in facts.',
+      'An extent upTo ends in a plane (a planar face, a plane feature or a base plane), tilted or not, on whichever side of the start it lies; the result tells the lengths in facts. ' +
+      'Any extent may start from a plane or a planar face parallel to the sketch (extent.from) instead of the sketch plane; start is then the offset from it, and facts.startLevel tells where the tool starts.',
     fields: [
       ...PROFILE_FIELD_SPECS,
       ...EXTENT_FIELD_SPECS,

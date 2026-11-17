@@ -1,6 +1,6 @@
 
 === 1. an extrusion needs a sketch
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -250,6 +250,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -592,6 +595,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -719,6 +725,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -885,6 +894,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -1359,6 +1371,10 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    - h2: "Výběr (0)"
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -1380,10 +1396,6 @@
     +     option selected value="e1": "Vysunutí 1"
     +     option value="e2": "Vysunutí 2"
     + p#draft-problem.issue.warning
-    -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
-    - h2: "Výběr (0)"
-    +   button.primary: "OK"
-    +   button: "Zrušit"
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"
     -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
     -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
@@ -1396,7 +1408,8 @@
     -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
     -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
     -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
-    - div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
     -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
     -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
     -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
@@ -1832,6 +1845,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -3023,6 +3039,20 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -3039,24 +3069,11 @@
     +     input value=""
     +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
-    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
-    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
-    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
-    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
-    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
-    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
-    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
-    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
-    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
-    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
-    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
-    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
-    +   button.primary: "OK"
-    +   button: "Zrušit"
     -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
     -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
     -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
-    - div.buttons
+    +   button.primary: "OK"
+    +   button: "Zrušit"
     -   button disabled: "Konstrukční"
     -   button disabled title="Delete": "Smazat"
     - h2: "Vazby a kóty (0)"
@@ -3576,6 +3593,11 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -3587,9 +3609,7 @@
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Vysunutí přidáno.
@@ -3617,7 +3637,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.531
 
 === 63. a double click on the timeline opens the form of the feature
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":12,"taper":null},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":12,"taper":null,"from":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x3)
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -3762,6 +3782,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -3824,9 +3847,9 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.173
 
 === 64. the change is saved
-  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null},"operation":"new"}}, "e1") -> ok
+  engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null,"from":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x4)
-  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":15,"taper":null,"from":null},"operation":"new"}}) -> ok
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":15},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":12},"operation":"new"}
@@ -3990,6 +4013,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -4098,9 +4124,9 @@
     + face e4 #11 #f97316 opacity 0.3
 
 === 66. the form of the gear, a change typed
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":12,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null,"from":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")  (x3)
-  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null},"operation":"new"}}, "e4") -> ok
+  engine: preview({"type":"updateFeature","id":"e4","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s3","operands":{"circle":"c7"},"params":{"teeth":14,"pressureAngle":0.4363323129985824,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":6,"taper":null,"from":null},"operation":"new"}}, "e4") -> ok
   engine: getState("s3")
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
@@ -4300,6 +4326,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   "Mass (g)"
@@ -4554,6 +4583,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +     input type=color value="#aab7c6"

@@ -568,11 +568,12 @@ describe('nálezy z revize aplikace', () => {
     const last = { type: 'distance' as const, start: 'h / 2', distance: 'h' };
     expect(changeExtrude(all, { extent: 'distance' }, ['e1'], last).extent).toEqual(last);
     expect(changeExtrude(all, { operation: 'add' }, ['e1'], last).extent).toEqual(last);
-    // editing sends the profile whole; what a draft of regions does not have, its offset, is removed
-    expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...all.profile, offset: null }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['e1'] } });
+    // editing sends the profile whole; what a draft of regions does not have, its offset, is removed,
+    // and so is a start plane the extent does not have (D66)
+    expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...all.profile, offset: null }, extent: { type: 'throughAll', side: 'both', from: null }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
-    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null }, operation: 'add', targets: ['smazané'] } });
+    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null, from: null }, operation: 'add', targets: ['smazané'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
     // a plane without a second plane or a tilt removes them by name (D60)
     expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4, midplaneWith: null, tilt: null } });
@@ -729,6 +730,39 @@ describe('nálezy z revize aplikace', () => {
     expect(changeExtrude(back, { extent: 'upTo' }, [], undefined, {}, picked.extent as never).extent).toEqual(picked.extent);
     // editing: the patch removes a gap the draft no longer has; the plane is a reference, sent whole
     expect(draftCommand(changeExtrude(picked, { gap: null }, []), true, 1)).toMatchObject({ patch: { extent: { type: 'upTo', plane: XY, start: 2, gap: null } } });
+  });
+
+  it('the start plane of an extent: kept across the variants, never brought back by a remembered extent, "through all" from it one-sided (D66)', () => {
+    const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'cut', targets: ['b'] };
+    const TOP = { kind: 'face', body: 'b', face: { feature: 'b', role: 'endCap' } } as const;
+    const XY = { kind: 'base', plane: 'XY' } as const;
+    const from = changeExtrude(draft, { from: TOP }, ['b']);
+    expect(from.extent).toEqual({ type: 'distance', start: 0, distance: 5, from: TOP });
+    // distance → upTo → through all and back: the start plane goes along
+    const upTo = changeExtrude(from, { extent: 'upTo' }, ['b']);
+    expect(upTo.extent).toEqual({ type: 'upTo', start: 0, from: TOP });
+    const through = changeExtrude(upTo, { extent: 'throughAll' }, ['b']);
+    // from a plane, through all goes backward rather than to both sides
+    expect(through.extent).toEqual({ type: 'throughAll', side: 'backward', from: TOP });
+    expect(changeExtrude(through, { side: 'both' }, ['b']).extent).toEqual({ type: 'throughAll', side: 'backward', from: TOP });
+    expect(changeExtrude(through, { side: 'forward' }, ['b']).extent).toEqual({ type: 'throughAll', side: 'forward', from: TOP });
+    expect(changeExtrude(through, { extent: 'distance' }, ['b'], from.extent).extent).toEqual(from.extent);
+    // a start plane set on "through all" to both sides makes it one-sided
+    const both = changeExtrude(draft, { extent: 'throughAll' }, ['b']);
+    expect(changeExtrude(both, { from: XY }, ['b']).extent).toEqual({ type: 'throughAll', side: 'backward', from: XY });
+    // removed: the remembered extents bring back their numbers, not their start planes
+    const removed = changeExtrude(through, { from: null }, ['b']);
+    expect(removed.extent).toEqual({ type: 'throughAll', side: 'backward' });
+    expect(changeExtrude(removed, { extent: 'distance' }, ['b'], from.extent).extent).toEqual(draft.extent);
+    expect(changeExtrude(removed, { extent: 'upTo' }, ['b'], undefined, {}, { type: 'upTo', start: 1, plane: XY, from: TOP }).extent).toEqual({ type: 'upTo', start: 1, plane: XY });
+    // another one replaces it; changes of the profile and the operation keep it
+    expect(changeExtrude(from, { from: XY }, ['b']).extent).toMatchObject({ from: XY });
+    expect(changeExtrude(from, { operation: 'add', target: 'b' }, ['b']).extent).toEqual(from.extent);
+    expect(changeExtrude(from, { regions: [] }, ['b']).extent).toEqual(from.extent);
+    // editing: the start plane is sent whole, and removed by name when the draft has none
+    expect(draftCommand(from, true, 1)).toMatchObject({ patch: { extent: { type: 'distance', from: TOP } } });
+    expect(draftCommand(changeExtrude(from, { from: null }, ['b']), true, 1)).toMatchObject({ patch: { extent: { type: 'distance', from: null } } });
+    expect(draftCommand(through, true, 1)).toMatchObject({ patch: { extent: { type: 'throughAll', side: 'backward', from: TOP } } });
   });
 
   it('the taper of a distance extent: an optional field of the draft, gone with a generated profile (D45)', () => {

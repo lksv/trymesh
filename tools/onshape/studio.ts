@@ -1,8 +1,9 @@
 // An Onshape part studio as a document of trymesh, in the frame of the studio: sketches, extrusions,
 // chamfers and fillets; derived sketches are copied in. The document says which of its bodies is
 // which Onshape part, for the insertions of the assembly.
-import type { Engine, EdgeName, Id, PlaneRef, RegionRef } from '../../packages/engine/src/index';
+import { type Engine, type EdgeName, type Id, type PlaneRef, type RegionRef, faceKey } from '../../packages/engine/src/index';
 import { type Input, type Report, type V3, dot, exec, expression, near, newEngine, numberOr, sane, sub } from './common';
+import { type BoundaryEdge, type FaceCandidate, type OnshapeFace, extentFor, faceOf } from './extent-start';
 import { type Converted, convertSketch, matchRegion, sketchFrame } from './sketch';
 
 // A hook that converts one Onshape feature in place of the converter (`overrides/`), by the name of
@@ -19,6 +20,9 @@ export interface FeatureContext {
   dump: any; // what fetch.ts evaluated for the studio (`created`, `at`, `parts`)
   planeOf: (frame: ReturnType<typeof sketchFrame> & object) => PlaneRef;
 }
+
+// A value as JSON with the keys of every object sorted, to compare references whatever their key order.
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 
 export interface StudioResult {
   document: any; // the document as a file holds it
@@ -50,6 +54,8 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
   };
   const sketches = new Map<string, Converted>(); // Onshape feature that created the regions -> sketch
   const bodies = new Map<string, Id>();
+  const made = new Map<string, Id[]>(); // Onshape extrusion -> the trymesh extrusions made for it
+  const starts = { from: 0, number: 0 }; // starts at a face: written as `from`, as a number (D66)
   const owner = (face: string) => Object.entries(dump.created as Record<string, any>).find(([, v]) => v.faces.includes(face))?.[0];
   const sketchFrom = (fid: Id, id: Id, name: string, f: any, geom: any, by: string) => {
     const frame = sketchFrame(geom.sketchMatrix);
@@ -119,36 +125,68 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     const frame = [...bySketch.keys()][0].frame;
     const along = (p: V3) => dot(sub(p, frame.origin), frame.normal);
     let start = 0;
+    let startEntity: any; // the Onshape face the extrusion starts at
     if (val('startOffset')) {
       if (val('startOffsetBound') === 'ENTITY') {
-        // trymesh has no start at a face: the offset of the face from the sketch, as a number
         const e = at.ids[P.startOffsetEntity.queries[0].deterministicIds[0]];
         start = along(e.plane?.origin ?? e.a);
-        report.note(`${name}: starts at a face, converted to the offset ${start.toFixed(3)} mm`);
+        startEntity = { id: P.startOffsetEntity.queries[0].deterministicIds[0], e };
       } else start = (val('startOffsetOppositeDirection') ? -1 : 1) * Number(num('startOffsetDistance'));
     }
     const dir = val('oppositeDirection') ? -1 : 1;
     const depth = num('depth');
     const s = frame.sign;
-    const neg = (x: number | string) => (typeof x === 'number' ? -x : `-(${x})`);
-    let extent: any;
+    const symmetric = !!val('symmetric');
+    // A symmetric "through all" goes to both sides of any start, which are all of the targets: no
+    // start at all, whatever kind of start it has (both sides from a plane are refused, and one side
+    // would lose half of the cut).
+    const bothSides = val('endBound') === 'THROUGH_ALL' && symmetric;
+    if (bothSides && start !== 0) report.note(`${name}: through all to both sides from a start: both sides of any start are all of the targets, the start is dropped`);
+    // The start at a face (D66): the face by its provenance, the plane of `from`; a number when it is
+    // not found (the offset of the face from the sketch).
+    let from: PlaneRef | undefined;
+    let notFrom = ''; // why a start at a face is not written as `from`, for the one note below
+    if (startEntity && !bothSides) {
+      const found = trymeshFace(startEntity.id, startEntity.e);
+      if ('ref' in found) {
+        from = found.ref;
+        if (found.note) report.note(`${name}: the face it starts at: ${found.note}`);
+      } else notFrom = found.reason;
+    }
+    // The end of upTo at a face by the same lookup (the gap of D47 that 2h closes in passing): only
+    // without an offset from the face, whose sense the converter does not map.
+    let endFace: PlaneRef | undefined;
+    let endLevel = 0; // the end at a face: its offset from the sketch less the gap
+    // the extent with the start plane and the end plane it may use
+    const extentOf = (useFrom: boolean, useEnd: boolean): any =>
+      extentFor({
+        endBound: val('endBound') === 'BLIND' || val('endBound') === 'THROUGH_ALL' ? val('endBound') : 'UP_TO',
+        symmetric,
+        dir,
+        s,
+        start: bothSides ? 0 : start,
+        depth,
+        from: useFrom ? from : undefined,
+        end: { plane: useEnd ? endFace : undefined, level: endLevel },
+        startPlane: () => planeOf({ ...frame, offset: frame.offset + s * start }),
+      });
     switch (val('endBound')) {
       case 'BLIND':
-        if (val('symmetric')) extent = { type: 'distance', start: typeof depth === 'number' ? s * (start - depth / 2) : `${s * start} ${s > 0 ? '-' : '+'} (${depth}) / 2`, distance: s > 0 ? depth : neg(depth!) };
-        else extent = { type: 'distance', start: s * start, distance: dir * s > 0 ? depth : neg(depth!) };
         break;
       case 'THROUGH_ALL':
-        if (start === 0) extent = { type: 'throughAll', side: val('symmetric') ? 'both' : dir * s > 0 ? 'forward' : 'backward' };
-        else { extent = { type: 'distance', start: s * start, distance: dir * s * 1000 }; report.note(`${name}: through all from an offset start: 1000 mm instead`); }
+        if (!bothSides && !startEntity && start !== 0) report.note(`${name}: through all from an offset start: from a plane feature at the start`);
         break;
       case 'UP_TO_SURFACE':
       case 'UP_TO_FACE':
       case 'UP_TO_PART': {
-        const e = at.ids[P.endBoundEntityFace.queries[0]?.deterministicIds?.[0]];
+        const did = P.endBoundEntityFace.queries[0]?.deterministicIds?.[0];
+        const e = at.ids[did];
         if (!e?.plane) { report.note(`${name}: up to a face that is not planar, left out`); return; }
         const gap = val('hasOffset') ? (val('offsetOppositeDirection') ? -1 : 1) * Number(num('offsetDistance')) : 0;
-        extent = { type: 'distance', start: s * start, distance: s * (along(e.plane.origin) - start - gap) };
-        report.note(`${name}: up to a face, converted to the length ${(along(e.plane.origin) - start - gap).toFixed(3)} mm (the extent upTo of D47 would need the trymesh name of that face)`);
+        endLevel = along(e.plane.origin) - gap;
+        const found = gap === 0 ? trymeshFace(did, e) : { reason: 'an offset from the face is not converted' };
+        if ('ref' in found) endFace = found.ref;
+        else report.note(`${name}: up to a face, converted to the length ${(along(e.plane.origin) - start - gap).toFixed(3)} mm (${found.reason})`);
         break;
       }
       default:
@@ -165,6 +203,39 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     if (operation === 'cut' && !targets.length) { report.note(`${name}: a cut of no converted body, left out`); return; }
     if (operation === 'add' && targets.length > 1) report.note(`${name}: adds to ${targets.length} bodies; trymesh adds to one, the first is taken`);
     const created: string[] = dump.created[f.featureId]?.bodies ?? [];
+    const featureOf = (gid: Id, featureName: string, conv: Converted, regions: RegionRef[], extent: any) => ({ id: gid, name: featureName, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: conv.id, regions }, extent, operation, ...(operation === 'new' ? {} : { targets: operation === 'add' ? targets.slice(0, 1) : targets }) });
+    // Eligibility: a preview of the first feature with the start and the end planes; a plane the
+    // extent cannot use (tilted, gone, not planar) gives way to the number.
+    let [useFrom, useEnd] = [from !== undefined, endFace !== undefined];
+    if (useFrom || useEnd) {
+      const [conv, refs] = [...bySketch][0];
+      const refused = (extent: any) => {
+        const r = engine.preview({ type: 'addFeature', feature: featureOf(`${id}_probe`, name, conv, refs, extent) as any });
+        const e = r.ok ? r.state.evaluation.features[`${id}_probe`]?.error : undefined;
+        return e && ['invalidExtent', 'brokenReference', 'nonPlanarFace'].includes(e.code) ? e : undefined;
+      };
+      const problem = refused(extentOf(useFrom, useEnd));
+      if (problem) {
+        // the plane the error names; without `from` in its refs it is the end
+        const which = useFrom && (!useEnd || canonical(problem.refs?.[0]) !== canonical(endFace)) ? 'start' : 'end';
+        if (which === 'start') useFrom = false;
+        else useEnd = false;
+        if (which === 'start') notFrom = `refused by the preview, ${problem.code}: ${problem.message.slice(0, 160)}`;
+        else report.note(`${name}: the end at a face is refused (${problem.code}: ${problem.message.slice(0, 160)}), written as a length`);
+        if (refused(extentOf(useFrom, useEnd))) [useFrom, useEnd] = [false, false];
+      }
+    }
+    if (startEntity && !bothSides) {
+      if (useFrom) starts.from++;
+      else {
+        starts.number++;
+        // one note, worded by what is written instead: a plane feature for one-sided "through all", an offset otherwise
+        const instead = val('endBound') === 'THROUGH_ALL' ? `from a plane feature at its level, ${start.toFixed(3)} mm from the sketch` : `converted to the offset ${start.toFixed(3)} mm`;
+        report.note(`${name}: starts at a face, ${instead} (${notFrom || 'refused by the preview'})`);
+      }
+    }
+    if (endFace && !useEnd) report.note(`${name}: up to a face, converted to a length`);
+    const extent = extentOf(useFrom, useEnd);
     let k = 0;
     for (const [conv, refs] of bySketch) {
       const fid = bySketch.size === 1 ? id : `${id}_${k++}`;
@@ -173,8 +244,9 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
       const groups = operation === 'new' && created.length > 1 ? groupsOf(conv, refs) : [{ refs, centre: undefined }];
       for (const [j, g] of groups.entries()) {
         const gid = groups.length === 1 ? fid : `${fid}_${j + 1}`;
-        const feature = { id: gid, name: groups.length === 1 ? f.name : `${f.name} (${j + 1})`, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: conv.id, regions: g.refs }, extent, operation, ...(operation === 'new' ? {} : { targets: operation === 'add' ? targets.slice(0, 1) : targets }) };
+        const feature = featureOf(gid, groups.length === 1 ? f.name : `${f.name} (${j + 1})`, conv, g.refs, extent);
         if (!exec(engine, report, { type: 'addFeature', feature: feature as any }, name)) continue;
+        made.set(f.featureId, [...(made.get(f.featureId) ?? []), gid]);
         const r = engine.getState().evaluation.features[gid];
         if (r.status !== 'ok') report.note(`${name}: ${r.status} ${r.error?.code ?? ''} ${r.error?.message?.slice(0, 200) ?? ''} ${r.warnings.map((w) => w.code).join(', ')}`);
         if (operation !== 'new') continue;
@@ -192,6 +264,44 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     let ts = 0;
     for (const [conv, refs] of bySketch) for (const ref of refs) ts += regionAreaOf(conv.id, ref);
     if (Math.abs(os - ts) > 0.01 * os) report.note(`${name}: the area of the profile differs: Onshape ${os.toFixed(2)} mm², here ${ts.toFixed(2)} mm²`);
+  }
+
+  // The trymesh face that is an Onshape face (D66), in the state before the feature being converted.
+  // - By its provenance when the dump has it (the face still exists at the end of the timeline): the
+  //   Onshape feature that created it, among the faces of the trymesh extrusions made for it.
+  // - A face a later feature consumed is only in the rollback evaluation at its feature (`at`),
+  //   which says the part that owned it, not the feature that created it: then among the caps of
+  //   every converted extrusion on the trymesh body of that part, told apart by the boundary of the
+  //   face when several lie in its plane.
+  function trymeshFace(did: string, e: any): { ref: PlaneRef; note?: string } | { reason: string } {
+    if (e?.kind !== 'face' || !e.plane) return { reason: 'the entity is not a planar face' };
+    const face: OnshapeFace = { origin: e.plane.origin, normal: e.plane.normal, edges: (e.edges ?? []).map((x: any) => x.m).filter(Boolean) };
+    const candidatesOn = (only?: Set<Id>): FaceCandidate[] => {
+      const out: FaceCandidate[] = [];
+      for (const body of Object.keys(engine.getState().evaluation.bodies)) {
+        if (only && !only.has(body)) continue;
+        const answer = engine.query('body', { body });
+        if (!answer.ok) continue;
+        for (const f of answer.result.faces) {
+          if (f.surface.kind !== 'plane' || !f.meshNormal) continue;
+          const key = faceKey(f.name);
+          const boundary = answer.result.edges.flatMap((edge): BoundaryEdge[] =>
+            faceKey(edge.name.a) !== key && faceKey(edge.name.b) !== key ? [] : edge.kind === 'line' ? [{ kind: 'line', from: edge.from as V3, to: edge.to as V3 }] : edge.kind === 'circle' ? [{ kind: 'circle', center: edge.circle.center as V3, radius: edge.circle.radius }] : [],
+          );
+          out.push({ body, name: f.name, origin: f.surface.origin as V3, normal: f.surface.normal as V3, meshNormal: f.meshNormal as V3, boundary });
+        }
+      }
+      return out;
+    };
+    const creator = owner(did);
+    if (creator) {
+      const ids = made.get(creator);
+      if (!ids?.length) return { reason: 'the feature that created it was not converted to an extrusion' };
+      return faceOf(candidatesOn(), face, ids);
+    }
+    const parts = new Set((e.owner ?? []).map((part: string) => bodies.get(part)).filter(Boolean) as Id[]);
+    if (!parts.size) return { reason: 'the part that owned it is not converted' };
+    return faceOf(candidatesOn(parts), face, [...made.values()].flat(), false);
   }
 
   function regionAreaOf(sketch: Id, ref: RegionRef): number {
@@ -293,5 +403,6 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     report.note(`part "${p.name}" = ${b}: volume ${tv.toFixed(1)} mm³, Onshape ${ov.toFixed(1)} mm³ (${(((tv - ov) / ov) * 100).toFixed(2)} %)`);
   }
   for (const [fid, r] of Object.entries(engine.getState().evaluation.features)) if (r.status === 'error') report.note(`feature ${fid}: error ${r.error?.code} ${r.error?.message?.slice(0, 200)}`);
+  if (starts.from + starts.number) report.note(`starts at a face (D66): ${starts.from} written as \`from\`, ${starts.number} as numbers`);
   return { document: JSON.parse(engine.save()), bodies, names };
 }

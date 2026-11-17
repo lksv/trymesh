@@ -335,6 +335,10 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   `operands`, `params` and `refs` change entries of a generated profile (`null` removes a
 //   reference or an optional parameter); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
 //   an optional field); `curves` and `thickness` belong to a wall.
+// - `from` (D66) sets the plane the extent starts from, `null` removes it (the start is then the
+//   sketch plane). The draft keeps its `from` across every change of the variant; the remembered
+//   extents bring back their numbers, never a `from`. "Through all" from a plane goes forward or
+//   backward: a new one, or one to both sides that gets a plane, goes backward.
 export type ProfileKind = 'regions' | 'wall' | GeneratorName;
 export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'generated' ? profile.generator : profile.type);
 export type ExtentKind = ExtrudeFeature['extent']['type'];
@@ -356,6 +360,7 @@ export interface ExtrudeChange {
   side?: ExtentSide;
   plane?: PlaneRef;
   gap?: number | Expr | null;
+  from?: PlaneRef | null;
   operation?: ExtrudeFeature['operation'];
   target?: Id;
   toggleTarget?: Id;
@@ -399,8 +404,20 @@ export type UpToDraft = Extract<ExtrudeDraft['extent'], { type: 'upTo' }>;
 // An extent up to a plane without a plane yet: the draft of the form holds it so until one is
 // picked, and nothing is computed or sent meanwhile.
 export const noPlane = (extent: ExtrudeDraft['extent']): boolean => extent.type === 'upTo' && extent.plane === undefined;
-export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], distance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE, remembered: RememberedProfiles = {}, upTo?: UpToDraft): ExtrudeDraft {
+// The extent of a draft without its start plane, and with the one given or none (D66); the same
+// object when it has that one already.
+export const withoutFrom = <E extends { from?: PlaneRef }>(extent: E): Omit<E, 'from'> => {
+  const { from: _from, ...rest } = extent;
+  return rest;
+};
+export const withFrom = <E extends { from?: PlaneRef }>(extent: E, from: PlaneRef | undefined): E => (extent.from === from ? extent : ({ ...withoutFrom(extent), ...(from ? { from } : {}) } as E));
+
+export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies: Id[], lastDistance: ExtrudeDraft['extent'] = DEFAULT_DISTANCE, remembered: RememberedProfiles = {}, lastUpTo?: UpToDraft): ExtrudeDraft {
   const operation = change.operation ?? draft.operation;
+  // the start plane of the draft wins over any a remembered extent had
+  const from = change.from === undefined ? draft.extent.from : (change.from ?? undefined);
+  const distance = withoutFrom(lastDistance) as ExtrudeDraft['extent'];
+  const upTo = lastUpTo && (withoutFrom(lastUpTo) as UpToDraft);
   let extent = draft.extent;
   if (extent.type === 'throughAll' && operation !== 'cut') extent = distance;
   // a request for "through all" outside a cut is ignored: the draft keeps the distance it has
@@ -417,6 +434,8 @@ export function changeExtrude(draft: ExtrudeDraft, change: ExtrudeChange, bodies
     const gap = change.gap === undefined ? old : change.gap;
     extent = { ...rest, ...(change.start === undefined ? {} : { start: change.start }), ...(change.plane === undefined ? {} : { plane: change.plane }), ...(gap === undefined || gap === null ? {} : { gap }) };
   } else if (change.side !== undefined) extent = { ...extent, side: change.side };
+  extent = withFrom(extent, from);
+  if (extent.type === 'throughAll' && extent.from && extent.side === 'both') extent = { ...extent, side: 'backward' };
   let targets = change.target === undefined ? draft.targets : [change.target];
   if (change.toggleTarget !== undefined) targets = targets?.includes(change.toggleTarget) ? targets.filter((id) => id !== change.toggleTarget) : [...(targets ?? []), change.toggleTarget];
   if (operation === 'add' && targets && targets.length > 1) targets = targets.slice(0, 1);
@@ -646,9 +665,10 @@ export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, ed
   const { id, operation, targets } = draft;
   // The patch merges with the feature, so what the draft no longer has must be removed explicitly:
   // the offset of regions, a reference and an optional parameter of a generated profile, the taper
-  // of a distance and the gap of an extent up to a plane. Every other entry of the profile and of
-  // the extent is in the draft.
-  const extent = draft.extent.type === 'distance' ? { ...draft.extent, taper: draft.extent.taper ?? null } : draft.extent.type === 'upTo' ? { ...draft.extent, gap: draft.extent.gap ?? null } : draft.extent;
+  // of a distance, the gap of an extent up to a plane and the start plane of any extent. Every other
+  // entry of the profile and of the extent is in the draft.
+  const from = { from: draft.extent.from ?? null };
+  const extent = draft.extent.type === 'distance' ? { ...draft.extent, taper: draft.extent.taper ?? null, ...from } : draft.extent.type === 'upTo' ? { ...draft.extent, gap: draft.extent.gap ?? null, ...from } : { ...draft.extent, ...from };
   const profile: ProfileSourcePatch = draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : generatedPatch(draft.profile);
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }

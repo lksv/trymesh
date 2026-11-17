@@ -46,7 +46,7 @@
       {"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}
   feature mid:
       {"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

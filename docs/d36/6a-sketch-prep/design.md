@@ -397,6 +397,10 @@ As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINT
 - `packages/engine/test/curve-kinds.test.ts` checks `CURVE_KINDS` and that `unreachable` throws.
 - **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E9, E11 to E14, E16, E18, E20, E21 and `document.ts` (E5), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind.
 
+### Where 6a meets 2h (D66), merged in from `master`
+
+2h (the start of an extent at a face or a plane) reads no curve of a sketch and nothing part 2 replaced: its start and end planes read the exact outline of the regions (`exactStart` of `recompute/extent.ts`, over `Loop.exact`, falling back to the polyline of a loop without one) and the outline of a hole it builds itself (`ExactCurve`, its own union of a line, a circle and points). `exactStart` is one more consumer of `OutlineCurve` ("Ring 2", not made exhaustive by 6a), for the package that adds a variant there; a loop without exact curves already falls back. The one conflict was the import list of `packages/app/src/features/extrude.ts` (2h's `PlaneRef` and `startText` beside part 5's entity helpers in place of `derivedPoints`).
+
 ### Part 1: the kinds of reference geometry as a registry
 
 As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `index.ts`; `externalGeometry` removed; `entityOf` and `derivedPoints` moved out of `sketch-content.ts` (`document.ts` re-exports them from `references/index.ts`, so the public surface is the same); `solverSetup(sketch, references)` takes the resolved entries; the step asks `resolveReferences`; the refs of a sketch, the fillet's `shortened` and `updateExternal` read the kind. No test and no public type changed. Beside the contract:

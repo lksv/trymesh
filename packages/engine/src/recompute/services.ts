@@ -31,7 +31,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   gearMesh: 'The gear cannot be put in mesh with the gear it refers to.',
   gearInterference: 'The tip of one gear of the pair runs into the root of the other.',
   invalidExpression: 'The expression of a numeric field cannot be evaluated or gives a value outside the range of the field.',
-  invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
+  invalidExtent: 'The extent cannot use its plane: the tool cannot reach the plane it is to end in, or cannot start in its start plane.',
   invalidHole: 'The dimensions do not make a hole.',
   invalidPattern: 'The counts, the directions and the spans do not make a pattern.',
   importedTarget: 'A target or a tool is an imported mesh, which no feature may change.',

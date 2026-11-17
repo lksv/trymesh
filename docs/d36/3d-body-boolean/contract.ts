@@ -33,11 +33,13 @@ import { FACE_ROLES } from '../00-prep/contract';
 //     outer corner of the tool stays sharp (the pocket is up to 1.73 times the clearance away
 //     from it) and no face is added or lost.
 //   - How exact it is: the moved surfaces are exact, and between two planar faces so is the
-//     pocket. A round face is a polygon in the mesh: there the pocket may be nearer to the tool
+//     pocket (but for a face narrower than the chord tolerance, which may lie off its moved
+//     surface by up to that). A round face is a polygon in the mesh: there the pocket may be nearer to the tool
 //     than the clearance by the chord tolerance of the document, and next to an edge where a round
 //     face meets another face at a slant by up to `ROUND_ALLOWANCE` of the clearance more (0.87
 //     of the clearance was measured where two cylinders cross). `gap` measures what it is.
-//   - A tool that cannot be moved that way is the error `invalidClearance`.
+//   - A tool that cannot be moved that way is the error `invalidClearance`, and so is a clearance
+//     under ten precisions of the coordinates.
 //   - `setField` reaches the field also while the feature does not have it (its description has
 //     the default 0, the rule of D44); `updateFeature` with `{ clearance: null }` removes it,
 //     and a patch to another operation removes it by itself.
@@ -55,7 +57,8 @@ import { FACE_ROLES } from '../00-prep/contract';
 //   a tool share nothing), `invalidClearance`, `kernelFailure` (the kernel refused, or its
 //   result did not pass the checks of the engine: see `booleanOfBodies`). The warning `noEffect`
 //   names the tools that did not change the target; tools that are not kept leave the model all
-//   the same. The feature is atomic: in error it changes nothing, and no tool leaves.
+//   the same. The feature is atomic: in error it changes nothing, and no tool leaves. With package
+//   3b, an imported body as the target or a tool is the error `importedTarget`.
 export interface CombineFeature extends FeatureBase {
   type: 'combine';
   operation: BooleanOp;
@@ -130,7 +133,8 @@ declare module '../00-prep/contract' {
   // - more than three faces meet at a vertex in a way their moved surfaces do not;
   // - a face has material on both sides of its surface (one name on a hole and on a pin, which
   //   a body put together of others can have);
-  // - a face of the tool has no description at all (a general surface; no feature makes one yet).
+  // - a face of the tool has no description at all (a general surface; no feature makes one yet);
+  // - the clearance is under ten precisions of the coordinates (no faces in `refs`).
   interface IssueCodes {
     invalidClearance: true;
   }
@@ -191,32 +195,44 @@ declare module '../../../packages/engine/src/features/module' {
 //   adapter itself is to refuse a union or a difference whose operands share a number, so that
 //   a caller that forgets it gets an exception and not a wrong body.
 // - `changed`: false when the tool had no effect on the target: the volume is what it was (the
-//   tolerance of `applyTool`) and, for a difference, every face of the tool in the result lies on
-//   the surface the target had (`onSurface` of solid.ts, the rule of a pattern copy that
-//   lands on what is cut already). Decided on the temporary numbers, before they are put back:
-//   afterwards a face the target had from that tool cannot be told from one it got now.
-// - The checks of the engine on a union and a difference (design.md, "The engine checks the
-//   result"), each an exception the feature reports as `kernelFailure`:
-//   - the volume: that of the result against vol(target) + vol(tool) - vol(shared) for a union
-//     and vol(target) - vol(shared) for a difference, with the shared volume from the port's
-//     intersection; they may differ by `VOLUME_TOLERANCE` of the two volumes together, and by
-//     0.001 mm³ at least;
-//   - sheets: the result has no more area in triangles that lie back to back within
-//     `SHEET_TOLERANCE` precisions of the coordinates than the two operands had (`areaOf` with
-//     and without its tolerance): a wall of the tool left inside the result, a face that should
-//     be gone.
+//   tolerance of `applyTool`) and, for a difference and an intersection, every face of the tool in
+//   the result lies on the surface the target had (`onSurface` of solid.ts, the rule of a pattern
+//   copy that lands on what is cut already). Decided on the temporary numbers, before they are
+//   put back: afterwards a face the target had from that tool cannot be told from one it got now.
+//   It is decided first: a result without effect is dropped and not checked.
+// - p is `coordinatePrecision` of the two operands (mesh-distance.ts); the band is that of
+//   guarantee 3 (4e-5 D, D the size the adapter derives from the two solids, ports.md).
+// - The checks of the engine on a changed result (design.md, "The engine checks the result"),
+//   each an exception the feature reports as `kernelFailure` with the tool in `refs`:
+//   - the volume, for a union and a difference: that of the result against vol(target) +
+//     vol(tool) - vol(shared) for a union and vol(target) - vol(shared) for a difference, with
+//     the shared volume from the port's intersection taken as a range: the pieces of the
+//     intersection that are all sheet within the band may count or not. The tolerance at both
+//     ends is the largest of 0.001 mm³ (`INTERFERENCE_THRESHOLD`), `VOLUME_TOLERANCE` of the two
+//     volumes together and `VOLUME_AREA_FACTOR` · p · the two areas together. When the port
+//     refuses that intersection the volume is not checked;
+//   - sheets, for all three: area in triangles that lie back to back within the sheet tolerance
+//     (`areaOf` with and without it), by face number; no number may hold more than the operands
+//     held under it, and the excess over all numbers may be at most `SHEET_AREA_FLOOR`: a wall
+//     of the tool left inside the result, a face that should be gone. The sheet tolerance is
+//     `SHEET_TOLERANCE` · p, at most `SHEET_CHORD_SHARE` of `chordTolerance` (the gaps between
+//     two polygons of one circle are real).
 // - An intersection: the port keeps no tolerance for flush faces, and two bodies that only touch
-//   leave sheets (measured: every such leftover is all sheet). A connected piece of the result
-//   whose whole surface is sheet at `SHEET_TOLERANCE` is dropped; a piece with any other surface
-//   stays, however small, and so does the shell of a cavity.
+//   leave sheets (measured: every such leftover is all sheet, at most 6e-4 mm³). A connected
+//   piece of the result whose whole surface is sheet is dropped when it holds under 0.001 mm³ and
+//   is `kernelFailure` when it holds more (material the coordinates cannot tell from a sheet);
+//   a piece with any other surface stays, however small, and so does the shell of a cavity.
 // It throws what the port throws.
 export interface BodyBoolean {
   solid: Solid;
   changed: boolean;
 }
-export declare function booleanOfBodies(kernel: SolidKernel, op: BooleanOp, target: Solid, tool: Solid, firstFree: number): BodyBoolean;
-export const VOLUME_TOLERANCE = 1e-6; // a share of the two volumes together; the floor is `INTERFERENCE_THRESHOLD`, 0.001 mm³
+export declare function booleanOfBodies(kernel: SolidKernel, op: BooleanOp, target: Solid, tool: Solid, firstFree: number, chordTolerance: number): BodyBoolean;
+export const VOLUME_TOLERANCE = 1e-6; // a share of the two volumes together
+export const VOLUME_AREA_FACTOR = 0.1; // times p, per mm² of the two surfaces together; to be confirmed far from the origin
 export const SHEET_TOLERANCE = 10; // in precisions of the coordinates (`coordinatePrecision` over the two operands)
+export const SHEET_CHORD_SHARE = 0.1; // the sheet tolerance is never more than this share of the chord tolerance
+export const SHEET_AREA_FLOOR = 0.001; // mm²: new sheet area a result may hold, over all face numbers together
 
 // The box on one side of a plane that holds everything of `body` on that side: one face in the
 // plane, numbered `first`, and five faces outside the body by `SPLIT_MARGIN`, numbered from
@@ -243,13 +259,16 @@ export interface MovedBody {
 // - `bothSides`: triangles of one face lie on both sides of its surface.
 // - `closes`: a hole (a cylinder with the material outside) has a radius no larger than the
 //   clearance.
-// - `vertex`: a vertex cannot lie on all the moved surfaces of its faces.
+// - `vertex`: a vertex cannot lie on all the moved surfaces of its faces, or a narrow face carried
+//   along at a vertex ends farther than the chord tolerance from its moved surface.
 // - `outline`: the moved outline of a planar face crosses itself.
 // - `turned`: a triangle of a round face turned over.
 // - `crosses`: an edge of the moved mesh goes through a triangle of it.
-// - `tooNear`: a point of the moved surface is nearer to the body than the clearance.
+// - `tooNear`: a point of the moved surface is nearer to the body than the clearance allows.
+// - `tooSmall`: the clearance is under ten precisions of the coordinates, which the checks cannot
+//   tell from none (no faces).
 export interface MoveProblem {
-  reason: 'noSurface' | 'bothSides' | 'closes' | 'vertex' | 'outline' | 'turned' | 'crosses' | 'tooNear';
+  reason: 'noSurface' | 'bothSides' | 'closes' | 'vertex' | 'outline' | 'turned' | 'crosses' | 'tooNear' | 'tooSmall';
   faces: FaceNameAfter[];
   detail: string;
 }

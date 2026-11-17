@@ -20,7 +20,7 @@ export {
   isDimension,
   withPath,
 } from './document';
-export { bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
+export { bodyRefs, bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
 export { type MeshOrigin, shapeOrigin } from './solid';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';

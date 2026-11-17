@@ -83,7 +83,7 @@ export function bodyForm(host: PanelHost, id: Id): HTMLElement[] {
   const color = h('input', { type: 'color', value: result.color ?? '#aab7c6', onchange: () => set({ color: color.value }) });
   return [
     h('h2', {}, `Properties of ${result.name}`),
-    ...(result.from !== undefined ? [h('p', { className: 'hint' }, `A copy of ${host.bodyName(result.from)}: what is left empty is taken from it.`)] : []),
+    ...(result.from !== undefined ? [h('p', { className: 'hint' }, `Made from ${host.bodyName(result.from)} (a copy, or a part split off): what is left empty is taken from it.`)] : []),
     text('Name', 'name', result.name),
     h('label', {}, 'Use', use),
     h('label', {}, 'Material from the catalog', material),

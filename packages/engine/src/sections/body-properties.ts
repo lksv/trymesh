@@ -206,7 +206,7 @@ export const bodyProperties: SectionSpec<Section, Results> = {
     title: 'Body properties',
     summary:
       'The name, colour, material, use, density and mass of a body, by body ID (also `<pattern>/<number>`; a mirror only `<pattern>/1`). The use is `part` (printed; the default), `reference` (a bought part: not printed, has a mass) or `auxiliary` (no physical thing: not printed, no mass; it still takes part in the interference and gap queries). ' +
-      'A copy made by a pattern of a body inherits from its source what its own entry does not state, the density and the mass as a pair; its name is not inherited. The mass of a body is its `mass` (a weighed part, a data sheet) or density × volume. ' +
+      'A copy made by a pattern of a body, and the part a split cuts off, inherits from its source what its own entry does not state, the density and the mass as a pair; its name is not inherited. The mass of a body is its `mass` (a weighed part, a data sheet) or density × volume. ' +
       'The catalog `materials` fills the label and the density (command setBodyMaterial); the document keeps the number. An entry whose body is gone stays in the document and is taken over by a body made again under that ID; get_model lists such entries.',
     commands: ['setBodyProperties', 'setBodyMaterial', 'removeBodyProperties'],
     fields: FIELDS.map((field) => ({ owner: 'body', ...field })),

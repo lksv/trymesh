@@ -36,7 +36,7 @@ interface Document {
   meshes: Record<Id, StoredMesh>;                // a section of the document, see Stored meshes (D55)
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature;   // a hole: hole.md (D46); a mesh: Stored meshes (D55)
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature;   // a hole: hole.md (D46); a mesh: Stored meshes (D55); combine and split: combine.md (D56)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 

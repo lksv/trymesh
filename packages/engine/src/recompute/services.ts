@@ -34,7 +34,8 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
   invalidHole: 'The dimensions do not make a hole.',
   invalidPattern: 'The counts, the directions and the spans do not make a pattern.',
-  importedTarget: 'A target is an imported mesh, which no feature may change.',
+  importedTarget: 'A target or a tool is an imported mesh, which no feature may change.',
+  invalidClearance: 'The tool cannot be moved outwards by the clearance without a change of its shape.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };

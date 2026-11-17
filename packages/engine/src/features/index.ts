@@ -6,6 +6,7 @@ import { bodyOwner, entityOf } from '../sketch-content';
 import type { Document, Feature, Id } from '../types';
 import { ORIGIN, has } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';
+import { combine } from './combine';
 import { extrude } from './extrude';
 import { hole } from './hole';
 import { mesh } from './mesh';
@@ -13,8 +14,9 @@ import type { FeatureModule, FeatureTypeInfo } from './module';
 import { pattern } from './pattern';
 import { plane } from './plane';
 import { sketch } from './sketch';
+import { split } from './split';
 
-export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh };
+export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split };
 
 // The public part of the registry.
 export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(
@@ -25,6 +27,8 @@ export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Objec
 // and the feature, so the cast is written here, once.
 export const specOf = (f: Feature): FeatureModule<Feature> => FEATURE_TYPES[f.type] as FeatureModule<Feature>;
 
+// The bodies a feature names (its targets, its tools, the body it splits), by body ID.
+export const bodyRefs = (f: Feature): Id[] => [...new Set(specOf(f).refs(f).filter((ref) => ref.kind === 'body').map((ref) => ref.id))];
 // Can a pattern repeat the feature (does it leave a tool recipe)?
 export const producesTool = (f: Feature): boolean => specOf(f).producesTool(f);
 // The generator of the profile of the feature, when it has a profile that comes from one.
@@ -37,7 +41,7 @@ export function bodyProblem(doc: Document, body: Id): string | undefined {
   const { feature, local } = bodyOwner(body);
   const f = doc.features.find((candidate) => candidate.id === feature);
   if (!f) return `no feature of the document creates the body "${body}": the feature "${feature}" is not in the document`;
-  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new and by a mesh feature, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1, a mirror only "<pattern>/1")`;
+  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new by a mesh feature and by a split, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1, a mirror only "<pattern>/1")`;
   return undefined;
 }
 
@@ -93,7 +97,7 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
   } else if (ref.kind === 'tool') {
     if (!spec.producesTool(target)) fail(`${what}: feature "${ref.id}" is not a feature that applies a tool (an extrusion with the operation add or cut, a hole)`);
   } else {
-    const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : target.type === ref.kind;
+    const accepted = ref.kind === 'body' ? spec.createsBody(target, local) : ref.kind === 'faceSource' ? spec.namesFaces : ref.kind === 'pattern' ? (spec.tagsFaces?.(target) ?? false) : target.type === ref.kind;
     if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
   }
   if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);

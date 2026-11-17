@@ -177,6 +177,8 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -386,6 +388,8 @@
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -560,6 +564,8 @@
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"

@@ -20,7 +20,8 @@ type FaceName = (
   | { feature: Id; role: 'holeFlat'; point: Id; flat: number }             // a side of the hexagon of a nut pocket, from 1
   | { feature: Id; role: 'holeSeat' }                                      // the step between head and bore, one face for all points
   | { feature: Id; role: 'mesh' }                                          // the whole surface of an imported mesh (D55)
-) & { copy?: { pattern: Id; index: number }[] }; // a face of a copy made by a pattern, see Pattern
+  | { feature: Id; role: 'splitFace' }                                     // the face a split cuts, on both bodies (D56)
+) & { copy?: { pattern: Id; index: number }[] }; // a face of a copy made by a pattern, or of a pocket a combine with a clearance left (D56)
 ```
 
 The faces of a wall (a profile of the type `wall`, [extrude.md](extrude.md), "Profile offset and a wall"): every curve of the chain makes two sides, told apart by the side of the curve in its own direction, and every free end of an open chain makes an end named by the sketch point the chain ends at. A profile of regions with an offset adds no role: its side faces keep `side` with their curve.
@@ -39,6 +40,9 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | Dvě stěny splynou do jedné roviny | Zůstávají dvě stěny s různými jmény. |
 | Kružnice nebo oblouk | Všechny segmenty mají stejné jméno, válcová plocha je jedna stěna. |
 | A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. The copy of a grid i steps along the first direction and j along the second has the number i + 1000 · j (D53, [pattern.md](pattern.md)): one tag per face as for a row, a number with gaps that does not depend on the counts, so a larger count renames no face. `faceKey` appends `/@<pattern>:<index>` as for a row; nothing compares the numbers of two tags as numbers. |
+| A combine without a clearance (D56) | The faces keep their names, from the target or the tool; where a face of a tool lies flush on one of the target and they overlap, the overlapped part takes the tool's name (an intersection: the target's). A face may lie on two bodies, the target and a kept tool. |
+| A combine with a clearance (D56) | The faces a tool leaves are new faces: the name of the face of the tool with `{ pattern: <combine>, index: <the place of the tool in tools> }` appended, described by the moved surface. A crescent of a tool that only marks where two of its faces cross has no face in the pocket ([combine.md](combine.md)). The registry member `tagsFaces` says which features may stand in a tag. |
+| A split (D56) | Both bodies get the cut face `{ feature: <split>, role: 'splitFace' }`, one name on two bodies; the other faces keep their names on the part they lie on. A face of the body in the plane keeps its name, but under an overhang the part the cut face lies on takes its name. |
 | A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
 
 The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has five kinds: a plane, a cylinder, a cone (the side of an arc or a circle of a tapered extrusion, D45; the head of a countersink, D46), a general surface swept along the extrusion axis (the side of a generated profile) and the surface of an imported mesh (`surface: 'mesh'`, D55: published as `general`, unchanged by a transform; it may have flat regions, which nothing sees). Only a plane can carry a sketch, and an edge is a circle where its two surfaces meet in one (`circleBetween`, [extrude.md](extrude.md), "Taper").

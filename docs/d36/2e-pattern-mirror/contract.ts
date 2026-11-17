@@ -65,11 +65,15 @@ export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'
 //   (`<pattern>/<number>`, a face tagged `index: <number>`, a link) keeps meaning the same place.
 //   The numbers have gaps; `FeatureResult.bodies` lists the copies that exist, in the order of
 //   their numbers, which is the order they are made in (row by row).
-// - `count × second.count` is at most `MAX_PATTERN_PLACES`, and no two places may be one place
-//   (closer than the length tolerance of the engine, 1e-6 mm; the original is a place). Places can
-//   meet only when the two directions are parallel, and then only for some steps: 5 and 5 meet, 5
-//   and 6 over 4 × 3 places do not. Both rules are judged by the recompute, where the values of
-//   expressions and the directions are known: the error `invalidPattern` of the pattern.
+// - `count × second.count` is at most `MAX_PATTERN_PLACES`, and no two places may be one place:
+//   at most the length tolerance of the engine apart (1e-6 mm; the original is a place). Places
+//   meet when the two directions are parallel and steps of the two add up to the same shift (5 and
+//   5 meet, 5 and 6 over 4 × 3 places do not), or when a step is shorter than the tolerance. The
+//   places are compared, not the meshes: places further apart than the tolerance and closer than
+//   the step of float32 at their coordinates give copies that are one mesh, and are accepted.
+//   A linear pattern without `second` is not compared (the row of today). Both rules are judged by
+//   the recompute, where the values of expressions and the directions are known: the error
+//   `invalidPattern` of the pattern.
 // - Listed fields only (`onlyFields`): a field of the first direction's variant (`type`, `second`)
 //   or of another kind is an invalid command.
 // - `updateFeature`: a patch `{ transform: { second: { … } } }` merges by field with the second
@@ -99,9 +103,11 @@ declare module '../00-prep/contract' {
   // `invalidPattern`, an error of a pattern, reported by the recompute:
   // - the grid has more places than `MAX_PATTERN_PLACES`: `refs` are the fields
   //   `transform/count` and `transform/second/count`, the detail says the product;
-  // - two places of a grid would be one place: `refs` are `transform/direction`, `transform/span`,
-  //   `transform/second/direction` and `transform/second/span`, the detail names the two copies
-  //   (or the copy and the original).
+  // - two places of a grid would be one place: `refs` are the paths of what the places are computed
+  //   from (`transform/direction`, `transform/count`, the numeric field of the span,
+  //   `transform/span/spacing` or `transform/span/length`, and the same three under
+  //   `transform/second/`); the detail names the two copies (or the copy and the original), and
+  //   is all a user is told, so the step has to hand it on.
   // The pattern is in error as a whole and the model stays as it was before it.
   interface IssueCodes {
     invalidPattern: true;

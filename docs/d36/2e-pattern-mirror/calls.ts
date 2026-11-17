@@ -329,10 +329,20 @@ export function tooManyPlaces(before: number): boolean {
 }
 // No two places of a grid may be one place. With the second direction along X as well and the
 // same step of 5, the copy one step along the first direction and the copy one step along the
-// second (1 and 1000) would be one hole: an error of the pattern. Parallel directions alone are
-// not the error: with the steps 5 and 6 the twelve places are twelve places on one line.
-export const onePlaceTwice = (): string | undefined => errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, span: { type: 'spacing', spacing: 5 } } } } }), 'drains')?.code; // invalidPattern
-export const onOneLine = (): string => statusOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X } } } }), 'drains'); // ok
+// second (1 and 1000) would be one hole: an error of the pattern, with the copies named in its
+// message and what the places are computed from in `refs`.
+export function onePlaceTwice(): boolean {
+  const error = errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, span: { type: 'spacing', spacing: 5 } } } } }), 'drains');
+  const paths = ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'];
+  return error?.code === 'invalidPattern' && JSON.stringify(error.refs) === JSON.stringify(paths) && error.message.includes('1 and 1000');
+}
+// Parallel directions alone are not the error. Two rows along X, the second half a step from the
+// first (2.5): eight separate holes on one line, 0.5 mm of floor between neighbours, the copy
+// 1001 between the copies 1 and 2.
+export function onOneLine(before: number): boolean {
+  const line = preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, count: 2, span: { type: 'spacing', spacing: 2.5 } } } } });
+  return statusOf(line, 'drains') === 'ok' && about(before - volumeOf(line, 'box'), 8 * oneDrain(before), 1e-4) && boreAt(line, 1, 1, 25.5, 10) && boreAt(line, 3, 1, 35.5, 10);
+}
 // `second: null` makes it a row again: the four holes of the first row, and the expression of the
 // second count goes with its field.
 export function aRowAgain(before: number): boolean {
@@ -417,7 +427,7 @@ export function scenario12grid(): boolean {
   const walls = volumeOf(engine.getState(), 'box');
   const vents = bothWallsChecks(walls, ventsOnBothWalls()) && sixPerWall(walls) && JSON.stringify(pastTheEndOfBoth()?.map((ref) => (ref as { copy: number }).copy)) === '[16,17,1016,1017]';
   const floor = volumeOf(engine.getState(), 'box');
-  const holes = drainChecks(floor, drains()) && oneMoreEachWay(floor) && tooManyPlaces(floor) && onePlaceTwice() === 'invalidPattern' && onOneLine() === 'ok' && aRowAgain(floor) && !secondOnAMirror();
+  const holes = drainChecks(floor, drains()) && oneMoreEachWay(floor) && tooManyPlaces(floor) && onePlaceTwice() && onOneLine(floor) && aRowAgain(floor) && !secondOnAMirror();
   const half = halfASecond();
   const lids = !half && lidChecks(sixLids()) && lidCounts();
   return part2e && vents && holes && lids && roundTripGrid();

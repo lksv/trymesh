@@ -114,7 +114,7 @@ export function resultCarriesProjections(state: StateAfter): boolean {
     same(Object.keys(result.curves), ['x1', 'x2']) &&
     same(x1, { shape: { type: 'line', a: 'x1/a', b: 'x1/b' }, source: 'reference', regions: false }) &&
     result.points['x1/a'] !== undefined &&
-    result.radii.x2 === 6
+    Math.abs(result.radii.x2 - 6) < 1e-9 // the radius of the rim as the analysis of the body gives it
   );
 }
 
@@ -149,7 +149,8 @@ const at = (v: [number, number]): Point2 => ({ x: v[0], y: v[1] });
 export const plugSketch: ReferenceKindSpec<PlugSketchRef, PlugValue> = {
   source: 'reference',
   title: 'Projection of an entity of another sketch',
-  validate: (_context, _sketch, entry) => entry as unknown as PlugSketchRef,
+  validate: (_context, _sketch, _id, entry) => entry as unknown as PlugSketchRef,
+  faces: () => [],
   refs: (ref, path) => [
     { path, id: ref.sketch, kind: 'sketch' },
     { path, id: ref.entity, kind: 'entity', sketch: ref.sketch, accepts: [ref.kind] },
@@ -159,8 +160,17 @@ export const plugSketch: ReferenceKindSpec<PlugSketchRef, PlugValue> = {
     ref.kind === 'point' ? { [id]: 'point' } : ref.kind === 'line' ? { [id]: 'line', [`${id}/a`]: 'point', [`${id}/b`]: 'point' } : ref.kind === 'circle' ? { [id]: 'circle', [`${id}/center`]: 'point' } : { [id]: 'arc', [`${id}/center`]: 'point', [`${id}/start`]: 'point', [`${id}/end`]: 'point' },
   compute: (ref, context): PlugValue | IssueCode => (context.state.sketches[ref.sketch] ? fail('6b computes it') : 'brokenProjection'),
   value: (stored, ref) => ((stored as PlugValue).kind === ref.kind ? (stored as PlugValue) : undefined),
+  // Each projected point is keyed by its source (6b: the sketch and the vertex of the point there),
+  // so two entries that project the two ends of one corner join, and a projected outline closes.
   geometry: (id, ref, value): EntryGeometry => {
     const regions = ref.regions === true && value.kind !== 'point' ? [id] : [];
+    const geometry = shapes(id, value, regions);
+    return { ...geometry, keys: Object.fromEntries(Object.keys(geometry.points).map((point) => [point, `${ref.sketch}:${sourceVertex(ref, point)}`])) };
+  },
+};
+declare function sourceVertex(ref: PlugSketchRef, projected: Id): Id; // 6b: the vertex in the source sketch
+function shapes(id: Id, value: PlugValue, regions: Id[]): EntryGeometry {
+  {
     switch (value.kind) {
       case 'point':
         // a projected point is a point entity and no curve
@@ -179,8 +189,8 @@ export const plugSketch: ReferenceKindSpec<PlugSketchRef, PlugValue> = {
       default:
         return unreachable(value, 'projected value');
     }
-  },
-};
+  }
+}
 
 // ================================================================ c. the axes of the origin (6b)
 
@@ -216,32 +226,38 @@ const mirrorPoint = (p: Point2, a: Point2, b: Point2): Point2 => {
 export const plugMirror: DerivedKindSpec<PlugMirrorRef> = {
   source: 'derived',
   title: 'Mirror of own curves',
-  validate: (_context, _sketch, entry) => entry as unknown as PlugMirrorRef,
+  validate: (_context, _sketch, _id, entry) => entry as unknown as PlugMirrorRef,
   refs: () => [], // only entities of its own sketch
+  faces: () => [],
   entities: (id, ref, sketch) => {
     const out: Record<Id, EntityKind> = {};
     for (const curve of ref.curves) {
       const shape = sketch.curves[curve];
+      if (!shape) continue; // a source curve that was removed: the step reports it
       out[`${id}/1/${curve}`] = shape.type;
       for (const point of Object.entries(shape).filter(([key]) => key !== 'type' && key !== 'construction').map(([, value]) => value as Id)) out[`${id}/1/${point}`] = 'point';
     }
     return out;
   },
-  derive: (id, ref, { sketch, geometry }) => {
-    const axis = sketch.curves[ref.axis];
+  // The axis is any line of the list: own, projected, or an axis of the origin.
+  derive: (id, ref, { sketch, curves, geometry }) => {
+    const axis = curves.get(ref.axis)?.shape;
     if (axis?.type !== 'line') return { code: 'brokenReference', refs: [ref.axis] };
     const [a, b] = [geometry.points[axis.a], geometry.points[axis.b]];
-    const out: EntryGeometry = { points: {}, curves: {}, radii: {}, regions: [], joins: [] };
+    const vertex = joinsOf(joinPairs(sketch, {}), geometry); // the vertices of the solved own sketch
+    const out: EntryGeometry = { points: {}, curves: {}, radii: {}, regions: [], joins: [], keys: {} };
     const copy = (point: Id): Id => {
       const image = `${id}/1/${point}`;
       if (!out.points[image]) {
         out.points[image] = mirrorPoint(geometry.points[point], a, b);
         out.joins?.push([image, point]); // one point of the profile when it falls on its source
+        if (out.keys) out.keys[image] = `${id}/1:${vertex(point)}`; // images of joined points join
       }
       return image;
     };
     for (const curve of ref.curves) {
       const source = sketch.curves[curve];
+      if (!source) return { code: 'brokenReference', refs: [curve] };
       const image = `${id}/1/${curve}`;
       let shape: CurveShape;
       switch (source.type) {
@@ -317,19 +333,22 @@ export function pointsOfWithSpline(shape: CurveShape | PlugSpline): Id[] {
 
 // ================================================================ g. a tool of the app (6e)
 
-// The tool Trim of 6e as a row of the table: one click on a curve, the batch of the engine's
+// The tool Trim of 6e as a row of the table: one click on a curve (curves only, so a click near
+// a crossing point still gives the curve), the batch of the engine's
 // sketch tool run as it is (not through `drawn`: its curves are not drawn ones), and the piece
 // the click would remove drawn while the pointer moves. 6e decides the engine side.
 declare function trimBatch(context: unknown, at: AnchorStandIn): { ok: true; commands: unknown[]; piece: [number, number][] } | { ok: false; message: string };
 export const plugTrim: SketchPlaceTool<undefined> = {
   label: 'Trim',
+  picks: 'curve',
+  eligible: (curve, context) => context.feature.curves[curve] !== undefined, // own curves only
   hint: 'Click the piece of a curve to remove, between its crossings with other curves.',
   click: (host, _m, places, context) => {
     const place = places[places.length - 1];
     if (place.snap?.kind !== 'curve') return host.say('Click a curve.', true);
     const made = trimBatch(context, place);
     if (!made.ok) return host.say(`Trim: ${made.message}`, true);
-    host.run({ type: 'batch', commands: made.commands }, 'Trimmed.');
+    host.run({ type: 'batch', commands: made.commands }, 'Trimmed.'); // keeps no place
   },
   draw: (_places, cursor, context) => {
     const made = cursor.snap?.kind === 'curve' ? trimBatch(context, cursor) : undefined;

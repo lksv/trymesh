@@ -71,7 +71,7 @@ const near = (a: Vec3, b: Vec3) => a.forEach((x, i) => expect(x).toBeCloseTo(b[i
 describe('the section and its upgrade step', () => {
   it('is always in the document, after body properties; an empty one has no link and no joint', () => {
     expect(emptyDocument().mechanism).toEqual({ links: {}, joints: {} });
-    expect(Object.keys(emptyDocument()).slice(-3)).toEqual(['bodyProperties', 'mechanism', 'meshes']);
+    expect(Object.keys(emptyDocument()).slice(-4)).toEqual(['bodyProperties', 'mechanism', 'meshes', 'documents']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {

@@ -1,7 +1,7 @@
 // The query `partsList` (D57): what to print and what to buy. The bodies of the state as rows of
 // parts (a body and its unchanged copies one row with a count), and the hardware of the hole
 // features, counted from the holes the model has. The design is docs/d36/3e-parts-list/design.md.
-import { sourceRoot } from '../features/index';
+import { featuresWithInserted, sourceRoot } from '../features/index';
 import { partName } from '../sections/body-properties';
 import { shapeOrigin } from '../solid';
 import type { BodyPropertiesResult, Document, FaceName, Id, Solid, Surface, Vec3 } from '../types';
@@ -194,7 +194,8 @@ function touch(a: Cut, b: Cut): boolean {
   return false;
 }
 export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: Solid; faces: readonly { id: number }[] }>>, faceNames: readonly FaceName[], surface: (body: Id, face: number) => Surface | undefined): Map<Id, number> {
-  const holes = new Set(doc.features.filter((f) => f.type === 'hole').map((f) => f.id));
+  // the hole features of the document and of the documents it inserts, under their prefixed IDs (D62)
+  const holes = new Set(featuresWithInserted(doc).filter((f) => f.feature.type === 'hole').map((f) => f.id));
   // feature → cut (its point and its copy tags) → where it is
   const cuts = new Map<Id, Map<string, Cut>>();
   for (const [id, body] of Object.entries(bodies)) {
@@ -365,10 +366,11 @@ function partsListOf(context: QueryContext): PartsList {
   const counts = holeCounts(doc, parts, evaluation.faceNames, (body, face) => context.surface(body, evaluation.faceNames[face]));
   const hardware: HardwareRow[] = [];
   const unlabelled: HoleCount[] = [];
-  for (const feature of doc.features) {
-    const count = counts.get(feature.id);
+  // an inserted hole feature (D62) stands at the place of its insertion, under its prefixed ID
+  for (const { id, feature } of featuresWithInserted(doc)) {
+    const count = counts.get(id);
     if (feature.type !== 'hole' || count === undefined) continue;
-    const hole: HoleCount = { feature: feature.id, count };
+    const hole: HoleCount = { feature: id, count };
     const { label } = feature;
     if (label === undefined) {
       unlabelled.push(hole);

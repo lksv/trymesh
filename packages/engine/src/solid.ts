@@ -4,7 +4,7 @@
 import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, IssueCode, Projected, ProjectionKind, RigidTransform, Solid, Surface, Vec2, Vec3 } from './types';
 import { closestOnTriangle } from './mesh-distance';
 import { circleBetween } from './surfaces';
-import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from './util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sameEdgeName, sub3, unit3 } from './util';
 
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
 export type FaceInfo =
@@ -589,7 +589,7 @@ export function faceFrame(body: BodyData, id: number, info: FaceInfo): Frame | I
 // `chordTolerance`: as for `analyzeBody`, to choose among two circles by the points of the edge.
 export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[], chordTolerance: number): Projected | IssueCode {
   const edge = body.edges.get(edgeKey(name));
-  if (!edge) return 'brokenProjection';
+  if (!edge || !sameEdgeName(edge.name, name)) return 'brokenProjection';
   if (edge.kind !== kind) return 'unsupportedProjection'; // coplanar, other, nebo jiný druh, než se uložilo
   const [a, b] = [faceInfos[edge.a], faceInfos[edge.b]];
   if (edge.kind === 'line' && a.planar && b.planar) {

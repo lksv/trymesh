@@ -1765,4 +1765,58 @@ describe('the app, driven as a user drives it', () => {
     expect(h.engine.getState().document.meshes).toEqual({});
     await matches(h, 'mesh');
   });
+  it('a part from a document file: the form, the file, the values of its parameters, its bodies, the stored documents in the panel (D62)', async () => {
+    const h = await start();
+    // a part as a document file: a disc of the radius 5 and the height `H`, and a pin on it
+    const part = {
+      ...emptyDocument(),
+      parameters: [{ name: 'H', expr: '5' }],
+      features: [
+        { ...emptySketch('s', 'Disc', { kind: 'base', plane: 'XY' }), curves: { c: { type: 'circle', center: 'origin' } }, radii: { c: 5 } },
+        { id: 'disc', name: 'Disc', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new', expressions: { 'extent/distance': 'H' } },
+        { id: 'pin', name: 'Pin', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 20, distance: 2 }, operation: 'new' },
+      ],
+      bodyProperties: { disc: { name: 'Disc part', use: 'reference', mass: 3 } },
+    };
+    const choose = async (name: string, content: string): Promise<void> => {
+      const input = h.document.getElementById('document-file') as HTMLInputElement;
+      const FileOf = (h.document.defaultView as unknown as { File: typeof File }).File;
+      Object.defineProperty(input, 'files', { value: [new FileOf([content], name)], configurable: true });
+      const before = Object.keys(h.engine.getState().document.documents).length;
+      const status = h.document.getElementById('status') as HTMLElement;
+      const said = status.textContent;
+      h.type(input, '', true);
+      await until(() => Object.keys(h.engine.getState().document.documents).length > before || status.textContent !== said, 'the file');
+    };
+    h.press('toolbar', 'Insert');
+    h.record('the button Insert without a stored document: the form says to insert a file, OK is disabled');
+    await choose('notes.json', 'hello');
+    h.record('a file that is no document: the status line says why, nothing is stored');
+    await choose('disc part.json', JSON.stringify(part));
+    h.record('the part stored: one undo step (addDocument), the form uses it, the preview places it on XY with both of its bodies');
+    h.type(h.field('H (there 5 = 5)'), '8');
+    h.timers();
+    h.record('a value of its parameter here: the preview follows');
+    const boxes = Array.from(h.document.querySelectorAll<HTMLInputElement>('#panel input[type=checkbox]'));
+    boxes[1].checked = false;
+    h.type(boxes[1], '', true);
+    h.record('the pin left out: the list of bodies');
+    h.press('panel', 'OK');
+    h.record('confirmed: the insertion with the value and the list; the body named after the insertion');
+    expect(h.engine.getState().evaluation.features.i1?.bodies).toEqual(['i1/disc']);
+    expect(h.engine.getState().evaluation.bodyProperties['i1/disc']).toMatchObject({ name: 'Part 1', use: 'reference', mass: 3, fromDocument: 'disc_part' });
+    doubleClick(h, 'Part 1');
+    h.type(h.field('H (there 5 = 5)'), '');
+    h.timers();
+    h.press('panel', 'OK');
+    h.record('the value emptied: the patch removes it, the part is its own again');
+    expect(h.engine.getState().document.features[0]).not.toHaveProperty('parameters');
+    h.row('Part 1').click();
+    h.press('panel', 'Smazat');
+    h.record('the insertion deleted: the stored document is not inserted, the panel offers to remove it');
+    titled(h, 'Remove the stored document from the document').click();
+    h.record('the stored document removed');
+    expect(h.engine.getState().document.documents).toEqual({});
+    await matches(h, 'insert');
+  });
 });

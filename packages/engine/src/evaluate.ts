@@ -5,7 +5,8 @@ import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } f
 import { specOf } from './features/index';
 import { issue, lookup } from './recompute/services';
 import { type KeptResults, type Sections, evaluateSections } from './sections/index';
-import type { Deps, Done, DragTarget, Failed, SketchState, State, Step, WriteBack } from './recompute/state';
+import type { Deps, Done, DragTarget, Failed, InsertedRecompute, SketchState, State, Step, WriteBack } from './recompute/state';
+import { inheritedProperties } from './sections/body-properties';
 import { type FaceInfo, analyzeBody, surfaceOf } from './solid';
 import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id, Surface } from './types';
 
@@ -120,7 +121,7 @@ export class Evaluator {
   }
 
   private run(doc: Document, options: EvaluateOptions): { state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
-    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {}, chordTolerance: doc.settings.chordTolerance };
+    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {}, chordTolerance: doc.settings.chordTolerance, insertions: {}, inserted: {} };
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
     const trace: Trace = new Map();
@@ -179,8 +180,23 @@ export class Evaluator {
     if (errors && !spec.keepsLastValidValues) return failed('invalidExpression', Object.keys(errors));
     // The step of the feature type. The registry is the one guard of completeness: an entry without
     // a step does not compile (features/index.ts).
-    return spec.step(feature, { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [], ...(input ? { input } : {}) });
+    return spec.step(feature, { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [], ...(input ? { input } : {}), insertion: this.insertion });
   }
+
+  // The recompute of a stored document for an insertion (D62), by this evaluator: its memo, its
+  // adapters, and the settings of the host, which `doc` has already (so the state before its first
+  // feature is the host's). Nothing is written back: its sketches are solved from the positions it
+  // stores, and its sections are not evaluated (nothing reads them); what its bodies pass on to the
+  // body properties here is resolved from its section `bodyProperties` with its parameters.
+  private readonly insertion = (doc: Document): InsertedRecompute => {
+    const { state } = this.run(doc, {});
+    const parameters = evaluateParameters(doc.parameters);
+    return {
+      state,
+      checks: Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)])),
+      inherited: inheritedProperties(doc, Object.keys(state.bodies), parameters, state.inserted),
+    };
+  };
 
 }
 

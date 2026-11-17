@@ -10,7 +10,7 @@ import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
 import { HOST_OPERATIONS, type HostOperationSet, hostOperationProblems, isHostOperation, noAppText } from './host';
-import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, argumentProblem, callTool, tools } from './tools';
+import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, ToolError, argumentProblem, callTool, storedDocument, tools } from './tools';
 
 export interface TrymeshServerOptions {
   engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
@@ -131,11 +131,32 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     },
     {
       name: 'save_document',
-      description: 'Uloží dokument do souboru; existující soubor přepíše. Bez cesty do souboru, ze kterého byl tento dokument otevřen nebo do kterého byl naposledy uložen.',
-      inputSchema: PATH('cesta k souboru .json; výchozí je soubor tohoto dokumentu (viz session_status)', false),
+      description:
+        'Uloží dokument do souboru; existující soubor přepíše. Bez cesty do souboru, ze kterého byl tento dokument otevřen nebo do kterého byl naposledy uložen. ' +
+        'With `stored` (the ID of a stored document, `kit/bearing` inside another one) it writes that stored document to `path` as a document of its own, to be opened, changed and brought back by insert_document with `replace`.',
+      inputSchema: {
+        type: 'object',
+        properties: { path: { type: 'string', description: 'cesta k souboru .json; výchozí je soubor tohoto dokumentu (viz session_status); required with `stored`' }, stored: { type: 'string', description: 'the ID of a stored document to write instead of the document' } },
+        required: [],
+        additionalProperties: false,
+      },
       run: async (args) => {
         const session = bridge?.session();
         const given = path(args, false);
+        if (args.stored !== undefined && args.stored !== null) {
+          if (typeof args.stored !== 'string' || args.stored === '') throw new Failure('argument "stored": the ID of a stored document is expected');
+          if (given === undefined) throw new Failure('argument "path": a stored document is written to a file of its own; give its path');
+          let part: string;
+          try {
+            part = JSON.stringify(storedDocument(JSON.parse((await must(session, '_save')) as string), args.stored));
+          } catch (error) {
+            if (error instanceof ToolError) throw new Failure(error.message);
+            throw error;
+          }
+          await mkdir(dirname(given), { recursive: true });
+          await writeFile(given, part);
+          return { file: given, stored: args.stored, bytes: Buffer.byteLength(part) } as Json;
+        }
         // Nejdřív dokument, pak soubor: s dokumentem přijde i to, jestli je to pořád ten, kterému
         // zapamatovaný soubor patří.
         const json = (await must(session, '_save')) as string;
@@ -204,6 +225,73 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           report,
           next: {
             say: `The mesh is stored as "${String(id)}"; nothing is placed yet. Change \`command\` as needed (the frame of \`placement\`, for a bought part best the sketch point at the centre of its bolt pattern; the offsets x, y, z and the turns rx, ry, rz in it; the feature ID) and send it with execute. Add the mass of the data sheet in grams to setBodyProperties (\`mass\`): neither the file nor this tool knows it.`,
+            command,
+          },
+        } as unknown as Json;
+      },
+    },
+    {
+      name: 'insert_document',
+      description:
+        'Reads a document file (JSON as the app or save_document writes it, of any version this build reads) into a stored document of this one (D62): the command addDocument, one undo step; with `replace` the command replaceDocument puts it in the place of the stored document `id` (a new revision of a part), and every insertion of it is recomputed. ' +
+        'It answers with the ID of the stored document, its parameters, and `next`: the command that inserts it, a feature of the type insert on the base plane XY, to be changed (the frame and the offsets and turns of `placement`, values for its parameters in `parameters`, the bodies in `bodies`, the feature ID) and sent with execute; and what that command would bring, by a preview of it: the bodies with the use, the material and the mass they inherit from the document, and the warning of the insertion.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path of the document file (.json)' },
+          id: { type: 'string', description: 'the ID of the stored document; by default the name of the file reduced to letters, digits and underscores; required with `replace`' },
+          name: { type: 'string', description: 'the name of the stored document, for people; by default the name of the file' },
+          replace: { type: 'boolean', description: 'replace the stored document `id` instead of adding one' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const session = bridge?.session();
+        const target = path(args, true) as string;
+        let text: string;
+        try {
+          text = (await readFile(target, 'utf8')).replace(/^\uFEFF/, '');
+        } catch (error) {
+          throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch (error) {
+          throw new Failure(`the file is not a document (JSON): ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (args.replace !== undefined && args.replace !== null && typeof args.replace !== 'boolean') throw new Failure('argument "replace": true or false is expected');
+        const replace = args.replace === true;
+        const name = args.name === undefined || args.name === null ? meshNameOf(target) : args.name;
+        if (name !== undefined && typeof name !== 'string') throw new Failure('argument "name": a text is expected');
+        // the ID among the stored documents of the engine the other tools use
+        const document = (await must(session, 'get_document')) as unknown as Document;
+        const stored = document.documents ?? {};
+        const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(stored, key);
+        if (replace && (typeof args.id !== 'string' || !has(args.id))) throw new Failure(`argument "id": with \`replace\` the ID of a stored document to replace is required${Object.keys(stored).length ? ` (the stored documents: ${Object.keys(stored).join(', ')})` : ' (the document has none)'}`);
+        const id = args.id === undefined || args.id === null ? idFromFile(target, has, 'document') : args.id;
+        const added = await call(session, 'execute', { command: replace ? { type: 'replaceDocument', id, document: parsed, ...(args.name === undefined || args.name === null ? {} : { name }) } : { type: 'addDocument', id, document: parsed, ...(name === undefined ? {} : { name }) } });
+        if (!added.ok) throw new Failure(added.error);
+        // the feature takes the ID of the stored document when the document does not use it (a
+        // feature, an entity of a sketch, an ID a section names), else the next free one
+        const used = new Set([...documentIds(document), ...namedBySections(document)]);
+        let feature = String(id);
+        for (let n = 2; used.has(feature); n++) feature = `${id}_${n}`;
+        const command: Command = { type: 'addFeature', feature: { id: feature, name: (typeof name === 'string' ? name : fileStemOf(target)).replace(/\.json$/i, '').trim() || feature, suppressed: false, type: 'insert', document: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } };
+        const preview = (await must(session, '_insertion', { document: id, command })) as { parameters: Json[]; bodies: { id: string; use: string; material?: string; mass?: number }[]; warning?: string };
+        const printed = preview.bodies.filter((body) => body.use === 'part').map((body) => body.id);
+        return {
+          document: id,
+          file: target,
+          ...(replace ? { replaced: true } : {}),
+          parameters: preview.parameters,
+          bodies: preview.bodies,
+          ...(preview.warning ? { warning: preview.warning } : {}),
+          next: {
+            say:
+              `The document is ${replace ? 'replaced' : 'stored'} as "${String(id)}"${replace ? '; every insertion of it is recomputed' : '; nothing is inserted yet'}. Change \`command\` as needed (the frame of \`placement\` and its offsets and turns; values for its parameters in \`parameters\`; \`bodies\` to bring only some; the feature ID) and send it with execute. ` +
+              (printed.length ? `The bodies ${printed.join(', ')} come in as printed parts (use \`part\`); a bought part should be \`use: "reference"\` with the mass of its data sheet, in its own document or by setBodyProperties here.` : 'Every body comes in with the use its document states.'),
             command,
           },
         } as unknown as Json;

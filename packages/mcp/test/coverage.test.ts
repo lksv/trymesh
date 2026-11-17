@@ -31,7 +31,7 @@ const rename: Command = { type: 'renameFeature', id: 'a', name: 'disc' };
 // file it opens exists.
 const ENGINE_IN_MCP: Record<keyof Engine, Reach> = {
   // import_mesh reads a file and sends addMesh (D55); the file is written before the calls
-  execute: { calls: [{ tool: 'execute', args: { command: rename } }, { tool: 'import_mesh', args: (dir) => ({ path: join(dir, 'part.stl') }) }] },
+  execute: { calls: [{ tool: 'execute', args: { command: rename } }, { tool: 'import_mesh', args: (dir) => ({ path: join(dir, 'part.stl') }) }, { tool: 'insert_document', args: (dir) => ({ path: join(dir, 'part.json') }) }] },
   preview: { calls: [{ tool: 'preview', args: { command: rename } }] },
   undo: { calls: [{ tool: 'undo' }] },
   redo: { calls: [{ tool: 'redo' }] },
@@ -44,7 +44,7 @@ const ENGINE_IN_MCP: Record<keyof Engine, Reach> = {
   query: { calls: [{ tool: 'query', args: { query: 'sketchDiagnosis', args: { sketch: 's' } } }, { tool: 'get_body', args: { body: 'a' } }] },
   exportMesh: { calls: [{ tool: 'export_stl', args: (dir) => ({ path: join(dir, 'model.stl') }) }] },
   export: { calls: [{ tool: 'export', args: (dir) => ({ format: 'stl', path: join(dir, 'exported.stl') }) }] },
-  save: { calls: [{ tool: 'save_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },
+  save: { calls: [{ tool: 'save_document', args: (dir) => ({ path: join(dir, 'model.json') }) }, { tool: 'save_document', args: (dir) => ({ path: join(dir, 'stored.json'), stored: 'part' }) }] },
   load: { calls: [{ tool: 'open_document', args: (dir) => ({ path: join(dir, 'model.json') }) }] },
   subscribe: { internal: 'change notifications for the app; an MCP client asks again instead' },
 };
@@ -76,6 +76,7 @@ describe('every method of the engine is reachable through MCP', () => {
     const built = engine.execute(plate);
     if (!built.ok) throw new Error(built.error.message);
     await writeFile(join(dir, 'part.stl'), engine.exportMesh('stl', ['a']));
+    await writeFile(join(dir, 'part.json'), engine.save());
     const recorded = recording(engine);
     called = recorded.called;
     session = await connect({ engine: recorded.engine });

@@ -34,9 +34,10 @@ interface Document {
   bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
   mechanism: Mechanism;                          // a section of the document, see The mechanism (D49)
   meshes: Record<Id, StoredMesh>;                // a section of the document, see Stored meshes (D55)
+  documents: Record<Id, StoredDocument>;         // a section of the document: stored documents to insert as parts, insert.md (D62)
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature;   // a hole: hole.md (D46); a mesh: Stored meshes (D55); combine and split: combine.md (D56)
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | InsertFeature;   // a hole: hole.md (D46); a mesh: Stored meshes (D55); combine and split: combine.md (D56); a revolve: revolve.md (D58); an inserted document: insert.md (D62)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 
@@ -216,7 +217,7 @@ An expression set by a command must evaluate against the parameter table at that
 
 ### Body properties and the sections of the document (D48)
 
-A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism (D49) the second, the stored meshes (D55) the third. A change of a section recomputes no geometry: no step of a feature reads one, with one exception, the step of a mesh feature, which reads one entry of `meshes` through `input` of its module (see Stored meshes); a command of a section recomputes a feature only when it changes the entry that feature reads. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
+A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism (D49) the second, the stored meshes (D55) the third, the stored documents (D62, [insert.md](insert.md)) the fourth. A change of a section recomputes no geometry: no step of a feature reads one, with two exceptions, the step of a mesh feature, which reads one entry of `meshes` through `input` of its module (see Stored meshes), and the step of an insertion, which reads one entry of `documents` the same way; a command of a section recomputes a feature only when it changes the entry that feature reads. The validation and the commands of a section get a context (`SectionContext`: the depth of the document and the validator of a nested document, which `document.ts` builds), read by the section `documents` alone; `validateSections(o, what, context)` builds the path of each section from the path of the document. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
 
 ```ts
 type BodyUse = 'part' | 'reference' | 'auxiliary';

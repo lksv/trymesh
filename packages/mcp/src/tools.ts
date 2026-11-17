@@ -315,16 +315,87 @@ function meshesInfo(state: EngineState): { meshes?: Json[] } {
   };
 }
 
+// The stored documents as get_model lists them (D62), when there are any: the ID, the name, the
+// values of its own parameters, the number of its features and the features that insert it.
+function documentsInfo(state: EngineState): { documents?: Json[] } {
+  const entries = Object.entries(state.evaluation.documents);
+  if (entries.length === 0) return {};
+  return {
+    documents: entries.map(([id, stored]) => ({
+      id,
+      ...(stored.name !== undefined ? { name: stored.name } : {}),
+      parameters: Object.fromEntries(stored.parameters.map((p) => [p.name, p.value === undefined ? null : round(p.value)])),
+      features: stored.features,
+      usedBy: stored.usedBy,
+    })),
+  };
+}
+
 // The document as get_document prints it: every stored mesh without its two texts of base64 (D55),
-// which would fill the context of a caller; save_document writes them.
+// which would fill the context of a caller, and every stored document shortened (D62): its name,
+// its parameters, the numbers of its features and stored documents, the size of the rest.
+// save_document writes them; get_document with `stored` prints one stored document.
 function documentShown(document: Document): unknown {
-  const entries = Object.entries(document.meshes);
-  if (entries.length === 0) return document;
+  const meshes = Object.entries(document.meshes);
+  const documents = Object.entries(document.documents ?? {});
+  if (meshes.length === 0 && documents.length === 0) return document;
   return {
     ...document,
-    meshes: Object.fromEntries(
-      entries.map(([id, mesh]) => [id, { ...(mesh.name !== undefined ? { name: mesh.name } : {}), omitted: `positions and triangles: ${mesh.positions.length + mesh.triangles.length} characters of base64; save_document writes them` }]),
-    ),
+    ...(meshes.length
+      ? { meshes: Object.fromEntries(meshes.map(([id, mesh]) => [id, { ...(mesh.name !== undefined ? { name: mesh.name } : {}), omitted: `positions and triangles: ${mesh.positions.length + mesh.triangles.length} characters of base64; save_document writes them` }])) }
+      : {}),
+    ...(documents.length
+      ? {
+          documents: Object.fromEntries(
+            documents.map(([id, stored]) => [
+              id,
+              {
+                ...(stored.name !== undefined ? { name: stored.name } : {}),
+                parameters: stored.document.parameters,
+                features: stored.document.features.length,
+                documents: Object.keys(stored.document.documents ?? {}).length,
+                omitted: `the timeline and the sections: ${JSON.stringify(stored.document).length} characters; get_document with \`stored: "${id}"\` prints them`,
+              },
+            ]),
+          ),
+        }
+      : {}),
+  };
+}
+
+// A stored document by its path (D62): its ID, or the IDs of the stored documents on the way to it
+// joined by slashes (`kit/bearing`, the stored document `bearing` of the stored document `kit`).
+export function storedDocument(document: Document, path: string): Document {
+  let current = document;
+  for (const id of path.split('/')) {
+    const documents = current.documents ?? {};
+    if (!Object.prototype.hasOwnProperty.call(documents, id)) {
+      const known = Object.keys(documents);
+      throw new ToolError(`the document has no stored document "${path}"${known.length ? ` (its stored documents: ${known.join(', ')})` : ''}`);
+    }
+    current = documents[id].document;
+  }
+  return current;
+}
+
+// What a command that inserts a stored document would bring (D62), by a preview of it: the
+// parameters of the stored document, the bodies with the use, the material and the mass they
+// inherit, and the warning of the insertion. For the answer of the tool insert_document.
+function insertionPreview(engine: Engine, args: Record<string, unknown>): unknown {
+  const id = text(args, 'document');
+  const result = engine.preview(command(args));
+  if (!result.ok) throw new ToolError(commandProblem(result));
+  const { evaluation, document } = result.state;
+  const feature = document.features.find((f) => f.type === 'insert' && f.document === id && !engine.getState().document.features.some((old) => old.id === f.id));
+  const own = feature ? evaluation.features[feature.id] : undefined;
+  const warning = own?.error ?? own?.warnings[0];
+  return {
+    parameters: evaluation.documents[id]?.parameters ?? [],
+    bodies: (own?.bodies ?? []).map((body) => {
+      const p = evaluation.bodyProperties[body];
+      return { id: body, use: p.use, ...(p.material !== undefined ? { material: p.material } : {}), ...(p.mass !== undefined ? { mass: round(p.mass) } : {}) };
+    }),
+    ...(warning ? { warning: `${warning.code}: ${warning.message}${warning.refs?.length ? ` ${JSON.stringify(warning.refs)}` : ''}` } : {}),
   };
 }
 
@@ -338,6 +409,7 @@ function modelSummary(state: EngineState, whole = true): unknown {
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
     ...mechanismInfo(state, whole),
     ...meshesInfo(state),
+    ...documentsInfo(state),
     ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
@@ -624,10 +696,13 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_document',
-      description: 'Dokument tak, jak se ukládá (log operací). `feature` vrátí jen jednu feature. A stored mesh (the section `meshes`) is shown without its data: its name and how long its two texts are; save_document writes the whole document.',
-      inputSchema: { type: 'object', properties: { feature: { type: 'string', description: 'ID feature' } }, additionalProperties: false },
+      description:
+        'Dokument tak, jak se ukládá (log operací). `feature` vrátí jen jednu feature. A stored mesh (the section `meshes`) is shown without its data: its name and how long its two texts are; a stored document (the section `documents`) shortened: its name, its parameters, the numbers of its features and of its own stored documents. ' +
+        '`stored` prints one stored document with its timeline (its own stored meshes and documents shortened the same way): its ID, or `kit/bearing` for the stored document `bearing` of the stored document `kit`; with `feature`, that feature of it. save_document writes the whole document.',
+      inputSchema: { type: 'object', properties: { feature: { type: 'string', description: 'ID feature' }, stored: { type: 'string', description: 'the ID of a stored document (`kit/bearing` inside another one)' } }, additionalProperties: false },
       run: (engine, args) => {
-        const { document } = engine.getState();
+        const stored = optionalText(args, 'stored');
+        const document = stored === undefined ? engine.getState().document : storedDocument(engine.getState().document, stored);
         const id = optionalText(args, 'feature');
         if (id === undefined) return documentShown(document);
         const feature = document.features.find((f) => f.id === id);
@@ -817,6 +892,8 @@ export function tools(): Tool[] {
     },
     // Vnitřní nástroje: soubory čte a zapisuje server, engine může běžet v aplikaci.
     { name: '_save', description: '', inputSchema: NONE, hidden: true, run: (engine) => engine.save() },
+    // what an insertion would bring (D62), for the answer of insert_document
+    { name: '_insertion', description: '', inputSchema: NONE, hidden: true, run: (engine, args) => insertionPreview(engine, args) },
     // Dotaz bez účinku: s odpovědí přijde serveru i pořadové číslo dokumentu v aplikaci.
     { name: '_ping', description: '', inputSchema: NONE, hidden: true, run: () => null },
     {

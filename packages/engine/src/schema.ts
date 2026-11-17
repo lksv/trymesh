@@ -79,9 +79,15 @@ const mechanism: UpgradeStep = { name: '5a-mechanism', run: (o) => ('mechanism' 
 // field that is there, whatever it holds, to the validation.
 const meshes: UpgradeStep = { name: '3b-mesh-import', run: (o) => ('meshes' in o ? o : { ...o, meshes: {} }) };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes];
+// D62 (3c): the section `documents`. As for the stored meshes: a build without the step would drop
+// the section without a word. It gives a document without the field the empty section and leaves a
+// field that is there, whatever it holds, to the validation. A stored document gets this and every
+// other step when it is validated, from its own version, because it is validated as a document.
+const documents: UpgradeStep = { name: '3c-document-insert', run: (o) => ('documents' in o ? o : { ...o, documents: {} }) };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes, documents];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
-export const SCHEMA_PENDING = 0;
+export const SCHEMA_PENDING = 1;
 
 // The version a build with these steps saves, and the names it saves next to it.
 export const savedVersion = (upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING): number => upgrades.length + 1 - pending;
@@ -105,18 +111,19 @@ export function schemaProblems(upgrades: readonly UpgradeStep[] = UPGRADES, pend
 // document on, leaves out the ones the document names, and runs the rest in the order of the list.
 // Refused: a version above the one this build saves, and a name that is not among the steps after
 // the version of the document (a step this build does not have, or one the version counts already).
-export function upgradeDocument(o: Dict, upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING): Dict {
+// `what`: the path of the document in the messages (a stored document, D62).
+export function upgradeDocument(o: Dict, upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING, what = 'document'): Dict {
   const saved = savedVersion(upgrades, pending);
   const version = o.schemaVersion;
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) return fail(`document: the schema version ${JSON.stringify(version) ?? 'undefined'} is not a version of the document (this build saves ${saved})`);
-  if (version > saved) return fail(`document: the schema version ${version} is newer than this build reads (it saves ${saved}); open the document with a newer build`);
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) return fail(`${what}: the schema version ${JSON.stringify(version) ?? 'undefined'} is not a version of the document (this build saves ${saved})`);
+  if (version > saved) return fail(`${what}: the schema version ${version} is newer than this build reads (it saves ${saved}); open the document with a newer build`);
   const after = upgrades.slice(version - 1);
   const given = o.schemaSteps ?? [];
-  if (!Array.isArray(given) || given.some((name) => typeof name !== 'string')) return fail('document.schemaSteps: a list of names of upgrade steps is expected');
+  if (!Array.isArray(given) || given.some((name) => typeof name !== 'string')) return fail(`${what}.schemaSteps: a list of names of upgrade steps is expected`);
   const done = new Set<string>();
   for (const name of given as string[]) {
-    if (!after.some((step) => step.name === name)) fail(`document.schemaSteps: this build has no upgrade step "${name}" after version ${version}; the document was saved by a build of another branch, or by one that has not been merged here`);
-    if (done.has(name)) fail(`document.schemaSteps: the step "${name}" is in the list twice`);
+    if (!after.some((step) => step.name === name)) fail(`${what}.schemaSteps: this build has no upgrade step "${name}" after version ${version}; the document was saved by a build of another branch, or by one that has not been merged here`);
+    if (done.has(name)) fail(`${what}.schemaSteps: the step "${name}" is in the list twice`);
     done.add(name);
   }
   let document = o;

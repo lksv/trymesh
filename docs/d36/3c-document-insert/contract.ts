@@ -236,7 +236,7 @@ export interface StateAddition3c {
   insertions: Record<Id, { stored: StoredDocument; environment: string; recompute: InsertedRecompute }>;
   inserted: Record<Id, InsertedBody>;
 }
-export interface StateAfter3c extends Omit<State, 'features' | 'faceNames'>, StateAddition3c {
+export interface StateAfter3c extends Omit<State, 'features' | 'faceNames' | 'insertions' | 'inserted'>, StateAddition3c {
   features: Record<Id, FeatureResultAfter3c>;
   faceNames: FaceNameAfter3b[];
 }

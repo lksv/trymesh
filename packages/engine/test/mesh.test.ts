@@ -395,11 +395,11 @@ const refused = (doc: Document, command: unknown, message: RegExp) => {
 };
 
 describe('the section meshes and its commands', () => {
-  it('is always in the document, last; the step gives an older document the empty section', () => {
+  it('is always in the document, before the stored documents; the step gives an older document the empty section', () => {
     expect(emptyDocument().meshes).toEqual({});
-    expect(Object.keys(emptyDocument()).at(-1)).toBe('meshes');
+    expect(Object.keys(emptyDocument()).slice(-2)).toEqual(['meshes', 'documents']);
     const step = UPGRADES.find((entry) => entry.name === '3b-mesh-import');
-    expect(UPGRADES.at(-1)).toBe(step);
+    expect(UPGRADES.at(-2)).toBe(step);
     const older = { schemaVersion: 6, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [], bodyProperties: {}, mechanism: { links: {}, joints: {} } };
     expect(step?.run(older)).toEqual({ ...older, meshes: {} });
     expect(step?.run({ ...older, meshes: null })).toEqual({ ...older, meshes: null });
@@ -592,7 +592,8 @@ describe('the feature mesh: a stored mesh placed as a body with one face', () =>
     ok(engine, { type: 'addMesh', id: 'box', mesh: BOX_STORED }, placedMesh('a', 'box'));
     const saved = JSON.parse(engine.save());
     expect(saved.meshes).toEqual({ box: BOX_STORED });
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
+    // the branch d36/3c saves the version of master with its pending step; the merge makes it [8, undefined]
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, ['3c-document-insert']]);
     engine.undo();
     expect(engine.getState().document.meshes).toEqual({});
     engine.redo();

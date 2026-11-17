@@ -11,15 +11,16 @@ import type { BodyResult, Command, Document, Evaluation, Id } from '../types';
 import { has } from '../util';
 import { type Dict, isObject } from '../validation';
 import { bodyProperties } from './body-properties';
+import { documents } from './documents';
 import { mechanism } from './mechanism';
 import { meshes } from './meshes';
-import type { SectionInfo, SectionSpec } from './spec';
+import type { SectionContext, SectionInfo, SectionSpec } from './spec';
 
 export type SectionName = Exclude<keyof Document, 'schemaVersion' | 'schemaSteps' | 'settings' | 'parameters' | 'checks' | 'features'>;
 export type Sections = Pick<Document, SectionName>;
 export type SectionResults = Pick<Evaluation, SectionName>;
 
-export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism, meshes };
+export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism, meshes, documents };
 
 const NAMES = Object.keys(DOCUMENT_SECTIONS) as SectionName[];
 // An entry as code that handles any section reads it.
@@ -31,16 +32,16 @@ export const SECTION_INFO: { [K in SectionName]: SectionInfo } = Object.fromEntr
 export const emptySections = (): Sections => Object.fromEntries(NAMES.map((name) => [name, specOf(name).empty()])) as Sections;
 
 // The sections of a document being loaded (after the upgrade steps, which give an older document
-// every section).
-export const validateSections = (o: Dict): Sections => Object.fromEntries(NAMES.map((name) => [name, specOf(name).validate(o[name], `document.${name}`)])) as Sections;
+// every section). `what`: the path of the document in the messages (`document` for the host).
+export const validateSections = (o: Dict, what: string, context: SectionContext): Sections => Object.fromEntries(NAMES.map((name) => [name, specOf(name).validate(o[name], `${what}.${name}`, context)])) as Sections;
 
 // A command no case of `applyCommand` has: the document after the command of a section, or
 // undefined when no section has a command of that type.
-export function applySectionCommand(doc: Document, cmd: Dict): Document | undefined {
+export function applySectionCommand(doc: Document, cmd: Dict, context: SectionContext): Document | undefined {
   for (const name of NAMES) {
-    const commands = specOf(name).commands as Record<string, (doc: Document, command: Dict) => unknown>;
+    const commands = specOf(name).commands as Record<string, (doc: Document, command: Dict, context: SectionContext) => unknown>;
     if (typeof cmd.type !== 'string' || !has(commands, cmd.type)) continue;
-    const section = commands[cmd.type](doc, cmd);
+    const section = commands[cmd.type](doc, cmd, context);
     return section === doc[name] ? doc : ({ ...doc, [name]: section } as Document);
   }
   return undefined;

@@ -1,6 +1,6 @@
 // Společné pomůcky: vektory, tolerance, kanonický zápis a otisk.
-import { faceKey } from './face-roles';
-import type { EdgeName, Vec2, Vec3 } from './types';
+import { faceKey, faceText, sameFaceName } from './face-roles';
+import type { EdgeName, FaceName, Vec2, Vec3 } from './types';
 
 // Tolerance enginu (docs/architecture.md, Konvence). Tolerance booleanů jsou věcí jádra.
 export const LENGTH_TOLERANCE = 1e-6; // mm
@@ -30,7 +30,20 @@ export const dist2 = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] 
 // its copies appended (`@pattern:index`), so it differs from the face of the original and sorts
 // right after it. Neither `@` nor `:` needs escaping: the key is only compared with other keys built
 // here, and an ID cannot contain `/`, which separates the parts before the tags.
-export { faceKey };
+export { faceKey, faceText, sameFaceName };
+
+// The number of a face by its name in a face table: looked up by its key and taken only when the
+// name at that number is the name asked for, field by field (D62): a name no feature makes may key
+// like a real one.
+export function faceNumber(table: { faceIds: ReadonlyMap<string, number>; faceNames: readonly FaceName[] }, name: FaceName): number | undefined {
+  const id = table.faceIds.get(faceKey(name));
+  return id !== undefined && sameFaceName(table.faceNames[id], name) ? id : undefined;
+}
+// Are two edge names one edge? Both faces compared field by field, in the canonical order.
+export function sameEdgeName(a: EdgeName, b: EdgeName): boolean {
+  const [x, y] = [canonicalEdge(a), canonicalEdge(b)];
+  return sameFaceName(x.a, y.a) && sameFaceName(x.b, y.b);
+}
 
 // Jméno hrany v kanonickém pořadí stěn.
 export function canonicalEdge(edge: EdgeName): EdgeName {

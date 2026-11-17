@@ -33,16 +33,26 @@ export interface SectionEvaluation<S, R> {
   written?: S;
 }
 
+// What the validation and the commands of a section get besides the value (D62): the validator of
+// a nested document, as `validateDocument` validates a document on a load, one level deeper than
+// the document the section belongs to (refused beyond 8 levels), with `what` as the path of its
+// messages. document.ts builds it, so that no section imports document.ts, which imports the
+// sections. The sections that hold no document ignore it.
+export interface SectionContext {
+  depth: number; // of the document the section belongs to: 0 for the host
+  document(value: unknown, what: string): Document;
+}
+
 // The entry of the registry of sections.
 export interface SectionSpec<S, R> {
   info: SectionInfo;
   empty(): S;
   // A document is loaded: the shape and the rules of the section alone, strict (a field the section
   // does not know is refused, not dropped). Expressions are checked for their syntax only.
-  validate(value: unknown, what: string): S;
+  validate(value: unknown, what: string, context: SectionContext): S;
   // The commands that change the section, by type. A command is validated in full, as every other
   // one; an invalid one throws `CommandError`. Returns the new section.
-  commands: Record<string, (doc: Document, command: Dict) => S>;
+  commands: Record<string, (doc: Document, command: Dict, context: SectionContext) => S>;
   renameParameter(section: S, from: string, to: string): S;
   // The IDs of features and sketch entities the section names, and for a derived ID also the ID it
   // is derived from (the feature of the body `screws/2`).

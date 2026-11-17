@@ -19,6 +19,7 @@ import {
   bodyOwner,
   emptyDocument,
   faceKey,
+  insertedFeature,
   namedBySections,
   printedBodies,
   takenOver,
@@ -41,7 +42,7 @@ import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
 import { DEFAULT_FILLET, DEFAULT_POLYGON } from './sketch-commands';
 import { type View, Viewport } from './viewport';
-import { bodyName, faceLabel, featureName, issueText, takenOverText } from './issue-text';
+import { bodyName, faceLabel, featureName, featureNameIn, issueText, takenOverText } from './issue-text';
 
 type Pick = ViewPick;
 type Mode = { kind: 'model' } | SketchMode | AnyDraft;
@@ -105,7 +106,8 @@ export class App implements SketchHost, SceneHost {
     return id == null ? undefined : this.doc.features.find((f) => f.id === id);
   }
   // Names for a human: see issue-text.ts.
-  readonly featureNames = (id: Id): string | undefined => this.feature(id)?.name;
+  // a feature an insertion brought (D62) by the insertion and its name there
+  readonly featureNames = (id: Id): string | undefined => featureNameIn(this.doc, id);
   nameOf(id: Id): string {
     return featureName(id, this.featureNames);
   }
@@ -537,7 +539,7 @@ export class App implements SketchHost, SceneHost {
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
   issueText(issue: Issue): string {
-    return issueText(issue, this.featureNames, this.bodyNames, (id) => this.feature(id)?.type);
+    return issueText(issue, this.featureNames, this.bodyNames, (id) => insertedFeature(this.doc, id)?.feature.type);
   }
 
   issues(result: FeatureResult | undefined): HTMLElement[] {
@@ -552,7 +554,7 @@ export class App implements SketchHost, SceneHost {
 
   describe(pick: Pick): string {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
-    const face = (name: FaceName) => faceLabel(name, this.featureNames, (id) => this.feature(id)?.type);
+    const face = (name: FaceName) => faceLabel(name, this.featureNames, (id) => insertedFeature(this.doc, id)?.feature.type);
     if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
     const kinds: Record<EdgeKind, string> = { line: 'úsečka', circle: 'kružnice', coplanar: 'v ploše', other: 'obecná křivka' };
     return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;

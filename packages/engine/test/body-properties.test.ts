@@ -47,12 +47,12 @@ const set = (body: Id, patch: object): Command => ({ type: 'setBodyProperties', 
 // state of the recompute.
 const BODIES = { upper: 10000, motor: 30000, screw: 50, 'screws/1': 50, 'screws/2': 50, 'screws/3': 50 };
 const evaluated = (doc: Document, bodies: Record<Id, number> = BODIES) =>
-  DOCUMENT_SECTIONS.bodyProperties.evaluate(doc.bodyProperties, doc, Object.fromEntries(Object.entries(bodies).map(([id, volume]) => [id, { volume } as BodyResult])), evaluateParameters(doc.parameters), {} as State);
+  DOCUMENT_SECTIONS.bodyProperties.evaluate(doc.bodyProperties, doc, Object.fromEntries(Object.entries(bodies).map(([id, volume]) => [id, { volume } as BodyResult])), evaluateParameters(doc.parameters), { inserted: {} } as unknown as State);
 
 describe('the section and its upgrade step', () => {
   it('is always in the document, after the timeline; an empty one is `{}`', () => {
     expect(emptyDocument().bodyProperties).toEqual({});
-    expect(Object.keys(emptyDocument()).slice(-4)).toEqual(['features', 'bodyProperties', 'mechanism', 'meshes']);
+    expect(Object.keys(emptyDocument()).slice(-5)).toEqual(['features', 'bodyProperties', 'mechanism', 'meshes', 'documents']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {

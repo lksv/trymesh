@@ -3,7 +3,7 @@
 // the modules of the feature types; they are not handed over in a context that would grow with them.
 import { type FaceInfo, analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
-import { LENGTH_TOLERANCE, faceKey, has, sub3 } from '../util';
+import { LENGTH_TOLERANCE, faceKey, faceNumber, has, sub3 } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
@@ -39,6 +39,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidAxis: 'The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
+  insertedIssues: 'The inserted document did not recompute cleanly with the values of this insertion: a feature of it is in error or a check of it fails.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 
@@ -50,7 +51,7 @@ export function frame(ref: PlaneRef, state: State): Frame | IssueCode {
   if (ref.kind === 'base') return BASE[ref.plane];
   if (ref.kind === 'plane') return lookup(state.planes, ref.feature) ?? 'brokenReference';
   const solid = lookup(state.bodies, ref.body);
-  const id = state.faceIds.get(faceKey(ref.face));
+  const id = faceNumber(state, ref.face);
   if (!solid || id === undefined) return 'brokenReference';
   return faceFrame(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), id, state.faceInfos[id]);
 }

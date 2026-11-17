@@ -328,7 +328,8 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
     expect(after.evaluation.bodies.pulley.volume).toBeGreaterThan(before.evaluation.bodies.pulley.volume);
     expect(allOk(after)).toBe(true);
     const saved = engine.save();
-    expect(JSON.parse(saved).schemaSteps).toBeUndefined();
+    // no step of 4a: only the pending step of the branch d36/3c, which its merge removes
+    expect(JSON.parse(saved).schemaSteps).toEqual(['3c-document-insert']);
     const loaded = engine.load(saved);
     if (!loaded.ok) throw new Error(loaded.error.message);
     for (const id of Object.keys(before.evaluation.bodies)) {

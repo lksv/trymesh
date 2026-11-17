@@ -6,7 +6,7 @@
 import { toWorld } from '../solid';
 import { circleBetween } from '../surfaces';
 import type { ArgPath, EntityRef, Vec3 } from '../types';
-import { add3, cross3, dot3, edgeKey, faceKey, has, mul3, sub3, unit3 } from '../util';
+import { add3, canonicalEdge, cross3, dot3, edgeKey, faceText, has, mul3, sameEdgeName, sameFaceName, sub3, unit3 } from '../util';
 import { body as describeBody } from './body';
 import { type QueryContext, QueryFailure } from './spec';
 
@@ -63,17 +63,16 @@ export function entityShape(context: QueryContext, ref: ShapedRef, arg: ArgPath)
   const body = context.bodies[ref.body];
   if (ref.kind === 'face') {
     const surface = context.surface(ref.body, ref.face);
-    if (!surface) return missing(`the body "${ref.body}" has no face ${faceKey(ref.face)}`, [...arg, 'face']);
+    if (!surface) return missing(`the body "${ref.body}" has no face ${faceText(ref.face)}`, [...arg, 'face']);
     if (surface.kind === 'plane') {
       const frame = context.frame({ kind: 'face', body: ref.body, face: ref.face });
-      if ('problem' in frame) return missing(`the face ${faceKey(ref.face)} of the body "${ref.body}" has no side that can be told to look out of the body`, [...arg, 'face']);
+      if ('problem' in frame) return missing(`the face ${faceText(ref.face)} of the body "${ref.body}" has no side that can be told to look out of the body`, [...arg, 'face']);
       return { is: 'plane', origin: surface.origin, normal: unit3(frame.normal) };
     }
     if (surface.kind === 'swept') return { is: 'swept', axis: unit3(surface.axis) };
     if (surface.kind === 'general') return OTHER;
     // which side the material is on comes from the description of the body, kept by its mesh
-    const key = faceKey(ref.face);
-    const convex = describeBody.run(context, { body: ref.body }).faces.find((face) => faceKey(face.name) === key)?.convex === true;
+    const convex = describeBody.run(context, { body: ref.body }).faces.find((face) => sameFaceName(face.name, ref.face))?.convex === true;
     switch (surface.kind) {
       case 'cylinder':
         return { is: 'cylinder', origin: surface.origin, axis: unit3(surface.axis), radius: surface.radius, convex };
@@ -86,8 +85,8 @@ export function entityShape(context: QueryContext, ref: ShapedRef, arg: ArgPath)
     }
   }
   const key = edgeKey(ref.edge);
-  const edge = body.edges.find((candidate) => edgeKey(candidate.name) === key);
-  if (!edge) return missing(`the body "${ref.body}" has no edge ${key}`, [...arg, 'edge']);
+  const edge = body.edges.find((candidate) => edgeKey(candidate.name) === key && sameEdgeName(candidate.name, ref.edge));
+  if (!edge) return missing(`the body "${ref.body}" has no edge ${faceText(canonicalEdge(ref.edge).a)}|${faceText(canonicalEdge(ref.edge).b)}`, [...arg, 'edge']);
   const [a, b] = [context.surface(ref.body, edge.name.a), context.surface(ref.body, edge.name.b)];
   if (!a || !b) return OTHER;
   if (edge.kind === 'circle') {

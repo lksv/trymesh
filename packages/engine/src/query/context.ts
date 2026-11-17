@@ -4,7 +4,7 @@ import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services'
 import type { State } from '../recompute/state';
 import { transformFrame, transformSurface } from '../solid';
 import type { Deflater, Document, Evaluation, SolidKernel } from '../types';
-import { faceKey, has } from '../util';
+import { faceNumber, has } from '../util';
 import { poseOf } from './pose';
 import { type QueryContext, QueryFailure, type RefProblem } from './spec';
 
@@ -90,7 +90,7 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
     state: { document: internals.document, evaluation: modelled },
     bodies,
     surface(body, face) {
-      const number = state.faceIds.get(faceKey(face));
+      const number = faceNumber(state, face);
       if (number === undefined || !has(modelledBodies, body) || !modelledBodies[body].faces.some((own) => own.id === number)) return undefined;
       const moved = pose?.transformOf(body);
       return moved ? transformSurface(moved, faceSurfaces[number]) : faceSurfaces[number];
@@ -105,7 +105,7 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
       const line = axisOf(ref, state);
       return 'code' in line ? problem(line.code) : { origin: line.point, direction: line.direction };
     },
-    face: (name) => state.faceIds.get(faceKey(name)),
+    face: (name) => faceNumber(state, name),
     sketch: (id) => lookup(state.sketches, id),
     kernel: guarded(deps.kernel),
     // not wrapped: a format hands it to `zip`, which turns its failure into `failed`

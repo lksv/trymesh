@@ -2,7 +2,7 @@
 import type { SketchAnalysis } from '../analysis';
 import type { OutlineCurve, Profile, Region, SketchGeometry } from '../sketch';
 import type { FaceInfo, RigidTransform } from '../solid';
-import type { CopyTag, Document, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, Vec2 } from '../types';
+import type { CheckResult, CopyTag, Document, ExpressionError, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, StoredDocument, Vec2 } from '../types';
 
 export interface Deps {
   solver: SketchSolver;
@@ -28,6 +28,45 @@ export interface State {
   // surfaces meet in, the points of an edge choose within a reach that grows with it. Set where the
   // evaluator builds the state before the first feature; a change of the setting recomputes all.
   chordTolerance: number;
+  // The insertions so far (D62), by the ID of the feature: the entry of the section `documents` it
+  // inserted, the environment of its parameters and its recompute. A later insertion of the same
+  // entry object with the same environment takes this recompute instead of asking the evaluator,
+  // so the two are made from the same solids whatever the memo of the evaluator kept.
+  insertions: Record<Id, InsertionRecord>;
+  // Per body an insertion brought: what it inherits from its document. A pattern of an inserted
+  // body adds nothing (its copies inherit through their source). The body properties read it
+  // after the timeline.
+  inserted: Record<Id, InsertedBody>;
+}
+
+// What an inserted body passes on to the body properties here (D62): what its chain in the inserted
+// document states, before the use is applied (an auxiliary body there has no mass in its result,
+// but a stated pair passes on): the first colour, material and use along its chain there, and the
+// pair that chain uses with the numbers its expressions gave there (with the values of the
+// insertion) and their errors. Names are not passed on: they are read from the documents.
+export interface InheritedProperties {
+  color?: string;
+  material?: string;
+  use?: 'part' | 'reference' | 'auxiliary';
+  pair?: { density?: number; mass?: number; errors?: { density?: ExpressionError; mass?: ExpressionError } };
+}
+// The recompute of a stored document (D62): the state at the end of its timeline, the results of
+// its checks, and what each of its bodies passes on.
+export interface InsertedRecompute {
+  state: State;
+  checks: Record<string, CheckResult>;
+  inherited: Record<Id, InheritedProperties>;
+}
+export interface InsertionRecord {
+  stored: StoredDocument;
+  environment: string; // what the parameters of the stored document evaluate to, as text without loss
+  recompute: InsertedRecompute;
+}
+export interface InsertedBody {
+  feature: Id; // the insertion
+  document: Id; // the key of the stored document
+  body: Id; // the ID of the body there
+  inherited: InheritedProperties;
 }
 
 // Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.
@@ -152,5 +191,8 @@ export interface StepContext {
   failed: Failed;
   drag?: DragTarget; // read by the sketch only
   badFields: FieldPath[]; // fields whose expression failed; read by a type that keeps the last valid values
-  input?: object; // what `input` of the module answered for the document (D55); read by the mesh feature only
+  input?: object; // what `input` of the module answered for the document (D55); read by the mesh feature and the insertion
+  // The recompute of another document (D62) by the same evaluator (its memo, its adapters); `doc`
+  // is passed with the settings of this one already. Nothing it computes is written back.
+  insertion(doc: Document): InsertedRecompute;
 }

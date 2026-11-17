@@ -29,6 +29,18 @@ const wallPart = (name: FaceName): string =>
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;
 
+// The name of a feature of a document, also of one an insertion brought (D62), by its prefixed ID:
+// the name of the insertion and its name there, `Elbow bearing › Ring`; undefined when the
+// feature, an insertion on the way or its stored document is not there.
+export function featureNameIn(doc: Document, id: Id): string | undefined {
+  const slash = id.indexOf('/');
+  if (slash < 0) return doc.features.find((f) => f.id === id)?.name;
+  const owner = doc.features.find((f) => f.id === id.slice(0, slash));
+  if (owner?.type !== 'insert' || !Object.prototype.hasOwnProperty.call(doc.documents, owner.document)) return undefined;
+  const inner = featureNameIn(doc.documents[owner.document].document, id.slice(slash + 1));
+  return inner === undefined ? undefined : `${owner.name} › ${inner}`;
+}
+
 // A body is named by its properties (D48), which name it after the feature that created it unless
 // it has a name of its own; a copy made by a pattern adds its number.
 export function bodyName(body: Id, nameOf: NameOf, bodyNameOf?: BodyNameOf): string {
@@ -68,8 +80,14 @@ const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference
 
 // The message of the engine with what the issue is about appended. A pattern names the copy that
 // failed or had no effect as `{ copy, feature }` in refs, whatever the issue is.
+// An insertion (D62) names the features of its document in error and its checks that fail.
 export function issueText(issue: Issue, nameOf: NameOf, bodyNameOf?: BodyNameOf, typeOf?: TypeOf): string {
   const named = (issue.refs ?? []).flatMap((ref): string[] => {
+    if (issue.code === 'insertedIssues' && typeof ref === 'object' && ref !== null) {
+      const { feature, code, check, in: inside } = ref as { feature?: unknown; code?: unknown; check?: unknown; in?: unknown };
+      if (typeof feature === 'string') return [`${featureName(feature, nameOf)}: ${String(code)}`];
+      if (typeof check === 'string') return [`the check "${check}"${typeof inside === 'string' ? ` of ${featureName(inside, nameOf)}` : ''} fails`];
+    }
     if (isCopy(ref)) return [`copy ${ref.copy} of ${refName(ref.feature, nameOf)}`];
     if (issue.code === 'invalidClearance' && isFace(ref)) return [faceLabel(ref, nameOf, typeOf)];
     return typeof ref === 'string' && NAMED.includes(issue.code) ? [refName(ref, nameOf, bodyNameOf)] : [];

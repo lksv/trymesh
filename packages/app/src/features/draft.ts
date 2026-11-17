@@ -188,10 +188,17 @@ export function draftButtons(host: PanelHost, m: AnyDraft): HTMLElement[] {
   ];
 }
 
+// Does the address of a field of the catalog name this path? A `*` stands for one part of the
+// path, a name of the field (`parameters/*` of an insertion, D62).
+const fieldMatches = (pattern: string, path: string): boolean => {
+  const [a, b] = [pattern.split('/'), path.split('/')];
+  return a.length === b.length && a.every((part, i) => part === '*' || part === b[i]);
+};
+
 // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
 export function draftField(host: PanelHost, m: AnyDraft, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
   // the field of the variant the draft is (several generators have a parameter of one name)
-  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => field.path === path && (!field.when || atPath(m.draft, field.when.path) === field.when.equals))?.spec.unit ?? 'mm';
+  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => fieldMatches(field.path, path) && (!field.when || atPath(m.draft, field.when.path) === field.when.equals))?.spec.unit ?? 'mm';
   const names = host.doc.parameters.map((p) => p.name);
   const input = h('input', {
     value: fieldText(draftValue(m, path), unit),

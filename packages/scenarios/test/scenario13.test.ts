@@ -20,7 +20,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO, IMPORT_FORMATS, type ImportOutcome, type IndexedMesh, MESH_LIMITS, type MeshFeature, type MeshReport, PLACEMENT_FIELDS, type StoredMesh, importMesh, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, withoutWalls, type CommandResult, type CombineFeature, FACE_ROLES, FEATURE_TYPE_INFO, type FaceName, type PlaneRef, type SplitFeature, type Surface, faceKey } from '@trymesh/engine';
+import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO, IMPORT_FORMATS, type ImportOutcome, type IndexedMesh, MESH_LIMITS, type MeshFeature, type MeshReport, PLACEMENT_FIELDS, type StoredMesh, importMesh, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, withoutWalls, type CommandResult, type CombineFeature, FACE_ROLES, FEATURE_TYPE_INFO, type FaceName, type PlaneRef, type SplitFeature, type Surface, faceKey, INSERT_FIELDS, MAX_INSERT_DEPTH, insertedFaceName, insertedFeature, shapeOrigin } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -230,12 +230,13 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
   });
 
   it('e. save and load: version 7, the step of the section before those of 5a and 3b, and a field this build does not know is refused', () => {
-    // master after the merge of 3b: no step is pending; the steps of 5a and 3b come after the one of 3a
-    expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.map((step) => step.name).slice(-3)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import']);
+    // the steps of 5a and 3b come after the one of 3a; the branch d36/3c saves the version of master
+    // (7) with its pending step, which the merge makes version 8 without names
+    expect(SCHEMA_PENDING).toBe(1);
+    expect(UPGRADES.map((step) => step.name).slice(3, 6)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import']);
     const saved = JSON.parse(engine.save());
     expect(saved.schemaVersion).toBe(7);
-    expect(saved.schemaSteps).toBeUndefined();
+    expect(saved.schemaSteps).toEqual(['3c-document-insert']);
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
     expect(loaded.ok && loaded.state.document.bodyProperties).toEqual(document.bodyProperties);
@@ -558,10 +559,11 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
   });
 
   it('f. save and load: version 7, a field this build does not know is refused, a removed axis loads', () => {
-    expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-2)?.name).toBe('5a-mechanism');
+    // the branch d36/3c: its step pending; the merge makes it version 8 without names
+    expect(SCHEMA_PENDING).toBe(1);
+    expect(UPGRADES[4].name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, ['3c-document-insert']]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
@@ -1105,7 +1107,7 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
   });
 
   it('f. save and load: the drive is kept with its expression; no upgrade step (the joint validator refuses fields it does not know)', () => {
-    expect(SCHEMA_PENDING).toBe(0);
+    expect(SCHEMA_PENDING).toBe(1); // the branch d36/3c; 0 after its merge
     expect(UPGRADES.map((step) => step.name)).not.toContain('5b-drive');
     const saved = engine.save();
     expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
@@ -1593,9 +1595,9 @@ describe('scenario 13, the part of 3b: the motor as the mesh of a bought part', 
   it('g. save and load: the section in the saved document, a mesh edited to be open refused, a lost mesh a broken reference', () => {
     const json = engine.save();
     const document = JSON.parse(json);
-    // master after the merge of 3b: version 7, no names
-    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, undefined]);
-    expect(UPGRADES.at(-1)?.name).toBe('3b-mesh-import');
+    // the branch d36/3c: version 7 with its pending step; the merge makes it version 8 without names
+    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, ['3c-document-insert']]);
+    expect(UPGRADES[5].name).toBe('3b-mesh-import');
     expect(typeof document.meshes.nema.positions).toBe('string');
     expect(document.meshes.nema.name).toBe('motor.stl');
     const other = newEngine();
@@ -1812,9 +1814,340 @@ describe('scenario 13, the part of 3d: a pocket with a clearance, a union and a 
     const after = done(engine.load(engine.save()));
     for (const body of ['upper', 'lower', 'motor']) expect(after.evaluation.bodies[body].volume).toBeCloseTo(before.evaluation.bodies[body].volume, 9);
     expect('mount' in after.evaluation.bodies).toBe(false);
-    expect(SCHEMA_PENDING).toBe(0);
+    expect(SCHEMA_PENDING).toBe(1); // the branch d36/3c; 0 after its merge
     expect(UPGRADES.some((step) => step.name.startsWith('3d'))).toBe(false);
     expect(FEATURE_TYPE_INFO.combine.fields.map((field) => field.path)).toEqual(['clearance']);
     expect(FACE_ROLES.splitFace.title).toBe('cut face of a split');
+  });
+});
+
+// The part of 3c (D62): two ball bearings and a cable clip as documents inserted as parts
+// (docs/d36/3c-document-insert/calls.ts). The sizes of the bearing (8 × 22 × 7, the nominal sizes
+// of a 608) and its mass (12 g) are test values, not taken from a catalog or a data sheet.
+describe('scenario 13, the part of 3c: two ball bearings and a cable clip as inserted documents', () => {
+  let engine: Engine; // the arm
+  let bearingShop: Engine; // an engine of its own for each part, as a library of parts would hold them
+  let clipShop: Engine;
+  let bearing: string;
+  let clip: string;
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const at = (point: Id) => ({ kind: 'sketchPoint', sketch: 'layout', point }) as const;
+  const exec = (target: Engine, ...commands: Command[]): EngineState => {
+    const result = target.execute(commands.length === 1 ? commands[0] : { type: 'batch', commands });
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+  const preview = (...commands: Command[]): EngineState => previewed(engine, commands.length === 1 ? commands[0] : { type: 'batch', commands });
+  const refusal = (command: Command): string => {
+    const result = engine.execute(command);
+    if (result.ok) throw new Error('expected an invalid command');
+    return result.error.message;
+  };
+  const insertion = (id: Id, name: string, document: Id, placement: object, more: object = {}): Command => ({ type: 'addFeature', feature: { id, name, suppressed: false, type: 'insert', document, placement, ...more } as never });
+  const list = (state?: EngineState): PartsList => unwrap(engine.query('partsList', {}, state ? { state } : {}));
+  // The saved text of a document as `master` before 3b and 3c writes it: the sections `meshes` and
+  // `documents` and the field `schemaSteps` left out (a step it names would be taken as done) and
+  // the schema version of that `master` (6). A build of the same sources cannot save an older
+  // version, so the older file is made from the newer one.
+  const asSavedByMaster = (json: string): unknown => {
+    const { meshes: _meshes, documents: _documents, schemaSteps: _steps, ...rest } = JSON.parse(json);
+    return { ...rest, schemaVersion: 6 };
+  };
+  // the hole of a heat-set insert of the given thread from the catalog, as the part of 3e takes it
+  const insertHole = (shop: Engine, thread: number) => {
+    const rows = DATA_CATALOGS.heatSetInserts.rows;
+    const size = Object.keys(rows).find((key) => rows[key].thread === thread) as string;
+    const answer = unwrap(shop.query('hardwareHole', { use: 'heatSetInsert', size, allowance: 'holeComp' }));
+    return { shape: answer.shape, label: answer.label, depth: answer.depth as number };
+  };
+  // a rectangle of its own sketch from (x0, y0) to (x1, y1): four fixed points and the lines `<prefix>1` to `<prefix>4`
+  const rectangle = (sketch: Id, prefix: string, x0: number, y0: number, x1: number, y1: number): Command[] => {
+    const corners: [number, number][] = [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ];
+    return [
+      ...corners.flatMap(([x, y], i): Command[] => [
+        { type: 'addPoint', sketch, id: `${prefix}p${i + 1}`, x, y },
+        { type: 'addConstraint', sketch, id: `${prefix}f${i + 1}`, constraint: { type: 'fixed', point: `${prefix}p${i + 1}`, x, y } },
+      ]),
+      ...corners.map((_, i): Command => ({ type: 'addCurve', sketch, id: `${prefix}${i + 1}`, curve: { type: 'line', a: `${prefix}p${i + 1}`, b: `${prefix}p${((i + 1) % 4) + 1}` } })),
+    ];
+  };
+  const rimOf = (insert: Id) => ({ a: { feature: `${insert}/ring`, role: 'side', curve: 'outer' }, b: { feature: `${insert}/ring`, role: 'startCap' } }) as { a: FaceName; b: FaceName };
+
+  beforeAll(() => {
+    // the arm after the parts of 3a, 5a and 3e: materials, the motor and the screws bought parts,
+    // the links, and an M3 insert under each of the four screws
+    engine = newEngine();
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'base', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17 motor', use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { name: 'M3x6 screw', use: 'reference', mass: 0.9 } },
+      ],
+    });
+    run(engine, mechanismOfTheArm());
+    run(engine, { type: 'setParameter', name: 'holeComp', expr: '0.2' });
+    const m3 = insertHole(engine, 3);
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch('insertSketch', 'insertSketch', XY) },
+        { type: 'addPoint', sketch: 'insertSketch', id: 'i1', x: 80, y: 0 },
+        { type: 'addConstraint', sketch: 'insertSketch', id: 'i1Fix', constraint: { type: 'fixed', point: 'i1', x: 80, y: 0 } },
+        { type: 'addFeature', feature: { id: 'inserts', name: 'inserts', suppressed: false, type: 'hole', sketch: 'insertSketch', points: ['i1'], shape: m3.shape, extent: { type: 'distance', start: 8, distance: -m3.depth }, targets: ['upper'], label: m3.label } },
+        { type: 'addFeature', feature: { id: 'insertPattern', name: 'insertPattern', suppressed: false, type: 'pattern', source: { type: 'features', features: ['inserts'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' }, count: 4, span: { type: 'full' } } } },
+      ],
+    });
+
+    // the bearing as a document of its own: a ring of the outer diameter `D` and the bore `d`, `B`
+    // wide, about the origin of XY on z = 0; a check of its wall; a bought part of 12 g
+    bearingShop = newEngine();
+    exec(
+      bearingShop,
+      { type: 'setParameter', name: 'd', expr: '8' },
+      { type: 'setParameter', name: 'D', expr: '22' },
+      { type: 'setParameter', name: 'B', expr: '7' },
+      { type: 'setCheck', name: 'wall', expr: 'D > d + 4' },
+      { type: 'addFeature', feature: emptySketch('ringSketch', 'Ring', XY) },
+      { type: 'addCurve', sketch: 'ringSketch', id: 'outer', curve: { type: 'circle', center: 'origin' }, radius: 11 },
+      { type: 'addCurve', sketch: 'ringSketch', id: 'inner', curve: { type: 'circle', center: 'origin' }, radius: 4 },
+      { type: 'addConstraint', sketch: 'ringSketch', id: 'outerD', constraint: { type: 'diameter', curve: 'outer', value: 'D', driving: true } },
+      { type: 'addConstraint', sketch: 'ringSketch', id: 'innerD', constraint: { type: 'diameter', curve: 'inner', value: 'd', driving: true } },
+      { type: 'addFeature', feature: { id: 'ring', name: 'Ring', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'ringSketch', regions: [{ outerLoop: ['outer'] }] }, extent: { type: 'distance', start: 0, distance: 'B' }, operation: 'new' } },
+      { type: 'setBodyProperties', body: 'ring', patch: { name: '608 bearing', use: 'reference', mass: 12 } },
+    );
+    bearing = bearingShop.save();
+
+    // a cable clip printed in PETG: a block 20 × 10 × 4 with a heat-set insert from its top, and the
+    // channel of the cable as an auxiliary body above it, in a sketch of its own
+    clipShop = newEngine();
+    exec(clipShop, { type: 'setParameter', name: 'holeComp', expr: '0.2' });
+    const insert = insertHole(clipShop, 3);
+    exec(
+      clipShop,
+      { type: 'addFeature', feature: emptySketch('blockSketch', 'Block', XY) },
+      ...rectangle('blockSketch', 'e', -10, -5, 10, 5),
+      { type: 'addFeature', feature: emptySketch('channelSketch', 'Channel', XY) },
+      ...rectangle('channelSketch', 'c', -10, -2, 10, 2),
+      { type: 'addFeature', feature: { id: 'clip', name: 'Cable clip', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'blockSketch', regions: [{ outerLoop: ['e1', 'e2', 'e3', 'e4'] }] }, extent: { type: 'distance', start: 0, distance: 4 }, operation: 'new' } },
+      { type: 'addFeature', feature: { id: 'clipHole', name: 'Insert', suppressed: false, type: 'hole', sketch: 'blockSketch', points: ['origin'], shape: insert.shape, extent: { type: 'distance', start: 4, distance: -insert.depth }, targets: ['clip'], label: insert.label } },
+      { type: 'addFeature', feature: { id: 'cable', name: 'Cable', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'channelSketch', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: 4, distance: 6 }, operation: 'new' } },
+      { type: 'setBodyMaterial', body: 'clip', material: 'PETG' },
+      { type: 'setBodyProperties', body: 'cable', patch: { use: 'auxiliary' } },
+    );
+    clip = clipShop.save();
+  });
+
+  it('b. the bearing stored once, upgraded on the way, and inserted twice in one batch: one body each, a bought part of 12 g by its own document', () => {
+    const state = exec(
+      engine,
+      { type: 'addDocument', id: 'bearing', document: asSavedByMaster(bearing) as never, name: '608.json' },
+      { type: 'setParameter', name: 'elbowBearingD', expr: '22' },
+      insertion('b1', 'Elbow bearing', 'bearing', { frame: at('elbow'), z: 0.5 }, { parameters: { D: 'elbowBearingD' } }),
+      insertion('b2', 'Shoulder bearing', 'bearing', { frame: at('shoulder'), z: 0.5 }),
+    );
+    const { features, bodies, bodyProperties, documents, faceNames } = state.evaluation;
+    expect([features.b1.status, features.b2.status]).toEqual(['ok', 'ok']);
+    expect([features.b1.bodies, features.b2.bodies]).toEqual([['b1/ring'], ['b2/ring']]);
+    expect(features.b1.facts?.origin).toEqual([120, 0, 0.5]);
+    expect(features.b2.facts?.axisZ).toEqual([0, 0, 1]);
+    expect(bodyProperties['b1/ring']).toMatchObject({ name: 'Elbow bearing / 608 bearing', use: 'reference', mass: 12, massFrom: 'mass', fromDocument: 'bearing' });
+    // float32 positions at another place: the volumes differ in the last digits
+    expect(Math.abs(bodies['b1/ring'].volume - bodies['b2/ring'].volume)).toBeLessThan(1e-6 * bodies['b2/ring'].volume);
+    const keys = faceNames.map((name) => faceKey(name));
+    expect(keys).toContain('b1/"ring/side/outer"');
+    expect(keys).toContain('b2/"ring/startCap"');
+    // the stored copy is the upgraded document, with the sections of this build
+    const stored = state.document.documents.bearing;
+    expect(stored.name).toBe('608.json');
+    expect([stored.document.documents, stored.document.meshes]).toEqual([{}, {}]);
+    expect(documents.bearing.usedBy).toEqual(['b1', 'b2']);
+    expect(documents.bearing.parameters.map((p) => `${p.name}=${p.value}`)).toEqual(['d=8', 'D=22', 'B=7']);
+    // one undo step
+    engine.undo();
+    expect(engine.getState().document.documents).toEqual({});
+    engine.redo();
+    expect(Object.keys(engine.getState().document.documents)).toEqual(['bearing']);
+  });
+
+  it('b. the two insertions are one part: one environment of the parameters, one recompute, one row of the parts list', () => {
+    const state = engine.getState();
+    expect(shapeOrigin(state.evaluation.bodies['b1/ring'].solid).solid).toBe(shapeOrigin(state.evaluation.bodies['b2/ring'].solid).solid);
+    const row = list().bought.find((r) => r.name === '608 bearing');
+    expect(row).toMatchObject({ count: 2, bodies: ['b1/ring', 'b2/ring'], mass: 12, totalMass: 24 });
+    // also after more previews of other values than the memo of the evaluator keeps
+    for (let i = 0; i < 10; i++) preview({ type: 'setParameter', name: 'elbowBearingD', expr: String(20 + i / 10) });
+    const again = preview({ type: 'setField', feature: 'b1', path: 'parameters/D', value: 22 });
+    expect(shapeOrigin(again.evaluation.bodies['b1/ring'].solid).solid).toBe(shapeOrigin(again.evaluation.bodies['b2/ring'].solid).solid);
+  });
+
+  it('c. the seats are cut from the projected outer edges of the bearings, and nothing collides', () => {
+    const seat = (insert: Id, centre: string, circle: string): Command[] => [
+      { type: 'addExternal', sketch: 'seats', id: `${insert}Rim`, ref: { type: 'edge', body: `${insert}/ring`, edge: rimOf(insert), kind: 'circle' } },
+      { type: 'addPoint', sketch: 'seats', id: centre, x: 0, y: 0 },
+      { type: 'addConstraint', sketch: 'seats', id: `${centre}On`, constraint: { type: 'coincident', a: centre, b: `${insert}Rim/center` } },
+      { type: 'addCurve', sketch: 'seats', id: circle, curve: { type: 'circle', center: centre }, radius: 10 },
+      { type: 'addConstraint', sketch: 'seats', id: `${circle}Eq`, constraint: { type: 'equalRadius', a: circle, b: `${insert}Rim` } },
+    ];
+    const state = exec(
+      engine,
+      { type: 'addFeature', feature: emptySketch('seats', 'Seats', XY) },
+      ...seat('b1', 'elbowSeatCentre', 'elbowSeat'),
+      ...seat('b2', 'shoulderSeatCentre', 'shoulderSeat'),
+      { type: 'addFeature', feature: { id: 'seatCut', name: 'Bearing seats', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'seats', regions: [{ outerLoop: ['elbowSeat'] }, { outerLoop: ['shoulderSeat'] }] }, extent: { type: 'distance', start: 0.5, distance: 8 }, operation: 'cut', targets: ['upper'] } },
+    );
+    expect([state.evaluation.features.seats.status, state.evaluation.features.seatCut.status]).toEqual(['ok', 'ok']);
+    expect(state.evaluation.features.seats.sketch?.radii.elbowSeat).toBeCloseTo(11, 6);
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'base', 'forearm', 'b1/ring', 'b2/ring'] }, { geometry: 'modelled' }));
+    expect(report.pairs).toEqual([]);
+    expect(report.failed).toEqual([]);
+  });
+
+  it('c. a sketch stands on the top of a ring with the frame its document would give it, carried by the placement', () => {
+    const state = preview({ type: 'addFeature', feature: emptySketch('onRing', 'On the ring', { kind: 'face', body: 'b1/ring', face: { feature: 'b1/ring', role: 'endCap' } }) });
+    const plane = state.evaluation.features.onRing.plane;
+    expect(plane?.origin).toEqual([120, 0, 7.5]);
+    expect(plane?.normal).toEqual([0, 0, 1]);
+  });
+
+  it('c. the bearings are bodies of the link of the upper arm; an edit before them leaves their solids the same objects', () => {
+    const upper = engine.getState().document.mechanism.links.upper;
+    const state = exec(engine, { type: 'setLink', id: 'upper', bodies: [...upper.bodies, 'b1/ring', 'b2/ring'] });
+    expect(state.evaluation.mechanism.links.upper.bodies).toContain('b1/ring');
+    const before = state.evaluation.bodies['b1/ring'].solid;
+    const edited = preview({ type: 'setField', feature: 'forearm', path: 'extent/distance', value: 9 });
+    expect(edited.evaluation.bodies['b1/ring'].solid).toBe(before);
+  });
+
+  it('d. a larger bearing at the elbow is one parameter of the arm: the ring and its seat grow together, two rows of one name', () => {
+    const state = preview({ type: 'setParameter', name: 'elbowBearingD', expr: '24' });
+    expect(state.evaluation.features.b1.values?.['parameters/D']).toBe(24);
+    expect(state.evaluation.bodies['b1/ring'].volume).toBeGreaterThan(state.evaluation.bodies['b2/ring'].volume);
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'forearm', 'b1/ring', 'b2/ring'] }, { state, geometry: 'modelled' }));
+    expect(report.pairs).toEqual([]);
+    const bought = list(state).bought.filter((r) => r.name === '608 bearing');
+    expect(bought.map((r) => r.count)).toEqual([1, 1]);
+  });
+
+  it('d. a value the bearing does not hold up: its check fails and the insertion says so; the ring is still there', () => {
+    const state = preview({ type: 'setParameter', name: 'elbowBearingD', expr: '9' });
+    const result = state.evaluation.features.b1;
+    expect(result.status).toBe('warning');
+    expect(result.warnings.map((w) => [w.code, w.refs])).toEqual([['insertedIssues', [{ check: 'wall' }]]]);
+    expect(result.bodies).toEqual(['b1/ring']);
+  });
+
+  it('e. a printed clip on top of the upper arm, without its channel: PETG by its document, and the fifth M3 insert of the list', () => {
+    const before = list();
+    const label = before.hardware[0].label;
+    expect(label).toBe('M3x3x4.5 heat-set insert');
+    const state = exec(
+      engine,
+      { type: 'addDocument', id: 'clip', document: JSON.parse(clip) },
+      insertion('clip', 'Cable clip', 'clip', { frame: { kind: 'face', body: 'upper', face: { feature: 'upper', role: 'endCap' } }, x: 60, y: -55 }, { bodies: ['clip'] }),
+    );
+    expect(state.evaluation.features.clip.bodies).toEqual(['clip/clip']);
+    expect(state.evaluation.bodyProperties['clip/clip']).toMatchObject({ name: 'Cable clip', material: 'PETG', use: 'part', fromDocument: 'clip' });
+    const after = list();
+    expect(after.printed.find((r) => r.name === 'Cable clip')?.bodies).toEqual(['clip/clip']);
+    const inserts = after.hardware.find((row) => row.label === label);
+    expect(inserts?.count).toBe(before.hardware[0].count + 1);
+    expect(inserts?.holes).toContainEqual({ feature: 'clip/clipHole', count: 1 });
+  });
+
+  it('e. without the list both bodies come in; the channel is auxiliary by its document and no part', () => {
+    const state = preview({ type: 'updateFeature', id: 'clip', patch: { bodies: null } });
+    expect(state.evaluation.features.clip.bodies).toEqual(['clip/clip', 'clip/cable']);
+    expect(list(state).auxiliary).toContain('clip/cable');
+    expect(state.evaluation.bodyProperties['clip/cable'].name).toBe('Cable clip / Cable');
+  });
+
+  it('f. what is refused', () => {
+    const messages = [
+      refusal({ type: 'addDocument', id: 'bearing', document: JSON.parse(bearing) }),
+      refusal({ type: 'addDocument', id: 'broken', document: { schemaVersion: 1, features: 'none' } as never }),
+      refusal(insertion('b3', 'Nothing', 'nope', { frame: XY })),
+      refusal(insertion('b3', 'Wrong', 'bearing', { frame: XY }, { parameters: { width: 3 } })),
+      refusal({ type: 'removeDocument', id: 'bearing' }),
+      refusal({ type: 'addFeature', feature: emptySketch('onNothing', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b9/ring', role: 'endCap' } }) }),
+      refusal({ type: 'addFeature', feature: emptySketch('onNothing', 'x', { kind: 'face', body: 'upper', face: { feature: 'upper/side', role: 'endCap' } }) }),
+      refusal({ type: 'setBodyProperties', body: 'b1/typo', patch: { color: '#ff0000' } }),
+    ];
+    expect(messages[0]).toMatch(/stored document "bearing" already/);
+    expect(messages[1]).toMatch(/^addDocument\.document/);
+    expect(messages[2]).toMatch(/no stored document "nope"/);
+    expect(messages[3]).toMatch(/has no parameter "width"/);
+    expect(messages[4]).toMatch(/inserted by the features b1, b2/);
+    expect(messages[5]).toMatch(/feature "b9" neexistuje/);
+    expect(messages[6]).toMatch(/feature "upper" není an inserted document/);
+    expect(messages[7]).toMatch(/cannot make the body "typo"/);
+  });
+
+  it('f. a revision of the bearing 8 wide replaces the stored one: the ring at the elbow runs into the forearm', () => {
+    exec(bearingShop, { type: 'setParameter', name: 'B', expr: '8' });
+    const state = preview({ type: 'replaceDocument', id: 'bearing', document: JSON.parse(bearingShop.save()) });
+    exec(bearingShop, { type: 'setParameter', name: 'B', expr: '7' });
+    expect(state.document.documents.bearing.name).toBe('608.json');
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'forearm', 'base', 'b1/ring', 'b2/ring'] }, { state, geometry: 'modelled' }));
+    expect(report.pairs.map((p) => `${p.a}–${p.b}`)).toEqual(['b1/ring–forearm']);
+  });
+
+  it('f. a stored document that is gone: the insertion loads as a broken reference, and nothing else is refused', () => {
+    const saved = JSON.parse(engine.save());
+    const { bearing: _gone, ...rest } = saved.documents;
+    const spare = newEngine();
+    const loaded = spare.load(JSON.stringify({ ...saved, documents: rest }));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    expect(loaded.state.evaluation.features.b1.status).toBe('error');
+    expect(loaded.state.evaluation.features.b1.error?.refs).toEqual([{ document: 'bearing' }]);
+    expect(loaded.state.evaluation.features.seats.warnings.map((w) => w.code)).toContain('brokenProjection');
+  });
+
+  it('g. save and load keep the section and the model; a load is strict about an entry and judges a stored document as a document', () => {
+    const json = engine.save();
+    const doc = JSON.parse(json);
+    expect(doc.documents.bearing.document.schemaVersion).toBe(doc.schemaVersion);
+    const spare = newEngine();
+    const loaded = spare.load(json);
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    expect(Object.keys(loaded.state.evaluation.bodies)).toContain('b2/ring');
+    expect(loaded.state.evaluation.bodies['b1/ring'].volume).toBeCloseTo(engine.getState().evaluation.bodies['b1/ring'].volume, 6);
+    const messageOf = (o: object): string => {
+      const result = spare.load(JSON.stringify(o));
+      if (result.ok) throw new Error('expected a refusal');
+      return result.error.message;
+    };
+    expect(messageOf({ ...doc, documents: { ...doc.documents, bearing: { ...doc.documents.bearing, source: '/tmp/608.json' } } })).toMatch(/^document\.documents\.bearing\.source: a stored document has no such field/);
+    expect(messageOf({ ...doc, documents: { ...doc.documents, bearing: { document: { ...doc.documents.bearing.document, schemaVersion: 99 } } } })).toMatch(/^document\.documents\.bearing\.document: the schema version 99 is newer than this build reads/);
+    // the step gives an older document the empty section and leaves one that has the field to the validation
+    const step = UPGRADES.find((entry) => entry.name === '3c-document-insert');
+    expect(step?.run({ schemaVersion: 6 }).documents).toEqual({});
+    expect(step?.run({ documents: null }).documents).toBeNull();
+  });
+
+  it('h. a kit that inserts the bearing, inserted into the arm: the body and the faces are prefixed twice', () => {
+    const workshop = newEngine();
+    exec(workshop, { type: 'addDocument', id: 'bearing', document: JSON.parse(bearing) }, { type: 'addFeature', feature: { id: 'b', name: 'Bearing', suppressed: false, type: 'insert', document: 'bearing', placement: { frame: XY } } as never });
+    const state = preview({ type: 'addDocument', id: 'kit', document: JSON.parse(workshop.save()) }, insertion('kit', 'Kit', 'kit', { frame: XY, x: 300 }));
+    expect(state.evaluation.features.kit.bodies).toEqual(['kit/b/ring']);
+    expect(insertedFeature(state.document, 'kit/b/ring')?.feature.type).toBe('extrude');
+    expect(state.evaluation.bodyProperties['kit/b/ring']).toMatchObject({ name: 'Kit / Bearing / 608 bearing', use: 'reference', mass: 12 });
+    expect(faceKey(insertedFaceName({ feature: 'b/ring', role: 'endCap', copy: [{ pattern: 'b/p', index: 1 }] }, 'kit'))).toBe('kit/"b/\\"ring/endCap/@p:1\\""');
+    expect(state.evaluation.faceNames.map((name) => faceKey(name))).toContain('kit/"b/\\"ring/side/outer\\""');
+    expect(MAX_INSERT_DEPTH).toBe(8);
+  });
+
+  it('i. the description for the AI: the section, its commands, the fields of the feature type', () => {
+    expect(SECTION_INFO.documents.commands).toEqual(['addDocument', 'replaceDocument', 'removeDocument']);
+    expect(INSERT_FIELDS.map((field) => field.path)).toContain('parameters/*');
+    expect(FEATURE_TYPE_INFO.insert.updatable).toEqual(['document', 'placement', 'parameters', 'bodies']);
   });
 });

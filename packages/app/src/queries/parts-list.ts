@@ -8,6 +8,7 @@
 // state the answer is of, not computed).
 import type { HardwareRow, PartRow, PartsList } from '@trymesh/engine';
 import { h } from '../dom';
+import { featureNameIn } from '../issue-text';
 import { COLOR } from '../draw';
 import type { QueryView, ViewPanel } from './index';
 
@@ -21,7 +22,8 @@ function patch(color: string): HTMLElement {
   return element;
 }
 // The hole features of a row by their names, with the holes of each.
-const holesText = (holes: HardwareRow['holes'], panel: ViewPanel<'partsList'>): string => holes.map((hole) => `${panel.state.document.features.find((f) => f.id === hole.feature)?.name ?? hole.feature} (${hole.count})`).join(', ');
+// An inserted hole feature (D62) by the insertion and its name there.
+const holesText = (holes: HardwareRow['holes'], panel: ViewPanel<'partsList'>): string => holes.map((hole) => `${featureNameIn(panel.state.document, hole.feature) ?? hole.feature} (${hole.count})`).join(', ');
 // A mass is shown to four significant digits: the view compares parts, the file has six.
 const grams = (value: number, panel: ViewPanel<'partsList'>): string => panel.number(Number(value.toPrecision(4)), 'g');
 

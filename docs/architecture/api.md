@@ -320,6 +320,12 @@ type Command =
   | { type: 'setJoint'; id: Id; joint: JointInput }                      // creates or replaces the joint; the drive (5b) a patch, null removes a field
   | { type: 'removeJoint'; id: Id }
   | { type: 'setPose'; values: Record<Id, number | Expr> }                 // the values of the joints named
+  // stored meshes (D55) and stored documents (D62), sections of the document; see document.md and insert.md
+  | { type: 'addMesh'; id: Id; mesh: StoredMesh }
+  | { type: 'removeMesh'; id: Id }
+  | { type: 'addDocument'; id: Id; document: Document; name?: string }                // validated and upgraded as a load does
+  | { type: 'replaceDocument'; id: Id; document: Document; name?: string | null }     // a new revision; every insertion recomputed
+  | { type: 'removeDocument'; id: Id }                                                // refused while a feature inserts it
   // složený
   | { type: 'batch'; commands: Command[] };
 ```
@@ -327,6 +333,7 @@ type Command =
 **`updateFeature` je slučovací změna.** `patch` obsahuje jen pole, která se mění, ve stejném tvaru jako feature; `{ extent: { distance: 12 } }` změní vzdálenost a začátek nechá být. Pravidla:
 
 - Vnořený objekt se s dosavadním slučuje po polích, pokud je to táž varianta (`type` změna neuvádí, nebo je stejný). Jiná varianta dosavadní hodnotu nahradí celou a musí být úplná. A generated profile with another `generator` is another variant too.
+- A field a feature module names in `patch.dictionaries` (the values of the parameters of an insertion, D62) is a dictionary of numbers by free names: it merges key by key, `null` removes one value, and `kind`, `type` and `generator` in it are names, not a reference or a variant; every function of a patch asks the one predicate.
 - The dictionaries of a generated profile (`operands`, `params`, `refs`) merge by entry: `{ profile: { params: { rotation: 'deg(5)' } } }` leaves the other parameters with their expressions. `null` removes an entry: a parameter returns to its default and loses its expression (a required one cannot be removed), a reference ceases to exist. Removing an entry that is not there is not an error.
 - A profile of regions takes its offset the same way: `{ profile: { offset: 2 } }` sets it and `{ profile: { offset: null } }` removes it, also from a feature that did not have it (an optional numeric field, D44). The curves of a wall are a list and are replaced whole; each curve the feature did not have before is verified as an own curve of the sketch.
 - Odkaz (objekt s polem `kind`: `PlaneRef`, or the `AxisRef` of a pattern) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
@@ -367,7 +374,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
-**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 7.
+**`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 7; the branch `d36/3c` saves it with `schemaSteps: ['3c-document-insert']`. A stored document (D62) is validated by the same function, one level deeper, with its path in the messages ([insert.md](insert.md)).
 
 **The schema is a list of named upgrade steps (D37, `schema.ts`).** `UPGRADES` holds the steps in order; on `master` the version a build saves is their number plus one. A step changes only the shape of the raw document, before the validation, which judges the content.
 
@@ -379,6 +386,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 | `3a-body-properties` | 4 → 5 | The section `bodyProperties` (D48): a document without the field gets `{}`; a field that is there, whatever it holds (`null` included), is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Merged 2026-11-16 |
 | `5a-mechanism` | 5 → 6 | The section `mechanism` (D49): a document without the field gets `{ links: {}, joints: {} }`; a field that is there, whatever it holds, is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. Merged 2026-11-16 |
 | `3b-mesh-import` | 6 → 7 | The section `meshes` (D55): a document without the field gets `{}`; a field that is there, whatever it holds, is left to the validation. A build without the step would drop the section on load; with it, it refuses the document. The feature type `mesh`, its face role and the two commands need no step (a build without them refuses each by itself). Merged 2026-11-17 |
+| `3c-document-insert` | pending on the branch `d36/3c` | The section `documents` (D62): a document without the field gets `{}`; a field that is there, whatever it holds, is left to the validation. A stored document is validated as a document, so it gets this and every other step from its own version. The feature type `insert`, the three commands, the warning and the reference kinds need no step |
 
 - **When a step is needed.** For a change of the shape of what older documents hold, and for anything a build without it would drop without a word: `validateDocument` rebuilds a document from the fields it knows, so an unknown section, an unknown field directly on a feature and an unknown field of an extent are gone after a load. Such an addition gets a step even when it converts nothing. No step is needed where a build without the addition refuses by itself: a new feature type, a new variant, a field where the validator lists the fields it allows.
 - **A step reads and changes only what its package owns**, or what is on `master` already, so steps of different packages give the same document in either order.

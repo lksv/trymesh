@@ -40,6 +40,24 @@ export interface Document {
   // An entry never changes: there is no command that edits one; `addMesh` adds an entry,
   // `removeMesh` removes one that no feature names.
   meshes: Record<Id, StoredMesh>;
+  // Stored documents by ID (D62): other documents kept inside this one, to be inserted as parts by
+  // features of the type `insert`. Always present, `{}` when there is none. Not part of the
+  // timeline; the IDs are a namespace of their own (the document `bearing` may be inserted by the
+  // feature `bearing`). An entry is a copy: it changes only by the command `replaceDocument`.
+  documents: Record<Id, StoredDocument>;
+}
+
+// A document kept inside another one, to be inserted as a part (a bearing, a motor, a bracket made
+// elsewhere) (D62).
+// - `name`: for people, usually the name of the file it came from; the rules of a body name.
+// - `document`: a whole document (its timeline, parameters, checks and every section, stored
+//   documents of its own included). It is validated as a document is on a load: an older one is
+//   brought to the schema of this build by the same upgrade steps, and the stored copy is the
+//   upgraded one. Documents inside documents are allowed up to 8 levels below the host.
+// - Strict: `name` and `document`, nothing else, on a command and on a load.
+export interface StoredDocument {
+  name?: string;
+  document: Document;
 }
 
 // A closed, indexed triangle mesh in millimetres, in its own frame (the frame of the file it came
@@ -215,7 +233,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | InsertFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -582,6 +600,53 @@ export interface MeshFeature extends FeatureBase {
   placement: BodyPlacement;
 }
 
+// Another document inserted as a part (D62): the bodies at the end of its timeline, recomputed from
+// its features with the parameters this feature sets, placed as one rigid piece.
+// - `document`: a key of the section `documents`. A command that sets it checks that the section
+//   has it; a load checks its form only, and a document that is not there is the error
+//   `brokenReference` with `refs: [{ document: <id> }]`.
+// - `placement`: where the origin and the axes of the inserted document stand (as for a mesh
+//   feature: a frame, three offsets, three turns; numeric fields `placement/x` … `placement/rz`).
+// - `parameters`: values for parameters of the inserted document by their names, each a numeric
+//   field `parameters/<name>` (no unit: the inserted document gives the value its meaning) that
+//   takes an expression over the parameters of this document. The value replaces the expression of
+//   that parameter in the inserted document for this insertion only; what depends on it there
+//   follows. A command that adds a name the stored document does not have is invalid; a stored
+//   document replaced since without it is the error `brokenReference` with
+//   `refs: [{ parameter: <name> }]`. `updateFeature` merges the values key by key and `null`
+//   removes one (the parameter is the document's own again); `setField` changes a value that is
+//   set. The parameters of the inserted document cannot be read by expressions of this one.
+// - `bodies`: which bodies of the inserted document come in, by their IDs there (not empty, no ID
+//   twice); without it every body at the end of its timeline, in its order. A listed body the
+//   inserted document does not have with these parameters is the error `brokenReference` with
+//   `refs: [{ body: <id there> }]`. `null` in a patch removes the list.
+// - The bodies are `<feature>/<ID there>`: `bearing/ring`, `kit/screws/2`, `kit/b/ring` for a body
+//   of a document inserted into the inserted one. No body has the ID of the feature alone.
+// - Every face keeps its name with the feature IDs prefixed (see `FaceName`), with its exact
+//   surface: a sketch, a plane, a placement or an extent may stand on a planar face of an inserted
+//   body, an edge of one may be projected, and features of this document may change it like any
+//   body (a body with a face of an imported mesh stays `importedTarget`).
+// - The stored document is recomputed with the settings of this document (its chord tolerance),
+//   so an inserted part is divided as finely as what it meets. Two insertions of one stored
+//   document whose parameters evaluate alike share one recompute, so their bodies are one shape
+//   (one row of the parts list).
+// - Body properties of an inserted body come from what the inserted document states for it
+//   (colour, material, use, and the density and mass as a pair, resolved with the values of this
+//   insertion) unless an entry of this document states them. Without a name of its own it is named
+//   after the insertion: its name alone when `bodies` lists one body, else
+//   `<name of the insertion> / <its name there>`. The parts list names it by its part name there.
+// - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ`, as for a mesh feature.
+// - Errors: `brokenReference` (the document, a parameter, a listed body, the frame), `nonPlanarFace`
+//   (the frame), `invalidExpression` (a field), `emptyResult` (the inserted document has no body to
+//   bring). Warning: `insertedIssues`.
+export interface InsertFeature extends FeatureBase {
+  type: 'insert';
+  document: Id;
+  placement: BodyPlacement;
+  parameters?: Record<string, number>;
+  bodies?: Id[];
+}
+
 // A directed frame of the model: a plane as a sketch refers to one (a base plane: XY is (+X, +Y,
 // +Z), XZ is (+X, +Z, −Y), YZ is (+Y, +Z, +X); a plane feature; a planar face of a body, with the
 // frame a sketch on that face has, its normal out of the body), or a point of a sketch: the frame
@@ -736,6 +801,16 @@ export type Extent =
 // - The mouths are `startCap` and the bottoms `endCap`, one face each for all points.
 // The face of an imported mesh (a feature of the type `mesh`): `mesh`, one face for the whole
 // surface, not planar, without edges.
+// A face of a body an insertion brought (a feature of the type `insert`, D62) keeps the name it has
+// in the inserted document with every feature ID in it prefixed by `<insertion>/`: `feature`, and
+// `pattern` of every copy tag. The fields of the role (a curve, a point) stay as they are. Tags of
+// patterns of this document that copy the body afterwards come after them, unprefixed:
+//   { feature: 'ring', role: 'side', curve: 'outer' }      in the document `bearing`
+//   { feature: 'b1/ring', role: 'side', curve: 'outer' }   inserted by the feature `b1`
+//   { feature: 'kit/b/ring', role: 'endCap', copy: [{ pattern: 'kit/b/p', index: 1 }] }
+//                                                          two levels down, copied by `p` there
+// The owner of a prefixed ID (the part before the first slash) must be an insertion before the
+// referring feature; whether the face is there is the recompute's question, as for every face.
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici); of a revolve: the profile at the start of a partial turn
@@ -898,6 +973,21 @@ export interface Evaluation {
   bodyProperties: Record<Id, BodyPropertiesResult>; // by body of the state, in the order of `bodies`
   mechanism: MechanismResult; // the mechanism resolved against this state
   meshes: Record<Id, MeshResult>; // what the stored meshes are, without their data (D55)
+  documents: Record<Id, StoredDocumentResult>; // what the stored documents are, without a recompute (D62)
+}
+
+// A stored document as the evaluation describes it (D62), without recomputing it: the bodies an
+// insertion brought are in the result of its feature (`FeatureResult.bodies`).
+// - `parameters`: its parameters with their expressions and values (its own, without the values an
+//   insertion sets); no `value` when the expression does not evaluate there.
+// - `features`: the number of features of its timeline.
+// - `usedBy`: the features of the type `insert` that insert it, in the order of the timeline,
+//   suppressed ones included.
+export interface StoredDocumentResult {
+  name?: string;
+  parameters: { name: string; expr: Expr; value?: number }[];
+  features: number;
+  usedBy: Id[];
 }
 
 // A stored mesh as the evaluation describes it, without its data (D55). Every number but `usedBy`
@@ -997,6 +1087,10 @@ export interface BodyPropertiesResult {
   // source.
   from?: Id;
   fieldErrors?: { density?: ExpressionError; mass?: ExpressionError };
+  // For a body an insertion brought (D62), or a copy of one: the key of the stored document when
+  // a field of this result (the colour, the material, the use, the density or the mass) comes from
+  // what that document states for the body.
+  fromDocument?: Id;
 }
 
 export type ParameterResult = { ok: true; value: number } | { ok: false; error: ExpressionError };
@@ -1172,7 +1266,14 @@ export type WarningCode =
   // tangent); the parameter `rotation` was used instead.
   | 'gearMesh'
   // The tip of one gear of a pair runs into the root of the other below its base circle.
-  | 'gearInterference';
+  | 'gearInterference'
+  // An insertion (D62) whose document did not recompute cleanly with the values of this insertion:
+  // `refs` are `{ feature: <prefixed ID>, code }` for a feature of it in error, `{ check }` for
+  // a check of it that fails or cannot be evaluated, and the refs of the same warning of an
+  // insertion inside it, with their IDs prefixed and a check as `{ check, in: <prefixed ID of that
+  // insertion> }`. The bodies that are there come in; other warnings of its features are not
+  // repeated.
+  | 'insertedIssues';
 
 export type IssueCode = ErrorCode | WarningCode;
 
@@ -1388,6 +1489,21 @@ export type Command =
   //   suppressed or not (remove or re-point those features first, in the same batch).
   | { type: 'addMesh'; id: Id; mesh: StoredMesh }
   | { type: 'removeMesh'; id: Id }
+  // Stored documents (D62). Usually not written by hand: the MCP tool insert_document reads a file
+  // and sends addDocument (or replaceDocument), then answers with the command that inserts it.
+  // - addDocument stores `document` under `id`. `document` is a document as a file holds it, of any
+  //   version this build reads: it is upgraded and validated in full, as a load does, and an
+  //   invalid one is an invalid command with the message of the load. An ID the section has is an
+  //   invalid command.
+  // - replaceDocument puts another document (a new revision of a part) in the place of a stored
+  //   one, validated the same way; `name` absent keeps the name, `null` removes it. Every feature
+  //   that inserts it is recomputed: a reference to a face the revision no longer has breaks as any
+  //   reference does, a parameter or a listed body it no longer has is an error of the insertion.
+  // - removeDocument is refused while a feature inserts it, suppressed or not (remove or re-point
+  //   those features first, in the same batch).
+  | { type: 'addDocument'; id: Id; document: Document; name?: string }
+  | { type: 'replaceDocument'; id: Id; document: Document; name?: string | null }
+  | { type: 'removeDocument'; id: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
 
@@ -1426,7 +1542,9 @@ export type FeaturePatch =
   | Patch<Pick<SplitFeature, 'body' | 'plane' | 'side'>>
   // `placement` merges field by field; its `frame` is a reference and is replaced whole
   | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>
-  | Patch<Pick<RevolveFeature, 'profile' | 'axis' | 'extent' | 'operation' | 'targets'>>;
+  | Patch<Pick<RevolveFeature, 'profile' | 'axis' | 'extent' | 'operation' | 'targets'>>
+  // `parameters` merges key by key (`null` removes a value); `placement` as for a mesh feature
+  | Patch<Pick<InsertFeature, 'document' | 'placement' | 'parameters' | 'bodies'>>;
 
 // ---------------------------------------------------------------- queries
 

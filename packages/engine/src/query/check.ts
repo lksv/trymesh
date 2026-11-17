@@ -11,7 +11,7 @@
 import { checkNumber } from '../catalog';
 import { entityOf } from '../sketch-content';
 import type { ArgPath, Document, Evaluation, Feature, Id, SketchFeature } from '../types';
-import { edgeKey, faceKey, has } from '../util';
+import { edgeKey, faceKey, faceText, has, sameEdgeName, sameFaceName } from '../util';
 import { CommandError, type RefContext, axisRef, edgeName, faceName, isObject, planeRef } from '../validation';
 import type { ArgKind, ArgSpecs } from './args';
 
@@ -80,13 +80,13 @@ class Checker {
     const name = shaped(path, (what) => faceName(value, what));
     const key = faceKey(name);
     const { faceNames, bodies } = this.scope.evaluation;
-    return bodies[body].faces.some((face) => faceKey(faceNames[face.id]) === key) ? name : missing(path, `the body "${body}" has no face ${key}`);
+    return bodies[body].faces.some((face) => faceKey(faceNames[face.id]) === key && sameFaceName(faceNames[face.id], name)) ? name : missing(path, `the body "${body}" has no face ${faceText(name)}`);
   }
 
   private edge(body: Id, value: unknown, path: ArgPath): unknown {
     const name = shaped(path, (what) => edgeName(value, what));
     const key = edgeKey(name);
-    return this.scope.evaluation.bodies[body].edges.some((edge) => edgeKey(edge.name) === key) ? name : missing(path, `the body "${body}" has no edge ${key}`);
+    return this.scope.evaluation.bodies[body].edges.some((edge) => edgeKey(edge.name) === key && sameEdgeName(edge.name, name)) ? name : missing(path, `the body "${body}" has no edge ${faceText(name.a)}|${faceText(name.b)}`);
   }
 
   private sketchPoint(sketch: SketchFeature, value: unknown, path: ArgPath): Id {

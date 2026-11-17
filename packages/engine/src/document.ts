@@ -38,6 +38,8 @@ import {
 } from './validation';
 import { FEATURE_TYPES, FEATURE_TYPE_INFO, refContext, requireRef, specOf } from './features/index';
 import { applySectionCommand, emptySections, renamedSections, validateSections } from './sections/index';
+import { MAX_INSERT_DEPTH } from './sections/documents';
+import type { SectionContext } from './sections/spec';
 import type { FeatureModule } from './features/module';
 import { constraint, constraintRuleProblem, curve, externalRef } from './features/sketch';
 
@@ -152,8 +154,9 @@ export function featureRefs(f: Feature): Id[] {
     ...new Set(
       specOf(f)
         .refs(f)
-        // an entity belongs to a sketch that is referred to anyway; a stored mesh is no feature (D55)
-        .filter((ref) => ref.kind !== 'entity' && ref.kind !== 'mesh')
+        // an entity belongs to a sketch that is referred to anyway; a stored mesh (D55), a stored
+        // document, a parameter and a body of one (D62) are no features
+        .filter((ref) => ref.kind !== 'entity' && ref.kind !== 'mesh' && ref.kind !== 'document' && ref.kind !== 'parameter' && ref.kind !== 'documentBody')
         .map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)),
     ),
   ];
@@ -164,51 +167,79 @@ export function featureRefs(f: Feature): Id[] {
 const VARIANT_KEYS = ['type', 'generator'];
 const sameVariant = (old: Dict, patch: Dict): boolean => VARIANT_KEYS.every((key) => patch[key] === undefined || patch[key] === old[key]);
 
+// Is this path of a feature a dictionary of numbers by free names (`patch.dictionaries` of its
+// module, D62)? Every function of a patch below asks it and takes such a field key by key, without
+// reading `kind` as a reference or `type` and `generator` as a variant.
+type IsDictionary = (path: readonly string[]) => boolean;
+const NO_DICTIONARY: IsDictionary = () => false;
+
 // Slučovací změna (příkaz updateFeature): varianta se stejným `type` se slučuje po polích, jiná
 // varianta, odkaz (objekt s `kind`) a seznam dosavadní hodnotu nahradí, `null` pole odebere.
 // A dictionary (operands, parameters and references of a generated profile) merges by entry.
-function mergePatch(old: unknown, patch: unknown, what: string): unknown {
+function mergePatch(old: unknown, patch: unknown, what: string, dictionary: IsDictionary = NO_DICTIONARY, path: string[] = []): unknown {
+  if (dictionary(path) && isObject(patch)) {
+    const out: Dict = isObject(old) ? { ...old } : {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (key in Object.prototype) fail(`${what}.${key}: takové pole feature nemá`);
+      if (value === null) delete out[key];
+      else out[key] = value;
+    }
+    return out;
+  }
   if (!isObject(patch) || has(patch, 'kind')) return patch;
   // odkaz se po polích neslučuje: půlka odkazu by vybrala jinou stěnu téhož tělesa
   if (isObject(old) && has(old, 'kind')) fail(`${what}: odkaz se nahrazuje celý, čeká se objekt s polem kind`);
   // Nothing to merge with: the patch is the new value. A `null` in it removes an entry that is not
   // there (a form sends `refs: { meshWith: null }` whether the feature had the reference or not).
-  if (!isObject(old) || !sameVariant(old, patch)) return withoutNulls(patch);
+  if (!isObject(old) || !sameVariant(old, patch)) return withoutNulls(patch, dictionary, path);
   const out: Dict = { ...old };
   for (const [key, value] of Object.entries(patch)) {
     if (key in Object.prototype) fail(`${what}.${key}: takové pole feature nemá`);
     if (value === null) delete out[key];
-    else out[key] = mergePatch(old[key], value, `${what}.${key}`);
+    else out[key] = mergePatch(old[key], value, `${what}.${key}`, dictionary, [...path, key]);
   }
   return out;
 }
 
-const withoutNulls = (value: unknown): unknown =>
-  isObject(value) && !has(value, 'kind')
+const withoutNulls = (value: unknown, dictionary: IsDictionary = NO_DICTIONARY, path: string[] = []): unknown =>
+  isObject(value) && (dictionary(path) || !has(value, 'kind'))
     ? Object.fromEntries(
         Object.entries(value)
           .filter(([, item]) => item !== null)
-          .map(([key, item]) => [key, withoutNulls(item)]),
+          .map(([key, item]) => [key, dictionary(path) ? item : withoutNulls(item, dictionary, [...path, key])]),
       )
     : value;
 
 // Addresses the patch overwrites as a whole (a leaf, a list, a reference, another variant, a removed
-// field). Expressions at and below them cease to exist; fields the patch does not mention keep theirs.
-function replacedPaths(old: unknown, patch: Dict, prefix: string[] = []): string[] {
+// field; in a dictionary each value it names). Expressions at and below them cease to exist; fields
+// the patch does not mention keep theirs.
+function replacedPaths(old: unknown, patch: Dict, dictionary: IsDictionary = NO_DICTIONARY, prefix: string[] = []): string[] {
   return Object.entries(patch).flatMap(([key, value]) => {
+    const path = [...prefix, key];
+    if (dictionary(path) && isObject(value)) return Object.keys(value).map((name) => [...path, name].join('/'));
     const before = isObject(old) ? old[key] : undefined;
     const merges = isObject(value) && !has(value, 'kind') && isObject(before) && sameVariant(before, value);
-    return merges ? replacedPaths(before, value as Dict, [...prefix, key]) : [[...prefix, key].join('/')];
+    return merges ? replacedPaths(before, value as Dict, dictionary, path) : [path.join('/')];
   });
 }
 
 // Cesty k hodnotám, které změna nastavuje: listy, seznamy a odkazy (odebraná pole ne).
-function patchPaths(patch: Dict, prefix: string[] = []): string[][] {
-  return Object.entries(patch).flatMap(([key, value]) => (value === null ? [] : isObject(value) && !has(value, 'kind') ? patchPaths(value, [...prefix, key]) : [[...prefix, key]]));
+function patchPaths(patch: Dict, dictionary: IsDictionary = NO_DICTIONARY, prefix: string[] = []): string[][] {
+  return Object.entries(patch).flatMap(([key, value]) => {
+    const path = [...prefix, key];
+    if (value === null) return [];
+    if (dictionary(path) && isObject(value)) return Object.keys(value).filter((name) => value[name] !== null).map((name) => [...path, name]);
+    return isObject(value) && !has(value, 'kind') ? patchPaths(value, dictionary, path) : [path];
+  });
 }
 // Paths the patch removes (`null`).
-function removedPaths(patch: Dict, prefix: string[] = []): string[][] {
-  return Object.entries(patch).flatMap(([key, value]) => (value === null ? [[...prefix, key]] : isObject(value) && !has(value, 'kind') ? removedPaths(value, [...prefix, key]) : []));
+function removedPaths(patch: Dict, dictionary: IsDictionary = NO_DICTIONARY, prefix: string[] = []): string[][] {
+  return Object.entries(patch).flatMap(([key, value]) => {
+    const path = [...prefix, key];
+    if (value === null) return [path];
+    if (dictionary(path) && isObject(value)) return Object.keys(value).filter((name) => value[name] === null).map((name) => [...path, name]);
+    return isObject(value) && !has(value, 'kind') ? removedPaths(value, dictionary, path) : [];
+  });
 }
 
 // Změna bez polí s hodnotou `undefined`: v JSON nejsou a volající z kódu jimi myslí „neměnit".
@@ -222,17 +253,25 @@ const withoutUndefined = (value: unknown): unknown =>
     : value;
 
 const hasPath = (value: unknown, path: string[]): boolean => path.length === 0 || (isObject(value) && has(value, path[0]) && hasPath(value[path[0]], path.slice(1)));
-const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id, ref.sketch]);
+// the identity of a reference: a parameter of another stored document is another reference (D62)
+const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id, ref.sketch, ref.document]);
 
 // ---------------------------------------------------------------- načtení dokumentu
 
 // Ověří celý dokument stejnými pravidly jako příkazy. Odkazy na features, které v dokumentu nejsou
 // nebo leží jinde, jsou přípustné: projeví se až při přepočtu.
-export function validateDocument(value: unknown): Document {
+// `what` is the path of the document in the messages and `depth` its level below the host: a stored
+// document (D62) is validated by this same function, one level deeper, and the message of its
+// fault names its path (`document.documents.bearing.document.settings: …`). The host keeps the
+// texts it has always had.
+export function validateDocument(value: unknown, what = 'document', depth = 0): Document {
+  const host = depth === 0;
+  // the old prefixes of the host, and the path of a stored document
+  const at = (old: string, path: string): string => (host ? old : `${what}${path}`);
   // older documents are brought to the schema of this build first (schema.ts); it changes only the shape
-  const o = upgradeDocument(object(value, 'dokument'));
-  const chordTolerance = finite(object(o.settings, 'dokument.settings').chordTolerance, 'dokument.settings.chordTolerance');
-  if (chordTolerance <= 0) fail('dokument.settings.chordTolerance: musí být kladná');
+  const o = upgradeDocument(object(value, at('dokument', '')), undefined, undefined, what);
+  const chordTolerance = finite(object(o.settings, at('dokument.settings', '.settings')).chordTolerance, at('dokument.settings.chordTolerance', '.settings.chordTolerance'));
+  if (chordTolerance <= 0) fail(`${at('dokument.settings.chordTolerance', '.settings.chordTolerance')}: musí být kladná`);
   // Parameters and checks: names and expression syntax. Values, unknown names and cycles are up to the recompute.
   const named = <T extends Parameter | Check>(list: unknown, what: string, kind: 'number' | 'check', nameOf: (name: unknown, at: string) => string): T[] => {
     if (!Array.isArray(list)) return fail(`${what}: a list is expected`);
@@ -245,22 +284,42 @@ export function validateDocument(value: unknown): Document {
       return { name, expr: expression(entry.expr, `${what}[${i}].expr`, kind, kind === 'number' ? { parameter: name } : { check: name }) } as T;
     });
   };
-  const parameters = named<Parameter>(o.parameters, 'document.parameters', 'number', parameterName);
-  const checks = named<Check>(o.checks, 'document.checks', 'check', checkName);
-  if (!Array.isArray(o.features)) fail('dokument.features: čeká se seznam');
+  const parameters = named<Parameter>(o.parameters, `${what}.parameters`, 'number', parameterName);
+  const checks = named<Check>(o.checks, `${what}.checks`, 'check', checkName);
+  if (!Array.isArray(o.features)) fail(`${at('dokument.features', '.features')}: čeká se seznam`);
   // the sections (body properties) after the timeline; the form of their references only, as for every reference
-  const doc: Document = { ...schemaHeader(), settings: { chordTolerance }, parameters, checks, features: [], ...validateSections(o) };
+  const doc: Document = { ...schemaHeader(), settings: { chordTolerance }, parameters, checks, features: [], ...validateSections(o, what, sectionContext(depth)) };
   const ids = new Set<Id>();
   (o.features as unknown[]).forEach((item, i) => {
-    const f = feature(doc, undefined, item, `features[${i}]`, 'load');
+    const f = feature(doc, undefined, item, at(`features[${i}]`, `.features[${i}]`), 'load');
     for (const id of [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])]) {
-      if (ids.has(id)) fail(`features[${i}]: ID "${id}" je v dokumentu dvakrát`);
+      if (ids.has(id)) fail(`${at(`features[${i}]`, `.features[${i}]`)}: ID "${id}" je v dokumentu dvakrát`);
       ids.add(id);
     }
     doc.features.push(f);
   });
   return doc;
 }
+
+// What the validation and the commands of a section get (D62): the validator of a nested document,
+// one level deeper than the document the section belongs to, refused beyond `MAX_INSERT_DEPTH`.
+// The error of a nested document carries no `expression`: a parameter of a stored document is no
+// parameter of the host, which a caller would otherwise mark.
+function sectionContext(depth: number): SectionContext {
+  return {
+    depth,
+    document(value, what) {
+      if (depth + 1 > MAX_INSERT_DEPTH) fail(`${what}: documents inside documents are allowed down to ${MAX_INSERT_DEPTH} levels below the host`);
+      try {
+        return validateDocument(value, what, depth + 1);
+      } catch (error) {
+        if (error instanceof CommandError && error.expression) throw new CommandError(error.message);
+        throw error;
+      }
+    },
+  };
+}
+const HOST_CONTEXT = sectionContext(0);
 
 // ---------------------------------------------------------------- parameters and checks
 
@@ -416,10 +475,12 @@ export function applyCommand(doc: Document, command: Command): Document {
       const title = spec.info.title.toLowerCase();
       const patch = withoutUndefined(object(cmd.patch, 'updateFeature.patch')) as Dict;
       for (const key of Object.keys(patch)) if (!spec.patch.fields.includes(key)) fail(`updateFeature.patch.${key}: ${title} takové pole nemá`);
-      const merged = mergePatch(f, patch, 'updateFeature.patch') as Dict;
+      const dictionaries = spec.patch.dictionaries ?? [];
+      const dictionary: IsDictionary = (path) => dictionaries.includes(path.join('/'));
+      const merged = mergePatch(f, patch, 'updateFeature.patch', dictionary) as Dict;
       spec.patch.normalize?.(merged, patch);
       // Expressions of fields the patch overwrites cease to exist: a number removes one, a string sets a new one.
-      const replaced = replacedPaths(f, patch);
+      const replaced = replacedPaths(f, patch, dictionary);
       // A string equal to the expression the field already has is not a change: the field keeps its
       // number and its expression without evaluation. A form sends the whole feature in the input
       // form, and an expression that stopped evaluating must not block a change of another field
@@ -434,11 +495,11 @@ export function applyCommand(doc: Document, command: Command): Document {
       const checked = validated(spec, doc, undefined, input, 'updateFeature.patch', 'update');
       // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
       // jinak skončilo úspěchem bez účinku.
-      for (const path of patchPaths(patch)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
+      for (const path of patchPaths(patch, dictionary)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
       // The same for `null`: removing what the feature did not have is fine only for a name the
       // feature knows (a form sends `refs: { meshWith: null }` whether the reference was set or
       // not); `params: { rotaton: null }` must not report success and reset nothing.
-      for (const path of removedPaths(patch)) if (!hasPath(f, path) && !spec.patch.removable?.(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
+      for (const path of removedPaths(patch, dictionary)) if (!hasPath(f, path) && !spec.patch.removable?.(checked, path)) fail(`updateFeature.patch.${path.join('.')}: ${title} takové pole nemá`);
       // Tvar se ověří celý, odkazy jen ty, které feature dosud neměla: oprava jedné rozbité
       // reference nesmí narazit na jinou, kterou změna nechává být (i když ji zopakuje).
       const kept = new Set(spec.refs(f).map(refKey));
@@ -661,6 +722,6 @@ export function applyCommand(doc: Document, command: Command): Document {
 
     default:
       // a command of a section of the document (body properties), or none at all
-      return applySectionCommand(doc, cmd) ?? fail(`neznámý příkaz "${String(cmd.type)}"`);
+      return applySectionCommand(doc, cmd, HOST_CONTEXT) ?? fail(`neznámý příkaz "${String(cmd.type)}"`);
   }
 }

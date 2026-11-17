@@ -10,11 +10,12 @@ import { newEngine, run } from './kit';
 type Saved = { status: string; warnings: string[]; document: unknown };
 const SAVED = JSON.parse(readFileSync(new URL('./fixtures/d52-saved-by-master.json', import.meta.url), 'utf8')) as Record<'slotExact' | 'slotJoinedExact' | 'slotNoisy' | 'slotInConflict' | 'fixedOffTangent', Saved>;
 
-// A saved document without its header and without the empty section `meshes` a later build adds
-// (D55): what the sketch tests compare.
+// A saved document without its header and without the empty sections `meshes` (D55) and `documents`
+// (D62) a later build adds: what the sketch tests compare.
 const content = (document: unknown): unknown => {
-  const { schemaVersion: _version, schemaSteps: _steps, meshes, ...rest } = document as Record<string, unknown>;
+  const { schemaVersion: _version, schemaSteps: _steps, meshes, documents, ...rest } = document as Record<string, unknown>;
   expect(meshes ?? {}).toEqual({});
+  expect(documents ?? {}).toEqual({});
   return rest;
 };
 

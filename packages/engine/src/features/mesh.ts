@@ -25,19 +25,27 @@ export const PLACEMENT_FIELDS: readonly FieldSpec[] = [
 ];
 const SPECS = new Map(PLACEMENT_FIELDS.map((field) => [field.path, field.spec]));
 
+// The placement of a part with a frame of its own (D55), validated; an inserted document (D62) takes
+// it as it is.
+export function bodyPlacement(v: unknown, what: string, context: ValidationContext): BodyPlacement {
+  const given = object(v, what);
+  onlyFields(given, ['frame', ...NUMBERS], what, 'a placement');
+  const placement: BodyPlacement = { frame: frameRef(context, given.frame, `${what}.frame`) };
+  // a number is stored only when it is given (also a zero)
+  for (const name of NUMBERS) {
+    const path = `placement/${name}`;
+    if (given[name] !== undefined) placement[name] = context.fields.number(given[name], path, SPECS.get(path) as NumberSpec, `${what}.${name}`);
+  }
+  return placement;
+}
+// May `null` in a patch name this path of a placement although the feature did not have it?
+export const removablePlacementField = (path: string[]): boolean => path.length === 2 && path[0] === 'placement' && (NUMBERS as readonly string[]).includes(path[1]);
+
 function meshFeature(o: Dict, what: string, context: ValidationContext): MeshFeature {
   const mesh = string(o.mesh, `${what}.mesh`);
   if (mesh === '') fail(`${what}.mesh: the ID of a stored mesh is expected`);
   context.requireRef({ id: mesh, kind: 'mesh' }, `${what}.mesh`);
-  const given = object(o.placement, `${what}.placement`);
-  onlyFields(given, ['frame', ...NUMBERS], `${what}.placement`, 'a placement');
-  const placement: BodyPlacement = { frame: frameRef(context, given.frame, `${what}.placement.frame`) };
-  // a number is stored only when it is given (also a zero)
-  for (const name of NUMBERS) {
-    const path = `placement/${name}`;
-    if (given[name] !== undefined) placement[name] = context.fields.number(given[name], path, SPECS.get(path) as NumberSpec, `${what}.placement.${name}`);
-  }
-  return { ...base(o, what), type: 'mesh', mesh, placement };
+  return { ...base(o, what), type: 'mesh', mesh, placement: bodyPlacement(o.placement, `${what}.placement`, context) };
 }
 
 const FACE: FaceInfo = { planar: false, surface: 'mesh' };
@@ -77,6 +85,11 @@ function placed(entry: StoredMesh, transform: RigidTransform, face: number, feat
 }
 
 const tidy = (v: Vec3): Vec3 => [v[0] + 0, v[1] + 0, v[2] + 0];
+// The facts of a placed part: where its origin is in the model and where its three axes point.
+export function placementFacts(transform: RigidTransform): { origin: Vec3; axisX: Vec3; axisY: Vec3; axisZ: Vec3 } {
+  const column = (j: number): Vec3 => tidy([transform.matrix[0][j], transform.matrix[1][j], transform.matrix[2][j]]);
+  return { origin: tidy(transform.translation), axisX: column(0), axisY: column(1), axisZ: column(2) };
+}
 
 function step(feature: MeshFeature, { state, done, failed, input }: StepContext): Step {
   const entry = input as StoredMesh | undefined;
@@ -86,10 +99,9 @@ function step(feature: MeshFeature, { state, done, failed, input }: StepContext)
   const transform = placementTransform(feature.placement, frame);
   const face = state.faceNames.length;
   const name: FaceName = { feature: feature.id, role: 'mesh' };
-  const column = (j: number): Vec3 => tidy([transform.matrix[0][j], transform.matrix[1][j], transform.matrix[2][j]]);
   return {
     state: done(
-      { status: 'ok', warnings: [], bodies: [feature.id], facts: { origin: tidy(transform.translation), axisX: column(0), axisY: column(1), axisZ: column(2) } },
+      { status: 'ok', warnings: [], bodies: [feature.id], facts: placementFacts(transform) },
       {
         bodies: { ...state.bodies, [feature.id]: placed(entry, transform, face, feature.id) },
         faceNames: [...state.faceNames, name],
@@ -114,7 +126,7 @@ export const mesh: FeatureModule<MeshFeature> = {
   createsBody: (_f, local) => local === undefined,
   namesFaces: true,
   producesTool: () => false,
-  patch: { fields: ['mesh', 'placement'], removable: (_f, path) => path.length === 2 && path[0] === 'placement' && (NUMBERS as readonly string[]).includes(path[1]) },
+  patch: { fields: ['mesh', 'placement'], removable: (_f, path) => removablePlacementField(path) },
   input: (f, doc) => (has(doc.meshes, f.mesh) ? doc.meshes[f.mesh] : undefined),
   step,
 };

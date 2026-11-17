@@ -1,0 +1,405 @@
+
+=== 1. the button Insert without a stored document: the form says to insert a file, OK is disabled
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button disabled title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+      h2: "New inserted document"
+      p.hint: "The document has no stored document yet: insert a document file of the part."
+      div.buttons
+        button title="Read a document file (.json) into a stored document of this one": "Insert a document…"
+        input#document-file type=file hidden
+      label
+        "Frame"
+        select value="base:XY"
+          option selected value="base:XY": "rovina XY"
+          option value="base:XZ": "rovina XZ"
+          option value="base:YZ": "rovina YZ"
+          option value="point": "A point of a sketch"
+      div.buttons
+        button: "Pick"
+      label
+        "Offset along X (mm or an expression)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/x" data-unit="mm"
+      label
+        "Offset along Y (mm or an expression)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/y" data-unit="mm"
+      label
+        "Offset along the normal (mm or an expression)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/z" data-unit="mm"
+      label
+        "Turn about X (° or an expression in radians)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/rx" data-unit="rad"
+      label
+        "Turn about Y (° or an expression in radians)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/ry" data-unit="rad"
+      label
+        "Turn about the normal (° or an expression in radians)"
+        span.field
+          input value="0"
+          small.computed data-field="placement/rz" data-unit="rad"
+      p#draft-placed.hint
+      p#draft-problem.issue.error
+      div.buttons
+        button.primary disabled: "OK"
+        button: "Zrušit"
+  status: Insert a document file of the part.
+  view: 2 scene(s) set
+  scene:
+      bodies: (none)
+      line #8b9bb4 width 1: 24 numbers, sum 509.223
+      line #8b9bb4 width 1: 24 numbers, sum 339.482
+      line #8b9bb4 width 1: 24 numbers, sum 169.741
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. a file that is no document: the status line says why, nothing is stored
+  status: notes.json is not a document: Unexpected token 'h', "hello" is not valid JSON  [error]
+  view: 0 scene(s) set
+
+=== 3. the part stored: one undo step (addDocument), the form uses it, the preview places it on XY with both of its bodies
+  engine: execute({"type":"addDocument","id":"disc_part","document":{"schemaVersion":8,"schemaSteps":["3c-document-insert"],"settings":{"chordTolerance":0.01},"parameters":[{"name":"H","expr":"5"}],"checks":[],"features":[{"id":"s","name":"Disc","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{"c":5},"curves":{"c":{"type":"circle","center":"origin"}},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},{"id":"disc","name":"Disc","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":0,"distance":5},"operation":"new","expressions":{"extent/distance":"H"}},{"id":"pin","name":"Pin","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":20,"distance":2},"operation":"new"}],"bodyProperties":{"disc":{"name":"Disc part","use":"reference","mass":3}},"mechanism":{"links":{},"joints":{}},"meshes":{},"documents":{}},"name":"disc part.json"}) -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}}},"index":0}, "i1") -> ok  (x2)
+  documents: {"disc_part":"disc part.json: s disc pin; H=5"}
+  panel:
+    + label
+    +   "Stored document"
+    +   select value="disc_part"
+    +     option selected value="disc_part": "disc part.json (3 features)"
+    - p.hint: "The document has no stored document yet: insert a document file of the part."
+    + h3: "Parameters of the inserted document"
+    + label
+    +   "H (there 5 = 5)"
+    +   span.field
+    +     input value="" placeholder="5"
+    +     small.computed
+    + h3: "Bodies that come in"
+    + label.check
+    +   input type=checkbox checked
+    +   "disc"
+    + label.check
+    +   input type=checkbox checked
+    +   "pin"
+    + p#draft-placed.hint: "The origin of the part at (0, 0, 0), its X axis along (1, 0, 0), its Z axis along (0, 0, 1)."
+    + p#draft-problem.issue.warning
+    - p#draft-placed.hint
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  status: Stored disc part.json as "disc_part".
+  view: 2 scene(s) set
+  scene:
+    + bodies: i1/disc, i1/pin
+    + line #26303c width 1.5: 1200 numbers, sum 18770.598
+    + line #8b9bb4 width 1: 24 numbers, sum 361.768
+    + line #8b9bb4 width 1: 24 numbers, sum 241.179
+    + line #8b9bb4 width 1: 24 numbers, sum 120.589
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.227
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.227
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.227
+    - bodies: (none)
+    - line #8b9bb4 width 1: 24 numbers, sum 509.223
+    - line #8b9bb4 width 1: 24 numbers, sum 339.482
+    - line #8b9bb4 width 1: 24 numbers, sum 169.741
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+
+=== 4. a value of its parameter here: the preview follows
+  engine: preview({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8}},"index":0}, "i1") -> ok
+  panel:
+    +     input value="8" placeholder="5"
+    -     input value="" placeholder="5"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 1200 numbers, sum 19973.598
+    - line #26303c width 1.5: 1200 numbers, sum 18770.598
+
+=== 5. the pin left out: the list of bodies
+  engine: preview({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"bodies":["disc"],"parameters":{"H":8}},"index":0}, "i1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8}},"index":0}, "i1") -> ok
+  panel:
+    +   input type=checkbox unchecked
+    -   input type=checkbox checked
+  view: 1 scene(s) set
+  scene:
+    + bodies: i1/disc
+    + line #26303c width 1.5: 600 numbers, sum 3190.116
+    + line #8b9bb4 width 1: 24 numbers, sum 421.434
+    + line #8b9bb4 width 1: 24 numbers, sum 280.956
+    + line #8b9bb4 width 1: 24 numbers, sum 140.478
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.068
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.068
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.068
+    - bodies: i1/disc, i1/pin
+    - line #26303c width 1.5: 1200 numbers, sum 19973.598
+    - line #8b9bb4 width 1: 24 numbers, sum 361.768
+    - line #8b9bb4 width 1: 24 numbers, sum 241.179
+    - line #8b9bb4 width 1: 24 numbers, sum 120.589
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.227
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.227
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.227
+
+=== 6. confirmed: the insertion with the value and the list; the body named after the insertion
+  engine: execute({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"bodies":["disc"],"parameters":{"H":8}},"index":0}) -> ok
+  features: i1
+  feature i1:
+      {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8},"bodies":["disc"]}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Chamfer edges of a body by a distance": "Chamfer"
+    +   button title="Round edges of a body by a radius": "Fillet"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+    +   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Part 1"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Stored documents"
+    + div.row.document
+    +   span: "disc part.json (disc_part): 3 features; inserted by Part 1."
+    +   div.buttons
+    +     button title="Read a revision of the part from a document file in the place of this stored document": "Replace…"
+    +     input type=file hidden
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New inserted document"
+    - label
+    -   "Stored document"
+    -   select value="disc_part"
+    -     option selected value="disc_part": "disc part.json (3 features)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button title="Read a document file (.json) into a stored document of this one": "Insert a document…"
+    -   input#document-file type=file hidden
+    - label
+    -   "Frame"
+    -   select value="base:XY"
+    -     option selected value="base:XY": "rovina XY"
+    -     option value="base:XZ": "rovina XZ"
+    -     option value="base:YZ": "rovina YZ"
+    -     option value="point": "A point of a sketch"
+    - div.buttons
+    -   button: "Pick"
+    - label
+    -   "Offset along X (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/x" data-unit="mm"
+    - label
+    -   "Offset along Y (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/y" data-unit="mm"
+    - label
+    -   "Offset along the normal (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/z" data-unit="mm"
+    - label
+    -   "Turn about X (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/rx" data-unit="rad"
+    - label
+    -   "Turn about Y (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/ry" data-unit="rad"
+    - label
+    -   "Turn about the normal (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/rz" data-unit="rad"
+    - h3: "Parameters of the inserted document"
+    - label
+    -   "H (there 5 = 5)"
+    -   span.field
+    -     input value="8" placeholder="5"
+    -     small.computed
+    - h3: "Bodies that come in"
+    - label.check
+    -   input type=checkbox checked
+    -   "disc"
+    - label.check
+    -   input type=checkbox unchecked
+    -   "pin"
+    - p#draft-placed.hint: "The origin of the part at (0, 0, 0), its X axis along (1, 0, 0), its Z axis along (0, 0, 1)."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Inserted document přidáno.
+  view: 2 scene(s) set
+
+=== 7. the value emptied: the patch removes it, the part is its own again
+  engine: preview({"type":"updateFeature","id":"i1","patch":{"document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"},"x":null,"y":null,"z":null,"rx":null,"ry":null,"rz":null},"parameters":{"H":8},"bodies":["disc"]}}, "i1") -> ok
+  engine: preview({"type":"updateFeature","id":"i1","patch":{"document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"},"x":null,"y":null,"z":null,"rx":null,"ry":null,"rz":null},"parameters":{"H":8},"bodies":null}}, "i1") -> ok
+  engine: preview({"type":"updateFeature","id":"i1","patch":{"document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"},"x":null,"y":null,"z":null,"rx":null,"ry":null,"rz":null},"parameters":{"H":null},"bodies":["disc"]}}, "i1") -> ok
+  engine: preview({"type":"updateFeature","id":"i1","patch":{"document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"},"x":null,"y":null,"z":null,"rx":null,"ry":null,"rz":null},"parameters":{"H":null},"bodies":null}}, "i1") -> ok
+  engine: execute({"type":"updateFeature","id":"i1","patch":{"document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"},"x":null,"y":null,"z":null,"rx":null,"ry":null,"rz":null},"parameters":{"H":null},"bodies":["disc"]}}) -> ok
+  feature i1:
+    + {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"bodies":["disc"]}
+    - {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8},"bodies":["disc"]}
+  status: Změna uložena.
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 600 numbers, sum 1987.116
+    + line #8b9bb4 width 1: 24 numbers, sum 425.491
+    + line #8b9bb4 width 1: 24 numbers, sum 283.661
+    + line #8b9bb4 width 1: 24 numbers, sum 141.83
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.261
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.261
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.261
+    - line #26303c width 1.5: 600 numbers, sum 3190.116
+    - line #8b9bb4 width 1: 24 numbers, sum 421.434
+    - line #8b9bb4 width 1: 24 numbers, sum 280.956
+    - line #8b9bb4 width 1: 24 numbers, sum 140.478
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.068
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.068
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.068
+
+=== 8. the insertion deleted: the stored document is not inserted, the panel offers to remove it
+  engine: execute({"type":"removeFeature","id":"i1"}) -> ok
+  features: (none)
+  toolbar:
+    +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    + p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Part 1"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    +   span: "disc part.json (disc_part): 3 features; not inserted."
+    -   span: "disc part.json (disc_part): 3 features; inserted by Part 1."
+    +   button title="Remove the stored document from the document": "Remove"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - div.buttons
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Smazáno: Part 1. Závislé prvky zůstávají a hlásí chybu.
+  view: 2 scene(s) set
+  scene:
+    + bodies: (none)
+    + line #8b9bb4 width 1: 24 numbers, sum 509.223
+    + line #8b9bb4 width 1: 24 numbers, sum 339.482
+    + line #8b9bb4 width 1: 24 numbers, sum 169.741
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+    - bodies: i1/disc
+    - line #26303c width 1.5: 600 numbers, sum 1987.116
+    - line #8b9bb4 width 1: 24 numbers, sum 425.491
+    - line #8b9bb4 width 1: 24 numbers, sum 283.661
+    - line #8b9bb4 width 1: 24 numbers, sum 141.83
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.261
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.261
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.261
+
+=== 9. the stored document removed
+  engine: execute({"type":"removeDocument","id":"disc_part"}) -> ok
+  documents: {}
+  panel:
+    - h2: "Stored documents"
+    - div.row.document
+    -   span: "disc part.json (disc_part): 3 features; not inserted."
+    -   div.buttons
+    -     button title="Read a revision of the part from a document file in the place of this stored document": "Replace…"
+    -     input type=file hidden
+    -   button title="Remove the stored document from the document": "Remove"
+  status: The stored document disc_part was removed.
+  view: 1 scene(s) set

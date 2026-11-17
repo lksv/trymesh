@@ -51,9 +51,14 @@ export interface FeatureModule<F extends Feature> {
   // The fields `updateFeature` may change; without them the feature cannot be changed by that command.
   // `removable`: may `null` in a patch name this path although the feature did not have it? (An
   // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
-  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
+  // `dictionaries`: the paths of the fields that are dictionaries of numbers by free names (the
+  // values of the parameters of an insertion, D62). Every function of a patch takes such a field
+  // key by key, without reading `kind` as a reference or `type` and `generator` as a variant: those
+  // are legal names there.
+  patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean; dictionaries?: readonly string[] };
   // The object of the document, outside the feature, that the step reads (D55): a mesh feature
-  // answers with the entry of the section `meshes` it places, undefined when the section has none.
+  // answers with the entry of the section `meshes` it places, an insertion with the entry of the
+  // section `documents` (D62), undefined when the section has none.
   // The recompute hands it to the step (`StepContext.input`) and uses a remembered step only when it
   // was computed from the same object. A module reads the document nowhere else.
   input?(f: F, doc: Document): object | undefined;

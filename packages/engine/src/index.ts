@@ -20,10 +20,13 @@ export {
   isDimension,
   withPath,
 } from './document';
-export { bodyRefs, bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
+export { bodyRefs, bodySource, featuresWithInserted, generatorOf, insertedFeature, producesTool, sourceChain, sourceRoot } from './features/index';
+export { INSERT_FIELDS } from './features/insert';
+export { insertedFaceName } from './recompute/insertion';
+export { MAX_INSERT_DEPTH } from './sections/documents';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
 export { type MeshOrigin, shapeOrigin } from './solid';
-export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
+export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts, faceText, sameFaceName } from './face-roles';
 export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
 export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow, SocketHeadScrewRow } from './catalogs/hardware';
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';

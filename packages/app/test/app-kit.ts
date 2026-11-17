@@ -273,7 +273,7 @@ export async function startApp(): Promise<Harness> {
   const app = new App(engine, view);
 
   const lines: string[] = [];
-  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; mechanism: string; meshes: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}', mechanism: '{"links":{},"joints":{}}', meshes: '{}' };
+  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; mechanism: string; meshes: string; documents: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}', mechanism: '{"links":{},"joints":{}}', meshes: '{}', documents: '{}' };
   const region = (id: Region): string[] => Array.from((document.getElementById(id) as HTMLElement).childNodes).flatMap((child) => domText(child));
   const section = (title: string, changed: string[]): void => {
     if (changed.length) lines.push(`  ${title}:`, ...changed.map((line) => `    ${line}`));
@@ -311,6 +311,10 @@ export async function startApp(): Promise<Harness> {
     const meshes = JSON.stringify(Object.fromEntries(Object.entries(doc.meshes).map(([id, mesh]) => [id, `${mesh.name ?? ''} ${mesh.positions.length}+${mesh.triangles.length} characters`])));
     if (meshes !== last.meshes) lines.push(`  meshes: ${meshes}`);
     last.meshes = meshes;
+    // the stored documents (D62), when they changed: their names, features and parameters
+    const documents = JSON.stringify(Object.fromEntries(Object.entries(doc.documents ?? {}).map(([id, stored]) => [id, `${stored.name ?? ''}: ${stored.document.features.map((f) => f.id).join(' ')}; ${stored.document.parameters.map((p) => `${p.name}=${p.expr}`).join(' ')}`])));
+    if (documents !== last.documents) lines.push(`  documents: ${documents}`);
+    last.documents = documents;
     // what a user sees: only the parts that changed
     for (const id of ['toolbar', 'timeline', 'panel'] as const) {
       const now = region(id);

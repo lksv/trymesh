@@ -3,7 +3,7 @@
 // mesh, which every pair has.
 import { type MeshPart, closest, coordinatePrecision, meshAccuracy } from '../mesh-distance';
 import type { ArgPath, Vec3 } from '../types';
-import { ANGLE_TOLERANCE, add3, cross3, dot3, edgeKey, len3, mul3, sub3, unit3 } from '../util';
+import { ANGLE_TOLERANCE, add3, cross3, dot3, edgeKey, len3, mul3, sameEdgeName, sub3, unit3 } from '../util';
 import type { ArgSpecs } from './args';
 import { type EntityShape, type ShapedRef, entityShape } from './entity';
 import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
@@ -164,7 +164,7 @@ function partOf(context: QueryContext, ref: ShapedRef, shape: EntityShape, arg: 
     return number === undefined ? missing('the face is not in the state asked about') : { solid: body.solid, face: number };
   }
   const key = edgeKey(ref.edge);
-  const edge = body.edges.find((candidate) => edgeKey(candidate.name) === key);
+  const edge = body.edges.find((candidate) => edgeKey(candidate.name) === key && sameEdgeName(candidate.name, ref.edge));
   return edge ? { segments: edge.segments } : missing('the edge is not in the state asked about');
 }
 

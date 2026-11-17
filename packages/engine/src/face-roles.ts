@@ -61,8 +61,59 @@ export function faceParts(name: FaceName, roles: RoleCatalog = FACE_ROLES): (str
 
 // The key of a face: `<feature>/<role>`, then the values of the fields of the role, then
 // `/@<pattern>:<index>` for every copy tag. For the three roles of an extrusion that is
-// `<feature>/side/<curve>`, `<feature>/startCap` and `<feature>/endCap`; fingerprints of solved
-// sketches and the face table depend on it.
+// `<feature>/side/<curve>`, `<feature>/startCap` and `<feature>/endCap`; the face table depends
+// on it.
+// A face of an insertion (D62: `feature` has a slash) is keyed `<insertion>/`, then the key of its
+// name in the inserted document written as a JSON string, then the tags of this document:
+// `b1/"ring/side/outer"`, `b1/"ring/side/outer"/@q:2`, `kit/"b/\"ring/endCap/@p:1\""`. An ID may
+// hold `@` and `:`, so the plain concatenation would not be unambiguous once an ID holds a slash;
+// a JSON string ends at its closing quote, and the inner key is unambiguous by the same rule one
+// level down. Its name in the inserted document is the name with the insertion stripped from
+// `feature` and from the tags that come first and have a slash (the rule of form of a face name,
+// `faceName` in validation.ts). The exception to "at most one field holds a free ID" above: the
+// quoted key keeps the prefixed IDs apart from the fields of the role.
+// The key of a face of an insertion is kept by its name object (a name is not changed once made):
+// the solids of an insertion look up every face many times, and the key of a prefixed name is a
+// few times dearer than a plain one.
+const PREFIXED_KEYS = new WeakMap<FaceName, string>();
+
 export function faceKey(name: FaceName, roles: RoleCatalog = FACE_ROLES): string {
+  const tags = name.copy ?? [];
+  const tagKey = (tag: { pattern: string; index: number }): string => `/@${tag.pattern}:${tag.index}`;
+  const slash = name.feature.indexOf('/');
+  if (slash < 0) return [name.feature, name.role, ...faceParts(name, roles)].join('/') + tags.map(tagKey).join('');
+  if (roles === FACE_ROLES) {
+    const kept = PREFIXED_KEYS.get(name);
+    if (kept !== undefined) return kept;
+  }
+  const key = prefixedKey(name, tags, slash, roles, tagKey);
+  if (roles === FACE_ROLES) PREFIXED_KEYS.set(name, key);
+  return key;
+}
+
+function prefixedKey(name: FaceName, tags: readonly { pattern: string; index: number }[], slash: number, roles: RoleCatalog, tagKey: (tag: { pattern: string; index: number }) => string): string {
+  let inner = 0;
+  while (inner < tags.length && tags[inner].pattern.includes('/')) inner++;
+  const there = tags.slice(0, inner).map((tag) => ({ pattern: tag.pattern.slice(tag.pattern.indexOf('/') + 1), index: tag.index }));
+  const { copy: _copy, ...rest } = name;
+  const nameThere = { ...rest, feature: name.feature.slice(slash + 1), ...(there.length ? { copy: there } : {}) } as FaceName;
+  return `${name.feature.slice(0, slash)}/${JSON.stringify(faceKey(nameThere, roles))}${tags.slice(inner).map(tagKey).join('')}`;
+}
+
+// A face name written for people, as a message prints it: the plain concatenation of the key
+// without the quotes of an insertion (`b1/ring/side/outer`). Not an identity: two names may share
+// it.
+export function faceText(name: FaceName, roles: RoleCatalog = FACE_ROLES): string {
   return [name.feature, name.role, ...faceParts(name, roles)].join('/') + (name.copy ?? []).map((tag) => `/@${tag.pattern}:${tag.index}`).join('');
+}
+
+// Are two face names one name, field by field (the feature, the role, the fields of the role, the
+// copy tags)? A face is looked up by its key and then compared (D62): a text field of a role takes
+// any text, so a name that no feature makes may key like a real one.
+export function sameFaceName(a: FaceName, b: FaceName, roles: RoleCatalog = FACE_ROLES): boolean {
+  if (a.feature !== b.feature || a.role !== b.role) return false;
+  const [pa, pb] = [faceParts(a, roles), faceParts(b, roles)];
+  if (pa.some((part, i) => part !== pb[i])) return false;
+  const [ta, tb] = [a.copy ?? [], b.copy ?? []];
+  return ta.length === tb.length && ta.every((tag, i) => tag.pattern === tb[i].pattern && tag.index === tb[i].index);
 }

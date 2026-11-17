@@ -5,7 +5,7 @@
 import { type EdgeData, type FaceInfo, analyzeBody, normalAt, surfaceOf, toWorld, volumeOf } from '../solid';
 import { type Circle3, circleBetween } from '../surfaces';
 import type { EdgeName, FaceName, Facts, Frame, Id, IssueCode, Solid, SolidKernel, Vec2, Vec3 } from '../types';
-import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot2, dot3, edgeKey, faceKey, len3, mul3, sub3, unit3 } from '../util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot2, dot3, edgeKey, faceKey, len3, mul3, sameEdgeName, sub3, unit3 } from '../util';
 import { isImported, lookup, reach } from './services';
 import type { ResolvedProfile, Step, StepContext } from './state';
 import { bandOf } from './body-boolean';
@@ -180,7 +180,10 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
 
   // ------------------------------------------------ 2, 3. the edges and their kind
   const edges: Edge[] = given.map((name, index) => {
-    const edgeData = data.edges.get(edgeKey(name));
+    // found by its key, taken only when its name is the name asked for (D62: a text field of a role
+    // takes any text, so a name no feature makes may key like a real one)
+    const found = data.edges.get(edgeKey(name));
+    const edgeData = found && sameEdgeName(found.name, name) ? found : undefined;
     if (!edgeData) return refuse('brokenReference', [name], 'the body has no such edge');
     const [infoA, infoB] = [state.faceInfos[edgeData.a], state.faceInfos[edgeData.b]];
     const unsupported = (): never => refuse('unsupportedEdge', [name], `the edge is of the kind ${edgeData.kind} between ${describeSurface(infoA)} and ${describeSurface(infoB)}; only a straight edge between two planes and a circular edge between planes, cylinders and cones about one axis can be chamfered or filleted`);

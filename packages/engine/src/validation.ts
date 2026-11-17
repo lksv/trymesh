@@ -159,10 +159,39 @@ export function faceName(v: unknown, what: string, roles: RoleCatalog = FACE_ROL
     if (!Number.isInteger(index) || index < 1) fail(`${what}.copy[${i}].index: the number of a copy is an integer from 1`);
     return { pattern: string(tag.pattern, `${what}.copy[${i}].pattern`), index };
   });
+  const problem = prefixProblem(feature, copy.map((tag) => tag.pattern));
+  if (problem) fail(`${what}: ${problem}`);
   return copy.length ? { ...name, copy } : name;
 }
 
-export const faceRefs = (face: FaceName, path: string): FeatureRef[] => [{ path, id: face.feature, kind: 'faceSource' }, ...(face.copy ?? []).map((tag): FeatureRef => ({ path, id: tag.pattern, kind: 'pattern' }))];
+// The rule of form of the prefixed IDs of a face name (D62), at every level: a tag whose pattern
+// has a slash needs a feature with a slash; when the feature has a slash, the tags whose pattern has
+// a slash come first, all with the owner of the feature (the part before the first slash), the tags
+// after them have none, and the name with that owner stripped from the feature and from those tags
+// obeys the same rule. Every name the recompute makes obeys it, so its key is unambiguous.
+function prefixProblem(feature: string, patterns: readonly string[]): string | undefined {
+  const slash = feature.indexOf('/');
+  if (slash < 0) return patterns.some((pattern) => pattern.includes('/')) ? `the copy tag "${patterns.find((pattern) => pattern.includes('/'))}" is of an inserted document, the feature "${feature}" is not` : undefined;
+  const owner = feature.slice(0, slash);
+  let inner = 0;
+  while (inner < patterns.length && patterns[inner].includes('/')) inner++;
+  const stray = patterns.slice(inner).find((pattern) => pattern.includes('/'));
+  if (stray !== undefined) return `the copy tag "${stray}" of an inserted document comes after a tag of this one; the tags of the inserted document come first`;
+  const other = patterns.slice(0, inner).find((pattern) => pattern.slice(0, pattern.indexOf('/')) !== owner);
+  if (other !== undefined) return `the copy tag "${other}" is of another insertion than the feature "${feature}"`;
+  return prefixProblem(
+    feature.slice(slash + 1),
+    patterns.slice(0, inner).map((pattern) => pattern.slice(slash + 1)),
+  );
+}
+
+// The references a face name makes: the feature that named it (a feature that names faces) and every
+// pattern of its tags; a prefixed ID (D62) refers to its owner, which must be an insertion.
+const ownerOf = (id: Id): Id | undefined => (id.includes('/') ? id.slice(0, id.indexOf('/')) : undefined);
+export const faceRefs = (face: FaceName, path: string): FeatureRef[] => [
+  { path, id: ownerOf(face.feature) ?? face.feature, kind: ownerOf(face.feature) === undefined ? 'faceSource' : 'insertion' },
+  ...(face.copy ?? []).map((tag): FeatureRef => ({ path, id: ownerOf(tag.pattern) ?? tag.pattern, kind: ownerOf(tag.pattern) === undefined ? 'pattern' : 'insertion' })),
+];
 
 export function edgeName(v: unknown, what: string): EdgeName {
   const o = object(v, what);
@@ -183,16 +212,23 @@ export function edgeName(v: unknown, what: string): EdgeName {
 // - `pattern` is a reference to a pattern (the one that made the copy a face name speaks of).
 // - `mesh` is a reference to a stored mesh of the section `meshes` (D55), not to a feature: it
 //   takes no part in the order on the timeline.
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh';
+// - `document` is a reference to a stored document of the section `documents` (D62), not to
+//   a feature, as `mesh`.
+// - `insertion` is a reference to a feature of the type `insert` before the referring one: the
+//   owner of a prefixed ID in a face name (D62).
+// - `parameter` is a reference to a parameter (`id` its name) of the stored document `document`
+//   (D62): a value an insertion sets. It names no feature.
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh' | 'document' | 'insertion' | 'parameter' | 'documentBody';
 export interface FeatureRef {
   path: string;
   id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
   kind: RefKind;
   sketch?: Id;
+  document?: Id; // of a reference of the kind `parameter`: the stored document
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types
@@ -209,9 +245,10 @@ export interface ValidationContext extends RefContext {
 }
 
 // A face exists only after the feature that named it and after every pattern that copied it.
+// A face of an insertion (a prefixed ID, D62) exists only after the insertion; nothing inside the
+// inserted document is checked by a command.
 export function requireFace(context: RefContext, face: FaceName, what: string): void {
-  context.requireRef({ id: face.feature, kind: 'faceSource' }, what);
-  for (const tag of face.copy ?? []) context.requireRef({ id: tag.pattern, kind: 'pattern' }, what);
+  for (const ref of faceRefs(face, '')) context.requireRef({ id: ref.id, kind: ref.kind }, what);
 }
 
 export function planeRef(context: RefContext, v: unknown, what: string): PlaneRef {

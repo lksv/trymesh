@@ -6,7 +6,8 @@ import { DATA_CATALOGS } from '../data-catalogs';
 import { type Environment, evaluateParameters } from '../expression';
 import { bodyProblem, sourceChain } from '../features/index';
 import { bodyOwner } from '../sketch-content';
-import type { BodyProperties, BodyPropertiesResult, BodyResult, BodyUse, Document, Expr, ExpressionError, Id } from '../types';
+import type { InheritedProperties, InsertedBody, State } from '../recompute/state';
+import type { BodyProperties, BodyPropertiesResult, BodyResult, BodyUse, Document, Expr, Id } from '../types';
 import { has } from '../util';
 import { type Dict, type FieldMode, fail, newId, object, oneOf, onlyFields, string } from '../validation';
 import { type EntryField, type EntryValues, readEntryFields, renamedEntry, resolveEntryFields, storedExpressions, writtenEntry } from './fields';
@@ -129,28 +130,115 @@ function removeBodyProperties(doc: Document, cmd: Dict): Section {
 // ---------------------------------------------------------------- the result
 
 // The name of a body without a name of its own: after the feature that created it; a copy adds its
-// number, as the app has named bodies since D35.
+// number, as the app has named bodies since D35. A body an insertion brought (D62) is named after
+// the insertion: its name alone when its list `bodies` names one body, else `<name of the
+// insertion> / <its name there>`, its name there by these same rules in the stored document. Read
+// from the documents alone, so a parameter that changes the number of bodies renames nothing.
 function defaultName(doc: Document, body: Id): string {
   const { feature, local } = bodyOwner(body);
-  const name = doc.features.find((f) => f.id === feature)?.name ?? feature;
+  const f = doc.features.find((candidate) => candidate.id === feature);
+  if (f?.type === 'insert' && local !== undefined) {
+    if (f.bodies?.length === 1) return f.name;
+    const stored = has(doc.documents, f.document) ? doc.documents[f.document] : undefined;
+    return `${f.name} / ${stored ? bodyName(stored.document, local) : local}`;
+  }
+  const name = f?.name ?? feature;
   return local === undefined ? name : `${name} / ${local}`;
+}
+// The name the result of the body properties gives a body: its own name, else the default.
+const bodyName = (doc: Document, body: Id): string => ownEntry(doc.bodyProperties, body)?.name ?? defaultName(doc, body);
+
+// The insertion that brought a body and its ID there (D62), when the feature of the body is one and
+// its stored document is there.
+function insertedFrom(doc: Document, body: Id): { document: Document; body: Id } | undefined {
+  const { feature, local } = bodyOwner(body);
+  const f = doc.features.find((candidate) => candidate.id === feature);
+  return f?.type === 'insert' && local !== undefined && has(doc.documents, f.document) ? { document: doc.documents[f.document].document, body: local } : undefined;
 }
 
 // The name of the kind of part a body is (D57, the parts list): the name of its own of the nearest
 // body of its chain of sources (the body first), else the default name of the body the chain starts
 // at. So the copies of a copy named "spare" are "spare", as they inherit its colour and material,
 // and the copies of an unnamed `screw` are "screw", not "Screws / 1". Read from the document alone,
-// so it holds when the bodies of the chain are not bodies of a state.
+// so it holds when the bodies of the chain are not bodies of a state. A chain that starts at a body
+// an insertion brought (D62) without a name of its own here ends in its part name in the inserted
+// document, so two insertions of one document name one part.
 export function partName(doc: Document, body: Id): string {
   const chain = sourceChain(doc, body);
   for (const id of chain) {
     const name = ownEntry(doc.bodyProperties, id)?.name;
     if (name !== undefined) return name;
   }
-  return defaultName(doc, chain.at(-1) ?? body);
+  const root = chain.at(-1) ?? body;
+  const there = insertedFrom(doc, root);
+  return there ? partName(there.document, there.body) : defaultName(doc, root);
 }
 
-function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment): { result: Results; written?: Section } {
+// What the chain of a body states (D48), nearest first, and at its end what the inserted document
+// passes on when the chain starts at a body an insertion brought (D62): the first colour, material
+// and use, and the pair (the resolved density and mass with their errors) of the first entry that
+// states either. `fromDocument`: the key of the stored document, when a field came from it.
+interface ChainResolution {
+  chain: Id[];
+  color?: string;
+  material?: string;
+  use?: BodyUse;
+  pair?: InheritedProperties['pair'];
+  fromDocument?: Id;
+}
+function resolveChain(section: Section, doc: Document, id: Id, valuesOf: (key: Id) => EntryValues, inserted: Readonly<Record<Id, InsertedBody>>): ChainResolution {
+  // the body and the bodies it was copied from, nearest first; a cycle (a document edited by hand)
+  // stops at a body seen already
+  const chain = sourceChain(doc, id);
+  const entries = chain.map((key) => ownEntry(section, key));
+  const root = chain.at(-1) ?? id;
+  const passed = has(inserted, root) ? inserted[root] : undefined;
+  let fromDocument = false;
+  const first = <K extends 'color' | 'material' | 'use'>(field: K): BodyProperties[K] => {
+    const own = entries.find((e) => e?.[field] !== undefined)?.[field];
+    if (own !== undefined || passed?.inherited[field] === undefined) return own;
+    fromDocument = true;
+    return passed.inherited[field];
+  };
+  // the density and the mass are inherited together
+  const pairAt = entries.findIndex((e) => e !== undefined && (e.density !== undefined || e.mass !== undefined));
+  let pair: InheritedProperties['pair'];
+  if (pairAt >= 0) {
+    const { values, errors } = valuesOf(chain[pairAt]);
+    pair = { ...(values.density === undefined ? {} : { density: values.density }), ...(values.mass === undefined ? {} : { mass: values.mass }), ...(Object.keys(errors).length ? { errors: errors as NonNullable<InheritedProperties['pair']>['errors'] } : {}) };
+  } else if (passed?.inherited.pair) {
+    pair = passed.inherited.pair;
+    fromDocument = true;
+  }
+  const color = first('color');
+  const material = first('material');
+  const use = first('use');
+  return {
+    chain,
+    ...(color === undefined ? {} : { color }),
+    ...(material === undefined ? {} : { material }),
+    ...(use === undefined ? {} : { use }),
+    ...(pair ? { pair } : {}),
+    ...(fromDocument && passed ? { fromDocument: passed.document } : {}),
+  };
+}
+
+// What the bodies of a document pass on to a document that inserts it (D62): what their chains
+// state, before the use is applied (an auxiliary body has no mass in the result, but a stated pair
+// passes on). Computed by the evaluator after the recompute of a stored document, with the
+// environment of its parameters (the values of the insertion put in) and its insertions.
+export function inheritedProperties(doc: Document, bodies: readonly Id[], environment: Environment, inserted: Readonly<Record<Id, InsertedBody>>): Record<Id, InheritedProperties> {
+  const section = doc.bodyProperties;
+  const valuesOf = (key: Id): EntryValues => resolveEntryFields(section[key] as Dict, FIELDS, environment);
+  return Object.fromEntries(
+    bodies.map((id) => {
+      const { color, material, use, pair } = resolveChain(section, doc, id, valuesOf, inserted);
+      return [id, { ...(color === undefined ? {} : { color }), ...(material === undefined ? {} : { material }), ...(use === undefined ? {} : { use }), ...(pair ? { pair } : {}) }];
+    }),
+  );
+}
+
+function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment, state: State): { result: Results; written?: Section } {
   // every entry once, whether its body is there or not: its numbers are written back either way
   const values = new Map<Id, EntryValues>();
   const valuesOf = (key: Id): EntryValues => {
@@ -166,34 +254,26 @@ function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, B
 
   const result: Results = {};
   for (const [id, body] of Object.entries(bodies)) {
-    // the body and the bodies it was copied from, nearest first; a cycle (a document edited by hand)
-    // stops at a body seen already
-    const chain = sourceChain(doc, id);
-    const entries = chain.map((key) => ownEntry(section, key));
-    const first = <K extends 'color' | 'material' | 'use'>(field: K): BodyProperties[K] => entries.find((e) => e?.[field] !== undefined)?.[field];
-    const use = first('use') ?? 'part';
-    const own = entries[0];
-    // the density and the mass are inherited together
-    const pairAt = entries.findIndex((e) => e !== undefined && (e.density !== undefined || e.mass !== undefined));
-    const pair = pairAt < 0 ? undefined : (entries[pairAt] as BodyProperties);
-    const { values: numbers, errors } = pairAt < 0 ? { values: {}, errors: {} as Record<string, ExpressionError> } : valuesOf(chain[pairAt]);
+    const resolved = resolveChain(section, doc, id, valuesOf, state.inserted);
+    const use = resolved.use ?? 'part';
+    const { pair } = resolved;
+    // with a mass in the pair the mass (none when its expression is in error), else density × volume
     let mass: { mass: number; massFrom: 'mass' | 'density' } | undefined;
     if (use !== 'auxiliary' && pair) {
-      if (pair.mass !== undefined) mass = numbers.mass === undefined ? undefined : { mass: numbers.mass, massFrom: 'mass' };
-      else if (numbers.density !== undefined) mass = { mass: (numbers.density * body.volume) / 1000, massFrom: 'density' };
+      if (pair.mass !== undefined || pair.errors?.mass !== undefined) mass = pair.mass === undefined ? undefined : { mass: pair.mass, massFrom: 'mass' };
+      else if (pair.density !== undefined) mass = { mass: (pair.density * body.volume) / 1000, massFrom: 'density' };
     }
-    const fieldErrors = Object.keys(errors).length ? (errors as BodyPropertiesResult['fieldErrors']) : undefined;
-    const colour = first('color');
-    const material = first('material');
+    const own = ownEntry(section, id);
     result[id] = {
       name: own?.name ?? defaultName(doc, id),
-      ...(colour === undefined ? {} : { color: colour }),
-      ...(material === undefined ? {} : { material }),
+      ...(resolved.color === undefined ? {} : { color: resolved.color }),
+      ...(resolved.material === undefined ? {} : { material: resolved.material }),
       use,
-      ...(numbers.density === undefined ? {} : { density: numbers.density }),
+      ...(pair?.density === undefined ? {} : { density: pair.density }),
       ...(mass ?? {}),
-      ...(chain.length > 1 ? { from: chain[1] } : {}),
-      ...(fieldErrors ? { fieldErrors } : {}),
+      ...(resolved.chain.length > 1 ? { from: resolved.chain[1] } : {}),
+      ...(pair?.errors ? { fieldErrors: pair.errors } : {}),
+      ...(resolved.fromDocument === undefined ? {} : { fromDocument: resolved.fromDocument }),
     };
   }
   return { result, ...(written ? { written } : {}) };

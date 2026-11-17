@@ -3,7 +3,7 @@
 // the modules of the feature types; they are not handed over in a context that would grow with them.
 import { type FaceInfo, analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
-import { LENGTH_TOLERANCE, dot3, faceKey, has, mul3, sub3, unit3 } from '../util';
+import { LENGTH_TOLERANCE, dot3, faceKey, faceNumber, has, mul3, sub3, unit3 } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
 // Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
@@ -42,6 +42,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   blendDoesNotFit: 'The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
+  insertedIssues: 'The inserted document did not recompute cleanly with the values of this insertion: a feature of it is in error or a check of it fails.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 
@@ -53,7 +54,7 @@ export function frame(ref: PlaneRef, state: State): Frame | IssueCode {
   if (ref.kind === 'base') return BASE[ref.plane];
   if (ref.kind === 'plane') return lookup(state.planes, ref.feature) ?? 'brokenReference';
   const solid = lookup(state.bodies, ref.body);
-  const id = state.faceIds.get(faceKey(ref.face));
+  const id = faceNumber(state, ref.face);
   if (!solid || id === undefined) return 'brokenReference';
   return faceFrame(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), id, state.faceInfos[id]);
 }
@@ -73,7 +74,7 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
   if (ref.kind === 'face') {
     const solid = lookup(state.bodies, ref.body);
     if (!solid) return { code: 'brokenReference', refs: [ref.body] };
-    const id = state.faceIds.get(faceKey(ref.face));
+    const id = faceNumber(state, ref.face);
     if (id === undefined || !analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance).normalSum.has(id)) return { code: 'brokenReference', refs: [ref.face] };
     const info = state.faceInfos[id];
     if (info.planar || (info.surface !== 'cylinder' && info.surface !== 'cone' && info.surface !== 'torus')) {

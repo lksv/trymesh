@@ -37,6 +37,8 @@ import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature,
 import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
 import { smallestCurvatureRadius } from '../src/generators/cycloid';
 import type { Frame } from '../src/types';
+import { faceKey } from '../src/face-roles';
+import type { FaceName } from '../src/types';
 import { midplaneFrame } from '../src/features/plane';
 
 type Entry = [id: string, curve: Curve, radius?: number];
@@ -331,7 +333,7 @@ describe('a module per feature type (D37): what the move could have changed unse
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet']);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet', 'insert']);
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
@@ -1101,6 +1103,44 @@ describe('the import of a mesh: regressions of the review of 3b (D55)', async ()
   it('a load refuses a stored mesh with more triangles than its limit before it decodes it', () => {
     const big = { positions: TETRA.positions, triangles: 'A'.repeat(16 * 100_000 + 4) };
     expect(() => validateDocument({ ...emptyDocument(), meshes: { big } })).toThrow(/document\.meshes\.big: the mesh has more than 100000 triangles/);
+  });
+});
+
+describe('review of 3c (D62): inserting another document', () => {
+  // a part with the extrusion `ring` and a pattern of its body, `p/1`
+  const XYPLANE = { kind: 'base', plane: 'XY' } as const;
+  const part = (): Document =>
+    JSON.parse(
+      JSON.stringify({
+        ...emptyDocument(),
+        parameters: [{ name: 'D', expr: '22' }],
+        features: [
+          emptySketch('S', 'S', XYPLANE),
+          { id: 'ring', name: 'Ring', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['outer'] }] }, extent: { type: 'distance', start: 0, distance: 7 }, operation: 'new' },
+          { id: 'p', name: 'Copies', suppressed: false, type: 'pattern', source: { type: 'body', body: 'ring' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: 30 } } },
+        ],
+      }),
+    );
+  const insertion = (more: Record<string, unknown> = {}): Command => ({ type: 'addFeature', feature: { id: 'b1', name: 'b1', suppressed: false, type: 'insert', document: 'a', placement: { frame: XYPLANE }, ...more } as never });
+  const stored = (): Document => [{ type: 'addDocument', id: 'a', document: part() } as Command, { type: 'addDocument', id: 'other', document: { ...part(), parameters: [] } } as Command].reduce(applyCommand, emptyDocument());
+
+  it('a listed body is checked by a command as setBodyProperties checks it, and again for another stored document', () => {
+    expect(() => applyCommand(stored(), insertion({ bodies: ['typo'] }))).toThrow(/addFeature\.feature\.bodies\[0\]: the stored document "a" cannot make the body "typo"/);
+    const doc = applyCommand(stored(), insertion({ bodies: ['p/1'] }));
+    expect(() => applyCommand(doc, { type: 'updateFeature', id: 'b1', patch: { bodies: ['ring', 'typo'] } })).toThrow(/updateFeature\.patch\.bodies\.1: the stored document "a" cannot make the body "typo"/);
+    // the list stays valid for another stored document that makes the same bodies
+    expect((applyCommand(doc, { type: 'updateFeature', id: 'b1', patch: { document: 'other' } }).features[0] as { document: string }).document).toBe('other');
+    // a load checks the form only: a list the stored document lost by a revision is the recompute's error
+    expect(validateDocument(JSON.parse(JSON.stringify({ ...doc, features: [{ ...doc.features[0], bodies: ['typo'] }] }))).features[0]).toMatchObject({ bodies: ['typo'] });
+    expect(featureRefs(doc.features[0])).toEqual([]);
+  });
+
+  it('the key of an inserted face is kept by its name object and is the key computed afresh', () => {
+    const name: FaceName = { feature: 'kit/b/ring', role: 'endCap', copy: [{ pattern: 'kit/b/p', index: 1 }] };
+    const first = faceKey(name);
+    expect(faceKey(name)).toBe(first);
+    expect(faceKey({ ...name })).toBe(first);
+    expect(first).toBe('kit/' + JSON.stringify('b/' + JSON.stringify('ring/endCap/@p:1')));
   });
 });
 

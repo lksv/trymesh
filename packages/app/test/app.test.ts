@@ -8,7 +8,7 @@
 // has to change one has changed behaviour, and says in its message what and why. To write the
 // snapshots again: `npx vitest run packages/app/test/app.test.ts -u`.
 import { writeFileSync } from 'node:fs';
-import { type Command, type PlaneFeature, emptyDocument, emptySketch } from '@trymesh/engine';
+import { type Command, type PatternFeature, type PlaneFeature, emptyDocument, emptySketch } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
 import { readZip } from '../../engine/test/zip-reader';
@@ -1049,7 +1049,9 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'YZ');
     h.type(h.field(OFFSET), '0');
     h.press('panel', 'Add a tilt');
-    h.record('a tilt of YZ about X: the axis is across the plane, invalidAxis in the preview');
+    h.record('a tilt of YZ starts about Y, the first base axis in the plane');
+    h.choose('Axis', 'X');
+    h.record('about X: the axis is across the plane, invalidAxis in the preview');
     h.choose('Axis', 'face');
     h.record('the kind of a round face arms the pick: the view picks faces');
     h.click(at(30, 25, 10));
@@ -1065,6 +1067,19 @@ describe('the app, driven as a user drives it', () => {
     expect((10 - (frame?.origin[0] ?? NaN)) * (frame?.normal[0] ?? NaN) + (15 - (frame?.origin[1] ?? NaN)) * (frame?.normal[1] ?? NaN)).toBeCloseTo(0, 6);
     h.row(second.name).click();
     h.record('selected: the summary names the face of the axis');
+
+    // a pattern of the plate about the axis of the bore, picked in the view
+    h.press('toolbar', 'Pattern');
+    h.choose('Repeat', 'body');
+    h.choose('Axis', 'face');
+    h.record('a pattern of the plate: the kind of a round face arms the pick');
+    h.click(at(11.8, 17.4, 8));
+    h.record('the bore picked: the copies turn about its axis');
+    h.press('panel', 'OK');
+    const pattern = h.engine.getState().document.features.at(-1) as PatternFeature;
+    expect(pattern.transform).toMatchObject({ type: 'circular', axis: { kind: 'face', face: { role: 'side' } } });
+    h.row(pattern.name).click();
+    h.record('selected: the summary of the pattern names the face of its axis');
     await matches(h, 'planes');
   });
 

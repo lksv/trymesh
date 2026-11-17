@@ -18,8 +18,12 @@ interface Extra {
 }
 type PlaneMode = DraftMode<PlaneFeature, Extra>;
 type TiltDraft = NonNullable<Input<PlaneFeature>['tilt']>;
-// A new tilt: about the axis X by 30°.
-const NEW_TILT: TiltDraft = { axis: { kind: 'base', axis: 'X' }, angle: Math.PI / 6 };
+// A new tilt: by 30° about the first base axis that lies in the plane the preview has (the plane
+// before a tilt), so that it does not start in error; about X when none does.
+function newTilt(normal: Vec3 | undefined): TiltDraft {
+  const axis = (['X', 'Y', 'Z'] as const).find((_, i) => normal !== undefined && Math.abs(normal[i]) < 1e-9) ?? 'X';
+  return { axis: { kind: 'base', axis }, angle: Math.PI / 6 };
+}
 
 // A plane reference as the forms show it: a base plane, a plane feature, or a face of a body.
 export const planeText = (host: PanelHost, ref: PlaneRef | Input<PlaneRef>): string =>
@@ -80,7 +84,7 @@ function planePanel(m: PlaneMode, host: PanelHost): HTMLElement[] {
         if (m.draft.tilt) m.draft = { ...m.draft, tilt: { ...m.draft.tilt, angle } };
         draftChanged(host, false);
       }),
-      h('p', { className: 'hint' }, 'The plane through the axis, turned from the base by the angle (the right-hand rule about the axis). The axis has to be parallel to the base.'),
+      h('p', { className: 'hint' }, 'The plane through the axis, turned by the angle (the right-hand rule about the axis) from the plane it tilts: the base, or the midplane. The axis has to be parallel to that plane.'),
       h(
         'div',
         { className: 'buttons' },
@@ -98,7 +102,7 @@ function planePanel(m: PlaneMode, host: PanelHost): HTMLElement[] {
         'div',
         { className: 'buttons' },
         button('Add a tilt', () => {
-          m.draft = { ...m.draft, tilt: NEW_TILT };
+          m.draft = { ...m.draft, tilt: newTilt(host.view().evaluation.features[m.draft.id]?.plane?.normal) };
           draftChanged(host);
         }),
       ),
@@ -132,12 +136,12 @@ const form: FeatureForm<PlaneFeature, Extra> = {
       if (!face || !m.draft.tilt) return host.say('The axis of a face is the axis of a cylinder, a cone or a torus; click one of them.', true);
       m.draft = { ...m.draft, tilt: { ...m.draft.tilt, axis: changeAxis(m.draft.tilt.axis, { face }, []) } };
       m.extra.picking = undefined;
-      host.say(`Axis of the tilt: ${axisLabel(host, m.draft.tilt?.axis ?? NEW_TILT.axis)}.`);
+      if (m.draft.tilt) host.say(`Axis of the tilt: ${axisLabel(host, m.draft.tilt.axis)}.`);
       draftChanged(host);
       return;
     }
     const ref = host.planeRefOf(pick);
-    if (!ref) return host.say('Základem roviny může být rovina nebo rovinná stěna.', true);
+    if (!ref) return host.say(m.extra.picking === 'midplaneWith' ? 'The second plane of a midplane is a plane or a planar face.' : 'Základem roviny může být rovina nebo rovinná stěna.', true);
     if (m.extra.picking === 'midplaneWith') {
       m.draft = { ...m.draft, midplaneWith: ref };
       m.extra.picking = undefined;

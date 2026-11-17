@@ -235,7 +235,8 @@ export interface FeatureBase {
 //    planes the plane in the middle; for planes at an angle the plane that bisects the angle,
 //    through the line where they meet: of the two such planes, the one nearer to the base (the
 //    base turned by at most 45°). With n1 and n2 the normals of the base and of the second plane:
-//    when n1 · n2 ≤ 0 the one with the normal n1 − n2, otherwise the one with the normal n1 + n2.
+//    when n1 · n2 ≤ 0 (at a right angle within 1e-4 rad included) the one with the normal n1 − n2,
+//    otherwise the one with the normal n1 + n2.
 //    So the two faces of a slab or the two sides of a drafted rib give the plane of symmetry, and
 //    a floor and the top of a part the plane in the middle; but two faces that meet at a convex
 //    edge at an inner angle above 90° (neighbouring sides of a hexagonal prism) give the plane
@@ -1323,8 +1324,9 @@ export type CommandResult =
 //   command.
 // - A string in a numeric field outside the catalog (sketch point coordinates, a radius, the value
 //   of a reference dimension) is an invalid command even though the type allows it.
-// - A reference (an object with `kind`: a plane, an axis, a face of a body) has no numeric field and
-//   is taken as it is (the index of a copy in a face name is a number, never an expression).
+// - An object with `kind` (a reference such as a plane, an axis or a face of a body, or a solved
+//   value such as a projected curve) holds no field that takes an expression and is taken as it is
+//   (the index of a copy in a face name is a number, never an expression).
 export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
 export type Command =

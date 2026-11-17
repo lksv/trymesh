@@ -42,7 +42,8 @@ function turnedAbout(v: Vec3, d: Vec3, angle: number): Vec3 {
 const clean = (v: Vec3): Vec3 => [v[0] + 0, v[1] + 0, v[2] + 0]; // no negative zero
 
 // The midplane of two frames (step 2). With n1, n2 the normals and s1, s2 the signed distances from
-// the two planes: when n1 · n2 ≤ 0 (the normals look away from each other) the plane s1 = s2, normal
+// the two planes: when n1 · n2 ≤ sin(ANGLE_TOLERANCE) (the normals look away from each other, or are at
+// a right angle within the tolerance) the plane s1 = s2, normal
 // n1 − n2; otherwise the plane s1 = −s2, normal n1 + n2. So the bisector nearer to the base (turned
 // by at most 45° from it), and for parallel planes the plane in the middle with the normal of the
 // base. The frame is that of `base` turned by the smallest rotation that takes its normal to the
@@ -50,7 +51,10 @@ const clean = (v: Vec3): Vec3 => [v[0] + 0, v[1] + 0, v[2] + 0]; // no negative 
 // sum or the difference is at least √2 long.
 export function midplaneFrame(base: Frame, second: Frame): Frame {
   const [n1, n2] = [base.normal, second.normal];
-  const apart = dot3(n1, n2) <= 0;
+  // planes at a right angle within the angle tolerance count as at a right angle: the product of
+  // perpendicular normals turned by a rotation that is not about an axis of the model is noise of
+  // either sign, and the bisector must not depend on it
+  const apart = dot3(n1, n2) <= Math.sin(ANGLE_TOLERANCE);
   const m = apart ? sub3(n1, n2) : add3(n1, n2);
   const length = len3(m);
   const normal = mul3(m, 1 / length);

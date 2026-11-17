@@ -343,6 +343,7 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
           if (typed !== undefined && JOINT_DRIVE_FIELDS[form.type].some((field) => field.path === path && field.spec.unit === spec.unit)) form.numbers[path as NumberPath] = typed;
         }
         form.type = next;
+        if (next === 'fixed') form.picking = false; // a fixed joint has no axis to pick
         rebuild();
       },
     },
@@ -396,11 +397,13 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
   ];
 }
 
+// Is the form of a joint waiting for a round face for its axis (D60)? The view then picks faces only.
+export const jointPicksFace = (panel: MechanismPanel): boolean => panel.form?.kind === 'joint' && panel.form.picking === true && panel.form.type !== 'fixed';
 // A click in the view while the joint form picks the axis of a round face (D60): true when the form
 // took it (a face that is not round is refused with a message, and the pick stays armed).
 export function takeMechanismSelection(host: PanelHost, panel: MechanismPanel, pick: ViewPick): boolean {
   const form = panel.form;
-  if (form?.kind !== 'joint' || !form.picking) return false;
+  if (!jointPicksFace(panel) || form?.kind !== 'joint') return false;
   const face = roundFaceOf(host, pick);
   if (!face) {
     host.say('The axis of a joint can be the axis of a cylinder, a cone or a torus; click one of them.', true);

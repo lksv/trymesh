@@ -178,7 +178,9 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
     const out: HTMLElement[] = [
       choice([...BASE_AXES.map((axis) => [axis, axis] as const), ['point', 'Through a sketch point'] as const, ['line', 'Along a sketch line'] as const, ['face', 'The axis of a round face'] as const], chosen, (key) => {
         form.set(path, key === undefined ? undefined : key === 'point' ? { kind: 'sketchPoint' } : key === 'line' ? { kind: 'sketchLine' } : key === 'face' ? { kind: 'face' } : { kind: 'base', axis: key }, true);
+        // the kind of a face arms the pick of the view; another kind stops a pick armed for it
         if (key === 'face') form.arm(path);
+        else if (samePath(form.armed, path)) form.arm(undefined);
       }),
     ];
     if (current.kind === 'face') {

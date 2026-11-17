@@ -132,6 +132,39 @@ describe('the sense of the axis of a round face: the one its build gives it', ()
     expect(onAxis(mirrored, [20, 0, -15])).toBeLessThan(1e-9);
   });
 
+  // review of D60: a pattern of features builds the tool again in the frame of the copy, so `along`
+  // comes from the transformed frame there and not from `transformFace`
+  it('a mirrored copy of a hole and of a cut, built again in the mirrored frame: the sense is the mirror image', () => {
+    const engine = plate();
+    run(
+      engine,
+      addSketch('T', onFace('plate', { feature: 'plate', role: 'endCap' })),
+      { type: 'addPoint', sketch: 'T', id: 'hp', x: -10, y: 5 },
+      { type: 'addFeature', feature: { id: 'h', name: 'h', suppressed: false, type: 'hole', sketch: 'T', points: ['hp'], shape: { type: 'plain', diameter: 3 }, extent: { type: 'distance', start: 0, distance: -4 }, targets: ['plate'] } },
+      { type: 'addPoint', sketch: 'T', id: 'cc', x: 10, y: 0 },
+      { type: 'addCurve', sketch: 'T', id: 'boreCircle', curve: { type: 'circle', center: 'cc' }, radius: 3 },
+      { type: 'addFeature', feature: { id: 'bore', name: 'bore', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'T', regions: [{ outerLoop: ['boreCircle'] }] }, extent: { type: 'distance', start: 0, distance: -4 }, operation: 'cut', targets: ['plate'] } },
+      { type: 'addFeature', feature: { id: 'mid', name: 'mid', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 5 } },
+      { type: 'addFeature', feature: { id: 'M', name: 'M', suppressed: false, type: 'pattern', source: { type: 'features', features: ['h', 'bore'] }, transform: { type: 'mirror', plane: { kind: 'plane', feature: 'mid' } } } },
+    );
+    const copy = [{ pattern: 'M', index: 1 }];
+    // the originals are drilled from the top (up), the copies from the bottom (down), on the same lines
+    nearV(resolved(jointAxis(engine, face('plate', { feature: 'h', role: 'holeBore', point: 'hp' }), 'plate', 'pin')).direction, [0, 0, 1]);
+    const hole = resolved(jointAxis(engine, face('plate', { feature: 'h', role: 'holeBore', point: 'hp', copy }), 'plate', 'pin'));
+    nearV(hole.direction, [0, 0, -1]);
+    expect(onAxis(hole, [-10, 5, 0])).toBeLessThan(1e-9);
+    const cut = resolved(jointAxis(engine, face('plate', { feature: 'bore', role: 'side', curve: 'boreCircle', copy }), 'plate', 'pin'));
+    nearV(cut.direction, [0, 0, -1]);
+    nearV(cut.origin, [10, 0, 0]);
+  });
+
+  it('a body that is gone is a broken reference naming the body', () => {
+    const engine = plate();
+    run(engine, { type: 'setLink', id: 'la', bodies: ['plate'] }, { type: 'setLink', id: 'lb', bodies: ['pin'] }, { type: 'setJoint', id: 'j', joint: { type: 'continuous', parent: 'la', child: 'lb', axis: face('pin', side('pin')), value: 0 } });
+    const state = preview(engine, { type: 'setSuppressed', id: 'pin', suppressed: true });
+    expect(state.evaluation.mechanism.joints.j.error).toMatchObject({ code: 'brokenReference', refs: ['pin'] });
+  });
+
   it('a revolve: the direction of its axis; a torus has an axis, a sphere and a plane have none', () => {
     const engine = plate();
     const point = (s: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
@@ -183,6 +216,22 @@ describe('the axis of a round face for every consumer', () => {
     expect(along.evaluation.bodies['L/1'].bounds.min[2] - along.evaluation.bodies.block.bounds.min[2]).toBeCloseTo(7, 4);
     const flat = preview(engine, { type: 'addFeature', feature: { id: 'F', name: 'F', suppressed: false, type: 'pattern', source: { type: 'body', body: 'block' }, transform: { type: 'circular', axis: face('plate', { feature: 'plate', role: 'endCap' }), count: 2, span: { type: 'full' } } } });
     expect(flat.evaluation.features.F.error?.code).toBe('invalidAxis');
+  });
+
+  it('a revolve about the axis of a face that lies in the plane of its sketch', () => {
+    const engine = plate();
+    const point = (id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch: 'R', id, x, y });
+    run(
+      engine,
+      addSketch('R', { kind: 'base', plane: 'XZ' }),
+      ...([['r1', 25, 30], ['r2', 28, 30], ['r3', 28, 35], ['r4', 25, 35]] as const).map(([id, x, y]) => point(id, x, y)),
+      ...(['a', 'b', 'c', 'd'] as const).map((id, i): Command => ({ type: 'addCurve', sketch: 'R', id, curve: { type: 'line', a: `r${i + 1}`, b: `r${((i + 1) % 4) + 1}` } })),
+    );
+    // the pin's axis, along Z through (20, 0), lies in XZ: a ring about it
+    const state = preview(engine, { type: 'addFeature', feature: { id: 'ring', name: 'ring', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'R', regions: [{ outerLoop: ['a', 'b', 'c', 'd'] }] }, axis: face('pin', side('pin')), extent: { type: 'full' }, operation: 'new' } });
+    expect(state.evaluation.features.ring.status).toBe('ok');
+    nearV(state.evaluation.features.ring.facts?.axisDirection as Vec3, [0, 0, 1]);
+    expect(onAxis({ origin: state.evaluation.features.ring.facts?.axisPoint as Vec3, direction: [0, 0, 1] }, [20, 0, 0])).toBeLessThan(1e-9);
   });
 
   it('a plane tilted about the axis of a face: the axis has to be parallel to the plane', () => {

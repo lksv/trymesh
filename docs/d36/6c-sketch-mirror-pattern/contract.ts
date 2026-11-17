@@ -41,14 +41,15 @@ import type { DerivedKindSpec, EntryGeometry, ReferenceUi, SketchHostStandIn, Sk
 //   along the second `i + 1000 · j`, as a pattern of features does (D53). A higher count adds
 //   copies and moves none of the others with a `spacing`, so the regions and faces named by a copy
 //   stay; a lower count removes the highest, and what names them is a broken reference.
-// - A copy that occupies what a curve before it occupies (its source, an own or projected curve, an
-//   earlier copy; a line on
+// - A copy that occupies what a curve before it that forms regions occupies (its source, an own
+//   curve, a projected curve that forms regions, an earlier copy that kept them; a line on
 //   the axis of a mirror, a circle at the centre of a circular pattern) forms no regions; it is still
 //   there under its ID. A half circle whose ends lie on the axis is not such a copy: its image is the
 //   other half.
 // - The ends of the copied curves join the ends of curves at their place (within 1e-6 mm): the ends
-//   of other copies, of this entry or another, and an own or projected end, unless two own ends there
-//   are not one point already (then none). So a half drawn up to the axis of a mirror closes with its
+//   of other copies, of this entry or another, and the end of an own or projected curve that forms
+//   regions, unless two such ends there are not one point already (then none). A copy keeps the
+//   joins of its source: a copied end takes along the own points a coincident joins it with. So a half drawn up to the axis of a mirror closes with its
 //   image into one region, a chain whose end the pattern carries onto its own start closes into
 //   a ring, and two mirrors about one axis close with each other. Put the ends of a mirrored half on
 //   the axis by a constraint.
@@ -178,28 +179,39 @@ export declare function copiesOf(id: Id, transform: SketchTransform, solved: Sol
 // - points: every copy of every point of the listed curves and every listed point;
 // - curves: every copy of every listed curve that is there, over the copies of its points; a circle
 //   gets the radius of its source; a reflected arc swaps its ends;
-// - regions: a copy of a curve that is not a construction curve, unless it occupies what a curve
-//   before it occupies (`occupies`: a curve of the list before the derived stage, or an earlier
-//   copy of any entry), found through a grid of cells by the midpoint;
-// - no joins and no keys of its own: the ends of copies are joined in one stage after every entry
-//   (`imageJoins`), which 6a's per-entry `joins` cannot do (two entries about one axis).
+// - points also: the own points that the coincidents of the sketch join with a copied end (its
+//   vertex class), so that a corner joined through a point between two ends stays one;
+// - regions: a copy of a curve that is not a construction curve; the occupation pass of `deriveAll`
+//   may take them away (`occupies`);
+// - joins (6a's `EntryGeometry.joins`): the coincidents of the sketch between two points it copies,
+//   copy by copy (the source's joins carried); no keys. The joins by position are one stage after
+//   every entry (`imageJoins`), which an entry cannot do alone (two entries about one axis).
 // A source that is not an own curve or point is skipped and named in the warning, with the copies
 // of the rest made. Nothing is stored or stamped.
 export declare function derivePattern(id: Id, ref: SketchPattern, solved: SolvedOwn): EntryGeometry | DerivedFailure;
 export const patternKind: Pick<DerivedKindSpecAfter<SketchPattern>, 'derive'> = { derive: derivePattern };
 
-// The join stage after every derived entry (in the step, before the joins of the whole sketch):
+// The occupation pass, in `deriveAll` after every entry, in the order of `external` and within an
+// entry by copy number: a copy that kept `regions` loses them when it occupies a curve that forms
+// regions and comes before it (an own curve that is not construction, a reference curve with
+// `regions`, a copy that kept them). Construction curves, projected edges and the axes do not
+// count: they bound nothing. Found through a grid of cells by the midpoint, not all against all.
+//
+// The join stage after the occupation pass (in the step, before the joins of the whole sketch):
 // - only ends of curves take part (a line's `a`, `b`, an arc's `start`, `end`): a copied point alone
-//   and a centre join nothing, since they are no vertex of a profile;
-// - the ends of copies, of every entry, are grouped by position (within the length tolerance,
-//   transitively, through a grid of cells);
-// - a group joins the ends of the curves that are not copies (own, `origin`, reference; not hidden
-//   points) within the tolerance of one of its members when those ends are one vertex already by the
-//   joins before the derived stage (`SolvedOwn.joins`), and none of them otherwise.
+//   and a centre join nothing by position, since they are no vertex of a profile;
+// - the ends of copies, of every entry, are paired with each other when within the length
+//   tolerance (each pair as found, so every pair is within it), through a grid of cells;
+// - a group of copy ends (those pairs, transitively) is paired with the ends of the curves that are
+//   not copies and form regions (own not construction, reference with `regions`) within the
+//   tolerance of one of its members, each pair from the member it is near, when those ends are one
+//   vertex already by the joins before the derived stage (`SolvedOwn.joins`), and with none of them
+//   otherwise. Ends of curves that form no regions (a construction axis, a projected edge, the axes
+//   of the origin) neither join nor prevent a join.
 // So two own points that are two vertices today stay two (a copy never welds them), and a profile
-// can change only where the ends of copies are. The pairs go to 6a's `joinPairs` with the others;
-// the wall, which reads own curves only, reads the joins before the derived stage.
+// can change only where the ends of copies are. The pairs go to 6a's `joinPairs` with the others.
 export declare function imageJoins(copies: ReadonlyMap<Id, EntryGeometry>, solved: SolvedOwn): [Id, Id][];
+export declare function occupation(copies: ReadonlyMap<Id, EntryGeometry>, solved: SolvedOwn): void;
 
 // What a curve occupies, compared within the length tolerance: a line its segment (either way),
 // a circle its centre and radius, an arc its centre and its two ends in order (both run
@@ -213,14 +225,16 @@ export declare function occupies(a: CurveShape, b: CurveShape, at: (point: Id) =
 // 3. every derived entry in the order of `external`: its geometry added to the geometry, its curves
 //    to the list (`source: 'derived'`, `regions` from the entry); a failure a warning `brokenCopies`
 //    with the entry first in `refs` (and the geometry it could make);
-// 4. `imageJoins`, then the joins of the whole sketch, the profile, the result
+// 4. `occupation`, `imageJoins`, then the joins of the whole sketch, the profile, the result
 //    (`SketchResult.curves` with the copies, `points` and `radii` with their positions).
 // The solver runs at every recompute, as today; the copies are not in its input, so the stamp does
 // not change with the count, the stored positions stay, and only the number of the count is written
 // back. The analysis of freedom does not see the copies.
 // A sketch tool (the fillet, 6e) that follows regions in memory builds `SolvedOwn` without the
 // solver: the positions of `context.result` with the tool's new points, the reference curves from
-// `result.curves`, the counts as the document holds them.
+// `result.curves`, the counts as the document holds them, each raised to the highest copy number
+// a stored region of a feature over the sketch names (so the face rule sees the copies those
+// regions name, made or not).
 export declare function deriveAll(feature: SketchFeature, solved: SolvedOwn): { geometry: Map<Id, EntryGeometry>; joins: [Id, Id][]; warnings: DerivedFailure[] };
 
 // ================================================================ 3. the slots of 6a that 6c writes
@@ -278,21 +292,27 @@ export declare function derivedPoints(id: Id, ref: EdgeProjection): Id[];
 //   `COPY_IN_TOOL` (the tools ask for own curves and points already; the text says why).
 // - A source changed by a tool: the batch also patches every derived entry that lists a curve the
 //   tool changes, with `updateExternal` of `entryInput` (its expressions kept): the pieces a split
-//   or a trim leaves are listed in the place of the cut curve; a curve the batch adds or changes
-//   whose two ends are ends of listed curves after the patch is added (the arc of a fillet between
-//   its two lines, the arc of a notch between the two pieces of a trimmed edge); a curve removed
-//   whole leaves the list (an entry left with no source keeps its last one and is listed in
-//   `broken`). So the copies keep the shape of their source.
+//   or a trim leaves are listed in the place of the cut curve; a curve the batch makes (a new curve,
+//   or a piece of a curve it cuts: the arc of a fillet, the arc a notch circle becomes) whose two
+//   ends are, after the patch, ends of curves listed by any entry is added to each entry that lists
+//   a curve at one of its ends (an own curve the batch only re-points or extends is never added);
+//   a curve removed whole leaves the list (an entry left with no source keeps its last one). So the
+//   copies keep the shape of their source.
+// - An end a trim cuts off stays when an entry names it (a listed point, the centre of a circular
+//   pattern), as when a constraint names it (6e's rule of old ends); an entry whose axis, direction
+//   or centre the batch removes is in `entries`, and the features that name copies of what the batch
+//   removes are in `broken`.
 // - The regions of features over copies follow: the fillet adds `<entry>/<n>/<arc>` to every
 //   stored region that holds `<entry>/<n>/<line1>` and `<entry>/<n>/<line2>` for the same `n`,
 //   whatever the count (the numbers are read from the region, so a region of a copy above the count
 //   is patched too and is right when the count comes back); 6e's rule of the faces runs over the
 //   profile with the derived entries (`deriveAll` over the sketch as the batch leaves it, and as it
-//   was), so a region of copies is followed as a region of own curves is; a stored region of a copy
-//   that is not there now is rewritten by names, as 6e rewrites regions of an invalid sketch.
+//   was), with the counts raised to the copies the stored regions name, so a region of copies is
+//   followed as a region of own curves is, also one of a copy above the count.
 // - `moved` and `shortened` name a feature on a side face of a copy of a changed line as they name
 //   one on a side face of the line (a copy of a line starts at the copy of its `a`).
-// - `ids.entries` lists the entries patched.
+// - `ids.entries` lists the entries patched, and those left without their axis, direction or
+//   centre.
 export const COPY_IN_TOOL = (curve: Id, entry: Id, source: Id): string => `"${curve}" is a copy of the mirror or pattern "${entry}"; change its source "${source}", and the copies follow`;
 export interface CopyPatchIds {
   entries: Id[];

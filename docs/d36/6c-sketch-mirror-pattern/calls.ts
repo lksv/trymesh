@@ -15,7 +15,8 @@
 // mirror is about a vertical construction line `ay` from the origin (with a length, so the sketch is
 // fully determined), row A runs along the bottom line `c1`, and row B along a horizontal
 // construction line `dir` of its sketch. The test of the whole scenario, after 6b, uses `origin/y`
-// and `origin/x` in their places and nothing else changes. The numbers in the comments were measured
+// and `origin/x` in their places, and the refusal `p8` (a mirror about `origin/y`, refused before
+// 6b) goes. The numbers in the comments were measured
 // so (design.md, "Measured": the derive prototyped in the scratchpad, the copies put into the real
 // `detectProfile`, the sketches solved by the real planegcs adapter).
 // The grip flank of step 4 is a spline of 6d; here it is a line, so that the volume can be computed
@@ -325,6 +326,12 @@ export function gearSketch(): StateAfter {
   return run(point(s, 't0', ...polar(20, 0)), point(s, 't1', ...polar(24, 5)), point(s, 't2', ...polar(24, 10)), point(s, 't3', ...polar(20, 15)), line(s, 'l1', 't0', 't1'), line(s, 'l2', 't1', 't2'), line(s, 'l3', 't2', 't3'));
 }
 export const toothRing = (): CommandAfter => addPattern('gear', 'teeth', { type: 'pattern', sources: ['l1', 'l2', 'l3'], transform: { type: 'circular', center: 'origin', count: 24, span: { type: 'full' } } });
+export function ring(): boolean {
+  gearSketch();
+  const closed = run(toothRing());
+  const open = done(engine.preview({ type: 'setField', feature: 'gear', path: 'external/teeth/transform/count', value: 23 }));
+  return regionsOf(closed, 'gear').length === 1 && regionsOf(closed, 'gear')[0].length === 72 && resultOf(closed, 'gear').valid && regionsOf(open, 'gear').length === 0;
+}
 
 // ================================================================ a grid
 

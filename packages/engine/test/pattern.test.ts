@@ -424,7 +424,7 @@ describe('rigid transforms', () => {
       near(cylinder.axis, [0, 1, 0]);
     }
     const swept = transformFace(quarter, { planar: false, surface: 'swept', axis: [1, 0, 0] });
-    if (!swept.planar) near(swept.axis, [0, 1, 0]);
+    if (!swept.planar && swept.surface === 'swept') near(swept.axis, [0, 1, 0]);
   });
 
   it('a reflection in a plane: points of the plane stay, twice is the identity, the determinant is −1', () => {

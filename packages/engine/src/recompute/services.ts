@@ -1,7 +1,7 @@
 // What the steps of the feature types share: reading the state (a frame of a plane reference, an
 // axis), applying a tool to its targets, the texts of issues. Functions over the state, imported by
 // the modules of the feature types; they are not handed over in a context that would grow with them.
-import { analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
+import { type FaceInfo, analyzeBody, faceFrame, mirrors, onSurface, toWorld, turnedOver, volumeOf } from '../solid';
 import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel, Vec3 } from '../types';
 import { faceKey, has } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
@@ -34,6 +34,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   invalidExtent: 'The extrusion cannot reach the plane it is to end in.',
   invalidHole: 'The dimensions do not make a hole.',
   invalidPattern: 'The counts, the directions and the spans do not make a pattern.',
+  importedTarget: 'A target is an imported mesh, which no feature may change.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };
@@ -67,6 +68,8 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
 // alone, so any feature that produces a tool (an extrusion today) is applied the same way, and
 // a pattern applies it again in another placement.
 // - A missing target is a broken reference.
+// - A target that has a face of an imported mesh (the body of a mesh feature, or a copy of it) is
+//   the error `importedTarget` with those targets in `refs`, before anything is built (D55).
 // - A cut that would remove a whole target is an error and changes none of them.
 // - Targets the tool did not change are returned in `unchanged`. When it changed none, its faces
 //   are in no body and do not enter the face table either.
@@ -79,6 +82,8 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
 export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel, placement?: Placement): Applied {
   const missing = recipe.targets.filter((target) => !lookup(model.bodies, target));
   if (missing.length || recipe.targets.length === 0) return { ok: false, code: 'brokenReference', refs: missing.length ? missing : [recipe.targets] };
+  const imported = recipe.targets.filter((target) => isImported(model.bodies[target], model.faceInfos));
+  if (imported.length) return { ok: false, code: 'importedTarget', refs: imported };
   const first = model.faceNames.length;
   const bodies = { ...model.bodies };
   const unchanged: Id[] = [];
@@ -114,6 +119,19 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
   if (unchanged.length === recipe.targets.length) return { ok: true, model, unchanged };
   if (tool.refuseChange) return { ok: false, code: tool.refuseChange.code, refs: recipe.targets.filter((target) => !unchanged.includes(target)), detail: tool.refuseChange.detail };
   return { ok: true, model: { ...withFaces(model, tool, first), bodies }, unchanged };
+}
+
+// Has a body a face of an imported mesh (D55)? No feature changes such a body: the kernel keeps flush
+// faces safe only for faces it knows as planar, and a flat region of an imported mesh is not one.
+export function isImported(solid: Solid, faceInfos: readonly FaceInfo[]): boolean {
+  let last = -1;
+  for (const face of solid.faceIds) {
+    if (face === last) continue;
+    last = face;
+    const info = faceInfos[face];
+    if (!info.planar && info.surface === 'mesh') return true;
+  }
+  return false;
 }
 
 // The result of a feature that applied its tool to its targets (an extrusion that adds or cuts,

@@ -1590,4 +1590,68 @@ describe('the app, driven as a user drives it', () => {
     }
     await matches(h, 'parts-list');
   });
+
+  it('a bought part from an STL file: the form, the import, the placement on a point of a sketch, a reference part, the stored meshes in the panel (D55)', async () => {
+    const h = await start();
+    // a tetrahedron, its four faces outwards, as binary STL
+    const corners = [
+      [0, 0, 0, 0, 10, 0, 10, 0, 0],
+      [0, 0, 0, 10, 0, 0, 0, 0, 10],
+      [0, 0, 0, 0, 0, 10, 0, 10, 0],
+      [10, 0, 0, 0, 10, 0, 0, 0, 10],
+    ];
+    const bytes = new Uint8Array(84 + 50 * corners.length);
+    const data = new DataView(bytes.buffer);
+    data.setUint32(80, corners.length, true);
+    corners.forEach((triangle, t) => triangle.forEach((value, k) => data.setFloat32(84 + 50 * t + 12 + 4 * k, value, true)));
+    const choose = async (name: string, content: Uint8Array<ArrayBuffer>): Promise<void> => {
+      const input = h.document.getElementById('mesh-file') as HTMLInputElement;
+      const FileOf = (h.document.defaultView as unknown as { File: typeof File }).File;
+      Object.defineProperty(input, 'files', { value: [new FileOf([content], name)], configurable: true });
+      const before = Object.keys(h.engine.getState().document.meshes).length;
+      const status = h.document.getElementById('status') as HTMLElement;
+      const said = status.textContent;
+      h.type(input, '', true);
+      await until(() => Object.keys(h.engine.getState().document.meshes).length > before || status.textContent !== said, 'the import');
+    };
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.record('a sketch with a rectangle: its corners are points a frame can be');
+    h.press('toolbar', 'Mesh');
+    h.record('the button Mesh without a stored mesh: the form says to import a file, OK is disabled');
+    await choose('broken.stl', bytes.slice(0, 100));
+    h.record('a file that is no STL: the status line says why, nothing is stored');
+    await choose('tetra 1.stl', bytes);
+    h.record('the tetrahedron imported: one undo step (addMesh), the report in the status line, the form uses it, the preview places it on XY');
+    h.choose('Frame', 'point');
+    h.record('a point of a sketch as the frame: the latest sketch, its origin');
+    const corner = Object.keys((h.engine.getState().document.features[0] as { points: Record<string, unknown> }).points)[2];
+    h.choose('Point', corner);
+    h.type(h.field(OFFSET), '5');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '90');
+    h.timers();
+    h.record('a corner of the rectangle, 5 mm up, turned by 90°: the facts of the preview say where the origin and the axes are');
+    h.press('panel', 'OK');
+    h.record('confirmed: one batch, the feature and the use reference (a bought part)');
+    expect(h.engine.getState().evaluation.bodyProperties.m1?.use).toBe('reference');
+    doubleClick(h, 'Mesh 1');
+    h.record('the feature edited: every number shown, a zero for one it does not have, no box of a bought part');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '0');
+    h.timers();
+    h.press('panel', 'OK');
+    h.record('the turn set back to zero: the patch removes it');
+    expect(h.engine.getState().document.features[1]).toMatchObject({ placement: { z: 5 } });
+    expect('rz' in (h.engine.getState().document.features[1] as { placement: object }).placement).toBe(false);
+    h.row('Mesh 1').click();
+    h.press('panel', 'Smazat');
+    h.record('the feature deleted: the stored mesh is not placed, the panel offers to remove it');
+    titled(h, 'Remove the stored mesh from the document').click();
+    h.record('the stored mesh removed; the properties of the body stay, listed as without a body');
+    expect(h.engine.getState().document.meshes).toEqual({});
+    await matches(h, 'mesh');
+  });
 });

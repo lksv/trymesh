@@ -13,6 +13,9 @@ import {
   DATA_CATALOGS,
   EXPORT_FORMATS,
   type AnyExportFormat,
+  IMPORT_FORMATS,
+  type AnyImportFormat,
+  MESH_LIMITS,
   GENERATORS,
   type AnyQuery,
   type ArgKind,
@@ -73,6 +76,9 @@ const CONVENTIONS = [
     '(3) `{ type: "mirror", plane }` makes one copy, number 1 (`<pattern>/1` for a body; `<pattern>/2` is refused), the mirror image in `plane`, a plane reference as for a sketch (a base plane, `{ kind: "plane", feature }`, or a planar face, of which the whole plane counts); no count. The plane of symmetry of a part is best a base plane or a plane feature offset by an expression (`offset: "L / 2"`). A mirrored copy is the mirror image as a set of points; its faces have the names of the source faces they are images of, with the copy tag, so what a name says by a sense of rotation is reversed (the `wallSide` `left` lies right of the image of its curve, the `holeFlat`s run clockwise), and a sketch on one of its faces has a right-handed frame of its own (its x runs the other way than the image of a sketch on the source face). The ends `a` and `b` of a projected edge of any copy are read from the sketch that projects it, not derived from the source. ' +
     '`count` (circular, linear) includes the original, so 4 holes around a circle are count 4 and three more copies. A change of the kind keeps the IDs of the copies and the tags of their faces: what stands on copy 1 then stands on the copy of the new kind. A copy of a feature goes to the targets of its source and a copy of a body is the body as it is at the pattern, so what a mirrored half should also get is modelled before the mirror. A grid is the second direction of a linear pattern, of features or of a body; four corners from one are two mirrors and a circular pattern of count 2 about the line where the two planes meet, or, for a body, mirrors of the copies. ' +
     'The pattern is atomic: if one copy fails, the pattern is in error, the model stays as it was before it and `refs` of the error start with `{ copy, feature }`. Copies that leave some of their targets unchanged are listed in the warning `noEffect` as `{ copy, feature, targets }` with those targets; a copy that falls onto what is cut already (the last of 5 copies over an angle of 2π lands on the original) is one of them. A pattern of features takes one boolean per copy and target on a body that keeps growing: tens of copies are fine, 200 holes take tens of seconds; a pattern of a body is cheap.',
+  'A bought part as a mesh (D55): the tool import_mesh reads an STL file into a stored mesh of the document (section Sections of the document, `meshes`; the command addMesh, which the tool sends) and answers with the batch that places it: a feature of the type mesh (its `placement`: a frame, which may be a sketch point such as the centre of the bolt pattern of a motor, then offsets and turns in it) and setBodyProperties with `use: "reference"`; add the `mass` of its data sheet there. ' +
+    'An imported body has one face, `{ feature, role: "mesh" }`, for its whole surface and no edges: no sketch or plane stands on it (nonPlanarFace), nothing of it is projected, and no extrusion, hole or pattern of them may have it, or a copy of it, as a target (the error importedTarget). Draw what fits it (a bolt pattern) from the data sheet and check it against the body with check_interference and the query gap; its surface counts as round, so an overlap shallower than the chord tolerance is a fit. ' +
+    `A real collision with a large mesh takes seconds (more the deeper it is); an import reads at most ${MESH_LIMITS.triangles} triangles. get_document leaves the data of a stored mesh out; get_model lists the stored meshes and what uses them.`,
   'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
   'Promítnutá hrana (addExternal) je ve skice pevná křivka: úsečka má odvozené body `<id>/a` a `<id>/b`, kružnice `<id>/center`. Jde k nim vázat a kótovat.',
   'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
@@ -204,6 +210,7 @@ export function apiDescription(): {
   operations: QueryDescription[];
   catalogs: ReturnType<typeof dataCatalogs>;
   exports: ReturnType<typeof exportFormats>;
+  imports: ReturnType<typeof importFormats>;
   sections: ReturnType<typeof documentSections>;
   types: string;
 } {
@@ -219,6 +226,7 @@ export function apiDescription(): {
     operations: hostOperations(),
     catalogs: dataCatalogs(),
     exports: exportFormats(),
+    imports: importFormats(),
     sections: documentSections(),
     types: engineTypes(),
   };
@@ -368,9 +376,21 @@ export function exportFormats(): { format: string; title: string; summary: strin
   }));
 }
 
+// The import formats of the engine's catalog (the tool import_mesh reads them) with their extensions
+// and options.
+export function importFormats(): { format: string; title: string; summary: string; extensions: string[]; options: { name: string; description: string }[] }[] {
+  return Object.entries(IMPORT_FORMATS as Record<string, AnyImportFormat>).map(([format, spec]) => ({
+    format,
+    title: spec.title,
+    summary: spec.summary,
+    extensions: [...spec.extensions],
+    options: Object.entries(spec.options).map(([name, option]) => ({ name, description: `${argumentText(option)}${option.summary ? `. ${option.summary}` : ''}` })),
+  }));
+}
+
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, sections, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, sections, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -428,7 +448,7 @@ export function apiText(): string {
     ...expressions.constants.map((constant) => `- ${constant.name}: ${constant.summary}`),
     '',
     '# Sections of the document',
-    'Parts of the document beside the timeline, keyed by an ID of the model; a change of one recomputes no geometry. Each is changed by its own commands (shapes in the types below) and read from `evaluation` of the state and from get_model.',
+    'Parts of the document beside the timeline, keyed by an ID; a change of one recomputes no geometry, but for a stored mesh, which the mesh features that place it read. Each is changed by its own commands (shapes in the types below) and read from `evaluation` of the state and from get_model.',
     ...sections.map((entry) => [`- ${entry.section} (${entry.title}): ${entry.summary}`, `  commands: ${entry.commands.join(', ')}`, ...(entry.fields.length ? [`  numeric fields: ${entry.fields.join('; ')}`] : [])].join('\n')),
     '',
     '# Numeric fields',
@@ -456,6 +476,10 @@ export function apiText(): string {
     '# Export formats',
     'The tool export `{ format, path, options?, overwrite?, at?, after? }` writes the model in one of these formats (it needs a disk, so it is a tool of the server). Bodies are exported as modelled. All options are optional unless said otherwise.',
     ...exports.map((entry) => [`- ${entry.format} (${entry.title}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
+    '',
+    '# Import formats',
+    `The tool import_mesh \`{ path, format?, options?, id?, name? }\` reads a file of one of these formats into a stored mesh (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. The file has to hold a closed solid; the import leaves out the walls between solids stacked in the file and turns over shells written inside out, and refuses anything else that is not closed. At most ${MESH_LIMITS.triangles} triangles.`,
+    ...imports.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

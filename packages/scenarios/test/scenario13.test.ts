@@ -9,6 +9,8 @@
 // arm with inserts under the screws and three feet (docs/d36/3e-parts-list/calls.ts). The part of 5b
 // (D59): "the arm as URDF and as MJCF" with the drive of each joint (docs/d36/5b-robot-export/calls.ts);
 // its picture of a pose that is not written is in packages/mcp/test/view-image.test.ts.
+// The part of 3b (D55): the motor as the mesh of a bought part, read from an STL file and placed at
+// the centre of its bolt pattern (docs/d36/3b-mesh-import/calls.ts).
 //
 // The model, every shape a cylinder along Z from a circle of its own sketch on XY (mm):
 // - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder (0, 0), up to z = 8.
@@ -18,7 +20,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO, IMPORT_FORMATS, type ImportOutcome, type IndexedMesh, MESH_LIMITS, type MeshFeature, type MeshReport, PLACEMENT_FIELDS, type StoredMesh, importMesh, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, withoutWalls } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -227,12 +229,12 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: version 6, the step of the section before the one of 5a, and a field this build does not know is refused', () => {
-    // master after the merge of 5a: no step is pending, the step of 3a is the one before the last
+  it('e. save and load: version 7, the step of the section before those of 5a and 3b, and a field this build does not know is refused', () => {
+    // master after the merge of 3b: no step is pending; the steps of 5a and 3b come after the one of 3a
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.map((step) => step.name).slice(-2)).toEqual(['3a-body-properties', '5a-mechanism']);
+    expect(UPGRADES.map((step) => step.name).slice(-3)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import']);
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaVersion).toBe(6);
+    expect(saved.schemaVersion).toBe(7);
     expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
@@ -555,11 +557,11 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     engine.undo();
   });
 
-  it('f. save and load: version 6, a field this build does not know is refused, a removed axis loads', () => {
+  it('f. save and load: version 7, a field this build does not know is refused, a removed axis loads', () => {
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    expect(UPGRADES.at(-2)?.name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([6, undefined]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
@@ -1104,7 +1106,7 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
 
   it('f. save and load: the drive is kept with its expression; no upgrade step (the joint validator refuses fields it does not know)', () => {
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    expect(UPGRADES.map((step) => step.name)).not.toContain('5b-drive');
     const saved = engine.save();
     expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
     const loaded = engine.load(saved);
@@ -1263,5 +1265,359 @@ describe('scenario 13, the part of 5d: a cycloidal stage at the shoulder and a G
     const other = newEngine();
     expect(other.load(saved).ok).toBe(true);
     expect(other.save()).toBe(saved);
+  });
+});
+
+// ---------------------------------------------------------------- the part of 3b
+
+// The part of 3b (D55, docs/d36/3b-mesh-import/calls.ts): the motor as the mesh of a bought part.
+// Its file is modelled in a second engine and written as binary STL (a test has no file of a real
+// motor; this one has what matters of one: round faces cut into triangles, a frame of its own, no
+// unit), read by the import, stored in the document and placed by a mesh feature in the place and
+// under the ID of the cylinder that stood for the motor.
+describe('scenario 13, the part of 3b: the motor as the mesh of a bought part', () => {
+  let engine: Engine;
+  let shop: Engine; // the second engine, in which the part that is "bought" is modelled
+  let file: Uint8Array;
+  const read = (outcome: ImportOutcome): { mesh: StoredMesh; report: MeshReport } => {
+    if (!outcome.ok) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+    return outcome;
+  };
+  const codeOf = (outcome: ImportOutcome): string => (outcome.ok ? 'ok' : outcome.error.code);
+  const MOTOR_POINT = { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' } as const;
+  // a cylinder with a list of targets (the helper of arm.ts takes one)
+  const cylinderInto = (id: Id, x: number, y: number, radius: number, from: number, to: number, operation: 'add' | 'cut', targets: Id[]): Command[] => {
+    const commands = cylinder(id, x, y, radius, from, to);
+    const last = commands[commands.length - 1] as Extract<Command, { type: 'addFeature' }>;
+    return [...commands.slice(0, -1), { type: 'addFeature', feature: { ...(last.feature as object), operation, targets } as never }];
+  };
+  // a box from a rectangle of its own sketch on XY, between two heights
+  const box = (id: Id, x0: number, y0: number, x1: number, y1: number, from: number, to: number): Command[] => {
+    const sketchId = `${id}Sketch`;
+    const corners: [number, number][] = [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ];
+    return [
+      { type: 'addFeature', feature: emptySketch(sketchId, sketchId, { kind: 'base', plane: 'XY' }) },
+      ...corners.flatMap(([x, y], i): Command[] => [
+        { type: 'addPoint', sketch: sketchId, id: `${id}P${i}`, x, y },
+        { type: 'addConstraint', sketch: sketchId, id: `${id}F${i}`, constraint: { type: 'fixed', point: `${id}P${i}`, x, y } },
+      ]),
+      ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: sketchId, id: `${id}L${i}`, curve: { type: 'line', a: `${id}P${i}`, b: `${id}P${(i + 1) % 4}` } })),
+      {
+        type: 'addFeature',
+        feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}L${i}`).sort() }] }, extent: { type: 'distance', start: from, distance: to - from }, operation: 'new' },
+      },
+    ];
+  };
+  // the same triangles as text: `solid`, a `facet` with three `vertex` lines per triangle, `endsolid`
+  const asciiStl = (binary: Uint8Array): Uint8Array => {
+    const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
+    const lines = ['solid motor'];
+    for (let t = 0; t < view.getUint32(80, true); t++) {
+      lines.push('  facet normal 0 0 0', '    outer loop');
+      for (let k = 0; k < 3; k++) lines.push(`      vertex ${[0, 1, 2].map((axis) => view.getFloat32(84 + 50 * t + 12 + 12 * k + 4 * axis, true)).join(' ')}`);
+      lines.push('    endloop', '  endfacet');
+    }
+    lines.push('endsolid motor');
+    return new TextEncoder().encode(lines.join('\n'));
+  };
+  // a binary STL without its last triangle (the count at byte 80 lowered by one)
+  const withoutLastTriangle = (binary: Uint8Array): Uint8Array => {
+    const out = binary.slice(0, binary.length - 50);
+    new DataView(out.buffer).setUint32(80, (binary.length - 84) / 50 - 1, true);
+    return out;
+  };
+
+  beforeAll(() => {
+    // the arm after the parts of 3a and 5a: the motor a named reference part of 280 g, in the link `upper`
+    engine = newEngine();
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17 motor', color: '#30343a', use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'reference', mass: 0.9 } },
+      ],
+    });
+    run(engine, mechanismOfTheArm());
+    // the motor as its maker would publish it: a can of radius 14 and height 30 with a shaft of
+    // radius 2.5 and length 10 on top, its axis along Z through the origin, standing on z = 0
+    shop = newEngine();
+    run(shop, { type: 'batch', commands: [...cylinder('can', 0, 0, 14, 0, 30), ...cylinder('shaft', 0, 0, 2.5, 30, 40, 'add', 'can')] });
+    file = shop.exportMesh('stl', ['can']);
+  });
+
+  it('a. the file is read: one shell, nothing left out, the volume of the body it was written from to the last digit, its box', () => {
+    const { mesh, report } = read(importMesh('stl', file, {}, 'motor.stl'));
+    const can = shop.getState().evaluation.bodies.can;
+    expect(report).toMatchObject({ format: 'stl', about: { encoding: 'binary', unit: 'mm' }, dropped: 0, walls: 0, shells: 1, cavities: 0, insideOut: false, turned: 0, nested: 0, notes: [] });
+    expect(report.triangles).toBe(can.solid.triangles.length / 3);
+    expect(report.facets).toBe(report.triangles);
+    expect(report.volume).toBe(can.volume);
+    expect([report.bounds.min[2], report.bounds.max[2]]).toEqual([0, 40]);
+    expect(mesh.name).toBe('motor.stl');
+    expect(meshProblem(indexedMesh(mesh))).toBeUndefined();
+    // the same triangles as ASCII give the same stored mesh, text for text
+    const ascii = read(importMesh('stl', asciiStl(file)));
+    expect(ascii.report.about.encoding).toBe('ascii');
+    expect([ascii.mesh.positions, ascii.mesh.triangles]).toEqual([mesh.positions, mesh.triangles]);
+    // a file in metres: the bounds say so
+    expect(read(importMesh('stl', file, { unit: 'm' })).report.bounds.max).toEqual([14_000, 14_000, 40_000]);
+    expect(read(importMesh('stl', file, { unit: 'm' })).report.notes).toEqual([expect.stringContaining('is the unit of the file right')]);
+  });
+
+  it('a. solids stacked on one outline are one solid: the two layers of each common face are left out', () => {
+    run(shop, { type: 'batch', commands: [...box('low', 0, 0, 42, 42, 0, 10), ...box('stack', 0, 0, 42, 42, 10, 30), ...box('high', 0, 0, 42, 42, 30, 40)] });
+    const { report } = read(importMesh('stl', shop.exportMesh('stl', ['low', 'stack', 'high'])));
+    expect([report.walls, report.shells]).toEqual([4, 1]);
+    expect(Math.abs(report.volume - 42 * 42 * 40)).toBeLessThan(1e-6);
+    // the bodies of the engine: three cylinders (the motor of the arm) on one outline
+    run(shop, { type: 'batch', commands: [...cylinder('c1', 200, 0, 14, 0, 10), ...cylinder('c2', 200, 0, 14, 10, 20), ...cylinder('c3', 200, 0, 14, 20, 30)] });
+    const cans = read(importMesh('stl', shop.exportMesh('stl', ['c1', 'c2', 'c3'])));
+    expect(cans.report.shells).toBe(1);
+    expect(cans.report.volume).toBeCloseTo(3 * shop.getState().evaluation.bodies.c1.volume, 6);
+  });
+
+  it('a. a pair of opposite triangles is left out only between two solids that both face outwards', () => {
+    const positions = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 20, 20, 5]);
+    const outward = [0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2];
+    const second = (apex: number): number[] => [0, 1, 2, 0, apex, 1, 1, apex, 2, 0, 2, apex]; // its base faces +Z
+    const inwards = withoutWalls({ positions, triangles: Uint32Array.from([...outward, ...second(4)]) });
+    expect([inwards.walls, meshDefects(inwards.mesh).overused, meshProblem(inwards.mesh)?.code]).toEqual([0, 3, 'notASolid']);
+    const below = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 2, 2, -5]);
+    const stacked = withoutWalls({ positions: below, triangles: Uint32Array.from([...outward, ...second(4)]) });
+    expect(stacked.walls).toBe(1);
+    expect(meshProblem(stacked.mesh)).toBeUndefined();
+    expect(shellsOf(stacked.mesh).map((shell) => shell.volume)[0]).toBeCloseTo(250, 9);
+  });
+
+  it('a. what the import refuses, each with a code and a reason the caller can act on', () => {
+    const open = importMesh('stl', withoutLastTriangle(file));
+    expect(open).toMatchObject({ ok: false, error: { code: 'notASolid', defects: { open: 3 } } });
+    run(shop, { type: 'batch', commands: [...box('left', 0, 0, 10, 10, 100, 110), ...box('right', 10, 10, 20, 20, 100, 110)] });
+    expect(importMesh('stl', shop.exportMesh('stl', ['left', 'right']))).toMatchObject({ ok: false, error: { code: 'notASolid', defects: { overused: 1 } } });
+    expect(codeOf(importMesh('stl', new TextEncoder().encode('not a mesh')))).toBe('unreadable');
+    expect(codeOf(importMesh('stl', new Uint8Array(0)))).toBe('unreadable');
+    expect(importMesh('stl', file, { unit: 'ft' } as never)).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['unit'] } });
+    expect(importMesh('step' as never, file)).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['format'] } });
+  });
+
+  it('a. the checks of a stored mesh are the engine own: a mesh built by hand goes through the same function', () => {
+    const mesh: IndexedMesh = { positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) };
+    const turned: IndexedMesh = { positions: mesh.positions, triangles: Uint32Array.from([0, 1, 2, 0, 3, 1, 1, 3, 2, 0, 2, 3]) };
+    const two: IndexedMesh = {
+      positions: Float32Array.from([...mesh.positions, 50, 0, 0, 55, 0, 0, 50, 5, 0, 50, 0, 5]),
+      triangles: Uint32Array.from([...mesh.triangles, ...Array.from(turned.triangles, (vertex) => vertex + 4)]),
+    };
+    const stored = storedMesh(mesh, 'tetrahedron');
+    expect([stored.positions.length, stored.triangles.length]).toEqual([64, 64]);
+    expect(meshProblem(turned)?.code).toBe('notASolid');
+    expect(meshDefects({ positions: mesh.positions, triangles: mesh.triangles.slice(0, 9) }).open).toBe(3);
+    expect(meshProblem(two)).toMatchObject({ code: 'notASolid', message: expect.stringContaining('inside out') });
+    expect(shellsOf(two).map((shell) => shell.kind)).toEqual(['solid', 'insideOut']);
+  });
+
+  it('b. the mesh enters the document and replaces the cylinder of the motor under its ID, in one batch and one undo step', () => {
+    const { mesh } = read(importMesh('stl', file, {}, 'motor.stl'));
+    const before = engine.getState();
+    const massBefore = massOf(engine, { bodies: [...before.evaluation.mechanism.links.upper.bodies, 'forearm'] }).mass;
+    const index = before.document.features.findIndex((feature) => feature.id === 'motor');
+    const feature: MeshFeature = { id: 'motor', name: 'Motor', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: MOTOR_POINT, z: 8 } };
+    const command: Command = { type: 'batch', commands: [{ type: 'removeFeature', id: 'motor' }, { type: 'addMesh', id: 'nema', mesh }, { type: 'addFeature', feature, index }] };
+    expect(takenOver(before.document, command)).toEqual(['motor']);
+    const { document, evaluation, canUndo } = run(engine, command);
+    const stored = evaluation.meshes.nema;
+    const body = evaluation.bodies.motor;
+    const facts = evaluation.features.motor.facts ?? {};
+    expect(Object.keys(document.meshes)).toEqual(['nema']);
+    expect(stored).toMatchObject({ name: 'motor.stl', shells: 1, usedBy: ['motor'], triangles: body.solid.triangles.length / 3 });
+    expect(evaluation.features.motor).toMatchObject({ status: 'ok', bodies: ['motor'] });
+    // one face for the whole surface, not planar, and no edge
+    expect(body.faces).toEqual([{ id: body.faces[0].id, planar: false }]);
+    expect(evaluation.faceNames[body.faces[0].id]).toEqual({ feature: 'motor', role: 'mesh' });
+    expect(evaluation.faceSurfaces[body.faces[0].id]).toEqual({ kind: 'general' });
+    expect(body.edges).toEqual([]);
+    // where the file has z = 0 … 40 the model has z = 8 … 48, about the point (60, 0)
+    expect([body.bounds.min[2], body.bounds.max[2]]).toEqual([8, 48]);
+    expect([facts.origin, facts.axisZ]).toEqual([
+      [60, 0, 8],
+      [0, 0, 1],
+    ]);
+    expect(Math.abs(body.volume - stored.volume)).toBeLessThan(1e-6 * stored.volume);
+    // the body keeps what the document says about `motor`: a reference part of 280 g in the link `upper`
+    expect(evaluation.bodyProperties.motor).toMatchObject({ name: 'NEMA 17 motor', use: 'reference', mass: 280, massFrom: 'mass' });
+    expect(evaluation.mechanism.links.upper.bodies).toContain('motor');
+    expect(canUndo).toBe(true);
+    // the mass beyond the shoulder is what it was: the motor weighs what its data sheet says
+    expect(massOf(engine, { bodies: [...evaluation.mechanism.links.upper.bodies, 'forearm'] }).mass).toBeCloseTo(massBefore, 9);
+    // one undo takes the feature and the stored mesh away and brings the cylinder back
+    engine.undo();
+    expect(Object.keys(engine.getState().document.meshes)).toEqual([]);
+    expect(engine.getState().evaluation.bodies.motor.faces).toHaveLength(3);
+    engine.redo();
+    expect(engine.getState().evaluation.bodies.motor.faces).toHaveLength(1);
+  });
+
+  it('c. no sketch or plane stands on it: a plane on its face is a valid command and the error nonPlanarFace', () => {
+    const preview = previewed(engine, { type: 'addFeature', feature: { id: 'onMotor', name: 'On the motor', suppressed: false, type: 'plane', base: { kind: 'face', body: 'motor', face: { feature: 'motor', role: 'mesh' } }, offset: 0 } });
+    expect(preview.evaluation.features.onMotor.error?.code).toBe('nonPlanarFace');
+  });
+
+  it('c. no feature changes it: a hole through it, a boss on it, a cut with it among two targets end in importedTarget', () => {
+    const before = engine.getState().evaluation.bodies;
+    const { features, bodies } = previewed(engine, {
+      type: 'batch',
+      commands: [
+        ...cylinderInto('bore', 60, 0, 1, 0, 60, 'cut', ['motor']),
+        ...cylinderInto('boss', 60, 0, 5, 48, 52, 'add', ['motor']),
+        ...cylinderInto('both', 60, 0, 1, 0, 60, 'cut', ['upper', 'motor']),
+        ...cylinderInto('link', 60, 0, 1, 0, 60, 'cut', ['upper']),
+      ],
+    }).evaluation;
+    for (const id of ['bore', 'boss', 'both']) expect(features[id], id).toMatchObject({ status: 'error', error: { code: 'importedTarget', refs: ['motor'] } });
+    expect(features.link.status).toBe('ok');
+    expect(bodies.motor.solid).toBe(before.motor.solid);
+    expect(bodies.upper.volume).toBeLessThan(before.upper.volume); // by `link` alone
+    // neither does a copy of it made by a pattern: the copy carries the face of the mesh
+    const twin = previewed(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'twin', name: 'Twin', suppressed: false, type: 'pattern', source: { type: 'body', body: 'motor' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 40 } } } },
+        ...cylinderInto('boreTwin', 60, 40, 1, 0, 60, 'cut', ['twin/1']),
+      ],
+    });
+    expect(twin.evaluation.features.boreTwin.error).toMatchObject({ code: 'importedTarget', refs: ['twin/1'] });
+    expect(twin.evaluation.faceNames[twin.evaluation.bodies['twin/1'].faces[0].id]).toEqual({ feature: 'motor', role: 'mesh', copy: [{ pattern: 'twin', index: 1 }] });
+  });
+
+  it('d. the sweep of the elbow finds the forearm in the motor from the same step as with the cylinder', () => {
+    for (let degrees = -135; degrees <= 135; degrees += 27) {
+      const report = unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ elbow: degrees * DEG })) }));
+      expect(names(report.pairs).includes('forearm|motor'), `${degrees}°`).toBe(Math.abs(degrees) >= 108);
+    }
+  });
+
+  it('d. the gap to the motor is measured to the triangles of the mesh in the pose', () => {
+    const bent = unwrap(engine.query('gap', { bodies: ['forearm', 'motor'], within: 30 }, { state: previewed(engine, pose({ elbow: 1.2 })) }));
+    const centre = [120 + 60 * Math.cos(1.2), 60 * Math.sin(1.2)];
+    expect(bent.pairs[0].distance).toBeCloseTo(Math.hypot(centre[0] - 60, centre[1]) - 70 - 14, 1);
+  });
+
+  it('d. an edit before the motor that keeps the number of faces leaves its body the same object', () => {
+    const preview = previewed(engine, { type: 'setField', feature: 'base', path: 'extent/distance', value: 9 });
+    expect(preview.evaluation.bodies.base.volume).not.toBe(engine.getState().evaluation.bodies.base.volume);
+    expect(preview.evaluation.bodies.motor.solid).toBe(engine.getState().evaluation.bodies.motor.solid);
+  });
+
+  it('d. an overlap with the motor shallower than the chord tolerance is a fit: its surface counts as round', () => {
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'motor'] }, { state: previewed(engine, { type: 'setField', feature: 'motor', path: 'placement/z', value: 7.995 }) }));
+    expect([report.fits.length, report.pairs.length]).toEqual([1, 0]);
+  });
+
+  it('d. the exports: a print export without a list leaves the reference part out, a list that names it writes it', () => {
+    const printed = unwrap(engine.export('stl', {}));
+    const listed = unwrap(engine.export('3mf', { bodies: ['upper', 'motor'] }));
+    expect((printed.files[0].about as { bodies: Id[] }).bodies).not.toContain('motor');
+    expect((listed.files[0].about as { bodies: Id[] }).bodies).toEqual(['upper', 'motor']);
+  });
+
+  it('e. the six numbers are numeric fields: a turn as an expression in degrees, an offset where the feature had none', () => {
+    const decoded = indexedMesh(engine.getState().document.meshes.nema);
+    const state = run(engine, { type: 'batch', commands: [{ type: 'updateFeature', id: 'motor', patch: { placement: { rz: 'deg(90)' } } }, { type: 'setField', feature: 'motor', path: 'placement/x', value: 2 }] });
+    const motor = state.document.features.find((feature) => feature.id === 'motor') as MeshFeature;
+    const facts = state.evaluation.features.motor.facts ?? {};
+    expect(motor.placement.rz).toBeCloseTo(Math.PI / 2, 12);
+    expect(motor.expressions).toEqual({ 'placement/rz': 'deg(90)' });
+    expect(motor.placement.x).toBe(2);
+    expect(motor.placement).not.toHaveProperty('y'); // absent means 0 and is not stored
+    // the X axis of the mesh now points along +Y of the model; the offset is in the frame, not in the turned part
+    expect((facts.axisX as number[])[1]).toBeCloseTo(1, 12);
+    expect(facts.origin).toEqual([62, 0, 8]);
+    expect(PLACEMENT_FIELDS).toHaveLength(6);
+    // the stored mesh is not decoded again
+    expect(indexedMesh(state.document.meshes.nema)).toBe(decoded);
+    // the order of the turns: first about X, then about Y, then about the normal, the axes staying where they are
+    const ordered = previewed(engine, { type: 'updateFeature', id: 'motor', patch: { placement: { rx: 'deg(90)', ry: null, rz: 'deg(90)' } } });
+    const axisZ = ordered.evaluation.features.motor.facts?.axisZ as number[];
+    [1, 0, 0].forEach((value, axis) => expect(axisZ[axis]).toBeCloseTo(value, 12));
+    // a frame that is not there: the error of the feature, with the frame in `refs`
+    const lost = previewed(engine, { type: 'removeFeature', id: 'motorSketch' }).evaluation.features.motor.error;
+    expect(lost).toMatchObject({ code: 'brokenReference', refs: [MOTOR_POINT] });
+  });
+
+  it('f. a second motor from the same stored mesh: a feature and no data, upside down on the bottom face of the link', () => {
+    const before = JSON.stringify(engine.getState().document.meshes).length;
+    const under = { kind: 'face', body: 'upper', face: { feature: 'upper', role: 'startCap' } } as const;
+    const state = run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'motor2', name: 'Motor 2', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: under, x: -60 } } },
+        { type: 'setBodyProperties', body: 'motor2', patch: { use: 'reference', mass: 280 } },
+      ],
+    });
+    const origin = state.evaluation.features.motor2.facts?.origin as number[];
+    expect(JSON.stringify(state.document.meshes).length).toBe(before);
+    expect(state.evaluation.meshes.nema.usedBy).toEqual(['motor', 'motor2']);
+    expect(Math.abs(origin[0] - 60) + Math.abs(origin[1])).toBeLessThan(1e-9);
+    expect(state.evaluation.bodies.motor2.bounds.max[2]).toBe(0); // the normal of that face points down
+  });
+
+  it('f. a stored mesh in use is not removed; unused, it is listed as such and removed', () => {
+    expect(refusal(engine, { type: 'removeMesh', id: 'nema' })).toMatch(/motor, motor2/);
+    const spare = read(importMesh('stl', file, {}, 'spare.stl')).mesh;
+    const state = run(engine, { type: 'addMesh', id: 'spare', mesh: spare });
+    expect(Object.entries(state.evaluation.meshes).filter(([, mesh]) => mesh.usedBy.length === 0).map(([id]) => id)).toEqual(['spare']);
+    expect(Object.keys(run(engine, { type: 'removeMesh', id: 'spare' }).document.meshes)).toEqual(['nema']);
+  });
+
+  it('f. what the commands refuse', () => {
+    const tetrahedron = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+    const refused = (command: unknown) => refusal(engine, command as Command);
+    expect(refused({ type: 'addMesh', id: 'nema', mesh: tetrahedron })).toMatch(/has a stored mesh "nema" already/);
+    expect(refused({ type: 'addMesh', id: 'a/b', mesh: tetrahedron })).toMatch(/addMesh\.id/);
+    expect(refused({ type: 'addMesh', id: 'bad', mesh: { positions: 'AAAA', triangles: 'AAAA' } })).toMatch(/not whole triples/);
+    expect(refused({ type: 'addMesh', id: 'bad', mesh: { ...tetrahedron, colour: '#ff0000' } })).toMatch(/colour: a stored mesh has no such field/);
+    expect(refused({ type: 'removeMesh', id: 'none' })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'addFeature', feature: { id: 'ghost', name: 'Ghost', suppressed: false, type: 'mesh', mesh: 'none', placement: { frame: { kind: 'base', plane: 'XY' } } } })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'updateFeature', id: 'motor', patch: { mesh: 'none' } })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'updateFeature', id: 'motor', patch: { placement: { rz: 7 } } })).toMatch(/placement\.rz/);
+    expect(refused({ type: 'setField', feature: 'motor', path: 'placement/scale', value: 2 })).toMatch(/not a numeric field/);
+  });
+
+  it('g. save and load: the section in the saved document, a mesh edited to be open refused, a lost mesh a broken reference', () => {
+    const json = engine.save();
+    const document = JSON.parse(json);
+    // master after the merge of 3b: version 7, no names
+    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, undefined]);
+    expect(UPGRADES.at(-1)?.name).toBe('3b-mesh-import');
+    expect(typeof document.meshes.nema.positions).toBe('string');
+    expect(document.meshes.nema.name).toBe('motor.stl');
+    const other = newEngine();
+    const loaded = other.load(json);
+    expect(loaded.ok && loaded.state.evaluation.bodies.motor.solid.triangles.length).toBe(engine.getState().evaluation.bodies.motor.solid.triangles.length);
+    const answer = (changed: unknown): string => {
+      const result = other.load(JSON.stringify(changed));
+      return result.ok ? (result.state.evaluation.features.motor?.error?.code ?? 'ok') : result.error.message;
+    };
+    const decoded = indexedMesh(document.meshes.nema);
+    const holed = storedMesh({ positions: decoded.positions, triangles: decoded.triangles.slice(3) });
+    expect(answer({ ...document, meshes: { nema: holed } })).toMatch(/document\.meshes\.nema: the mesh is not a closed solid: 3 edges with one triangle/);
+    expect(answer({ ...document, meshes: { nema: { ...document.meshes.nema, faces: 'AAAA' } } })).toMatch(/faces: a stored mesh has no such field/);
+    expect(answer({ ...document, meshes: {} })).toBe('brokenReference');
+    // a document of master before the merge of 3b (version 6, no names) gets the empty section
+    expect(answer({ ...document, meshes: undefined, schemaVersion: 6, schemaSteps: undefined, features: [], bodyProperties: {}, mechanism: { links: {}, joints: {} } })).toBe('ok');
+  });
+
+  it('h. the description: the section with its commands, the formats with their extensions and options, the limit', () => {
+    expect(SECTION_INFO.meshes.commands).toEqual(['addMesh', 'removeMesh']);
+    expect(IMPORT_FORMATS.stl.extensions).toEqual(['stl']);
+    expect(Object.keys(IMPORT_FORMATS.stl.options)).toEqual(['unit']);
+    expect(MESH_LIMITS.triangles).toBe(100_000);
   });
 });

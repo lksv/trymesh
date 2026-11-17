@@ -32,6 +32,37 @@ export interface Document {
   // when empty; without a link every query answers for the model as modelled. Not part of the
   // timeline: a change of a value recomputes no geometry and moves no body of the evaluation.
   mechanism: Mechanism;
+  // Stored meshes by ID (D55): triangle meshes read from files (the MCP tool import_mesh, or the
+  // import of the app), kept inside the document. Always present, `{}` when there is none. Not part
+  // of the timeline: a feature of the type `mesh` places an entry as a body, and that feature is
+  // the one thing that reads an entry (it is computed again when the entry it names appears). The
+  // IDs are a namespace of their own (the mesh `nema17` may be placed by the feature `nema17`).
+  // An entry never changes: there is no command that edits one; `addMesh` adds an entry,
+  // `removeMesh` removes one that no feature names.
+  meshes: Record<Id, StoredMesh>;
+}
+
+// A closed, indexed triangle mesh in millimetres, in its own frame (the frame of the file it came
+// from), as the document stores it.
+// - `name`: for people, usually the name of the file; the rules of a body name (not empty, no
+//   leading or trailing space, at most 200 characters).
+// - `positions`: base64 of 32-bit floats, little-endian: x, y, z of every vertex.
+// - `triangles`: base64 of 32-bit unsigned integers, little-endian: three vertex numbers per
+//   triangle, counter-clockwise seen from outside the solid.
+// - Base64 in its canonical form: the alphabet of RFC 4648 section 4, padded with `=`, no white
+//   space, the unused bits of the last character zero; one mesh has one spelling.
+// - Strict: an entry lists these fields and no other, on a command and on a load.
+// What a stored mesh has to be, checked by `addMesh` and by a load: at least 4 and at most 100 000
+// triangles; finite coordinates within ±1e9; every index names a vertex, every vertex is named,
+// no triangle names a vertex twice; closed (every edge in exactly two triangles, once each way);
+// a positive volume; every connected shell thicker than a millionth of its own size (twice its
+// volume over its surface, against the largest side of its bounds); every shell that faces
+// inwards is a hollow of a shell around it. Shells that overlap are not detected (they count
+// twice in the volume).
+export interface StoredMesh {
+  name?: string;
+  positions: string;
+  triangles: string;
 }
 
 // The mechanism: links, and joints between them (D49).
@@ -184,7 +215,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -415,6 +446,57 @@ export type HoleShape =
 // `headDepth`, the depth of the head (absent for a plain hole).
 export type HoleExtent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' };
 
+// A stored mesh placed as a body (D55): a bought or given part to design around.
+// - `mesh`: a key of the section `meshes`. A command that sets it checks that the section has it;
+//   a load checks its form only, and a mesh that is not there is the error `brokenReference` of
+//   the feature with `refs: [{ mesh: <id> }]`.
+// - The body has the ID of the feature and one face, `{ feature, role: 'mesh' }`, for the whole
+//   surface, with a surface published as `general`: no sketch or plane stands on it
+//   (`nonPlanarFace`), it has no edges, and no extrusion, hole or pattern of them may have it, or
+//   a copy of it, as a target (the error `importedTarget` of that feature). It takes part in the
+//   collisions, the gap, the mass, a pattern of a body and the exports like any body; its surface
+//   counts as round in the collisions.
+// - It is not a reference part by itself: a bought part is made one by the same batch with
+//   setBodyProperties (`use: 'reference'` and the `mass` of its data sheet).
+// - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ`, where the origin of the mesh is in
+//   the model and where its three axes point (unit vectors).
+// - Errors: `brokenReference` (the mesh; the frame), `nonPlanarFace` (the frame is a face that is
+//   not planar), `invalidExpression` (a field of the placement).
+export interface MeshFeature extends FeatureBase {
+  type: 'mesh';
+  mesh: Id;
+  placement: BodyPlacement;
+}
+
+// A directed frame of the model: a plane as a sketch refers to one (a base plane: XY is (+X, +Y,
+// +Z), XZ is (+X, +Z, −Y), YZ is (+Y, +Z, +X); a plane feature; a planar face of a body, with the
+// frame a sketch on that face has, its normal out of the body), or a point of a sketch: the frame
+// of the sketch moved to the point (an own point, `origin`, or a point of projected geometry).
+export type FrameRef = PlaneRef | { kind: 'sketchPoint'; sketch: Id; point: Id };
+
+// Where a part with a frame of its own stands: its origin and axes laid on `frame`, then turned and
+// shifted in that frame.
+// - `x`, `y`, `z` (mm): the offset of the origin of the part along the X axis, the Y axis and the
+//   normal of the frame. The frame of a face is the one a sketch on that face has, and its X may
+//   run against an axis of the model; the facts of the feature say where the part ended up.
+// - `rx`, `ry`, `rz` (rad, each within ±2π): turns about the X axis, the Y axis and the normal of
+//   the frame, in this order, the axes staying where they are, by the right-hand rule (roll, pitch
+//   and yaw, `rpy` of URDF).
+// - A point p of the part ends at O + B · (Rz(rz) · Ry(ry) · Rx(rx) · p + (x, y, z)), with O the
+//   origin of the frame and B its axes (X, Y, normal) as columns. No scale, no mirror.
+// - The six numbers are optional numeric fields (`placement/x` … `placement/rz`): absent means 0
+//   and is not stored; setField reaches one the feature does not have, `updateFeature` with
+//   `{ placement: { x: null } }` removes one. The frame is a reference and is replaced whole.
+export interface BodyPlacement {
+  frame: FrameRef;
+  x?: number;
+  y?: number;
+  z?: number;
+  rx?: number;
+  ry?: number;
+  rz?: number;
+}
+
 // The transform of a pattern, a variant by `type`; each variant lists its fields, and a field of
 // another variant is an invalid command. A patch with another `type` replaces the transform and
 // has to be complete.
@@ -533,6 +615,8 @@ export type Extent =
 // - `holeSeat`: the planar step between the head and the bore of a counterbore or a nut pocket.
 //   The seats of all points of one feature lie in one plane and are one face, as the caps are.
 // - The mouths are `startCap` and the bottoms `endCap`, one face each for all points.
+// The face of an imported mesh (a feature of the type `mesh`): `mesh`, one face for the whole
+// surface, not planar, without edges.
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
@@ -543,6 +627,7 @@ export type FaceName = (
   | { feature: Id; role: 'holeHead'; point: Id }
   | { feature: Id; role: 'holeFlat'; point: Id; flat: number }
   | { feature: Id; role: 'holeSeat' }
+  | { feature: Id; role: 'mesh' }
 ) & { copy?: CopyTag[] };
 
 export interface CopyTag {
@@ -681,6 +766,19 @@ export interface Evaluation {
   checks: Record<string, CheckResult>; // check results by name
   bodyProperties: Record<Id, BodyPropertiesResult>; // by body of the state, in the order of `bodies`
   mechanism: MechanismResult; // the mechanism resolved against this state
+  meshes: Record<Id, MeshResult>; // what the stored meshes are, without their data (D55)
+}
+
+// A stored mesh as the evaluation describes it, without its data (D55). Every number but `usedBy`
+// is computed once per entry of the section.
+export interface MeshResult {
+  name?: string;
+  vertices: number;
+  triangles: number;
+  bounds: { min: Vec3; max: Vec3 }; // mm, in the frame of the mesh
+  volume: number; // mm³; shells that overlap count twice
+  shells: number; // connected pieces of the surface
+  usedBy: Id[]; // the features of the type `mesh` that place it, in the order of the timeline, suppressed ones included
 }
 
 // An isometry p' = M · p + t; `matrix` holds the rows of an orthogonal matrix.
@@ -892,6 +990,11 @@ export interface Issue {
 //   `transform/second/`), the message names the two copies ("the copies 1 and 1000 would stand in
 //   one place", "the copy 1001 would stand in the place of the original").
 // The pattern is in error as a whole and the model stays as it was before it.
+// importedTarget: a feature that applies a tool (an extrusion with the operation add or cut, a hole,
+// a pattern of them) has a target that is an imported body: the body of a feature of the type
+// `mesh`, or a copy of it made by a pattern. `refs` name those targets, and no target is changed.
+// The kernel keeps its guarantee for flush faces only for faces it knows as planar, and a flat
+// region of an imported mesh is not one (D55).
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -903,6 +1006,7 @@ export type ErrorCode =
   | 'invalidExtent'
   | 'invalidHole'
   | 'invalidPattern'
+  | 'importedTarget'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
@@ -1126,6 +1230,14 @@ export type Command =
   | { type: 'setJoint'; id: Id; joint: JointInput }
   | { type: 'removeJoint'; id: Id }
   | { type: 'setPose'; values: Record<Id, number | Expr> }
+  // Stored meshes (D55). Usually not written by hand: the MCP tool import_mesh reads a file and sends
+  // addMesh, then answers with the batch that places the mesh.
+  // - addMesh adds a stored mesh under `id`, checked in full (see StoredMesh); an ID the section
+  //   already has is an invalid command.
+  // - removeMesh removes the entry; refused while a feature of the document names the mesh,
+  //   suppressed or not (remove or re-point those features first, in the same batch).
+  | { type: 'addMesh'; id: Id; mesh: StoredMesh }
+  | { type: 'removeMesh'; id: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
 
@@ -1159,7 +1271,9 @@ export type FeaturePatch =
   | Patch<Pick<PlaneFeature, 'base' | 'offset'>>
   | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>
   | Patch<Pick<PatternFeature, 'source' | 'transform'>>
-  | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>;
+  | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>
+  // `placement` merges field by field; its `frame` is a reference and is replaced whole
+  | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>;
 
 // ---------------------------------------------------------------- queries
 

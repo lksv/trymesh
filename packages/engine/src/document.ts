@@ -152,7 +152,8 @@ export function featureRefs(f: Feature): Id[] {
     ...new Set(
       specOf(f)
         .refs(f)
-        .filter((ref) => ref.kind !== 'entity') // an entity belongs to a sketch that is referred to anyway
+        // an entity belongs to a sketch that is referred to anyway; a stored mesh is no feature (D55)
+        .filter((ref) => ref.kind !== 'entity' && ref.kind !== 'mesh')
         .map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)),
     ),
   ];

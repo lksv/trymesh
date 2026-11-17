@@ -15,7 +15,10 @@ export type FaceInfo =
   | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
-  | { planar: false; surface: 'swept'; axis: Vec3 };
+  | { planar: false; surface: 'swept'; axis: Vec3 }
+  // The surface of an imported mesh (D55): nothing is known of it, flat regions included. Published
+  // as a general surface; the same after any transform.
+  | { planar: false; surface: 'mesh' };
 // The surface of a face as the evaluation publishes it. `FaceInfo` stays internal and keeps what only
 // the engine needs: the `y` direction of a planar face, from which the frame of a sketch on the
 // face is built.
@@ -23,6 +26,7 @@ export function surfaceOf(info: FaceInfo): Surface {
   if (info.planar) return { kind: 'plane', origin: info.origin, normal: info.normal };
   if (info.surface === 'cylinder') return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
   if (info.surface === 'cone') return { kind: 'cone', apex: info.apex, axis: info.axis, halfAngle: info.halfAngle };
+  if (info.surface === 'mesh') return { kind: 'general' };
   return { kind: 'swept', axis: info.axis };
 }
 
@@ -131,6 +135,7 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
   if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
   if (info.surface === 'cylinder') return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
   if (info.surface === 'cone') return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
+  if (info.surface === 'mesh') return info;
   return { ...info, axis: transformVector(t, info.axis) };
 }
 

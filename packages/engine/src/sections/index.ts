@@ -12,13 +12,14 @@ import { has } from '../util';
 import { type Dict, isObject } from '../validation';
 import { bodyProperties } from './body-properties';
 import { mechanism } from './mechanism';
+import { meshes } from './meshes';
 import type { SectionInfo, SectionSpec } from './spec';
 
 export type SectionName = Exclude<keyof Document, 'schemaVersion' | 'schemaSteps' | 'settings' | 'parameters' | 'checks' | 'features'>;
 export type Sections = Pick<Document, SectionName>;
 export type SectionResults = Pick<Evaluation, SectionName>;
 
-export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism };
+export const DOCUMENT_SECTIONS: { [K in SectionName]: SectionSpec<Document[K], Evaluation[K]> } = { bodyProperties, mechanism, meshes };
 
 const NAMES = Object.keys(DOCUMENT_SECTIONS) as SectionName[];
 // An entry as code that handles any section reads it.

@@ -25,7 +25,7 @@ const FIELDS: readonly EntryField[] = [
 ];
 const USES: readonly BodyUse[] = ['part', 'reference', 'auxiliary'];
 const ENTRY_FIELDS = ['name', 'color', 'material', 'use', 'density', 'mass'] as const;
-const TEXT_LIMIT = 200;
+export const TEXT_LIMIT = 200;
 const NO_ENVIRONMENT = (): Environment => ({});
 
 // ---------------------------------------------------------------- validation

@@ -273,7 +273,7 @@ export async function startApp(): Promise<Harness> {
   const app = new App(engine, view);
 
   const lines: string[] = [];
-  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; mechanism: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}', mechanism: '{"links":{},"joints":{}}' };
+  const last: { features: Map<Id, string[]>; order: string; rest: string; properties: string; mechanism: string; meshes: string; status?: string; scene?: string[] } & Partial<Record<Region, string[]>> = { features: new Map(), order: '', rest: '', properties: '{}', mechanism: '{"links":{},"joints":{}}', meshes: '{}' };
   const region = (id: Region): string[] => Array.from((document.getElementById(id) as HTMLElement).childNodes).flatMap((child) => domText(child));
   const section = (title: string, changed: string[]): void => {
     if (changed.length) lines.push(`  ${title}:`, ...changed.map((line) => `    ${line}`));
@@ -307,6 +307,10 @@ export async function startApp(): Promise<Harness> {
     const mechanism = JSON.stringify(doc.mechanism);
     if (mechanism !== last.mechanism) lines.push(`  mechanism: ${mechanism}`);
     last.mechanism = mechanism;
+    // the stored meshes (D55), when they changed: their names and the length of their data
+    const meshes = JSON.stringify(Object.fromEntries(Object.entries(doc.meshes).map(([id, mesh]) => [id, `${mesh.name ?? ''} ${mesh.positions.length}+${mesh.triangles.length} characters`])));
+    if (meshes !== last.meshes) lines.push(`  meshes: ${meshes}`);
+    last.meshes = meshes;
     // what a user sees: only the parts that changed
     for (const id of ['toolbar', 'timeline', 'panel'] as const) {
       const now = region(id);

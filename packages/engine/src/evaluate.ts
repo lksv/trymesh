@@ -17,8 +17,14 @@ export interface EvaluateOptions {
   drag?: DragTarget; // tažení bodu, viz Řešení skici
 }
 
-// The state a feature's step started from and led to, for features whose result is written back to the document.
-export type Trace = Map<Id, { before: State; after: State }>;
+// The state a feature's step started from and led to, for features whose result is written back to
+// the document, with the object of the document the step read (`input` of its module, D55).
+export type Trace = Map<Id, { before: State; after: State; input?: object }>;
+// A remembered step and the object of the document it was computed from.
+interface Remembered {
+  step: Step;
+  input?: object;
+}
 
 // A feature with its expression values substituted. The recompute step works with `feature`; a field
 // whose expression cannot be evaluated or gave a value out of range keeps the last valid number from
@@ -34,7 +40,7 @@ const RESOLUTIONS_KEPT = 8; // per feature; a preview while typing alternates be
 // Přepočet s cache. Stav po každé feature se pamatuje podle identity objektu feature a identity
 // předchozího stavu, takže nezměněný začátek časové osy se nepočítá znovu.
 export class Evaluator {
-  private readonly memo = new WeakMap<Resolution, WeakMap<State, Step>>();
+  private readonly memo = new WeakMap<Resolution, WeakMap<State, Remembered>>();
   private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
   private readonly initial = new WeakMap<Document['settings'], State>();
   private readonly published = new WeakMap<FaceInfo[], Surface[]>();
@@ -51,7 +57,8 @@ export class Evaluator {
     const bodies = Object.fromEntries(Object.entries(final.bodies).map(([id, solid]) => [id, analyzeBody(solid, final.faceNames, final.faceInfos).result]));
     const parameters = evaluateParameters(doc.parameters);
     const checks = Object.fromEntries(doc.checks.map((check) => [check.name, evaluateCheck(check.expr, parameters)]));
-    // after the timeline, as the checks: no step of a feature reads a section
+    // after the timeline, as the checks: no step of a feature reads a section, but for the entry of
+    // the section `meshes` a mesh feature places, which it reads through `input` (D55)
     const sections = evaluateSections(doc, bodies, parameters, final, this.kept);
     return {
       evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks, ...sections.results },
@@ -121,14 +128,18 @@ export class Evaluator {
     for (const feature of doc.features) {
       const dragged = options.drag && options.drag.sketch === feature.id ? options.drag : undefined;
       const resolution = this.resolve(feature, environment);
-      let step: Step | undefined = dragged ? undefined : this.memo.get(resolution)?.get(state);
+      // what the step reads of the document besides the feature (D55): a remembered step counts only
+      // when it was computed from the same object
+      const input = specOf(feature).input?.(feature, doc);
+      const remembered = dragged ? undefined : this.memo.get(resolution)?.get(state);
+      let step: Step | undefined = remembered && remembered.input === input ? remembered.step : undefined;
       if (!step) {
-        step = this.step(resolution, state, doc.settings, dragged);
-        if (!dragged) this.remember(resolution, state, step);
+        step = this.step(resolution, state, doc.settings, dragged, input);
+        if (!dragged) this.remember(resolution, state, step, input);
       }
       if (step.writeBack || resolution.feature !== feature) {
         writeBacks.set(feature.id, { feature: resolution.feature, ...(step.writeBack ? { solved: step.writeBack } : {}) });
-        trace.set(feature.id, { before: state, after: step.state }); // pro převěšení cache po zápisu výsledku
+        trace.set(feature.id, { before: state, after: step.state, ...(input ? { input } : {}) }); // pro převěšení cache po zápisu výsledku
       }
       state = step.state;
       if (feature.id === options.upTo) break;
@@ -143,17 +154,17 @@ export class Evaluator {
     const environment = evaluateParameters(doc.parameters);
     for (const [id, feature] of replaced) {
       const record = trace.get(id);
-      if (record) this.remember(this.resolve(feature, environment), record.before, { state: record.after });
+      if (record) this.remember(this.resolve(feature, environment), record.before, { state: record.after }, record.input);
     }
   }
 
-  private remember(resolution: Resolution, before: State, step: Step): void {
+  private remember(resolution: Resolution, before: State, step: Step, input: object | undefined): void {
     let map = this.memo.get(resolution);
     if (!map) this.memo.set(resolution, (map = new WeakMap()));
-    map.set(before, step);
+    map.set(before, { step, ...(input ? { input } : {}) });
   }
 
-  private step(resolution: Resolution, state: State, settings: Document['settings'], drag?: DragTarget): Step {
+  private step(resolution: Resolution, state: State, settings: Document['settings'], drag?: DragTarget, input?: object): Step {
     const { feature, errors } = resolution;
     // Expression values and errors belong to the feature result in every state, suppressed included.
     const fields = { ...(resolution.values && Object.keys(resolution.values).length ? { values: resolution.values } : {}), ...(errors ? { fieldErrors: errors } : {}) };
@@ -168,7 +179,7 @@ export class Evaluator {
     if (errors && !spec.keepsLastValidValues) return failed('invalidExpression', Object.keys(errors));
     // The step of the feature type. The registry is the one guard of completeness: an entry without
     // a step does not compile (features/index.ts).
-    return spec.step(feature, { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [] });
+    return spec.step(feature, { state, settings, deps: this.deps, done, failed, drag, badFields: errors ? Object.keys(errors) : [], ...(input ? { input } : {}) });
   }
 
 }

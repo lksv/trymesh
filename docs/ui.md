@@ -23,6 +23,7 @@ The functions are split by area (D37, part 5), one file per panel or form, each 
 | [ui/hole.md](ui/hole.md) | The form of the hole, with the sizes from the catalogs | Hole (D46) |
 | [ui/pattern.md](ui/pattern.md) | The form of the pattern: circular, linear, mirror | Pattern (D35, point 4; the linear pattern and the mirror D53) |
 | [ui/bodies.md](ui/bodies.md) | Collisions, volume and export; the properties of a body; the export form | Bodies: collisions, volume and export (D35, point 5); The properties of a body (D48); The export form (D54) |
+| [ui/mesh.md](ui/mesh.md) | The form of a placed mesh and the import of an STL file | The import of a mesh (D55) |
 | [ui/mechanism.md](ui/mechanism.md) | The mechanism panel: links, joints, the pose and its slider, the view in the pose | The mechanism (D49); The view in the pose (D49); Implementation status |
 | [ui/queries.md](ui/queries.md) | The generic form of a query, measuring, the views of queries | Queries (D39); The section view (D38); The gap view (D40); The print view (D42); Implementation status |
 | [ui/parameters.md](ui/parameters.md) | Parameters, checks and fields with an expression | Parameters, checks and expressions (D35, point 1); Implementation status |

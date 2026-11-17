@@ -5,12 +5,13 @@
 // the features that name its curves in the same batch (the fillet), the document.
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds } from './document';
-import { CURVE_POINTS, constraintOperands, duplicateOf, entityOf } from './sketch-content';
+import { entityOf, kindOf } from './references/index';
+import { CURVE_POINTS, constraintOperands, duplicateOf } from './sketch-content';
 import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
 import { pointJoins } from './sketch';
 import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
-import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2 } from './util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
 
 // A place in a sketch and what it should snap to. The app passes a click after snapping, an AI
 // client coordinates or an existing point.
@@ -139,53 +140,63 @@ function pointAt(context: SketchToolContext, id: Id): Vec2 | undefined {
   return p ? [p.x, p.y] : undefined;
 }
 
-// The shape of an own or a projected curve; undefined when the sketch has no position for it.
+// The shape of an own curve or of a curve of the result that is not own (a projected one);
+// undefined when the sketch has no position for it.
 function shapeOf(context: SketchToolContext, id: Id): Shape | undefined {
   const { sketch, result } = context;
-  if (has(sketch.curves, id)) {
-    const curve = sketch.curves[id];
-    if (curve.type === 'line') {
-      const [a, b] = [pointAt(context, curve.a), pointAt(context, curve.b)];
-      return a && b ? { type: 'line', a, b } : undefined;
+  const curve = has(sketch.curves, id) ? sketch.curves[id] : result && has(result.curves, id) ? result.curves[id].shape : undefined;
+  if (curve) {
+    switch (curve.type) {
+      case 'line': {
+        const [a, b] = [pointAt(context, curve.a), pointAt(context, curve.b)];
+        return a && b ? { type: 'line', a, b } : undefined;
+      }
+      case 'circle': {
+        const center = pointAt(context, curve.center);
+        if (!center) return undefined;
+        const radius = result && has(result.radii, id) ? result.radii[id] : sketch.radii[id];
+        return radius === undefined ? undefined : { type: 'circle', center, radius };
+      }
+      case 'arc': {
+        const center = pointAt(context, curve.center);
+        if (!center) return undefined;
+        const [start, end] = [pointAt(context, curve.start), pointAt(context, curve.end)];
+        if (!start || !end) return undefined;
+        const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
+        const turn = (((Math.atan2(end[1] - center[1], end[0] - center[0]) - from) % TAU) + TAU) % TAU;
+        return { type: 'arc', center, radius: dist2(center, start), from, sweep: turn || TAU };
+      }
+      default:
+        return unreachable(curve, 'curve');
     }
-    const center = pointAt(context, curve.center);
-    if (!center) return undefined;
-    if (curve.type === 'circle') {
-      const radius = result && has(result.radii, id) ? result.radii[id] : sketch.radii[id];
-      return radius === undefined ? undefined : { type: 'circle', center, radius };
-    }
-    const [start, end] = [pointAt(context, curve.start), pointAt(context, curve.end)];
-    if (!start || !end) return undefined;
-    const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
-    const turn = (((Math.atan2(end[1] - center[1], end[0] - center[0]) - from) % TAU) + TAU) % TAU;
-    return { type: 'arc', center, radius: dist2(center, start), from, sweep: turn || TAU };
-  }
-  if (has(sketch.external, id)) {
-    if (sketch.external[id].kind === 'line') {
-      const [a, b] = [pointAt(context, `${id}/a`), pointAt(context, `${id}/b`)];
-      return a && b ? { type: 'line', a, b } : undefined;
-    }
-    const center = pointAt(context, `${id}/center`);
-    return center && result && has(result.radii, id) ? { type: 'circle', center, radius: result.radii[id] } : undefined;
   }
   return undefined;
 }
 
 function closestOn(shape: Shape, p: Vec2): Vec2 {
-  if (shape.type === 'line') {
-    const [dx, dy] = [shape.b[0] - shape.a[0], shape.b[1] - shape.a[1]];
-    const length2 = dx * dx + dy * dy;
-    const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - shape.a[0]) * dx + (p[1] - shape.a[1]) * dy) / length2));
-    return [shape.a[0] + t * dx, shape.a[1] + t * dy];
+  switch (shape.type) {
+    case 'line': {
+      const [dx, dy] = [shape.b[0] - shape.a[0], shape.b[1] - shape.a[1]];
+      const length2 = dx * dx + dy * dy;
+      const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - shape.a[0]) * dx + (p[1] - shape.a[1]) * dy) / length2));
+      return [shape.a[0] + t * dx, shape.a[1] + t * dy];
+    }
+    case 'circle': {
+      const { center, radius } = shape;
+      const angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
+      return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
+    }
+    case 'arc': {
+      const { center, radius } = shape;
+      let angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
+      const along = (((angle - shape.from) % TAU) + TAU) % TAU;
+      // outside the arc: the nearer of its two ends
+      if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
+      return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
+    }
+    default:
+      return unreachable(shape, 'shape');
   }
-  const { center, radius } = shape;
-  let angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
-  if (shape.type === 'arc') {
-    const along = (((angle - shape.from) % TAU) + TAU) % TAU;
-    // outside the arc: the nearer of its two ends
-    if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
-  }
-  return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
 }
 
 // Where a snapped anchor really lies: on the point or on the curve it snapped to.
@@ -426,7 +437,18 @@ function cornerLines(context: SketchToolContext, corner: Id): [Id, Id] | string 
   const { sketch } = context;
   const vertex = pointJoins(sketch, { points: positionsOf(context), radii: {} });
   const at = vertex(corner);
-  const ends = (curve: Curve): Id[] => (curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'arc' ? [curve.start, curve.end] : []);
+  const ends = (curve: Curve): Id[] => {
+    switch (curve.type) {
+      case 'line':
+        return [curve.a, curve.b];
+      case 'arc':
+        return [curve.start, curve.end];
+      case 'circle':
+        return [];
+      default:
+        return unreachable(curve, 'curve');
+    }
+  };
   const ending = Object.keys(sketch.curves).filter((id) => ends(sketch.curves[id]).some((p) => vertex(p) === at));
   const real = ending.filter((id) => !sketch.curves[id].construction);
   const taken = real.length > 0 ? real : ending;
@@ -538,7 +560,7 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
       patched.push(feature.id);
     } else if (source?.sketch === id && source.type === 'wall' && lines.some((line) => source.curves.includes(line))) shortened.push(feature.id);
     if ((feature.type === 'sketch' && planeOn(feature.plane, starting)) || (feature.type === 'plane' && planeOn(feature.base, starting))) moved.push(feature.id);
-    if (feature.type === 'sketch' && Object.values(feature.external).some((ref) => sideOf(ref.edge.a, lines) || sideOf(ref.edge.b, lines))) shortened.push(feature.id);
+    if (feature.type === 'sketch' && Object.values(feature.external).some((ref) => kindOf(ref).faces(ref).some((face) => sideOf(face, lines)))) shortened.push(feature.id);
   }
   return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved, shortened } };
 }

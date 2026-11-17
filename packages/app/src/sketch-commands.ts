@@ -32,9 +32,10 @@ import {
   anchorPosition,
   isFlag,
   placeAnchor,
+  referenceEntities,
   sketchTool,
 } from '@trymesh/engine';
-import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure } from './sketch-view';
+import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, unreachable } from './sketch-view';
 
 // The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
 // are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
@@ -160,9 +161,22 @@ function sort(view: SketchView, ids: Id[]): Sorted {
   const out: Sorted = { points: [], lines: [], round: [] };
   for (const id of ids) {
     const kind: EntityKind | undefined = kindOf(view, id);
-    if (kind === 'point') out.points.push(id);
-    else if (kind === 'line') out.lines.push(id);
-    else if (kind) out.round.push(id);
+    switch (kind) {
+      case 'point':
+        out.points.push(id);
+        break;
+      case 'line':
+        out.lines.push(id);
+        break;
+      case 'circle':
+      case 'arc':
+        out.round.push(id);
+        break;
+      case undefined:
+        break;
+      default:
+        unreachable(kind, 'entity');
+    }
   }
   return out;
 }
@@ -223,6 +237,21 @@ function fromCatalog(kind: GeometricKind, view: SketchView, selection: Id[]): Co
 
 export type DimensionVariant = 'auto' | 'horizontal' | 'vertical';
 
+// The dimension of a round curve: a circle gets its diameter, an arc its radius.
+function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
+  switch (kind) {
+    case 'circle':
+      return 'diameter';
+    case 'arc':
+    case 'point': // `sort` puts only circles and arcs among the round entities
+    case 'line':
+    case undefined:
+      return 'radius';
+    default:
+      return unreachable(kind, 'entity');
+  }
+}
+
 // Kóta podle výběru (tabulka v docs/ui.md); hodnota je současná míra zaokrouhlená na setiny.
 export function dimensionFor(variant: DimensionVariant, view: SketchView, selection: Id[]): Dimension | undefined {
   const { points, lines, round } = sort(view, selection);
@@ -234,7 +263,7 @@ export function dimensionFor(variant: DimensionVariant, view: SketchView, select
   else if (variant !== 'auto') return undefined;
   else if (count === 2 && points.length === 1 && lines.length === 1) shape = { type: 'distancePointLine', point: points[0], line: lines[0] };
   else if (count === 2 && lines.length === 2) shape = { type: 'angle', a: lines[0], b: lines[1] };
-  else if (count === 1 && round.length === 1) shape = { type: kindOf(view, round[0]) === 'circle' ? 'diameter' : 'radius', curve: round[0] };
+  else if (count === 1 && round.length === 1) shape = { type: roundDimension(kindOf(view, round[0])), curve: round[0] };
   if (!shape) return undefined;
   const value = measure(shape, view);
   if (value === undefined) return undefined;
@@ -439,7 +468,7 @@ export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axi
 // projected ones.
 export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
-  ...Object.entries(sketch.external).filter(([, ref]) => ref.kind === 'line').map(([id]) => id),
+  ...Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).filter(([, kind]) => kind === 'line').map(([id]) => id)),
 ];
 // One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism,
 // the form of a revolve): a base axis; `sketchPoint` (the origin of the latest of `sketches` until

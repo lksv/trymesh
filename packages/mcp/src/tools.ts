@@ -39,6 +39,7 @@ import {
   faceParts,
   freshIds,
   isDimension,
+  referenceEntities,
   poseNote,
   printedBodies,
   sketchTool,
@@ -454,6 +455,20 @@ function loopArea(loop: ArrayLike<number>): number {
   return sum / 2;
 }
 
+// What get_sketch lists of an entry of `external` beyond its fields: its entities by the registry
+// of the engine (the entry itself and its derived points, on which constraints may be put), the
+// positions of its point entities, and the radius when the entry itself is a circle.
+function entryDetail(feature: SketchFeature, entry: Id, position: (point: Id) => Json, radii: Record<Id, number> | undefined): Record<string, Json> {
+  const entities = referenceEntities(feature, entry);
+  return {
+    entities: Object.keys(entities),
+    at: Object.entries(entities)
+      .filter(([, kind]) => kind === 'point')
+      .map(([point]) => position(point)),
+    ...(entities[entry] === 'circle' && radii?.[entry] !== undefined ? { radius: round(radii[entry]) } : {}),
+  };
+}
+
 function sketchDetail(engine: Engine, id: string): unknown {
   const feature = sketchOf(engine, id);
   const result = engine.getState(id).evaluation.features[id];
@@ -515,10 +530,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
     external: Object.entries(feature.external).map(([external, ref]) => ({
       id: external,
       ...(ref as unknown as { [key: string]: Json }),
-      // odvozené entity, na které jde vázat
-      entities: ref.kind === 'line' ? [external, `${external}/a`, `${external}/b`] : [external, `${external}/center`],
-      at: (ref.kind === 'line' ? [position(`${external}/a`), position(`${external}/b`)] : [position(`${external}/center`)]) as Json,
-      ...(ref.kind === 'circle' && solved?.radii[external] !== undefined ? { radius: round(solved.radii[external]) } : {}),
+      ...entryDetail(feature, external, position, solved?.radii),
     })),
     regions: (solved?.regions ?? []).map((region) => ({ ref: region.ref as unknown as Json, area: round(region.loops.reduce((sum, loop) => sum + loopArea(loop), 0)), holes: region.loops.length - 1 })),
     profileValid: solved?.valid ?? false,

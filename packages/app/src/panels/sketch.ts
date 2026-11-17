@@ -1,80 +1,18 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
-// selection, the list of constraints and dimensions, the projected geometry, and the options of
-// the polygon and the fillet tools, and the row that re-points a point of a curve (D52).
-import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, MAX_POLYGON_SIDES, constraintPath, isDimension, nearestCurvePoint } from '@trymesh/engine';
+// selection, the list of constraints and dimensions, the projected geometry, the options of the
+// active tool (its entry of SKETCH_TOOL_UI), and the row that re-points a point of a curve (D52).
+import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint, referenceEntities } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
-import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, type PolygonOptions, dimensionFor, geometricFor, normalizeAngle, polygonSizeKind, repointSelection } from '../sketch-commands';
+import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
 import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-diagnosis';
-import { type SketchHost, type SketchMode, addConstraints, deleteSelection, explain, setTool } from '../sketch-mode';
+import { type SketchHost, type SketchMode, addConstraints, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
+import { SKETCH_TOOL_UI } from '../sketch-tools';
 import { measure, operandsOf } from '../sketch-view';
+import { referenceUi } from '../references';
 
 // Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
 const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
-
-// The options of the polygon tool, shown while the tool is active: the number of sides and
-// whether the drawn size gets a dimension (rounded to 0.01 mm, like a dimension added by hand).
-function polygonOptions(host: SketchHost): HTMLElement[] {
-  const set = (change: Partial<PolygonOptions>) => {
-    host.sketching.polygon = { ...host.sketching.polygon, ...change };
-    host.renderPanel();
-    host.renderScene();
-  };
-  const sides = h('input', {
-    type: 'number',
-    min: '3',
-    max: String(MAX_POLYGON_SIDES),
-    step: '1',
-    value: String(host.sketching.polygon.sides),
-    onchange: () => {
-      const count = Number(sides.value);
-      // a number outside the range of the tool leaves the count as it was
-      set(Number.isInteger(count) && count >= 3 && count <= MAX_POLYGON_SIDES ? { sides: count } : {});
-    },
-  });
-  const kind = polygonSizeKind(host.sketching.polygon);
-  const option = (value: PolygonOptions['sizeKind'], label: string, disabled = false) => h('option', { value, textContent: label, selected: kind === value, disabled });
-  const size = h(
-    'select',
-    { onchange: () => set({ sizeKind: size.value as PolygonOptions['sizeKind'] }) },
-    option('none', 'No dimension'),
-    option('circumscribed', 'Diameter of the circumscribed circle'),
-    option('acrossFlats', 'Size across flats (even number of sides)', host.sketching.polygon.sides % 2 === 1),
-  );
-  return [
-    h('h2', {}, 'Polygon'),
-    h('label', {}, `Sides (3 to ${MAX_POLYGON_SIDES})`, sides),
-    h('label', {}, 'Dimension of the size', size),
-    h('p', { className: 'hint' }, 'Click the centre, then a vertex. The polygon is a construction circle with the vertices on it and sides of the same length; a dimension takes the size as drawn and is edited in the list of constraints. Draw it turned as it should be: a constraint on a side then holds it, but one that has to turn it far can leave it folded.'),
-  ];
-}
-
-// The option of the fillet tool, shown while the tool is active: the radius, a number or an
-// expression over the parameters, remembered for the next corner.
-function filletOptions(host: SketchHost): HTMLElement[] {
-  const names = host.doc.parameters.map((p) => p.name);
-  const radius = h('input', {
-    className: 'value',
-    value: fieldText(host.sketching.fillet.radius, 'mm'),
-    title: 'mm, or an expression',
-    oninput: () => {
-      const parsed = parseField(radius.value, 'mm');
-      markProblem(radius, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : typeof parsed === 'number' && !(parsed > 0) ? 'The radius has to be positive.' : undefined);
-    },
-    onchange: () => {
-      // an empty field, a radius that is not positive or an expression in error leaves the radius as it was
-      const parsed = parseField(radius.value, 'mm');
-      const fine = typeof parsed === 'number' ? parsed > 0 : parsed !== undefined && expressionProblem(parsed, 'number', names) === undefined;
-      if (fine) host.sketching.fillet = { radius: parsed as number | Expr };
-      host.renderPanel();
-    },
-  });
-  return [
-    h('h2', {}, 'Fillet'),
-    h('label', {}, 'Radius', radius),
-    h('p', { className: 'hint' }, 'Click the point where two lines meet. The corner gets an arc tangent to both lines with a radius dimension; the lines keep their IDs and the corner point stays where the lines cross. The features that use the outline get the arc in their profile.'),
-  ];
-}
 
 // A row that re-points a point of the selected curve to the selected point (setCurvePoint, D52):
 // a choice of the points the curve has, the nearest one chosen at first.
@@ -161,8 +99,9 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   const parameterNames = host.doc.parameters.map((p) => p.name);
   out.push(...host.issues(host.view().evaluation.features[m.id]).filter((element) => element.textContent?.startsWith('Field ')));
   out.push(...diagnosisSummary(host, m, diagnosis));
-  if (m.tool === 'polygon') out.push(...polygonOptions(host));
-  if (m.tool === 'fillet') out.push(...filletOptions(host));
+  // the options of the active tool (the sides of the polygon, the radius of the fillet)
+  const options = SKETCH_TOOL_UI[m.tool].options;
+  if (options) out.push(...options.panel(host, toolOptions(host, m.tool), (value) => (host.sketching.tools[m.tool] = value)));
 
   const dimension = (label: string, variant: DimensionVariant, title: string) => {
     const d = dimensionFor(variant, view, m.selection);
@@ -293,9 +232,13 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
 
   // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
+  // A row by the kind of the entry (REFERENCE_UI); "bez geometrie" when no entity of it has a position.
   const warnings = host.view().evaluation.features[m.id]?.warnings ?? [];
   const projections = Object.entries(feature.external).map(([id, ref]) => {
     const problem = warnings.find((w) => w.code !== 'sketchConflict' && Array.isArray(w.refs) && w.refs[0] === id);
+    const ui = referenceUi(ref);
+    const shown = Object.keys(referenceEntities(feature, id)).some((entity) => view.points.has(entity) || view.curves.has(entity));
+    const repair = ui.repair;
     return h(
       'div',
       {
@@ -304,18 +247,20 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         onmouseenter: () => ((m.hover = id), host.renderScene()),
         onmouseleave: () => ((m.hover = undefined), host.renderScene()),
       },
-      h('span', { className: 'name' }, `${ref.kind === 'line' ? 'Úsečka' : 'Kružnice'} `, h('small', {}, `${id} · ${host.bodyName(ref.body)}${view.curves.has(id) ? '' : ' · bez geometrie'}`)),
-      h('button', {
-        className: 'icon',
-        textContent: '↻',
-        title: 'Promítnout znovu: klikněte potom na novou hranu tělesa',
-        onclick: () => {
-          setTool(host, 'project');
-          m.repair = id;
-          host.say('Klikněte na hranu, která má promítnutí nahradit (Esc ruší).');
-          host.renderPanel();
-        },
-      }),
+      h('span', { className: 'name' }, `${ui.title(ref)} `, h('small', {}, `${id} · ${ui.detail(ref, host)}${shown ? '' : ' · bez geometrie'}`)),
+      repair
+        ? h('button', {
+            className: 'icon',
+            textContent: '↻',
+            title: repair.title,
+            onclick: () => {
+              setTool(host, repair.tool);
+              m.repair = id;
+              host.say(repair.hint);
+              host.renderPanel();
+            },
+          })
+        : null,
       h('button', { className: 'icon', textContent: '✕', title: 'Zrušit promítnutí', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, 'Promítnutí zrušeno.') }),
     );
   });

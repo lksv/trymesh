@@ -5,6 +5,7 @@
 import { type BodyPlacement, type Command, type Expr, type FrameRef, IMPORT_FORMATS, type Id, type Input, type InsertFeature, type MeshFeature, type PlaneRef, type SketchFeature, featureInput, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
+import { entryEntities } from '../references';
 import type { PanelHost, ViewPick } from '../host';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, startDraft } from './draft';
 import { planeText } from './plane';
@@ -111,7 +112,7 @@ export function frameRows(m: PlacedMode, host: PanelHost, what = 'mesh'): HTMLEl
   ];
   if (frame.kind === 'sketchPoint') {
     const sketch = host.feature(frame.sketch);
-    const points = sketch?.type === 'sketch' ? ['origin', ...Object.keys(sketch.points), ...Object.entries(sketch.external).flatMap(([id, ref]) => (ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`]))] : [];
+    const points = sketch?.type === 'sketch' ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch).filter((entity) => entity.kind === 'point').map((entity) => entity.id)] : [];
     const ids = sketches.map((s) => s.id);
     out.push(
       h(

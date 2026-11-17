@@ -10,6 +10,7 @@ export {
   constraintOperands,
   constraintPath,
   CURVE_POINTS,
+  curvePoints,
   derivedPoints,
   documentIds,
   duplicateOf,
@@ -18,6 +19,7 @@ export {
   featureInput,
   fieldsOf,
   isDimension,
+  referenceEntities,
   withPath,
 } from './document';
 export { bodyRefs, bodySource, featuresWithInserted, generatorOf, insertedFeature, producesTool, sourceChain, sourceRoot } from './features/index';

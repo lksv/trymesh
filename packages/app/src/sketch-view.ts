@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands } from '@trymesh/engine';
+import { type Constraint, type CurveShape, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, referenceEntities } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -27,7 +27,14 @@ export interface SketchView {
   curves: Map<Id, CurveView>;
   source: SketchToolContext; // the sketch and the solved state the view was made of, for the sketch tools of the engine
 }
-export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
+export type EntityKind = 'point' | Shape['type'];
+
+// The end of a switch over the kinds of a curve (D64): a kind added to `Shape` or to the curves of
+// the engine does not compile until the switch has its case. At run time it throws, which a sketch
+// the engine validated never reaches.
+export function unreachable(value: never, what: string): never {
+  throw new Error(`${what}: unexpected ${JSON.stringify(value)}`);
+}
 
 export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
@@ -42,33 +49,37 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
   points.set(ORIGIN, { id: ORIGIN, at: [0, 0], own: false });
   for (const id of Object.keys(feature.points)) points.set(id, { id, at: at(id) as Vec2, own: true });
 
-  for (const [id, curve] of Object.entries(feature.curves)) {
-    const construction = curve.construction === true;
-    if (curve.type === 'line') {
-      curves.set(id, { id, own: true, construction, points: [curve.a, curve.b], shape: { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 } });
-    } else if (curve.type === 'circle') {
-      curves.set(id, { id, own: true, construction, points: [curve.center], shape: { type: 'circle', center: at(curve.center) as Vec2, radius: result.radii[id] ?? feature.radii[id] } });
-    } else {
-      const [center, start, end] = [at(curve.center) as Vec2, at(curve.start) as Vec2, at(curve.end) as Vec2];
-      const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
-      const sweep = positive(Math.atan2(end[1] - center[1], end[0] - center[0]) - from) || TAU;
-      curves.set(id, { id, own: true, construction, points: [curve.center, curve.start, curve.end], shape: { type: 'arc', center, radius: dist(center, start), from, sweep } });
+  // the shape of a curve over the positions of its points (the radius of a circle given)
+  const shapeOf = (curve: CurveShape, radius: number): Shape => {
+    switch (curve.type) {
+      case 'line':
+        return { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 };
+      case 'circle':
+        return { type: 'circle', center: at(curve.center) as Vec2, radius };
+      case 'arc': {
+        const [center, start, end] = [at(curve.center) as Vec2, at(curve.start) as Vec2, at(curve.end) as Vec2];
+        const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
+        const sweep = positive(Math.atan2(end[1] - center[1], end[0] - center[0]) - from) || TAU;
+        return { type: 'arc', center, radius: dist(center, start), from, sweep };
+      }
+      default:
+        return unreachable(curve, 'curve');
     }
+  };
+  for (const [id, curve] of Object.entries(feature.curves)) {
+    curves.set(id, { id, own: true, construction: curve.construction === true, points: curvePoints(curve), shape: shapeOf(curve, result.radii[id] ?? feature.radii[id]) });
   }
-  // Promítnutá geometrie: jen ta, pro kterou přepočet má hodnoty.
-  for (const [id, ref] of Object.entries(feature.external)) {
-    if (ref.kind === 'line') {
-      const [a, b] = [at(`${id}/a`), at(`${id}/b`)];
-      if (!a || !b) continue;
-      points.set(`${id}/a`, { id: `${id}/a`, at: a, own: false });
-      points.set(`${id}/b`, { id: `${id}/b`, at: b, own: false });
-      curves.set(id, { id, own: false, construction: false, points: [`${id}/a`, `${id}/b`], shape: { type: 'line', a, b } });
-    } else {
-      const center = at(`${id}/center`);
-      const radius = result.radii[id];
-      if (!center || radius === undefined) continue;
-      points.set(`${id}/center`, { id: `${id}/center`, at: center, own: false });
-      curves.set(id, { id, own: false, construction: false, points: [`${id}/center`], shape: { type: 'circle', center, radius } });
+  // The entries of `external` (projected geometry): their points with a position and their curves
+  // the result has, in the order of the document and of the kind of each entry.
+  for (const entry of Object.keys(feature.external)) {
+    const entities = Object.entries(referenceEntities(feature, entry));
+    for (const [id, kind] of entities) {
+      const p = kind === 'point' ? at(id) : undefined;
+      if (p) points.set(id, { id, at: p, own: false });
+    }
+    for (const [id, kind] of entities) {
+      const curve = kind === 'point' ? undefined : result.curves[id];
+      if (curve) curves.set(id, { id, own: false, construction: false, points: curvePoints(curve.shape), shape: shapeOf(curve.shape, result.radii[id]) });
     }
   }
   return { points, curves, source: { sketch: feature, result } };
@@ -78,8 +89,18 @@ export const kindOf = (view: SketchView, id: Id): EntityKind | undefined => (vie
 
 // Lomená čára křivky; kružnice je uzavřená (poslední bod = první).
 export function polyline(shape: Shape): Vec2[] {
-  if (shape.type === 'line') return [shape.a, shape.b];
-  const [from, sweep] = shape.type === 'circle' ? [0, TAU] : [shape.from, shape.sweep];
+  let [from, sweep] = [0, TAU];
+  switch (shape.type) {
+    case 'line':
+      return [shape.a, shape.b];
+    case 'circle':
+      break;
+    case 'arc':
+      [from, sweep] = [shape.from, shape.sweep];
+      break;
+    default:
+      return unreachable(shape, 'shape');
+  }
   const count = Math.max(8, Math.ceil(sweep / (Math.PI / 48)));
   const out: Vec2[] = [];
   for (let i = 0; i <= count; i++) {
@@ -91,20 +112,29 @@ export function polyline(shape: Shape): Vec2[] {
 
 // Nejbližší bod křivky k bodu p.
 export function closestOn(shape: Shape, p: Vec2): Vec2 {
-  if (shape.type === 'line') {
-    const [dx, dy] = [shape.b[0] - shape.a[0], shape.b[1] - shape.a[1]];
-    const length2 = dx * dx + dy * dy;
-    const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - shape.a[0]) * dx + (p[1] - shape.a[1]) * dy) / length2));
-    return [shape.a[0] + t * dx, shape.a[1] + t * dy];
+  switch (shape.type) {
+    case 'line': {
+      const [dx, dy] = [shape.b[0] - shape.a[0], shape.b[1] - shape.a[1]];
+      const length2 = dx * dx + dy * dy;
+      const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - shape.a[0]) * dx + (p[1] - shape.a[1]) * dy) / length2));
+      return [shape.a[0] + t * dx, shape.a[1] + t * dy];
+    }
+    case 'circle': {
+      const { center, radius } = shape;
+      const angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
+      return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
+    }
+    case 'arc': {
+      const { center, radius } = shape;
+      let angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
+      const along = positive(angle - shape.from);
+      // mimo oblouk: bližší z koncových bodů
+      if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
+      return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
+    }
+    default:
+      return unreachable(shape, 'shape');
   }
-  const { center, radius } = shape;
-  let angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
-  if (shape.type === 'arc') {
-    const along = positive(angle - shape.from);
-    // mimo oblouk: bližší z koncových bodů
-    if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
-  }
-  return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
 }
 
 export const distanceTo = (shape: Shape, p: Vec2): number => dist(closestOn(shape, p), p);
@@ -172,8 +202,16 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
     case 'radius':
     case 'diameter': {
       const curve = view.curves.get(shape.curve)?.shape;
-      if (!curve || curve.type === 'line') return undefined;
-      return shape.type === 'radius' ? curve.radius : 2 * curve.radius;
+      if (!curve) return undefined;
+      switch (curve.type) {
+        case 'line':
+          return undefined;
+        case 'circle':
+        case 'arc':
+          return shape.type === 'radius' ? curve.radius : 2 * curve.radius;
+        default:
+          return unreachable(curve, 'shape');
+      }
     }
   }
 }
@@ -188,11 +226,22 @@ export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
     const point = view.points.get(id);
     const shape = view.curves.get(id)?.shape;
     if (point) spots.push(point.at);
-    else if (shape?.type === 'line') spots.push([(shape.a[0] + shape.b[0]) / 2, (shape.a[1] + shape.b[1]) / 2]);
-    else if (shape) {
-      const angle = shape.type === 'arc' ? shape.from + shape.sweep / 2 : Math.PI / 4;
-      spots.push([shape.center[0] + shape.radius * Math.cos(angle), shape.center[1] + shape.radius * Math.sin(angle)]);
-    } else return undefined;
+    else if (!shape) return undefined;
+    else {
+      switch (shape.type) {
+        case 'line':
+          spots.push([(shape.a[0] + shape.b[0]) / 2, (shape.a[1] + shape.b[1]) / 2]);
+          break;
+        case 'circle':
+        case 'arc': {
+          const angle = shape.type === 'arc' ? shape.from + shape.sweep / 2 : Math.PI / 4;
+          spots.push([shape.center[0] + shape.radius * Math.cos(angle), shape.center[1] + shape.radius * Math.sin(angle)]);
+          break;
+        }
+        default:
+          unreachable(shape, 'shape');
+      }
+    }
   }
   if (spots.length === 0) return undefined;
   return [spots.reduce((sum, s) => sum + s[0], 0) / spots.length, spots.reduce((sum, s) => sum + s[1], 0) / spots.length];

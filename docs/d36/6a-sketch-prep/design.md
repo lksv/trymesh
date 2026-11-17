@@ -1,6 +1,6 @@
 # 6a Preparatory part and shared vocabulary of step 6 (D64)
 
-**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews".** Nothing is implemented. The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
+**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews". Implemented 2026-11-17 in the branch `d36/6a`, the five parts in the order 4, 3, 1, 2, 5, as recorded in "As implemented".** The owner's open question was not answered before the implementation; it follows the recommendation (derived geometry as a kind of entry of `external`). The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
 
 Files: [contract.ts](contract.ts) (the types and signatures of the five parts and of the vocabulary), [calls.ts](calls.ts) (existing documents and calls as they stay, and how 6b, 6c, 6d, 6e and 6f plug in).
 
@@ -370,6 +370,65 @@ Many findings again, though narrower: a third round reads only the diff of these
 | Who writes the check of a change of source was said two ways | internal | factual | yes | 6c writes it; 6a writes only today's rule of the kind |
 
 Sound by both: the fresh reader and the nulling of addresses, ends joined and centres raw, the keys of a projection stamped with its value, the axes and the mirror of calls.ts, the redraw of a kept shape, the face keys, the section "Slots, not mechanisms" against the rule of CLAUDE.md on the depth of a review. This was the last round the owner's rule allows; nothing is left open from it.
+
+## As implemented
+
+The parts in the order of their commits, each with what it changed against the design.
+
+### Part 4: the app's sketch tools as a table
+
+As designed: `packages/app/src/sketch-tools/` with `spec.ts` (`SketchToolUi`, `SketchPlaceTool`, `SketchEdgeTool`, `drawn`), a file per tool and `index.ts` (`SKETCH_TOOL_UI`, `SketchToolName` its keys); `SketchMode.tool` is a `SketchToolName`, `App.sketching` is `{ tools, explained? }`, the panels of the polygon and the fillet moved into their files. The snapshots of the app pass without `-u`; no public type of the engine changed. Beside the contract:
+
+- **`Place`** (`spec.ts`) is the contract's `PlaceStandIn`: an anchor, or a place with a foreign snap. A tool that picks in the sketch reads its places through `anchor(place)`, which drops a foreign snap (only a tool's own picker makes one); the mode positions a kept place by `placePosition` (a foreign snap keeps its `at`).
+- **After the last place of a shape** (a tool with `clicks`) the mode, not each `click`, drops the inferred direction and redraws the scene, which is what the end of `sketchClick` did after every shape; `click` makes only the calls of its own (select: the panel and the scene).
+- **`hovers` also means "no marker of a snap and no shape in progress"**: the mode tells the select tool from the drawing tools by it, as `m.tool !== 'select'` did.
+- **A click whose pointer misses the plane of the sketch** does nothing for every tool. Before, the fillet then said "Click a point where two lines meet."; the pointer misses the plane only when the view looks along it.
+- **Enter** calls `sketchFinish`, which runs the tool's `finish` with the places kept; no tool of today has one.
+- `placeAt` (the place under the pointer as a tool picks it) is exported for `packages/app/test/sketch-tool-table.test.ts`, which checks `picks: 'sketch'`, `'curve'` with and without `eligible`, and a tool's own picker, and the order and kinds of the table.
+
+### Part 3: every switch on the kind of a sketch curve exhaustive
+
+As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINTS`, in `sketch-content.ts`) for the validator of a curve, and a switch in every place of the table. No test and no public type changed; the meshes are those of before (the tests compare them). Beside the table:
+
+- **E8.** `compatible` reads the round shapes through one switch, `roundOf`; `carrierContacts` switches on both kinds and calls one function per pair of kinds (line–line, line–round, round–round), whose bodies are those of before.
+- **E14, A5.** A line in the place of a circle keeps what it got before: the radius of the analysis reads the variable or the value of a circle for a line too, and the adapter sends a radius or a diameter of a line as that of a circle. Validation never lets a line there.
+- **P4.** The dimension of a round curve is `roundDimension`, a switch over the kinds of the app; `sort` (P3) is one too.
+- **A1, A2.** The adapter throws its text of today, with the value as `cause`.
+- `packages/engine/test/curve-kinds.test.ts` checks `CURVE_KINDS` and that `unreachable` throws.
+- **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E9, E11 to E14, E16, E18, E20, E21 and `document.ts` (E5), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind.
+
+### Where 6a meets 2h (D66), merged in from `master`
+
+2h (the start of an extent at a face or a plane) reads no curve of a sketch and nothing part 2 replaced: its start and end planes read the exact outline of the regions (`exactStart` of `recompute/extent.ts`, over `Loop.exact`, falling back to the polyline of a loop without one) and the outline of a hole it builds itself (`ExactCurve`, its own union of a line, a circle and points). `exactStart` is one more consumer of `OutlineCurve` ("Ring 2", not made exhaustive by 6a), for the package that adds a variant there; a loop without exact curves already falls back. The one conflict was the import list of `packages/app/src/features/extrude.ts` (2h's `PlaneRef` and `startText` beside part 5's entity helpers in place of `derivedPoints`).
+
+### Part 1: the kinds of reference geometry as a registry
+
+As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `index.ts`; `externalGeometry` removed; `entityOf` and `derivedPoints` moved out of `sketch-content.ts` (`document.ts` re-exports them from `references/index.ts`, so the public surface is the same); `solverSetup(sketch, references)` takes the resolved entries; the step asks `resolveReferences`; the refs of a sketch, the fillet's `shortened` and `updateExternal` read the kind. No test and no public type changed. Beside the contract:
+
+- **The values.** The value of each kind is in `ReferenceValues` (`spec.ts`), keyed by the name of the kind, in place of the contract's map `ReferenceKinds`; `StoredValue` is their union, and `storedValue` (`index.ts`) reads a stored value by its form before it is matched with its entry. The edge's `value` returns the stored object itself once it fits, so a frozen value is the object `load` made, as before.
+- **`DerivedKindSpec`, `SolvedOwn`** stay in the contract (6c writes them); `GeometrySource` and the slots of `EntryGeometry` (`joins`, `keys`, `hidden`) are declared in `spec.ts` and read by nothing yet.
+- **The commands** validate an entry with `entryContext` (`document.ts`): the references of the sketch at its place and a fresh reader of numeric fields over no expressions. The expressions it reads are not handed on yet: the edge has no field (6c writes the cleanup).
+- **Checked before and after**, in a copy of `master` and in the tree: a plate with a projected line and circle, constraints on both, a projection that is lost (its edge removed, the frozen value used), the saved document loaded again, and the fixture `v1-plate.json` give the same documents (stamps, stored values), the same results and the same meshes, byte for byte.
+- The vocabulary of step 6 is written into `docs/architecture/sketch.md` and the rule of the face key into `docs/architecture/naming.md`.
+
+### Part 2: the profile from a list of curves
+
+As designed: `SketchCurve`, `sketchCurves`, `joinPairs`, `joinsOf` and `profileOf` in `sketch.ts`; `detectProfile` and `pointJoins` stay as the forms over the own content; `SketchState` has `curves` and `joins`, built by the sketch step from the resolved entries; `curveOf`, the circle operand of a generator and the axis `sketchLine` read `curves`. No test and no public type changed. Beside the design:
+
+- **The one shape function** is `placedCurve(curve, radii, end, centre)`: the ends through `end` (the joined vertex in the profile and the wall, the raw position in `curveOf`), the centre through `centre` (raw), an arc's `start` and `sweep` and its radius from its first end, which are the numbers the three places computed each. It answers undefined for a missing position or radius: the wall then reports a broken reference as before; the profile calls the sketch invalid (before, a missing point could not happen and would have thrown).
+- **The wall** is `wallOfCurves(curves, joins, geometry, ids, …)` over the list and the joins of the state; `wallOutline` keeps its signature and builds them from the own content. A curve of the list that is not own is a broken reference of the wall, as a curve the sketch does not have was. `curveEnds(shape)` (`sketch.ts`) names the points at the ends of a line or an arc.
+- `joinPairs` takes the resolved entries and reads none of them yet: the declared joins and the join keys are 6c's and 6b's.
+- **Checked before and after**, as for part 1, with a wall along two lines and a region extruded with an offset added: the same documents, results and meshes, byte for byte. The tests of the taper and the offset, which compare outlines to the last digit, pass unchanged.
+
+### Part 5: the result and its readers
+
+As designed: `SketchResult.curves` (`ResultCurve` in `types.ts`), filled by the sketch step in the order of `external` and of the kind; `referenceEntities` and `curvePoints` exported by the engine; the app's view, its pickers, `lineIds`, the row of an entry (`REFERENCE_UI` in `packages/app/src/references/`) and the hover of a row read the entities of the entries; `get_sketch` lists them from the registry; the engine's `shapeOf` takes a curve that is not own from `result.curves`. One test changed, as the design says: the hand-made result of `packages/app/test/sketch-tools.test.ts` ("promítnutá kružnice je v pohledu…") got the curve `x`. The app's snapshots pass unchanged. Beside the contract:
+
+- **`ReferenceUi.repair`** is data, `{ title, tool, hint }`: the panel chooses the tool, sets the entry to repair and says the hint, which is what the button did. A function `start(host, m, id)` would have made the rows import the sketch mode, which imports the rows (the hover marks).
+- **The hover** of a row sets `m.hover` to the entry's ID as before; the scene marks `hoverMarks(sketch, id)`: the curves of an entry, or the entry itself when it has none. For an edge that is its curve, the ID it marked before.
+- **`describe_api`** shows `ResultCurve` and the new field of `SketchResult` with their comments, as the design says (`engineTypes` of `packages/mcp/src/api.ts` leaves out only the ports, between `// --- porty` and `// --- přepočet`); nothing in `packages/mcp` changed for it. The AI reads `source: 'reference' | 'derived'` before a derived kind exists.
+- **`ResultCurve.source`** is written `'reference' | 'derived'` in `types.ts`, which does not import `references/spec.ts`; `GeometrySource` there is `'own' | ResultCurve['source']`, so the two cannot drift apart. The step takes the source of a result curve from the kind of its entry (`kindOf(ref).source`).
+- **Checked before and after** in a copy of `master`: `get_sketch` of a sketch with a projected line and circle (and of the same sketch with the circle's projection lost, frozen) answers byte for byte as before; the documents, results and meshes are the same apart from the new field.
 
 ## Rows for the indexes
 

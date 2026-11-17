@@ -87,7 +87,7 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
   const sketch = lookup(state.sketches, ref.sketch);
   if (!sketch) return { code: 'brokenReference', refs: [ref.sketch] };
   if (ref.kind === 'sketchLine') {
-    const line = lookup(sketch.input.curves, ref.line);
+    const line = sketch.curves.get(ref.line)?.shape;
     const [a, b] = line?.type === 'line' ? [lookup(sketch.geometry.points, line.a), lookup(sketch.geometry.points, line.b)] : [];
     if (!a || !b) return { code: 'brokenReference', refs: [ref.line] };
     if (Math.hypot(b.x - a.x, b.y - a.y) <= LENGTH_TOLERANCE) return { code: 'invalidAxis', refs: [ref.line], detail: 'the line of the axis has no length' };

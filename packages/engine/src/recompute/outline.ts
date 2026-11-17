@@ -6,9 +6,9 @@
 // left of the travel: an outer loop runs counter-clockwise, a hole clockwise. A move never changes
 // the topology: every curve maps to one curve, and what cannot be kept (a curve that vanishes,
 // neighbours that no longer meet, loops that touch) is refused with a text that names the curves.
-import { type Loop, type OutlineCurve, type Region, type SketchGeometry, pointJoins, polygonNesting, polygonProblem, segments, soundTessellation, touchingCurves } from '../sketch';
+import { type CurveEnd, type Loop, type OutlineCurve, type Region, type SketchCurve, type SketchGeometry, curveEnds, placedCurve, pointJoins, polygonNesting, polygonProblem, segments, sketchCurves, soundTessellation, touchingCurves } from '../sketch';
 import type { FaceName, Id, SketchFeature, Vec2 } from '../types';
-import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross2, dist2, dot2, has, len2, sub2 } from '../util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross2, dist2, dot2, has, len2, sub2, unreachable } from '../util';
 import type { Outline, ProfileProblem, SideCurve } from './state';
 
 const TAU = 2 * Math.PI;
@@ -512,38 +512,45 @@ export interface WallOutline {
 // A curve that is not in the sketch is a broken reference; curves that do not form one chain are
 // an invalid profile.
 export function wallOutline(sketch: SketchFeature, geometry: SketchGeometry, ids: Id[], thickness: number, move: Move): WallOutline | ProfileProblem {
-  const missing = ids.filter((id) => !has(sketch.curves, id));
+  return wallOfCurves(new Map(sketchCurves(sketch, {}).map((curve) => [curve.id, curve])), pointJoins(sketch, geometry), geometry, ids, thickness, move);
+}
+
+// The wall over the curves of a sketch (`SketchState.curves`, D64) and its joins (`joinsOf`); only
+// its own curves can be the curves of a wall.
+export function wallOfCurves(sketchCurve: ReadonlyMap<Id, SketchCurve>, joins: (id: Id) => Id, geometry: SketchGeometry, ids: Id[], thickness: number, move: Move): WallOutline | ProfileProblem {
+  const missing = ids.filter((id) => sketchCurve.get(id)?.source !== 'own');
   if (missing.length) return { code: 'brokenReference', refs: missing };
-  const find = pointJoins(sketch, geometry);
-  const vertex = (id: Id): { key: string; p: Vec2 } | undefined => (has(geometry.points, find(id)) ? { key: find(id), p: [geometry.points[find(id)].x, geometry.points[find(id)].y] } : undefined);
+  const find = joins;
+  const vertex = (id: Id): CurveEnd | undefined => (has(geometry.points, find(id)) ? { key: find(id), p: [geometry.points[find(id)].x, geometry.points[find(id)].y] } : undefined);
+  const centre = (id: Id): Vec2 | undefined => (has(geometry.points, id) ? [geometry.points[id].x, geometry.points[id].y] : undefined);
   const chainHelp = 'A wall follows one chain of curves: each joined to the next at an end point, without a branch.';
   // the curves in their own direction, and the points they name at their two ends
   const own: OutlineCurve[] = [];
   const named = new Map<Id, [Id, Id]>();
   for (const id of ids) {
-    const curve = sketch.curves[id];
-    const centre = curve.type === 'line' ? undefined : has(geometry.points, curve.center) ? geometry.points[curve.center] : undefined;
-    if (curve.type === 'circle') {
-      const radius = has(geometry.radii, id) ? geometry.radii[id] : undefined;
-      if (!centre || radius === undefined) return { code: 'brokenReference', refs: [id] };
-      if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The circle ${quoted([id])} of the wall has no radius.`);
-      own.push({ key: id, forward: true, type: 'circle', center: [centre.x, centre.y], radius, ccw: true });
+    const curve = sketchCurve.get(id) as SketchCurve;
+    // the ends at their joined vertices, a centre as it is
+    const placed = placedCurve(curve, geometry.radii, vertex, centre);
+    if (!placed) return { code: 'brokenReference', refs: [id] };
+    if (placed.type === 'circle') {
+      if (!(placed.radius > LENGTH_TOLERANCE)) return refusal([id], `The circle ${quoted([id])} of the wall has no radius.`);
+      own.push({ key: id, forward: true, type: 'circle', center: placed.center, radius: placed.radius, ccw: true });
       continue;
     }
-    const points: [Id, Id] = curve.type === 'line' ? [curve.a, curve.b] : [curve.start, curve.end];
-    const [a, b] = [vertex(points[0]), vertex(points[1])];
-    if (!a || !b || (curve.type === 'arc' && !centre)) return { code: 'brokenReference', refs: [id] };
+    const { a, b } = placed;
     if (a.key === b.key || dist2(a.p, b.p) <= LENGTH_TOLERANCE) return refusal([id], `The curve ${quoted([id])} of the wall has no length.`);
-    named.set(id, points);
+    named.set(id, curveEnds(curve.shape) as [Id, Id]);
     const travel = { key: id, forward: true, from: a.p, to: b.p, ends: [a.key, b.key] as [string, string] };
-    if (curve.type === 'line') own.push({ ...travel, type: 'line' });
-    else {
-      const center: Vec2 = [(centre as { x: number }).x, (centre as { y: number }).y];
-      const radius = dist2(a.p, center);
-      if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The arc ${quoted([id])} of the wall has no radius.`);
-      const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
-      const sweep = (((Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) % TAU) + TAU) % TAU || TAU;
-      own.push({ ...travel, type: 'arc', center, radius, start, sweep });
+    switch (placed.type) {
+      case 'line':
+        own.push({ ...travel, type: 'line' });
+        break;
+      case 'arc':
+        if (!(placed.radius > LENGTH_TOLERANCE)) return refusal([id], `The arc ${quoted([id])} of the wall has no radius.`);
+        own.push({ ...travel, type: 'arc', center: placed.center, radius: placed.radius, start: placed.start, sweep: placed.sweep });
+        break;
+      default:
+        return unreachable(placed, 'curve');
     }
   }
   if (own.some((curve) => curve.type === 'circle') && own.length > 1) return refusal(ids, `A circle makes a wall by itself; the curves ${quoted(ids)} hold a circle and something else. ${chainHelp}`);

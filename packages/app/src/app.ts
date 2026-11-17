@@ -39,8 +39,8 @@ import { drawPicture, savePicture, viewCapability } from './picture';
 import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
-import { type SketchContext, type SketchHost, type SketchMode, type SketchState, TOOLS, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchMode, sketchMove, sketchScene } from './sketch-mode';
-import { DEFAULT_FILLET, DEFAULT_POLYGON } from './sketch-commands';
+import { type SketchContext, type SketchHost, type SketchMode, type SketchState, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchFinish, sketchMode, sketchMove, sketchScene } from './sketch-mode';
+import { SKETCH_TOOL_UI, type SketchToolName } from './sketch-tools';
 import { type View, Viewport } from './viewport';
 import { bodyName, faceLabel, featureName, featureNameIn, issueText, takenOverText } from './issue-text';
 
@@ -73,7 +73,7 @@ export class App implements SketchHost, SceneHost {
   private readonly counters = new Map<string, number>();
   private cache?: EngineState;
   readonly drafting: DraftState = { cost: 0, confirming: false };
-  readonly sketching: SketchState = { polygon: DEFAULT_POLYGON, fillet: DEFAULT_FILLET }; // remembered between sketches
+  readonly sketching: SketchState = { tools: {} }; // remembered between sketches
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
 
@@ -392,7 +392,7 @@ export class App implements SketchHost, SceneHost {
       );
     } else if (m.kind === 'sketch') {
       groups.push(
-        group(...TOOLS.map(([tool, label, hint]) => button(label, () => setTool(this, tool), { title: hint, active: m.tool === tool }))),
+        group(...(Object.keys(SKETCH_TOOL_UI) as SketchToolName[]).map((tool) => button(SKETCH_TOOL_UI[tool].label, () => setTool(this, tool), { title: SKETCH_TOOL_UI[tool].hint, active: m.tool === tool }))),
         group(
           button('Konstrukčně', () => ((m.construction = !m.construction), this.say(m.construction ? 'Nové křivky budou konstrukční: pomáhají s vazbami, ale netvoří profil.' : 'Nové křivky budou běžné.'), this.refresh()), {
             title: 'Kreslicí nástroje zakládají konstrukční (pomocné) křivky',
@@ -777,7 +777,7 @@ export class App implements SketchHost, SceneHost {
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && m.kind === 'sketch') {
       event.preventDefault();
       deleteSelection(this, m);
-    }
+    } else if (event.key === 'Enter' && m.kind === 'sketch') sketchFinish(this, m);
   }
 
   // ---------------------------------------------------------------- nová skica a rovina
@@ -823,7 +823,7 @@ export class App implements SketchHost, SceneHost {
       this.viewport.lookAt(frame);
       this.fit();
     }
-    this.say(TOOLS[0][2]);
+    this.say(SKETCH_TOOL_UI.select.hint);
   }
 
   private finishSketch(): void {

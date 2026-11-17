@@ -2,7 +2,8 @@
 // and one line here; the compiler guards that an entry is complete, the step of the recompute
 // included. Validation of references, the order on the timeline, `updateFeature`, the recompute and
 // the description of the API for the AI all read the registry.
-import { bodyOwner, entityOf } from '../sketch-content';
+import { entityOf } from '../references/index';
+import { bodyOwner } from '../sketch-content';
 import type { Document, Feature, Id, InsertFeature } from '../types';
 import { ORIGIN, has } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';

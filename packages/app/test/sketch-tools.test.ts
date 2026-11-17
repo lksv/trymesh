@@ -516,7 +516,7 @@ describe('nálezy z revize aplikace', () => {
   it('promítnutá kružnice je v pohledu jako pevná křivka se středem', () => {
     const t = setup();
     const feature: SketchFeature = { ...t.sketch(), external: { x: { type: 'edge', body: 'e', edge: { a: { feature: 'e', role: 'endCap' }, b: { feature: 'e', role: 'side', curve: 'k' } }, kind: 'circle' } } };
-    const view = sketchView(feature, { ...t.result(), points: { ...t.result().points, 'x/center': { x: 3, y: 4 } }, radii: { x: 2 } });
+    const view = sketchView(feature, { ...t.result(), points: { ...t.result().points, 'x/center': { x: 3, y: 4 } }, radii: { x: 2 }, curves: { x: { shape: { type: 'circle', center: 'x/center' }, source: 'reference', regions: false } } });
     expect(view.curves.get('x')).toEqual({ id: 'x', own: false, construction: false, points: ['x/center'], shape: { type: 'circle', center: [3, 4], radius: 2 } });
     expect(view.points.get('x/center')).toEqual({ id: 'x/center', at: [3, 4], own: false });
     expect([kindOf(view, 'x'), kindOf(view, 'x/center'), kindOf(view, 'origin'), kindOf(view, 'není')]).toEqual(['circle', 'point', 'point', undefined]);

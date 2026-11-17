@@ -24,29 +24,38 @@ import { FACE_ROLES } from '../00-prep/contract';
 //   names one ends in `brokenReference`, and an entry of body properties or of a link that names
 //   one is left without its body (it is listed as such, as after a removed feature). True: they
 //   stay as they are (a motor subtracted from its mount stays a body). There is no default.
-// - `clearance` (numeric field `clearance`, millimetres, above 0, optional; only with
+// - `clearance` (numeric field `clearance`, millimetres, 0 or more, optional; only with
 //   `difference`): every tool is taken moved outwards by that much before it is subtracted, so
-//   the pocket is wider than the tool by the clearance on every face. The tool body itself does
-//   not change. Every face of the tool is moved along its own surface: a plane along its normal,
-//   a cylinder and a cone by their radius; neighbours meet where the moved surfaces meet, so an
-//   outer corner of the tool stays sharp (the pocket is up to 1.73 times the clearance away from
-//   it) and no face is added or lost. A tool that cannot be moved that way is the error
-//   `invalidClearance`. `setField` reaches the field also while the feature does not have it;
-//   `updateFeature` with `{ clearance: null }` removes it, and a patch to another operation
-//   removes it by itself.
+//   the pocket is wider than the tool by the clearance. The tool body itself does not change.
+//   Absent or 0 (also an expression that gives 0) is a plain difference.
+//   - Every face of the tool is moved along its own surface: a plane along its normal,
+//     a cylinder and a cone by their radius; neighbours meet where the moved surfaces meet, so an
+//     outer corner of the tool stays sharp (the pocket is up to 1.73 times the clearance away
+//     from it) and no face is added or lost.
+//   - How exact it is: the moved surfaces are exact, and between two planar faces so is the
+//     pocket. A round face is a polygon in the mesh: there the pocket may be nearer to the tool
+//     than the clearance by the chord tolerance of the document, and next to an edge where a round
+//     face meets another face at a slant by up to `ROUND_ALLOWANCE` of the clearance more (0.87
+//     of the clearance was measured where two cylinders cross). `gap` measures what it is.
+//   - A tool that cannot be moved that way is the error `invalidClearance`.
+//   - `setField` reaches the field also while the feature does not have it (its description has
+//     the default 0, the rule of D44); `updateFeature` with `{ clearance: null }` removes it,
+//     and a patch to another operation removes it by itself.
 // - Faces. Without a clearance a face of the result keeps the name it had on the target or on the
 //   tool, whichever it comes from; where a face of a tool lies flush on a face of the target and
 //   the two overlap, the overlapped part carries the name of the tool's face (for an
 //   intersection: of the target's). A face may then lie on two bodies, the target and a kept
-//   tool. With a clearance the faces the tools leave on the target are new faces: the name of
-//   the face of the tool with a copy tag appended, `{ pattern: <this feature>, index: <the number
-//   of the tool in `tools`, from 1> }`; their surfaces are the moved ones, exact.
+//   tool. With a clearance above 0 the faces the tools leave on the target are new faces: the
+//   name of the face of the tool with a copy tag appended, `{ pattern: <this feature>, index:
+//   <the number of the tool in `tools`, from 1> }`; their surfaces are the moved ones, exact.
+//   The number follows the place in `tools`: a tool put before others renumbers the tags.
 // - The feature creates no body and leaves no tool a pattern could repeat.
 // - Errors: `brokenReference` (the target or a tool is not in the state before the feature),
 //   `emptyResult` (nothing of the target would be left; for an intersection: the target and
-//   a tool share nothing), `invalidClearance`, `kernelFailure`. The warning `noEffect` names the
-//   tools that did not change the target; tools that are not kept leave the model all the same.
-//   The feature is atomic: in error it changes nothing, and no tool leaves.
+//   a tool share nothing), `invalidClearance`, `kernelFailure` (the kernel refused, or its
+//   result did not pass the checks of the engine: see `booleanOfBodies`). The warning `noEffect`
+//   names the tools that did not change the target; tools that are not kept leave the model all
+//   the same. The feature is atomic: in error it changes nothing, and no tool leaves.
 export interface CombineFeature extends FeatureBase {
   type: 'combine';
   operation: BooleanOp;
@@ -58,7 +67,8 @@ export interface CombineFeature extends FeatureBase {
 // What `updateFeature` may change. `tools` is a list and is replaced whole.
 export type CombinePatch = Patch<Pick<CombineFeature, 'operation' | 'target' | 'tools' | 'keepTools' | 'clearance'>>;
 
-export const CLEARANCE = { title: 'Clearance', unit: 'mm', min: { value: 0, open: true } } as const satisfies NumberSpec;
+// The default is what an absent field means (D44, "An optional numeric field"): no clearance.
+export const CLEARANCE = { title: 'Clearance', unit: 'mm', min: { value: 0 }, default: 0 } as const satisfies NumberSpec;
 
 // ================================================================ the feature `split`
 
@@ -71,9 +81,16 @@ export const CLEARANCE = { title: 'Clearance', unit: 'mm', min: { value: 0, open
 //   the plane points to (for a face: out of the body the face belongs to; XY: +Z, XZ: -Y, YZ:
 //   +X; a plane feature: as its base), `backward` the other. The new body has the ID of the
 //   feature.
-// - Both bodies get the cut face `{ feature: <this feature>, role: 'splitFace' }`, one name on
-//   two bodies. It is a plane: a sketch stands on it, with the origin and the Y axis of the plane
-//   that cut and the normal out of the body it stands on.
+// - Where the plane passes through material, both bodies get the cut face `{ feature: <this
+//   feature>, role: 'splitFace' }`, one name on two bodies. It is a plane: a sketch stands on it,
+//   with the origin and the Y axis of the plane that cut and the normal out of the body it stands
+//   on. A body of several pieces that lie on both sides of a plane between them is taken apart
+//   without a cut face. A face of the body that lies in the plane keeps its name, with one
+//   exception: where such a face is the underside of an overhang and the plane also cuts material
+//   beside it, the part of it the cut face lies on takes the name of the cut face.
+// - Later features that name the body keep naming the part that stays under its ID: a cut that
+//   went through the whole body goes through that part only, without a word. A feature that is
+//   to reach both parts lists both bodies.
 // - The new body takes after the body it was cut from (body properties, D48): colour, material,
 //   use, and the density and the mass as a pair; its name is that of the feature. It is in no
 //   link until one lists it.
@@ -111,6 +128,8 @@ declare module '../00-prep/contract' {
   // - two parts of the tool are nearer to each other than twice the clearance (a slot, two pins,
   //   the tips of a C), so their moved faces would meet;
   // - more than three faces meet at a vertex in a way their moved surfaces do not;
+  // - a face has material on both sides of its surface (one name on a hole and on a pin, which
+  //   a body put together of others can have);
   // - a face of the tool has no description at all (a general surface; no feature makes one yet).
   interface IssueCodes {
     invalidClearance: true;
@@ -142,16 +161,18 @@ export const SPLIT_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
 // One optional member is added to a feature module. A copy tag of a face name (`CopyTag`) names
 // the feature that made the copy: until now always a pattern, now also a combine with a clearance.
 // The reference of the kind `pattern` (`requireFace`, `faceRefs` in validation.ts) asks this member
-// instead of the type of the feature: a pattern answers true, a combine whether it has a clearance.
-// The field of the tag keeps its name, `pattern`.
+// instead of the type of the feature: a pattern answers true, a combine whether it is a difference
+// (structurally: whether a clearance is there and above 0 is known only to the recompute, and
+// a tag that names no face is a broken reference there). The field of the tag keeps its name,
+// `pattern`.
 declare module '../../../packages/engine/src/features/module' {
   interface FeatureModule<F extends Feature> {
     tagsFaces?: (f: F) => boolean;
   }
 }
 // What the two modules answer where the registry asks every type (features/module.ts):
-// - combine: `createsBody` false, `namesFaces` false, `producesTool` false, `tagsFaces` with
-//   a clearance; `refs`: the target and the tools as bodies.
+// - combine: `createsBody` false, `namesFaces` false, `producesTool` false, `tagsFaces` for
+//   a difference; `refs`: the target and the tools as bodies.
 // - split: `createsBody` for its own ID (no local name), `bodySource` the body it splits,
 //   `namesFaces` true, `producesTool` false; `refs`: the body and the plane.
 
@@ -160,18 +181,42 @@ declare module '../../../packages/engine/src/features/module' {
 // The three functions the two steps are made of (design.md, "Recompute"). They live in
 // `recompute/`, next to the tool builds; the modules of the two types call them.
 
-// A boolean of two solids of one face table through the port, with the numbers of the tool made
-// its own for the call. The adapter of the kernel tells the faces of the tool from those of the
-// body by their numbers, and two bodies of a model may share numbers (the two parts of a split,
-// two bodies cut by one feature, a body and the pocket a kept tool left in another): measured,
-// a union of two such bodies comes out with a wrong volume without a word (design.md,
-// "Measured", D). So every face number of `tool` is replaced by a number from `firstFree` on for
-// the call and put back in the result. It throws what the port throws.
-// For an intersection the port keeps no tolerance for flush faces: pieces of the result with
-// a volume below `INTERSECTION_NOISE` are dropped (two bodies that only touch on a tilted plane
-// leave such slivers).
-export declare function booleanOfBodies(kernel: SolidKernel, op: BooleanOp, target: Solid, tool: Solid, firstFree: number): Solid;
-export const INTERSECTION_NOISE = 0.001; // mm³: the threshold of the collisions, `INTERFERENCE_THRESHOLD`
+// A boolean of two solids of one face table through the port.
+// - Numbers of its own for the tool. The adapter of the kernel tells the faces of the tool from
+//   those of the body by their numbers, and two bodies of a model may share numbers (the two
+//   parts of a split, two bodies cut by one feature, a body and the pocket a kept tool left in
+//   another): measured, a union of two such bodies comes out with a wrong volume without a word
+//   in about half the cases tried (design.md, "Measured", D). So every face number of `tool` is
+//   replaced by a number from `firstFree` on for the call and put back in the result. The
+//   adapter itself is to refuse a union or a difference whose operands share a number, so that
+//   a caller that forgets it gets an exception and not a wrong body.
+// - `changed`: false when the tool had no effect on the target: the volume is what it was (the
+//   tolerance of `applyTool`) and, for a difference, every face of the tool in the result lies on
+//   the surface the target had (`onSurface` of solid.ts, the rule of a pattern copy that
+//   lands on what is cut already). Decided on the temporary numbers, before they are put back:
+//   afterwards a face the target had from that tool cannot be told from one it got now.
+// - The checks of the engine on a union and a difference (design.md, "The engine checks the
+//   result"), each an exception the feature reports as `kernelFailure`:
+//   - the volume: that of the result against vol(target) + vol(tool) - vol(shared) for a union
+//     and vol(target) - vol(shared) for a difference, with the shared volume from the port's
+//     intersection; they may differ by `VOLUME_TOLERANCE` of the two volumes together, and by
+//     0.001 mm³ at least;
+//   - sheets: the result has no more area in triangles that lie back to back within
+//     `SHEET_TOLERANCE` precisions of the coordinates than the two operands had (`areaOf` with
+//     and without its tolerance): a wall of the tool left inside the result, a face that should
+//     be gone.
+// - An intersection: the port keeps no tolerance for flush faces, and two bodies that only touch
+//   leave sheets (measured: every such leftover is all sheet). A connected piece of the result
+//   whose whole surface is sheet at `SHEET_TOLERANCE` is dropped; a piece with any other surface
+//   stays, however small, and so does the shell of a cavity.
+// It throws what the port throws.
+export interface BodyBoolean {
+  solid: Solid;
+  changed: boolean;
+}
+export declare function booleanOfBodies(kernel: SolidKernel, op: BooleanOp, target: Solid, tool: Solid, firstFree: number): BodyBoolean;
+export const VOLUME_TOLERANCE = 1e-6; // a share of the two volumes together; the floor is `INTERFERENCE_THRESHOLD`, 0.001 mm³
+export const SHEET_TOLERANCE = 10; // in precisions of the coordinates (`coordinatePrecision` over the two operands)
 
 // The box on one side of a plane that holds everything of `body` on that side: one face in the
 // plane, numbered `first`, and five faces outside the body by `SPLIT_MARGIN`, numbered from
@@ -195,25 +240,37 @@ export interface MovedBody {
 }
 // Why a body cannot be moved; the error `invalidClearance` of the feature carries it.
 // - `noSurface`: a face has no description (a general surface).
+// - `bothSides`: triangles of one face lie on both sides of its surface.
+// - `closes`: a hole (a cylinder with the material outside) has a radius no larger than the
+//   clearance.
 // - `vertex`: a vertex cannot lie on all the moved surfaces of its faces.
 // - `outline`: the moved outline of a planar face crosses itself.
 // - `turned`: a triangle of a round face turned over.
+// - `crosses`: an edge of the moved mesh goes through a triangle of it.
 // - `tooNear`: a point of the moved surface is nearer to the body than the clearance.
 export interface MoveProblem {
-  reason: 'noSurface' | 'vertex' | 'outline' | 'turned' | 'tooNear';
+  reason: 'noSurface' | 'bothSides' | 'closes' | 'vertex' | 'outline' | 'turned' | 'crosses' | 'tooNear';
   faces: FaceNameAfter[];
   detail: string;
 }
+// Kept by the identity of the solid of the tool, the clearance and the chord tolerance (as
+// `analyzeBody` keeps what it computes for a solid): a recompute that changes neither does not
+// move the tool again.
 export declare function movedOutwards(body: Solid, faceInfos: readonly FaceInfo[], faceNames: readonly FaceNameAfter[], clearance: number, chordTolerance: number, kernel: Pick<SolidKernel, 'triangulate'>): MovedBody | MoveProblem;
 // The share of the clearance a point of the moved surface may lack against the face it came from
-// and the faces next to that one, when one of the two is round: a round face is a polygon, and
-// an edge of two round faces a chord of both (design.md, "The checks of the moved tool").
+// and the faces next to that one, when one of the two is round, on top of the chord tolerance.
+// A vertex on an edge of a round face and another face moves to where the two moved surfaces
+// meet, which is along the round face when the two meet at a slant; the sides of the polygon of
+// the round face then span a wider angle than the chord tolerance gave them (design.md, "The
+// checks of the moved tool").
 export const ROUND_ALLOWANCE = 0.15;
 
 // ================================================================ what the package does not add
 
 // - No member of the kernel port: a split is two differences, the clearance is computed by the
-//   engine from the exact faces, and an intersection is the port's.
+//   engine from the exact faces, and an intersection is the port's. The comment of `SolidKernel`
+//   gets the precondition of a union and a difference (no number in both operands), which the
+//   adapter enforces.
 // - No upgrade step: a build without the package refuses a feature of a type it does not know,
 //   and a face name in a role it does not know.
 // - No command, no query, no section of the document.

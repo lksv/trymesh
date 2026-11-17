@@ -8,12 +8,13 @@
 // screws of radius 1.5 stand around the motor (z = 8 to 14; the body `screw` and the copies
 // `screws/1` to `screws/3`). The part of 3d: a mount around the motor with a pocket shaped by the
 // motor and the screws themselves, with a print clearance; the mount joined to the link; and the
-// link split into two shells for printing.
+// link split into two shells for printing. The arm stands as it is modelled: no pose is set, so
+// the queries read the bodies where the features made them.
 
 import type { Id, Input, Surface, Vec3 } from '../../../packages/engine/src/index';
 import type { CommandAfter, CommandResultAfter, EngineAfter, FaceNameAfter, PlaneRefAfter, QueryOutcome, QueryToolInput, StateAfter } from '../00-prep/contract';
 import { SCHEMA_PENDING, UPGRADES } from '../00-prep/contract';
-import { build } from '../3a-body-properties/calls';
+import { build, materials as setMaterials, motor as describeMotor } from '../3a-body-properties/calls';
 import type { CombineFeature, SplitFeature } from './contract';
 import { CLEARANCE, COMBINE_INFO, SPLIT_INFO, SPLIT_ROLE } from './contract';
 
@@ -64,10 +65,15 @@ const AROUND: Id[] = ['mount', ...TOOLS];
 
 // A ring that stands on the link around the motor: a new body, modelled without a thought for
 // what it has to leave room for. It runs through the motor and the four screws.
+// Before it the scenario has what 3a and 5a give the arm: the printed bodies have their material
+// (`upper` is PETG), the motor is a reference part of 280 g, and the link `upper` lists its bodies.
 export function mount(): number {
   build();
-  run({ type: 'setParameter', name: 'fit', expr: '0.3' }, ...cylinder('mount', 60, 0, 24, 8, 18));
-  return unwrap(engine.query('interference', { bodies: AROUND })).pairs.length; // 5: the mount with the motor and with each screw
+  setMaterials();
+  describeMotor();
+  run({ type: 'setParameter', name: 'fit', expr: '0.3' }, ...cylinder('mount', 60, 0, 24, 8, 18), { type: 'setLink', id: 'upper', bodies: ['upper', 'mount', ...TOOLS] });
+  const report = unwrap(engine.query('interference', { bodies: AROUND }));
+  return report.failed.length === 0 ? report.pairs.length : fail('a pair could not be checked'); // 5: the mount with the motor and with each screw
 }
 
 // The pocket: the motor and the screws subtracted from the mount, each moved outwards by the print
@@ -98,10 +104,11 @@ export function pocketIsExact(state: StateAfter): boolean {
 
 // What the pocket is for: nothing collides any more, nothing is a fit, and the smallest gap between
 // the mount and the motor is the clearance (to the accuracy of two polygons of one circle).
-export function clearanceMeasured(): { collisions: number; fits: number; gap: number | undefined } {
+export function clearanceMeasured(): { collisions: number; fits: number; unchecked: number; gap: number | undefined } {
   const report = unwrap(engine.query('interference', { bodies: AROUND }));
-  const gap = unwrap(engine.query('gap', { bodies: ['mount', 'motor'] })).pairs[0]?.distance; // 0.2998
-  return { collisions: report.pairs.length, fits: report.fits.length, gap };
+  // 0.2998: the two are polygons of one circle, so the gap is short of 0.3 by less than the chord tolerance
+  const gap = unwrap(engine.query('gap', { bodies: ['mount', 'motor'] })).pairs[0]?.distance;
+  return { collisions: report.pairs.length, fits: report.fits.length, unchecked: report.failed.length, gap };
 }
 // Between two planes the clearance is exact: the top of a screw and the ceiling of its pocket.
 export const ceilingOverScrew = (): number | undefined => unwrap(engine.query('measure', { from: { kind: 'face', body: 'screw', face: SCREW_TOP }, to: { kind: 'face', body: 'mount', face: POCKET_CEILING } })).distance; // 0.3
@@ -124,8 +131,17 @@ export function withoutClearance(): boolean {
   const preview = done(engine.preview({ type: 'updateFeature', id: 'pocket', patch: { clearance: null } }));
   return hasFace(preview, 'mount', MOTOR_SIDE) && hasFace(preview, 'motor', MOTOR_SIDE) && faceNumber(preview, POCKET_WALL) < 0 && unwrap(engine.query('gap', { bodies: ['mount', 'motor'] }, { state: preview })).pairs[0]?.distance === 0;
 }
-// and `setField` gives it back to a feature that does not have it
+// and `setField` gives it back to a feature that does not have it (the field has the default 0)
 export const clearanceBySetField: CommandAfter = { type: 'setField', feature: 'pocket', path: 'clearance', value: 'fit' };
+export const backBySetField = (): boolean => {
+  const preview = done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'pocket', patch: { clearance: null } }, clearanceBySetField] }));
+  return hasFace(preview, 'mount', POCKET_WALL);
+};
+// A clearance of 0 is a valid command and computes as none: no face gets a tag.
+export function zeroIsNone(): boolean {
+  const preview = done(engine.preview({ type: 'setField', feature: 'pocket', path: 'clearance', value: 0 }));
+  return preview.evaluation.features['pocket'].status === 'ok' && hasFace(preview, 'mount', MOTOR_SIDE) && faceNumber(preview, POCKET_WALL) < 0;
+}
 
 // A sketch stands on a face of the pocket like on any planar face: a cable hole above a screw.
 export const onCeiling = (): boolean => engine.preview({ type: 'batch', commands: emptySketch('cable', onFace('mount', POCKET_CEILING)) }).ok;
@@ -148,8 +164,8 @@ export function missed(): { status: string; refs: unknown[] | undefined } {
 export const refused = (): boolean[] => [
   // a clearance belongs to a difference
   engine.preview(combine('a', { operation: 'union', target: 'mount', tools: ['motor'], keepTools: true, clearance: 0.3 })).ok,
-  // a clearance is above zero
-  engine.preview(combine('b', { operation: 'difference', target: 'mount', tools: ['motor'], keepTools: true, clearance: 0 })).ok,
+  // a clearance is not negative
+  engine.preview(combine('b', { operation: 'difference', target: 'mount', tools: ['motor'], keepTools: true, clearance: -0.1 })).ok,
   // the target is not its own tool, and a tool is listed once
   engine.preview(combine('c', { operation: 'difference', target: 'mount', tools: ['mount'], keepTools: true })).ok,
   engine.preview(combine('d', { operation: 'difference', target: 'mount', tools: ['motor', 'motor'], keepTools: true })).ok,
@@ -175,7 +191,8 @@ export function join(): { gone: boolean; grown: boolean; faces: boolean; motorSi
   const before = engine.getState();
   const state = run(combine('join', { operation: 'union', target: 'upper', tools: ['mount'], keepTools: false }));
   return {
-    gone: !('mount' in state.evaluation.bodies) && 'mount' in engine.getState('pocket').evaluation.bodies,
+    // the body is gone after the feature and there before it; the link that lists it says so (5a)
+    gone: !('mount' in state.evaluation.bodies) && 'mount' in engine.getState('pocket').evaluation.bodies && state.evaluation.mechanism.links['upper'].missing.join() === 'mount',
     // the mount stood flush on the link: nothing is counted twice and nothing is lost
     grown: about(volume(state, 'upper'), volume(before, 'upper') + volume(before, 'mount'), 1e-3),
     // the faces of the mount are faces of the link now, under their names
@@ -218,15 +235,18 @@ export function onTheCut(): [Vec3 | undefined, Vec3 | undefined] {
 
 // The new shell takes after the link it was cut from (3a): printed in the same material with the
 // same density, weighed by its own volume; the mechanism says that no link has it yet (5a).
-export function takesAfter(): { from: Id | undefined; material: string | undefined; name: string; unassigned: boolean } {
+export function takesAfter(): { from: Id | undefined; material: string | undefined; sameDensity: boolean; name: string; unassigned: boolean } {
   const state = engine.getState();
-  const properties = state.evaluation.bodyProperties['lower'];
-  return { from: properties.from, material: properties.material, name: properties.name, unassigned: state.evaluation.mechanism.unassigned.includes('lower') }; // 'upper', 'PETG', 'Lower shell'; true once the arm has links
+  const [properties, link] = [state.evaluation.bodyProperties['lower'], state.evaluation.bodyProperties['upper']];
+  // 'upper', 'PETG', the density of the link, 'Lower shell', and true: the link `upper` does not list it yet
+  return { from: properties.from, material: properties.material, sameDensity: properties.density !== undefined && properties.density === link.density, name: properties.name, unassigned: state.evaluation.mechanism.unassigned.includes('lower') };
 }
 // It moves with the link once the link lists it.
 export const intoTheLink = (): StateAfter => run({ type: 'setLink', id: 'upper', bodies: ['upper', 'lower', ...TOOLS] });
 
-// Screws through both shells: a cut with two targets, as through any two bodies.
+// Screws through both shells: a cut with two targets, as through any two bodies. A cut that names
+// only `upper` goes through the upper shell alone, also one that was there before the split was
+// put in front of it: the price of a body that keeps its ID.
 export const throughBoth = (): StateAfter => run(...cylinder('bolt', 60, 40, 1.6, -1, 9, 'cut', ['upper', 'lower']));
 
 // The other part by a patch of one field: the link then keeps what lies under the plane.
@@ -284,8 +304,8 @@ export function scenario13d(): boolean {
   const collided = mount() === 5;
   const state = pocket();
   const measured = clearanceMeasured();
-  const pocketed = pocketIsExact(state) && toolsKept(state) && measured.collisions === 0 && measured.fits === 0 && about(measured.gap, 0.3, 0.001) && about(ceilingOverScrew(), 0.3, 1e-9);
-  const field = looserFit() && withoutClearance() && onCeiling();
+  const pocketed = pocketIsExact(state) && toolsKept(state) && measured.collisions === 0 && measured.fits === 0 && measured.unchecked === 0 && about(measured.gap, 0.3, 0.01) && about(ceilingOverScrew(), 0.3, 1e-9);
+  const field = looserFit() && withoutClearance() && backBySetField() && zeroIsNone() && onCeiling();
   const errors = holeTooNarrow().code === 'invalidClearance' && missed().status === 'warning' && refused().every((ok) => !ok);
   const disc = about(shared(), Math.PI * 14 * 14 * 10, 0.01 * Math.PI * 14 * 14 * 10);
   const joined = join();
@@ -293,7 +313,8 @@ export function scenario13d(): boolean {
   const two = shells();
   const [onLower, onUpper] = onTheCut();
   const cut = two.made.join() === 'lower' && two.volumes && two.cut && onLower?.[2] === 1 && onUpper?.[2] === -1;
-  const inherits = takesAfter().from === 'upper';
+  const after = takesAfter();
+  const inherits = after.from === 'upper' && after.material === 'PETG' && after.sameDensity && after.unassigned;
   intoTheLink();
   throughBoth();
   const [beside, round, gone] = cannot();

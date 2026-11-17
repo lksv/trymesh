@@ -35,11 +35,12 @@ The files in `docs/architecture/` are the source of truth for the design and are
 ```
 app (three.js UI)  ──commands (JSON)──▶  engine  ◀──tools──  mcp (MCP server + bridge to the running app)
                                            │ ports
-                         solver-planegcs ──┴── kernel-manifold      (WASM adapters)
+                         solver-planegcs ──┼── kernel-manifold      (WASM adapters)
+                                           └── deflate-pako         (compressor of 3MF, optional)
 ```
 
-- **`packages/engine`** has no dependencies at all (enforced by its `package.json`). It knows neither the adapters nor the renderer; the adapters are passed to `createEngine({ solver, kernel })`. Third-party libraries live only behind the ports `SketchSolver` and `SolidKernel`.
-- **`packages/solver-planegcs`, `packages/kernel-manifold`** implement the ports over WASM libraries. Loading is async at creation, the calls are sync.
+- **`packages/engine`** has no dependencies at all (enforced by its `package.json`). It knows neither the adapters nor the renderer; the adapters are passed to `createEngine({ solver, kernel, deflater? })`. Third-party libraries live only behind the ports `SketchSolver` and `SolidKernel`.
+- **`packages/solver-planegcs`, `packages/kernel-manifold`** implement the ports over WASM libraries. Loading is async at creation, the calls are sync. **`packages/deflate-pako`** implements the optional port `Deflater` (a raw DEFLATE stream for the 3MF, D54) over `pako`; creating it is sync.
 - **`packages/scenarios`** has tests only: multi-step validation scenarios (numbered in `docs/requirements.md`) against the real adapters in Node. `test/kit.ts` has the helpers for building sketches and extrusions.
 - **`packages/app`** only composes commands and shows state. Anything that computes belongs to the engine or to a shared module. The class `App` (`app.ts`) holds the state of the UI and dispatches events; panels (`panels/`), forms of feature types (`features/`), the sketch mode and the scene are functions over the interface `PanelHost` (`host.ts`) and never import `app.ts`.
 - **`packages/mcp`**: `tools.ts` holds the tools as pure functions over `Engine` (no Node or browser dependency), so the same code serves the server's own engine and, through the HTTP bridge on 127.0.0.1, the engine of the running app.

@@ -7,9 +7,15 @@ import { EXPORT_FORMATS, runExport } from './export/index';
 import { type Internals, Memo, queryContext } from './query/context';
 import { QUERIES, runQuery } from './query/index';
 import { sectionsDiffer } from './sections/index';
-import type { Command, CommandResult, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOptions, QueryOutcome } from './types';
+import type { Command, CommandResult, Deflater, Document, Engine, EngineState, Evaluation, Feature, Id, QueryOptions, QueryOutcome } from './types';
 
-export function createEngine(deps: Deps): Engine {
+// What the engine is created with: the two ports of the recompute and, optionally, a compressor
+// (D54). An engine without one writes the files of an export stored, not compressed.
+export interface EngineDeps extends Deps {
+  deflater?: Deflater;
+}
+
+export function createEngine(deps: EngineDeps): Engine {
   const evaluator = new Evaluator(deps);
   // What a query needs beyond the evaluation: the state of the recompute it was made from and the
   // document it belongs to, kept for every evaluation the engine hands out. Kept weakly, so it
@@ -20,7 +26,7 @@ export function createEngine(deps: Deps): Engine {
     internals.set(result.evaluation, { document: doc, state: result.state });
     return result;
   };
-  const queryDeps = { kernel: deps.kernel, memo: new Memo() };
+  const queryDeps = { kernel: deps.kernel, deflater: deps.deflater, memo: new Memo() };
   let document = emptyDocument();
   let evaluation: Evaluation = evaluate(document).evaluation;
   let undoStack: Document[] = [];

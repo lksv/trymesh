@@ -2,6 +2,7 @@
 //   node dist/server.js [--file model.json] [--port 4517] [--no-bridge]
 import { readFile } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
@@ -35,7 +36,7 @@ const portText = options.port ?? process.env.TRYMESH_BRIDGE_PORT ?? String(DEFAU
 const port = /^\d+$/.test(portText) ? Number(portText) : NaN;
 if (!(port >= 0 && port <= 65535)) fail(`port "${portText}" není číslo od 0 do 65535`);
 
-const engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() });
+const engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() });
 if (options.file !== undefined) {
   let json: string;
   try {

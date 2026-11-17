@@ -4,13 +4,14 @@
 //
 // The test runs in the Node environment and makes the window itself: the adapters load their WASM
 // as in Node, and only then the globals the app reads (`window`, `document`) are set.
+import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { type Command, type Document, type Engine, type Frame, type Id, type RigidTransform, type Vec3, createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { Window } from 'happy-dom';
 import type { BodyHit, Picture, PictureCamera, PictureModel, SceneModel, View } from '../src/viewport';
 
-const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
+const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
 
 // ---------------------------------------------------------------- the view
 

@@ -22,12 +22,13 @@ Poslední úprava: 2026-11-15
 │  solid      síť tělesa, stavba extrude, jména, STL   │
 │  evaluate   přehrání logu, cache, chybové stavy      │
 │                                                      │
-│  porty:  SketchSolver          SolidKernel           │
-└────────────┬──────────────────────┬──────────────────┘
-             │                      │
-   ┌─────────┴────────┐   ┌─────────┴────────┐
-   │ solver-planegcs  │   │ kernel-manifold  │   adaptéry (WASM)
-   └──────────────────┘   └──────────────────┘
+│  porty:  SketchSolver          SolidKernel  Deflater │
+└────────────┬──────────────────────┬──────────────┬───┘
+             │                      │              │
+   ┌─────────┴────────┐   ┌─────────┴────────┐   ┌─┴──────────────┐
+   │ solver-planegcs  │   │ kernel-manifold  │   │ deflate-pako   │
+   └──────────────────┘   └──────────────────┘   └────────────────┘
+     adaptéry (WASM)                               adapter (JS, D54; optional)
 ```
 
 Pravidlo závislostí: engine nezná adaptéry ani renderer. Adaptéry a renderer znají jen veřejné typy enginu. Adaptéry se enginu předají při vytvoření.

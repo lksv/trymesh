@@ -9,7 +9,7 @@
 // so adding a query edits no shared type; the registry gets one line.
 import type { SketchState } from '../recompute/state';
 import type { Unit } from '../catalog';
-import type { ArgPath, AxisRef, BodyResult, Document, Evaluation, FaceName, Frame, Id, PlaneRef, SolidKernel, Surface, Vec3 } from '../types';
+import type { ArgPath, AxisRef, BodyResult, Deflater, Document, Evaluation, FaceName, Frame, Id, PlaneRef, SolidKernel, Surface, Vec3 } from '../types';
 import type { ArgSpecs, ArgsOf, RunArgsOf } from './args';
 
 // What a query computes from. It answers for one state: the document and the evaluation in
@@ -42,6 +42,10 @@ export interface QueryContext {
   // An exception of the kernel inside a query becomes the answer `failed` (the port says that
   // `boolean` throws when the result is not a closed body).
   kernel: SolidKernel;
+  // The compressor the engine was created with (D54), absent without one. An export format hands it
+  // to `zip` (`export/zip.ts`) and does not call it: `zip` decides which entry is deflated and turns
+  // a failure of the compressor into the answer `failed`. A query has no use for it.
+  deflater?: Deflater;
   // Results kept for as long as all `owners` live: the same question about the same things is not
   // computed twice.
   // - Name every object the answer depends on: both solids for a pair of bodies, the object of

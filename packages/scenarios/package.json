@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@trymesh/deflate-pako": "workspace:*",
     "@trymesh/engine": "workspace:*",
     "@trymesh/kernel-manifold": "workspace:*",
     "@trymesh/solver-planegcs": "workspace:*"

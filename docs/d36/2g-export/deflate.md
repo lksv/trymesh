@@ -1,6 +1,6 @@
 # 2g, an addition: the 3MF compressed (D54)
 
-**State: designed on 2026-11-17, not implemented.** This is its third version, after two rounds of reviews ("Reviews"). An addition to [design.md](design.md), which is implemented and merged with a 3MF whose parts are stored. Written against the code of `master` at `633a6ca`. The compressors were measured and the writer was prototyped in the session scratchpad; the files were read back by independent readers ("Measured"). Nothing under `packages/` was changed, and no library was installed in the repository.
+**State: designed on 2026-11-17; implemented on 2026-11-17 with `pako` 2.1.0 in place of 3.0.3 ("As implemented", at the end).** This is its third version, after two rounds of reviews ("Reviews"). An addition to [design.md](design.md), which is implemented and merged with a 3MF whose parts are stored. Written against the code of `master` at `633a6ca`. The compressors were measured and the writer was prototyped in the session scratchpad; the files were read back by independent readers ("Measured"). Nothing under `packages/` was changed, and no library was installed in the repository.
 
 The owner decided on 2026-11-17 (question 1 of "Open" of design.md): the 3MF is to be compressed, with an existing third-party library that the session chooses; the owner approves it under D2 once it is named. **The library this design names is `pako` 3.0.3.**
 
@@ -514,3 +514,43 @@ and "Approved" in `CLAUDE.md`, "Rules of the project", gains `pako` once the own
 **`docs/requirements.md`, scenario 12, the part of 2g**: in its first sentence, "a ZIP of three stored items the engine writes itself" becomes
 
 > a ZIP of three items the engine writes itself, each deflated by the compressor the engine was given, so that the file is a fifth of the size of the STL of the same bodies (and the same three items stored when the engine was given none)
+
+## As implemented
+
+Implemented on 2026-11-17 in the branch `d36/2g-deflate`, from `master` at `8367ccc`, by the order of the work above. The ZIP of a set the app saves stays stored (the default of the second question).
+
+**The one deviation: `pako` 2.1.0, not 3.0.3.** The owner approved the library as 2.1.0 (D2, 2026-11-17): the line with the field use, whose default path is the path the adapter takes. It is the fallback this design describes under "The library", and it changes the adapter only:
+
+- `packages/deflate-pako/package.json` pins `pako` at exactly `2.1.0`; the lockfile gained `pako@2.1.0` and nothing else (it has no dependencies). `packages/mcp/package.json` names it too, for the bundle of the server.
+- The adapter imports `deflateRaw` from `pako/lib/deflate.js`, the CommonJS entry for deflate alone, which the `exports` of 2.1.0 allow (`"./lib/*"`). Node takes its named export from the CommonJS module, Vitest runs it, the bundle of the app takes it in (Vite 8, rolldown) and the bundle of the server leaves it outside and imports it by that path.
+- 2.1.0 ships no types: the one function is declared in `packages/deflate-pako/src/pako.d.ts` (`deflateRaw(input: Uint8Array, options: { level: number }): Uint8Array`). No `@types/pako`.
+- The call is `deflateRaw(bytes, { level: 6 })`: 2.x has no `legacyHash`, and its one hash is the one 3.0.3 selects with it. Level 6 is stated, the other options are the defaults of the library (window 15, memory level 8, the default strategy). The constant `PAKO_LEVEL` of the adapter is 6.
+
+**The streams of 2.1.0, checked against the measurements of this design.** Through the adapter, in Vitest on Node 25.9.0, with the engine of the implementation:
+
+| | This design (3.0.3 with `legacyHash`, and 2.1.0) | The implementation (2.1.0 through the adapter) |
+|---|---|---|
+| The model part of the box with properties, 177 078 bytes | 29 106 bytes, SHA-256 `4ad4d4e1a9b8e383…` | the same |
+| The model part of the joint, 1 065 171 bytes | 165 551 bytes, `605132f55018d64b…` | the same |
+| The files: the box with properties, as the scenario exports it, the joint, a model with no body | 29 823, 29 673, 166 268, 889 bytes | the same |
+| The items: content types, relationships | 319 to 197, 260 to 178 | the same |
+| Forty letters `a` | `4b 4c 24 0e 00 00` | the same |
+
+The text the test of the adapter pins (3 648 bytes, a stream of 587 bytes, SHA-256 `5cf09702db02…`) was deflated again by zlib 1.2.12 (Python and `node:zlib` of this machine) and by zlib 1.3.2 (Homebrew, through `ctypes`, `deflateInit2` with the level 6, the window −15 and the memory level 8): the same stream. So are forty letters, no bytes (`03 00`) and one byte (`63 07 00`).
+
+**Measured.** On the machine of the design (Apple M5), in Vitest: the whole export of the box about 12 ms and of the joint about 74 ms (the design: 13 to 16 ms and 77 to 79 ms). The adapter built alone by Vite in library mode, minified: 37 561 bytes, 10 104 gzipped (the design measured 38 147 for the deflate entry of 2.2.0, built as an ES module the way the app is built); the bundle of the app holds the deflate of `pako` and not its inflate. The bundled adapter gives the pinned streams.
+
+**By hand** (`docs/architecture/verification.md`): the four files above read by `unzip -t`, `zipinfo -v`, Python `zipfile` and `bsdtar`; the built server (`dist/server.js --no-bridge`, over stdio) wrote a deflated 3MF; the built app, served by `vite preview` on a port of its own and run in Chrome 156, wrote the same file byte for byte and Chrome's `DecompressionStream('deflate-raw')` inflated its items. `lib3mf` and BambuStudio were not run again: the files are those of the prototype, which they read.
+
+**Other choices of the implementation**, none against the design:
+
+- `zip` checks the count, the names and an entry of 4 GiB in a first pass, compresses in a second, then checks the sizes together and computes the CRC-32 of the bytes of every entry after that check (as `storedZip` did: a test claims 2 GiB entries without bytes).
+- The kinds of entry are a constant of `zip.ts` (`ENTRY`: method 0 with the version 10, method 8 with 20), not exported; the tests name the numbers.
+- `QueryContext.deflater` is set only when the engine has a compressor (the member is absent otherwise, not `undefined`).
+- `EngineDeps` extends `Deps` of the recompute and is exported from the index with `createEngine`.
+- The reader of the tests reports how many bytes of a stream `node:zlib` read (`inflateRawSync` with `info: true`), and so refuses bytes after the last block; it returns the compressed size of every entry (`compressed`).
+- The fixtures of the bytes of `master` are the archive of the three files of `export-zip.test.ts` (658 bytes) and the package of the small model of `export-3mf.test.ts` (1545 bytes), each by length and SHA-256, captured at `8367ccc` before the writer changed.
+- The snapshots of the app changed where this design said: the two sizes of `model.3mf` in `export.txt` (1934 and 2723 bytes stored, 1088 and 1141 deflated) and the last sentence of the summary of `3mf` in twelve snapshots.
+
+**For the merge.** The index rows are the merging session's: `docs/architecture.md` (the row of `ports.md` gains the section "Deflater (D54)"), `docs/d36/README.md` and `docs/decisions.md` (D54: implemented). After the merge every other tree runs `npx -y pnpm@9.15.9 install` and builds its MCP bundle again: the bundle imports `pako`, and the tests import the adapter package.
+

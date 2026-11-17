@@ -1,10 +1,11 @@
 // Pomůcky pro validační scénáře: engine se skutečnými adaptéry a stavba běžných skic.
 import { expect } from 'vitest';
+import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { type Command, type CommandResult, type Constraint, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Solid, createEngine, emptySketch, faceParts } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 
-const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
+const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
 export const newEngine = (): Engine => createEngine(deps);
 
 export const XY: PlaneRef = { kind: 'base', plane: 'XY' };

@@ -1,7 +1,8 @@
 // The format `3mf` (D54): the bodies as objects of one 3MF document, for a slicer. 3MF Core
 // Specification 1.4.0 (3MF Consortium) and the Open Packaging Conventions (ECMA-376 part 2).
 //
-// The package is a stored ZIP (`zip.ts`) of three items, in this order:
+// The package is a ZIP (`zip.ts`) of three items, in this order, each deflated by the compressor
+// of the context when the engine has one (and its stream is shorter), stored otherwise:
 // - `[Content_Types].xml`, the Media Types stream (OPC 7.3.7, 7.2.3.2), with the defaults for
 //   `rels` and `model` (3MF appendix C.1);
 // - `_rels/.rels`, the package Relationships part (OPC 6.5.2.2), with the StartPart relationship
@@ -21,11 +22,11 @@
 // distinct (4.1.4.1), which nothing else guarantees: checked, `failed` otherwise.
 import type { ArgSpecs } from '../query/args';
 import { QueryFailure } from '../query/spec';
-import type { Id, Solid } from '../types';
+import type { Deflater, Id, Solid } from '../types';
 import { chosenBodies } from './bodies';
 import type { ExportFormatSpec } from './spec';
 import { float32Text, xmlText } from './text';
-import { storedZip } from './zip';
+import { zip } from './zip';
 
 export const THREE_MF_OPTIONS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'The bodies to export, each once, in this order, whatever their use; without it the printed bodies (use `part`: not the reference and auxiliary bodies of the body properties).', optional: true },
@@ -133,21 +134,22 @@ export function modelText(objects: readonly (ThreeMfObject & { solid: Solid })[]
   return parts.join('');
 }
 
-// The whole package.
-export function threeMfPackage(objects: readonly (ThreeMfObject & { solid: Solid })[]): Uint8Array {
+// The whole package, its items deflated by `deflater` when one is given.
+export function threeMfPackage(objects: readonly (ThreeMfObject & { solid: Solid })[], deflater?: Deflater): Uint8Array {
   const encoder = new TextEncoder();
-  return storedZip([
+  const items = [
     { name: THREE_MF.contentTypes.item, bytes: encoder.encode(CONTENT_TYPES) },
     { name: THREE_MF.relationships.item, bytes: encoder.encode(RELATIONSHIPS) },
     { name: THREE_MF.model.item, bytes: encoder.encode(modelText(objects)) },
-  ]);
+  ];
+  return zip(items, deflater);
 }
 
 export const threeMf: ExportFormatSpec<typeof THREE_MF_OPTIONS> = {
   title: '3MF',
   summary:
     'Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. ' +
-    'One file, in millimetres, the bodies where they are modelled. The file is a ZIP that is not compressed, about a quarter larger than the STL of the same bodies.',
+    'One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.',
   options: THREE_MF_OPTIONS,
   run: (context, { bodies }) => {
     const { chosen, empty } = chosenBodies(context, bodies);
@@ -157,6 +159,6 @@ export const threeMf: ExportFormatSpec<typeof THREE_MF_OPTIONS> = {
       return { body, name, ...(color === undefined ? {} : { color }), ...(material === undefined ? {} : { material }), solid: context.bodies[body].solid };
     });
     const about: MeshAbout = { bodies: chosen, triangles: objects.reduce((sum, object) => sum + object.solid.triangles.length / 3, 0) };
-    return { layout: 'file', files: [{ path: 'model.3mf', mediaType: 'model/3mf', bytes: threeMfPackage(objects), about }], ...(empty === undefined ? {} : { empty }) };
+    return { layout: 'file', files: [{ path: 'model.3mf', mediaType: 'model/3mf', bytes: threeMfPackage(objects, context.deflater), about }], ...(empty === undefined ? {} : { empty }) };
   },
 };

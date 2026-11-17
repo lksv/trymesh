@@ -588,6 +588,25 @@ export interface SolidKernel {
   intersectionAsComputed(a: Solid, b: Solid): ComputedMesh;
 }
 
+// A compressor of bytes into a raw DEFLATE stream (D54): the format of RFC 1951 with no zlib or
+// gzip wrapper, which is what the compression method 8 of a ZIP holds (.ZIP File Format
+// Specification 6.3.10, 4.4.5 and 5.5) and the one method besides storing that a 3MF package may
+// use (3MF core 1.4.0, 1.1; Open Packaging Conventions 7.3.6). The writer of the engine
+// (`export/zip.ts`) gives it the bytes of a file; nothing else of the engine calls it. What an
+// implementation guarantees:
+// 1. The result is one complete stream that an inflater turns back into exactly `bytes`, and that
+//    ends with its last block: nothing follows it. For every input, also one with no bytes.
+// 2. The same input gives the same output, wherever the implementation runs (Node, a browser):
+//    the engine is deterministic and a file of the app is the file of the server.
+// 3. `bytes` is not changed and not kept. The result is a new array that the caller owns.
+// 4. It is synchronous, as an export is.
+// 5. It throws when it cannot compress; the writer of the engine turns that into `failed`.
+// Not guaranteed: that the stream is shorter than the input (the writer stores an entry whose
+// stream is not), any particular level, and that two implementations give the same stream.
+export interface Deflater {
+  deflate(bytes: Uint8Array): Uint8Array;
+}
+
 // ---------------------------------------------------------------- přepočet
 
 export interface Frame {

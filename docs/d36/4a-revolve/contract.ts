@@ -182,6 +182,7 @@ export const PROFILE_SOURCE_OF_REVOLVE = (feature: RevolveFeature): ProfileSourc
 //   the axis towards that half plane. A ring torus is positive; the sign is what tells the two
 //   parts of a spindle torus apart, which meet a plane in different circles.
 // Neither can carry a sketch (`nonPlanarFace`). A general surface stays what no feature makes.
+// `transformFace` and `transformSurface` (solid.ts) become exhaustive switches over the kinds.
 export type SphereSurface = { kind: 'sphere'; center: Vec3; radius: number };
 export type TorusSurface = { kind: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number };
 export type SurfaceD = Surface | SphereSurface | TorusSurface;
@@ -192,28 +193,40 @@ export type StateD = Omit<StateAfter, 'evaluation'> & { evaluation: EvaluationD 
 
 // The circles two surfaces meet in (surfaces.ts), exact, computed from the two surfaces alone. The
 // pairs of today keep their answers (measured on 20 000 random pairs: the same circle, or none,
-// for every one). New:
-// - a sphere and any plane: one circle; two spheres: one circle about the line of their centres;
+// for every one). In this order:
+// - two faces of one surface give none, before any test of touching;
+// - a sphere and a plane: one circle, none where the plane touches the sphere (within
+//   `LENGTH_TOLERANCE`); two spheres: one about the line of their centres, none where they touch;
 // - surfaces about one axis (a plane across it, a cylinder, a cone on the half its axis points
 //   along, a sphere whose centre is on it, a torus by its signed major radius): the meeting points
-//   of their curves in a half plane through the axis (a line, a ray, a circle), off the axis, up
-//   to two circles. Touching is tested on the distance, both ways: a line whose distance from the
-//   centre of a circle, or two circles whose distance from each other, differs from the radius,
-//   or from the sum or the difference of the radii, by at most `LENGTH_TOLERANCE` meet in the one
-//   point of touching (an arc tangent to its neighbour, as a fillet of a sketch makes it, whether
-//   the solver left the two a hair apart or a hair across);
-// - a torus and a plane that holds its axis: the two circles of the tube in that plane.
-// Two faces of one surface, and surfaces that meet in no circle, give none.
+//   of their curves in a half plane through the axis (a line, a ray, a circle). A point with
+//   `ρ > LENGTH_TOLERANCE` is a circle; a point at `ρ ≤ 0` is not on the face and is dropped, not
+//   folded back. At most two. Touching is tested on the distance, both ways: a line whose
+//   distance from the centre of a circle differs from the radius by at most `LENGTH_TOLERANCE`
+//   meets it at the foot of the perpendicular; two circles whose distance differs from the sum or
+//   the difference of the radii by at most that meet on the line of their centres;
+// - a torus and a plane that holds its axis: the two circles of the tube in that plane, one on
+//   each side of the axis.
 export declare function circlesBetween(a: SurfaceD, b: SurfaceD): Circle3[];
-// The circle of an edge: the only one of `circlesBetween`, or, of two, the one every point of the
-// edge (`points`: three numbers a point, the segments of the edge) lies nearer to than half its
-// distance to the other; undefined when there is none, when a point does not (the edge is two
-// circles, or two circles too close for the polygons of the mesh to tell apart), or when there
-// are two and no points. It does not depend on how the edge is divided or cut short. `edgeKind` and `projectEdge` (solid.ts), the
-// description of a body and the shape of an entity (query/body.ts, query/entity.ts) and the
-// circles of a section (query/section.ts) all pass the points they have; the kind of an edge is
-// therefore decided after its segments are collected.
-export declare function circleBetween(a: SurfaceD, b: SurfaceD, points?: ArrayLike<number>): Circle3 | undefined;
+// The circle of an edge: the only one of `circlesBetween`, or, of two, the one the points of the
+// edge say (`points`: three numbers a point, the segments of the edge; `tolerance`: the chord
+// tolerance of the document):
+// - about one axis: each circle has a reach, `2 · tolerance / sin θ` plus the precision of the
+//   coordinates, θ the angle at which the two curves meet there in the half plane. The two are
+//   told apart only when they are further apart than the sum of their reaches; then the chosen one
+//   is the circle every point lies within the reach of. Otherwise undefined: the edge is `other`.
+// - a torus and a plane through its axis: the side of the axis the points lie on, points within
+//   `LENGTH_TOLERANCE` of the axis left out; points on both sides give undefined.
+// - two possible and no points: undefined.
+// `edgeKind` and `projectEdge` (solid.ts), the description of a body and the shape of an entity
+// (query/body.ts, query/entity.ts) and the circles of a section (query/section.ts) pass the points
+// and the tolerance; the kind of an edge is decided after its segments are collected.
+export declare function circleBetween(a: SurfaceD, b: SurfaceD, points?: ArrayLike<number>, tolerance?: number): Circle3 | undefined;
+// The chord tolerance of the document as a field of the state of the recompute, for the three
+// callers of `analyzeBody` (evaluate.ts, features/sketch.ts, `frame` of recompute/services.ts).
+export interface StateD4a extends State {
+  chordTolerance: number;
+}
 
 // What an entity of a query is (query/entity.ts) gets the two shapes. `convex`: the material is
 // on the side of the centre (a ball) or of the centre of the tube (a ring; taken by the signed
@@ -261,7 +274,8 @@ export declare function revolveSetup(profile: ResolvedProfile, line: { point: Ve
 // mirror image facing inwards, and `applyTool` turns it over (D53); the build does not correct it.
 // - The plane of a side from a line across the axis: the origin at the start `a` of the line turned
 //   to the start of the turn, Y the normal of the half plane of the profile there in the direction
-//   the angle grows (`cos(start)·side·ŵ − sin(start)·e`, not depending on `a`); the caps: the
+//   the angle grows (`cos(start)·side·ŵ − sin(start)·e`, `start` 0 for a whole turn, not
+//   depending on `a`); the caps: the
 //   frame of the sketch turned to the start and to the end.
 // - A vertex of the profile on the axis is one vertex of the mesh; every other one is placed at
 //   `steps` angles of a whole turn, or at `steps + 1` of a partial one.

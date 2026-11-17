@@ -4,7 +4,7 @@
 //
 // A draft is the input form of a feature that is not in the document until confirmed. Every
 // change of it is previewed by the engine, and the preview is the state the view shows.
-import { type Command, type EngineState, type Expr, FEATURE_TYPE_INFO, type FaceName, type Feature, type FeatureResult, type Input, type PlaneRef, type Unit, featureInput } from '@trymesh/engine';
+import { type Command, type EngineState, type Expr, FEATURE_TYPE_INFO, type FaceName, type Feature, type FeatureResult, type Input, type PlaneRef, type Unit, atPath, featureInput } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldNote, fieldText, parseField } from '../fields';
 import type { PanelHost, ViewPick } from '../host';
@@ -189,7 +189,8 @@ export function draftButtons(host: PanelHost, m: AnyDraft): HTMLElement[] {
 
 // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
 export function draftField(host: PanelHost, m: AnyDraft, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
-  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
+  // the field of the variant the draft is (several generators have a parameter of one name)
+  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => field.path === path && (!field.when || atPath(m.draft, field.when.path) === field.when.equals))?.spec.unit ?? 'mm';
   const names = host.doc.parameters.map((p) => p.name);
   const input = h('input', {
     value: fieldText(draftValue(m, path), unit),

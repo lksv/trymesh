@@ -47,6 +47,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | Module | Content |
 |---|---|
 | `catalog.ts`, `generators.ts`, `expression.ts`, `util.ts` | the catalogs (constraints, numeric fields, profile generators), expressions, utilities |
+| `generators/common.ts`, `generators/cycloid.ts`, `generators/gt2.ts` | what the build functions of the generators share (the limit of points, the chords of an arc, the placement in the model); the cycloidal disc and the GT2 pulley with their entries of the catalog (D61), which `generators.ts` imports |
 | `face-roles.ts` | the catalog of the roles of faces (`FACE_ROLES`) and the key of a face built from it |
 | `data-catalogs.ts`, `catalogs/materials.ts` | tables of data the engine carries (`DATA_CATALOGS`), typed by row; a catalog is a module in `catalogs/` (the printing materials of D48) |
 | `catalogs/hardware.ts` | the hardware catalogs of D46: clearance holes, socket head and countersunk screws, hexagon nuts, heat-set inserts, each with its row type and source |

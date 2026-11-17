@@ -321,18 +321,20 @@ export interface ExtrudeFeature extends FeatureBase {
 // - Its faces are `wallSide` and `wallEnd` (see FaceName) and the two caps.
 // `generated`: an entry of the generator catalog (GENERATORS) builds the loops. It has no offset.
 // - `operands` are entities of the sketch by the names of the catalog (a gear: `circle`, the pitch
-//   circle; it may be a construction circle or a projected one). A command verifies the operands the
-//   feature did not have before; an operand removed later is a broken reference in the recompute.
+//   circle; it may be a construction circle or a projected one; a pulley: `center`, a point, also
+//   `origin` or a point of projected geometry). A command verifies the operands the feature did not
+//   have before; an operand removed later is a broken reference in the recompute.
 // - `params` follow the catalog: numbers are numeric fields at `profile/params/<name>` and accept an
 //   expression, flags are booleans. What a command leaves out gets the default of the catalog and is
-//   stored. A number without a default (the tooth count) is required.
+//   stored, except an optional parameter (the `shift` of a gear), which is stored only when given and
+//   whose absence is its default. A number without a default (the tooth count) is required.
 // - `refs` are references to earlier features by the names of the catalog (a gear: `meshWith`).
 export type ProfileSource =
   | { type: 'regions'; sketch: Id; regions: RegionRef[]; offset?: number }
   | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number }
   | { type: 'generated'; generator: GeneratorName; sketch: Id; operands: Record<string, Id>; params: Record<string, number | boolean | string>; refs?: Record<string, Id> };
 
-export type GeneratorName = 'involuteGear'; // entries of the generator catalog
+export type GeneratorName = 'involuteGear' | 'cycloidalDisc' | 'gt2Pulley'; // entries of the generator catalog
 
 // A pattern repeats its source by a list of isometries (turns, shifts, a mirror). The kind of the
 // transform is a variant: `circular` around an axis, `linear` along a direction, `mirror` in

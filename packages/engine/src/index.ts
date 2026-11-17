@@ -10,6 +10,7 @@ export {
   constraintOperands,
   constraintPath,
   CURVE_POINTS,
+  derivedPoints,
   documentIds,
   duplicateOf,
   emptyDocument,

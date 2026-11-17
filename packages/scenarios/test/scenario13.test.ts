@@ -18,7 +18,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -1109,5 +1109,159 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
     expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
     const loaded = engine.load(saved);
     expect(loaded.ok && loaded.state.document.mechanism.joints.shoulder).toMatchObject({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 });
+  });
+});
+
+// The part of 5d (D61, docs/d36/5d-generators/calls.ts): below the base a cycloidal stage for the
+// shoulder (twelve ring pins and a disc over their circle), and a GT2 belt stage from the motor to
+// the elbow (a pulley of 20 grooves on the motor and one of 40 above the elbow).
+describe('scenario 13, the part of 5d: a cycloidal stage at the shoulder and a GT2 belt stage from the motor to the elbow', () => {
+  let engine: Engine;
+  const param = (name: string, expr: string): Command => ({ type: 'setParameter', name, expr });
+  const facts = (state: EngineState, id: Id) => state.evaluation.features[id]?.facts ?? {};
+  const previewed = (...commands: Command[]): EngineState => {
+    const result = engine.preview(commands.length === 1 ? commands[0] : { type: 'batch', commands });
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+  const DISC_PARAMS = { pins: 'nPins', pinRadius: 'pinR', eccentricity: 'ecc', clearance: 0, rotation: 0, pinAngle: 0 };
+  const discFeature = (id: Id, params: Record<string, number | string>, start = -20): Command => ({
+    type: 'addFeature',
+    feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'cycloidalDisc', sketch: 'cyclo', operands: { circle: 'pinCircle' }, params }, extent: { type: 'distance', start, distance: 3 }, operation: 'new' },
+  });
+  const PINS: Id[] = ['pin', ...Array.from({ length: 11 }, (_, k) => `ringPins/${k + 1}`)];
+  const ofDisc = (disc: Id) => (pair: { a: Id; b: Id }): boolean => pair.a === disc || pair.b === disc;
+  // The smallest gap between the disc and a pin, when the pair is measured and does not touch.
+  const nearestGap = (disc: Id, state?: EngineState): number | undefined => {
+    const gap = engine.query('gap', { bodies: [disc, ...PINS], within: 1 }, state ? { state } : {});
+    if (!gap.ok || gap.result.failed.some(ofDisc(disc)) || (gap.result.cleared ?? []).some(ofDisc(disc))) return undefined;
+    const nearest = gap.result.pairs.find(ofDisc(disc));
+    return nearest !== undefined && nearest.contact === undefined ? nearest.distance : undefined;
+  };
+  // The disc and the pins share no volume and do not touch: the disc in no list of the collision
+  // check, and its smallest gap to the pins above zero and a few hundredths at most.
+  const clearOfThePins = (disc: Id = 'disc', state?: EngineState): number => {
+    const report = unwrap(engine.query('interference', { bodies: [disc, ...PINS] }, state ? { state } : {}));
+    expect([...report.pairs, ...report.fits, ...report.failed, ...(report.cleared ?? [])].filter(ofDisc(disc))).toEqual([]);
+    const distance = nearestGap(disc, state);
+    expect(distance).toBeGreaterThan(0);
+    expect(distance).toBeLessThan(0.03);
+    return distance as number;
+  };
+  const pulley = (id: Id, x: number, z: number, teeth: number): Command[] => {
+    const sketch = `${id}Sketch`;
+    return [
+      { type: 'addFeature', feature: emptySketch(sketch, sketch, { kind: 'base', plane: 'XY' }) },
+      { type: 'addPoint', sketch, id: `${id}Axis`, x, y: 0 },
+      { type: 'addConstraint', sketch, id: `${id}AxisFix`, constraint: { type: 'fixed', point: `${id}Axis`, x, y: 0 } },
+      {
+        type: 'addFeature',
+        feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'gt2Pulley', sketch, operands: { center: `${id}Axis` }, params: { teeth, allowance: 0, rotation: 0 } }, extent: { type: 'distance', start: z, distance: 6 }, operation: 'new' },
+      },
+    ];
+  };
+
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, arm());
+    // the pins from z −20 to −10 and the disc from −20 to −17: the circle of the pins about the
+    // shoulder, a pin of radius 2.5 on it at (25, 0) and its circular pattern, the disc over the circle
+    run(
+      engine,
+      {
+        type: 'batch',
+        commands: [
+          param('nPins', '12'),
+          param('pinR', '2.5'),
+          param('ecc', '1'),
+          { type: 'addFeature', feature: emptySketch('cyclo', 'cyclo', { kind: 'base', plane: 'XY' }) },
+          { type: 'addCurve', sketch: 'cyclo', id: 'pinCircle', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pinCircleR', constraint: { type: 'radius', curve: 'pinCircle', value: 25, driving: true } },
+          { type: 'addPoint', sketch: 'cyclo', id: 'pc', x: 25, y: 0 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pcFix', constraint: { type: 'fixed', point: 'pc', x: 25, y: 0 } },
+          { type: 'addCurve', sketch: 'cyclo', id: 'pinOutline', curve: { type: 'circle', center: 'pc' }, radius: 2.5 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pinOutlineR', constraint: { type: 'radius', curve: 'pinOutline', value: 'pinR', driving: true } },
+          { type: 'addFeature', feature: { id: 'pin', name: 'pin', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'cyclo', regions: [{ outerLoop: ['pinOutline'] }] }, extent: { type: 'distance', start: -20, distance: 10 }, operation: 'new' } },
+          { type: 'addFeature', feature: { id: 'ringPins', name: 'ringPins', suppressed: false, type: 'pattern', source: { type: 'body', body: 'pin' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 'nPins', span: { type: 'full' } } } },
+          discFeature('disc', DISC_PARAMS),
+        ],
+      },
+    );
+  });
+
+  it('a. the disc publishes 11 lobes, the ratio 11, the tips at 47 and the bottoms at 43, its centre 1 mm off the axis', () => {
+    const state = engine.getState();
+    expect(state.evaluation.features.disc.status).toBe('ok');
+    const f = facts(state, 'disc');
+    expect(Object.keys(f).sort()).toEqual(Object.keys(GENERATORS.cycloidalDisc.facts).sort());
+    expect(f).toMatchObject({ lobes: 11, ratio: 11, pins: 12, outerDiameter: expect.closeTo(47, 9), innerDiameter: expect.closeTo(43, 9), center: [1, 0, 0], ringCenter: [0, 0, 0], discRotation: 0 });
+    expect(state.document.features.find((feature) => feature.id === 'disc')?.expressions).toEqual({ 'profile/params/eccentricity': 'ecc', 'profile/params/pinRadius': 'pinR', 'profile/params/pins': 'nPins' });
+    // one side face, `lobes`
+    expect(state.evaluation.faceNames.filter((name) => name.feature === 'disc').map((name) => ('curve' in name ? `${name.role}/${name.curve}` : name.role)).sort()).toEqual(['endCap', 'side/lobes', 'startCap']);
+  });
+
+  it('b. the disc and the pins share no volume and do not touch; a quarter turn of the input and the second disc at π stay clear', () => {
+    clearOfThePins();
+    // a quarter turn of the input: the disc moves round the eccentric and turns back by 1/11 of that
+    const turned = previewed({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { rotation: 'deg(90)' } } } });
+    expect(facts(turned, 'disc')).toMatchObject({ center: [expect.closeTo(0, 9), expect.closeTo(1, 9), 0], discRotation: expect.closeTo(-Math.PI / 2 / 11, 12) });
+    clearOfThePins('disc', turned);
+    // the second disc of a two-disc drive: the input at π, from −16 to −13
+    const second = previewed(discFeature('disc2', { ...DISC_PARAMS, rotation: 'pi' }, -16));
+    expect(facts(second, 'disc2').center).toEqual([expect.closeTo(-1, 9), expect.closeTo(0, 9), 0]);
+    clearOfThePins('disc2', second);
+  });
+
+  it('c. pins drawn half a pitch round are met with `pinAngle` 15° and cut into without it', () => {
+    const pinsMoved: Command[] = [
+      { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/x', value: '25 * cos(deg(15))' },
+      { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/y', value: '25 * sin(deg(15))' },
+    ];
+    const withAngle = previewed(...pinsMoved, { type: 'updateFeature', id: 'disc', patch: { profile: { params: { pinAngle: 'deg(15)' } } } });
+    expect(facts(withAngle, 'disc').discRotation).toBeCloseTo(Math.PI / 11, 12);
+    clearOfThePins('disc', withAngle);
+    const without = previewed(...pinsMoved);
+    expect(unwrap(engine.query('interference', { bodies: ['disc', ...PINS] }, { state: without })).pairs.some(ofDisc('disc'))).toBe(true);
+  });
+
+  it('d. a clearance of 0.1 keeps the disc at least 0.1 from the pins', () => {
+    const state = previewed({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { clearance: 0.1 } } } });
+    const distance = nearestGap('disc', state);
+    expect(distance).toBeGreaterThanOrEqual(0.1);
+    expect(distance).toBeLessThan(0.13);
+  });
+
+  it('e. what cannot be built is an error of the disc with the reason', () => {
+    // E · N = 36 ≥ R = 25
+    expect(previewed(param('ecc', '3')).evaluation.features.disc.error).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/the eccentricity times the number of pins \(36\) is not below the radius of the pin circle 25/) });
+    // pins of radius 7 overlap: they touch at R sin(π/12) = 6.4705
+    expect(previewed(param('pinR', '7')).evaluation.features.disc.error).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/the pins overlap one another/) });
+  });
+
+  it('f. a pulley of 20 grooves on the motor and one of 40 above the elbow: the diameters of Gates\' table, one face `grooves` each', () => {
+    const state = run(engine, { type: 'batch', commands: [...pulley('motorPulley', 60, 38, 20), ...pulley('elbowPulley', 120, 16.5, 40)] });
+    const [small, large] = [facts(state, 'motorPulley'), facts(state, 'elbowPulley')];
+    expect(small).toMatchObject({ teeth: 20, pitch: 2, pitchDiameter: expect.closeTo(40 / Math.PI, 12), outsideDiameter: expect.closeTo(40 / Math.PI - 0.508, 12), center: [60, 0, 0], axis: [0, 0, 1] });
+    expect(large).toMatchObject({ teeth: 40, outsideDiameter: expect.closeTo(80 / Math.PI - 0.508, 12), center: [120, 0, 0] });
+    expect(Math.abs((small.outsideDiameter as number) - 12.22)).toBeLessThan(0.005);
+    expect(Math.abs((large.outsideDiameter as number) - 24.96)).toBeLessThan(0.005);
+    // the volume is the area of the outline times 6 (the exact outlines 103.020 and 460.278 mm²; the
+    // polygon is smaller by its chords)
+    expect(volumeOf(state, 'motorPulley')).toBeLessThan(6 * 103.02);
+    expect(volumeOf(state, 'motorPulley')).toBeGreaterThan(6 * (103.02 - 0.2));
+    expect(volumeOf(state, 'elbowPulley')).toBeLessThan(6 * 460.278);
+    expect(volumeOf(state, 'elbowPulley')).toBeGreaterThan(6 * (460.278 - 0.4));
+    expect(state.evaluation.faceNames.filter((name) => name.feature === 'motorPulley' && name.role === 'side').map((name) => ('curve' in name ? name.curve : ''))).toEqual(['grooves']);
+    // the pulleys stand clear of the motor, the forearm and the pin of the elbow
+    expect(unwrap(engine.query('interference', {})).pairs.filter((pair) => /Pulley/.test(pair.a) || /Pulley/.test(pair.b))).toEqual([]);
+    // fewer than 12 grooves is an invalid command
+    expect(engine.preview({ type: 'updateFeature', id: 'motorPulley', patch: { profile: { params: { teeth: 10 } } } })).toMatchObject({ ok: false, error: { message: expect.stringMatching(/params\.teeth: the value 10 is not in the interval \[12, 500\]/) } });
+  });
+
+  it('g. the document saves and loads unchanged', () => {
+    const saved = engine.save();
+    const other = newEngine();
+    expect(other.load(saved).ok).toBe(true);
+    expect(other.save()).toBe(saved);
   });
 });

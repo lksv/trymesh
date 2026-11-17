@@ -1,7 +1,7 @@
 // The extrusion in the app: its form with the profile (regions of a sketch picked in the view and
 // their offset, a wall along curves of a sketch picked in the view, or a profile generator of the
 // catalog), the extent and the targets; its summary; what it draws.
-import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Frame, type Id, type RegionRef, type SketchFeature, type SketchResult, generatorOf, isFlag } from '@trymesh/engine';
+import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Frame, type Id, type RegionRef, type SketchFeature, type SketchResult, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import { COLOR, pushPolyline } from '../draw';
 import { PICK_REACH, type PanelHost } from '../host';
@@ -65,13 +65,22 @@ function extrudeDefaults(host: PanelHost, sketch: SketchFeature, index: number):
 // An extent up to a plane without its plane is not complete either.
 const unpicked = (draft: ExtrudeDraft): boolean => (draft.profile.type === 'regions' && draft.profile.regions.length === 0) || (draft.profile.type === 'wall' && draft.profile.curves.length === 0) || noPlane(draft.extent);
 
-// Entities of a sketch a generator operand accepts: own curves and projected ones of the given kinds.
+// Entities of a sketch a generator operand accepts: own curves and projected ones of the given
+// kinds; for a point the origin, own points and the points of projected geometry.
 function operandChoices(host: PanelHost, sketch: Id, kinds: readonly string[]): { id: Id; label: string }[] {
   const f = host.feature(sketch);
   if (f?.type !== 'sketch') return [];
   const radii = sketchRegions(host, sketch)?.result.radii ?? {};
   const size = (id: Id): string => (radii[id] === undefined ? '' : ` ⌀ ${fmt(2 * radii[id])}`);
+  const points = kinds.includes('point')
+    ? [
+        { id: 'origin', label: 'origin' },
+        ...Object.keys(f.points).map((id) => ({ id, label: id })),
+        ...Object.entries(f.external).flatMap(([id, ref]) => derivedPoints(id, ref).map((point) => ({ id: point, label: `${point} (projected)` }))),
+      ]
+    : [];
   return [
+    ...points,
     ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
     ...Object.entries(f.external).filter(([, ref]) => kinds.includes(ref.kind)).map(([id]) => ({ id, label: `${id}${size(id)} (projected)` })),
   ];
@@ -269,7 +278,8 @@ function wallFields(host: PanelHost, m: ExtrudeMode, profile: Extract<ExtrudeDra
 }
 
 // The part of the extrusion form for a generated profile, built from the generator catalog:
-// a select per operand, a field per number, a checkbox per flag and a select per reference.
+// a select per operand, a field per number, a checkbox per flag and a select per reference. An
+// optional number is empty while the draft has none, and emptying it removes it.
 function generatorFields(host: PanelHost, m: ExtrudeMode, profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>, set: (change: ExtrudeChange, rebuild?: boolean) => void): (HTMLElement | null)[] {
   const spec = GENERATORS[profile.generator];
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
@@ -293,7 +303,9 @@ function generatorFields(host: PanelHost, m: ExtrudeMode, profile: Extract<Extru
     ...Object.entries(spec.params).map(([name, param]) =>
       isFlag(param)
         ? h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: profile.params[name] === true, onchange: (event: Event) => set({ params: { [name]: (event.target as HTMLInputElement).checked } }) }), param.title)
-        : draftField(host, m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
+        : param.optional
+          ? draftField(host, m, `${param.title} (${param.unit === 'rad' ? '° or an expression in radians' : param.unit === 'mm' ? 'mm or an expression' : 'a number or an expression'}; empty = ${param.default})`, `profile/params/${name}`, (value) => set({ params: { [name]: typeof value === 'number' && Number.isNaN(value) ? null : value } }, false))
+          : draftField(host, m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
     ),
     ...Object.entries(spec.refs).map(([name, ref]) => {
       const choices = earlier.filter((f) => (ref.generators as readonly (string | undefined)[]).includes(generatorOf(f)));
@@ -419,7 +431,7 @@ export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
         ? `regions: ${f.profile.regions.length}${offset}`
         : f.profile.type === 'wall'
           ? `a wall ${shownValue(f, 'profile/thickness', f.profile.thickness)} mm thick along ${f.profile.curves.length === 1 ? 'the curve' : 'the curves'} ${f.profile.curves.join(', ')}`
-          : `${GENERATORS[f.profile.generator].title.toLowerCase()} over ${Object.values(f.profile.operands).join(', ')}`;
+          : `${GENERATORS[f.profile.generator].title} (${Object.entries(f.profile.operands).map(([field, id]) => `${field} ${id}`).join(', ')})`;
     const out = [h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, ${profile}${targets}.`)];
     const facts = factsText(f, host.view().evaluation.features[f.id]);
     if (facts) out.push(h('p', { className: 'hint' }, facts));

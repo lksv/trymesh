@@ -13,7 +13,7 @@
 // - 2e (D53), the linear pattern and the mirror: a row of vent slots in the long wall, the rib and
 //   its brace mirrored to the other long wall, pads under the corners as mirrors of one body, and
 //   the lid in a row for the print bed.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type SketchFeature, type SolveInput, type Surface, UPGRADES, faceKey, freshIds, sketchTool } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type SketchFeature, type SolveInput, type Surface, UPGRADES, faceKey, freshIds, sketchTool, zip } from '@trymesh/engine';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { readZip } from '../../engine/test/zip-reader';
 import { NO_PRINTED_BODY } from '../../engine/src/export/bodies';
@@ -627,8 +627,7 @@ describe('scenario 12, the part of 2g: the box and its lid as 3MF, the lid as a 
     expect(count(model, '<vertex ')).toBe(720 + 735);
     expect(count(model, '<triangle ')).toBe(2926);
     expect(model).toContain('<build><item objectid="1"/><item objectid="2"/></build>');
-    // about a fifth larger than the STL of the same bodies
-    expect(file.bytes.length / engine.exportMesh('stl', ['box', 'lid']).length).toBeCloseTo(1.21, 2);
+    // the items deflated, a fifth of the STL of the same bodies: the next test
     // the mesh of the file is the mesh of the body, the lid renumbered
     const { positions, triangles } = engine.getState().evaluation.bodies.lid.solid;
     const lid = modelOf(only(unwrap(engine.export('3mf', { bodies: ['lid'] }))));
@@ -636,6 +635,33 @@ describe('scenario 12, the part of 2g: the box and its lid as 3MF, the lid as a 
     const corners = [...lid.matchAll(/<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"\/>/g)].flatMap((triangle) => [triangle[1], triangle[2], triangle[3]].map(Number));
     expect(corners.length).toBe(triangles.length);
     expect(corners.every((vertex, i) => [0, 1, 2].every((k) => Math.fround(vertices[vertex][k]) === positions[3 * triangles[i] + k]))).toBe(true);
+  });
+
+  it('3MF compressed (D54, the addition): the engine of the kit has the compressor; the three items deflated, a fifth of the STL', () => {
+    const file = only(unwrap(engine.export('3mf', {})));
+    const items = readZip(file.bytes); // inflated by `node:zlib`, which shares no code with the compressor
+    expect(items.map((item) => item.name)).toEqual(['[Content_Types].xml', '_rels/.rels', '3D/3dmodel.model']);
+    expect(items.map((item) => [item.method, item.needed, item.madeBy])).toEqual([
+      [8, 20, 20],
+      [8, 20, 20],
+      [8, 20, 20],
+    ]);
+    expect(items.every((item) => item.compressed < item.bytes.length)).toBe(true);
+    // the package an engine without a compressor writes: the same items, stored (the tests of the
+    // engine pin that equality against bytes of master), so the scenario needs no second engine
+    const stored = zip(items.map(({ name, bytes }) => ({ name, bytes })));
+    const storedItems = readZip(stored);
+    expect(storedItems.map((item) => [item.method, item.needed, item.bytes.length])).toEqual(items.map((item) => [0, 10, item.bytes.length]));
+    expect(stored.length).toBe(177803);
+    // a fifth of the STL of the same bodies (146 384 bytes), where the stored package is a fifth more
+    const stl = only(unwrap(engine.export('stl', {})));
+    expect(file.bytes.length).toBeLessThan(stored.length / 5);
+    expect(Math.abs(file.bytes.length / stl.bytes.length - 0.2)).toBeLessThan(0.01);
+    expect(stored.length / stl.bytes.length).toBeCloseTo(1.21, 2);
+    // nothing else of the answer changes
+    expect([file.path, file.mediaType, meshAbout(file).triangles]).toEqual(['model.3mf', 'model/3mf', 2926]);
+    // the same model gives the same bytes
+    expect(only(unwrap(engine.export('3mf', {}))).bytes).toEqual(file.bytes);
   });
 
   it('3MF: the name and the colour of the body properties, the colour as a base material named by the material; a name is escaped', () => {

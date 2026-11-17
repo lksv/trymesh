@@ -1,6 +1,6 @@
 # Architecture: ports
 
-Part of [architecture.md](../architecture.md), the design as implemented. The contracts of `SketchSolver` and `SolidKernel`.
+Part of [architecture.md](../architecture.md), the design as implemented. The contracts of `SketchSolver`, `SolidKernel` and `Deflater`.
 
 ## Porty
 
@@ -167,3 +167,26 @@ Omezení:
 **Přesnost (D20).** Manifold přijímá i vrací souřadnice jen ve `Float32Array`, proto je má `Solid` také v tomto typu. Engine geometrii nikdy neodvozuje ze sítě, pokud ji umí spočítat analyticky; analytické výpočty běží ve float64. Naměřená odchylka vrcholů od roviny po 12 booleanech za sebou na šikmé stěně byla 2e-6.
 
 `Solid` jsou čistá data. Přechod na B-rep by znamenal jiný typ tělesa a jiný adaptér; jména, reference a přepočet zůstanou.
+
+### Deflater (D54)
+
+```ts
+interface Deflater {
+  deflate(bytes: Uint8Array): Uint8Array;   // a raw DEFLATE stream (RFC 1951, no zlib or gzip wrapper)
+}
+```
+
+A compressor of bytes into a raw DEFLATE stream, which is what the compression method 8 of a ZIP holds (.ZIP File Format Specification 6.3.10, 4.4.5 and 5.5) and the one method besides storing that a 3MF package may use (3MF core 1.4.0, 1.1; Open Packaging Conventions 7.3.6). It is the one thing of a ZIP the engine does not do itself; the container, the checksum and the refusals stay the engine's (`zip` of `export/zip.ts`, [api.md](api.md), "Export formats").
+
+What an implementation guarantees:
+1. The result is one complete stream that an inflater turns back into exactly `bytes`, and that ends with its last block: nothing follows it. For every input, also one with no bytes.
+2. The same input gives the same output, wherever the implementation runs (Node, a browser): a file of the app is the file of the server.
+3. `bytes` is not changed and not kept. The result is a new array that the caller owns.
+4. It is synchronous, as an export is.
+5. It throws when it cannot compress; the writer of the engine turns that into `failed`.
+
+Not guaranteed: that the stream is shorter than the input (the writer then stores the entry), any particular level, and that two implementations give the same stream. Nothing checks at run time that a stream inflates back.
+
+**Where it enters.** `createEngine(deps)` takes `EngineDeps`: the solver, the kernel and `deflater?`. It is optional: an engine without it is a whole engine whose files are stored. The compressor reaches a format as the kernel does, as a member of its context (`QueryContext.deflater`, set from `ContextDeps`); unlike the kernel it is not wrapped, because a format hands it to `zip` and does not call it, and `zip` turns its failure into `QueryFailure('failed')`. The app (`packages/app/src/main.ts`) and the server (`packages/mcp/src/main.ts`) give their engines the adapter below; so do the kits of the tests with real adapters (`packages/scenarios/test/kit.ts`, `packages/mcp/test/kit.ts`, `packages/app/test/app-kit.ts`). No test loads either `main.ts`: an engine that lost its compressor writes stored files without a word, which the size of a 3MF shows.
+
+**The adapter of `pako`** (`packages/deflate-pako`, `createPakoDeflater()`): `deflateRaw(bytes, { level: 6 })` of `pako` 2.1.0, pinned exactly, from its entry for deflate alone, `pako/lib/deflate.js` (CommonJS; the main entry of 2.1.0 brings inflate along). The package ships no types; the one function is declared in `src/pako.d.ts`. Level 6 is the default of zlib, stated so that no default of the library decides the bytes; the other options are the library's defaults (window 15, memory level 8, the default strategy). With them the stream is that of zlib at level 6 byte for byte (measured against zlib 1.2.12 and 1.3.2; [deflate.md](../d36/2g-export/deflate.md), "Measured" and "As implemented"). Creating it is synchronous, with nothing to load. When it cannot compress, 2.1.0 throws an `Error` for a stream it cannot set up and the message of zlib as a plain string for an error of the stream; the writer takes both. It is the only module of the repository that imports the library (D2).

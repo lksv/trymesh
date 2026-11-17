@@ -1,6 +1,7 @@
 // Engine se skutečnými adaptéry a klient MCP propojený se serverem v paměti.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { type Engine, createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
@@ -8,7 +9,7 @@ import type { Bridge } from '../src/bridge';
 import type { HostOperationSet } from '../src/host';
 import { createTrymeshServer } from '../src/server';
 
-const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
+const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
 export const newEngine = (): Engine => createEngine(deps);
 
 export interface Session {

@@ -1,12 +1,16 @@
 // The format `3mf` (D54) over a small model of its own: the whole package pinned, the names, the
 // colours and their base materials, the renumbered vertices, the refusals, the empty package. The
-// box of scenario 12 is in packages/scenarios.
+// box of scenario 12 is in packages/scenarios. With a compressor (D54, deflate.md): the doubles
+// of export-zip.test.ts, never the library.
+import { createHash } from 'node:crypto';
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { createEngine } from '../src/engine';
 import { NO_BODY, NO_PRINTED_BODY } from '../src/export/bodies';
 import { THREE_MF, baseMaterials, threeMf } from '../src/export/threemf';
 import type { QueryContext } from '../src/query/spec';
 import { QueryFailure } from '../src/query/spec';
-import type { BodyPropertiesResult, Id, Solid } from '../src/types';
+import type { BodyPropertiesResult, Deflater, Id, Solid, SolidKernel } from '../src/types';
 import { readZip } from './zip-reader';
 
 // A tetrahedron with its corners at the origin and on the three axes, wound outwards.
@@ -17,11 +21,17 @@ const tetrahedron = (size: number, spare = false): Solid => ({
   faceIds: Uint32Array.from([0, 1, 2, 3]),
 });
 type Properties = Partial<BodyPropertiesResult> & { name: string };
-const contextOf = (bodies: Record<Id, { solid: Solid; properties: Properties }>): QueryContext =>
+const contextOf = (bodies: Record<Id, { solid: Solid; properties: Properties }>, deflater?: Deflater): QueryContext =>
   ({
     state: { evaluation: { bodyProperties: Object.fromEntries(Object.entries(bodies).map(([id, body]) => [id, { use: 'part', ...body.properties }])) } },
     bodies: Object.fromEntries(Object.entries(bodies).map(([id, body]) => [id, { solid: body.solid }])),
+    ...(deflater ? { deflater } : {}),
   }) as unknown as QueryContext;
+const sha256 = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
+// The package of the small model of the first test as the engine of master (8367ccc) wrote it,
+// stored, by its length and SHA-256: captured before the writer got its compressor.
+const STORED_TETRA = [1545, 'a575d4d0f6923af58821e11a13299fd3d1c90cb742e39fbf0666dd15374dd4a5'];
+const byNodeZlib: Deflater = { deflate: (bytes) => new Uint8Array(deflateRawSync(bytes)) };
 const modelOf = (context: QueryContext, bodies?: Id[]) => {
   const exported = threeMf.run(context, bodies ? { bodies } : {});
   const items = readZip(exported.files[0].bytes);
@@ -72,6 +82,9 @@ describe('the format 3mf', () => {
     );
     // the same model gives the same bytes: no clock
     expect(threeMf.run(context, {}).files[0].bytes).toEqual(exported.files[0].bytes);
+    // without a compressor: the bytes of master, every item stored
+    expect(items.map((item) => item.method)).toEqual([0, 0, 0]);
+    expect([exported.files[0].bytes.length, sha256(exported.files[0].bytes)]).toEqual(STORED_TETRA);
   });
 
   it('names and colours: a base material per pair of a label and a colour, the objects after the group', () => {
@@ -142,5 +155,51 @@ describe('the format 3mf', () => {
     expect(items.length).toBe(3);
     expect(model).toBe('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n<metadata name="Application">trymesh</metadata>\n<resources>\n</resources>\n<build></build>\n</model>\n');
     expect(modelOf(contextOf({})).exported.empty).toBe(NO_BODY);
+  });
+
+  it('with the compressor of the context: the three items deflated, holding the bytes of the stored package', () => {
+    const bodies = { t: { solid: tetrahedron(1.5), properties: { name: 'Tetra' } } };
+    const stored = modelOf(contextOf(bodies));
+    const deflated = modelOf(contextOf(bodies, byNodeZlib));
+    expect(deflated.items.map((item) => [item.name, item.method, item.needed, item.madeBy])).toEqual([
+      [THREE_MF.contentTypes.item, 8, 20, 20],
+      [THREE_MF.relationships.item, 8, 20, 20],
+      [THREE_MF.model.item, 8, 20, 20],
+    ]);
+    expect(deflated.items.map((item) => item.bytes)).toEqual(stored.items.map((item) => item.bytes));
+    expect(deflated.exported.files[0].bytes.length).toBeLessThan(stored.exported.files[0].bytes.length);
+    // nothing else of the answer changes
+    expect({ ...deflated.exported, files: deflated.exported.files.map(({ bytes: _, ...file }) => file) }).toEqual({ ...stored.exported, files: stored.exported.files.map(({ bytes: _, ...file }) => file) });
+  });
+});
+
+describe('the format 3mf from an engine with a compressor', () => {
+  // An engine with no body: the package of an empty model still has its three items, so the
+  // compressor is called. Its solver and kernel are never asked.
+  const engineWith = (deflater?: Deflater) => createEngine({ solver: { solve: () => ({ status: 'ok', points: {}, radii: {} }) } as never, kernel: {} as SolidKernel, ...(deflater ? { deflater } : {}) });
+  const message = (outcome: ReturnType<ReturnType<typeof engineWith>['export']>): string => (outcome.ok ? 'ok' : `${outcome.error.code}: ${outcome.error.message}`);
+
+  it('the engine hands its compressor to the format; without one the package is stored', () => {
+    const file = (deflater?: Deflater) => {
+      const outcome = engineWith(deflater).export('3mf', {});
+      if (!outcome.ok) throw new Error(outcome.error.message);
+      return outcome.result.files[0].bytes;
+    };
+    expect(readZip(file(byNodeZlib)).map((item) => item.method)).toEqual([8, 8, 8]);
+    expect(readZip(file()).map((item) => item.method)).toEqual([0, 0, 0]);
+    expect(file().length).toBe(1150);
+  });
+
+  it('a compressor that fails is the answer failed of the export, with the format in its text', () => {
+    const broken: Deflater = {
+      deflate: () => {
+        throw new Error('out of memory');
+      },
+    };
+    const notBytes = { deflate: () => [1, 2, 3] } as unknown as Deflater;
+    expect(message(engineWith(broken).export('3mf', {}))).toBe('failed: 3mf: the compressor failed: out of memory');
+    expect(message(engineWith(notBytes).export('3mf', {}))).toBe('failed: 3mf: the compressor failed: it answered with object where bytes are expected');
+    // the other formats do not use it
+    expect(message(engineWith(broken).export('stl', {}))).toBe('ok');
   });
 });

@@ -1,5 +1,5 @@
 export type * from './types';
-export { createEngine } from './engine';
+export { type EngineDeps, createEngine } from './engine';
 export {
   FEATURE_TYPE_INFO,
   type FeatureTypeInfo,
@@ -26,7 +26,7 @@ export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
 export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
-export { ZIP_NAME_LIMIT, type ZipEntry, crc32, storedZip } from './export/zip';
+export { ZIP_NAME_LIMIT, type ZipEntry, crc32, zip } from './export/zip';
 export type { MeshAbout } from './export/threemf';
 export type { OutlineAbout } from './export/outline';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';

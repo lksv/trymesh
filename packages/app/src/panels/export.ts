@@ -3,7 +3,7 @@
 // It shares its place in the model panel and the selection of the view with the form of a query:
 // its state is a member of the same object (`QueryPanel.exporting`), and opening one closes the
 // other.
-import { type AnyExportFormat, type ArgPath, EXPORT_FORMATS, type ExportFormat, type Exported, QueryFailure, storedZip } from '@trymesh/engine';
+import { type AnyExportFormat, type ArgPath, EXPORT_FORMATS, type ExportFormat, type Exported, QueryFailure, zip } from '@trymesh/engine';
 import { download, h } from '../dom';
 import type { PanelHost, ViewPick } from '../host';
 import { type ArgDraft, argRows, nextToArm, takeInto } from './args';
@@ -35,10 +35,11 @@ export function closeExport(panel: QueryPanel, host: PanelHost): void {
 }
 
 // What one file or a set of files is saved as: one file under its suggested name; a set as one
-// ZIP, `<format>.zip`, of the files under their paths (a browser cannot write a folder).
+// ZIP, `<format>.zip`, of the files under their paths (a browser cannot write a folder), stored:
+// the owner asked for the 3MF compressed, not the set (D54, deflate.md, the second question).
 function saved(format: ExportFormat, exported: Exported): { name: string; bytes: Uint8Array; mediaType: string } {
   if (exported.layout === 'file') return { name: exported.files[0].path, bytes: exported.files[0].bytes, mediaType: exported.files[0].mediaType };
-  return { name: `${format}.zip`, bytes: storedZip(exported.files.map((file) => ({ name: file.path, bytes: file.bytes }))), mediaType: 'application/zip' };
+  return { name: `${format}.zip`, bytes: zip(exported.files.map((file) => ({ name: file.path, bytes: file.bytes }))), mediaType: 'application/zip' };
 }
 
 // Exports the state the marker shows with the options of the form, and saves what it gives. The

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONSTRAINTS, type Command } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readZip } from '../../engine/test/zip-reader';
 import { type Bridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { connect, newEngine } from './kit';
@@ -369,11 +370,15 @@ describe('MCP server: bodies', () => {
     expect(written.files).toEqual([{ path: model, bodies: ['base', 'Wheel', 'planets/1', 'planets/2'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
     const bytes = await readFile(model);
     expect(bytes.length).toBe(written.files[0].bytes);
-    // a ZIP: the local header of its first item is the content types, stored
-    expect(bytes.readUInt32LE(0)).toBe(0x04034b50);
-    expect(bytes.readUInt16LE(8)).toBe(0);
-    expect(bytes.subarray(30, 30 + bytes.readUInt16LE(26)).toString()).toBe('[Content_Types].xml');
-    expect(bytes.toString('latin1')).toContain('<object id="1" type="model" name="base" partnumber="base">');
+    // a ZIP of three items, each deflated by the compressor of the engine (the engine of the kit,
+    // composed as the server's `main.ts` composes its own), read back by the reader of the tests
+    const items = readZip(new Uint8Array(bytes));
+    expect(items.map((item) => [item.name, item.method])).toEqual([
+      ['[Content_Types].xml', 8],
+      ['_rels/.rels', 8],
+      ['3D/3dmodel.model', 8],
+    ]);
+    expect(new TextDecoder().decode(items[2].bytes)).toContain('<object id="1" type="model" name="base" partnumber="base">');
     // the base disc cut a millimetre above the plane it stands on: one circle, of radius 5 about (20, 0)
     const outline = join(dir, 'export-2g', 'base.dxf');
     const drawn = await session.call('export', { format: 'dxf', path: outline, options: { plane: { kind: 'base', plane: 'XY' }, offset: 1 } });

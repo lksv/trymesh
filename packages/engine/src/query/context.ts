@@ -3,7 +3,7 @@
 import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services';
 import type { State } from '../recompute/state';
 import { transformFrame, transformSurface } from '../solid';
-import type { Document, Evaluation, SolidKernel } from '../types';
+import type { Deflater, Document, Evaluation, SolidKernel } from '../types';
 import { faceKey, has } from '../util';
 import { poseOf } from './pose';
 import { type QueryContext, QueryFailure } from './spec';
@@ -69,6 +69,7 @@ export interface Internals {
 
 export interface ContextDeps {
   kernel: SolidKernel;
+  deflater?: Deflater; // absent when the engine was created without one
   memo: Memo;
 }
 
@@ -107,6 +108,8 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
     face: (name) => state.faceIds.get(faceKey(name)),
     sketch: (id) => lookup(state.sketches, id),
     kernel: guarded(deps.kernel),
+    // not wrapped: a format hands it to `zip`, which turns its failure into `failed`
+    ...(deps.deflater ? { deflater: deps.deflater } : {}),
     memo: (owners, key, compute) => deps.memo.get(owners, `${name}\u0000${key}`, compute),
   };
 }

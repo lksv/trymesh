@@ -4,7 +4,7 @@
 // all read it below the registry of feature types.
 import { CONSTRAINTS, type EntityKind } from './catalog';
 import type { Constraint, Curve, CurvePointName, CurveShape, Dimension, Document, ExternalRef, FieldPath, Id, PlaneRef, SketchFeature } from './types';
-import { ORIGIN, has } from './util';
+import { ORIGIN, has, unreachable } from './util';
 
 export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
   id,
@@ -74,10 +74,21 @@ true satisfies (TableName extends CurvePointName ? (CurvePointName extends Table
 type Complete = { [T in CurveShape['type']]: [Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>] extends [(typeof CURVE_POINTS)[T][number]] ? true : false };
 ({ line: true, circle: true, arc: true }) satisfies Complete;
 
+// The kinds of a sketch curve the validator of a curve accepts: the keys of the table, so a kind
+// added to `CurveShape` is accepted only once the table and the validator's switch have it.
+export const CURVE_KINDS = Object.keys(CURVE_POINTS) as CurveShape['type'][];
+
 export function curvePoints(curve: Curve): Id[] {
-  if (curve.type === 'line') return [curve.a, curve.b];
-  if (curve.type === 'circle') return [curve.center];
-  return [curve.center, curve.start, curve.end];
+  switch (curve.type) {
+    case 'line':
+      return [curve.a, curve.b];
+    case 'circle':
+      return [curve.center];
+    case 'arc':
+      return [curve.center, curve.start, curve.end];
+    default:
+      return unreachable(curve, 'curve');
+  }
 }
 
 // Operandy vazby v pořadí katalogu.

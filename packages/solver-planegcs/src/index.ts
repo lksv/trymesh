@@ -224,37 +224,45 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
   for (const [id, p] of sorted(input.points)) out.push({ id, type: 'point', x: start.get(id)?.x ?? p.x, y: start.get(id)?.y ?? p.y, fixed: fixed.has(id) });
 
   for (const [id, curve] of sorted(input.curves)) {
-    if (curve.type === 'line') {
-      point(curve.a);
-      point(curve.b);
-      out.push({ id, type: 'line', p1_id: curve.a, p2_id: curve.b });
-    } else if (curve.type === 'circle') {
-      point(curve.center);
-      const radius = input.radii[id];
-      if (radius === undefined) throw new Error(`solver: kružnice ${id} nemá poloměr`);
-      out.push({ id, type: 'circle', c_id: curve.center, radius });
-      if (fixed.has(id)) out.push({ id: `${SYNTHETIC}fixRadius/${id}`, type: 'circle_radius', c_id: id, radius });
-    } else if (curve.type === 'arc') {
-      // Oblouk: knihovna chce poloměr a úhly na vstupu a pravidla oblouku jako vazbu.
-      const c = point(curve.center);
-      const s = point(curve.start);
-      const e = point(curve.end);
-      const startAngle = Math.atan2(s.y - c.y, s.x - c.x);
-      let endAngle = Math.atan2(e.y - c.y, e.x - c.x);
-      if (endAngle <= startAngle) endAngle += 2 * Math.PI; // proti směru hodin
-      out.push({
-        id,
-        type: 'arc',
-        c_id: curve.center,
-        start_id: curve.start,
-        end_id: curve.end,
-        radius: Math.hypot(s.x - c.x, s.y - c.y),
-        start_angle: startAngle,
-        end_angle: endAngle,
-      });
-      out.push({ id: `${SYNTHETIC}arcRules/${id}`, type: 'arc_rules', a_id: id });
-    } else {
-      throw new Error(`solver: neznámý druh křivky u ${id}`);
+    switch (curve.type) {
+      case 'line':
+        point(curve.a);
+        point(curve.b);
+        out.push({ id, type: 'line', p1_id: curve.a, p2_id: curve.b });
+        break;
+      case 'circle': {
+        point(curve.center);
+        const radius = input.radii[id];
+        if (radius === undefined) throw new Error(`solver: kružnice ${id} nemá poloměr`);
+        out.push({ id, type: 'circle', c_id: curve.center, radius });
+        if (fixed.has(id)) out.push({ id: `${SYNTHETIC}fixRadius/${id}`, type: 'circle_radius', c_id: id, radius });
+        break;
+      }
+      case 'arc': {
+        // Oblouk: knihovna chce poloměr a úhly na vstupu a pravidla oblouku jako vazbu.
+        const c = point(curve.center);
+        const s = point(curve.start);
+        const e = point(curve.end);
+        const startAngle = Math.atan2(s.y - c.y, s.x - c.x);
+        let endAngle = Math.atan2(e.y - c.y, e.x - c.x);
+        if (endAngle <= startAngle) endAngle += 2 * Math.PI; // proti směru hodin
+        out.push({
+          id,
+          type: 'arc',
+          c_id: curve.center,
+          start_id: curve.start,
+          end_id: curve.end,
+          radius: Math.hypot(s.x - c.x, s.y - c.y),
+          start_angle: startAngle,
+          end_angle: endAngle,
+        });
+        out.push({ id: `${SYNTHETIC}arcRules/${id}`, type: 'arc_rules', a_id: id });
+        break;
+      }
+      default: {
+        const unknown: never = curve; // a kind added to Curve needs its case here
+        throw new Error(`solver: neznámý druh křivky u ${id}`, { cause: unknown });
+      }
     }
   }
 
@@ -323,10 +331,18 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       return { type: 'p2p_coincident', p1_id: c.a, p2_id: c.b };
     case 'pointOnCurve': {
       const k = kind(c.curve);
-      if (k === 'line') return { type: 'point_on_line_pl', p_id: c.point, l_id: c.curve };
-      if (k === 'circle') return { type: 'point_on_circle', p_id: c.point, c_id: c.curve };
-      if (k === 'arc') return { type: 'point_on_arc', p_id: c.point, a_id: c.curve };
-      throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve}`);
+      switch (k) {
+        case 'line':
+          return { type: 'point_on_line_pl', p_id: c.point, l_id: c.curve };
+        case 'circle':
+          return { type: 'point_on_circle', p_id: c.point, c_id: c.curve };
+        case 'arc':
+          return { type: 'point_on_arc', p_id: c.point, a_id: c.curve };
+        default: {
+          const unknown: never = k;
+          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve}`, { cause: unknown });
+        }
+      }
     }
     case 'horizontal':
       return { type: 'horizontal_l', l_id: line(c.line) };
@@ -341,11 +357,40 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
     case 'equalRadius': {
       // operand order of the library: circle before arc
       const [first, second] = kind(c.a) === 'arc' && kind(c.b) === 'circle' ? [c.b, c.a] : [c.a, c.b];
-      const pair = `${kind(first)}-${kind(second)}`;
-      if (pair === 'circle-circle') return { type: 'equal_radius_cc', c1_id: first, c2_id: second };
-      if (pair === 'circle-arc') return { type: 'equal_radius_ca', c1_id: first, a2_id: second };
-      if (pair === 'arc-arc') return { type: 'equal_radius_aa', a1_id: first, a2_id: second };
-      throw new Error(`solver: vazba ${id}: equal radius needs circles or arcs`);
+      const [k1, k2] = [kind(first), kind(second)];
+      const refused = (): never => {
+        throw new Error(`solver: vazba ${id}: equal radius needs circles or arcs`);
+      };
+      const unknown = (k: never): never => {
+        throw new Error(`solver: vazba ${id}: neznámý druh křivky (${String(k)})`);
+      };
+      switch (k1) {
+        case 'circle':
+          switch (k2) {
+            case 'circle':
+              return { type: 'equal_radius_cc', c1_id: first, c2_id: second };
+            case 'arc':
+              return { type: 'equal_radius_ca', c1_id: first, a2_id: second };
+            case 'line':
+              return refused();
+            default:
+              return unknown(k2);
+          }
+        case 'arc':
+          switch (k2) {
+            case 'arc':
+              return { type: 'equal_radius_aa', a1_id: first, a2_id: second };
+            case 'circle': // ordered circle first above
+            case 'line':
+              return refused();
+            default:
+              return unknown(k2);
+          }
+        case 'line':
+          return refused();
+        default:
+          return unknown(k1);
+      }
     }
     case 'tangent': {
       // pořadí operandů knihovny: úsečka, kružnice, oblouk
@@ -386,13 +431,33 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       return { type: 'difference', param1: { o_id: c.a, prop: 'y' }, param2: { o_id: c.b, prop: 'y' }, difference: c.value };
     case 'angle': // od směru úsečky a ke směru úsečky b, proti směru hodin
       return { type: 'l2l_angle_ll', l1_id: line(c.a), l2_id: line(c.b), angle: c.value };
-    case 'radius':
-      return kind(c.curve) === 'arc'
-        ? { type: 'arc_radius', a_id: c.curve, radius: c.value }
-        : { type: 'circle_radius', c_id: c.curve, radius: c.value };
-    case 'diameter':
-      return kind(c.curve) === 'arc'
-        ? { type: 'arc_diameter', a_id: c.curve, diameter: c.value }
-        : { type: 'circle_diameter', c_id: c.curve, diameter: c.value };
+    case 'radius': {
+      const k = kind(c.curve);
+      switch (k) {
+        case 'arc':
+          return { type: 'arc_radius', a_id: c.curve, radius: c.value };
+        case 'circle':
+        case 'line': // validation lets only circles and arcs in
+          return { type: 'circle_radius', c_id: c.curve, radius: c.value };
+        default: {
+          const unknown: never = k;
+          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve} (${String(unknown)})`);
+        }
+      }
+    }
+    case 'diameter': {
+      const k = kind(c.curve);
+      switch (k) {
+        case 'arc':
+          return { type: 'arc_diameter', a_id: c.curve, diameter: c.value };
+        case 'circle':
+        case 'line': // validation lets only circles and arcs in
+          return { type: 'circle_diameter', c_id: c.curve, diameter: c.value };
+        default: {
+          const unknown: never = k;
+          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve} (${String(unknown)})`);
+        }
+      }
+    }
   }
 }

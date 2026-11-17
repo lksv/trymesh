@@ -8,7 +8,7 @@
 // neighbours that no longer meet, loops that touch) is refused with a text that names the curves.
 import { type Loop, type OutlineCurve, type Region, type SketchGeometry, pointJoins, polygonNesting, polygonProblem, segments, soundTessellation, touchingCurves } from '../sketch';
 import type { FaceName, Id, SketchFeature, Vec2 } from '../types';
-import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross2, dist2, dot2, has, len2, sub2 } from '../util';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross2, dist2, dot2, has, len2, sub2, unreachable } from '../util';
 import type { Outline, ProfileProblem, SideCurve } from './state';
 
 const TAU = 2 * Math.PI;
@@ -522,28 +522,46 @@ export function wallOutline(sketch: SketchFeature, geometry: SketchGeometry, ids
   const named = new Map<Id, [Id, Id]>();
   for (const id of ids) {
     const curve = sketch.curves[id];
-    const centre = curve.type === 'line' ? undefined : has(geometry.points, curve.center) ? geometry.points[curve.center] : undefined;
-    if (curve.type === 'circle') {
-      const radius = has(geometry.radii, id) ? geometry.radii[id] : undefined;
-      if (!centre || radius === undefined) return { code: 'brokenReference', refs: [id] };
-      if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The circle ${quoted([id])} of the wall has no radius.`);
-      own.push({ key: id, forward: true, type: 'circle', center: [centre.x, centre.y], radius, ccw: true });
-      continue;
-    }
-    const points: [Id, Id] = curve.type === 'line' ? [curve.a, curve.b] : [curve.start, curve.end];
-    const [a, b] = [vertex(points[0]), vertex(points[1])];
-    if (!a || !b || (curve.type === 'arc' && !centre)) return { code: 'brokenReference', refs: [id] };
-    if (a.key === b.key || dist2(a.p, b.p) <= LENGTH_TOLERANCE) return refusal([id], `The curve ${quoted([id])} of the wall has no length.`);
-    named.set(id, points);
-    const travel = { key: id, forward: true, from: a.p, to: b.p, ends: [a.key, b.key] as [string, string] };
-    if (curve.type === 'line') own.push({ ...travel, type: 'line' });
-    else {
-      const center: Vec2 = [(centre as { x: number }).x, (centre as { y: number }).y];
-      const radius = dist2(a.p, center);
-      if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The arc ${quoted([id])} of the wall has no radius.`);
-      const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
-      const sweep = (((Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) % TAU) + TAU) % TAU || TAU;
-      own.push({ ...travel, type: 'arc', center, radius, start, sweep });
+    const centreOf = (point: Id) => (has(geometry.points, point) ? geometry.points[point] : undefined);
+    // the ends of a line or an arc at their joined vertices; `present`: what else the curve needs is there
+    const ends = (points: [Id, Id], present = true): { a: { key: string; p: Vec2 }; b: { key: string; p: Vec2 } } | ProfileProblem => {
+      const [a, b] = [vertex(points[0]), vertex(points[1])];
+      if (!a || !b || !present) return { code: 'brokenReference', refs: [id] };
+      if (a.key === b.key || dist2(a.p, b.p) <= LENGTH_TOLERANCE) return refusal([id], `The curve ${quoted([id])} of the wall has no length.`);
+      named.set(id, points);
+      return { a, b };
+    };
+    switch (curve.type) {
+      case 'circle': {
+        const centre = centreOf(curve.center);
+        const radius = has(geometry.radii, id) ? geometry.radii[id] : undefined;
+        if (!centre || radius === undefined) return { code: 'brokenReference', refs: [id] };
+        if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The circle ${quoted([id])} of the wall has no radius.`);
+        own.push({ key: id, forward: true, type: 'circle', center: [centre.x, centre.y], radius, ccw: true });
+        break;
+      }
+      case 'line': {
+        const found = ends([curve.a, curve.b]);
+        if ('code' in found) return found;
+        const { a, b } = found;
+        own.push({ key: id, forward: true, from: a.p, to: b.p, ends: [a.key, b.key], type: 'line' });
+        break;
+      }
+      case 'arc': {
+        const centre = centreOf(curve.center);
+        const found = ends([curve.start, curve.end], centre !== undefined);
+        if ('code' in found) return found;
+        const { a, b } = found;
+        const center: Vec2 = [(centre as { x: number }).x, (centre as { y: number }).y];
+        const radius = dist2(a.p, center);
+        if (!(radius > LENGTH_TOLERANCE)) return refusal([id], `The arc ${quoted([id])} of the wall has no radius.`);
+        const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
+        const sweep = (((Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) % TAU) + TAU) % TAU || TAU;
+        own.push({ key: id, forward: true, from: a.p, to: b.p, ends: [a.key, b.key], type: 'arc', center, radius, start, sweep });
+        break;
+      }
+      default:
+        return unreachable(curve, 'curve');
     }
   }
   if (own.some((curve) => curve.type === 'circle') && own.length > 1) return refusal(ids, `A circle makes a wall by itself; the curves ${quoted(ids)} hold a circle and something else. ${chainHelp}`);

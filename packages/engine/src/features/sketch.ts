@@ -5,10 +5,10 @@ import { CONSTRAINTS, type EntityKind } from '../catalog';
 import { frame as frameOf, issue, lookup } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from '../sketch';
-import { constraintOperands, constraintPath, curvePoints, derivedPoints, emptySketch, entityOf, isDriving } from '../sketch-content';
+import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, derivedPoints, emptySketch, entityOf, isDriving } from '../sketch-content';
 import { analyzeBody, projectEdge } from '../solid';
 import type { Constraint, Curve, ExternalRef, FeatureResult, Id, Issue, IssueCode, Projected, SketchFeature, SolveInput, SolveResult } from '../types';
-import { ORIGIN, has } from '../util';
+import { ORIGIN, has, unreachable } from '../util';
 import { type Dict, type FeatureRef, type Fields, type RefContext, type ValidationContext, boolean, edgeName, faceRefs, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, requireFace, string } from '../validation';
 import type { FeatureModule } from './module';
 
@@ -25,22 +25,29 @@ export function externalRef(context: RefContext, v: unknown, what: string): Exte
 // Křivka smí odkazovat jen na vlastní body skici a na počátek.
 export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   const o = object(v, what);
-  const type = oneOf(o.type, ['line', 'circle', 'arc'] as const, `${what}.type`);
+  const type = oneOf(o.type, CURVE_KINDS, `${what}.type`);
   const point = (field: string): Id => {
     const id = string(o[field], `${what}.${field}`);
     if (id !== ORIGIN && !has(sketch.points, id)) fail(`${what}.${field}: "${id}" není vlastní bod skici ani počátek`);
     return id;
   };
   const construction = o.construction === undefined ? {} : { construction: boolean(o.construction, `${what}.construction`) };
-  if (type === 'line') {
-    const [a, b] = [point('a'), point('b')];
-    if (a === b) fail(`${what}: úsečka potřebuje dva různé body`);
-    return { ...construction, type, a, b };
+  switch (type) {
+    case 'line': {
+      const [a, b] = [point('a'), point('b')];
+      if (a === b) fail(`${what}: úsečka potřebuje dva různé body`);
+      return { ...construction, type, a, b };
+    }
+    case 'circle':
+      return { ...construction, type, center: point('center') };
+    case 'arc': {
+      const [center, start, end] = [point('center'), point('start'), point('end')];
+      if (center === start || center === end || start === end) fail(`${what}: oblouk potřebuje tři různé body`);
+      return { ...construction, type, center, start, end };
+    }
+    default:
+      return unreachable(type, `${what}.type`);
   }
-  if (type === 'circle') return { ...construction, type, center: point('center') };
-  const [center, start, end] = [point('center'), point('start'), point('end')];
-  if (center === start || center === end || start === end) fail(`${what}: oblouk potřebuje tři různé body`);
-  return { ...construction, type, center, start, end };
 }
 
 // The own rule of a constraint in the catalog (`check` of CONSTRAINTS), which reads the points of

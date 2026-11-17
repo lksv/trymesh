@@ -386,6 +386,17 @@ As designed: `packages/app/src/sketch-tools/` with `spec.ts` (`SketchToolUi`, `S
 - **Enter** calls `sketchFinish`, which runs the tool's `finish` with the places kept; no tool of today has one.
 - `placeAt` (the place under the pointer as a tool picks it) is exported for `packages/app/test/sketch-tool-table.test.ts`, which checks `picks: 'sketch'`, `'curve'` with and without `eligible`, and a tool's own picker, and the order and kinds of the table.
 
+### Part 3: every switch on the kind of a sketch curve exhaustive
+
+As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINTS`, in `sketch-content.ts`) for the validator of a curve, and a switch in every place of the table. No test and no public type changed; the meshes are those of before (the tests compare them). Beside the table:
+
+- **E8.** `compatible` reads the round shapes through one switch, `roundOf`; `carrierContacts` switches on both kinds and calls one function per pair of kinds (line–line, line–round, round–round), whose bodies are those of before.
+- **E14, A5.** A line in the place of a circle keeps what it got before: the radius of the analysis reads the variable or the value of a circle for a line too, and the adapter sends a radius or a diameter of a line as that of a circle. Validation never lets a line there.
+- **P4.** The dimension of a round curve is `roundDimension`, a switch over the kinds of the app; `sort` (P3) is one too.
+- **A1, A2.** The adapter throws its text of today, with the value as `cause`.
+- `packages/engine/test/curve-kinds.test.ts` checks `CURVE_KINDS` and that `unreachable` throws.
+- **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E9, E11 to E14, E16, E18, E20, E21 and `document.ts` (E5), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind.
+
 ## Rows for the indexes
 
 **docs/d36/README.md**, the row of 6a, column "Design now":

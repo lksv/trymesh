@@ -3,6 +3,7 @@
 import { GENERATORS, type ResolvedOperand, generateProfile } from '../generators';
 import { type Loop, type Region, sameRegion } from '../sketch';
 import type { Id, ProfileSource } from '../types';
+import { unreachable } from '../util';
 import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, shown, sideShape, wallOutline } from './outline';
 import { issue, lookup } from './services';
 import type { ProfileProblem, ResolvedProfile, SideCurve, SketchState, State } from './state';
@@ -23,9 +24,18 @@ export function profile(id: Id, source: ProfileSource, state: State, chordTolera
   const curveOf = (id: Id): SideCurve => {
     const curve = sketch.feature.curves[id];
     const at = (point: Id): [number, number] => [points[point].x, points[point].y];
-    if (curve.type === 'line') return { type: 'line', a: at(curve.a), b: at(curve.b) };
-    const center = at(curve.center);
-    return { type: 'round', center, radius: curve.type === 'circle' ? radii[id] : Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
+    switch (curve.type) {
+      case 'line':
+        return { type: 'line', a: at(curve.a), b: at(curve.b) };
+      case 'circle':
+        return { type: 'round', center: at(curve.center), radius: radii[id] };
+      case 'arc': {
+        const center = at(curve.center);
+        return { type: 'round', center, radius: Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
+      }
+      default:
+        return unreachable(curve, 'curve');
+    }
   };
   const selected = regions as Region[];
   // Without an offset (the field absent, or zero) the regions are those of the sketch, as they

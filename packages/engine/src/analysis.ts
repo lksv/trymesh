@@ -8,8 +8,9 @@
 // jeho počet stupňů volnosti není spolehlivý (cyklus shodných délek, úsečka stažená do bodu)
 // a opakované řešení je pomalé.
 import { CONSTRAINTS } from './catalog';
+import { curvePoints } from './sketch-content';
 import type { Constraint, Curve, FreeEntity, Id, SolveInput, Vec2 } from './types';
-import { ORIGIN } from './util';
+import { ORIGIN, unreachable } from './util';
 
 // Rovnice mají rozměr délky, jejich derivace jsou tedy bezrozměrné a prahy nezávisí na měřítku.
 const DEPENDENT = 1e-6; // řádek se po odečtení průmětu do prostoru ostatních počítá za závislý
@@ -72,13 +73,19 @@ type Of<T extends Constraint['type']> = Variant<Constraint, T>;
 const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Held) => Equations } = {
   coincident: (c) => (g) => sub(g.point(c.a), g.point(c.b)),
   pointOnCurve: (c, g0) => {
-    if (g0.curve(c.curve).type === 'line') {
-      return (g) => {
-        const [a, b] = lineOf(g, c.curve);
-        return [cross(sub(b, a), sub(g.point(c.point), a)) / nonZero(len(sub(b, a)))];
-      };
+    const curve = g0.curve(c.curve);
+    switch (curve.type) {
+      case 'line':
+        return (g) => {
+          const [a, b] = lineOf(g, c.curve);
+          return [cross(sub(b, a), sub(g.point(c.point), a)) / nonZero(len(sub(b, a)))];
+        };
+      case 'circle':
+      case 'arc':
+        return (g) => [len(sub(g.point(c.point), centerOf(g, c.curve))) - g.radius(c.curve)];
+      default:
+        return unreachable(curve, 'curve');
     }
-    return (g) => [len(sub(g.point(c.point), centerOf(g, c.curve))) - g.radius(c.curve)];
   },
   horizontal: (c) => (g) => {
     const [a, b] = lineOf(g, c.line);
@@ -115,24 +122,40 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const onCircle = (point: Id, round: Id, size: number): boolean => Math.abs(len(sub(g0.point(point), centerOf(g0, round))) - g0.radius(round)) <= SHARED * nonZero(size);
     const ends = (round: Id): Id[] => {
       const curve = g0.curve(round);
-      return curve.type === 'arc' ? [curve.start, curve.end] : [];
-    };
-    if (g0.curve(first).type === 'line') {
-      const line = g0.curve(first) as Extract<Curve, { type: 'line' }>;
-      const size = Math.max(len(direction(g0, first)), g0.radius(second));
-      const shared = [line.a, line.b].find((point) => onCircle(point, second, size) && held(point, second));
-      if (shared !== undefined) {
-        return (g) => {
-          const u = direction(g, first);
-          return [dot(sub(centerOf(g, second), g.point(shared)), u) / nonZero(len(u))];
-        };
+      switch (curve.type) {
+        case 'arc':
+          return [curve.start, curve.end];
+        case 'line':
+        case 'circle':
+          return [];
+        default:
+          return unreachable(curve, 'curve');
       }
-      const side = (g: Geometry): number => {
-        const [a, b] = lineOf(g, first);
-        return cross(sub(b, a), sub(centerOf(g, second), a)) / nonZero(len(sub(b, a)));
-      };
-      const s = sign(side(g0));
-      return (g) => [s * side(g) - g.radius(second)];
+    };
+    const firstCurve = g0.curve(first);
+    switch (firstCurve.type) {
+      case 'line': {
+        const line = firstCurve;
+        const size = Math.max(len(direction(g0, first)), g0.radius(second));
+        const shared = [line.a, line.b].find((point) => onCircle(point, second, size) && held(point, second));
+        if (shared !== undefined) {
+          return (g) => {
+            const u = direction(g, first);
+            return [dot(sub(centerOf(g, second), g.point(shared)), u) / nonZero(len(u))];
+          };
+        }
+        const side = (g: Geometry): number => {
+          const [a, b] = lineOf(g, first);
+          return cross(sub(b, a), sub(centerOf(g, second), a)) / nonZero(len(sub(b, a)));
+        };
+        const s = sign(side(g0));
+        return (g) => [s * side(g) - g.radius(second)];
+      }
+      case 'circle':
+      case 'arc':
+        break;
+      default:
+        return unreachable(firstCurve, 'curve');
     }
     const [r1, r2] = [g0.radius(first), g0.radius(second)];
     const touches = (point: Id, round: Id): boolean => onCircle(point, round, Math.max(r1, r2)) && held(point, round);
@@ -312,15 +335,24 @@ export class SketchAnalysis {
       curve: (id) => input.curves[id],
       radius: (id) => {
         const curve = input.curves[id];
-        if (curve.type === 'arc') return len(sub(geometry.point(curve.start), geometry.point(curve.center)));
-        const index = radiusAt.get(id);
-        return index === undefined ? input.radii[id] : values[index] + (index === moved ? shift : 0);
+        switch (curve.type) {
+          case 'arc':
+            return len(sub(geometry.point(curve.start), geometry.point(curve.center)));
+          case 'circle':
+          case 'line': {
+            // a circle: its variable, or its value when it is fixed (a line is never asked)
+            const index = radiusAt.get(id);
+            return index === undefined ? input.radii[id] : values[index] + (index === moved ? shift : 0);
+          }
+          default:
+            return unreachable(curve, 'curve');
+        }
       },
     };
     const pointsOf = (entity: Id): Id[] => {
       const curve = input.curves[entity];
       if (!curve) return [entity];
-      return curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'circle' ? [curve.center] : [curve.center, curve.start, curve.end];
+      return curvePoints(curve);
     };
 
     // Jednotkové řádky Jacobiho matice numerickou derivací; krok se řídí velikostí geometrie,
@@ -342,7 +374,19 @@ export class SketchAnalysis {
       for (const entity of entities) {
         const index = radiusAt.get(entity);
         if (index !== undefined) touched.add(index);
-        if (input.curves[entity] && input.curves[entity].type !== 'line') size = Math.max(size, geometry.radius(entity));
+        const curve = input.curves[entity];
+        if (curve) {
+          switch (curve.type) {
+            case 'line':
+              break;
+            case 'circle':
+            case 'arc':
+              size = Math.max(size, geometry.radius(entity));
+              break;
+            default:
+              unreachable(curve, 'curve');
+          }
+        }
       }
       const step = STEP * (size > 0 ? size : nonZero(extent));
       const equations = build(geometry);

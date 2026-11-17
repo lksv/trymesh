@@ -2,7 +2,7 @@
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
 import { constraintOperands, derivedPoints, isDimension } from './sketch-content';
 import type { Constraint, Curve, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
-import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2 } from './util';
+import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2, unreachable } from './util';
 
 // Použité polohy: vlastní body, počátek a body promítnuté geometrie; poloměry kružnic včetně promítnutých.
 export interface SketchGeometry {
@@ -97,10 +97,21 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
     } else if (c.type === 'radius' || c.type === 'diameter') {
       const curve = curves[c.curve];
       let radius: number | undefined;
-      if (curve?.type === 'circle') radius = geometry.radii[c.curve];
-      else if (curve?.type === 'arc') {
-        const [center, start] = [point(curve.center), point(curve.start)];
-        if (center && start) radius = dist2(center, start);
+      if (curve) {
+        switch (curve.type) {
+          case 'circle':
+            radius = geometry.radii[c.curve];
+            break;
+          case 'arc': {
+            const [center, start] = [point(curve.center), point(curve.start)];
+            if (center && start) radius = dist2(center, start);
+            break;
+          }
+          case 'line':
+            break; // a line has no radius
+          default:
+            unreachable(curve, 'curve');
+        }
       }
       if (radius !== undefined) value = c.type === 'radius' ? radius : 2 * radius;
     }
@@ -155,34 +166,89 @@ const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
 
 // Vzdálenost bodu od křivky.
 function distanceTo(p: Vec2, s: Shape): number {
-  if (s.kind === 'line') {
-    const d = sub2(s.pb, s.pa);
-    const t = Math.min(1, Math.max(0, dot2(sub2(p, s.pa), d) / dot2(d, d)));
-    return dist2(p, [s.pa[0] + d[0] * t, s.pa[1] + d[1] * t]);
+  switch (s.kind) {
+    case 'line': {
+      const d = sub2(s.pb, s.pa);
+      const t = Math.min(1, Math.max(0, dot2(sub2(p, s.pa), d) / dot2(d, d)));
+      return dist2(p, [s.pa[0] + d[0] * t, s.pa[1] + d[1] * t]);
+    }
+    case 'circle':
+      return Math.abs(dist2(p, s.c) - s.r);
+    case 'arc': {
+      const radial = Math.abs(dist2(p, s.c) - s.r);
+      const angle = positive(Math.atan2(p[1] - s.c[1], p[0] - s.c[0]) - s.start);
+      return angle <= s.sweep ? radial : Math.min(dist2(p, s.pa), dist2(p, s.pb));
+    }
+    default:
+      return unreachable(s, 'shape');
   }
-  const radial = Math.abs(dist2(p, s.c) - s.r);
-  if (s.kind === 'circle') return radial;
-  const angle = positive(Math.atan2(p[1] - s.c[1], p[0] - s.c[0]) - s.start);
-  return angle <= s.sweep ? radial : Math.min(dist2(p, s.pa), dist2(p, s.pb));
 }
 
 const midpoint = (s: Open): Vec2 => {
-  if (s.kind === 'line') return [(s.pa[0] + s.pb[0]) / 2, (s.pa[1] + s.pb[1]) / 2];
-  const angle = s.start + s.sweep / 2;
-  return [s.c[0] + s.r * Math.cos(angle), s.c[1] + s.r * Math.sin(angle)];
+  switch (s.kind) {
+    case 'line':
+      return [(s.pa[0] + s.pb[0]) / 2, (s.pa[1] + s.pb[1]) / 2];
+    case 'arc': {
+      const angle = s.start + s.sweep / 2;
+      return [s.c[0] + s.r * Math.cos(angle), s.c[1] + s.r * Math.sin(angle)];
+    }
+    default:
+      return unreachable(s, 'shape');
+  }
 };
+
+// A shape with a centre and a radius (a circle or an arc), or undefined for a line.
+type Round = Exclude<Shape, { kind: 'line' }>;
+function roundOf(s: Shape): Round | undefined {
+  switch (s.kind) {
+    case 'line':
+      return undefined;
+    case 'circle':
+    case 'arc':
+      return s;
+    default:
+      return unreachable(s, 'shape');
+  }
+}
 
 // Průsečíky a body dotyku nosných křivek (přímka, kružnice), s tolerancí pro tečnost.
 function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
-  if (A.kind === 'line' && B.kind === 'line') {
-    const [da, db] = [sub2(A.pb, A.pa), sub2(B.pb, B.pa)];
-    const denominator = cross2(da, db);
-    if (Math.abs(denominator) <= 1e-12 * len2(da) * len2(db)) return []; // rovnoběžné: stačí kontrola koncových bodů
-    const t = cross2(sub2(B.pa, A.pa), db) / denominator;
-    return [[A.pa[0] + da[0] * t, A.pa[1] + da[1] * t]];
+  switch (A.kind) {
+    case 'line':
+      switch (B.kind) {
+        case 'line':
+          return lineContacts(A, B);
+        case 'circle':
+        case 'arc':
+          return lineRoundContacts(A, B, tol);
+        default:
+          return unreachable(B, 'shape');
+      }
+    case 'circle':
+    case 'arc':
+      switch (B.kind) {
+        case 'line':
+          return lineRoundContacts(B, A, tol);
+        case 'circle':
+        case 'arc':
+          return roundContacts(A, B, tol);
+        default:
+          return unreachable(B, 'shape');
+      }
+    default:
+      return unreachable(A, 'shape');
   }
-  if (A.kind === 'line' || B.kind === 'line') {
-    const [line, round] = A.kind === 'line' ? [A, B as Exclude<Shape, { kind: 'line' }>] : [B as Extract<Shape, { kind: 'line' }>, A as Exclude<Shape, { kind: 'line' }>];
+}
+type LineShape = Extract<Shape, { kind: 'line' }>;
+function lineContacts(A: LineShape, B: LineShape): Vec2[] {
+  const [da, db] = [sub2(A.pb, A.pa), sub2(B.pb, B.pa)];
+  const denominator = cross2(da, db);
+  if (Math.abs(denominator) <= 1e-12 * len2(da) * len2(db)) return []; // rovnoběžné: stačí kontrola koncových bodů
+  const t = cross2(sub2(B.pa, A.pa), db) / denominator;
+  return [[A.pa[0] + da[0] * t, A.pa[1] + da[1] * t]];
+}
+function lineRoundContacts(line: LineShape, round: Round, tol: number): Vec2[] {
+  {
     const d = sub2(line.pb, line.pa);
     const length = len2(d);
     const along = dot2(sub2(round.c, line.pa), d) / length;
@@ -196,7 +262,8 @@ function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
       [foot[0] - d[0] * half, foot[1] - d[1] * half],
     ];
   }
-  const [P, Q] = [A as Exclude<Shape, { kind: 'line' }>, B as Exclude<Shape, { kind: 'line' }>];
+}
+function roundContacts(P: Round, Q: Round, tol: number): Vec2[] {
   const delta = sub2(Q.c, P.c);
   const D = len2(delta);
   if (D > P.r + Q.r + tol || D < Math.abs(P.r - Q.r) - tol) return [];
@@ -218,7 +285,7 @@ function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
 
 // Smějí se dvě křivky v profilu potkat? Dotýkat se smějí jen ve spojených bodech.
 function compatible(A: Shape, B: Shape, tol: number): boolean {
-  const curved = [A, B].filter((s) => s.kind !== 'line') as Exclude<Shape, { kind: 'line' }>[];
+  const curved = [A, B].flatMap((s) => roundOf(s) ?? []);
   // Soustředné kružnice nebo oblouky se stejným poloměrem leží na sobě.
   if (curved.length === 2 && dist2(curved[0].c, curved[1].c) <= tol && Math.abs(curved[0].r - curved[1].r) <= tol) {
     if (A.kind === 'circle' || B.kind === 'circle') return false;
@@ -326,28 +393,41 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
   for (const id of Object.keys(sketch.curves).sort()) {
     const c = sketch.curves[id];
     if (c.construction) continue;
-    if (c.type === 'circle') {
-      const r = geometry.radii[id];
-      if (!(r > tol)) valid = false;
-      else shapes.push({ id, kind: 'circle', c: xy(geometry.points[c.center]), r });
-      continue;
-    }
-    const [a, b] = c.type === 'line' ? [vertex(c.a), vertex(c.b)] : [vertex(c.start), vertex(c.end)];
-    if (a.key === b.key || dist2(a.p, b.p) <= tol) {
-      valid = false; // křivka nulové délky
-      continue;
-    }
-    if (c.type === 'line') shapes.push({ id, kind: 'line', a: a.key, b: b.key, pa: a.p, pb: b.p });
-    else {
-      const center = xy(geometry.points[c.center]);
-      const r = dist2(a.p, center);
-      if (!(r > tol)) {
-        valid = false;
+    switch (c.type) {
+      case 'circle': {
+        const r = geometry.radii[id];
+        if (!(r > tol)) valid = false;
+        else shapes.push({ id, kind: 'circle', c: xy(geometry.points[c.center]), r });
         continue;
       }
-      const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
-      const sweep = positive(Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) || TAU;
-      shapes.push({ id, kind: 'arc', a: a.key, b: b.key, pa: a.p, pb: b.p, c: center, r, start, sweep });
+      case 'line': {
+        const [a, b] = [vertex(c.a), vertex(c.b)];
+        if (a.key === b.key || dist2(a.p, b.p) <= tol) {
+          valid = false; // křivka nulové délky
+          continue;
+        }
+        shapes.push({ id, kind: 'line', a: a.key, b: b.key, pa: a.p, pb: b.p });
+        continue;
+      }
+      case 'arc': {
+        const [a, b] = [vertex(c.start), vertex(c.end)];
+        if (a.key === b.key || dist2(a.p, b.p) <= tol) {
+          valid = false; // křivka nulové délky
+          continue;
+        }
+        const center = xy(geometry.points[c.center]);
+        const r = dist2(a.p, center);
+        if (!(r > tol)) {
+          valid = false;
+          continue;
+        }
+        const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
+        const sweep = positive(Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) || TAU;
+        shapes.push({ id, kind: 'arc', a: a.key, b: b.key, pa: a.p, pb: b.p, c: center, r, start, sweep });
+        continue;
+      }
+      default:
+        unreachable(c, 'curve');
     }
   }
   for (let i = 0; i < shapes.length && valid; i++) for (let j = i + 1; j < shapes.length && valid; j++) if (!compatible(shapes[i], shapes[j], tol)) valid = false;
@@ -371,13 +451,19 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
     halves = [];
     for (const s of open) {
       const index = halves.length;
-      if (s.kind === 'line') {
-        const angle = Math.atan2(s.pb[1] - s.pa[1], s.pb[0] - s.pa[0]);
-        halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle, curvature: 0, twin: index + 1, loop: -1 });
-        halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: positive(angle + Math.PI), curvature: 0, twin: index, loop: -1 });
-      } else {
-        halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle: s.start + Math.PI / 2, curvature: 1 / s.r, twin: index + 1, loop: -1 });
-        halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: s.start + s.sweep - Math.PI / 2, curvature: -1 / s.r, twin: index, loop: -1 });
+      switch (s.kind) {
+        case 'line': {
+          const angle = Math.atan2(s.pb[1] - s.pa[1], s.pb[0] - s.pa[0]);
+          halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle, curvature: 0, twin: index + 1, loop: -1 });
+          halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: positive(angle + Math.PI), curvature: 0, twin: index, loop: -1 });
+          break;
+        }
+        case 'arc':
+          halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle: s.start + Math.PI / 2, curvature: 1 / s.r, twin: index + 1, loop: -1 });
+          halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: s.start + s.sweep - Math.PI / 2, curvature: -1 / s.r, twin: index, loop: -1 });
+          break;
+        default:
+          unreachable(s, 'shape');
       }
     }
     const outgoing = new Map<string, number[]>();
@@ -421,7 +507,16 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
     for (const i of loop) {
       const h = halves[i];
       area += cross2(position.get(h.from) as Vec2, position.get(h.to) as Vec2) / 2;
-      if (h.shape.kind === 'arc') area += ((h.forward ? 1 : -1) * h.shape.r * h.shape.r * (h.shape.sweep - Math.sin(h.shape.sweep))) / 2;
+      const s = h.shape;
+      switch (s.kind) {
+        case 'line':
+          break;
+        case 'arc':
+          area += ((h.forward ? 1 : -1) * s.r * s.r * (s.sweep - Math.sin(s.sweep))) / 2; // the segment of the arc
+          break;
+        default:
+          unreachable(s, 'shape');
+      }
     }
     return area;
   };
@@ -438,9 +533,14 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
       out.keys.push(`v:${h.from}`);
       out.curves.push(s.id);
       const travel = { key: s.id, forward: h.forward, from: start, to: end, ends: [h.from, h.to] as [string, string] };
-      if (s.kind !== 'arc') {
-        exact.push({ ...travel, type: 'line' });
-        continue;
+      switch (s.kind) {
+        case 'line':
+          exact.push({ ...travel, type: 'line' });
+          continue;
+        case 'arc':
+          break;
+        default:
+          unreachable(s, 'shape');
       }
       exact.push({ ...travel, type: 'arc', center: s.c, radius: s.r, start: h.forward ? s.start : s.start + s.sweep, sweep: h.forward ? s.sweep : -s.sweep });
       const n = segments(s.sweep, s.r, chordTolerance);
@@ -494,8 +594,16 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
     }
     for (const i of boundary.halves) {
       const s = halves[i].shape;
-      if (s.kind === 'line') piece(s.pa, s.pb, () => s.pa[0] + ((p[1] - s.pa[1]) / (s.pb[1] - s.pa[1])) * (s.pb[0] - s.pa[0]));
-      else arcPieces(s.c, s.r, s.start, s.sweep, s.pa, s.pb);
+      switch (s.kind) {
+        case 'line':
+          piece(s.pa, s.pb, () => s.pa[0] + ((p[1] - s.pa[1]) / (s.pb[1] - s.pa[1])) * (s.pb[0] - s.pa[0]));
+          break;
+        case 'arc':
+          arcPieces(s.c, s.r, s.start, s.sweep, s.pa, s.pb);
+          break;
+        default:
+          unreachable(s, 'shape');
+      }
     }
     return count;
   };

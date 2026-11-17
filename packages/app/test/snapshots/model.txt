@@ -80,7 +80,7 @@
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
       {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -889,6 +889,10 @@
     + h2: "Nová rovina"
     + p: "Základ: rovina XZ"
     + p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    + div.buttons
+    +   button: "Midplane with… (pick)"
+    + div.buttons
+    +   button: "Add a tilt"
     + label
     +   "Offset along the normal (mm or an expression)"
     +   span.field
@@ -1042,15 +1046,19 @@
     - h2: "Nová rovina"
     - p: "Základ: rovina XZ"
     - p.hint: "Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu."
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Midplane with… (pick)"
+    - div.buttons
+    -   button: "Add a tilt"
     - label
     -   "Offset along the normal (mm or an expression)"
     -   span.field
     -     input value="10"
     -     small.computed data-field="offset" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Rovina přidáno.
@@ -1201,7 +1209,7 @@
 
 === 29. a parameter
   engine: execute({"type":"setParameter","name":"w","expr":"40"}) -> ok
-  document: {"parameters":[{"name":"w","expr":"40"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"w","expr":"40"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     + h2: "Parameters (1)"
     + div.constraint
@@ -1228,7 +1236,7 @@
 
 === 31. a second parameter, added with Enter
   engine: execute({"type":"setParameter","name":"h","expr":"w / 4"}) -> ok
-  document: {"parameters":[{"name":"w","expr":"40"},{"name":"h","expr":"w / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"w","expr":"40"},{"name":"h","expr":"w / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     + h2: "Parameters (2)"
     - h2: "Parameters (1)"
@@ -1246,7 +1254,7 @@
 
 === 32. a check that holds
   engine: execute({"type":"setCheck","name":"fits","expr":"h < 20"}) -> ok
-  document: {"parameters":[{"name":"w","expr":"40"},{"name":"h","expr":"w / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"w","expr":"40"},{"name":"h","expr":"w / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     + h2: "Checks (1)"
     + div.constraint
@@ -1675,7 +1683,7 @@
   feature e3:
     + {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":28},"operation":"new","expressions":{"extent/distance":"h + 3"}}
     - {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":13},"operation":"new","expressions":{"extent/distance":"h + 3"}}
-  document: {"parameters":[{"name":"w","expr":"100"},{"name":"h","expr":"w / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"w","expr":"100"},{"name":"h","expr":"w / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   timeline:
     + div.row.ok
     - div.row.ok.selected
@@ -1766,7 +1774,7 @@
 
 === 36. a parameter renamed: the expression that uses it follows
   engine: execute({"type":"renameParameter","name":"w","to":"width"}) -> ok
-  document: {"parameters":[{"name":"width","expr":"100"},{"name":"h","expr":"width / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"width","expr":"100"},{"name":"h","expr":"width / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     +   input.pname value="width" title="Parameter name; renaming also rewrites the expressions that use it"
     -   input.pname value="w" title="Parameter name; renaming also rewrites the expressions that use it"
@@ -1777,7 +1785,7 @@
 
 === 37. an expression with an unknown name: the parameter is in error
   engine: execute({"type":"setParameter","name":"width","expr":"nope + 1"}) -> ok
-  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[{"name":"fits","expr":"h < 20"}],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   timeline:
     + div.row.error title="The expression of a numeric field cannot be evaluated or gives a value outside the range of the field."
     +   span.dot: "✖"
@@ -1825,7 +1833,7 @@
 === 39. the check renamed and deleted
   engine: execute({"type":"renameCheck","name":"fits","to":"small"}) -> ok
   engine: execute({"type":"removeCheck","name":"small"}) -> ok
-  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     + h2: "Checks (0)"
     - h2: "Checks (1)"
@@ -1839,7 +1847,7 @@
 
 === 40. a parameter deleted: the one that used it is in error, and so is the extrusion
   engine: execute({"type":"removeParameter","name":"width"}) -> ok
-  document: {"parameters":[{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   panel:
     + h2: "Parameters (1)"
     + div.constraint.conflict title="unknown name "width""
@@ -1855,7 +1863,7 @@
 
 === 41. undo brings the parameter back
   engine: undo()
-  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"width","expr":"nope + 1"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
     +   button title="Ctrl+Shift+Z": "↷ Znovu"
     -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
@@ -1876,7 +1884,7 @@
   feature e3:
     + {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":13},"operation":"new","expressions":{"extent/distance":"h + 3"}}
     - {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":28},"operation":"new","expressions":{"extent/distance":"h + 3"}}
-  document: {"parameters":[{"name":"width","expr":"40"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[{"name":"width","expr":"40"},{"name":"h","expr":"width / 4"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
     +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
     -   button title="Ctrl+Shift+Z": "↷ Znovu"
@@ -3385,6 +3393,7 @@
     +     option value="Z": "Z"
     +     option value="point": "Through a sketch point"
     +     option value="line": "Along a sketch line"
+    +     option value="face": "The axis of a round face"
     + div.buttons
     +   button.primary: "Ask"
     +   button: "Close"
@@ -3583,6 +3592,7 @@
     -     option value="Z": "Z"
     -     option value="point": "Through a sketch point"
     -     option value="line": "Along a sketch line"
+    -     option value="face": "The axis of a round face"
     +   button.primary: "Ask"
     -   button.primary: "Ask again"
     - p.issue.error: "mass: density: the body "e1" has no density of its own: give `density`, or its density in `densities`, or set its properties (setBodyMaterial, setBodyProperties)"
@@ -3869,9 +3879,9 @@
   view: 2 scene(s) set
 
 === 90. a new document
-  engine: load("{\"schemaVersion\":7,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{}}") -> ok
+  engine: load("{\"schemaVersion\":8,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{}}") -> ok
   features: (none)
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
     +   button disabled: "Export STL"
     -   button: "Export STL"

@@ -46,7 +46,7 @@
       {"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}
   feature mid:
       {"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -268,6 +268,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + label
     +   "Count with the original (a whole number or an expression)"
     +   span.field
@@ -323,6 +324,8 @@
     +     option value="sketchPoint": "The normal of a sketch plane"
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
+    +     option value="face": "Along the axis of a round face"
+    -     option value="face": "The axis of a round face"
     +     input value="3"
     -     input value="4"
     +   select value="spacing"
@@ -473,6 +476,7 @@
     -     option value="Z": "Axis Z"
     -     option value="sketchPoint": "The normal of a sketch plane"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "Along the axis of a round face"
     - label
     -   "Count with the original (a whole number or an expression)"
     -   span.field
@@ -630,6 +634,7 @@
     +     option selected value="Z": "Axis Z"
     +     option value="sketchPoint": "Through a point of a sketch"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "The axis of a round face"
     + label
     +   "Count with the original (a whole number or an expression)"
     +   span.field
@@ -705,6 +710,7 @@
     -     option selected value="Z": "Axis Z"
     -     option value="sketchPoint": "Through a point of a sketch"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "The axis of a round face"
     - label
     -   "Count with the original (a whole number or an expression)"
     -   span.field
@@ -1225,6 +1231,7 @@
     +     option value="Z": "Axis Z"
     +     option value="sketchPoint": "The normal of a sketch plane"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "Along the axis of a round face"
     -   "Use"
     -   select value=""
     -     option selected value="": "As its source: Printed part"
@@ -1266,6 +1273,7 @@
     +     option value="Z": "Axis Z"
     +     option value="sketchPoint": "The normal of a sketch plane"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "Along the axis of a round face"
     -     input value=""
     +   "Count along the second direction (a whole number or an expression)"
     -   "Mass (g)"
@@ -1504,6 +1512,7 @@
     -     option value="Z": "Axis Z"
     -     option value="sketchPoint": "The normal of a sketch plane"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "Along the axis of a round face"
     - label
     -   "Count along the direction (a whole number or an expression)"
     -   span.field
@@ -1531,6 +1540,7 @@
     -     option value="Z": "Axis Z"
     -     option value="sketchPoint": "The normal of a sketch plane"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "Along the axis of a round face"
     - label
     -   "Count along the second direction (a whole number or an expression)"
     -   span.field
@@ -1862,6 +1872,7 @@
     +     option value="Z": "Axis Z"
     +     option selected value="sketchPoint": "The normal of a sketch plane"
     +     option value="sketchLine": "Along a line of a sketch"
+    +     option value="face": "Along the axis of a round face"
     + label
     +   "Sketch"
     +   select value="s1"
@@ -2048,6 +2059,7 @@
     -     option value="Z": "Axis Z"
     -     option selected value="sketchPoint": "The normal of a sketch plane"
     -     option value="sketchLine": "Along a line of a sketch"
+    -     option value="face": "Along the axis of a round face"
     - label
     -   "Sketch"
     -   select value="s1"

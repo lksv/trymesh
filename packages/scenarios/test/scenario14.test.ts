@@ -328,6 +328,7 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
     expect(after.evaluation.bodies.pulley.volume).toBeGreaterThan(before.evaluation.bodies.pulley.volume);
     expect(allOk(after)).toBe(true);
     const saved = engine.save();
+    // no step of 4a, none pending
     expect(JSON.parse(saved).schemaSteps).toBeUndefined();
     const loaded = engine.load(saved);
     if (!loaded.ok) throw new Error(loaded.error.message);

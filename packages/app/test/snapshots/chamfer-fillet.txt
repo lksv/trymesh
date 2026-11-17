@@ -18,7 +18,7 @@
       constraint f3: {"type":"fixed","point":"p3","x":0,"y":30}
   feature plate:
       {"id":"plate","name":"Plate","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"plateS","regions":[{"outerLoop":["l0","l1","l2","l3"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

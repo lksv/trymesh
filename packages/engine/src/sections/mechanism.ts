@@ -10,7 +10,7 @@ import { axis as axisOf, issue } from '../recompute/services';
 import type { State } from '../recompute/state';
 import { bodyOwner } from '../sketch-content';
 import { IDENTITY, compose, isIdentity, rotation, shift, transformPoint, transformVector } from '../solid';
-import type { BodyResult, Document, Expr, Id, Issue, Joint, JointDriveField, JointResult, Link, LinkResult, Mechanism, MechanismResult, RigidTransform } from '../types';
+import type { AxisRef, BodyResult, Document, Expr, Id, Issue, Joint, JointDriveField, JointResult, Link, LinkResult, Mechanism, MechanismResult, RigidTransform } from '../types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, has, unit3 } from '../util';
 import { CommandError, type Dict, type FieldMode, Fields, type RefContext, axisRef, fail, newId, object, oneOf, onlyFields, string } from '../validation';
 import { bodyKey, label } from './body-properties';
@@ -414,6 +414,16 @@ function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, B
 
 // ---------------------------------------------------------------- the entry of the registry
 
+// The IDs a body names: itself, and the feature of a derived body.
+const bodyNames = (body: Id): Id[] => (bodyOwner(body).local === undefined ? [body] : [body, bodyOwner(body).feature]);
+// The IDs an axis names (`names` below).
+const axisNames = (axis: AxisRef): Id[] => {
+  if (axis.kind === 'sketchPoint') return [axis.sketch, axis.point, ...(axis.point.includes('/') ? [axis.point.split('/')[0]] : [])];
+  if (axis.kind === 'sketchLine') return [axis.sketch, axis.line];
+  if (axis.kind === 'face') return [...bodyNames(axis.body), axis.face.feature, ...(axis.face.copy ?? []).map((tag) => tag.pattern)];
+  return [];
+};
+
 const FIELD_INFO = JOINT_TYPES.flatMap((type) => allFields(type).map(({ path, spec }) => ({ owner: 'joint', path, spec, when: { path: 'type', equals: type } })));
 
 export const mechanism: SectionSpec<Section, MechanismResult> = {
@@ -455,12 +465,11 @@ export const mechanism: SectionSpec<Section, MechanismResult> = {
   },
   // the feature of every body of every link (and a derived body itself); the sketch and the point of
   // every axis (or the sketch and the line), and the projected entity a derived point is of (`x1`
-  // of `x1/center`)
+  // of `x1/center`); for the axis of a round face the body (and its feature for a derived body), the
+  // feature that named the face and every pattern of its copy tags
   names: (section) => [
-    ...Object.values(section.links).flatMap((own) => own.bodies.flatMap((body) => (bodyOwner(body).local === undefined ? [body] : [body, bodyOwner(body).feature]))),
-    ...Object.values(section.joints).flatMap((j) =>
-      'axis' in j && j.axis.kind === 'sketchPoint' ? [j.axis.sketch, j.axis.point, ...(j.axis.point.includes('/') ? [j.axis.point.split('/')[0]] : [])] : 'axis' in j && j.axis.kind === 'sketchLine' ? [j.axis.sketch, j.axis.line] : [],
-    ),
+    ...Object.values(section.links).flatMap((own) => own.bodies.flatMap(bodyNames)),
+    ...Object.values(section.joints).flatMap((j) => ('axis' in j ? axisNames(j.axis) : [])),
   ],
   // the records of links and joints are kept stable entry by entry
   entries: ['links', 'joints'],

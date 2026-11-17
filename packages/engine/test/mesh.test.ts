@@ -399,7 +399,7 @@ describe('the section meshes and its commands', () => {
     expect(emptyDocument().meshes).toEqual({});
     expect(Object.keys(emptyDocument()).at(-1)).toBe('meshes');
     const step = UPGRADES.find((entry) => entry.name === '3b-mesh-import');
-    expect(UPGRADES.at(-1)).toBe(step);
+    expect(UPGRADES[5]).toBe(step);
     const older = { schemaVersion: 6, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [], bodyProperties: {}, mechanism: { links: {}, joints: {} } };
     expect(step?.run(older)).toEqual({ ...older, meshes: {} });
     expect(step?.run({ ...older, meshes: null })).toEqual({ ...older, meshes: null });
@@ -592,7 +592,7 @@ describe('the feature mesh: a stored mesh placed as a body with one face', () =>
     ok(engine, { type: 'addMesh', id: 'box', mesh: BOX_STORED }, placedMesh('a', 'box'));
     const saved = JSON.parse(engine.save());
     expect(saved.meshes).toEqual({ box: BOX_STORED });
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([8, undefined]);
     engine.undo();
     expect(engine.getState().document.meshes).toEqual({});
     engine.redo();

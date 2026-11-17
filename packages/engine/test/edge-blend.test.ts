@@ -226,15 +226,15 @@ describe('the normal of a surface at a point', () => {
   it('a plane, a cylinder, a cone, a sphere, a torus with a signed major radius; none on an axis or of a swept surface', () => {
     const plane: FaceInfo = { planar: true, origin: [0, 0, 0], y: [0, 1, 0], normal: [0, 0, 2] };
     near(normalAt(plane, [5, 5, 0]), [0, 0, 1]);
-    near(normalAt({ planar: false, surface: 'cylinder', center: [0, 0, 0], axis: [0, 0, 1], radius: 2 }, [0, 2, 7]), [0, 1, 0]);
-    expect(normalAt({ planar: false, surface: 'cylinder', center: [0, 0, 0], axis: [0, 0, 1], radius: 2 }, [0, 0, 7])).toBeUndefined();
+    near(normalAt({ planar: false, surface: 'cylinder', center: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], radius: 2 }, [0, 2, 7]), [0, 1, 0]);
+    expect(normalAt({ planar: false, surface: 'cylinder', center: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], radius: 2 }, [0, 0, 7])).toBeUndefined();
     // a cone of 45° from the origin up Z: at (1, 0, 1) the normal is (1, 0, −1)/√2
-    near(normalAt({ planar: false, surface: 'cone', apex: [0, 0, 0], axis: [0, 0, 1], halfAngle: Math.PI / 4 }, [1, 0, 1]), [1, 0, -1]);
+    near(normalAt({ planar: false, surface: 'cone', apex: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], halfAngle: Math.PI / 4 }, [1, 0, 1]), [1, 0, -1]);
     near(normalAt({ planar: false, surface: 'sphere', center: [1, 1, 1], radius: 1 }, [1, 1, 2]), [0, 0, 1]);
-    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], majorRadius: 10, minorRadius: 2 }, [12, 0, 0]), [1, 0, 0]);
-    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], majorRadius: 10, minorRadius: 2 }, [10, 0, 2]), [0, 0, 1]);
+    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], majorRadius: 10, minorRadius: 2 }, [12, 0, 0]), [1, 0, 0]);
+    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], majorRadius: 10, minorRadius: 2 }, [10, 0, 2]), [0, 0, 1]);
     // a negative major radius: the centre of the tube lies across the axis from the point
-    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], majorRadius: -1, minorRadius: 2 }, [1, 0, Math.sqrt(4 - 4)]), [1, 0, 0]);
+    near(normalAt({ planar: false, surface: 'torus', center: [0, 0, 0], axis: [0, 0, 1], along: [0, 0, 1], majorRadius: -1, minorRadius: 2 }, [1, 0, Math.sqrt(4 - 4)]), [1, 0, 0]);
     expect(normalAt({ planar: false, surface: 'swept', axis: [0, 0, 1] }, [0, 0, 0])).toBeUndefined();
   });
 });

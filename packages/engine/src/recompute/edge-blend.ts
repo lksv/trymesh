@@ -734,12 +734,13 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
   // The face of the blend of a straight edge: a plane through the two lines where the chamfer meets
   // the faces, its origin where it meets face `a` at the end of the edge its projection calls `a`
   // (the smaller parameter along n_a × n_b, the outward normals), Y along the edge in that
-  // direction; a cylinder about the line of the centres of the fillet's arc.
+  // direction; a cylinder about the line of the centres of the fillet's arc, `along` that direction.
   function straightInfo(edge: Edge, frame: Frame, profile: BlendProfile): FaceInfo {
     const sidesOf = edge.pieces[0].sides as NonNullable<Piece['sides']>;
     const { point: linePoint, d } = edge.line as NonNullable<Edge['line']>;
-    if (profile.blend.type === 'round') return { planar: false, surface: 'cylinder', center: toWorld(frame, profile.blend.center[0], profile.blend.center[1]), axis: d, radius: profile.blend.radius };
     const direction = unit3(cross3(sidesOf.outA, sidesOf.outB));
+    // `along` of a fillet (D60): the direction the projection of the edge runs in, as Y of a chamfer
+    if (profile.blend.type === 'round') return { planar: false, surface: 'cylinder', center: toWorld(frame, profile.blend.center[0], profile.blend.center[1]), axis: d, radius: profile.blend.radius, along: direction };
     let low = Infinity;
     for (const piece of edge.pieces) for (const q of piece.points) low = Math.min(low, dot3(sub3(q, linePoint), direction));
     const start = add3(linePoint, mul3(direction, low));

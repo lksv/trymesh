@@ -79,7 +79,13 @@ const mechanism: UpgradeStep = { name: '5a-mechanism', run: (o) => ('mechanism' 
 // field that is there, whatever it holds, to the validation.
 const meshes: UpgradeStep = { name: '3b-mesh-import', run: (o) => ('meshes' in o ? o : { ...o, meshes: {} }) };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes];
+// D60 (5c): the optional fields `midplaneWith` and `tilt` of the plane feature. It converts nothing;
+// a build without the step would drop them on load without a word (the validator of the plane
+// rebuilds it from the fields it knows), so it has to refuse the document instead. The kind `face`
+// of an axis alone would need no step (a build that does not know a kind refuses it).
+const morePlanes: UpgradeStep = { name: '5c-more-planes', run: (o) => o };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes, morePlanes];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
 export const SCHEMA_PENDING = 0;
 

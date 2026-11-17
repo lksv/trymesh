@@ -229,10 +229,50 @@ export interface FeatureBase {
   expressions?: Record<FieldPath, Expr>;
 }
 
+// A plane of its own, built in this order (D60):
+// 1. `base`: a base plane, a plane feature or a planar face of a body (the whole plane it lies in).
+// 2. `midplaneWith` (optional): the plane halfway between the base and this plane. For parallel
+//    planes the plane in the middle; for planes at an angle the plane that bisects the angle,
+//    through the line where they meet: of the two such planes, the one nearer to the base (the
+//    base turned by at most 45°). With n1 and n2 the normals of the base and of the second plane:
+//    when n1 · n2 ≤ 0 (at a right angle within 1e-4 rad included) the one with the normal n1 − n2,
+//    otherwise the one with the normal n1 + n2.
+//    So the two faces of a slab or the two sides of a drafted rib give the plane of symmetry, and
+//    a floor and the top of a part the plane in the middle; but two faces that meet at a convex
+//    edge at an inner angle above 90° (neighbouring sides of a hexagonal prism) give the plane
+//    outside the body that touches it along the edge: their plane of symmetry is that midplane
+//    tilted by π/2 about the edge projected as a line. The axes of the midplane are those of the
+//    base turned by the smallest rotation onto it, its origin moved along its normal into it. Where
+//    the two normals pass through a right angle the choice switches. The natural plane of a mirror.
+// 3. `tilt` (optional): the plane through `axis`, turned by `angle` from the plane of steps 1 and
+//    2 about the axis (radians, the right-hand rule about the direction of the axis: a base axis
+//    points along its positive half, a sketch line from `a` to `b`, a sketch point along the
+//    normal of its sketch, a round face as its build gives it). The axis must be parallel to that
+//    plane (within 1e-4 rad); it need not lie in it. With the angle 0 the plane is parallel to the
+//    base and contains the axis. A point of the base plane on the axis keeps its coordinates in
+//    a sketch on the tilted plane (the origin of the frame turns with it and may lie far away).
+//    The numeric field is `tilt/angle`, from −π to π, without a default; `deg(30)` in an expression.
+// 4. `offset`: moved along the normal of the plane of steps 1 to 3.
+// A plane with neither optional field is the plane offset from its base.
+// - `updateFeature`: `{ midplaneWith: null }` and `{ tilt: null }` remove them; `{ tilt: { angle } }`
+//   changes the angle of a tilt (the axis is a reference and is replaced whole), and on a plane
+//   without a tilt it is an invalid command (a tilt is given whole, axis and angle). `setField`
+//   reaches `tilt/angle` only on a plane that has a tilt.
+// - Errors: `brokenReference` and `nonPlanarFace` with the base or the second plane in `refs`;
+//   `brokenReference` with the sketch or the line of the axis, or its body or face; `invalidAxis`
+//   when the line of the axis has no length, its face has no axis, or it is not parallel to the
+//   plane it tilts (`refs`: the axis; the message gives the angle).
+// - The result of a tilted plane tells in facts `axisPoint` and `axisDirection`: the axis used, its
+//   direction made exactly parallel to the plane.
+// - A tilted plane makes a joint about an axis askew to the axes of the model easy to model; such
+//   a joint is the known limit of the mechanism (each pair of bodies across it costs seconds in the
+//   kernel when collisions are checked).
 export interface PlaneFeature extends FeatureBase {
   type: 'plane';
   base: PlaneRef;
   offset: number; // posun ve směru normály základu
+  midplaneWith?: PlaneRef;
+  tilt?: { axis: AxisRef; angle: number };
 }
 
 export interface SketchFeature extends FeatureBase {
@@ -717,8 +757,23 @@ export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'
 // through its point `a` in the direction from `a` to `b` (`<line>/a` to `<line>/b` for a projected
 // one), so a positive angle turns by the right-hand rule about that direction. A line whose ends
 // are not more than 1e-6 mm apart is the error `invalidAxis` of whoever uses it; a projected line
-// whose edge is gone keeps its last valid place.
-export type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; sketch: Id; point: Id } | { kind: 'sketchLine'; sketch: Id; line: Id };
+// whose edge is gone keeps its last valid place. A projected line takes its sense from the outward
+// normals of the two faces of its edge in the order of their names (n_a × n_b).
+// `face` (D60): the axis of a round face of a body: a cylinder (a bore, a pin, a boss), a cone
+// (a countersink, a tapered boss) or a torus (a revolved round): the line of its exact surface
+// through its origin, apex or centre. Its sense is the one its build gives the face: for an
+// extrusion (tapered or not) and a hole the normal of its sketch (out of the body for a sketch on
+// a face, so a joint about a bore drilled from the top turns counter-clockwise seen from above),
+// for a revolve the direction of its axis; a mirrored copy has the mirror image. The body and the
+// face are named as for a sketch on a face. A face not on the body in the state is
+// `brokenReference`; a face that is not round (a plane, a sphere, a swept or general surface) is
+// `invalidAxis`. In a query of a posed model the axis moves with its body, as the frame of a face
+// does; every other kind (a `sketchLine` projected from an edge of that body too) stays as modelled.
+export type AxisRef =
+  | { kind: 'base'; axis: 'X' | 'Y' | 'Z' }
+  | { kind: 'sketchPoint'; sketch: Id; point: Id }
+  | { kind: 'sketchLine'; sketch: Id; line: Id }
+  | { kind: 'face'; body: Id; face: FaceName };
 
 // Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
 // měří od začátku, kladná míří ve směru normály a nesmí být nula.
@@ -1197,7 +1252,11 @@ export interface Issue {
 // those bodies (D56).
 // invalidAxis: the axis cannot be used.
 // - The line of an axis of the kind `sketchLine` has no length (any user: a revolve, a pattern,
-//   a joint); `refs`: the line.
+//   a joint, a plane, a query); `refs`: the line.
+// - The face of an axis of the kind `face` is not round (not a cylinder, a cone or a torus); `refs`:
+//   the axis.
+// - The axis of the tilt of a plane is not parallel to the plane it tilts (more than 1e-4 rad off);
+//   `refs`: the axis, the message gives the angle.
 // - A revolve whose axis does not lie in the plane of the profile's sketch; `refs`: the axis, the
 //   message gives the angle or the distance.
 // - A revolve whose profile lies on both sides of its axis; `refs`: the axis and a curve on each
@@ -1351,7 +1410,10 @@ export type CommandResult =
 //   command.
 // - A string in a numeric field outside the catalog (sketch point coordinates, a radius, the value
 //   of a reference dimension) is an invalid command even though the type allows it.
-export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
+// - An object with `kind` (a reference such as a plane, an axis or a face of a body, or a solved
+//   value such as a projected curve) holds no field that takes an expression and is taken as it is
+//   (the index of a copy in a face name is a number, never an expression).
+export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
 export type Command =
   // časová osa
@@ -1504,7 +1566,8 @@ export type Patch<T> = T extends number
         : { [K in keyof T]?: Patch<T[K]> | (undefined extends T[K] ? null : never) }
       : T;
 export type FeaturePatch =
-  | Patch<Pick<PlaneFeature, 'base' | 'offset'>>
+  // `tilt` merges field by field; its `axis` is a reference and is replaced whole
+  | Patch<Pick<PlaneFeature, 'base' | 'offset' | 'midplaneWith' | 'tilt'>>
   | Patch<Pick<ExtrudeFeature, 'profile' | 'extent' | 'operation' | 'targets'>>
   | Patch<Pick<PatternFeature, 'source' | 'transform'>>
   | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>

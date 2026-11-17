@@ -25,6 +25,7 @@ import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { arm, cylinder } from './arm';
+import type { AxisRef, CommandResult as Outcome, FaceName as Face, Frame, PlaneFeature, PlaneRef as Plane, Vec3 } from '@trymesh/engine';
 import { newEngine, run } from './kit';
 
 const refusal = (engine: Engine, command: Command): string => {
@@ -229,12 +230,12 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: version 7, the step of the section before those of 5a and 3b, and a field this build does not know is refused', () => {
-    // master after the merge of 3b: no step is pending; the steps of 5a and 3b come after the one of 3a
+  it('e. save and load: version 8, the step of the section before those of 5a, 3b and 5c, and a field this build does not know is refused', () => {
+    // master after the merge of 5c: no step is pending; the steps of 5a, 3b and 5c come after the one of 3a
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.map((step) => step.name).slice(-3)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import']);
+    expect(UPGRADES.map((step) => step.name).slice(-4)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import', '5c-more-planes']);
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaVersion).toBe(7);
+    expect(saved.schemaVersion).toBe(8);
     expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
@@ -557,11 +558,11 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     engine.undo();
   });
 
-  it('f. save and load: version 7, a field this build does not know is refused, a removed axis loads', () => {
+  it('f. save and load: version 8, a field this build does not know is refused, a removed axis loads', () => {
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-2)?.name).toBe('5a-mechanism');
+    expect(UPGRADES[4]?.name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([8, undefined]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
@@ -1593,9 +1594,9 @@ describe('scenario 13, the part of 3b: the motor as the mesh of a bought part', 
   it('g. save and load: the section in the saved document, a mesh edited to be open refused, a lost mesh a broken reference', () => {
     const json = engine.save();
     const document = JSON.parse(json);
-    // master after the merge of 3b: version 7, no names
-    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, undefined]);
-    expect(UPGRADES.at(-1)?.name).toBe('3b-mesh-import');
+    // master after the merge of 5c: version 8, no names
+    expect([document.schemaVersion, document.schemaSteps]).toEqual([8, undefined]);
+    expect(UPGRADES[5]?.name).toBe('3b-mesh-import');
     expect(typeof document.meshes.nema.positions).toBe('string');
     expect(document.meshes.nema.name).toBe('motor.stl');
     const other = newEngine();
@@ -1816,5 +1817,161 @@ describe('scenario 13, the part of 3d: a pocket with a clearance, a union and a 
     expect(UPGRADES.some((step) => step.name.startsWith('3d'))).toBe(false);
     expect(FEATURE_TYPE_INFO.combine.fields.map((field) => field.path)).toEqual(['clearance']);
     expect(FACE_ROLES.splitFace.title).toBe('cut face of a split');
+  });
+});
+
+// The part of 5c (D60, docs/d36/5c-more-planes/calls.ts): a wrist at the end of the forearm whose
+// axis is tilted by 30° to the elbow's, the midplane of the forearm, the axes of a line and of a round
+// face. On an engine of its own: a joint about an axis askew to the axes of the model makes every
+// posed sweep with collisions across it slow (the known limit of 5a).
+describe('scenario 13, the part of 5c: a plane tilted about a hinge, a wrist on it, the midplane of the forearm', () => {
+  let engine: Engine;
+  const ok = (result: Outcome): EngineState => {
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+    return result.state;
+  };
+  const preview = (...commands: Command[]): EngineState => ok(engine.preview(commands.length === 1 ? commands[0] : { type: 'batch', commands }));
+  const unwrapped = <T>(outcome: { ok: true; result: T } | { ok: false; error: { code: string; message: string } }): T => {
+    if (!outcome.ok) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+    return outcome.result;
+  };
+  const nearV = (a: Vec3 | undefined, b: Vec3, within = 1e-6) => {
+    expect(a).toBeDefined();
+    a?.forEach((value, i) => expect(Math.abs(value - b[i])).toBeLessThanOrEqual(within));
+  };
+  const planeOf = (state: EngineState, id: Id): Frame | undefined => state.evaluation.features[id]?.plane;
+  const codeOf = (state: EngineState, id: Id): string | undefined => state.evaluation.features[id]?.error?.code;
+  const FOREARM_TOP: Face = { feature: 'forearm', role: 'endCap' };
+  const FOREARM_UNDERSIDE: Face = { feature: 'forearm', role: 'startCap' };
+  const WRIST_SIDE: Face = { feature: 'wrist', role: 'side', curve: 'wr' };
+  const onFace = (body: Id, face: Face): Plane => ({ kind: 'face', body, face });
+  const sketchOn = (id: Id, plane: Plane): Command[] => [{ type: 'addFeature', feature: emptySketch(id, id, { kind: 'base', plane: 'XY' }) }, ...(plane.kind === 'base' && plane.plane === 'XY' ? [] : [{ type: 'setSketchPlane', sketch: id, plane } as Command])];
+  const fixedPoint = (s: Id, point: Id, x: number, y: number): Command[] => [
+    { type: 'addPoint', sketch: s, id: point, x, y },
+    { type: 'addConstraint', sketch: s, id: `${point}Fix`, constraint: { type: 'fixed', point, x, y } },
+  ];
+  const plane = (feature: Omit<Input<PlaneFeature>, 'name' | 'suppressed' | 'type'>): Command => ({ type: 'addFeature', feature: { name: feature.id, suppressed: false, type: 'plane', ...feature } });
+  const HINGE: AxisRef = { kind: 'sketchLine', sketch: 'wristLayout', line: 'hinge' };
+
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, arm());
+  });
+
+  it('a. a hinge on the top of the forearm and the plane through it tilted by a parameter in degrees', () => {
+    const state = run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setParameter', name: 'wristTilt', expr: '30' },
+        ...sketchOn('wristLayout', onFace('forearm', FOREARM_TOP)),
+        ...fixedPoint('wristLayout', 'ha', 230, -20),
+        ...fixedPoint('wristLayout', 'hb', 230, 20),
+        { type: 'addCurve', sketch: 'wristLayout', id: 'hinge', curve: { type: 'line', a: 'ha', b: 'hb' } },
+        plane({ id: 'wristPlane', base: onFace('forearm', FOREARM_TOP), offset: 0, tilt: { axis: HINGE, angle: 'deg(wristTilt)' } }),
+      ],
+    });
+    // through the hinge, the normal turned by 30° about +Y; the origin of the top turned with it lies 131 mm up
+    const frame = planeOf(state, 'wristPlane');
+    nearV(frame?.normal, [0.5, 0, Math.sqrt(3) / 2]);
+    nearV(frame?.x, [Math.sqrt(3) / 2, 0, -0.5]);
+    nearV(frame?.origin, [30.814157, 0, 131], 1e-5);
+    // the result tells the axis it used
+    nearV(state.evaluation.features.wristPlane.facts?.axisPoint as Vec3, [230, -20, 16]);
+    nearV(state.evaluation.features.wristPlane.facts?.axisDirection as Vec3, [0, 1, 0]);
+    // the field holds radians and keeps the expression
+    const feature = state.document.features.find((f) => f.id === 'wristPlane') as PlaneFeature;
+    expect(feature.tilt?.angle).toBeCloseTo(Math.PI / 6, 12);
+    expect(feature.expressions?.['tilt/angle']).toBe('deg(wristTilt)');
+  });
+
+  it('b. a wrist on the tilted plane and a joint about the normal of its sketch: its axis is 30° from the elbow, it clears the forearm, it follows the parameter', () => {
+    const state = run(engine, {
+      type: 'batch',
+      commands: [
+        ...sketchOn('wristSketch', { kind: 'plane', feature: 'wristPlane' }),
+        ...fixedPoint('wristSketch', 'wc', 230, 0),
+        { type: 'addCurve', sketch: 'wristSketch', id: 'wr', curve: { type: 'circle', center: 'wc' }, radius: 10 },
+        { type: 'addConstraint', sketch: 'wristSketch', id: 'wrR', constraint: { type: 'radius', curve: 'wr', value: 10, driving: true } },
+        { type: 'addFeature', feature: { id: 'wrist', name: 'wrist', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'wristSketch', regions: [{ outerLoop: ['wr'] }] }, extent: { type: 'distance', start: 6, distance: 20 }, operation: 'new' } },
+        { type: 'setLink', id: 'forearm', bodies: ['forearm'] },
+        { type: 'setLink', id: 'wrist', bodies: ['wrist'] },
+        { type: 'setJoint', id: 'wrist', joint: { type: 'revolute', parent: 'forearm', child: 'wrist', axis: { kind: 'sketchPoint', sketch: 'wristSketch', point: 'wc' }, lower: 'deg(-90)', upper: 'deg(90)', value: 0 } },
+      ],
+    });
+    const joint = state.evaluation.mechanism.joints.wrist;
+    expect(joint?.status).toBe('ok');
+    nearV(joint?.axis?.origin, [230, 0, 16]);
+    nearV(joint?.axis?.direction, [0.5, 0, Math.sqrt(3) / 2]);
+    // the lowest point of the wrist is 6 cos 30° − 10 sin 30° = 0.196152 above the top
+    const pair = unwrapped(engine.query('gap', { bodies: ['forearm', 'wrist'] })).pairs[0];
+    if (!pair || pair.contact !== undefined) throw new Error('the wrist touches the forearm');
+    expect(Math.abs(pair.distance - 0.196152)).toBeLessThanOrEqual(pair.accuracy + 1e-6);
+    // at 20° the axis is (sin 20°, 0, cos 20°)
+    const angle = (20 * Math.PI) / 180;
+    nearV(preview({ type: 'setParameter', name: 'wristTilt', expr: '20' }).evaluation.mechanism.joints.wrist?.axis?.direction, [Math.sin(angle), 0, Math.cos(angle)]);
+  });
+
+  it('c. the midplane of the two caps of the forearm follows its thickness; a section there; the bisector of the top and the tilted plane', () => {
+    const state = run(engine, plane({ id: 'forearmMid', base: onFace('forearm', FOREARM_TOP), midplaneWith: onFace('forearm', FOREARM_UNDERSIDE), offset: 0 }));
+    const frame = planeOf(state, 'forearmMid');
+    nearV(frame?.origin, [0, 0, 12]);
+    nearV(frame?.x, [1, 0, 0]);
+    nearV(frame?.normal, [0, 0, 1]);
+    // 12 thick in place of 8: the midplane moves to z = 14
+    nearV(planeOf(preview({ type: 'setField', feature: 'forearm', path: 'extent/distance', value: 12 }), 'forearmMid')?.origin, [0, 0, 14]);
+    // a plane feature is a plane like any other: the section of the forearm there is its disc
+    const section = unwrapped(engine.query('section', { plane: { kind: 'plane', feature: 'forearmMid' }, bodies: ['forearm'] }));
+    expect(section.bodies.length).toBe(1);
+    expect(section.bodies[0].loops).toBe(1);
+    expect(section.bodies[0].area).toBeCloseTo(15390.877, 3);
+    // with the underside as the base the normal follows the underside
+    nearV(planeOf(preview(plane({ id: 'midBelow', base: onFace('forearm', FOREARM_UNDERSIDE), midplaneWith: onFace('forearm', FOREARM_TOP), offset: 0 })), 'midBelow')?.normal, [0, 0, -1]);
+    // the top and the tilted plane look the same way: the bisector, 15° from Z, through the hinge both share
+    const half = planeOf(preview(plane({ id: 'halfTilt', base: onFace('forearm', FOREARM_TOP), midplaneWith: { kind: 'plane', feature: 'wristPlane' }, offset: 0 })), 'halfTilt');
+    const s15 = (15 * Math.PI) / 180;
+    nearV(half?.normal, [Math.sin(s15), 0, Math.cos(s15)]);
+    for (const p of [[230, -20, 16], [230, 20, 16]] as Vec3[]) expect(Math.abs((p[0] - (half?.origin[0] ?? 0)) * (half?.normal[0] ?? 0) + (p[2] - (half?.origin[2] ?? 0)) * (half?.normal[2] ?? 0))).toBeLessThan(1e-6);
+  });
+
+  it('d. other axes: XY about the base axis X; a linear pattern of the wrist along the hinge; the mass of the wrist about the axis of its own side', () => {
+    nearV(planeOf(preview(plane({ id: 'tiltX', base: { kind: 'base', plane: 'XY' }, offset: 0, tilt: { axis: { kind: 'base', axis: 'X' }, angle: 'deg(30)' } })), 'tiltX')?.normal, [0, -0.5, Math.sqrt(3) / 2]);
+    // the copy 25 mm further along +Y, the volume of the wrist
+    const state = preview({ type: 'addFeature', feature: { id: 'wrists', name: 'wrists', suppressed: false, type: 'pattern', source: { type: 'body', body: 'wrist' }, transform: { type: 'linear', direction: HINGE, count: 2, span: { type: 'spacing', spacing: 25 } } } });
+    const [a, b] = [state.evaluation.bodies.wrist, state.evaluation.bodies['wrists/1']];
+    expect(Math.abs(b.volume - a.volume)).toBeLessThanOrEqual(1e-6 * a.volume);
+    expect(b.bounds.min[1] - a.bounds.min[1]).toBeCloseTo(25, 4);
+    // the axis of the side passes through the centre of mass; the moment of the prism of the polygon
+    // of 71 sides: m r² (2 + cos(2π/71)) / 6
+    const mass = unwrapped(engine.query('mass', { bodies: ['wrist'], density: 1.24, about: { kind: 'face', body: 'wrist', face: WRIST_SIDE } }));
+    const polygon = (mass.mass * 100 * (2 + Math.cos((2 * Math.PI) / 71))) / 6;
+    expect(mass.about?.distance).toBeLessThan(1e-4);
+    expect(Math.abs((mass.about?.moment ?? NaN) - polygon)).toBeLessThanOrEqual(1e-5 * polygon);
+    // a planar face has no axis: the error of the query names the argument
+    const flat = engine.query('mass', { bodies: ['wrist'], density: 1.24, about: { kind: 'face', body: 'forearm', face: FOREARM_TOP } });
+    expect(flat).toMatchObject({ ok: false, error: { code: 'notAvailable', message: expect.stringContaining('the face is a plane and has no axis'), arg: ['about'] } });
+  });
+
+  it('e. refused: an axis not parallel to the plane, a round second plane, a circle as the axis, a tilt without its axis, a later second plane, setField without a tilt, a field a tilt does not have', () => {
+    expect(codeOf(preview(plane({ id: 'bad', base: { kind: 'base', plane: 'XY' }, offset: 0, tilt: { axis: { kind: 'base', axis: 'Z' }, angle: 0.3 } })), 'bad')).toBe('invalidAxis');
+    expect(codeOf(preview(plane({ id: 'bad', base: onFace('forearm', FOREARM_TOP), midplaneWith: onFace('wrist', WRIST_SIDE), offset: 0 })), 'bad')).toBe('nonPlanarFace');
+    expect(engine.preview(plane({ id: 'bad', base: { kind: 'base', plane: 'XY' }, offset: 0, tilt: { axis: { kind: 'sketchLine', sketch: 'wristSketch', line: 'wr' }, angle: 0 } })).ok).toBe(false);
+    expect(engine.preview({ type: 'updateFeature', id: 'forearmMid', patch: { tilt: { angle: 0.2 } } }).ok).toBe(false);
+    expect(engine.preview({ type: 'updateFeature', id: 'wristPlane', patch: { midplaneWith: { kind: 'plane', feature: 'forearmMid' } } }).ok).toBe(false);
+    expect(engine.preview({ type: 'setField', feature: 'forearmMid', path: 'tilt/angle', value: 0.2 }).ok).toBe(false);
+    expect(engine.preview({ type: 'updateFeature', id: 'wristPlane', patch: { tilt: { axis: HINGE, angle: 0.5, ...({ offset: 2 } as object) } } }).ok).toBe(false);
+    // a patch of the angle alone keeps the axis; null removes the tilt, which leaves the top
+    nearV(planeOf(preview({ type: 'updateFeature', id: 'wristPlane', patch: { tilt: { angle: 'deg(45)' } } }), 'wristPlane')?.normal, [Math.SQRT1_2, 0, Math.SQRT1_2]);
+    const removed = preview({ type: 'updateFeature', id: 'wristPlane', patch: { tilt: null } });
+    nearV(planeOf(removed, 'wristPlane')?.normal, [0, 0, 1]);
+    nearV(planeOf(removed, 'wristPlane')?.origin, [0, 0, 16]);
+  });
+
+  it('f. save and load: the same document; the step is the last of the list', () => {
+    const before = engine.getState();
+    const loaded = engine.load(engine.save());
+    expect(loaded.ok).toBe(true);
+    expect(JSON.stringify(engine.getState().document)).toBe(JSON.stringify(before.document));
+    expect(UPGRADES.at(-1)?.name).toBe('5c-more-planes');
+    expect(JSON.parse(engine.save()).schemaVersion).toBe(8);
   });
 });

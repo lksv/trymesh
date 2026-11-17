@@ -26,7 +26,8 @@ const DENSITY = BODY_DENSITY;
 //   ignored: the caller meant it for something. It assumes the material is spread evenly, which
 //   a part with solid shells and a sparse core is not; an effective density measured on a printed
 //   sample is better.
-// - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it.
+// - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it. The
+//   infinite line, whatever the kind; the axis of a round face is in the pose with its body.
 export const MASS_ARGS = {
   bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece.' },
   density: { kind: 'number', title: 'Density', summary: 'Of every listed body whose properties state neither a density nor a mass.', optional: true, spec: DENSITY },
@@ -247,8 +248,8 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     const inertia = tensor(whole.central);
     const result: MassProperties = { mass: whole.mass, volume: bodies.reduce((sum, body) => sum + body.volume, 0), centerOfMass: whole.center, inertia, bodies, ...(skipped.length ? { skipped } : {}) };
     if (!args.about) return result;
-    const axis = context.axis(args.about); // a base axis, a sketch point or a line of a sketch: never posed
-    if ('problem' in axis) throw new QueryFailure('notAvailable', axis.problem === 'invalidAxis' ? 'about: the line of the axis has no length' : 'about: the axis is not in the state asked about', ['about']);
+    const axis = context.axis(args.about); // the axis of a round face is posed with its body, the other kinds never
+    if ('problem' in axis) throw new QueryFailure('notAvailable', axis.problem === 'invalidAxis' ? `about: ${axis.detail ?? 'the axis cannot be used'}` : 'about: the axis is not in the state asked about', ['about']);
     // About a line: the moment about the parallel line through the centre of mass, and the mass
     // times the square of the distance between the two (the parallel axis theorem).
     const along = mul3(axis.direction, 1 / len3(axis.direction));

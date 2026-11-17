@@ -574,7 +574,14 @@ describe('nálezy z revize aplikace', () => {
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
     expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null }, operation: 'add', targets: ['smazané'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
-    expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4 } });
+    // a plane without a second plane or a tilt removes them by name (D60)
+    expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4, midplaneWith: null, tilt: null } });
+    const tilt = { axis: { kind: 'base', axis: 'X' } as const, angle: 'deg(30)' };
+    expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4, midplaneWith: { kind: 'base', plane: 'XZ' }, tilt }, true, 0)).toEqual({
+      type: 'updateFeature',
+      id: 'r',
+      patch: { base: { kind: 'base', plane: 'XY' }, offset: 4, midplaneWith: { kind: 'base', plane: 'XZ' }, tilt },
+    });
   });
 
   it('an extrusion draft with a profile generator: source, operands, parameters and references', () => {
@@ -791,6 +798,14 @@ describe('nálezy z revize aplikace', () => {
     expect(changePattern(changePattern(through, { point: 'p1' }, choices), { axis: 'sketchPoint' }, choices).transform).toMatchObject({ axis: { kind: 'sketchPoint', sketch: 's2', point: 'p1' } });
     expect(changePattern(draft, { axis: 'sketchPoint' }, { ...choices, sketches: [] }).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } }); // no sketch to go through
     expect(changePattern(draft, { point: 'p1' }, choices).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } });
+    // the axis of a round face (D60) comes only with the face picked; the kind alone changes nothing
+    const pin = { body: 'b', face: { feature: 'e', role: 'side', curve: 'k' } } as const;
+    expect(changePattern(draft, { axis: 'face' }, choices).transform).toMatchObject({ axis: { kind: 'base', axis: 'Z' } });
+    const aroundPin = changePattern(draft, { face: pin }, choices);
+    expect(aroundPin.transform).toMatchObject({ axis: { kind: 'face', ...pin } });
+    expect(aroundPin.transform.type === 'circular' && axisKind(aroundPin.transform.axis)).toBe('face');
+    expect(changePattern(aroundPin, { axis: 'Y' }, choices).transform).toMatchObject({ axis: { kind: 'base', axis: 'Y' } });
+    expect(changePattern(aroundPin, { sketch: 's', point: 'p1', line: 'l' }, choices).transform).toMatchObject({ axis: { kind: 'face', ...pin } });
     // the count and the span; the angle the draft had last comes back
     expect(changePattern(draft, { count: 'n' }, choices).transform).toMatchObject({ count: 'n' });
     const angled = changePattern(draft, { span: 'angle' }, choices);

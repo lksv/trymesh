@@ -2,8 +2,8 @@
 // the pattern feature. A draft for review, only type-checked (`npx tsc -p docs/d36/tsconfig.json`).
 // It imports the real types of the engine and states only what the package adds or changes: two
 // variants of `PatternTransform`, their numeric fields, a reflection among the transforms, and one
-// rule of `applyTool`. No feature type, no command, no query, no face role, no issue code and no
-// upgrade step.
+// rule of `applyTool`. No feature type, no command, no query, no face role and no upgrade step; no
+// issue code for the two kinds (the grid, below, adds one).
 //
 // The grid (an addition to D53 of 2026-11-17, designed in grid.md) is marked "the grid" below: a
 // second direction of the variant `linear`, the numbers of its copies, its numeric fields and one
@@ -65,10 +65,11 @@ export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'
 //   (`<pattern>/<number>`, a face tagged `index: <number>`, a link) keeps meaning the same place.
 //   The numbers have gaps; `FeatureResult.bodies` lists the copies that exist, in the order of
 //   their numbers, which is the order they are made in (row by row).
-// - `count × second.count` is at most `MAX_PATTERN_PLACES`, and the two directions must not be
-//   parallel when both counts are above 1 (two places would be one). Both are judged by the
-//   recompute, where the values of expressions and the directions are known: the error
-//   `invalidPattern` of the pattern, with the two fields in `refs`.
+// - `count × second.count` is at most `MAX_PATTERN_PLACES`, and no two places may be one place
+//   (closer than the length tolerance of the engine, 1e-6 mm; the original is a place). Places can
+//   meet only when the two directions are parallel, and then only for some steps: 5 and 5 meet, 5
+//   and 6 over 4 × 3 places do not. Both rules are judged by the recompute, where the values of
+//   expressions and the directions are known: the error `invalidPattern` of the pattern.
 // - Listed fields only (`onlyFields`): a field of the first direction's variant (`type`, `second`)
 //   or of another kind is an invalid command.
 // - `updateFeature`: a patch `{ transform: { second: { … } } }` merges by field with the second
@@ -80,25 +81,27 @@ export interface SecondDirection {
   span: LinearSpan;
 }
 
-// The stride of the numbers of a grid. Above every count (`MAX_PATTERN_COUNT`, 200), and part of
-// the meaning of every document with a grid: it is never changed, and the bound of a count can
-// grow to 999 at most.
+// The stride of the numbers of a grid (features/pattern.ts, exported by the engine). Above the
+// largest step of the first direction (`MAX_PATTERN_COUNT − 1`, 199), and part of the meaning of
+// every document with a grid: it is never changed, and the bound of a count can grow to 1000 at
+// most (the steps 0 … 999).
 export const GRID_STRIDE = 1000;
-// The number of the copy `first` steps along the first direction and `second` steps along the
-// second; (0, 0) is the original and has none.
-export const copyNumber = (first: number, second: number): number => first + GRID_STRIDE * second;
-// The body of that copy of a pattern of a body.
-export const copyBody = (pattern: Id, first: number, second: number): Id => `${pattern}/${copyNumber(first, second)}`;
 // A pattern has at most this many places, the original included, in a row or in a grid: the bound
-// of a count, for the product of the two counts.
+// of a count, for the product of the two counts (features/pattern.ts, exported by the engine).
 export const MAX_PATTERN_PLACES = 200;
+// Two helpers of this contract and of calls.ts, not exports of the engine: the number of the copy
+// `first` steps along the first direction and `second` steps along the second ((0, 0) is the
+// original and has none), and the body of that copy of a pattern of a body.
+export const copyNumber = (first: number, second: number): number => first + GRID_STRIDE * second;
+export const copyBody = (pattern: Id, first: number, second: number): Id => `${pattern}/${copyNumber(first, second)}`;
 
 declare module '../00-prep/contract' {
   // `invalidPattern`, an error of a pattern, reported by the recompute:
   // - the grid has more places than `MAX_PATTERN_PLACES`: `refs` are the fields
   //   `transform/count` and `transform/second/count`, the detail says the product;
-  // - the two directions of a grid are parallel and both counts are above 1: `refs` are
-  //   `transform/direction` and `transform/second/direction`.
+  // - two places of a grid would be one place: `refs` are `transform/direction`, `transform/span`,
+  //   `transform/second/direction` and `transform/second/span`, the detail names the two copies
+  //   (or the copy and the original).
   // The pattern is in error as a whole and the model stays as it was before it.
   interface IssueCodes {
     invalidPattern: true;
@@ -205,7 +208,8 @@ export declare function mirrors(transform: RigidTransform): boolean;
 // number of a copy is no longer its position in the list. For a grid, row by row:
 // `{ transform: compose(shift(direction, i · step), shift(second.direction, j · second step)),
 // index: copyNumber(i, j) }` for j from 0, i from 0, without (0, 0). The step of a direction is its
-// `spacing`, or `length / (count − 1)`.
+// `spacing`, or `length / (count − 1)`. (`PatternCopy` is the name for the implementation; the
+// prototype called it `Copy`.)
 export interface PatternCopy {
   transform: RigidTransform;
   index: number; // the number of the copy: `<pattern>/<index>`, `copy: [{ pattern, index }]`, `refs: [{ copy: index, … }]`

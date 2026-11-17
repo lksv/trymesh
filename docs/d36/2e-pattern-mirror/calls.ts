@@ -297,20 +297,27 @@ export function drains(): StateAfter {
   );
 }
 export const drainBore = (i: number, j: number): FaceNameAfter => ({ feature: 'drain', role: 'holeBore', point: 'd1', copy: [{ pattern: 'drains', index: copyNumber(i, j) }] });
+// Is the bore of the place (i, j) a cylinder whose axis passes (x, y)? The published surface of
+// a bore says where the hole is, exactly (measured: `origin: [33, 22, 2]` for the copy 2003).
+function boreAt(state: StateAfter, i: number, j: number, x: number, y: number): boolean {
+  const face = state.evaluation.bodies['box'].faces.find((candidate) => sameName(state.evaluation.faceNames[candidate.id], drainBore(i, j)));
+  const surface = face && state.evaluation.faceSurfaces[face.id];
+  return surface?.kind === 'cylinder' && about(surface.origin[0], x, 1e-6) && about(surface.origin[1], y, 1e-6);
+}
 // What one hole removes (6.2053 mm³ measured: a polygon of the circle through the floor of 2).
 const oneDrain = (before: number): number => before - volumeOf(preview({ type: 'setSuppressed', id: 'drains', suppressed: true }), 'box');
 // Twelve holes for one; every copy cut through the floor ("through all" is measured per copy); the
-// bore of the last place is the bore of the hole with the number 2003, and there is no fifth
-// column and no fourth row.
+// bore of the last place is the bore of the hole with the number 2003 and stands three columns and
+// two rows from the original at (18, 10); there is no fifth column and no fourth row.
 export function drainChecks(before: number, state: StateAfter): boolean {
-  const places = hasFace(state, 'box', drainBore(3, 2)) && drainBore(3, 2).copy?.[0].index === 2003 && hasFace(state, 'box', drainBore(0, 1)) && !hasFace(state, 'box', drainBore(4, 0)) && !hasFace(state, 'box', drainBore(0, 3));
+  const places = drainBore(3, 2).copy?.[0].index === 2003 && boreAt(state, 3, 2, 33, 22) && boreAt(state, 2, 1, 28, 16) && boreAt(state, 3, 0, 33, 10) && !hasFace(state, 'box', drainBore(4, 0)) && !hasFace(state, 'box', drainBore(0, 3));
   return statusOf(state, 'drains') === 'ok' && about(before - volumeOf(state, 'box'), 12 * oneDrain(before), 1e-4) && places;
 }
 // One more column and one more row are two parameters: eight more holes (4, 1004, 2004 and the row
-// 3000 to 3004), and every hole that was there keeps its number.
+// 3000 to 3004), and every hole that was there keeps its number and its place.
 export function oneMoreEachWay(before: number): boolean {
   const more = preview({ type: 'setParameter', name: 'drainCols', expr: '5' }, { type: 'setParameter', name: 'drainRows', expr: '4' });
-  return statusOf(more, 'drains') === 'ok' && about(before - volumeOf(more, 'box'), 20 * oneDrain(before), 1e-4) && hasFace(more, 'box', drainBore(3, 2)) && hasFace(more, 'box', drainBore(4, 0)) && hasFace(more, 'box', drainBore(4, 3));
+  return statusOf(more, 'drains') === 'ok' && about(before - volumeOf(more, 'box'), 20 * oneDrain(before), 1e-4) && boreAt(more, 3, 2, 33, 22) && boreAt(more, 2, 1, 28, 16) && boreAt(more, 4, 0, 38, 10) && boreAt(more, 4, 3, 38, 28);
 }
 // A grid has at most 200 places. Fifty columns of five rows are an error of the pattern, found by
 // the recompute (each count is within its own range, and either may be an expression); the fields
@@ -320,8 +327,12 @@ export function tooManyPlaces(before: number): boolean {
   const error = errorOf(over, 'drains');
   return 50 * 5 > MAX_PATTERN_PLACES && error?.code === 'invalidPattern' && JSON.stringify(error.refs) === JSON.stringify(['transform/count', 'transform/second/count']) && about(before - volumeOf(over, 'box'), oneDrain(before), 1e-9);
 }
-// Two parallel directions would put two copies into one place: an error of the pattern.
-export const parallelDirections = (): string | undefined => errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X } } } }), 'drains')?.code; // invalidPattern
+// No two places of a grid may be one place. With the second direction along X as well and the
+// same step of 5, the copy one step along the first direction and the copy one step along the
+// second (1 and 1000) would be one hole: an error of the pattern. Parallel directions alone are
+// not the error: with the steps 5 and 6 the twelve places are twelve places on one line.
+export const onePlaceTwice = (): string | undefined => errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, span: { type: 'spacing', spacing: 5 } } } } }), 'drains')?.code; // invalidPattern
+export const onOneLine = (): string => statusOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X } } } }), 'drains'); // ok
 // `second: null` makes it a row again: the four holes of the first row, and the expression of the
 // second count goes with its field.
 export function aRowAgain(before: number): boolean {
@@ -406,7 +417,7 @@ export function scenario12grid(): boolean {
   const walls = volumeOf(engine.getState(), 'box');
   const vents = bothWallsChecks(walls, ventsOnBothWalls()) && sixPerWall(walls) && JSON.stringify(pastTheEndOfBoth()?.map((ref) => (ref as { copy: number }).copy)) === '[16,17,1016,1017]';
   const floor = volumeOf(engine.getState(), 'box');
-  const holes = drainChecks(floor, drains()) && oneMoreEachWay(floor) && tooManyPlaces(floor) && parallelDirections() === 'invalidPattern' && aRowAgain(floor) && !secondOnAMirror();
+  const holes = drainChecks(floor, drains()) && oneMoreEachWay(floor) && tooManyPlaces(floor) && onePlaceTwice() === 'invalidPattern' && onOneLine() === 'ok' && aRowAgain(floor) && !secondOnAMirror();
   const half = halfASecond();
   const lids = !half && lidChecks(sixLids()) && lidCounts();
   return part2e && vents && holes && lids && roundTripGrid();

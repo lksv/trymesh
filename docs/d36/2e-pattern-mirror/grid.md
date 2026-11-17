@@ -1,6 +1,6 @@
 # 2e, an addition: the grid (D53)
 
-**State: designed 2026-11-17; not implemented.** An addition to [design.md](design.md) (the linear pattern and the mirror, implemented and merged). The owner decided on 2026-11-17 that the grid is wanted, as an addition to 2e; the decision stays D53. Written against the code of `master` at `633a6ca`. The engine side was built as a prototype in a copy of the repository and run against the real adapters; the numbers are under "What was measured".
+**State: designed 2026-11-17; not implemented.** An addition to [design.md](design.md) (the linear pattern and the mirror, implemented and merged). The owner decided on 2026-11-17 that the grid is wanted, as an addition to 2e; the decision stays D53. Written against the code of `master` at `633a6ca`. The engine side was built as a prototype in a copy of the repository and run against the real adapters; the numbers are under "What was measured". This is its second version, after one round of reviews ("Reviews").
 
 Files: [contract.ts](contract.ts) (the parts marked "the grid": the second direction, the numbers of its copies, its fields, the error code), [calls.ts](calls.ts) (`scenario12grid`, its part of validation scenario 12).
 
@@ -12,7 +12,7 @@ Files: [contract.ts](contract.ts) (the parts marked "the grid": the second direc
 |---|---|
 | "Numbers with gaps are legal already: `createsBody` and the tag of a face accept any number from 1" | True, measured on `master` with a row of three bodies: a cut into `<row>/1000` is a valid command and `brokenReference` in the recompute; body properties of `<row>/2003` are accepted; a link that lists `<row>/1001` names it under `missing`; a sketch on a face tagged `index: 1001` is a valid command and `brokenReference`. Every reader takes the number as it is: `createsBody` (a number from 1 without leading zeros), the tag of a face (`faceName`: an integer from 1), `faceKey` (`/@<pattern>:<index>`), `FeatureResult.bodies`, `refs` of the shape `{ copy, feature }` |
 | "Only the pattern's own `index: i + 1` would change" | True: the number of a copy is made in one line of `step` (`features/pattern.ts`), from the position of its transform in the list `transformsOf` answers. Nothing else derives a number from a position |
-| "The stride becomes part of the meaning of every document, so the bound of a count can never grow" | True of any stride. With the stride 200 named there the bound could never grow; this design takes 1000, which leaves room up to 999 ("The numbers") |
+| "The stride becomes part of the meaning of every document, so the bound of a count can never grow" | True of any stride. With the stride 200 named there the bound could never grow; this design takes 1000, which leaves room up to a count of 1000 ("The numbers") |
 | "The product of the two counts needs a bound that only the recompute can check" | True. A field holds its last valid value and its expression is evaluated by the recompute (`Evaluator.resolve`), which writes the new values back whatever the step then says; a product checked by the validator would refuse, on load, a document this build saved. The precedent is the hole: "the head is not wider than the bore" is the error `invalidHole` of the recompute, also for plain numbers |
 | "A second direction is a field the variant `linear` does not list, so this build refuses the document by itself" | True, measured: `master` refuses a document whose linear transform has a field `second` ("features[4].transform.second: a transform of the type linear has no such field"), a field inside its span, and an expression at `transform/second/count`; the commands as well. **A field directly on the pattern feature is dropped without a word** (measured: the document loads and the pattern is a row). So where the field lies decides whether a schema step is needed |
 | "A pattern listed as a source of a pattern is loaded and is then `brokenReference`" | True, measured: the command is refused ("is not a feature that applies a tool"), a document that holds it loads and the pattern is `brokenReference` |
@@ -28,10 +28,10 @@ Files: [contract.ts](contract.ts) (the parts marked "the grid": the second direc
 | The engine | prototyped: 77 lines added and 22 removed in three files; every test of the repository passes but the three that pin the list of the fields | not prototyped. A pattern would leave a list of applications instead of one recipe; `Placement` would hold a product of transforms and a list of tags; each wrapper of `build` appends instead of writing a list of one; `refs` of a failed copy name a copy inside a copy |
 | Names | one tag per face, as today; the number says the place (`1002`: two steps along the first direction, one along the second) | two tags per face; each count keeps numbers of its own |
 | Also gives | nothing | a mirror of a mirror of features (four corners from one), a circle of rows |
-| A build without it | refuses the document (measured): no schema step | loads the document and reports `brokenReference` (measured): the model lacks the grid, so a step would have to make older builds refuse |
-| Time | one boolean per copy and target, as every pattern of features | the same booleans |
+| A build without it | refuses the document (measured): no schema step | loads the document and reports `brokenReference` (measured): nothing is dropped, but the model lacks the grid. The rule of `schema.ts` names neither that case as needing a step nor as needing none, so that route has a decision to make here (2e left it open) |
+| Time | one boolean per copy and target, as every pattern of features. A change of either count computes every boolean of the step again, as in a row today | the same booleans; a change of the outer count would find the inner row memoised |
 
-No measurement speaks against the second direction: numbers with gaps pass through every place that reads a body or a face (bodies, body properties, links, the queries, the exports, sketches on faces of copies; "What was measured"), and the time is that of a row of as many copies. What it does not give is the mirror of a mirror and the circle of rows. The other route stays open for them and is not blocked: it would add a second tag to the faces, which the names allow today.
+No measurement speaks against the second direction: numbers with gaps pass through every place that reads a body or a face (bodies, body properties, links, the queries, the exports, sketches on faces of copies; "What was measured"), and the time is of the order of a row of as many copies (a grid of holes measured a quarter to a third slower than the row). What it does not give is the mirror of a mirror and the circle of rows. The other route stays open for them and is not blocked: it would add a second tag to the faces, which the names allow today.
 
 ## The cheap variant
 
@@ -47,7 +47,7 @@ type PatternTransform =
 - **An optional second direction of the variant `linear`**, with its own direction, count and span. Without it the pattern is the row of today, to the last field.
 - **The places** are the pairs (i, j): i steps along the first direction, j steps along the second. (0, 0) is the original, every other place one copy.
 - **The number of the copy at (i, j) is `i + 1000 · j`.** The row of the original keeps the numbers 1 … `count − 1` of a row; the next row is 1000, 1001, …; the one after 2000, …
-- **At most 200 places** (`count × second.count`), and **the two directions must not be parallel**; both are the new error `invalidPattern` of the recompute.
+- **At most 200 places** (`count × second.count`), and **no two places in one place** (which only parallel directions can give); both are the new error `invalidPattern` of the recompute.
 - Everything else is the pattern of today for features and for a body: the tools built again in the place of each copy, the atomic failure, `noEffect`, the copy tags, `bodySource`.
 - **No feature type, command, query or face role, and no upgrade step.** One error code.
 - **The app**: the form of a linear pattern gets a checkbox for the second direction and its rows. **MCP** needs no code but a paragraph of `CONVENTIONS`.
@@ -95,35 +95,38 @@ What the addition adds, place by place:
 - **The row of the original has the numbers of a row.** The stride multiplies the steps along the second direction, not the first, so a row that gets a second direction keeps its copies: `1` … `count − 1` are what they were, and the new rows start at 1000. Measured on the vent row of scenario 12.
 - **The stride is 1000**, not the bound of a count (200) and not a pairing function:
   - it is read without a calculator: `2003` is three steps along the first direction and two along the second;
-  - the bound of a count may still grow, up to 999;
+  - the bound of a count may still grow, up to 1000 (the steps 0 … 999);
   - a pairing of two numbers (Cantor's, or the one that fills squares) has no bound at all, but gives the row of the original other numbers than a row has (so adding a second direction would rename every copy) and numbers nobody can read.
 - **The stride is part of the meaning of every document with a grid** and is never changed: `GRID_STRIDE` (`features/pattern.ts`, exported). A test pins it above `MAX_PATTERN_COUNT − 1`.
 - **The numbers have gaps.** A grid 4 × 3 has the copies 1, 2, 3, 1000 … 1003, 2000 … 2003. Nothing counts copies by their numbers: `FeatureResult.bodies` lists the bodies that exist, the tags of the faces say which copies there are.
-- **The order of the copies is the order of their numbers**: row by row, the row of the original first. It is the order the copies of features are applied in (for each copy the sources in the order of the list, as today), the order of `refs` of `noEffect`, and the order of `FeatureResult.bodies`.
+- **The order of the copies is the order of their numbers**: row by row, the row of the original first. It is the order the copies of features are applied in (for each copy the sources in the order of the list, as today), the order of `refs` of `noEffect`, and the order of `FeatureResult.bodies`. A copy that stands on the row below thus finds it there.
+- **The order in which the copies are applied does depend on the first count**, which the places and the numbers do not: one more column is applied at the end of the first row, before the rows above it, where one more copy of a row is applied last. For copies that neither touch nor overlap nothing follows. Where tools touch or overlap, what a copy finds can change with the count while its number stays: which copy owns a face two of them share, which copy is named by `noEffect`, how far "through all" reaches on a target that has grown ("Known limits").
 
 ### At most 200 places, judged by the recompute
 
 `count × second.count ≤ MAX_PATTERN_PLACES` (200, the bound of a count: "a pattern has at most 200 places, the original included, in a row or in a grid").
 
 - Each count has its own bound of 200, which keeps a typo in an expression from starting thousands of booleans; two counts at that bound would be 40 000 places. One number for both cases: a grid 14 × 14 or 20 × 10, a row of 200.
-- The bound is that of the time of a pattern of features: 200 holes take 20 to 25 s in a grid as in a row (measured). Bodies would allow more (199 copies in 0.06 s); one rule is kept for both sources.
-- **The recompute judges it, never the validator.** Either count may be an expression; the recompute evaluates the expressions and writes their values into the fields whatever the step then answers, so a document can hold two counts that are each in range and too many together. A validator that refused the product would refuse such a document on load (measured: with the check in the step alone it loads, and the pattern is in error). With plain numbers it is the same rule in the same place, as for the dimensions of a hole.
+- The bound is that of the time of a pattern of features: 200 holes take 18 s in a row and 25 s in a grid (measured). Bodies would allow more (199 copies in 0.06 s); one rule is kept for both sources.
+- **The recompute judges it, never the validator.** Either count may be an expression; the recompute evaluates the expressions and writes their values into the fields whatever the step then answers, so a document can hold two counts that are each in range and too many together. A validator that refused the product would refuse such a document on load (measured: with the check in the step alone it loads, and the pattern is in error), and in a command it would block every later change of that pattern but one that lowers a count (`updateFeature` and `setField` validate the whole feature). With plain numbers it is the same rule in the same place, as for the dimensions of a hole.
 - The error is `invalidPattern` with `refs: ['transform/count', 'transform/second/count']` and the product in the detail; the pattern is in error as a whole and the model stays as it was before it.
 
-### Parallel directions are an error
+### No two places in one place
 
-When both counts are above 1 and the two directions are parallel, the pattern is `invalidPattern` with `refs: ['transform/direction', 'transform/second/direction']`.
+When two places of a grid would be one place, the pattern is `invalidPattern`, with `refs: ['transform/direction', 'transform/span', 'transform/second/direction', 'transform/second/span']` and the two copies named in the detail ("the copies 1 and 1000 would stand in one place", "the copy 1001 would stand in the place of the original").
 
-- Two places then fall into one (with equal steps the place (1, 0) is the place (0, 1)). For features the second copy would only be a `noEffect`; for a body it would be a second body in the place of the first, with nothing to say so: twice the mass and a collision of two copies.
-- It is the only way two places can meet: with independent directions and steps that are not zero, `i · a + j · b` is another point for another (i, j).
-- The directions are known to the recompute only (the normal of a sketch plane), so the validator cannot ask; two equal base axes could be refused by a command, and are left to the same rule.
-- Parallel means the cross product of the two unit directions is shorter than 10⁻⁹. Directions that are nearly parallel make a narrow grid, which is a grid.
+- **The harm is tested, not its cause.** For a body, the second copy would be a second body in the place of the first with nothing to say so: twice the mass, and two copies that collide. For features it would at best be a `noEffect` of one copy, and need not be even that (a tool is applied to the target as it is then).
+- **Only parallel directions can give it**, and not all of them do: with independent directions and steps that are not zero, `i · a + j · b` is another point for another (i, j). Along one line the places meet when `i · step = j · second step` for some pair within the counts: the steps 5 and 5 meet at once, 5 and 10 at the second copy, 5 and −5 put a copy on the original; 5 and 6 over 4 × 3 places do not meet, and neither does a second step beyond the whole row (all measured). Such a pattern is a row with odd numbers, not a grid, and is left alone.
+- **So no test of "parallel"** and no tolerance of an angle: the places are compared as points, each against the places before it (at most 200 places, 19 900 pairs), and two are one when they are closer than `LENGTH_TOLERANCE` (10⁻⁶ mm, `util.ts`). A direction of any length is normalised first (`shift` does it), so a later kind of `AxisRef` that is no unit vector is safe.
+- A count of 1 in either direction leaves places along one direction, which never meet; no case of its own.
+- The directions and the values are known to the recompute only, so the validator cannot ask.
+- **A circular pattern of today has the same hole and keeps it**: a span `angle` of a full turn puts the last copy on the original, which for features is the tested `noEffect` of D35 ("five copies over 360°") and for a body a second body in the place of the first. The grid is new, so nothing depends on its coinciding copies; closing the hole for the circular pattern of a body is noted for the backlog ("Rows for the indexes").
 
 ### An error code of the pattern
 
 `invalidPattern`, an error: "The counts and the directions do not make a pattern", with the reason in the detail.
 
-- The two conditions above are neither a broken reference nor a failed copy, and they are found where the values and the directions are known. The extent and the hole have a code of this kind (`invalidExtent`, `invalidHole`).
+- The two conditions above (too many places, two places in one) are neither a broken reference nor a failed copy, and they are found where the values and the directions are known. The extent and the hole have a code of this kind (`invalidExtent`, `invalidHole`).
 - Not `invalidExpression` for the bound: that code says "the expression of some field cannot be evaluated or gave a value outside the range of the field (details in `fieldErrors`)", and here there may be no expression and there is no entry of `fieldErrors`.
 
 ### Copy IDs, body properties and links
@@ -145,7 +148,7 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 ### A change of the counts, of the spans, of the kind
 
-- More columns or rows add copies; fewer take the copies of the places that are gone, and what refers to them is `brokenReference` (a link: `missing`), as with a smaller count today.
+- More columns or rows add copies; fewer take the copies of the places that are gone. What refers to one is then reported as each place reports a body or a face that is not there, as with a smaller count today and as 2e lists it: a feature (a target, the plane of a sketch, the source of a pattern) is `brokenReference`; a sketch that projects an edge of the copy keeps the curve where it was and has the warning `brokenProjection`; a link lists the body under `missing`; an entry of body properties stays an entry without a body.
 - `second: null` leaves the row of the original with its numbers.
 - A change of the kind keeps the IDs and the tags, as 2e says. A circular pattern or a mirror has no copy from 1000 on.
 
@@ -156,15 +159,15 @@ As in every pattern, because the rules never ask how a placement was made: each 
 | Transform | Copies |
 |---|---|
 | `circular`, `mirror`, `linear` without `second` | as today: the transforms of `transformsOf`, numbered from 1 in their order |
-| `linear` with `second` | resolves both directions (`axis(ref, state)`; the error of either is the error of the pattern, as today); then the bound of the places; then the parallel directions; then, for j from 0 to `second.count − 1` and i from 0 to `count − 1` without (0, 0): the transform `compose(shift(a, i · u), shift(b, j · v))` and the number `i + GRID_STRIDE · j` |
+| `linear` with `second` | resolves both directions (`axis(ref, state)`; the error of either is the error of the pattern, as today); then the bound of the places; then, for j from 0 to `second.count − 1` and i from 0 to `count − 1` without (0, 0): the transform `compose(shift(a, i · u), shift(b, j · v))` and the number `i + GRID_STRIDE · j`. A place closer than `LENGTH_TOLERANCE` to the original or to a place before it is the error |
 
-`u` and `v` are the steps: the `spacing`, or `length / (count − 1)` (zero steps for a count of 1). The rest of the step is unchanged: it reads `index` from the copy where it computed `i + 1`.
+`u` and `v` are the steps: the `spacing`, or `length / (count − 1)` (zero steps for a count of 1). The rest of the step is unchanged: it reads `index` from the copy where it computed `i + 1`. The copies of the first row are those of a row to the last bit: `compose` returns its first argument when the second is the identity.
 
 ## Document and validation
 
 - `patternTransform` validates the first direction and, when `second` is there, the second by the same function with the paths `transform/second/…`; `onlyFields` lists `second` among the fields of `linear`, and `direction`, `count`, `span` as the fields of `second`.
 - **References**: `refs` adds `axisRefs(second.direction, 'transform/second/direction')`, so `moveFeature` keeps the pattern behind the sketch of its second direction (measured).
-- **Numeric fields** in the registry (`PATTERN_FIELDS` in `contract.ts`): `transform/second/count`, `transform/second/span/spacing`, `transform/second/span/length`. The count is listed once per span, with the condition on `transform/second/span/type`: a condition names one value, and a pattern without a second direction has neither (as `transform/count` is listed per kind). `fieldsOf` reports what the validator read.
+- **Numeric fields** in the registry (`PATTERN_FIELDS` in `contract.ts`): `transform/second/count`, `transform/second/span/spacing`, `transform/second/span/length`. The count is listed once per span, with the condition on `transform/second/span/type`: a condition names one value, and a pattern without a second direction has neither. The condition stands in for "there is a second direction" (the count does not depend on the span, where `transform/count` per kind is a real condition); `describe_api` prints the count twice, and the text of `CONVENTIONS` says what it means. Every reader copes: `draftField` and the check of angles find a field by its path, `setField` asks only about fields with a default. `fieldsOf` reports what the validator read.
 - **`updateFeature`**, by the rules of today (`mergePatch`): `{ transform: { second: { … } } }` merges by field with the second direction the pattern has (the span of another type is replaced whole, the direction is a reference and replaced whole); on a row it is the new value and has to be complete. `{ transform: { second: null } }` removes it, and the expressions under `transform/second/` go with it; the module answers `removable` for that path on a linear pattern, so the patch is accepted on a row as well (a form sends it either way). A patch with another `type` replaces the transform, the second direction included. All measured.
 - **`setField`** reaches the fields of a second direction the pattern has; it cannot add one (no field of it has a default).
 - **The schema: no upgrade step.** The rule of `schema.ts`: no step "where a build without the addition refuses by itself: … a field where the validator lists the fields it allows". `master` lists the fields of the variant `linear` and refuses `second` on load (measured, first table), and `second` lists its own fields, so a later field of it is refused by a build of this addition in turn. `SCHEMA_VERSION` stays 6, `SCHEMA_PENDING` is not touched, documents of today load unchanged. The error code is not part of a document.
@@ -173,14 +176,16 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 | File | What the grid does there |
 |---|---|
-| `packages/engine/src/types.ts` | `second` in the variant `linear` and the type `LinearSpan`, with the comment of `PatternTransform` (read by `describe_api`): the places, the numbers, the bound, the parallel directions; at `PatternFeature` ("numbered from 1"), that a grid numbers its copies `i + 1000 · j`; `invalidPattern` in `ErrorCode` with its comment |
-| `features/pattern.ts` | the validation of a direction as one function used twice; `copiesOf`; the references; the fields; `removable`; `GRID_STRIDE`, `MAX_PATTERN_PLACES`; the summary of the type |
+| `packages/engine/src/types.ts` | `second` in the variant `linear` and the type `LinearSpan`, with the comment of `PatternTransform` (read by `describe_api`): the places, the numbers, the bound, the places that must not meet; at `PatternFeature` ("numbered from 1"), that a grid numbers its copies `i + 1000 · j`; `invalidPattern` in `ErrorCode` with its comment |
+| `features/pattern.ts` | the validation of a direction as one function used twice; `copiesOf` (`PatternCopy`); the references; the fields; `removable`; `GRID_STRIDE`, `MAX_PATTERN_PLACES`; the summary of the type |
 | `recompute/services.ts` | `MESSAGE.invalidPattern` |
-| `document.ts`, `index.ts` | the exports (`GRID_STRIDE`, next to `MAX_PATTERN_COUNT`) |
-| `packages/mcp/src/api.ts` | `CONVENTIONS`: the paragraph of the pattern (below) |
-| `packages/app` | below |
-| tests | below; the three that pin the list of the fields change (`pattern.test.ts`, `tools.test.ts`, `scenario12.test.ts`) |
-| docs | `architecture/pattern.md` (the linear kind, the numeric fields, the validation, the derived body IDs, the limits), `ui/pattern.md`, `architecture/verification.md`, and the indexes ("Rows for the indexes") |
+| `index.ts` | exports `GRID_STRIDE` and `MAX_PATTERN_PLACES`, so that the hint of the form and the text of `CONVENTIONS` are built from them and repeat no literal. (`MAX_PATTERN_COUNT` is exported by `document.ts` alone today, for the tests) |
+| `packages/mcp/src/api.ts` | `CONVENTIONS`: the paragraph of the pattern and the sentence about the ID of a copy (below) |
+| `packages/app` | below. Its alias `LinearSpan` (`sketch-commands.ts`, the input form of the span) keeps its meaning; it is the `Input` of the engine's type of the same name |
+| tests | below; the three that pin the list of the fields change (`pattern.test.ts`, `tools.test.ts`, `scenario12.test.ts`); the steps of the scenario go to `packages/scenarios/test/box.ts`, where every package adds its own |
+| docs | `architecture/pattern.md` (the linear kind, the numeric fields, the validation, the derived body IDs, the limits), `ui/pattern.md`, `ui/errors.md` (the row of the code and what the user does about it), `architecture/recompute.md` (its copy of the error codes), `architecture/verification.md`, and the indexes ("Rows for the indexes"). `ui/errors.md` and `architecture/recompute.md` lack `invalidHole` today |
+
+What [design.md](design.md) says against a grid is superseded by this file and stays as the record of 2e: "A grid, later" ("neither is taken here"), rejected alternative 4 and the first of its known limits.
 
 `createsBody`, `bodySource`, `applyTool`, `solid.ts`, `validation.ts`, `document.ts` beyond an export, the sections and every query stay as they are.
 
@@ -188,29 +193,32 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 **MCP.** No code: the commands carry the field, `describe_api` is generated. The paragraph of the pattern in `CONVENTIONS` changes: the sentence "There is no grid yet: a grid of holes is one hole feature …, a grid of slots one extrusion of several regions" is replaced by the grid, and the part (2) gets:
 
-- `second: { direction, count, span }` makes a grid, each field as in the first direction;
+- `second: { direction, count, span }` makes a grid, each field as in the first direction; its count is a field whenever there is a second direction (the list of the fields names it once per span);
 - the number of the copy i steps along the first direction and j along the second is `i + 1000 · j`: the first row is 1, 2, …, the second 1000, 1001, …; the numbers do not depend on the counts, so with a spacing a larger count keeps every copy, and `bodies` of the pattern lists the copies that exist;
-- at most 200 places together; parallel directions are refused; both as the error `invalidPattern` of the pattern, not of the command;
+- at most 200 places together, and no two places in one place (two parallel directions with steps that meet); both as the error `invalidPattern` of the pattern, not of the command;
 - `updateFeature` with `transform: { second: null }` makes a row again;
 - four corners from one stay as they are described today.
 
+The paragraph about body IDs (`api.ts`, "a copy of a body made by a pattern has the ID `<pattern>/<number>` (numbered from 1)") gets the half sentence that the numbers of a grid have gaps and are read from `bodies`, not composed by counting. The other texts that say "from 1" stay true as they are (`bodyProblem`, the summary of the section of body properties, two texts of `tools.ts`).
+
 **The form of the pattern** (`features/pattern.ts`, `changePattern` in `sketch-commands.ts`, `axis-picker.ts`), in the kind *Along a direction*, below the span of the first direction:
 
-- **A second direction (a grid)**, a checkbox. Ticked, the draft gets the second direction the form had last, or a new one: a base axis other than the first direction (Y, or X when the first is Y), a count of 2 and a spacing of 10. Cleared, the form remembers it (`PatternMemory`), as it remembers the transform of each kind.
-- **Second direction**: the picker of a direction with that label (`axisRows` takes the label of a direction instead of a flag). **Count along the second direction**; **Span** and its field, as for the first.
+- **A second direction (a grid)**, a checkbox. Ticked, the draft gets the second direction the form had last, or a new one: a base axis other than the first direction (Y, or X when the first is Y), a count of 2 and a spacing of 10. (When the first direction is the normal of a sketch plane, the new one may be parallel to it and have its step; the preview then opens with `invalidPattern` and says which copies meet.)
+- **What the form remembers** (`PatternMemory`), in slots of their own, because `rememberPattern` runs before every change and overwrites the transform of the kind with the one the draft has: `second`, the second direction the draft had last, written only while the draft has one (so a change of the first direction after the checkbox was cleared does not lose it, and neither does a change to a mirror and back); and `secondSpacing` and `secondLength`, the span of each type the second direction had last (the slots `spacing` and `length` of today are those of the first direction).
+- **Second direction**: the picker of a direction with that label; its select of a sketch is labelled *Sketch of the second direction*. `axisRows` takes the labels of a direction in place of its flag; the parameter stays optional, so the call of the form of a joint (`panels/mechanism.ts`) is untouched. **Count along the second direction**; **Second span** with *Spacing between neighbouring rows* and *Length between the first and the last row*, and its field *Second spacing* or *Second length*. No two controls of the form share a label (the tests of the app find a control by its label).
 - A hint: "Copy numbers: steps along the first direction + 1000 × steps along the second, so the second row starts at 1000. At most 200 places."
 - The count of the first direction is labelled *Count along the direction* while the second is there.
 - `PatternChange` gets `grid?: boolean` and `second?:` the changes of a direction (an axis change, `count`, `span`, `spacing`, `length`); `changeTransform` applies them to `transform.second`.
 - **`draftCommand`** sends `second: null` for a linear draft without a second direction: the patch of a transform of the same type merges, so a second direction the draft no longer has must be removed by name (as the taper of an extent is).
 - **The summary** in the model panel: "Count 5 × 2 with the original, along axis X, spacing 4 mm, and along axis Y, spacing 47.5 mm; features: Vent".
-- A copy is named by its number wherever it is named today ("copy 1002 of Pattern 5", "Pattern 5 / 1002"); the issue `invalidPattern` shows the message of the engine with its detail, like every issue.
-- Tests of the app: `changePattern` for the second direction (`sketch-tools.test.ts`); the form in `app.test.ts` (the snapshot of the kinds of the pattern gets the checkbox row and a step with a grid, which the commit says).
+- A copy is named by its number wherever it is named today ("copy 1002 of Pattern 5", "Pattern 5 / 1002"); the issue `invalidPattern` shows the message of the engine with its detail, like every issue (its `refs` are field paths, which `issueText` leaves alone).
+- Tests of the app: `changePattern` and `rememberPattern` for the second direction (`sketch-tools.test.ts`: the checkbox off, the first direction changed, the checkbox on again; the two spans of the second direction against those of the first; linear to a mirror and back); `draftCommand` for a row that becomes a grid and a grid that becomes a row, through the engine (`fields.test.ts`, where `draftCommand` is tested); the text of `invalidPattern` (`issue-text.test.ts`); the form in `app.test.ts` (the snapshot of the kinds of the pattern gets the checkbox row and a step with a grid, which the commit says).
 
 ## Issue codes
 
 | Code | Kind | When |
 |---|---|---|
-| `invalidPattern` (new) | error | a grid with more than 200 places (`refs`: the two count fields); a grid with parallel directions and both counts above 1 (`refs`: the two direction fields) |
+| `invalidPattern` (new) | error | a grid with more than 200 places (`refs`: the two count fields); a grid of which two places would be one (`refs`: the direction and the span of each direction; the detail names the copies) |
 | `brokenReference` | error | the sketch or the point of the second direction is not in the state before the pattern; as today otherwise |
 | `invalidExpression` | error | a count, a spacing or a length of the second direction whose expression fails or leaves its range, with `fieldErrors` by its path |
 | `invalidExtent`, `invalidHole`, `emptyResult`, `kernelFailure` | error | a copy fails as copies do today; `refs` start with `{ copy, feature }`, `copy` the number of the place |
@@ -218,12 +226,12 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 ## Shared vocabulary
 
-- **Takes:** `AxisRef` with its validator, references and resolver; `shift` and `compose` of `solid.ts`; `Placement` and `CopyTag` as they are; the patch rules of `updateFeature` with `removable`.
+- **Takes:** `AxisRef` with its validator, references and resolver; `shift` and `compose` of `solid.ts`; `LENGTH_TOLERANCE` of `util.ts`; `Placement` and `CopyTag` as they are; the patch rules of `updateFeature` with `removable`.
 - **Adds:** `LinearSpan`; `GRID_STRIDE` and the rule of the numbers; `MAX_PATTERN_PLACES`; the error code `invalidPattern`.
 
 ## What was measured
 
-**The recipe.** A copy of the repository at `633a6ca` in the scratchpad of the session. First unchanged, for what a build without the grid does. Then with the engine side of this design applied (77 lines added and 22 removed in `types.ts`, `features/pattern.ts` and `recompute/services.ts`), and spike tests in `packages/scenarios/test` against the real solver and kernel adapters. Nothing of it is in the repository.
+**The recipe.** A copy of the repository at `633a6ca` in the scratchpad of the session. First unchanged, for what a build without the grid does. Then with the engine side of this design applied (77 lines added and 22 removed in `types.ts`, `features/pattern.ts` and `recompute/services.ts`), and spike tests in `packages/scenarios/test` against the real solver and kernel adapters. Nothing of it is in the repository. The first version of the prototype refused parallel directions; after the first round of reviews it compares the places instead, and the rows that depend on that rule were run again.
 
 **A build without the grid** (`master` unchanged, a plate with a row of three slots and a row of three bodies):
 
@@ -242,13 +250,13 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 **A grid of features** (a plate 120 × 80 × 4, a slot 2 × 6 cut through, the counts as parameters):
 
-- 4 × 3: status ok; removed 528 mm³, eleven copies and the original at 48 each; the tags on the faces are 1, 2, 3, 1000 … 1003, 2000 … 2003; copy 3 stands at (20, 5), 1000 at (5, 15), 1002 at (15, 15), 2003 at (20, 25);
-- a sketch on a side face of copy 1002 has its origin at (15, 21, 4); in a grid 5 × 4 (912 mm³ removed, nineteen copies) it is still ok with the same origin, 1002 and 2003 stand where they stood, and the new copies are 4 at (25, 5) and 3004 at (25, 35) among others;
+- 4 × 3: status ok; the eleven copies remove 528 mm³, 48 each; the tags on the faces are 1, 2, 3, 1000 … 1003, 2000 … 2003; copy 3 stands at (20, 5), 1000 at (5, 15), 1002 at (15, 15), 2003 at (20, 25);
+- a sketch on a side face of copy 1002 has its origin at (15, 21, 4); in a grid 5 × 4 (912 mm³ removed by nineteen copies) it is still ok with the same origin, 1002 and 2003 stand where they stood, and the new copies are 4 at (25, 5) and 3004 at (25, 35) among others;
 - 5 × 1 by a parameter: the copies 1 to 4, and the sketch on copy 1002 is `brokenReference`;
 - 26 × 2 on a plate that holds 23 columns: the warning `noEffect` with the copies 23, 24, 25, 1023, 1024, 1025 in that order;
 - a copy that would remove a second target whole (place (1, 1)): `emptyResult` with `refs` `[{ copy: 1001, feature: 'slot' }, 'B']`, and no face of the grid in the model;
-- posts with a counterbored hole through all, sources `['post', 'bore']`, 4 × 3: 1483.8254 mm³ added for twelve times 123.6521 (1483.8255), twelve bores;
-- 20 × 11: `invalidPattern`, "(20 × 11 is 220 places; a pattern has at most 200, the original included)", `refs` the two counts; parallel directions with the counts 3 and 2: `invalidPattern`, `refs` the two directions; a column 1 × 3 has the copies 1000 and 2000;
+- posts with a counterbored hole through all, sources `['post', 'bore']`, 4 × 3: 1483.82539 mm³ added, where twelve times the one post with its hole (123.652125) are 1483.82550; twelve bores;
+- 20 × 11: `invalidPattern`, "(20 × 11 is 220 places; a pattern has at most 200, the original included)", `refs` the two counts; a column 1 × 3 has the copies 1000 and 2000;
 - the second span as a length of 40 over 3 rows: the rows 20 apart;
 - the second direction as the normal of a sketch on a side face: resolved; moving that sketch behind the grid is refused; removing it leaves the grid `brokenReference` with the sketch in `refs`.
 
@@ -266,11 +274,15 @@ As in every pattern, because the rules never ask how a placement was made: each 
 |---|---|
 | 20 × 10, 200 × 1, 1 × 200 | ok, 199 copies each |
 | 67 × 3 (201 places) | `invalidPattern` |
-| X and X, 2 × 2 | `invalidPattern` (parallel) |
+| X and X with the same step, 2 × 2 | `invalidPattern`: "the copies 1 and 1000 would stand in one place" |
 | X and X, 1 × 3 and 3 × 1 | ok, two copies: a count of 1 leaves one direction unused |
-| Y and the normal of a sketch on the base plane XZ (−Y), 2 × 2 | `invalidPattern`: opposite directions are parallel |
-| X and the normal of a sketch on the base plane YZ (+X), 2 × 2 | `invalidPattern` |
+| Y and the normal of a sketch on the base plane XZ (−Y), the same step, 2 × 2 | `invalidPattern`: "the copy 1001 would stand in the place of the original" |
+| X and the normal of a sketch on the base plane YZ (+X), the same step, 2 × 2 | `invalidPattern`: the copies 1 and 1000 |
 | X and the normal of a sketch on the base plane XZ, 2 × 2 | ok, three copies |
+| X with the step 5 and X with the step 10, 4 × 3 | `invalidPattern`: the copies 2 and 1000 |
+| X with the step 5 and X with the step −5, 3 × 2 | `invalidPattern`: the copy 1001 on the original |
+| X with the step 5 and X with the step 6, 4 × 3 | ok, eleven copies on one line |
+| X with the step 5 and X with the step 15, 3 × 2 | ok, five copies: the second row lies beyond the first |
 | a spacing of −5 and a length of −20 over three rows | ok; the copy 2001 at (−5, −20, 0) |
 
 **A grid of bodies** (a block 20 × 10 × 3, 3 × 2):
@@ -281,15 +293,15 @@ As in every pattern, because the rules never ask how a placement was made: each 
 - a sketch on a face of `G/1002` and a cut into it: ok; a grid of that copy: `H/1`, `H/1000`, `H/1001`, faces with both tags (`A/endCap@G:1002@H:1001`), `from: 'G/1002'`;
 - 4 × 2: `G/3` and `G/1003` are added, `G/1002` stays in place and keeps its cut; 4 × 1: the copies of the second row are gone, the cut and the grid of the copy are `brokenReference`, the link names `G/1000` and `G/1002` as missing.
 
-**Time** (a through hole of 2 mm in a plate, one boolean per copy; one run each):
+**Time** (a through hole of 2 mm in a plate, one boolean per copy; the runs of a second session, two or three each, which agree with the single runs of the first to 2 s):
 
 | Copies with the original | As a grid | As a row |
 |---|---|---|
-| 25 | 5 × 5: 0.9 s | |
-| 50 | 10 × 5: 1.7 s | |
-| 100 | 10 × 10: 6.3 s; 50 × 2: 5.8 s | 100: 4.7 s |
-| 196, 200 | 14 × 14: 25.6 s; 20 × 10: 24.9 s | 200: 19.6 s |
+| 25, 50 | 5 × 5: 0.9 s; 10 × 5: 1.7 s (one run each) | |
+| 100 | 10 × 10: 6.2, 6.1, 6.3 s; 50 × 2: 5.8, 6.0, 5.8 s | 100: 4.7, 5.2, 4.7 s |
+| 196, 200 | 14 × 14: 23.6, 23.9 s; 20 × 10: 25.1, 25.0 s | 200: 18.3, 18.4 s |
 
+- A grid is a quarter to a third slower than a row of as many holes; the order is the same, and so is the growth with the square of the count. Why a grid is slower was not looked for.
 - A grid of bodies: 99 copies in 0.03 s, 199 in 0.06 s.
 - The same holes as one tool, an extrusion that cuts all the circles of one sketch (the way to a grid before this addition): 100 circles 7.4 s, 196 circles 35.4 s, 200 circles 27.3 s, 400 circles 97 s. One boolean with one large tool is not faster than one boolean per copy.
 
@@ -297,7 +309,7 @@ As in every pattern, because the rules never ask how a placement was made: each 
 
 - the vent row with `second` along Y, a count of 2 and the spacing `W - wall - 0.5` (47.5): the box loses 240.0000 mm³ more; the copies 1 to 4 stay (copy 4 at x = 32); the far wall has the copies 1000 (x = 16, y from 48 to 50) to 1004 (x = 32); there is no copy 5 and no 1005; the lid clears the box;
 - a sketch on a slot of the far wall (copy 1004) has its origin at (32, 47.5, 22) and keeps it with six slots per wall, which remove 336 mm³ more than the row of five did and add the copies 5 and 1005; eighteen per wall: `noEffect` with the copies 16, 17, 1016, 1017;
-- the drain holes: one hole removes 6.2053 mm³, the grid 4 × 3 removes 74.4639 (twelve times 6.2053); the bore of copy 2003 is at (33, 22), of 1002 at (28, 16), of 3 at (33, 10); 5 × 4 removes 124.1065 (twenty times), 2003 stays, 4 is at (38, 10) and 3004 at (38, 28); 50 × 5: `invalidPattern` with the two counts in `refs` and the box as it was before the grid; a second direction along X: `invalidPattern`; `second: null`: the four holes of a row, the expression of the second count gone; `second` on the mirror of the rib: an invalid command;
+- the drain holes: one hole removes 6.2053 mm³, the grid 4 × 3 removes 74.4639 (twelve times 6.2053); the published cylinder of the bore of copy 2003 has its axis through (33, 22), of 1002 through (28, 16), of 3 through (33, 10); 5 × 4 removes 124.1065 (twenty times), 2003 stays, 4 is at (38, 10) and 3004 at (38, 28); 50 × 5: `invalidPattern` with the two counts in `refs` and the box as it was before the grid; a second direction along X with the step 5 of the first: `invalidPattern`, "the copies 1 and 1000 would stand in one place"; along X with its step of 6: ok, twelve holes on one line; `second: null`: the four holes of a row, the expression of the second count gone; `second` on the mirror of the rib: an invalid command;
 - six lids: `lids/1`, `lids/2`, `lids/1000`, `lids/1001`, `lids/1002`; `lids/1002` at (170, 55, 26) with the volume of the lid; PETG and 23.056 g each, 138.339 g for the six; a link lists copies of both rows; a sketch stands under `lids/1001`; no pair of the six collides (15 pairs); four per row: `lids/3` and `lids/1003` added, `lids/1002` in place; one row: `lids/1002` missing in its link;
 - every feature of the finished model is ok, and the document loads to the same document with the schema version it had.
 
@@ -314,13 +326,16 @@ Not measured: anything of the app; the third route.
 7. **Three flat fields, or a list of directions.** Above.
 8. **The bound of the places in the validator.** Above: it would refuse on load a document this build saved.
 9. **No bound of the places**, or one for features and a larger one for bodies. 40 000 booleans for two typos; two rules for one field.
-10. **`invalidExpression` for the bound, and a warning or nothing for parallel directions.** Above ("An error code of the pattern", "Parallel directions are an error").
-11. **Tightening `createsBody`** to the numbers a grid can have (a column below 200, a row below 200). It would refuse `<grid>/500` by a command but not `<grid>/7` of a grid of five columns, which is the mistake that happens; and it would change the answer for the rows and circles of today. The recompute says which copies exist.
-12. **A schema step "to be safe".** As in 2e: the rule says when one is needed, and the measurement says this is not such a case.
+10. **`invalidExpression` for the bound, and a warning or nothing for places that meet.** Above ("An error code of the pattern", "No two places in one place").
+11. **Refusing parallel directions** (the first version of this design: the cross product of the two directions below 10⁻⁹). It is wider than its reason (parallel directions with the steps 5 and 6 put no two copies into one place), it needs a tolerance of an angle that is not the engine's (`ANGLE_TOLERANCE` is 10⁻⁴), and directions inside any such tolerance still pass with copies that are one mesh. The places themselves are compared instead.
+12. **Tightening `createsBody`** to the numbers a grid can have (a column below 200, a row below 200). It would refuse `<grid>/500` by a command but not `<grid>/7` of a grid of five columns, which is the mistake that happens; and it would change the answer for the rows and circles of today. The recompute says which copies exist.
+13. **A schema step "to be safe".** As in 2e: the rule says when one is needed, and the measurement says this is not such a case.
 
 ## Known limits
 
 - **200 places per pattern.** A larger grid of features is two patterns of two source features; the time grows with the square of the number of copies anyway (25 s for 200 holes).
+- **The order in which the copies are applied changes with the first count** (one more column comes before the rows above it). Where the tools of the copies touch or overlap, a copy with an unchanged number can then own another face of two that coincide, be the one `noEffect` names, or measure another reach of "through all". Copies that stand apart are not affected.
+- **Places that nearly meet are places.** Two copies a hundredth of a millimetre apart are two bodies that collide, or two cuts; only places closer than 10⁻⁶ mm are refused. And a circular pattern of a body over a full turn still puts its last copy on the original, as before the grid.
 - **The time is that of one boolean per copy.** One extrusion of many regions is no faster (measured), so the time is not saved by joining the tools in the way the engine can today; [architecture/pattern.md](../../architecture/pattern.md) says joining the copies "would make it linear", which this measurement does not support.
 - The numbers of a grid have gaps, and a number says a place only to someone who knows the stride. The app shows the number as it is.
 - With the span `length` a change of the count moves the copies of that direction, as in a row.
@@ -343,14 +358,15 @@ Not measured: anything of the app; the third route.
 - **Further kinds of `AxisRef`**: both directions take them without a change.
 - **A pattern as a source of a pattern**: still the route to a mirror of a mirror of features and a circle of rows; a face would then carry the tag of a grid and the tag of the outer pattern.
 - **The time of a pattern of features**: a package that wants large grids has to look at the booleans themselves; the measurement of one large tool is under "What was measured".
-- **`CLAUDE.md`** says the current schema version is 5; the code saves 6 (`UPGRADES` has five steps). Not part of this addition.
-- **Shared places**: `features/pattern.ts` alone, with one line in `types.ts`'s `ErrorCode` and one in `MESSAGE`; the row "Pattern: transform kinds" of the plan holds.
+- **Shared places**: `features/pattern.ts`; in `types.ts` the variant `linear` with its comment and one member of `ErrorCode`; one line of `MESSAGE` (`recompute/services.ts`); two exports of `index.ts`; two sentences of `CONVENTIONS` (`packages/mcp/src/api.ts`); in the app `axis-picker.ts`, which the form of a joint shares (its call does not change). The row "Pattern: transform kinds" of the plan holds.
 
 ## Tests the implementation owes
 
 - **Validation** (`engine/test/pattern.test.ts`): `second` with its fields and the refusal of any other; `second` on the other kinds; the references of the second direction (`moveFeature`, a sketch that is gone); the patches (adding, a merge, the span alone, half of one, `null` on a grid and on a row, another kind) and the expressions that go with a removed second direction; `setField` on its fields; the fields of the registry against `fieldsOf`; `GRID_STRIDE` above `MAX_PATTERN_COUNT − 1`; a document of today loads unchanged and the version is unchanged; a document with two counts that are too many together loads.
 - **The numbers** (`scenarios/test`): the tags and the places of a grid; a row that gets a second direction keeps its copies; a larger count in either direction moves none and a sketch on a face of a copy stays; a smaller one breaks what stood on a lost copy; the order of `refs` of `noEffect` and of `bodies`; a copy that fails names its number and leaves the model as it was.
-- **The bound and the directions**: 200 places pass, 201 do not (as numbers and through a parameter); parallel base axes, a base axis against a sketch normal that is parallel to it, antiparallel directions; a count of 1 in either direction with parallel directions.
+- **The bound and the places that meet**: 200 places pass, 201 do not (as numbers and through a parameter); the rows of "The edges of the two rules" (the same step along two parallel base axes, a base axis against a sketch normal along it and against it, steps of which one is a multiple of the other, a copy on the original, parallel directions whose places do not meet, a count of 1 in either direction); and, at the function that makes the copies, two directions 10⁻⁸ rad apart with the same step of 10 mm (the places are 10⁻⁷ mm apart: refused) and a thousandth of a radian apart (0.01 mm: a narrow grid, accepted).
+- **The order of application**: slots that touch along the first direction, the first count grown: the faces of the copies of the second row before and after, as the code has them (the limit above).
+- **A grid that shrinks**: what stood on a lost copy, by place: a cut into it and a sketch on its face (`brokenReference`), a projected edge of it (`brokenProjection`, the curve kept), a link (`missing`), body properties (an entry without a body).
 - **Spans**: a length in the second direction; negative steps; a count of 1.
 - **Sources**: features in their order with a hole in a copied post; `upTo` to a tilted plane with a length per place; a hole through all; a headed hole whose copy must not change its target.
 - **A grid of a body**: IDs, volumes and bounds, faces with tags; a grid of a copy; a cut into a copy; body properties inherited and set on a copy; a link; the mass, the interference and the section queries; an export.
@@ -369,20 +385,54 @@ Nothing else needs the owner: no library, no change of the document that an olde
 
 ## Reviews
 
-Not reviewed yet.
+Three reviewers are asked each round, read-only, with one brief: what is under review, what to read, what to check against the code, what to return, and the core of the prototype as text. Every finding was checked against the code, or measured with the prototype, before anything was changed.
+
+### Round 1 (2026-11-17): the design at `be9b48e`
+
+- **internal**: a fresh subagent (Fable 5.2, effort high). It read the code, traced the patch rules and recomputed the geometry and the numbers of the scenario by hand.
+- **codex** (`gpt-6-astra`, reasoning effort high, read-only sandbox). It ran the type check of the contracts and, as it reports, the calls of the scenario in memory against an implementation of the prototype with the real adapters.
+- **agy** (`gemini-4-argon-high`): could not run. The account is out of quota (HTTP 429, "resets in 98h"), so by the rule of the briefs it is left out.
+
+Seventeen distinct findings; no blocker and no major. Six are factual errors in the text, and one changes a rule of the design (the test of parallel directions).
+
+| Finding | Who | Severity | Holds? | What changed |
+|---|---|---|---|---|
+| The rule "parallel directions are an error" does not test its reason. Parallel directions need not put two copies into one place (the steps 5 and 7, or 5 and 6 as in the call of the scenario itself), so "two places fall into one" was false as stated; the tolerance 10⁻⁹ of the cross product is not the engine's (`ANGLE_TOLERANCE`, 10⁻⁴, in `surfaces.ts`, `solid.ts`, `generators.ts`) and lets through directions whose copies are one float32 mesh; the vectors were not normalised for a later kind of `AxisRef`; `noEffect` for a repeated copy of a feature is not guaranteed | internal, minor; codex, minor (factual) | Yes (`util.ts`; `applyTool`); measured after the change | The rule is "no two places in one place": the places are compared as points with `LENGTH_TOLERANCE`, each against those before it, and the detail names the copies. Parallel directions whose places do not meet are accepted. The decision, the recompute, the contract, the issue codes, the limits and the owed tests follow; refusing parallel directions is rejected alternative 11; the prototype was changed and the edges measured again (eight rows) |
+| The call `parallelDirections` of the scenario (steps 5 and 6 over 4 × 3) has no two places in one | codex, minor | Yes | The calls `onePlaceTwice` (the step 5 in both: the copies 1 and 1000) and `onOneLine` (the steps 5 and 6: ok), both measured |
+| "The time is that of a row of as many copies", "200 holes take as long in a grid as in a row": the table of the design itself shows a grid a quarter slower, on single runs | internal, minor (factual) | Yes | The runs were repeated two or three times each (they agree to 2 s): a grid is a quarter to a third slower. The three statements say "of the order of", with the numbers |
+| The form: remembering the second direction needs a slot of its own, because `rememberPattern` runs before every change and overwrites the transform of the kind; the spans of the second direction would come back as those of the first; two controls would share a label, and the tests find a control by its label; the default second axis can be parallel to a first direction that is a sketch normal; `draftCommand` is tested in `fields.test.ts`, the texts of issues in `issue-text.test.ts` | internal, minor; codex, minor (the memory) | Yes (`sketch-commands.ts`: `rememberPattern`, `PatternMemory`; `features/pattern.ts` of the app: `set`; `app-kit.ts`) | "The app and MCP": the slots `second`, `secondSpacing`, `secondLength` and when each is written; labels of their own; the note on the default; the tests by file |
+| A copy that a smaller count no longer makes is not `brokenReference` everywhere: a projected edge is the warning `brokenProjection` with the curve kept, body properties stay an entry without a body | codex, minor (factual) | Yes (`features/sketch.ts`: the projections; `sections/body-properties.ts`) | "A change of the counts" lists the places as 2e does; an owed test per place |
+| The calls of the drain holes check volumes and the presence of tags, not that a hole stays in its place | codex, minor | Yes | `boreAt` reads the published cylinder of a bore (measured: its origin is the axis of the hole, exactly); `drainChecks` and `oneMoreEachWay` check the places of the copies 3, 1002, 2003 and of the new 4 and 3004 |
+| The order in which the copies are applied is not independent of the first count: one more column is applied before the rows above it, where a longer row only appends. For tools that touch or overlap, the owner of a shared face, the copy `noEffect` names and the reach of "through all" can change under unchanged numbers | internal, minor | Yes (`applyTool`: `renamedOnly`, the faces an addition renames) | Said in "The numbers", a known limit, an owed test. The order stays row by row |
+| "A step would have to make older builds refuse" for a pattern as a source: the rule of `schema.ts` prescribes no step for a document that loads and is then an error, and 2e left it open | codex, minor | Yes (`schema.ts`, the head; `requireRef` on a load) | The row of the comparison says that route has a decision to make there |
+| The paragraph of `CONVENTIONS` about body IDs says "`<pattern>/<number>` (numbered from 1)"; an AI composes the IDs by counting | internal, minor | Yes (`packages/mcp/src/api.ts`) | The sentence gets its half sentence; "Where the code lives" and "The app and MCP" name it |
+| Docs and files the implementation touches and the design did not name: `docs/ui/errors.md`, `docs/architecture/recompute.md` (both lack `invalidHole` today), `packages/scenarios/test/box.ts`; and `design.md` still says "no grid" in three places | internal, minor | Yes | "Where the code lives" names them; the three places of `design.md` are named as superseded (that file gets only its pointer) |
+| "The bound of a count may grow up to 999": the steps run from 0 to `count − 1`, so the stride 1000 allows a count of 1000 | codex, nit (factual) | Yes | 1000, in the design and in the contract |
+| "`CLAUDE.md` says the schema version is 5": it says 6 | codex, nit (factual) | Yes (the claim came from a stale copy of the file) | The item is removed |
+| "`document.ts`, `index.ts`: the exports, next to `MAX_PATTERN_COUNT`": that constant is exported by `document.ts` alone | internal, nit (factual) | Yes | `GRID_STRIDE` and `MAX_PATTERN_PLACES` are exports of `index.ts`, and the texts are built from them |
+| The condition of `transform/second/count` stands in for "there is a second direction"; `describe_api` prints the count twice | internal, nit | Yes | Said in "Document and validation"; a half sentence of `CONVENTIONS` |
+| A circular pattern of a body over an angle of a full turn has the harm the grid refuses, with no issue | internal, nit | Yes (`PATTERN_ANGLE` allows ±2π; the step is `angle / (count − 1)`) | Said in the decision and in the limits; a line for the backlog. Not changed here: for features it is the tested `noEffect` of D35 |
+| The contract: `copyNumber` and `copyBody` are exported and named nowhere in the design; `PatternCopy` is `Copy` in the prototype; the header still says "no issue code"; the engine's `LinearSpan` has the name of an alias of the app | internal, nit | Yes | The two helpers are marked as helpers of the contract and the calls; the name is said; the header is reworded; the alias is named in "Where the code lives" |
+| Wording of the measurements ("528 mm³, eleven copies and the original at 48 each"; "twelve times 123.6521 (1483.8255)"); "Shared places" left out `types.ts`, `api.ts`, the exports and `axis-picker.ts`; the comparison of the routes left out that a pattern as a source would reuse a memoised inner row | internal, nit | Yes | Reworded; the list is complete; a row of the comparison |
+
+Checked by the reviewers and found sound: that `master` refuses `transform.second` on every way a document or a command comes in (`engine.load`, the app, the MCP server), refuses an expression at `transform/second/count`, and drops a field put on the feature; the rule of `schema.ts` against it; that the recompute writes the values of expressions back whatever the step answers, so the bound cannot be the validator's (and that a validator would also block later changes of such a pattern); `invalidPattern` against `invalidExpression`; the patch rules traced through `mergePatch`, `replacedPaths` and `removedPaths`, with `second: null` on a row accepted only through `removable`; every reader of the fields of the registry and of `when`; that nothing in the engine, the sections, the queries, the exports, the app or MCP derives a copy number from a position, sorts copies or expects numbers without gaps; that the copies of the first row are those of a row to the last bit; no new case of the order of two face keys; that the directions `axis` returns are unit vectors today; every call of `scenario12grid` and its numbers, recomputed by hand by the internal reviewer (the polygon of a hole of 2 mm has 23 sides: 6.2053 mm³) and run by codex; the lines of `wrongGrid` that must not compile.
+
+Not acted on: nothing. For the rule of the places the internal reviewer offered two ways (test the harm, or keep "parallel" with the tolerance of the engine); the first is taken.
+
+By the rule of the briefs (more than six findings, at least three of them factual errors) a second round follows, on the fixes.
 
 ## Rows for the indexes
 
 **`docs/d36/README.md`**, the row of 2e in "Work packages": after "…no feature type, no issue code, no schema step." the last sentence ("A grid is deferred to a package of its own, with two routes named") becomes:
 
-> The grid (owner, 2026-11-17) is an addition designed in [2e-pattern-mirror/grid.md](2e-pattern-mirror/grid.md): an optional second direction of `linear`, the copy at (i, j) numbered `i + 1000 · j`, at most 200 places, the error `invalidPattern`; no schema step
+> The grid (owner, 2026-11-17) is an addition designed in [2e-pattern-mirror/grid.md](2e-pattern-mirror/grid.md): an optional second direction of `linear`, the copy at (i, j) numbered `i + 1000 · j`, at most 200 places and no two in one place, the error `invalidPattern`; no schema step
 
-**`docs/decisions.md`**, the row D53: the state gets "the grid designed 2026-11-17 as an addition ([grid.md](d36/2e-pattern-mirror/grid.md)); not implemented. Measured: `master` refuses a document with `transform.second` and drops a field put on the feature itself, so the field lies in the transform and needs no schema step; numbers with gaps pass every reader of a body and of a face; 200 holes take as long in a grid as in a row", and in the decision the last sentence ("A grid is deferred, with two routes named …") becomes:
+**`docs/decisions.md`**, the row D53: the state gets "the grid designed 2026-11-17 as an addition ([grid.md](d36/2e-pattern-mirror/grid.md)); not implemented. Measured: `master` refuses a document with `transform.second` and drops a field put on the feature itself, so the field lies in the transform and needs no schema step; numbers with gaps pass every reader of a body and of a face; 200 holes take 25 s in a grid and 18 s in a row", and in the decision the last sentence ("A grid is deferred, with two routes named …") becomes:
 
-> A grid is a second direction of the linear pattern (`transform.second`: a direction, a count, a span), for features and for a body. The copy i steps along the first direction and j along the second has the number `i + 1000 · j`, so a place keeps its number whatever the counts are and a row that becomes a grid keeps its copies. At most 200 places, and the two directions not parallel: the error `invalidPattern`, judged by the recompute. A pattern of features as a source of a pattern stays open for a mirror of a mirror and a circle of rows
+> A grid is a second direction of the linear pattern (`transform.second`: a direction, a count, a span), for features and for a body. The copy i steps along the first direction and j along the second has the number `i + 1000 · j`, so a place keeps its number whatever the counts are and a row that becomes a grid keeps its copies. At most 200 places, and no two places in one place (parallel directions whose steps meet): the error `invalidPattern`, judged by the recompute. A pattern of features as a source of a pattern stays open for a mirror of a mirror and a circle of rows
 
 **`docs/requirements.md`**, scenario 12, a part after "Linear pattern and mirror":
 
-> - *The grid (2e, D53, an addition).* The vent row gets a second direction along Y with a count of 2 and the spacing `W - wall - 0.5`, a patch that names the second direction alone: the far long wall loses the 240 mm³ the near one lost, the copies of the row keep the numbers 1 to 4 and the far wall has 1000 to 1004. A sketch stands on a slot of the far wall (copy 1004) and stays where it is when a sixth slot per wall is added by the one parameter (the copies 5 and 1005); eighteen per wall give the warning `noEffect` with the copies 16, 17, 1016 and 1017. The floor gets drain holes: one plain hole of 2 mm through all at a point of a sketch on the floor, and a grid of it, 4 columns 5 apart along X and 3 rows 6 apart along Y, both counts parameters: twelve times the volume of one hole, the bore of the last place tagged 2003; a fifth column and a fourth row are two parameters, add eight holes and move none. Fifty columns of five rows are the error `invalidPattern` of the pattern with the two count fields in `refs`, and the box is as it was before the grid; a second direction parallel to the first is `invalidPattern`; `second: null` makes the grid a row again and drops the expression of its count; `second` on a mirror is an invalid command, and half a second direction on a row as well. Six lids for the print bed are the row of three with a second direction: the bodies `lids/1`, `lids/2`, `lids/1000`, `lids/1001`, `lids/1002`, the last two lids along X and one along Y from the original; each takes the material of the lid and its mass, a link lists copies of both rows, a sketch stands under a copy of the second row, and no pair collides. A fourth lid per row adds `lids/3` and `lids/1003` and moves none; one row leaves a link that listed `lids/1002` with it under `missing`. The document loads to the same model, and its schema version is the one it had.
+> - *The grid (2e, D53, an addition).* The vent row gets a second direction along Y with a count of 2 and the spacing `W - wall - 0.5`, a patch that names the second direction alone: the far long wall loses the 240 mm³ the near one lost, the copies of the row keep the numbers 1 to 4 and the far wall has 1000 to 1004. A sketch stands on a slot of the far wall (copy 1004) and stays where it is when a sixth slot per wall is added by the one parameter (the copies 5 and 1005); eighteen per wall give the warning `noEffect` with the copies 16, 17, 1016 and 1017. The floor gets drain holes: one plain hole of 2 mm through all at a point of a sketch on the floor, and a grid of it, 4 columns 5 apart along X and 3 rows 6 apart along Y, both counts parameters: twelve times the volume of one hole, the bore of the last place tagged 2003 with its axis through (33, 22); a fifth column and a fourth row are two parameters, add eight holes (the copy 4 at (38, 10), the copy 3004 at (38, 28)) and move none. Fifty columns of five rows are the error `invalidPattern` of the pattern with the two count fields in `refs`, and the box is as it was before the grid; a second direction along X with the step of the first would put the copies 1 and 1000 into one place and is `invalidPattern`, while with its own step of 6 the twelve holes stand on one line and the pattern is ok; `second: null` makes the grid a row again and drops the expression of its count; `second` on a mirror is an invalid command, and half a second direction on a row as well. Six lids for the print bed are the row of three with a second direction: the bodies `lids/1`, `lids/2`, `lids/1000`, `lids/1001`, `lids/1002`, the last two lids along X and one along Y from the original; each takes the material of the lid and its mass, a link lists copies of both rows, a sketch stands under a copy of the second row, and no pair collides. A fourth lid per row adds `lids/3` and `lids/1003` and moves none; one row leaves a link that listed `lids/1002` with it under `missing`. The document loads to the same model, and its schema version is the one it had.
 
-**`docs/backlog.md`**, the entry "Linear pattern and mirror of features and bodies": "a grid (two routes named there)" becomes "the grid as a second direction of the linear pattern (designed, [grid.md](d36/2e-pattern-mirror/grid.md))", and what is left for later gets: a pattern of features as a source of a pattern (a mirror of a mirror, a circle of rows), a second transform of another kind in one pattern, staggered rows, a third direction, copies left out of a grid.
+**`docs/backlog.md`**, the entry "Linear pattern and mirror of features and bodies": "a grid (two routes named there)" becomes "the grid as a second direction of the linear pattern (designed, [grid.md](d36/2e-pattern-mirror/grid.md))", and what is left for later gets: a pattern of features as a source of a pattern (a mirror of a mirror, a circle of rows), a second transform of another kind in one pattern, staggered rows, a third direction, copies left out of a grid; and a circular pattern of a body whose span is a full turn puts its last copy on the original without an issue (the grid refuses two places in one; the same rule could close this).

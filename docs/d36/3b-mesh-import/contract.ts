@@ -87,14 +87,19 @@ export interface IndexedMesh {
 }
 
 export const MESH_LIMITS = {
-  // The most triangles of a stored mesh. Measured (design.md, "Measured", 5): a real collision
-  // with a mesh of 105 000 triangles takes 23 s, of 150 000 triangles 35 s; the bridge to the app
-  // waits 30 s for an answer.
+  // The most triangles of a stored mesh. A provisional number (design.md, "Measured", 5, and
+  // "Open", 5): it keeps a document, a load and a first look at a body within reason. It does not
+  // keep a query under a given time: a real collision with a mesh of 38 000 triangles takes 3 to
+  // 19 s by its depth, with 105 000 triangles 18 to 55 s.
   triangles: 100_000,
   // The fewest: a tetrahedron.
   fewest: 4,
-  // An import adds a note to its report above this: about a second per real collision.
+  // An import adds a note to its report above this: seconds per real collision with the body, and
+  // more the deeper the collision is.
   note: 20_000,
+  // A shell encloses something when its mean thickness (twice its volume over its surface) is
+  // above this part of the largest coordinate of the mesh.
+  thinnest: 1e-6,
 } as const;
 
 // What is wrong with the edges of a mesh that is not closed.
@@ -104,26 +109,55 @@ export interface MeshDefects {
   misoriented: number; // edges whose two triangles run the same way: a part is turned over
 }
 
-// `mesh.ts`: the mesh as numbers. It imports only types.ts and util.ts.
+// Why a mesh cannot be stored. The codes are those of a refused import, so the importer passes
+// the answer on; `addMesh` and a load refuse the command or the document with the message.
+export interface MeshProblem {
+  code: 'tooLarge' | 'notASolid';
+  message: string;
+  defects?: MeshDefects; // when the edges are the reason (check 4)
+}
+
+// A piece of the surface: triangles joined through shared edges (as `pieces` of solid.ts and the
+// library count them; two pieces that meet in a vertex only are two).
+export interface MeshShell {
+  triangles: number; // how many
+  volume: number; // signed: negative when the shell faces inwards
+  area: number;
+}
+
+// `mesh.ts`: the mesh as numbers. It imports types.ts, util.ts and validation.ts (for
+// `CommandError`), and nothing of the recompute, the kernel or the document.
 // - `storedMesh` / `indexedMesh`: the two directions of the base64 codec. `indexedMesh` keeps its
 //   result by the entry object (a weak map), so an entry is decoded once; it throws `CommandError`
 //   for a text that is not canonical base64 of whole triples.
 // - `meshDefects`: the count of the edges that are wrong.
+// - `withoutWalls`: leaves out every pair of triangles on the same three vertices that face
+//   opposite ways (the common face of two solids written one after the other with the same cut,
+//   or a sheet without thickness) and the positions nothing names afterwards; `walls` is the
+//   number of pairs. Decided by the indices alone. Only the importer calls it, after the weld: a
+//   stored mesh is what is left.
 // - `meshProblem`: why a mesh cannot be stored; undefined when it can. In this order:
-//   1. fewer than `MESH_LIMITS.fewest` or more than `MESH_LIMITS.triangles` triangles;
+//   1. more than `MESH_LIMITS.triangles` triangles (`tooLarge`); everything below is `notASolid`;
+//      fewer than `MESH_LIMITS.fewest`;
 //   2. a coordinate that is not finite or is beyond ±1e9 (the bound of a number of the document);
 //   3. an index without a position, a position no triangle names, a triangle that names a vertex
 //      twice;
 //   4. not closed: every edge has to be in exactly two triangles, once each way (the rule of
-//      `isClosed` of the kernel adapter); the message has the three counts;
-//   5. a volume that is not positive: the triangles face inwards, or enclose nothing.
+//      `isClosed` of the kernel adapter); `defects` has the three counts;
+//   5. a volume that is not positive: the triangles face inwards;
+//   6. a shell that encloses nothing: its mean thickness is not above `MESH_LIMITS.thinnest` of
+//      the largest coordinate (the library would drop it without a word);
+//   7. a shell that faces inwards and is not a hollow of a solid: the other triangles of the mesh
+//      have to wind once around one of its vertices (the sum of their solid angles seen from the
+//      vertex, over 4π, rounds to 1). Beside a solid such a shell hides a collision.
 //   Not checked: that the surface does not pass through itself, that two shells do not overlap.
-// - `shellsOf`: the signed volume of every connected piece (pieces that share a vertex are one).
+// - `shellsOf`: the pieces of the surface.
 export declare function storedMesh(mesh: IndexedMesh, name?: string): StoredMesh;
 export declare function indexedMesh(stored: StoredMesh): IndexedMesh;
 export declare function meshDefects(mesh: IndexedMesh): MeshDefects;
-export declare function meshProblem(mesh: IndexedMesh): string | undefined;
-export declare function shellsOf(mesh: IndexedMesh): number[];
+export declare function withoutWalls(mesh: IndexedMesh): { mesh: IndexedMesh; walls: number };
+export declare function meshProblem(mesh: IndexedMesh): MeshProblem | undefined;
+export declare function shellsOf(mesh: IndexedMesh): MeshShell[];
 
 // What the description for the AI and the forms read about the section (`SECTION_INFO.meshes`).
 export const MESHES_INFO: SectionInfo = {
@@ -177,10 +211,14 @@ export declare const IMPORT_FORMATS: { [F in ImportFormat]: ImportFormatSpec<Imp
 //   bytes per triangle (a normal, three corners as 32-bit floats, two bytes of attributes), all
 //   little-endian. A file is binary when its length is exactly 84 + 50 · that number; the rule
 //   comes first, because a binary file may begin with the word `solid`.
-// - ASCII: otherwise, when the text begins with `solid` after white space. Every `vertex x y z`
-//   is a corner, three to a triangle; several `solid` blocks are read as one mesh.
+// - ASCII: otherwise, when the text begins with `solid` after white space and holds a `vertex`.
+//   Every `vertex x y z` is a corner, three to a triangle; several `solid` blocks are read as one
+//   mesh. A number that is not finite, or corners that are not whole triangles, are a failure.
 // - Anything else is not an STL file (`ImportFailure`; the message gives the length of the file
-//   and the length the count would need).
+//   and the length the count would need): a binary file cut short, or one that begins with
+//   `solid` and has another length than its count says, ends here.
+// - A count above `MESH_LIMITS.triangles` (binary: the number at byte 80; ASCII: the corners
+//   read so far) stops the reading: `importMesh` answers `tooLarge` before anything is welded.
 // - The normals and the attributes are not read: a triangle faces the way its corners run.
 export const STL_TEXTS = {
   title: 'STL',
@@ -195,6 +233,7 @@ export interface MeshReport {
   about: Record<string, unknown>; // what the format said about the file
   facets: number; // triangles in the file
   dropped: number; // triangles left out: two of their corners are at one position
+  walls: number; // pairs of triangles left out: the same three vertices, facing opposite ways (the wall between two solids of the file)
   vertices: number;
   triangles: number;
   shells: number; // connected pieces of the surface
@@ -204,15 +243,17 @@ export interface MeshReport {
   bounds: { min: Vec3; max: Vec3 }; // mm, in the frame of the file
   // In words, for the caller to read: more than one shell (shells that overlap are counted twice
   // in the volume and in a collision with them, and are not detected); more than
-  // `MESH_LIMITS.note` triangles (collisions and gaps slow down with them).
+  // `MESH_LIMITS.note` triangles (a real collision with the body takes seconds, more the deeper
+  // it is); bounds below 1 mm or above 10 m (is `unit` right?).
   notes: string[];
 }
 
 // - `invalidArguments`: no such format, or an option of the wrong shape (`arg` names it).
 // - `unreadable`: the bytes are not a file of the format.
-// - `notASolid`: the triangles do not close a solid; `defects` has the counts when the edges are
-//   the reason (the message also covers a volume of zero and fewer than four triangles).
-// - `tooLarge`: more than `MESH_LIMITS.triangles` triangles; the message says how many.
+// - `notASolid`: the triangles do not close a solid (`meshProblem`, checks 1 to 7); `defects` has
+//   the counts when the edges are the reason.
+// - `tooLarge`: more than `MESH_LIMITS.triangles` triangles; the message says how many. Decided
+//   from the count of the file, before the weld.
 export type ImportOutcome =
   | { ok: true; mesh: StoredMesh; report: MeshReport }
   | { ok: false; error: { code: 'invalidArguments' | 'unreadable' | 'notASolid' | 'tooLarge'; message: string; arg?: ArgPath; defects?: MeshDefects } };
@@ -222,9 +263,10 @@ export type ImportOutcome =
 // 1. The options are checked against the description of the format and the format reads the bytes.
 // 2. The weld: corners at the same float32 position (−0 taken as 0) become one vertex. Triangles
 //    that lose a corner by it are left out and counted (`dropped`). No tolerance.
-// 3. `meshProblem`; a closed mesh with a negative volume is turned over whole first
-//    (`turnedOver`).
-// 4. The report, and the mesh in its stored form with `name`.
+// 3. `withoutWalls` (`walls`).
+// 4. `meshProblem`, whose code and message are the refusal; a closed mesh with a negative volume
+//    is turned over whole first (`turnedOver`).
+// 5. The report, and the mesh in its stored form with `name`.
 // The same bytes and options give the same mesh.
 export declare function importMesh<F extends ImportFormat>(format: F, bytes: Uint8Array, options?: ImportOptions<F>, name?: string): ImportOutcome;
 
@@ -291,8 +333,12 @@ export declare function placementTransform(placement: BodyPlacement, frame: Fram
 //   form only, and a mesh that is not there is the error `brokenReference` of the feature, with
 //   `refs: [{ mesh: <id> }]`.
 // - The body has the ID of the feature and one face, `{ feature, role: 'mesh' }` (see
-//   `MeshFaceName`). It is not a printed part by itself: the batch that adds the feature also sets
-//   `use: 'reference'` (and a `mass`) with setBodyProperties, for a bought part.
+//   `MeshFaceName`). It is not a reference part by itself: the batch that adds the feature also
+//   sets `use: 'reference'` (and a `mass`) with setBodyProperties, for a bought part.
+// - The entry of the registry: `createsBody` and `namesFaces` are true, `producesTool` is false;
+//   `refs` are those of the frame (a plane; a body and its face; a sketch and its point) and the
+//   mesh (the kind `mesh`); `patch.fields` are `mesh` and `placement`, and `patch.removable`
+//   answers for the six numbers of the placement.
 // - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ`: where the origin of the mesh is in
 //   the model and where its three axes point (unit vectors).
 // - Errors: `brokenReference` (the mesh; the frame), `nonPlanarFace` (the frame is a face that is
@@ -319,7 +365,9 @@ export const MESH_FEATURE_TEXTS = {
 // `mesh: { title: 'surface of an imported mesh', parts: {} }`.
 // - Its surface is published as `{ kind: 'general' }`. Internally (`FaceInfo` in solid.ts) it is
 //   a kind of its own, `{ planar: false; surface: 'mesh' }`: a surface about which nothing is
-//   known, flat regions included.
+//   known, flat regions included. `surfaceOf` and `transformFace` of solid.ts get a branch for it
+//   (`general`; unchanged by a transform, a mirror included).
+// - `measure` takes it as an entity and answers with the smallest distance on the mesh.
 // - A sketch or a plane on it is `nonPlanarFace`; the body has no edges.
 export type MeshFaceName = { feature: Id; role: 'mesh'; copy?: CopyTag[] };
 export type FaceNameAfter3b = FaceName | MeshFaceName;
@@ -341,7 +389,8 @@ export interface StepContextAddition {
 
 // One kind is added to the references of a feature (`RefKind` in validation.ts): `mesh`, a stored
 // mesh of the section. `requireRef` checks that the section has the entry; `featureRefs` leaves
-// the kind out, because it names no feature and takes no part in the order on the timeline.
+// the kind out, because it names no feature and takes no part in the order on the timeline;
+// `REF_LABEL` gets its words ("stored mesh").
 export type RefKindAddition = 'mesh';
 
 // ================================================================ the issue code
@@ -391,7 +440,12 @@ export const MESH_IMPORT_STEP: UpgradeStep = { name: '3b-mesh-import', run: (o) 
 export type PlaneRefAfter3b = Exclude<PlaneRef, { kind: 'face' }> | { kind: 'face'; body: Id; face: FaceNameAfter3b };
 export type PlaneFeatureAfter3b = Omit<PlaneFeature, 'base'> & { base: PlaneRefAfter3b };
 
-export type FeatureAfter3b = Feature | MeshFeature;
+// The draft widens the face name where calls.ts needs it: in a frame, in the base of a plane
+// feature, in the names of the result. In the code `FaceName` is one union, so every place that
+// takes or gives a face name has the new member: the plane of a sketch, an extent up to a face,
+// the arguments and the answers of the queries (`QueryArgs` and `QueryResult` here are those of
+// master and still say `FaceName`).
+export type FeatureAfter3b = Exclude<Feature, PlaneFeature> | PlaneFeatureAfter3b | MeshFeature;
 export interface DocumentAfter3b extends Omit<Document, 'features'> {
   features: FeatureAfter3b[];
   meshes: Meshes;
@@ -433,7 +487,9 @@ export interface EngineAfter3b extends Omit<Engine, 'execute' | 'preview' | 'get
 // - `path`: the file. `format`: a key of `IMPORT_FORMATS`; without it the extension of the path
 //   decides. `options`: those of the format.
 // - `id`: the ID of the stored mesh; without it the name of the file without its extension,
-//   reduced to letters, digits and underscores, with `_2`, `_3`, … when the section has it.
+//   reduced to letters, digits and underscores (`mesh` when nothing is left, or when that is
+//   `origin`), with `_2`, `_3`, … when the section has it: the tool reads the stored meshes of
+//   the engine the other tools use (`get_model`) before it sends the command.
 // - `name`: the name of the stored mesh; without it the name of the file.
 export interface ImportMeshArgs {
   path: string;
@@ -444,7 +500,9 @@ export interface ImportMeshArgs {
 }
 // The answer: the mesh that was stored, the report of the import, and the command that places it
 // written out for the caller to change and send (`execute`): a batch of `addFeature` with a mesh
-// feature on the base plane XY and `setBodyProperties` with `use: 'reference'`.
+// feature on the base plane XY and `setBodyProperties` with `use: 'reference'`. The command has
+// no `mass` (neither the file nor the tool knows it); `say` tells the caller to add the mass of
+// the data sheet.
 // A refusal of the import is the error of the tool: the message, with the counts of `defects`.
 export interface ImportMeshAnswer {
   mesh: Id;

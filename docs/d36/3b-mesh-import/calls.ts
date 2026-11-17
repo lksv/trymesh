@@ -50,8 +50,9 @@ const refusal = (command: CommandAfter3b): string => {
 const read = (outcome: ImportOutcome): { mesh: StoredMesh; report: MeshReport } => (outcome.ok ? outcome : fail(`${outcome.error.code}: ${outcome.error.message}`));
 // `takenOver` of the engine (D48), over the document and the command of this package.
 declare function takenOver(before: DocumentAfter3b, command: CommandAfter3b): Id[];
-// A cylinder along Z from a circle of its own sketch on XY, as `cylinder` of arm.ts builds one.
-declare function cylinder(id: Id, x: number, y: number, radius: number, from: number, to: number, operation?: 'new' | 'add' | 'cut', target?: Id): Command[];
+// A cylinder along Z from a circle of its own sketch on XY, as `cylinder` of arm.ts builds one;
+// here with the list of its targets.
+declare function cylinder(id: Id, x: number, y: number, radius: number, from: number, to: number, operation?: 'new' | 'add' | 'cut', targets?: Id[]): Command[];
 // The same triangles as text: `solid`, a `facet` with three `vertex` lines per triangle, `endsolid`.
 declare function asciiStl(binary: Uint8Array): Uint8Array;
 // A binary STL without its last triangle (the count at byte 80 lowered by one).
@@ -68,9 +69,12 @@ const MOTOR_FACE: FaceNameAfter3b = { feature: 'motor', role: 'mesh' };
 // 2.5 and length 10 on top, its axis along Z through the origin, standing on z = 0. Modelled in
 // the second engine and written as binary STL. (A test has no file of a real motor; this file has
 // what matters of one: round faces cut into triangles, a frame of its own, no unit.)
+let file: Uint8Array | undefined; // modelled once: every later call reads the same bytes
 export function motorFile(): Uint8Array {
-  const made = shop.execute({ type: 'batch', commands: [...cylinder('can', 0, 0, 14, 0, 30), ...cylinder('shaft', 0, 0, 2.5, 30, 40, 'add', 'can')] });
-  return made.ok ? shop.exportMesh('stl', ['can']) : fail(made.error.message);
+  if (file) return file;
+  const made = shop.execute({ type: 'batch', commands: [...cylinder('can', 0, 0, 14, 0, 30), ...cylinder('shaft', 0, 0, 2.5, 30, 40, 'add', ['can'])] });
+  file = made.ok ? shop.exportMesh('stl', ['can']) : fail(made.error.message);
+  return file;
 }
 
 // Reading it: one shell, nothing left out, not turned over; the volume is that of the body the
@@ -82,6 +86,7 @@ export function readMotor(): boolean {
     report.format === 'stl' &&
     report.about.encoding === 'binary' &&
     report.dropped === 0 &&
+    report.walls === 0 &&
     report.shells === 1 &&
     report.cavities === 0 &&
     !report.turnedOver &&
@@ -93,6 +98,16 @@ export function readMotor(): boolean {
     mesh.name === 'motor.stl' &&
     meshProblem(indexedMesh(mesh)) === undefined
   );
+}
+
+// A part written as solids stacked on one outline (the end caps and the stack of a stepper motor,
+// as an assembly is often exported): the two layers of each common face are left out, and what is
+// left is one solid. Measured: 4 pairs for a square outline and two seams (prisms of the kernel's
+// test kit), 200 for three cylinders of the engine; the volume is that of one body.
+export function stacked(): boolean {
+  const made = shop.execute({ type: 'batch', commands: [...box('low', 0, 0, 42, 42, 0, 10), ...box('stack', 0, 0, 42, 42, 10, 30), ...box('high', 0, 0, 42, 42, 30, 40)] });
+  const { report } = read(importMesh('stl', made.ok ? shop.exportMesh('stl', ['low', 'stack', 'high']) : fail(made.error.message)));
+  return report.walls === 4 && report.shells === 1 && Math.abs(report.volume - 42 * 42 * 40) < 1e-6;
 }
 
 // The same triangles as ASCII give the same stored mesh, text for text; the format tells the two
@@ -135,14 +150,22 @@ export function refused(): string[] {
 
 // The checks of a stored mesh are the engine's own, the ones `addMesh` and a load make: a mesh
 // built by hand goes through the same function.
-export function tetrahedron(): { stored: StoredMesh; insideOut: string | undefined; open: number } {
+export function tetrahedron(): { stored: StoredMesh; insideOut: string | undefined; open: number; beside: string | undefined } {
   const mesh: IndexedMesh = { positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) };
   const turned: IndexedMesh = { positions: mesh.positions, triangles: Uint32Array.from([0, 1, 2, 0, 3, 1, 1, 3, 2, 0, 2, 3]) };
   const holed: IndexedMesh = { positions: mesh.positions, triangles: mesh.triangles.slice(0, 9) };
+  // the tetrahedron and, 50 mm beside it, a smaller one inside out: closed, of a positive volume,
+  // and no solid: the second shell faces inwards and is not a hollow of the first (measured: the
+  // kernel takes such a mesh, and a collision with it is hidden)
+  const two: IndexedMesh = {
+    positions: Float32Array.from([...mesh.positions, 50, 0, 0, 55, 0, 0, 50, 5, 0, 50, 0, 5]),
+    triangles: Uint32Array.from([...mesh.triangles, ...Array.from(turned.triangles, (vertex) => vertex + 4)]),
+  };
   return {
     stored: storedMesh(mesh, 'tetrahedron'), // 48 bytes each: 64 characters of base64
-    insideOut: meshProblem(turned), // the volume is not positive
+    insideOut: meshProblem(turned)?.code, // 'notASolid': the volume is not positive
     open: meshDefects(holed).open, // 3
+    beside: meshProblem(two)?.code, // 'notASolid' (check 7)
   };
 }
 
@@ -216,14 +239,31 @@ export function noPlaneOnIt(): string | undefined {
 }
 
 // No feature changes it: a hole through the motor, a boss on it, and a cut with two targets of
-// which it is one, end in `importedTarget` and change no target. (Measured: flush with a flat of
-// a turned imported body, such a tool leaves sheets that no check finds.)
+// which it is one, end in `importedTarget` and change no target, the designed one neither.
+// (Measured: flush with a flat of a turned imported body, such a tool leaves sheets that no
+// check finds.) The same cut with the link alone as its target runs.
 export function noToolOnIt(): boolean {
-  const preview = engine.preview({ type: 'batch', commands: [...cylinder('bore', 60, 0, 1, 0, 60, 'cut', 'motor'), ...cylinder('both', 60, 0, 1, 0, 60, 'cut', 'upper')] });
+  const preview = engine.preview({
+    type: 'batch',
+    commands: [
+      ...cylinder('bore', 60, 0, 1, 0, 60, 'cut', ['motor']),
+      ...cylinder('boss', 60, 0, 5, 48, 52, 'add', ['motor']),
+      ...cylinder('both', 60, 0, 1, 0, 60, 'cut', ['upper', 'motor']),
+      ...cylinder('link', 60, 0, 1, 0, 60, 'cut', ['upper']),
+    ],
+  });
   if (!preview.ok) return fail(preview.error.message);
-  const bore = preview.state.evaluation.features['bore'];
-  const before = engine.getState().evaluation.bodies['motor'].solid;
-  return bore.status === 'error' && (bore.error?.code as string) === 'importedTarget' && JSON.stringify(bore.error?.refs) === '["motor"]' && preview.state.evaluation.bodies['motor'].solid === before && preview.state.evaluation.features['both'].status === 'ok';
+  const { features, bodies } = preview.state.evaluation;
+  const before = engine.getState().evaluation.bodies;
+  const refusedBy = (id: Id): boolean => features[id].status === 'error' && (features[id].error?.code as string) === 'importedTarget' && JSON.stringify(features[id].error?.refs) === '["motor"]';
+  return (
+    refusedBy('bore') &&
+    refusedBy('boss') &&
+    refusedBy('both') && // names the imported target only
+    features['link'].status === 'ok' &&
+    bodies['motor'].solid === before['motor'].solid &&
+    bodies['upper'].volume < before['upper'].volume // by `link` alone: one hole of radius 1
+  );
 }
 // Neither does a copy of it made by a pattern: the copy carries the face of the mesh.
 export function noToolOnACopy(): string | undefined {
@@ -231,7 +271,7 @@ export function noToolOnACopy(): string | undefined {
     type: 'batch',
     commands: [
       { type: 'addFeature', feature: { id: 'twin', name: 'Twin', suppressed: false, type: 'pattern', source: { type: 'body', body: 'motor' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 40 } } } },
-      ...cylinder('boreTwin', 60, 40, 1, 0, 60, 'cut', 'twin/1'),
+      ...cylinder('boreTwin', 60, 40, 1, 0, 60, 'cut', ['twin/1']),
     ],
   });
   return preview.ok ? preview.state.evaluation.features['boreTwin'].error?.code : fail(preview.error.message); // 'importedTarget'
@@ -256,12 +296,21 @@ export function sweepElbow(): { value: number; motor: boolean }[] {
 }
 
 // The smallest gap between the forearm and the motor with the elbow at 1.2, measured to the
-// triangles of the mesh in the pose (15.04 with the cylinder, the part of 5a).
+// triangles of the mesh in the pose (15.04 with the cylinder, the part of 5a). The search
+// distance is 5 mm unless the call says more.
 export function gapToTheMotor(): number {
   const preview = engine.preview({ type: 'setPose', values: { elbow: 1.2 } });
   if (!preview.ok) return fail(preview.error.message);
-  const report = unwrap(engine.query('gap', { bodies: ['forearm', 'motor'] }, { state: preview.state }));
+  const report = unwrap(engine.query('gap', { bodies: ['forearm', 'motor'], within: 30 }, { state: preview.state }));
   return report.pairs[0].distance;
+}
+
+// An edit of a feature before the motor that leaves the number of faces as it is (the base made
+// lower) runs the step of the motor again, and the body is the same object as before: what the
+// queries remember by a solid (its analysis, its collisions) stays.
+export function sameSolid(): boolean {
+  const preview = engine.preview({ type: 'setField', feature: 'base', path: 'extent/distance', value: 9 });
+  return preview.ok ? preview.state.evaluation.bodies['motor'].solid === engine.getState().evaluation.bodies['motor'].solid : fail(preview.error.message);
 }
 
 // The mass of what hangs beyond the shoulder is what it was: the motor weighs what its data sheet
@@ -329,15 +378,24 @@ export function lostFrame(): string | undefined {
 // ---------------------------------------------------------------- f. one stored mesh, several bodies
 
 // A second motor from the same stored mesh: a feature and no data. Upside down under the link,
-// on a planar face of it.
+// on a planar face of it. The frame of that face is the one a sketch on it has: its origin at the
+// origin of the model, its normal along −Z and its X along −X, so the offset that puts the motor
+// under the point (60, 0) is x = −60 (the facts of the feature say where it ended up).
 export function secondMotor(): boolean {
   const before = JSON.stringify(engine.getState().document.meshes).length;
   const under: PlaneRefAfter3b = { kind: 'face', body: 'upper', face: { feature: 'upper', role: 'startCap' } };
   const state = run(
-    { type: 'addFeature', feature: { id: 'motor2', name: 'Motor 2', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: under, x: 20 } } },
+    { type: 'addFeature', feature: { id: 'motor2', name: 'Motor 2', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: under, x: -60 } } },
     { type: 'setBodyProperties', body: 'motor2', patch: { use: 'reference', mass: 280 } },
   );
-  return JSON.stringify(state.document.meshes).length === before && state.evaluation.meshes['nema'].usedBy.join() === 'motor,motor2' && state.evaluation.bodies['motor2'].bounds.max[2] === 0; // the normal of that face points down
+  const origin = (state.evaluation.features['motor2'].facts ?? fail('the feature has facts')).origin as Vec3;
+  return (
+    JSON.stringify(state.document.meshes).length === before &&
+    state.evaluation.meshes['nema'].usedBy.join() === 'motor,motor2' &&
+    Math.abs(origin[0] - 60) < 1e-9 &&
+    Math.abs(origin[1]) < 1e-9 &&
+    state.evaluation.bodies['motor2'].bounds.max[2] === 0 // the normal of that face points down
+  );
 }
 
 // A stored mesh in use is not removed; unused, it is listed as such and removed.
@@ -401,10 +459,13 @@ export function loading(): string[] {
 // The tool of the server: the path of the file, and nothing of the mesh in the call.
 export const overMcp: ImportMeshArgs = { path: '~/parts/nema17.stl', options: { unit: 'mm' } };
 // Its answer: what was stored, what the import found, and the command that places it, for the
-// caller to change (the frame, the offsets, the mass) and send with `execute`.
+// caller to change (the frame, the offsets) and send with `execute`. The command has no mass: the
+// tool does not know it, and its text says to add the one of the data sheet.
 export function answered(answer: ImportMeshAnswer): boolean {
   const { command } = answer.next;
-  return answer.mesh === 'nema17' && answer.report.shells >= 1 && command.type === 'batch' && command.commands.length === 2 && command.commands[0].type === 'addFeature' && command.commands[1].type === 'setBodyProperties';
+  if (command.type !== 'batch' || command.commands.length !== 2) return false;
+  const [place, properties] = command.commands;
+  return answer.mesh === 'nema17' && answer.report.shells >= 1 && place.type === 'addFeature' && properties.type === 'setBodyProperties' && properties.patch.use === 'reference' && properties.patch.mass === undefined;
 }
 // `get_document` prints the stored mesh without its data, `get_model` a line per stored mesh.
 export function shown(): { document: StoredMeshShown; model: MeshSummary } {

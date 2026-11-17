@@ -15,6 +15,13 @@
 // one), and no flat face of the body has gained triangles facing against it (a face turned round,
 // the finding of the review of D63); the refusals are listed by their detail.
 // More cases: BLEND_FUZZ_COUNT=600 (bodies), another seed: BLEND_FUZZ_SEED, farther: BLEND_FUZZ_FAR.
+// The second test, the run-outs of D67 (docs/d36/4c-blend-round-ends/design.md, "Measured", R8),
+// through the real step: random holes through the top-front edge of a box and random pockets
+// around a bore, each blend against the same blend made before the hole or the pockets; what
+// counts: every accepted run-out within 2.5 % of that reference, every refusal a bridge (the
+// corner passes behind the face, or two run-outs reach across one gap), or a kernelFailure where the
+// reference fails in the kernel too (far from the origin, D63's limit). More: RUN_OUT_FUZZ_COUNT
+// (default 12 of each), RUN_OUT_FUZZ_SEED, RUN_OUT_FUZZ_FAR (mm, default 0: how far from the origin).
 // Run from the root of the repository: npx vitest run --config spikes/vitest.config.ts
 import { expect, test } from 'vitest';
 import { createEngine, emptySketch } from '../packages/engine/src/index';
@@ -238,4 +245,83 @@ test('the fuzz of single edges', () => {
   for (const [key, count] of [...outcomes].sort((x, y) => y[1] - x[1])) console.log(`${count} × ${key}${examples.has(key) ? `: ${examples.get(key)?.join('; ')}` : ''}`);
   if (failures.length) console.log(failures.slice(0, 20).join('\n'));
   expect(failures).toEqual([]);
+});
+
+// ---------------------------------------------------------------- run-outs (D67, R8 of the design)
+
+test('the fuzz of run-outs: holes through the edge of a box, pockets around a bore', () => {
+  const next = random(Number(process.env.RUN_OUT_FUZZ_SEED ?? 1));
+  const count = Number(process.env.RUN_OUT_FUZZ_COUNT ?? 12);
+  const far = Number(process.env.RUN_OUT_FUZZ_FAR ?? 0);
+  const blendOf = (kind: 'chamfer' | 'fillet', id: Id, edge: EdgeName, size: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: kind, body: 'E', edges: [edge], ...(kind === 'chamfer' ? { distance: size } : { radius: size }) } as never });
+  const volumeOf = (engine: Engine | undefined): number | undefined => (engine ? engine.getState().evaluation.bodies.E?.volume : undefined);
+  const made = (engine: Engine, ...commands: Command[]): Engine | undefined => (run(engine, ...commands) ? engine : undefined);
+  // a box 60 × 40 × h with a hole of radius r at (30, yc) through it
+  const holed = (tolerance: number, r: number, yc: number, h: number, before: Command[] = []): Engine | undefined => {
+    const engine = newEngine(tolerance);
+    if (!run(engine, sketch('s', XY), polygon('s', [[far, far], [far + 60, far], [far + 60, far + 40], [far, far + 40]]), extrude('E', 's', loop(4), h))) return undefined;
+    if (before.length && !run(engine, ...before)) return undefined;
+    return made(engine, sketch('h', { kind: 'face', body: 'E', face: cap('E') }), circle('h', 'c', far + 30, far + yc, r), extrude('H', 'h', ['c'], -h - 5, 'cut'));
+  };
+  // a plate with a bore R 29.5 and n pockets of radius r on the circle `at`, 4 deep
+  const pocketed = (tolerance: number, n: number, r: number, at: number, before: Command[] = []): Engine | undefined => {
+    const engine = newEngine(tolerance);
+    if (!run(engine, sketch('s', XY), polygon('s', [[far - 40, far - 40], [far + 40, far - 40], [far + 40, far + 40], [far - 40, far + 40]]), extrude('E', 's', loop(4), 8), sketch('b', { kind: 'face', body: 'E', face: cap('E') }), circle('b', 'h', far, far, 29.5), extrude('H', 'b', ['h'], -10, 'cut'))) return undefined;
+    if (before.length && !run(engine, ...before)) return undefined;
+    const pockets = Array.from({ length: n }, (_, k) => circle('p', `k${k}`, far + at * Math.cos((2 * Math.PI * k) / n), far + at * Math.sin((2 * Math.PI * k) / n), r));
+    return made(engine, sketch('p', { kind: 'face', body: 'E', face: cap('E') }), ...pockets, {
+      type: 'addFeature',
+      feature: { id: 'P', name: 'P', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'p', regions: Array.from({ length: n }, (_, k) => ({ outerLoop: [`k${k}`] })) }, extent: { type: 'distance', start: 0, distance: -4 }, operation: 'cut', targets: ['E'] },
+    });
+  };
+  const tally = new Map<string, number>();
+  const failures: string[] = [];
+  let worst = 0;
+  const check = (label: string, engine: Engine | undefined, reference: () => Engine | undefined, kind: 'chamfer' | 'fillet', edge: EdgeName, size: number): void => {
+    if (!engine) return void tally.set('model refused', (tally.get('model refused') ?? 0) + 1);
+    const result = engine.preview(blendOf(kind, 'blend', edge, size));
+    if (!result.ok) throw new Error(`${label}: ${result.error.message}`);
+    const outcome = result.state.evaluation.features.blend;
+    let key = outcome.status === 'ok' ? 'ok' : /passes behind|reach across the gap/.test(outcome.error?.message ?? '') ? 'bridge' : `${outcome.error?.code}: ${outcome.error?.message.replace(/^[^(]*\(/, '(')}`;
+    // far from the origin the kernel refuses some blends of round faces made before the void too
+    // (a known limit of D63): that is no failure of the run-out
+    if (outcome.error?.code === 'kernelFailure' && volumeOf(reference()) === undefined) key = 'kernelFailure, the reference too';
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+    if (key !== 'ok' && key !== 'bridge' && key !== 'kernelFailure, the reference too') failures.push(`${label}: ${key}`);
+    if (key !== 'ok') return;
+    const [plain, blended] = [volumeOf(engine), volumeOf(reference())];
+    if (plain === undefined || blended === undefined) return void tally.set('reference refused', (tally.get('reference refused') ?? 0) + 1);
+    const taken = (plain as number) - result.state.evaluation.bodies.E.volume;
+    const relative = Math.abs(taken - (plain - blended)) / Math.max(Math.abs(plain - blended), 1e-9);
+    worst = Math.max(worst, relative);
+    if (relative > 0.025) failures.push(`${label}: ${taken.toFixed(4)} against the reference ${(plain - blended).toFixed(4)}`);
+  };
+  const started = performance.now();
+  for (let i = 0; i < count; i++) {
+    const tolerance = TOLERANCES[i % TOLERANCES.length];
+    {
+      const r = 1 + 5 * next();
+      const phi = ((12 + 78 * next()) * Math.PI) / 180;
+      const yc = (next() < 0.5 ? 1 : -1) * r * Math.cos(phi);
+      const h = 8 + 20 * next();
+      const kind = next() < 0.5 ? 'chamfer' : 'fillet';
+      const size = Number((0.2 + 2.3 * next()).toFixed(3));
+      const edge: EdgeName = { a: cap('E'), b: side('E', 'l0') };
+      check(`hole r ${r.toFixed(2)} at ${((phi * 180) / Math.PI).toFixed(1)}° ${kind} ${size} tol ${tolerance}`, holed(tolerance, r, yc, h), () => holed(tolerance, r, yc, h, [blendOf(kind, 'C', edge, size)]), kind, edge, size);
+    }
+    {
+      const n = 3 + Math.floor(17 * next());
+      const at = 29.5 + (next() * 2 - 1);
+      const r = Math.min(1 + 3 * next(), 0.45 * ((2 * Math.PI * at) / n));
+      const kind = next() < 0.5 ? 'chamfer' : 'fillet';
+      const size = Number((0.2 + 1.3 * next()).toFixed(3));
+      if (Math.abs(at - 29.5) >= r - 0.2) continue;
+      const edge: EdgeName = { a: cap('E'), b: side('H', 'h') };
+      check(`${n} pockets r ${r.toFixed(2)} at ${at.toFixed(2)} ${kind} ${size} tol ${tolerance}`, pocketed(tolerance, n, r, at), () => pocketed(tolerance, n, r, at, [blendOf(kind, 'C', edge, size)]), kind, edge, size);
+    }
+  }
+  console.log(`run-outs: ${JSON.stringify(Object.fromEntries(tally))}, the largest difference from the reference ${(100 * worst).toFixed(2)} %, ${((performance.now() - started) / 1000).toFixed(1)} s`);
+  if (failures.length) console.log(failures.slice(0, 20).join('\n'));
+  expect(failures).toEqual([]);
+  expect(tally.get('ok') ?? 0).toBeGreaterThanOrEqual(count / 2);
 });

@@ -82,6 +82,12 @@ The root document stores the documents of the studios and subassemblies (`docume
 
 - The Onshape edges come from the dump (a line by its ends, a circle by centre, radius and axis) and are looked up among the edges of the trymesh body (the query `body`). One Onshape edge can be several trymesh edges (the circle of a bore split by pockets, an edge split where the converter split a curve): every match is taken.
 - When a feature is refused, each edge is tried alone and what passes stays. On this model 4 of 10 chamfers were converted and the one fillet was not. The disc's chamfer is on the edges of the splines, which the generator replaced; the other refusals were all limits of D63: an edge that ends at a round face (the bore broken by the pin pockets), a straight edge between two cylinders (the 32 edges of the fillet), an arc that meets another edge at an angle, and an edge ending where two flush faces of two extrusions meet (partly a result of splitting the curves).
+- With the run-outs of D67 (2026-11-17) the same 4 of 10 convert, and the volumes are the same; what the refusals say now:
+  - Housing Middle, Chamfer 2 (0.5, 32 edges): every edge runs out into its pin pockets, but the rim is not a plain top. The converter split the bore at the pockets, so the 32 edges are the 16 arcs of the rim under the lip of the ring above (its inner radius 29, the bore 29.5) and the 16 of the rim at the bottom, and the face of each edge across the bore is that lip, 0.5 wide. A concave chamfer of 0.5 reaches its inner edge exactly, and D63's check of the overshoot refuses it (0.039 mm² of the tool left on the lip's wall). At 0.49 all 32 edges convert, 24.9 mm³ added, in about 1 s.
+  - Motor Shaft, Chamfer 1 (2 edges): the edges are the concave feet of a tab on the end of the shaft, not the top edges of a slot as the design reconstructed them. Their inner end has two planes (the socket and the tab), refused as before; their outer end runs past the shaft's rim into the air, a stop, refused as deferred.
+  - Motor Shell, Chamfer 2: a stop (the concave foot of a rib past the rim of the round plate), refused with the advice to chamfer before the feature that makes the rim.
+  - Input Shaft, Chamfers 1 and 2: half a smooth chain (the converter's split arcs) and an end at two faces (the lobes), as before.
+  - Housing, Fillet 1: the straight edges between the pockets and the bore are not found as edges D63 takes (of the kind other).
 
 ### Assemblies
 
@@ -104,7 +110,7 @@ The root document stores the documents of the studios and subassemblies (`docume
 | Splines | The cycloidal disc needed an override | Step 6; here the generator of D61 did better |
 | Sketch pattern and mirror, projection from another sketch, constraints on the origin | 287 of 380 constraints lost; derived sketches copied | Step 6 |
 | Start of an extrusion at a face | 31 extrusions started at a number | `from` (D66): all 31 written as `from` (2026-11-17), the volumes of the parts unchanged |
-| Chamfer and fillet of an edge ending at a round face, of a straight edge between round faces | 6 of 11 features left out (a seventh is on the disc's splines) | Limits of D63 |
+| Chamfer and fillet of an edge ending at a round face, of a straight edge between round faces | 6 of 11 features left out (a seventh is on the disc's splines) | Run-outs past a cylinder or (an arc) a plane parallel to its axis taken (D67, 2026-11-17); still left out: the housing's rim (a chamfer as wide as the lip it lies under, D63's overshoot check), stops (the motor shaft's tab, the motor shell's ribs), two faces at an end (the input shaft's lobes, the shaft's socket), the fillet of straight edges between the pockets and the bore |
 | Placing a body of this document (move, rotate) | Solved by inserting documents | `insert` (D62) |
 | Mates, assembly solving | Positions taken as solved | Not planned (D36); the mechanism (D49) for joints |
 | Direct editing (`moveFace`, the Bambu and Ender variants of the parts) | Variants not converted | Not planned; parameters and the values of an insertion are the way in trymesh |

@@ -678,3 +678,95 @@ describe('the start of an extent at a plane: the design review of D66, round 2',
     expect(state.evaluation.features.H.error).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the bore below the head has to be longer than 0\.1 mm/) });
   });
 });
+
+describe('the design review of D67: chamfers and fillets that run out into round faces', () => {
+  // The housing of the actuator: a plate 80 × 80 × 8, a bore R 29.5, 16 pockets r 2.5 on the circle
+  // 29, `depth` deep; `pins`: pins r 0.1 standing on the floor of the pocket at (29, 0).
+  const housing = (chordTolerance: number, depth = 4, pins: [number, number][] = []): EngineState => {
+    const engine = newEngine();
+    const loaded = engine.load(JSON.stringify({ ...engine.getState().document, settings: { ...engine.getState().document.settings, chordTolerance } }));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    run(engine, addSketch('s', XY), rectangle('s', 'r', -40, -40, 80, 80, null), addExtrude('E', 's', [rectLoop('r')], 8), addSketch('b', onFace('E', cap('E'))), circle('b', 'h', 0, 0, 29.5), addExtrude('H', 'b', [['h']], -10, 'cut', 'E'));
+    run(engine, addSketch('p', onFace('E', cap('E'))), ...Array.from({ length: 16 }, (_, k) => circle('p', `k${k}`, 29 * Math.cos((k * Math.PI) / 8), 29 * Math.sin((k * Math.PI) / 8), 2.5)), addExtrude('P', 'p', Array.from({ length: 16 }, (_, k) => [`k${k}`]), -depth, 'cut', 'E'));
+    if (pins.length) {
+      run(engine, addSketch('q', XY), ...pins.map(([x, y], i) => circle('q', `n${i}`, x, y, 0.1)), {
+        type: 'addFeature',
+        feature: { id: 'N', name: 'N', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'q', regions: pins.map((_, i) => ({ outerLoop: [`n${i}`] })) }, extent: { type: 'distance', start: 8 - depth, distance: depth }, operation: 'add', targets: ['E'] },
+      });
+    }
+    return engine.getState();
+  };
+  const RIM = edge(cap('E'), side('H', 'h'));
+  const applied = (state: EngineState, command: Command) => {
+    const engine = newEngine();
+    engine.load(JSON.stringify(state.document));
+    const result = engine.preview(command);
+    if (!result.ok) throw new Error(result.error.message);
+    const outcome = result.state.evaluation.features[(command as { feature: { id: string } }).feature.id];
+    return { code: outcome.error?.code, message: outcome.error?.message ?? '', refs: outcome.error?.refs ?? [], state: result.state };
+  };
+  const namesPocket = (refs: unknown[]): boolean => refs.some((ref) => typeof ref === 'object' && ref !== null && (ref as FaceName).feature === 'P');
+
+  it('round 2: a pin standing in a pocket within the run-out was cut silently; the void check refuses it', () => {
+    // the rim meets the wall of the pocket at (29, 0) at the angle 4.79°; a pin 0.6° back into the
+    // pocket at the radius 29.9, under the corner of a chamfer of 1
+    const at = (4.2 * Math.PI) / 180;
+    const pinned = applied(housing(0.01, 4, [[29.9 * Math.cos(at), 29.9 * Math.sin(at)]]), chamfer('c', 'E', [RIM], 1));
+    expect(pinned.code, pinned.message).toBe('blendDoesNotFit');
+    expect(pinned.message).toMatch(/would take .* mm³ beyond the end face in refs within its run-out/);
+    expect(namesPocket(pinned.refs)).toBe(true);
+  });
+
+  it('round 3: a pocket 0.3 deep under a fillet of 0.5 slipped under a bound with an area term; refused at 0.01 and 0.05', () => {
+    for (const tolerance of [0.01, 0.05]) {
+      const shallow = applied(housing(tolerance, 0.3), fillet('c', 'E', [RIM], 0.5));
+      expect(shallow.code, shallow.message).toBe('blendDoesNotFit');
+      expect(namesPocket(shallow.refs)).toBe(true);
+    }
+  });
+
+  it('round 2: the cap of a run-out is renamed into the blend, never into the end face: every pocket keeps its cylinder, every vertex of the cone lies on it', () => {
+    const result = applied(housing(0.05), chamfer('c', 'E', [RIM], 0.5));
+    expect(result.message).toBe('');
+    const ev = result.state.evaluation;
+    const body = ev.bodies.E;
+    for (const face of body.faces) {
+      const name = ev.faceNames[face.id];
+      if (name.feature !== 'P' || name.role !== 'side') continue;
+      const surface = ev.faceSurfaces[face.id];
+      expect(surface.kind === 'cylinder' && Math.abs(surface.radius - 2.5) < 1e-9, JSON.stringify(surface)).toBe(true);
+    }
+    const coneFace = body.faces.find((face) => faceKey(ev.faceNames[face.id]) === 'c/chamfer/0');
+    const cone = coneFace ? ev.faceSurfaces[coneFace.id] : undefined;
+    expect(cone?.kind).toBe('cone');
+    if (cone?.kind !== 'cone' || !coneFace) return;
+    const p = body.solid.positions;
+    let off = 0;
+    for (let t = 0; t < body.solid.faceIds.length; t++) {
+      if (body.solid.faceIds[t] !== coneFace.id) continue;
+      for (let k = 0; k < 3; k++) {
+        const i = body.solid.triangles[3 * t + k];
+        const d = [p[3 * i] - cone.apex[0], p[3 * i + 1] - cone.apex[1], p[3 * i + 2] - cone.apex[2]];
+        const a = Math.hypot(...cone.axis);
+        const z = (d[0] * cone.axis[0] + d[1] * cone.axis[1] + d[2] * cone.axis[2]) / a;
+        const rho = Math.sqrt(Math.max(0, d[0] ** 2 + d[1] ** 2 + d[2] ** 2 - z * z));
+        off = Math.max(off, Math.abs(rho * Math.cos(cone.halfAngle) - z * Math.sin(cone.halfAngle)));
+      }
+    }
+    // the allowance of D63: the lift and the chord tolerance (0.075 + 0.05)
+    expect(off).toBeLessThanOrEqual(0.125 + 1e-3);
+  });
+
+  it('round 1: an end at a cone (a tapered hole), a kind not taken, is refused naming it in refs', () => {
+    const engine = newEngine();
+    box(engine);
+    const tapered = run(engine, addSketch('t', onFace('E', cap('E'))), circle('t', 'h', 30, 0, 4), {
+      type: 'addFeature',
+      feature: { id: 'H', name: 'H', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 't', regions: [{ outerLoop: ['h'] }] }, extent: { type: 'distance', start: 0, distance: -25, taper: 0.1 }, operation: 'cut', targets: ['E'] },
+    });
+    const cone = applied(tapered, chamfer('c', 'E', [edge(cap('E'), side('E', 'ra'))], 1));
+    expect(cone.code).toBe('unsupportedEdge');
+    expect(cone.message).toMatch(/ends at a round face \(H\/side\/h, a cone\) that does not continue a face of the edge, which this feature cannot run out into yet/);
+    expect(cone.refs.some((ref) => typeof ref === 'object' && ref !== null && 'role' in ref && faceKey(ref as FaceName) === 'H/side/h')).toBe(true);
+  });
+});

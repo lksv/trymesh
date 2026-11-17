@@ -7,7 +7,7 @@
 // list with the versions read is in design.md, "Sources"); the prototype of the spike wrote files
 // with exactly these values and independent readers took them (design.md, "Measured").
 
-import type { ArgSpecs, ArgsOf, Engine, ExportFormatSpec, ExportFormats, Exported, FaceName, Frame, Id, QueryContext, QueryOptions, QueryOutcome, RunArgsOf, Vec2 } from '../../../packages/engine/src/index';
+import type { ArgSpecs, ArgsOf, Engine, ExportFormatSpec, ExportFormats, Exported, FaceName, Frame, Id, QueryContext, QueryOptions, QueryOutcome, RunArgsOf, SketchSolver, Solid, SolidKernel, Vec2 } from '../../../packages/engine/src/index';
 
 // ================================================================ the options
 
@@ -549,3 +549,143 @@ export interface ExportPanel {
 // The stand-in of the save of the app (`download` of `dom.ts`).
 export type SaveFile = (name: string, bytes: Uint8Array, mediaType: string) => void;
 export declare function runExportForm(panel: ExportPanel, engine: EngineAfter2g, marker: Id | null, save: SaveFile): void;
+
+// ================================================================ the addition of 2026-11-17: the package compressed
+
+// The owner decided on 2026-11-17 that the 3MF is compressed, with an existing third-party
+// library the session chooses. The design of the addition is deflate.md; this part states what it
+// changes of the parts above and of the code of master (`633a6ca`, where 2g is implemented).
+// Where a name below replaces one above, it says so. The values were written by a prototype of
+// the writer and read back by independent readers (deflate.md, "Measured").
+
+// ---- the port
+//
+// In the code: `types.ts`, in the section of the ports beside `SketchSolver` and `SolidKernel`
+// (so the description for the AI leaves it out, as it leaves out the other two).
+//
+// A compressor of bytes into a raw DEFLATE stream: the format of RFC 1951, with no zlib or gzip
+// wrapper around it. It is what the compression method 8 of a ZIP holds (.ZIP File Format
+// Specification 6.3.10, 4.4.5 and 5.5), and the one method besides storing that a 3MF package may
+// use (3MF core 1.4.0, 1.1: files of the archive "MUST use the compression method `Deflate` ... or
+// be `stored uncompressed`"; Open Packaging Conventions, 7.3.6 and annex B, table B.4).
+//
+// What an implementation guarantees:
+// 1. The result is one complete stream that an inflater turns back into exactly `bytes`, and that
+//    ends with its last block: nothing follows it. For every input, also one with no bytes.
+// 2. The same input gives the same output, wherever the implementation runs (Node, a browser):
+//    the engine is deterministic and a file of the app is the file of the server.
+// 3. `bytes` is not changed and not kept. The result is a new array that the caller owns.
+// 4. It is synchronous, as an export is.
+// 5. It throws when it cannot compress; the writer of the engine turns that into `failed`.
+// Not guaranteed: that the stream is shorter than the input (the writer stores an entry whose
+// stream is not), any particular level, and that two implementations give the same stream.
+export interface Deflater {
+  deflate(bytes: Uint8Array): Uint8Array;
+}
+
+// ---- the engine
+//
+// `createEngine` takes the compressor beside the solver and the kernel, and may go without it:
+// an engine without one writes every file stored, the bytes of master. (`Deps` of
+// `recompute/state.ts` stays the two ports of the recompute; `EngineDeps` is what the engine
+// takes, in `engine.ts`, exported from the index.)
+export interface EngineDeps {
+  solver: SketchSolver;
+  kernel: SolidKernel;
+  deflater?: Deflater;
+}
+export declare function createEngine(deps: EngineDeps): EngineAfter2g;
+// A format reads the compressor from its context, where it reads the kernel: a member of
+// `QueryContext` (`query/spec.ts`), set from `ContextDeps` (`query/context.ts`). Absent when the
+// engine has none. Unlike the kernel of the context it is not wrapped: a format hands it to `zip`
+// and does not call it, and `zip` turns a failure of the compressor into a refusal.
+// (A stand-in: in the code the member is added to `QueryContext` itself.)
+export interface ExportContext extends QueryContext {
+  deflater?: Deflater;
+}
+
+// ---- the ZIP of the engine, with a compressor
+//
+// Replaces `storedZip` above (`export/zip.ts`, exported from the index): the same writer, with
+// one more branch. `ZipEntry`, `crc32`, `ZIP_NAME_LIMIT` and every value of the records stay as
+// stated above, with these changes for an entry that is written deflated:
+// - compression method 8 (4.4.5: "The file is Deflated");
+// - version needed to extract 20 (4.4.3.2: "2.0 - File is compressed using Deflate
+//   compression");
+// - version made by 20 with the upper byte 0, where a stored entry has 10, also when both are in
+//   one archive. 4.4.2.3 calls the field the version "supported by the software used to encode
+//   the file", which reads as one value for a writer; this writer states per entry what the entry
+//   uses, so a stored entry is the same bytes whatever else is in the archive (a choice; the
+//   readers of the spike took it);
+// - general purpose bits 1 and 2 are 0 (4.4.4: "Normal (-en) compression option was used");
+// - the compressed size is the length of the stream, the uncompressed size that of the bytes;
+// - the CRC-32 is that of the bytes of the file, not of the stream (4.4.7), computed by `crc32`.
+// Which entry is deflated: one that has bytes, when a deflater is given and its stream is
+// shorter than the bytes. Every other entry is stored, exactly as `storedZip` wrote it; so
+// `zip(entries)` without a deflater is `storedZip(entries)`, byte for byte. An entry with no
+// bytes is not given to the deflater (4.3.8: such an entry "MUST NOT include file data").
+// The refusals are those of `storedZip` (`QueryFailure('failed')`, the same texts). The number of
+// entries, the names and an entry of 0xFFFFFFFF bytes or more are refused before anything is
+// compressed; the sizes together are those of what is written, so they are checked after. And:
+// - a deflater that throws is `failed` with the text `the compressor failed: <message>`: the
+//   message of the `Error` it threw, or the thrown value as a text when it is no `Error`;
+// - one that answers with something that is not a `Uint8Array` is `failed` with
+//   `the compressor failed: it answered with <what typeof says> where bytes are expected`.
+// Nothing checks that the stream inflates back (deflate.md, "Known limits").
+export const ZIP_ENTRY = {
+  stored: { method: 0, version: 10 },
+  deflated: { method: 8, version: 20 },
+} as const;
+export declare function zip(entries: readonly ZipEntry[], deflater?: Deflater): Uint8Array;
+
+// ---- the format `3mf`
+//
+// The package is `zip` of its three items with the compressor of the context: with one, all
+// three are deflated (measured: 319 to 197 bytes, 260 to 178, and the model part 6.1 to 6.4 times
+// smaller); without one the file is the stored one of master. Nothing else of the format changes:
+// the items, their order, the model part, `about` (`MeshAbout`), the path and the media type.
+export declare function threeMfPackage(objects: readonly (ThreeMfObject & { solid: Solid })[], deflater?: Deflater): Uint8Array;
+// The summary of the entry (replaces `FORMAT_TEXTS['3mf'].summary` above: its last sentence).
+// One text for every engine, so it says both cases, and it names no caller.
+export const THREE_MF_SUMMARY =
+  'Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. ' +
+  'One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.';
+
+// ---- the adapter
+//
+// A package of its own, `packages/deflate-pako` (`@trymesh/deflate-pako`), as the solver and the
+// kernel have theirs. The one place that imports the library: `pako` 3.0.3 (licences MIT and
+// Zlib), `deflateRaw(bytes, { level: 6, legacyHash: true })`.
+// - Level 6 is the default of zlib; `legacyHash` selects the hash of zlib, with which the stream
+//   is that of zlib at level 6 byte for byte: measured on the model parts of the box and of the
+//   joint against zlib 1.2.12 (the system's, which `zlib` of Python and `node:zlib` both are on
+//   the machine of the spike) and against a separate build of zlib 1.3.2. `pako` 2.1.0 and 2.2.0
+//   give the same streams with their defaults.
+// - Both options are stated, so no default of the library decides the bytes.
+// - Creating it is synchronous: there is nothing to load.
+export const PAKO = { package: 'pako', version: '3.0.3', options: { level: 6, legacyHash: true } } as const;
+export declare function createPakoDeflater(): Deflater;
+
+// ---- the app
+//
+// By default the app changes in one line: `main.ts` gives its engine the compressor, and the
+// form saves a set as `zip(files)`, stored as today.
+//
+// What follows is only for a yes of the owner to the second question of deflate.md, the ZIP of
+// a set compressed too. The form of an export as it is in the code (`runExportForm(panel, host,
+// save?)` of `panels/export.ts`; "As implemented" of design.md), with one more member of the
+// host: the compressor the app was started with. A set is then saved as
+// `zip(files, host.deflater)`: the STL files of a set are 4.3 to 4.9 times smaller. `App` takes
+// it as its third argument, and `main.ts` gives the same one to `createEngine` and to `App`
+// (`new App(engine, undefined, deflater)`); the kit of the tests of the app at its two places.
+export interface ExportHost {
+  readonly engine: Pick<EngineAfter2g, 'export'>;
+  readonly marker: Id | null;
+  readonly deflater?: Deflater;
+  say(text: string, error?: boolean): void;
+  refresh(): void;
+}
+export interface ExportFormState {
+  exporting?: OpenExport;
+}
+export declare function runExportFormWith(panel: ExportFormState, host: ExportHost, save?: SaveFile): void;

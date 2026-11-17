@@ -9,9 +9,9 @@
 // of `box.ts`, chord tolerance 0.01 mm), and the files were read back by independent readers
 // (design.md, "Measured"). They become the expectations of the test in packages/scenarios.
 
-import type { Command, ExportFile, Exported, FaceName, Id, PlaneRef, QueryOutcome } from '../../../packages/engine/src/index';
-import type { EngineAfter2g, ExportFormatAfter, ExportOptionsAfter, ExportPanel, MeshAbout, OutlineAbout, SaveFile, ZipEntry } from './contract';
-import { DXF, EMPTY, QUARTER, SVG, THREE_MF, TURN_ALLOWANCE, runExportForm, storedZip } from './contract';
+import type { Command, ExportFile, Exported, FaceName, Id, PlaneRef, QueryOutcome, SketchSolver, SolidKernel } from '../../../packages/engine/src/index';
+import type { Deflater, EngineAfter2g, ExportFormState, ExportFormatAfter, ExportHost, ExportOptionsAfter, ExportPanel, MeshAbout, OutlineAbout, SaveFile, ZipEntry } from './contract';
+import { DXF, EMPTY, QUARTER, SVG, THREE_MF, TURN_ALLOWANCE, ZIP_ENTRY, createEngine, createPakoDeflater, runExportForm, runExportFormWith, storedZip, zip } from './contract';
 
 // The box of scenario 12 after the part of 2c: the bodies `box` and `lid`; the lid 4.36 thick
 // (the plate the countersinks of the M3 screws need), four countersunk screw holes over the posts,
@@ -325,4 +325,121 @@ export function scenario12g(): boolean {
     emptyList === 'invalidArguments bodies' &&
     unknown === 'invalidArguments flip'
   );
+}
+
+// ---------------------------------------------------------------- g. the addition: the package compressed (deflate.md)
+
+// The numbers of this part were measured on 2026-11-17 with a prototype of the writer over the
+// files the engine of master writes for the same box, compressed by `pako` 3.0.3 as the adapter
+// calls it, and read back by independent readers (deflate.md, "Measured").
+
+// The engine of the scenario is created with the compressor, as the app and the server create
+// theirs: `packages/scenarios/test/kit.ts` gets the one line, and the box above is built in it.
+declare const solver: SketchSolver;
+declare const kernel: SolidKernel;
+const deflater: Deflater = createPakoDeflater();
+export const composed = (): EngineAfter2g => createEngine({ solver, kernel, deflater }); // what `newEngine()` of the kit returns; an engine starts with no body
+declare const compressing: EngineAfter2g; // such an engine with the box of this file built in it: `engine` above, after the addition
+
+// What the test reads a ZIP of the engine back with after the addition: the reader of the test
+// (`packages/engine/test/zip-reader.ts`) takes an entry that is stored or deflated, and inflates
+// a deflated one with `node:zlib`, which shares no code with the compressor. It still checks
+// that the directory and the local headers agree and every checksum, and now also that the
+// inflater read the whole stream of an entry and nothing after it.
+interface ReadItem extends ZipEntry {
+  method: number; // 0 or 8
+  needed: number; // version needed to extract: 10 or 20
+  compressed: number; // the bytes the entry takes in the archive
+}
+declare function readItems(zip: Uint8Array): ReadItem[];
+
+// The box and its lid as 3MF, compressed: the same package, a sixth of the size.
+export function boxAs3mfCompressed(): boolean {
+  const file = only(unwrap(compressing.export('3mf', {})));
+  const items = readItems(file.bytes);
+  // the package an engine without a compressor writes: the same items, stored. The scenario needs
+  // no second engine for it (the tests of the engine pin that equality against bytes of master)
+  const stored = zip(items.map(({ name, bytes }) => ({ name, bytes })));
+  const stl = only(unwrap(compressing.export('stl', {})));
+  return (
+    // the three items in their order, each deflated: 319 to 197 bytes, 260 to 178, 176 882 to 28 956
+    items.map((item) => item.name).join() === [THREE_MF.contentTypes.item, THREE_MF.relationships.item, THREE_MF.model.item].join() &&
+    items.every((item) => item.method === ZIP_ENTRY.deflated.method && item.needed === ZIP_ENTRY.deflated.version && item.compressed < item.bytes.length) &&
+    readItems(stored).every((item, i) => item.method === ZIP_ENTRY.stored.method && item.needed === ZIP_ENTRY.stored.version && item.bytes.length === items[i].bytes.length) &&
+    // 29 673 bytes where the stored file has 177 803: a fifth of the STL of the same bodies (146 384 bytes), not a fifth more
+    stored.length === 177803 &&
+    file.bytes.length < stored.length / 5 &&
+    Math.abs(file.bytes.length / stl.bytes.length - 0.2) < 0.01 &&
+    // nothing else of the answer changes
+    file.path === 'model.3mf' &&
+    file.mediaType === 'model/3mf' &&
+    meshAbout(file).triangles === 2926 &&
+    // the same model gives the same bytes
+    only(unwrap(compressing.export('3mf', {}))).bytes.every((byte, k) => byte === file.bytes[k])
+  );
+}
+
+// Not of the scenario: a test of the adapter package, which may pin what its library writes.
+// The writer by itself: which entry is deflated. (The tests of the engine check the same rule
+// with their doubles and pin no stream of a library.)
+declare const noise: Uint8Array; // 4096 random bytes; the test asserts that the stream of the compressor for them is not shorter (4101 bytes in the spike)
+export function whichEntries(): boolean {
+  const text = (length: number) => new TextEncoder().encode('a'.repeat(length));
+  const items = readItems(zip([{ name: 'a.txt', bytes: text(40) }, { name: 'empty', bytes: new Uint8Array(0) }, { name: 'noise.bin', bytes: noise }], deflater));
+  return (
+    items[0].method === 8 && items[0].needed === 20 && items[0].compressed === 6 && // forty letters `a` are the six bytes 4b 4c 24 0e 00 00, as zlib writes them at level 6
+    items[1].method === 0 && items[1].needed === 10 && items[1].compressed === 0 && // an entry with no bytes is not given to the compressor
+    items[2].method === 0 && items[2].compressed === 4096 && // a stream that is not shorter is not written
+    // without a compressor the writer is `storedZip` (in the test: a fixture of bytes taken from master, since the name goes)
+    zip([{ name: 'a.txt', bytes: text(40) }]).every((byte, k) => byte === storedZip([{ name: 'a.txt', bytes: text(40) }])[k])
+  );
+}
+
+// Not of the scenario: tests of the engine (`packages/engine/test`, where the solver and the
+// kernel are fakes). The port in a test that has no library: any compressor is one, and one that
+// fails is a refusal of the export, not an exception. The engines of these calls have no body:
+// the package of an empty model has its three items all the same (the model part: 229 bytes),
+// so the compressor is called.
+declare const byNodeZlib: Deflater; // { deflate: (bytes) => deflateRawSync(bytes) } of `node:zlib`: it compresses for a test only where any valid stream does; no test pins what it writes
+const fromATable: Deflater = { deflate: () => new Uint8Array([0x4b, 0x4c, 0x24, 0x0e, 0x00, 0x00]) }; // answers the stream of forty letters `a`: pins the records of a deflated entry to the byte
+const broken: Deflater = {
+  deflate: () => {
+    throw new Error('out of memory');
+  },
+};
+const notBytes = { deflate: () => [1, 2, 3] } as unknown as Deflater;
+export function doubles(): (string | number)[] {
+  const message = (outcome: QueryOutcome<Exported>): string => (outcome.ok ? '' : `${outcome.error.code}: ${outcome.error.message}`);
+  return [
+    readItems(unwrap(createEngine({ solver, kernel, deflater: byNodeZlib }).export('3mf', {})).files[0].bytes)[2].method, // 8
+    zip([{ name: 'a.txt', bytes: new TextEncoder().encode('a'.repeat(40)) }], fromATable).length, // 30 + 5 + 6 + 46 + 5 + 22 = 114
+    message(createEngine({ solver, kernel, deflater: broken }).export('3mf', {})), // 'failed: 3mf: the compressor failed: out of memory'
+    message(createEngine({ solver, kernel, deflater: notBytes }).export('3mf', {})), // 'failed: 3mf: the compressor failed: it answered with object where bytes are expected'
+  ];
+}
+
+// The part of the scenario after the addition: everything of `scenario12g` holds for the engine
+// with the compressor as well (the reader of the test inflates the items), and the file is small.
+// It pins no stream and no size of a deflated item, so it holds whichever library compresses.
+export function scenario12gCompressed(): boolean {
+  return boxAs3mfCompressed();
+}
+// The tests of the adapter and of the engine, beside the scenario.
+export function besideTheScenario(): boolean {
+  const [byZlib, pinned, refused, wrong] = doubles();
+  return whichEntries() && byZlib === 8 && pinned === 114 && refused === 'failed: 3mf: the compressor failed: out of memory' && wrong === 'failed: 3mf: the compressor failed: it answered with object where bytes are expected';
+}
+
+// Only with a yes of the owner to the second question of deflate.md: a set of files is saved by
+// the app as one ZIP compressed by the compressor the app was started with (the STL per body of
+// the box: 146 670 bytes stored, 33 795 deflated). Without that yes the form saves `zip(files)`,
+// the first line of each pair below.
+export function setFromTheApp(): string[] {
+  const saved: string[] = [];
+  const save: SaveFile = (name, bytes) => void saved.push(`${name} ${readItems(bytes).map((item) => item.method).join()}`);
+  const host: ExportHost = { engine: compressing, marker: null, say: () => undefined, refresh: () => undefined };
+  runExportFormWith({ exporting: { format: 'stl', draft: { perBody: true } } }, host, save); // 'stl.zip 0,0': a host without a compressor saves the set stored, as today
+  const panel: ExportFormState = { exporting: { format: 'stl', draft: { perBody: true } } };
+  runExportFormWith(panel, { ...host, deflater }, save); // 'stl.zip 8,8'
+  return saved;
 }

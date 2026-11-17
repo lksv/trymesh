@@ -144,5 +144,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g; D55 3b, D56 3d, D57 3e; D58 4a, D59 5b, D60 5c, D61 5d, D62 3c, D63 4b; D64 6a, D65 6e; D66 2h, D67 4c; D68 6c (taken when their designs started) | D69 |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g; D55 3b, D56 3d, D57 3e; D58 4a, D59 5b, D60 5c, D61 5d, D62 3c, D63 4b; D64 6a, D65 6e; D66 2h, D67 4c; D68 6c, D69 6b, D70 6d (taken when their designs started) | D71 |
 | Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a); 14 track G (4a, then 4b); 15 step 6; 16 2h; 17 4c | 18 |

@@ -25,16 +25,18 @@ import type { FaceNameAfter, PlaneRefAfter, UpgradeStep } from '../00-prep/contr
 //   `refs`.
 export type SketchLineAxis = { kind: 'sketchLine'; sketch: Id; line: Id };
 // `face`: the axis of a round face of a body, a cylinder or a cone (a bore, a pin, a boss): the line
-// of its exact surface through its origin (a cylinder) or its apex (a cone). Its sense is the normal
-// of the sketch the face was built from (out of the body for a sketch on a face; mirrored with
-// a mirrored copy), not the sense of `Surface.axis`, which a cylinder does not have and a cone
-// turns round with the sign of its taper. The body and the face are referred to as a sketch on
+// of its exact surface through its origin (a cylinder) or its apex (a cone). Its sense is the one
+// its build gives the face: for an extrusion (tapered or not) and a hole, the normal of its sketch
+// (out of the body for a sketch on a face; mirrored with a mirrored copy). Not the sense of
+// `Surface.axis`, which a cylinder does not have and a cone turns round with the sign of its taper
+// or with the direction of a hole. The body and the face are referred to as a sketch on
 // a face refers to them.
 // - In the recompute: the face not on the body in the state is `brokenReference`; a face that is not
 //   a cylinder or a cone is `invalidAxis` (it has no axis).
 // - In a query of a posed model the axis moves with its body, as the frame of a face does; a
 //   `sketchLine` (also one projected from an edge of that body) stays as modelled.
-// - A projected line takes its sense from the faces of its edge in the order of their names.
+// - A projected line takes its sense from the outward normals of the faces of its edge in the
+//   order of their names (n_a × n_b).
 export type FaceAxis = { kind: 'face'; body: Id; face: FaceNameAfter };
 export type AxisRefAfter = AxisRef | SketchLineAxis | FaceAxis;
 
@@ -57,8 +59,8 @@ export type AxisRefAfter = AxisRef | SketchLineAxis | FaceAxis;
 // 3. `tilt` (optional): the plane through `axis`, turned by `angle` from the plane of steps 1 and
 //    2 about the axis (radians, the right-hand rule about the direction of the axis: a base axis
 //    points along its positive half, a sketch line from `a` to `b`, a sketch point along the
-//    normal of its sketch, a round face along the normal of the sketch it was built from). The axis must be parallel to that plane (within 1e-4 rad); it need not
-//    lie in it. With the angle 0 the plane is parallel to the base and contains the axis. A point
+//    normal of its sketch, a round face as its build gives it). The axis must be parallel to that
+//    plane (within 1e-4 rad); it need not lie in it. With the angle 0 the plane is parallel to the base and contains the axis. A point
 //    of the base plane on the axis keeps its coordinates in a sketch on the tilted plane.
 //    The numeric field is `tilt/angle`, from −π to π; `deg(30)` in an expression.
 // 4. `offset`: moved along the normal of the plane of steps 1 to 3.
@@ -107,6 +109,18 @@ declare module '../00-prep/contract' {
   }
 }
 
+// ================================================================ the sense of a round face
+
+// A round face of the engine's face table (`FaceInfo` of solid.ts, internal) gets the sense of its
+// axis, required on the cylinder and the cone members, so that a later build that makes round faces
+// (the clearance of 3d, `movedOutwards`; the revolve of 4a) does not compile until it sets it: the
+// sense its build gives the face, carried with the face to the model and through a copy as its
+// `axis` is. An extrusion sets the normal of its sketch (the prism `frame.normal`; a tapered side and
+// a hole `[0, 0, 1]` in the coordinates of the sketch, which `local` of tool-stack.ts maps).
+export interface RoundFaceSense {
+  along: Vec3;
+}
+
 // ================================================================ the frames, as the step builds them
 
 // The line of an axis as `axis()` of recompute/services.ts resolves it: a point and a unit direction.
@@ -139,13 +153,6 @@ export declare function tiltedFrame(frame: Frame, axis: AxisLine, angle: number)
 export type AxisOutcome = AxisLine | { code: 'brokenReference' | 'invalidAxis'; refs: unknown[] };
 
 // ================================================================ the upgrade step
-
-// A round face of the engine's face table (`FaceInfo` of solid.ts, internal) gets the sense of its
-// axis: the normal of the sketch plane of its build, carried with the face to the model and through
-// a copy as its `axis` is.
-export interface RoundFaceSense {
-  along: Vec3;
-}
 
 // The problem of a reference in a query (`RefProblem` of query/spec.ts) gets the code too.
 export type RefProblemAfter = { problem: 'brokenReference' | 'nonPlanarFace' | 'invalidAxis' };

@@ -95,20 +95,25 @@ export const JOINT_DRIVE_FIELDS = {
 } as const satisfies { readonly [T in Joint['type']]: readonly { path: string; spec: NumberSpecAfter5b; optional: true }[] };
 
 // `types.ts`, `JointResult`: the numbers of the drive as the recompute resolved them, and the
-// fields whose expression does not evaluate. A fault of a drive field does NOT put the joint in
-// error: `status`, `error` and `fieldErrors` stay what D49 defines (the pose, the limits and the
+// fields whose expression does not evaluate (each an `ExpressionError`, no `Issue`). A fault of
+// a drive field does NOT put the joint in error: `status`, `error` and `fieldErrors` stay what D49 defines (the pose, the limits and the
 // axis), so a broken expression of an effort blocks no pose and no query. A field in
 // `driveErrors` is left out of `drive`; the export refuses such a joint (it would write a stale
-// number), and `get_model` lists it (`jointDriveErrors`, next to `jointErrors`).
+// number; both formats refuse it, so that a broken effort is not written as an effort not stated),
+// and `get_model` lists it (`jointDriveErrors`, next to `jointErrors`).
 export type JointResultAfter5b = JointResult & {
   drive?: TurningDrive; // the fields the joint states, resolved; absent when it states none
   driveErrors?: { effort?: ExpressionError; velocity?: ExpressionError; rotorInertia?: ExpressionError; gearRatio?: ExpressionError };
 };
 
-// The command: `setJoint` takes the drive fields in the input form with the rest of the joint
-// (it replaces the joint whole, as today). The type of the command after the package:
+// The command: `setJoint` takes the drive fields in the input form with the rest of the joint. It
+// replaces the joint whole for what D49 has (all of it required), and for the drive it is a patch:
+// a drive field the command does not name is kept from the joint of the same kind it replaces,
+// `null` removes it, a joint of another kind starts without a drive. A string equal to the
+// expression a field already has is kept without evaluation, for the drive fields as for the
+// fields of the pose (the loop over `JOINT_FIELDS[type]` in `setJoint` runs over both lists).
 export type SetJointAfter5b = { type: 'setJoint'; id: Id; joint: InputJointAfter5b };
-type InputOf<T> = { [K in keyof T]: T[K] extends number ? number | Expr : T[K] extends number | undefined ? number | Expr | undefined : T[K] };
+type InputOf<T> = { [K in keyof T]: T[K] extends number ? number | Expr : T[K] extends number | undefined ? number | Expr | null | undefined : T[K] };
 export type InputJointAfter5b = JointAfter5b extends infer J ? (J extends JointAfter5b ? InputOf<J> : never) : never;
 
 // ================================================================ the formats
@@ -158,10 +163,12 @@ export const ROBOT_FILES = {
 } as const;
 // The file name of the mesh of a body: `meshName(body)`, `<name>.stl` where every byte of the
 // body ID as UTF-8 outside A–Z, a–z, 0–9, `.` and `-` is `_` and two hexadecimal digits, upper
-// case (`screws/1` → `screws_2F1.stl`, `a_b` → `a_5Fb.stl`). Different IDs give different names,
-// and every character of the name is unreserved in a URI [RFC3986], so a reader that takes
-// `filename` as a URI (ROS) and one that takes it as a path (MuJoCo, yourdfpy) open the same file.
-// (`bodyFileName` of `stl` writes `%2F`, which a URI reader decodes to a slash.)
+// case (`screws/1` → `screws_2F1.stl`, `a_b` → `a_5Fb.stl`). Different IDs give different names
+// over the IDs the export accepts (no lone surrogate: see `badName`), and every character of the
+// name is unreserved in a URI [RFC3986], so a reader that takes `filename` as a URI (ROS) and one
+// that takes it as a path (MuJoCo, yourdfpy) open the same file. (`bodyFileName` of `stl` writes
+// `%2F`, which a URI reader decodes to a slash.) Two names that differ only in the case of
+// letters are refused (`caseClash`): one folder on macOS or Windows cannot hold both.
 export declare function meshName(body: Id): string;
 
 // What `about` of the description says, for the answer of the tool `export` (the note about the
@@ -177,7 +184,11 @@ export type RobotAbout = {
     links?: Id[]; // links of the trees of other roots, with `root`
   };
   coupled?: Id[]; // joints whose value follows an expression: written as free joints
-  notWritten?: string[]; // what the document says and the format has no place for, one sentence each
+  // What the document says and the format does not write, one sentence each, by joint and field:
+  // URDF the rotor and the gear, a continuous joint with only one of effort and velocity, the
+  // pose, and with collisions that the pairs of a joint are not excluded from contact; MJCF the
+  // velocity of a joint.
+  notWritten?: string[];
 };
 // What `about` of a mesh says (as `MeshAbout` of 3MF).
 export type RobotMeshAbout = { bodies: [Id]; triangles: number; link: Id };
@@ -198,7 +209,10 @@ export type RobotMeshAbout = { bodies: [Id]; triangles: number; link: Id };
 //   the export: `mass`, `centerOfMass` and `inertia` (about the centre of mass, in the axes of the
 //   model; off the diagonal the element of the tensor, minus the product of inertia, which is
 //   what both formats write [URDF-link], [MJCF body-inertial-fullinertia]). A link without such
-//   a body has no mass.
+//   a body has no mass. A link moved by a revolute, continuous or prismatic joint has to carry
+//   a mass together with the links welded to it (itself and those below it through fixed joints
+//   only), which is what MuJoCo checks of a moving body; otherwise `massless`.
+// - A document without a link is `empty`; the format checks it before it calls `robotTree`.
 // - A mesh: the positions of the body minus the origin of its link, over 1000 (metres), rounded to
 //   float32, with its triangles, as binary STL (`toStl`).
 export interface RobotLink {
@@ -239,9 +253,11 @@ export const ROBOT_REFUSALS = {
   jointInError: { code: 'failed', text: 'a joint is in error, so where its link stands is not known: ' },
   driveInError: { code: 'failed', text: 'a field of the drive of a joint does not evaluate: ' },
   missingBodies: { code: 'failed', text: 'a link lists bodies the model does not have (a link would be written lighter than it is): ' },
-  massless: { code: 'failed', text: 'a link that a joint moves has no mass (no body, or only auxiliary bodies); a simulation cannot move it: ' },
+  massless: { code: 'failed', text: 'a link that a joint moves has no mass, neither of its own nor on the links fixed to it (no body, or only auxiliary bodies); a simulation cannot move it: ' },
   bodyMass: { code: 'failed', text: 'the mass of a link cannot be computed: ' }, // with the text of the query `mass`, and how to set a material
-  sameName: { code: 'failed', text: 'two names are the same as written: ' }, // after `xmlText` (a tab and a space)
+  badName: { code: 'failed', text: 'an ID holds a character XML cannot hold (a control character, half of a surrogate pair), so it cannot be written as it is: ' }, // of a link, a joint or a body written; any change by `xmlText` beyond its four entities
+  caseClash: { code: 'failed', text: 'two mesh files would differ only in the case of letters, which one folder on macOS or Windows cannot hold: ' },
+  mjcfLocked: { code: 'failed', text: 'MuJoCo needs the lower limit of a joint below its upper one (equal bounds turn the limit off); make the joint fixed: ' }, // also bounds written equal by nine decimals
   urdfLimits: { code: 'failed', text: 'URDF requires an effort and a velocity of every revolute and prismatic joint (setJoint with `effort` and `velocity`): ' },
   mjcfWorld: { code: 'failed', text: 'MJCF reserves the body name world, so the link "world" cannot be written; give the link another ID' },
 } as const;
@@ -312,9 +328,10 @@ export type CommandAfter5b = Parameters<Engine['execute']>[0] | SetJointAfter5b;
 // `packages/mcp/src/host.ts`. Every operation of the app takes `at` and `after` on its path, as the
 // tool `query` does; they are not arguments of an operation's description.
 // - `callHostOperation(host, name, args)` takes `at` and `after` out of `args`, and asks the state:
-//   with `after`, `engine.preview(after, at)` (a command that does not apply is the answer
-//   `after: <its error>`); otherwise `engine.getState(at)`, with an `at` that names no feature of
-//   the document answered `notAvailable: at: …` before the engine is asked. Nothing is written.
+//   with `after`, `engine.preview(after, at)`, which answers for `at` as well (`after` may add the
+//   feature `at` names; a command that does not apply is the answer `after: <its error>`);
+//   otherwise `engine.getState(at)`, with an `at` that names no feature of the document answered
+//   `notAvailable: at: …` before the engine is asked. Nothing is written.
 // - It checks the other arguments against the description in THAT state (`checkArgs` with its
 //   document and evaluation), so a body only an earlier state has can be named with `at` (a known
 //   limit of 1f goes), and a body that a previewed command adds can be named with `after`.
@@ -334,11 +351,14 @@ export interface HostOperationAfter5b<S> {
 }
 
 // `view-image.ts`: `at` leaves the arguments (the path takes it); the request is of the state the
-// path hands over, and the section of a picture is asked with `{ state }`.
+// path hands over, and the section of a picture is asked with `{ state }`. The budget of the
+// section stays the last, optional parameter (the tests of 1f use it). With a section, a drawn
+// body whose pose is not known (a blocked link) is refused with the operation's own text (the
+// joints, and `after: setPose` to zero or fewer bodies); without one it is drawn.
 const { at: _movedToThePath, ...VIEW_IMAGE_ARGS_REST } = VIEW_IMAGE_ARGS;
 export const VIEW_IMAGE_ARGS_AFTER_5B = VIEW_IMAGE_ARGS_REST;
 export type ViewImageArgsAfter5b = RunArgsOf<typeof VIEW_IMAGE_ARGS_AFTER_5B>;
-export declare function imageRequestAfter5b(host: Host, args: ViewImageArgsAfter5b, state: EngineState): ImageRequest | Extract<QueryOutcome<ToolAnswer>, { ok: false }>;
+export declare function imageRequestAfter5b(host: Host, args: ViewImageArgsAfter5b, state: EngineState, budget?: number): ImageRequest | Extract<QueryOutcome<ToolAnswer>, { ok: false }>;
 // `about` of the picture gains two members, for a state whose mechanism holds a pose:
 // - `pose`: the joints that move the model, with their values (`poseNote` of the drawn state, as
 //   the tools `query` and `get_body` put it beside their answers);
@@ -355,6 +375,7 @@ export const CONVENTION =
   'It is the mechanism as modelled: one tree from one root link (`root` when there are several), the frame of a link at the axis of the joint that moves it with the axes of the model, the mass, the centre of mass and the inertia of each link from its bodies (a reference part with the mass of its properties, auxiliary bodies left out). ' +
   'Every link a joint moves needs a mass; URDF needs `effort` (N·mm, N for a prismatic joint) and `velocity` (rad/s, mm/s) of every revolute and prismatic joint: set them with setJoint. ' +
   'MJCF also writes a motor per joint with an effort, with `gearRatio`, and `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`. ' +
-  'MuJoCo collides the convex hulls of the meshes and the two links of a joint are excluded from each other; parts nested in a housing touch it, so export such a model with `collision: "none"`. ' +
+  'setJoint keeps the drive of a joint it is not given (null removes a field). ' +
+  'MuJoCo collides the convex hulls of the meshes; the MJCF excludes the two links of a joint from each other, which URDF cannot say, so use the MJCF for MuJoCo. Parts nested in a housing touch it, so export such a model with `collision: "none"`. ' +
   'A coupled motion (two values over one parameter) is written as free joints. ' +
-  'The operation view_image takes `at` and `after` as the tool query does: `after: { type: "setPose", values: { … } }` draws a pose without writing it.';
+  'The operation view_image takes `at` and `after` as the tool query does: `after: { type: "setPose", values: { … } }` draws a pose without writing it; a body beyond a joint without a motion is drawn with the joint at zero, and refused when a section is asked.';

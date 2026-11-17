@@ -13,6 +13,7 @@
 /// <reference path="../../../packages/mcp/src/raw.d.ts" />
 import type { Command, EngineState, ExportFile, Exported, Id, MassProperties, QueryContext, QueryOutcome, Vec3 } from '../../../packages/engine/src/index';
 import { QUERIES, QueryFailure } from '../../../packages/engine/src/index';
+import { xmlText } from '../../../packages/engine/src/export/text';
 import { arm } from '../../../packages/scenarios/test/arm';
 import type { Host } from '../../../packages/mcp/src/host';
 import type { ImageRequest } from '../../../packages/mcp/src/view-image';
@@ -62,6 +63,13 @@ export const robotTreeAsWritten: typeof robotTree = (context, options): RobotTre
   // what blocks the export, each kind named whole
   const inError = jointOrder.filter((id) => mechanism.joints[id].status !== 'ok');
   if (inError.length) throw new QueryFailure('failed', ROBOT_REFUSALS.jointInError.text + inError.map((id) => `${id} (${mechanism.joints[id].error?.message})`).join('; '));
+  // a broken drive is refused by both formats, not written as a drive not stated
+  const driveFaults = jointOrder.filter((id) => (mechanism.joints[id] as JointResultAfter5b).driveErrors !== undefined);
+  if (driveFaults.length) throw new QueryFailure('failed', ROBOT_REFUSALS.driveInError.text + driveFaults.map((id) => `${id} (${Object.keys((mechanism.joints[id] as JointResultAfter5b).driveErrors ?? {}).join(', ')})`).join('; '));
+  // IDs written as they are: none that `xmlText` changes beyond its four entities
+  const written = (id: Id): boolean => xmlText(id).replace(/&(amp|lt|gt|quot);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"' })[e] as string) === id;
+  const bad = [...order, ...jointOrder, ...order.flatMap((id) => mechanism.links[id].bodies)].filter((id) => !written(id));
+  if (bad.length) throw new QueryFailure('failed', ROBOT_REFUSALS.badName.text + bad.map((id) => JSON.stringify(id)).join(', '));
   const lacking = order.filter((id) => mechanism.links[id].missing.length > 0);
   if (lacking.length) throw new QueryFailure('failed', ROBOT_REFUSALS.missingBodies.text + lacking.map((id) => `${id}: ${mechanism.links[id].missing.join(', ')}`).join('; '));
   // the frame of a link: at the axis of its joint, with the axes of the model
@@ -91,8 +99,7 @@ export const robotTreeAsWritten: typeof robotTree = (context, options): RobotTre
       mass = { mass: answer.mass, centerOfMass: answer.centerOfMass, inertia: answer.inertia };
     }
     const joint = jointOf(id);
-    if (!mass && joint !== undefined && section.joints[joint].type !== 'fixed') throw new QueryFailure('failed', `${ROBOT_REFUSALS.massless.text}${id}`);
-    const written = bodies.map((body) => {
+    const meshes_ = bodies.map((body) => {
       const solid = context.bodies[body].solid;
       const file = meshNameAsDeclared(body);
       const about: RobotMeshAbout = { bodies: [body], triangles: solid.triangles.length / 3, link: id };
@@ -100,8 +107,18 @@ export const robotTreeAsWritten: typeof robotTree = (context, options): RobotTre
       const color = properties[body].color;
       return { body, file, triangles: about.triangles, ...(color === undefined ? {} : { color }) };
     });
-    return { id, origin: at, ...(joint === undefined || id === root ? {} : { joint }), bodies: written, ...(mass ? { mass } : {}) };
+    return { id, origin: at, ...(joint === undefined || id === root ? {} : { joint }), bodies: meshes_, ...(mass ? { mass } : {}) };
   });
+  // a moving link carries a mass together with the links welded to it (fixed joints down the tree)
+  const welded = (link: Id): Id[] => [link, ...Object.keys(section.joints).filter((id) => section.joints[id].parent === link && section.joints[id].type === 'fixed').flatMap((id) => welded(section.joints[id].child))];
+  const massless = links.filter((link) => link.joint !== undefined && section.joints[link.joint].type !== 'fixed' && welded(link.id).every((id) => links.find((other) => other.id === id)?.mass === undefined));
+  if (massless.length) throw new QueryFailure('failed', ROBOT_REFUSALS.massless.text + massless.map((link) => link.id).join(', '));
+  const lower = new Map<string, string>();
+  for (const file of meshes.map((mesh) => mesh.path)) {
+    const other = lower.get(file.toLowerCase());
+    if (other !== undefined) throw new QueryFailure('failed', `${ROBOT_REFUSALS.caseClash.text}${other} and ${file}`);
+    lower.set(file.toLowerCase(), file);
+  }
   const joints: RobotJoint[] = jointOrder.map((id) => {
     const joint = section.joints[id];
     const result = mechanism.joints[id] as JointResultAfter5b;
@@ -118,12 +135,17 @@ export const robotTreeAsWritten: typeof robotTree = (context, options): RobotTre
       drive: result.drive ?? {},
     };
   });
+  const otherTrees = Object.keys(section.links).filter((id) => !order.includes(id));
+  const coupled = jointOrder.filter((id) => section.joints[id].expressions?.value !== undefined);
+  const leftOut = { ...(mechanism.unassigned.length ? { bodies: mechanism.unassigned } : {}), ...(auxiliary.length ? { auxiliary } : {}), ...(otherTrees.length ? { links: otherTrees } : {}) };
   const about: RobotAbout = {
     root,
     links: order,
     joints: jointOrder,
     mass: links.reduce((sum, link) => sum + (link.mass?.mass ?? 0), 0),
-    ...(mechanism.unassigned.length || auxiliary.length ? { leftOut: { ...(mechanism.unassigned.length ? { bodies: mechanism.unassigned } : {}), ...(auxiliary.length ? { auxiliary } : {}) } } : {}),
+    ...(Object.keys(leftOut).length ? { leftOut } : {}),
+    ...(coupled.length ? { coupled } : {}),
+    // `notWritten` is the writer's: what its format has no place for
   };
   return { root, links, joints, meshes, about };
 };
@@ -169,6 +191,14 @@ export function drives(): EngineState {
     shoulder({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 }),
     elbow({ effort: 'servoTorque', velocity: 6.2 }),
   );
+}
+
+// b'. A joint sent again without its drive (to widen its limits) keeps the drive; null removes it.
+export function driveKept(): void {
+  const widened = preview(elbow({ lower: 'deg(-150)', upper: 'deg(150)' }));
+  check((widened.evaluation.mechanism.joints.elbow as JointResultAfter5b).drive?.effort === 1100, 'kept');
+  const removed = preview(elbow({ effort: null, velocity: null } as Partial<InputJointAfter5b>));
+  check((removed.evaluation.mechanism.joints.elbow as JointResultAfter5b).drive === undefined, 'removed by null');
 }
 
 // c. URDF: the frames, the masses and the meshes.
@@ -224,10 +254,29 @@ export function refusals(): void {
   check((unwrap(engine.export('urdf', { root: 'base' }, { state: twoRoots })).files[0].about as RobotAbout).root === 'base', 'one tree');
   check(!engine.export('urdf', { root: 'upper' }).ok, 'a child is not a root');
   // the state after the forearm: the sketch of the axes comes later, so both joints are in error
-  check(!engine.export('urdf', {}, { at: 'forearm' }).ok, 'a joint in error');
+  const early = engine.export('urdf', {}, { at: 'elbowPin' });
+  check(!early.ok && early.error.message.includes(ROBOT_REFUSALS.jointInError.text) && early.error.message.includes('shoulder') && early.error.message.includes('elbow'), 'a joint in error');
   // a forearm made auxiliary: the link a joint moves has no mass
   const massless = engine.export('mjcf', {}, { state: preview({ type: 'setBodyProperties', body: 'forearm', patch: { use: 'auxiliary' } }) });
   check(!massless.ok && massless.error.message.includes(ROBOT_REFUSALS.massless.text), 'no mass');
+  // the motor on a link of its own, fixed to an upper arm whose plate is auxiliary: the moving
+  // link is only a frame and its mass hangs on the fixed child, which is written
+  const frameOnly = preview({
+    type: 'batch',
+    commands: [
+      { type: 'setLink', id: 'upper', bodies: LINK.filter((body) => body !== 'motor') },
+      { type: 'setLink', id: 'motor', bodies: ['motor'] },
+      { type: 'setJoint', id: 'mount', joint: { type: 'fixed', parent: 'upper', child: 'motor' } },
+      { type: 'setBodyProperties', body: 'upper', patch: { use: 'auxiliary' } },
+      { type: 'setBodyProperties', body: 'screw', patch: { use: 'auxiliary' } },
+    ],
+  });
+  check(engine.export('mjcf', {}, { state: frameOnly }).ok, 'a frame with its mass on a fixed child');
+  // equal limits: MuJoCo would turn the limit off, so the MJCF refuses; the URDF writes them
+  const locked = preview(elbow({ lower: 0, upper: 0 }));
+  const refusedLocked = engine.export('mjcf', {}, { state: locked });
+  check(!refusedLocked.ok && refusedLocked.error.message.includes(ROBOT_REFUSALS.mjcfLocked.text) && refusedLocked.error.message.includes('elbow'), 'a locked joint');
+  check(engine.export('urdf', {}, { state: locked }).ok, 'urdfdom takes equal limits');
   // a body without a density or a mass: the text of the query `mass`, with the link
   const noDensity = engine.export('mjcf', {}, { state: preview({ type: 'setBodyProperties', body: 'base', patch: { material: null, density: null } }) });
   check(!noDensity.ok && noDensity.error.message.includes('link "base"'), 'which link');
@@ -238,7 +287,9 @@ export function refusals(): void {
   const broken = preview({ type: 'removeParameter', name: 'servoTorque' } as CommandAfter5b);
   const elbowResult = broken.evaluation.mechanism.joints.elbow as JointResultAfter5b;
   check(elbowResult.status === 'ok' && elbowResult.driveErrors?.effort !== undefined, 'the pose is not blocked');
-  check(!engine.export('urdf', {}, { state: broken }).ok, 'a stale effort is not written');
+  check(!engine.export('urdf', {}, { state: broken }).ok && !engine.export('mjcf', {}, { state: broken }).ok, 'a stale effort is not written, by either format');
+  // the joint sent back whole with its broken expression unchanged (as the form of the app does) is taken
+  check(engine.preview(elbow({ effort: 'servoTorque', velocity: 6.2, lower: 'deg(-120)' })).ok, 'the limits can still be changed');
   // a document without a link
   check(NO_MECHANISM.startsWith('the model has no mechanism'), 'the text of `empty`');
 }

@@ -18,6 +18,8 @@ import {
   axisKind,
   changeExtrude,
   changePattern,
+  type PatternChange,
+  type PatternMemory,
   rememberPattern,
   circleCommands,
   deleteCommands,
@@ -830,6 +832,54 @@ describe('nálezy z revize aplikace', () => {
     run([draftCommand(bodyMirror, true, 3)]);
     expect(engine.getState().document.features[3]).toEqual(bodyMirror);
     expect(engine.getState().evaluation.features.n1).toMatchObject({ status: 'ok', bodies: ['n1/1'] });
+  });
+
+  it('a grid (D53): the checkbox, the second direction and what the form remembers of it', () => {
+    const choices: PatternChoices = { tools: ['h1'], bodies: ['a'], sketches: ['s', 's2'] };
+    const row: PatternDraft = { id: 'n1', name: 'n1', suppressed: false, type: 'pattern', source: { type: 'features', features: ['h1'] }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 10 } } };
+    // the form remembers before every change, as `set` does
+    let memory: PatternMemory = {};
+    const step = (draft: PatternDraft, change: PatternChange): PatternDraft => {
+      memory = rememberPattern(memory, draft);
+      return changePattern(draft, change, choices, memory);
+    };
+    // ticked: a new second direction along Y (X when the first is Y), a count of 2, a spacing of 10
+    const gridded = step(row, { grid: true });
+    expect(gridded.transform).toEqual({ ...row.transform, second: { direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 10 } } });
+    expect(changePattern(changePattern(row, { axis: 'Y' }, choices), { grid: true }, choices).transform).toMatchObject({ second: { direction: { kind: 'base', axis: 'X' } } });
+    // the changes of the second direction leave the first alone, and back
+    let g = step(gridded, { second: { axis: 'sketchPoint' } });
+    expect(g.transform).toMatchObject({ direction: { kind: 'base', axis: 'X' }, second: { direction: { kind: 'sketchPoint', sketch: 's2', point: 'origin' } } });
+    g = step(g, { second: { sketch: 's', count: 'rows', spacing: 'pitch' } });
+    expect(g.transform).toMatchObject({ count: 3, span: { spacing: 10 }, second: { direction: { kind: 'sketchPoint', sketch: 's' }, count: 'rows', span: { type: 'spacing', spacing: 'pitch' } } });
+    g = step(g, { count: 4, spacing: 7 });
+    expect(g.transform).toMatchObject({ count: 4, span: { spacing: 7 }, second: { count: 'rows', span: { spacing: 'pitch' } } });
+    // the spans of the second direction come back from slots of their own, not from those of the first
+    g = step(g, { span: 'length' });
+    g = step(g, { length: 30 });
+    g = step(g, { second: { span: 'length' } });
+    expect(g.transform).toMatchObject({ span: { type: 'length', length: 30 }, second: { span: { type: 'length', length: 20 } } });
+    g = step(g, { second: { length: 'L' } });
+    g = step(g, { second: { span: 'spacing' } });
+    expect(g.transform).toMatchObject({ second: { span: { type: 'spacing', spacing: 'pitch' } } });
+    g = step(g, { span: 'spacing' });
+    expect(g.transform).toMatchObject({ span: { type: 'spacing', spacing: 7 } });
+    g = step(g, { second: { span: 'length' } });
+    expect(g.transform).toMatchObject({ second: { span: { type: 'length', length: 'L' } } });
+    const kept = g.transform.type === 'linear' ? g.transform.second : undefined;
+    // the checkbox cleared, the first direction changed, the checkbox ticked again: the second direction comes back
+    let r = step(g, { grid: false });
+    expect(r.transform).not.toHaveProperty('second');
+    r = step(r, { axis: 'Z', count: 2 });
+    expect(memory.second).toEqual(kept);
+    expect(step(r, { grid: true }).transform).toMatchObject({ direction: { kind: 'base', axis: 'Z' }, count: 2, second: kept });
+    // a mirror and back: the grid with it
+    const mirrored = step(g, { kind: 'mirror' });
+    expect(step(mirrored, { kind: 'linear' }).transform).toEqual(g.transform);
+    // another kind has no second direction
+    expect(changePattern(mirrored, { grid: true, second: { count: 3 } }, choices).transform).toEqual(mirrored.transform);
+    // without a tick, a change of the second direction does nothing
+    expect(changePattern(row, { second: { count: 3 } }, choices).transform).toEqual(row.transform);
   });
 
   it('bod uvnitř smyčky', () => {

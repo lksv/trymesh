@@ -39,6 +39,8 @@ type IssueCode =
   | 'emptyResult' | 'kernelFailure'
   | 'invalidExpression'            // an error everywhere except a sketch, where it is a warning
   | 'invalidExtent'                // an extent up to a plane cannot reach it (D47)
+  | 'invalidHole'                  // the dimensions do not make a hole (D46)
+  | 'invalidPattern'               // a grid of more than 200 places, or with two places in one (D53)
   // varování: feature výsledek má
   | 'sketchConflict' | 'brokenProjection' | 'degenerateProjection' | 'unsupportedProjection'
   | 'noEffect'

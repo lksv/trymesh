@@ -256,3 +256,35 @@ export function pads(): Command {
 
 // The lid twice more beside it, 5 mm apart, for the print bed: a linear pattern of a body.
 export const lidsInARow = (): Command => pattern('lids', { type: 'body', body: 'lid' }, { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 'L + 5' } });
+
+// ---------------------------------------------------------------- the grid (2e, D53, an addition)
+
+const X_AXIS = { kind: 'base', axis: 'X' } as const;
+const Y_AXIS = { kind: 'base', axis: 'Y' } as const;
+// A second direction of a linear pattern as a patch: the first direction is merged with what the
+// row has.
+export const secondDirection = (id: Id, direction: typeof X_AXIS | typeof Y_AXIS, count: number | Expr, spacing: number | Expr): Command => ({
+  type: 'updateFeature',
+  id,
+  patch: { transform: { second: { direction, count, span: { type: 'spacing', spacing } } } },
+});
+
+// The slot is cut `wall + 1` deep from the outer face of the wall at y = 0. Shifted by
+// `W - wall - 0.5` along Y the same tool stands astride the other long wall (from y = 47.5 to
+// 50.5), so the row of vents gets a second direction with a count of 2 and cuts both walls.
+export const ventsOnBothWalls = (): Command => secondDirection('ventRow', Y_AXIS, 2, 'W - wall - 0.5');
+
+// One plain hole of 2 mm through the floor at a point of a sketch on the floor of the cavity, and
+// a grid of it: columns 5 apart along X, rows 6 apart along Y, both counts parameters.
+export const drains = (): Command =>
+  batch(
+    { type: 'setParameter', name: 'drainCols', expr: '4' },
+    { type: 'setParameter', name: 'drainRows', expr: '3' },
+    sketchOn('drainSketch', onFace('box', FLOOR)),
+    pointAt('drainSketch', 'd1', '18', '10'),
+    { type: 'addFeature', feature: { id: 'drain', name: 'drain', suppressed: false, type: 'hole', sketch: 'drainSketch', points: ['d1'], shape: { type: 'plain', diameter: 2 }, extent: { type: 'throughAll', side: 'backward' }, targets: ['box'] } },
+    pattern('drains', { type: 'features', features: ['drain'] }, { type: 'linear', direction: X_AXIS, count: 'drainCols', span: { type: 'spacing', spacing: 5 }, second: { direction: Y_AXIS, count: 'drainRows', span: { type: 'spacing', spacing: 6 } } }),
+  );
+
+// Six lids for the print bed: the row of three lids and a second row beside it, all of PETG.
+export const sixLids = (): Command => batch(lidsInARow(), secondDirection('lids', Y_AXIS, 2, 'W + 5'), { type: 'setBodyMaterial', body: 'lid', material: 'PETG' });

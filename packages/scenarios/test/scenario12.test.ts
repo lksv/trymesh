@@ -19,7 +19,7 @@ import { readZip } from '../../engine/test/zip-reader';
 import { NO_PRINTED_BODY } from '../../engine/src/export/bodies';
 import { QUARTER, TURN_ALLOWANCE } from '../../engine/src/export/outline';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { BORE, CONE, FLOOR, LID_TOP, MID_W, OUTLINE, PADS, POST_TOP, RIB_LEFT, RIB_LEFT_COPY, SCREW_POINTS, UNDER_LID, WALL_OUT, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lidsInARow, lipLeadIn, midPlanes, pads, parameters, pointAt, posts, rib, ribDraft, ribMirror, screwHoles, sketchOn, vents } from './box';
+import { BORE, CONE, FLOOR, LID_TOP, MID_W, OUTLINE, PADS, POST_TOP, RIB_LEFT, RIB_LEFT_COPY, SCREW_POINTS, UNDER_LID, WALL_OUT, box, brace, bracket, cavity, countersinkByHand, insertHoles, lid, lidsInARow, lipLeadIn, midPlanes, pads, parameters, pointAt, posts, rib, ribDraft, ribMirror, screwHoles, secondDirection, sixLids, sketchOn, vents, ventsOnBothWalls, drains } from './box';
 import { XY, expectAllOk, faceBox, faceNames, newEngine, run, status, volume } from './kit';
 
 const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
@@ -489,7 +489,18 @@ describe('scenario 12, the part of 2e: vent slots in a row, the rib mirrored, pa
     // three slots over 16: 8 apart, the second copy where the fourth of the row was
     expect(faceBox(byLength, 'box', { feature: 'vent', role: 'side', curve: 'vd', copy: [{ pattern: 'ventRow', index: 2 }] })?.min[0]).toBeCloseTo(32, 5);
     expect(engine.preview({ type: 'setField', feature: 'ventRow', path: 'transform/span/spacing', value: 0 }).ok).toBe(false);
-    expect(FEATURE_TYPE_INFO.pattern.fields.map((field) => field.path)).toEqual(['transform/count', 'transform/span/angle', 'transform/count', 'transform/span/spacing', 'transform/span/length']);
+    // five fields of the kinds and four of the second direction of a grid
+    expect(FEATURE_TYPE_INFO.pattern.fields.map((field) => field.path)).toEqual([
+      'transform/count',
+      'transform/span/angle',
+      'transform/count',
+      'transform/span/spacing',
+      'transform/span/length',
+      'transform/second/count',
+      'transform/second/span/spacing',
+      'transform/second/count',
+      'transform/second/span/length',
+    ]);
   });
 
   it('the rib and its brace mirrored to the other long wall: the copies add what the originals added, the brace ends on the copy of the rib', () => {
@@ -577,6 +588,172 @@ describe('scenario 12, the part of 2e: vent slots in a row, the rib mirrored, pa
     for (const id of PADS) near(volumeOf(other.getState(), id), 120, 1e-3);
     near(volumeOf(other.getState(), 'box'), volumeOf(before, 'box'), 1e-9);
     expect(MID_W).toEqual({ kind: 'plane', feature: 'midW' });
+  });
+});
+
+describe('scenario 12, the grid (2e, D53, an addition): the vents of both walls, drain holes in the floor, six lids', () => {
+  let engine: Engine;
+  let walls = 0;
+  let floor = 0;
+  const X = { kind: 'base', axis: 'X' } as const;
+  const Y = { kind: 'base', axis: 'Y' } as const;
+  const hasFace = (state: EngineState, body: Id, name: FaceName): boolean => state.evaluation.bodies[body].faces.some((face) => JSON.stringify(state.evaluation.faceNames[face.id]) === JSON.stringify(name));
+  const previewAll = (...commands: Command[]): EngineState => preview(engine, commands.length === 1 ? commands[0] : { type: 'batch', commands });
+  const patternOf = (state: EngineState, id: Id): PatternFeature => state.document.features.find((f) => f.id === id) as PatternFeature;
+  const vent = (i: number, j: number): FaceName => ({ feature: 'vent', role: 'side', curve: 'vd', copy: [{ pattern: 'ventRow', index: i + 1000 * j }] });
+  const drainBore = (i: number, j: number): FaceName => ({ feature: 'drain', role: 'holeBore', point: 'd1', copy: [{ pattern: 'drains', index: i + 1000 * j }] });
+  // Is the bore of the place (i, j) a cylinder whose axis passes (x, y)? The published surface of a
+  // bore says where the hole is.
+  const boreAt = (state: EngineState, i: number, j: number, x: number, y: number): boolean => {
+    const face = state.evaluation.bodies.box.faces.find((candidate) => JSON.stringify(state.evaluation.faceNames[candidate.id]) === JSON.stringify(drainBore(i, j)));
+    const surface = face && state.evaluation.faceSurfaces[face.id];
+    return surface?.kind === 'cylinder' && Math.abs(surface.origin[0] - x) < 1e-6 && Math.abs(surface.origin[1] - y) < 1e-6;
+  };
+  // what one drain hole removes
+  const oneDrain = (): number => floor - volumeOf(previewAll({ type: 'setSuppressed', id: 'drains', suppressed: true }), 'box');
+  const hardware = (args: Parameters<Engine['query']>[1] & object) => {
+    const answer = engine.query('hardwareHole', args as never);
+    if (!answer.ok) throw new Error(answer.error.message);
+    return answer.result as { shape: HoleFeature['shape']; label: string; depth?: number };
+  };
+  beforeAll(() => {
+    // the model up to the part of 2e, as that part builds it
+    engine = newEngine();
+    run(engine, parameters(), box(), cavity(), lid(), rib(), bracket(), ribDraft(), lipLeadIn(), countersinkByHand(), posts(), sketchOn('tops', onFace('box', POST_TOP)), brace());
+    const screw = DATA_CATALOGS.countersunkScrews.rows.M3;
+    const countersunk = hardware({ use: 'countersunk', size: 'M3', allowance: 'holeComp' });
+    run(engine, screwHoles(countersunk.shape, countersunk.label, String(Math.max(3, screw.headDiameter / 2 / Math.tan(screw.headAngle / 2) + 1))));
+    const size = Object.keys(DATA_CATALOGS.heatSetInserts.rows).find((key) => DATA_CATALOGS.heatSetInserts.rows[key].thread === 3) as string;
+    const insert = hardware({ use: 'heatSetInsert', size, allowance: 'holeComp' });
+    run(engine, insertHoles(insert.shape, insert.label, insert.depth as number), vents(), midPlanes(), ribMirror(), pads());
+    expectAllOk(engine.getState());
+    walls = volumeOf(engine.getState(), 'box');
+  });
+
+  it('the row of vents gets a second direction: the far wall loses what the near one lost, the row keeps its numbers', () => {
+    const state = run(engine, ventsOnBothWalls());
+    expectAllOk(state);
+    const row = patternOf(state, 'ventRow');
+    expect(row.transform).toEqual({ type: 'linear', direction: X, count: 5, span: { type: 'spacing', spacing: 4 }, second: { direction: Y, count: 2, span: { type: 'spacing', spacing: 47.5 } } });
+    expect(row.expressions).toEqual({ 'transform/count': 'vents', 'transform/span/spacing': 'ventPitch', 'transform/second/span/spacing': 'W - wall - 0.5' });
+    near(walls - volumeOf(state, 'box'), 5 * 2 * 12 * 2);
+    // the copies of the row keep 1 to 4; the far wall has 1000 (across from the original) to 1004
+    for (const [i, j] of [[4, 0], [0, 1], [4, 1]]) expect(hasFace(state, 'box', vent(i, j))).toBe(true);
+    for (const [i, j] of [[5, 0], [5, 1]]) expect(hasFace(state, 'box', vent(i, j))).toBe(false);
+    expect(faceBox(state, 'box', vent(4, 0))?.min[0]).toBeCloseTo(32, 5);
+    expect(faceBox(state, 'box', vent(0, 1))?.min[0]).toBeCloseTo(16, 5);
+    expect(faceBox(state, 'box', vent(4, 1))?.min[0]).toBeCloseTo(32, 5);
+    near(faceBox(state, 'box', vent(0, 1))?.min[1] as number, 48, 1e-4);
+    near(faceBox(state, 'box', vent(0, 1))?.max[1] as number, 50, 1e-4);
+    // the lid still clears the box
+    expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+  });
+
+  it('a sketch on a slot of the far wall stays where it is when a sixth slot per wall is added; eighteen name the idle copies row by row', () => {
+    const standing = run(engine, sketchOn('onFarVent', onFace('box', vent(4, 1))));
+    const was = standing.evaluation.features.onFarVent.plane?.origin as number[];
+    near(was[0], 32, 1e-6);
+    near(was[1], 47.5, 1e-6);
+    near(was[2], 22, 1e-6);
+    const six = previewAll({ type: 'setParameter', name: 'vents', expr: '6' });
+    expect(six.evaluation.features.onFarVent.status).toBe('ok');
+    (six.evaluation.features.onFarVent.plane?.origin as number[]).forEach((value, axis) => near(value, was[axis], 1e-9));
+    expect(hasFace(six, 'box', vent(5, 0))).toBe(true);
+    expect(hasFace(six, 'box', vent(5, 1))).toBe(true);
+    near(walls - volumeOf(six, 'box'), 7 * 2 * 12 * 2);
+    const many = previewAll({ type: 'setParameter', name: 'vents', expr: '18' });
+    expect(many.evaluation.features.ventRow.warnings[0]?.refs?.map((ref) => (ref as { copy: number }).copy)).toEqual([16, 17, 1016, 1017]);
+    floor = volumeOf(engine.getState(), 'box');
+  });
+
+  it('drain holes: a grid 4 × 3 of a hole through the floor, every place where its number says', () => {
+    const state = run(engine, drains());
+    expect(state.evaluation.features.drains.status).toBe('ok');
+    const one = oneDrain();
+    near(one, 6.2053, 1e-3);
+    near(floor - volumeOf(state, 'box'), 12 * one, 1e-4);
+    expect(boreAt(state, 3, 2, 33, 22)).toBe(true);
+    expect(boreAt(state, 2, 1, 28, 16)).toBe(true);
+    expect(boreAt(state, 3, 0, 33, 10)).toBe(true);
+    expect(hasFace(state, 'box', drainBore(4, 0))).toBe(false);
+    expect(hasFace(state, 'box', drainBore(0, 3))).toBe(false);
+    // one more column and one more row: eight more holes, every one that was there in its place
+    const more = previewAll({ type: 'setParameter', name: 'drainCols', expr: '5' }, { type: 'setParameter', name: 'drainRows', expr: '4' });
+    expect(more.evaluation.features.drains.status).toBe('ok');
+    near(floor - volumeOf(more, 'box'), 20 * one, 1e-4);
+    for (const [i, j, x, y] of [[3, 2, 33, 22], [2, 1, 28, 16], [4, 0, 38, 10], [4, 3, 38, 28]]) expect(boreAt(more, i, j, x, y)).toBe(true);
+  });
+
+  it('too many places, two places in one: the error invalidPattern of the pattern; parallel rows that stand apart are fine', () => {
+    const one = oneDrain();
+    const over = previewAll({ type: 'setParameter', name: 'drainCols', expr: '50' }, { type: 'setParameter', name: 'drainRows', expr: '5' });
+    expect(over.evaluation.features.drains.error).toEqual({ code: 'invalidPattern', message: 'The counts, the directions and the spans do not make a pattern. (50 × 5 is 250 places; a pattern has at most 200, the original included)', refs: ['transform/count', 'transform/second/count'] });
+    near(floor - volumeOf(over, 'box'), one, 1e-9);
+    const twice = previewAll({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, span: { type: 'spacing', spacing: 5 } } } } });
+    expect(twice.evaluation.features.drains.error).toMatchObject({
+      code: 'invalidPattern',
+      refs: ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'],
+    });
+    expect(twice.evaluation.features.drains.error?.message).toContain('(the copies 1 and 1000 would stand in one place)');
+    // two rows along X half a step apart: eight separate holes on one line
+    const line = previewAll({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, count: 2, span: { type: 'spacing', spacing: 2.5 } } } } });
+    expect(line.evaluation.features.drains.status).toBe('ok');
+    near(floor - volumeOf(line, 'box'), 8 * one, 1e-4);
+    expect(boreAt(line, 1, 1, 25.5, 10)).toBe(true);
+    expect(boreAt(line, 3, 1, 35.5, 10)).toBe(true);
+  });
+
+  it('`second: null` makes a row again with its numbers; `second` on a mirror and half a second on a row are invalid commands', () => {
+    const row = previewAll({ type: 'updateFeature', id: 'drains', patch: { transform: { second: null } } });
+    expect(row.evaluation.features.drains.status).toBe('ok');
+    near(floor - volumeOf(row, 'box'), 4 * oneDrain(), 1e-4);
+    expect(patternOf(row, 'drains').expressions).toEqual({ 'transform/count': 'drainCols' });
+    expect(hasFace(row, 'box', drainBore(3, 0))).toBe(true);
+    expect(engine.preview(secondDirection('ribMirror', X, 2, 5)).ok).toBe(false);
+    expect(engine.preview({ type: 'batch', commands: [lidsInARow(), { type: 'updateFeature', id: 'lids', patch: { transform: { second: { count: 2 } } } }] }).ok).toBe(false);
+  });
+
+  it('six lids for the print bed: a grid of a body, each a lid of PETG; a link and a sketch take copies of both rows; none collide', () => {
+    const LIDS = ['lids/1', 'lids/2', 'lids/1000', 'lids/1001', 'lids/1002'];
+    const state = run(engine, sixLids());
+    expectAllOk(state);
+    expect(state.evaluation.features.lids.bodies).toEqual(LIDS);
+    const last = state.evaluation.bodies['lids/1002'];
+    near(last.bounds.min[0], 170, 1e-4);
+    near(last.bounds.min[1], 55, 1e-4);
+    near(last.bounds.min[2], 26, 1e-4);
+    near(volumeOf(state, 'lids/1002'), volumeOf(state, 'lid'), 1e-2);
+    expect(state.evaluation.bodyProperties['lids/1002']).toMatchObject({ material: 'PETG', from: 'lid' });
+    const mass = engine.query('mass', { bodies: ['lid', ...LIDS] });
+    if (!mass.ok) throw new Error(mass.error.message);
+    near(mass.result.mass, 6 * (mass.result.bodies[0].mass as number), 1e-3);
+    near(mass.result.bodies[0].mass as number, 23.056, 1e-3);
+    const linked = previewAll({ type: 'setLink', id: 'bed', bodies: ['lid', 'lids/1', 'lids/1000', 'lids/1002'] }).evaluation.mechanism.links.bed;
+    expect(linked).toMatchObject({ bodies: ['lid', 'lids/1', 'lids/1000', 'lids/1002'], missing: [] });
+    const under: FaceName = { feature: 'lid', role: 'startCap', copy: [{ pattern: 'lids', index: 1001 }] };
+    expect(previewAll(sketchOn('underALid', onFace('lids/1001', under))).evaluation.features.underALid.status).toBe('ok');
+    expect(engine.query('interference', { bodies: ['lid', ...LIDS] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+  });
+
+  it('a fourth lid per row adds lids/3 and lids/1003 and moves none; one row leaves a link with lids/1002 under missing', () => {
+    const four = previewAll({ type: 'setField', feature: 'lids', path: 'transform/count', value: 4 });
+    expect(four.evaluation.features.lids.bodies).toEqual(['lids/1', 'lids/2', 'lids/3', 'lids/1000', 'lids/1001', 'lids/1002', 'lids/1003']);
+    near(four.evaluation.bodies['lids/1002'].bounds.min[0], 170, 1e-4);
+    const one = previewAll({ type: 'setLink', id: 'bed', bodies: ['lid', 'lids/1', 'lids/1002'] }, { type: 'setField', feature: 'lids', path: 'transform/second/count', value: 1 });
+    expect(one.evaluation.features.lids.bodies).toEqual(['lids/1', 'lids/2']);
+    expect(one.evaluation.mechanism.links.bed.missing).toEqual(['lids/1002']);
+  });
+
+  it('the document loads to the same model, with the schema version of this build', () => {
+    const before = engine.getState();
+    const saved = engine.save();
+    expect((JSON.parse(saved) as { schemaVersion: number }).schemaVersion).toBe(SCHEMA_VERSION);
+    const other = newEngine();
+    expect(other.load(saved).ok).toBe(true);
+    expect(other.getState().document).toEqual(before.document);
+    expectAllOk(other.getState());
+    expect(other.getState().evaluation.features.lids.bodies).toEqual(['lids/1', 'lids/2', 'lids/1000', 'lids/1001', 'lids/1002']);
+    near(volumeOf(other.getState(), 'box'), volumeOf(before, 'box'), 1e-9);
   });
 });
 

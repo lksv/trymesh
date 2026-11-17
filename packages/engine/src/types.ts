@@ -322,8 +322,9 @@ export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 //   targets of that feature, in the order of the list. The features need not share targets; the
 //   list lets a hole repeat with its pocket.
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
-//   numbered from 1. A copy is a body like any other: a sketch can stand on it, it can be cut and its
-//   edges projected.
+//   numbered from 1 (a grid numbers its copies i + 1000 · j, with gaps: see PatternTransform; read
+//   the IDs from `bodies` of the result, do not compose them by counting). A copy is a body like
+//   any other: a sketch can stand on it, it can be cut and its edges projected.
 // - `count` includes the original; 1 means the original alone. A mirror has no count and makes one
 //   copy, number 1 (`<pattern>/1`; another number of a mirror is not a body a command may name).
 //   The pattern is atomic: when any copy fails, the whole pattern is in error and the model stays
@@ -406,6 +407,21 @@ export type HoleExtent = { type: 'distance'; start: number; distance: number } |
 //     count adds copies at the far end and moves none (prefer it when something refers to a copy);
 //   - `length` (field `transform/span/length`): the distance between the original and the last
 //     copy, so the step is length / (count − 1); a change of the count moves every copy.
+//   `second` (optional) makes a grid (D53): the row of the first direction is repeated along
+//   a second direction with its own `direction`, `count` and `span`, each as in the first
+//   (numeric fields `transform/second/count`, `transform/second/span/spacing`,
+//   `transform/second/span/length`); without it the pattern is a row. The places are the pairs
+//   (i, j), i steps along the first direction and j along the second; (0, 0) is the original. The
+//   copy at (i, j) has the number i + 1000 · j: the row of the original keeps the numbers 1 …
+//   count − 1 of a row, the second row is 1000, 1001, …, the third 2000, …. A number does not
+//   depend on the counts, so with spacings a larger count adds copies and moves none; the numbers
+//   have gaps, and `bodies` of the result lists the copies that exist, in the order of their
+//   numbers (row by row, the order they are applied in). The recompute refuses, as the error
+//   `invalidPattern`, a grid of more than 200 places (count × second count, the original included)
+//   and a grid of which two places would be one place (whole numbers of steps along parallel
+//   directions that reach the same place, such as the steps 5 and 5, 5 and 10, 5 and −5; a step
+//   below 1e-6 mm; directions a hair apart). `{ second: null }` in `updateFeature` makes a row
+//   again; a new linear pattern without a grid leaves `second` out.
 // - `mirror`: one copy, the mirror image in `plane` (a base plane, a plane feature or a planar face
 //   of a body, as the plane of a sketch; for a face the whole plane it lies in), resolved in the
 //   state before the pattern. A plane of symmetry is a base plane or a plane feature offset by an
@@ -415,8 +431,10 @@ export type HoleExtent = { type: 'distance'; start: number; distance: number } |
 //   right-handed frame of its own, not the image of a sketch on the source face.
 export type PatternTransform =
   | { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } }
-  | { type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }
+  | { type: 'linear'; direction: AxisRef; count: number; span: LinearSpan; second?: { direction: AxisRef; count: number; span: LinearSpan } }
   | { type: 'mirror'; plane: PlaneRef };
+// The span of a direction of a linear pattern.
+export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };
 
 // An axis: a base axis of the model, or the normal of a sketch plane led through a point of the
 // sketch (an own point, the origin or a point of projected geometry).
@@ -837,6 +855,15 @@ export interface Issue {
 //   point: a head that passes through a thin plate of a body that reaches deeper elsewhere is not
 //   detected.
 // - Two points are so close that their holes would overlap; `refs` name the two points.
+// invalidPattern: the counts, the directions and the spans do not make a pattern (a grid, D53).
+// - More places than 200 (count × second count, the original included); `refs` are the fields
+//   `transform/count` and `transform/second/count`, the message says the product.
+// - Two places of a grid would be one place (at most 1e-6 mm apart; the original is a place);
+//   `refs` are the paths of what the places are computed from (`transform/direction`,
+//   `transform/count`, the numeric field of the span, and the same three under
+//   `transform/second/`), the message names the two copies ("the copies 1 and 1000 would stand in
+//   one place", "the copy 1001 would stand in the place of the original").
+// The pattern is in error as a whole and the model stays as it was before it.
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -847,6 +874,7 @@ export type ErrorCode =
   | 'invalidExpression'
   | 'invalidExtent'
   | 'invalidHole'
+  | 'invalidPattern'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 

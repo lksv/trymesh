@@ -737,9 +737,21 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('copy: [{ pattern, index }]');
     expect(text).toContain('{ kind: "sketchPoint", sketch, point }');
     expect(text).toContain('PatternFeature');
-    // the count once per kind that has one, and the spans of a linear pattern (D53)
-    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle', 'transform/count', 'transform/span/spacing', 'transform/span/length']);
-    expect(text).toContain("{ type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }");
+    // the count once per kind that has one, the spans of a linear pattern, and the four fields of
+    // the second direction of a grid (D53)
+    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual([
+      'transform/count',
+      'transform/span/angle',
+      'transform/count',
+      'transform/span/spacing',
+      'transform/span/length',
+      'transform/second/count',
+      'transform/second/span/spacing',
+      'transform/second/count',
+      'transform/second/span/length',
+    ]);
+    expect(text).toContain("{ type: 'linear'; direction: AxisRef; count: number; span: LinearSpan; second?: { direction: AxisRef; count: number; span: LinearSpan } }");
+    expect(text).toContain("export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };");
     expect(text).toContain("{ type: 'mirror'; plane: PlaneRef }");
   });
 
@@ -770,6 +782,46 @@ describe('model, tělesa a příkazy', () => {
     // a mirror has one copy: a second one is no body a command may name
     expect(callTool(engine, 'execute', { command: { type: 'setBodyProperties', body: 'mir/2', patch: { color: '#000000' } } })).toMatchObject({ ok: false });
     expect(callTool(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'm2', name: 'm2', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: { ...mirror, count: 2 } } } })).toMatchObject({ ok: false, error: expect.stringContaining('a transform of the type mirror has no such field') });
+  });
+
+  it('a grid through execute: the copies numbered i + 1000 · j in get_model, invalidPattern as a problem (D53)', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, {
+      type: 'addFeature',
+      feature: { id: 'plate', name: 'plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' },
+    });
+    const transform = { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 50 }, second: { direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 'h' } } };
+    execute(engine, { type: 'setParameter', name: 'h', expr: '40' });
+    expect(execute(engine, { type: 'addFeature', feature: { id: 'G', name: 'G', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform } as never })).toMatchObject({
+      ok: true,
+      bodies: ['plate', 'G/1', 'G/2', 'G/1000', 'G/1001', 'G/1002'],
+      problems: [],
+    });
+    const summary = ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'G');
+    expect(summary).toMatchObject({ status: 'ok', bodies: ['G/1', 'G/2', 'G/1000', 'G/1001', 'G/1002'], transform: { second: { count: 2, span: { type: 'spacing', spacing: 40 } } } });
+    const top = ok(engine, 'get_body', { body: 'G/1002' }).faces.find((face: { label: string }) => face.label === 'plate/endCap@G:1002');
+    expect(top).toMatchObject({ name: { feature: 'plate', role: 'endCap', copy: [{ pattern: 'G', index: 1002 }] } });
+    // the same step along one line: the error of the pattern names the copies
+    const parallel = execute(engine, { type: 'updateFeature', id: 'G', patch: { transform: { second: { direction: { kind: 'base', axis: 'X' }, span: { type: 'spacing', spacing: 50 } } } } });
+    expect(parallel.problems).toEqual([
+      {
+        id: 'G',
+        name: 'G',
+        status: 'error',
+        error: {
+          code: 'invalidPattern',
+          message: 'The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)',
+          refs: ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'],
+        },
+      },
+    ]);
+    // a row again
+    expect(execute(engine, { type: 'updateFeature', id: 'G', patch: { transform: { second: null } } })).toMatchObject({ ok: true, bodies: ['plate', 'G/1', 'G/2'], problems: [] });
+    // the paragraph of CONVENTIONS
+    const text = apiText();
+    expect(text).toContain('`second: { direction, count, span }` makes a grid');
+    expect(text).toContain('i + 1000 · j');
   });
 
   it('check_interference: a tiny overlap under threshold 0 keeps its digits; planar bodies collide however shallow', () => {

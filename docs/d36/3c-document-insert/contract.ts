@@ -13,9 +13,9 @@
 // a member of `WarningCode`. The draft cannot add to those unions, so it states each of them as it
 // is after the package (`FeatureAfter3c`, …), on top of the same after 3b.
 
-import type { BodyPropertiesResult, Engine, ExportFormat, ExportOptions, Exported, FeatureBase, FeatureResult, Issue, IssueCode, FieldSpec, Id, Input, NumberSpec, Parameter, Patch, QueryArgs, QueryName, QueryOutcome, QueryResult, UpgradeStep, Vec3, WarningCode } from '../../../packages/engine/src/index';
+import type { BodyPropertiesResult, CommandResult, Engine, ExportFormat, ExportOptions, Exported, FeatureBase, FeatureResult, Issue, IssueCode, FieldSpec, Id, Input, NumberSpec, Parameter, Patch, QueryArgs, QueryName, QueryOutcome, QueryResult, UpgradeStep, Vec3, WarningCode } from '../../../packages/engine/src/index';
 import type { State } from '../../../packages/engine/src/recompute/state';
-import type { BodyPlacement, CommandAfter3b, DocumentAfter3b, EvaluationAfter3b, FaceNameAfter3b, FeatureAfter3b, MeshPatch } from '../3b-mesh-import/contract';
+import type { BodyPlacement, CommandAfter3b, DocumentAfter3b, ErrorCodeAfter3b, EvaluationAfter3b, FaceNameAfter3b, FeatureAfter3b, MeshPatch } from '../3b-mesh-import/contract';
 import { PLACEMENT_FIELDS } from '../3b-mesh-import/contract';
 
 // ================================================================ the stored document
@@ -65,9 +65,13 @@ export const DOCUMENTS_INFO = {
 // - `parameters`: values for parameters of the inserted document by their names, each a numeric
 //   field `parameters/<name>` (unit none) that takes an expression over the parameters of this
 //   document. The value replaces the expression of that parameter in the inserted document for this
-//   insertion only; what depends on it there follows. A command that names a parameter the stored
-//   document does not have is invalid; a stored document replaced since is the error
-//   `brokenReference` with `refs: [{ parameter: <name> }]`. Optional; `null` in a patch removes one.
+//   insertion only; what depends on it there follows. Each is a reference of the kind `parameter`:
+//   a command that adds a name the stored document does not have is invalid; a stored document
+//   replaced since without it is the error `brokenReference` with `refs: [{ parameter: <name> }]`.
+//   Optional; `null` in a patch removes one; a patch merges the dictionary key by key
+//   (`patch.dictionaries`). `setField` sets a value that is there; a new one comes by `updateFeature`.
+// - The stored document is recomputed with the settings of this document (its chord tolerance), so
+//   an inserted part is divided as finely as what it meets and a fit is measured as for any body.
 // - `bodies`: which bodies of the inserted document come in, by their IDs there; without it every
 //   body at the end of its timeline, in its order. A listed body the inserted document does not have
 //   (in this recompute, with these parameters) is the error `brokenReference` with
@@ -84,16 +88,17 @@ export const DOCUMENTS_INFO = {
 // - Features of this document may change an inserted body like any body (a hole into an inserted
 //   bracket); a body with a face of an imported mesh (3b) stays `importedTarget`.
 // - The entry of the registry: `createsBody` answers for every local name that is the form of a body
-//   ID (or for the listed ones only, with `bodies`); `namesFaces` is true; `producesTool` false;
+//   ID (or for the listed ones only, with `bodies`), and `bodyProblem` and `requireRef` of a body ask
+//   further that the stored document has a feature that can create that body there; `namesFaces` is true; `producesTool` false;
 //   `bodySource` none (what an inserted body inherits comes from the inserted document, not from a
-//   body of this one); `refs` those of the frame and the document (the kind `document`); `input` the
-//   entry of the section; `patch.fields` are `document`, `placement`, `parameters`, `bodies`, and
+//   body of this one); `refs` those of the frame, the document (the kind `document`) and one per value
+//   set (the kind `parameter`); `input` the entry of the section; `patch.fields` are `document`, `placement`, `parameters`, `bodies`, and
 //   `patch.removable` answers for the six numbers of the placement, every `parameters/<name>` and
 //   `bodies`.
 // - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ` (as for a mesh feature of 3b).
 // - Errors: `brokenReference` (the document, a parameter, a listed body; the frame), `nonPlanarFace`
-//   (the frame), `invalidExpression` (a field), `emptyResult` (the inserted document has no body to
-//   bring). Warning: `insertedIssues`.
+//   (the frame), `invalidExpression` (a field), `emptyResult` with the detail "the inserted document
+//   has no body to bring". Warning: `insertedIssues`.
 export interface InsertFeature extends FeatureBase {
   type: 'insert';
   document: Id;
@@ -124,65 +129,141 @@ export const INSERT_TEXTS = {
 // document that copy the body afterwards are appended after them, unprefixed.
 //   { feature: 'ring', role: 'side', curve: 'outer' }  in the document `bearing`, inserted by `b1`:
 //   { feature: 'b1/ring', role: 'side', curve: 'outer' }
-// The key of such a face (`faceKey`) is unambiguous: an insertion names no face under its own ID
-// alone, so a key that starts with `b1/` is a face of `b1`, and the tags of the inserted document
-// (prefixed) come before those of this one (not).
+// The validator of a face name (`faceName`) adds one rule of form: when `feature` has a slash, every
+// tag whose `pattern` has a slash has the same owner (the part before the first slash), those tags
+// come first, and the tags after them have no slash.
 export declare function insertedFaceName(name: FaceNameAfter3b, insertion: Id): FaceNameAfter3b;
 
-// The feature and the rest of a derived ID: the part before the first slash, as for a body ID
-// (`bodyOwner` of sketch-content.ts, which this is). A reference to a face checks the owner: the
-// feature of the face (`faceSource`) and the pattern of every copy tag (`pattern`); for a prefixed
-// ID the owner is the insertion, of the kind `faceSource` in both places. Nothing inside the inserted
-// document is checked by a command: whether the face is there is the recompute's question, as for
-// every face.
+// The key of a face (`faceKey`). A face of this document keeps its key. A face of an insertion
+// (`feature` with a slash) is keyed `<insertion>/` + the key of its name in the inserted document as
+// a JSON string + `/@<pattern>:<index>` per tag of this document:
+//   { feature: 'b1/ring', role: 'side', curve: 'outer' }                       b1/"ring/side/outer"
+//   { feature: 'b1/ring', role: 'side', curve: 'outer', copy: [{ pattern: 'q', index: 2 }] }
+//                                                                              b1/"ring/side/outer"/@q:2
+//   { feature: 'kit/b/ring', role: 'endCap', copy: [{ pattern: 'kit/b/p', index: 1 }] }
+//                                                                              kit/"b/\"ring/endCap/@p:1\""
+// An ID may hold `@` and `:`, so the plain concatenation is ambiguous once an ID holds a slash; the
+// end of a JSON string is its closing quote, so the inner key and the tags of this document are told
+// apart, and the inner key is unambiguous by the same rule one level down.
+export declare function faceKeyAfter3c(name: FaceNameAfter3b): string;
+
+// A reference to a face checks the owner of every prefixed ID in it: the part before the first slash
+// (`bodyOwner`) must be an insertion before the referring feature (the kind `insertion`); an
+// unprefixed `feature` is a feature that names faces (`faceSource`) and an unprefixed tag a pattern
+// (`pattern`), as today. Nothing inside the inserted document is checked by a command: whether the
+// face is there is the recompute's question, as for every face.
 //   faceRefs({ feature: 'b1/ring', role: 'endCap', copy: [{ pattern: 'b1/p', index: 1 }, { pattern: 'q', index: 2 }] })
-//   → [{ id: 'b1', kind: 'faceSource' }, { id: 'b1', kind: 'faceSource' }, { id: 'q', kind: 'pattern' }]
+//   → [{ id: 'b1', kind: 'insertion' }, { id: 'b1', kind: 'insertion' }, { id: 'q', kind: 'pattern' }]
 
 // A feature of the document or of a document it inserts, by its ID as this document names it
 // (`b1/ring`, `kit/b/ring`), with the document it is in: the readers that need the feature behind
 // a prefixed name (the label of an inserted hole for the parts list, the name of an inserted
-// feature in a text of the app). Undefined when an insertion or its stored document is not there.
+// feature in a text of the app, `bodyProblem` of an inserted body). Undefined when an insertion or
+// its stored document is not there.
 export declare function insertedFeature(doc: DocumentAfter3c, id: Id): { feature: FeatureAfter3c; document: DocumentAfter3c } | undefined;
+
+// ================================================================ the section's context
+
+// What the validation and the commands of a section get besides the value (`SectionSpec.validate`
+// and the command functions of sections/spec.ts get one more argument). `document` validates a
+// nested document as `validateDocument` does, one level deeper (refused beyond `MAX_INSERT_DEPTH`),
+// with `what` as the path of its messages; document.ts builds it, so that no section imports
+// document.ts. The sections of master ignore it.
+export interface SectionContext {
+  depth: number; // of the document the section belongs to: 0 for the host
+  document(value: unknown, what: string): DocumentAfter3c;
+}
+// `validateDocument` gets the path and the depth: the message of a fault of a stored document names
+// its path (`documents.bearing.document.settings: …`). The error of a command that stores one carries
+// no `expression`: a parameter of a stored document is no parameter of the host.
+export declare function validateDocument(value: unknown, what?: string, depth?: number): DocumentAfter3c;
 
 // ================================================================ the recompute
 
-// One member is added to what a step gets (`StepContext` in recompute/state.ts), besides `input` of
-// 3b: the recompute of another document by the same evaluator (its memo, its adapters). It returns
-// the state at the end of that document's timeline and its evaluation (the results of its features
-// and checks, its body properties). Nothing it computes is written back: the stored document is
-// never changed by a recompute. Its sections keep their results apart from those of this document.
-export interface StepContextAddition3c {
-  insertion(doc: DocumentAfter3c): { state: State; evaluation: EvaluationAfter3c };
+// What an inserted body passes on to the body properties here: what its chain in the inserted
+// document states, before the use is applied (an auxiliary body there has no mass in its result, but
+// a stated pair passes on). The first colour, material and use along its chain there, the pair that
+// chain uses with the numbers its expressions gave there (with the values of the insertion) and their
+// errors, and its name there (own, or its default name there) and its part name there. Computed by
+// the evaluator with the recompute, by the function the section uses for its own chains.
+export interface InheritedProperties {
+  name: string;
+  partName: string;
+  color?: string;
+  material?: string;
+  use?: 'part' | 'reference' | 'auxiliary';
+  pair?: { density?: number; mass?: number; errors?: BodyPropertiesResult['fieldErrors'] };
 }
 
-// One member is added to the state of the recompute (`State`): what an inserted body inherits, by
-// the ID of the body in this document. The step of an insertion sets it for the bodies it brings;
-// a pattern of an inserted body does not (its copies inherit from their source, which does). The
-// body properties of the section read it after the timeline.
+// The recompute of a stored document: the state at the end of its timeline, its evaluation (the
+// results of its features and checks), and what each of its bodies passes on.
+export interface InsertedRecompute {
+  state: StateAfter3c;
+  evaluation: EvaluationAfter3c;
+  inherited: Record<Id, InheritedProperties>;
+}
+
+// One member is added to what a step gets (`StepContext` in recompute/state.ts), besides `input` of
+// 3b: the recompute of another document by the same evaluator (its memo, its adapters), with the
+// settings of the host (`doc` is passed with them already). Nothing it computes is written back:
+// the stored document is never changed by a recompute. Its sections keep their remembered results
+// apart from those of this document (by the timeline of the stored document).
+export interface StepContextAddition3c {
+  insertion(doc: DocumentAfter3c): InsertedRecompute;
+}
+
+// Two members are added to the state of the recompute (`State`).
+// - `insertions`: per insertion, the entry object, its values written as text, and the recompute.
+//   A later insertion of the same entry object with the same values takes this recompute instead of
+//   asking the evaluator, so two such insertions are made from the same solids whatever the memo of
+//   the evaluator kept.
+// - `inserted`: per body an insertion brought, what it inherits. A pattern of an inserted body adds
+//   nothing (its copies inherit through their source). The body properties read it after the timeline.
 export interface InsertedBody {
   feature: Id; // the insertion
   document: Id; // the key of the stored document
   body: Id; // the ID of the body there
-  properties: BodyPropertiesResult; // resolved in the inserted document, with the parameters of the insertion
+  inherited: InheritedProperties;
 }
 export interface StateAddition3c {
+  insertions: Record<Id, { stored: StoredDocument; values: string; recompute: InsertedRecompute }>;
   inserted: Record<Id, InsertedBody>;
 }
+export type StateAfter3c = State & StateAddition3c;
 
-// One kind is added to the references of a feature (`RefKind` in validation.ts): `document`, a key
-// of the section `documents`. `requireRef` checks that the section has the entry; `featureRefs`
-// leaves it out (no feature, no order on the timeline); `REF_LABEL` gets "stored document".
-export type RefKindAddition3c = 'document';
+// Three kinds are added to the references of a feature (`RefKind` in validation.ts; `requireRef` in
+// features/index.ts checks them; `featureRefs` leaves out the first and the third, which name no
+// feature; `REF_LABEL` gets their words):
+// - `document`: a key of the section `documents`;
+// - `insertion`: a feature of the type `insert` before the referring one (the owner of a prefixed ID
+//   in a face name);
+// - `parameter`: a parameter of a stored document, `{ id: <name>, document: <key> }`; one per value
+//   an insertion sets, so `updateFeature`, which checks the references a feature did not have,
+//   checks a name when it is added or when the insertion is pointed at another stored document.
+export type RefKindAddition3c = 'document' | 'insertion' | 'parameter';
+export interface FeatureRefAddition3c {
+  document?: Id; // of a reference of the kind `parameter`
+}
+
+// One member is added to the patch of a feature module (`FeatureModule.patch`): the fields that are
+// dictionaries of numbers (`parameters`). The merge of a patch (`mergePatch` of document.ts) takes such
+// a field key by key, without reading `kind` as a reference or `type` and `generator` as a variant:
+// those are legal names of parameters.
+export interface FeatureModulePatchAddition3c {
+  dictionaries?: readonly string[];
+}
 
 // The warning of an insertion whose document did not recompute cleanly: `refs` are
-// `{ feature: <prefixed ID>, code }` for every feature of it in error, and `{ check: <name> }` for
-// every check of it that failed or cannot be evaluated, with the parameters of this insertion.
-// The bodies that are there come in.
+// `{ feature: <prefixed ID>, code }` for every feature of it in error, `{ check: <name> }` for
+// every check of it that failed or cannot be evaluated (with the values of this insertion), and the
+// refs of the same warning of an insertion inside it, carried up with their IDs prefixed and their
+// checks as `{ check, in: <prefixed ID of that insertion> }`. The bodies that are there come in.
 export type WarningCodeAfter3c = WarningCode | 'insertedIssues';
 export interface IssueAfter3c extends Omit<Issue, 'code'> {
-  code: IssueCode | 'insertedIssues';
+  code: IssueCode | ErrorCodeAfter3b | 'insertedIssues';
 }
-export interface FeatureResultAfter3c extends Omit<FeatureResult, 'warnings'> {
+export interface FeatureResultAfter3c extends Omit<FeatureResult, 'warnings' | 'error'> {
+  error?: IssueAfter3c;
   warnings: IssueAfter3c[];
 }
 
@@ -190,15 +271,14 @@ export interface FeatureResultAfter3c extends Omit<FeatureResult, 'warnings'> {
 
 // What an inserted body inherits (D48 continued): its own entry and the entries of its chain of
 // sources in this document come first, as for every body; at the end of the chain, when the body it
-// starts at is an inserted body, the properties of that body as the inserted document resolved them
-// (`InsertedBody.properties`) take the place of one more entry: colour, material, use, and the
-// density and the mass as a pair (a mass the inserted document derived from a density is taken as
-// that density, times the volume of the body here). The name is not inherited, as for a copy: an
-// inserted body without a name of its own is `<name of the insertion> / <its name there>`.
-// `fromDocument` is set when a field of the result comes from the inserted document: the key of the
-// stored document. `partName` (the parts list) of an inserted body without a name of its own in this
-// document is its part name in the inserted document, so two insertions of one document name one
-// part.
+// starts at is an inserted body, what it passes on (`InheritedProperties`) takes the place of one
+// more entry: colour, material, use, and the pair (a mass the inserted document derives from
+// a density is that density times the volume of the body here). The name is not inherited, as for
+// a copy: an inserted body without a name of its own is named after the insertion: its name when it
+// brings one body, else `<name of the insertion> / <its name there>`. `fromDocument` is set when
+// a field of the result comes from the inserted document: the key of the stored document.
+// `partName` (the parts list) of an inserted body without a name of its own here is its part name
+// there, so two insertions of one document name one part.
 export interface BodyPropertiesResultAfter3c extends BodyPropertiesResult {
   fromDocument?: Id;
 }
@@ -267,7 +347,7 @@ export type CommandAfter3c =
   | { type: 'addFeature'; feature: Input<FeatureAfter3c>; index?: number }
   | { type: 'updateFeature'; id: Id; patch: InsertPatch | MeshPatch | Extract<CommandAfter3b, { type: 'updateFeature' }>['patch'] }
   | { type: 'batch'; commands: CommandAfter3c[] };
-export type CommandResultAfter3c = { ok: true; state: EngineStateAfter3c } | { ok: false; error: { code: string; message: string } };
+export type CommandResultAfter3c = { ok: true; state: EngineStateAfter3c } | Extract<CommandResult, { ok: false }>;
 export type QueryOptionsAfter3c = ({ at?: Id; state?: never } | { state: EngineStateAfter3c; at?: never }) & { geometry?: 'modelled' };
 
 // `Engine` of master with the document of this package. No method is added: a stored document
@@ -326,7 +406,9 @@ export interface InsertDocumentAnswer {
 
 // `get_document` prints a stored document shortened: its name, its parameters, the number of its
 // features and of its stored documents, and the size of the full text; `get_document { stored: id }`
-// prints that one in full, and `save_document` writes all.
+// prints that one with its timeline and its own stored documents and meshes shortened the same way
+// (`stored: 'kit/bearing'` reaches one inside); `save_document` writes all, and
+// `save_document { stored, path }` writes one stored document to a file of its own.
 export interface StoredDocumentShown {
   name?: string;
   parameters: Parameter[];

@@ -19,14 +19,20 @@
 // (design.md, "Measured") are marked so.
 
 import type { Command, Engine, FaceName, HoleShape, Id, Input, PartsList, PlaneRef } from '../../../packages/engine/src/index';
-import { emptySketch, faceKey, shapeOrigin } from '../../../packages/engine/src/index';
+import { emptySketch, shapeOrigin } from '../../../packages/engine/src/index';
 import type { FaceNameAfter3b } from '../3b-mesh-import/contract';
 import type { CommandAfter3c, DocumentAfter3c, EngineAfter3c, EngineStateAfter3c, InsertDocumentAnswer, InsertFeature, StoredDocumentShown, StoredDocumentSummary } from './contract';
-import { DOCUMENT_INSERT_STEP, INSERT_FIELDS, MAX_INSERT_DEPTH, insertedFaceName, insertedFeature } from './contract';
+import { DOCUMENT_INSERT_STEP, INSERT_FIELDS, MAX_INSERT_DEPTH, faceKeyAfter3c, insertedFaceName, insertedFeature } from './contract';
 
 declare const engine: EngineAfter3c; // the arm
-declare const shop: Engine; // a build of master without this package, in which the parts are modelled
+declare const bearingShop: Engine; // an engine of its own for each part, as a library of parts would hold them
+declare const clipShop: Engine;
 declare const workshop: EngineAfter3c; // a second engine with this package, for a document that inserts another
+declare const spare: EngineAfter3c; // a third, for loads that should not change `engine`
+// The saved text of a document as `master` before 3b and 3c writes it: the sections `meshes` and
+// `documents` left out and the schema version of that `master` (6). A build of the same sources
+// cannot save an older version, so the older file is made from the newer one.
+declare function asSavedByMaster(json: string): unknown;
 declare function fail(message: string): never;
 // The hole of a heat-set insert of the given thread from the catalog, as the part of 3e takes it
 // (`hardwareHole` with the first row of that thread): its shape, its label and its depth.
@@ -48,7 +54,7 @@ const refusal = (command: CommandAfter3c): string => {
   const result = engine.execute(command);
   return result.ok ? fail('expected an invalid command') : result.error.message;
 };
-const shopRun = (...commands: Command[]): void => {
+const shopRun = (shop: Engine, ...commands: Command[]): void => {
   const result = shop.execute({ type: 'batch', commands });
   if (!result.ok) fail(result.error.message);
 };
@@ -58,20 +64,21 @@ const insertion = (id: Id, name: string, document: Id, placement: InsertFeature[
   type: 'addFeature',
   feature: { id, name, suppressed: false, type: 'insert', document, placement, ...more },
 });
-// `faceKey` of the code takes every face name; the draft of 3b widens the type of a name by the role `mesh`.
-const keyOf = (name: FaceNameAfter3b): string => faceKey(name as FaceName);
+// The key of a face after the package (a face of an insertion quotes its inner key).
+const keyOf = (name: FaceNameAfter3b): string => faceKeyAfter3c(name);
 const list = (state?: EngineStateAfter3c): PartsList => unwrap(engine.query('partsList', {}, state ? { state } : {}));
 
 // ---------------------------------------------------------------- a. the parts, as documents of their own
 
 // The bearing as a document of its own, modelled where a library of parts would be: a ring of the
 // outer diameter `D` and the bore `d`, `B` wide, about the origin of XY, standing on z = 0; a check
-// that the wall is there; the body a bought part of 12 g named "608 bearing". Saved by a build
-// without this package, so inserting it upgrades it.
+// that the wall is there; the body a bought part of 12 g named "608 bearing". Saved as a build
+// without this package saves it, so storing it upgrades it.
 let bearing: string | undefined;
 export function bearingFile(): string {
   if (bearing) return bearing;
   shopRun(
+    bearingShop,
     { type: 'setParameter', name: 'd', expr: '8' },
     { type: 'setParameter', name: 'D', expr: '22' },
     { type: 'setParameter', name: 'B', expr: '7' },
@@ -87,46 +94,50 @@ export function bearingFile(): string {
     },
     { type: 'setBodyProperties', body: 'ring', patch: { name: '608 bearing', use: 'reference', mass: 12 } },
   );
-  bearing = shop.save();
+  bearing = bearingShop.save();
   return bearing;
 }
 
 // A cable clip, printed in PETG: a block 20 × 10 × 4 about the origin of XY with a heat-set insert
-// from its top, and the channel the cable takes as an auxiliary body above it (kept free, no part).
+// from its top, and the channel the cable takes as an auxiliary body above it (kept free, no part),
+// drawn in a sketch of its own (in the sketch of the block its lines would cross the block's).
 let clip: string | undefined;
 export function clipFile(): string {
   if (clip) return clip;
-  const m3 = insertHole(shop, 3);
+  const m3 = insertHole(clipShop, 3);
   shopRun(
+    clipShop,
     { type: 'addFeature', feature: emptySketch('blockSketch', 'Block', XY) },
     ...rectangle('blockSketch', 'e', -10, -5, 10, 5),
-    ...rectangle('blockSketch', 'c', -10, -2, 10, 2), // the channel across the block, drawn on it (construction for the block's region)
+    { type: 'addFeature', feature: emptySketch('channelSketch', 'Channel', XY) },
+    ...rectangle('channelSketch', 'c', -10, -2, 10, 2),
     { type: 'addFeature', feature: { id: 'clip', name: 'Cable clip', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'blockSketch', regions: [{ outerLoop: ['e1', 'e2', 'e3', 'e4'] }] }, extent: { type: 'distance', start: 0, distance: 4 }, operation: 'new' } },
-    { type: 'addFeature', feature: { id: 'insertHole', name: 'Insert', suppressed: false, type: 'hole', sketch: 'blockSketch', points: ['origin'], shape: m3.shape, extent: { type: 'distance', start: 4, distance: -m3.depth }, targets: ['clip'], label: m3.label } },
-    { type: 'addFeature', feature: { id: 'cable', name: 'Cable', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'blockSketch', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: 4, distance: 6 }, operation: 'new' } },
+    { type: 'addFeature', feature: { id: 'clipHole', name: 'Insert', suppressed: false, type: 'hole', sketch: 'blockSketch', points: ['origin'], shape: m3.shape, extent: { type: 'distance', start: 4, distance: -m3.depth }, targets: ['clip'], label: m3.label } },
+    { type: 'addFeature', feature: { id: 'cable', name: 'Cable', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'channelSketch', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: 4, distance: 6 }, operation: 'new' } },
     { type: 'setBodyMaterial', body: 'clip', material: 'PETG' },
     { type: 'setBodyProperties', body: 'cable', patch: { use: 'auxiliary' } },
   );
-  clip = shop.save();
+  clip = clipShop.save();
   return clip;
 }
 
 // ---------------------------------------------------------------- b. stored and inserted
 
 // The bearing stored once and inserted twice, at the elbow and at the shoulder, each on the point of
-// `layout` and lifted by 0.5 along its normal, so that the ring lies inside `upper` (z from 0.5 to
-// 7.5) about the pin. The outer diameter at the elbow follows a parameter of the arm. One batch, one
+// `layout` and lifted by 0.5 along its normal, so that the ring lies in `upper` (z from 0.5 to 7.5)
+// about the pin. (Both points are 10 mm from the rim of `upper`, so a ring of radius 11 stands 1 mm
+// out of it, and its seat opens the rim.) The outer diameter at the elbow follows a parameter of the arm. One batch, one
 // undo step.
 export function inserted(): EngineStateAfter3c {
   return run(
-    { type: 'addDocument', id: 'bearing', document: JSON.parse(bearingFile()), name: '608.json' },
+    { type: 'addDocument', id: 'bearing', document: asSavedByMaster(bearingFile()), name: '608.json' },
     { type: 'setParameter', name: 'elbowBearingD', expr: '22' },
     insertion('b1', 'Elbow bearing', 'bearing', { frame: at('elbow'), z: 0.5 }, { parameters: { D: 'elbowBearingD' } }),
     insertion('b2', 'Shoulder bearing', 'bearing', { frame: at('shoulder'), z: 0.5 }),
   );
 }
 
-// What came in: one body each, named after the insertion and the name it had, a bought part of
+// What came in: one body each, named after the insertion (it brings one body), a bought part of
 // 12 g by what the bearing's own document says, with the faces of the document under prefixed names.
 // The stored copy is the upgraded document: it has the sections of this build, its own stored
 // documents among them.
@@ -141,14 +152,15 @@ export function whatCameIn(): boolean {
     features['b2'].bodies.join() === 'b2/ring' &&
     JSON.stringify(features['b1'].facts?.origin) === '[120,0,0.5]' &&
     JSON.stringify(features['b2'].facts?.axisZ) === '[0,0,1]' &&
-    ring.name === 'Elbow bearing / 608 bearing' &&
+    ring.name === 'Elbow bearing' &&
     ring.use === 'reference' &&
     ring.mass === 12 &&
     ring.massFrom === 'mass' &&
     ring.fromDocument === 'bearing' &&
-    Math.abs(bodies['b1/ring'].volume - bodies['b2/ring'].volume) === 0 &&
-    faceNames.some((name) => keyOf(name) === 'b1/ring/side/outer') &&
-    faceNames.some((name) => keyOf(name) === 'b2/ring/startCap') &&
+    // float32 positions at another place: the volumes differ in the last digits (1.5e-4 mm³, measured by a reviewer)
+    Math.abs(bodies['b1/ring'].volume - bodies['b2/ring'].volume) < 1e-6 * bodies['b2/ring'].volume &&
+    faceNames.some((name) => keyOf(name) === 'b1/"ring/side/outer"') &&
+    faceNames.some((name) => keyOf(name) === 'b2/"ring/startCap"') &&
     stored.name === '608.json' &&
     JSON.stringify(stored.document.documents) === '{}' &&
     JSON.stringify(stored.document.meshes) === '{}' &&
@@ -268,7 +280,7 @@ export function theClip(): boolean {
     state.evaluation.bodyProperties['clip/clip'].material === 'PETG' &&
     after.printed.some((r) => r.name === 'Cable clip' && r.bodies.join() === 'clip/clip') &&
     inserts.count === before.hardware[0].count + 1 &&
-    inserts.holes.some((h) => h.feature === 'clip/insertHole' && h.count === 1)
+    inserts.holes.some((h) => h.feature === 'clip/clipHole' && h.count === 1)
   );
 }
 
@@ -288,17 +300,22 @@ export function refused(): string[] {
     refusal(insertion('b3', 'Nothing', 'nope', { frame: XY })), // no such stored document
     refusal(insertion('b3', 'Wrong', 'bearing', { frame: XY }, { parameters: { width: 3 } })), // the bearing has no parameter `width`
     refusal({ type: 'removeDocument', id: 'bearing' }), // b1 and b2 insert it
-    // a face of an insertion that is not there: the owner of the prefixed ID is checked
-    refusal({ type: 'addFeature', feature: emptySketch('onNothing', 'x', { kind: 'face', body: 'b9/ring', face: { feature: 'b9/ring', role: 'endCap' } }) }),
+    // a face whose prefixed feature has no insertion as its owner: refused by the owner rule (the
+    // body is real)
+    refusal({ type: 'addFeature', feature: emptySketch('onNothing', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b9/ring', role: 'endCap' } }) }),
+    // the owner is a feature that names faces but no insertion
+    refusal({ type: 'addFeature', feature: emptySketch('onNothing', 'x', { kind: 'face', body: 'upper', face: { feature: 'upper/side', role: 'endCap' } }) }),
+    // a body the stored document cannot make
+    refusal({ type: 'setBodyProperties', body: 'b1/typo', patch: { color: '#ff0000' } }),
   ];
 }
 
-// A new revision of the bearing, 8 wide: both insertions take it, and the rings now stand 1 mm out of
-// their seats into the forearm, which the collisions say. Undone afterwards.
+// A new revision of the bearing, 8 wide: both insertions take it, and the ring at the elbow now
+// reaches z = 8.5, 0.5 mm into the forearm, which the collisions say. Previewed, nothing written.
 export function revision(): string[] {
-  shopRun({ type: 'setParameter', name: 'B', expr: '8' });
-  const state = preview({ type: 'replaceDocument', id: 'bearing', document: JSON.parse(shop.save()) });
-  shopRun({ type: 'setParameter', name: 'B', expr: '7' });
+  shopRun(bearingShop, { type: 'setParameter', name: 'B', expr: '8' });
+  const state = preview({ type: 'replaceDocument', id: 'bearing', document: JSON.parse(bearingShop.save()) });
+  shopRun(bearingShop, { type: 'setParameter', name: 'B', expr: '7' });
   const report = unwrap(engine.query('interference', { bodies: ['upper', 'forearm', 'base', 'b1/ring', 'b2/ring'] }, { state }));
   return report.pairs.map((p) => `${p.a}–${p.b}`); // ['b1/ring–forearm'] (the ring at the shoulder rises into nothing)
 }
@@ -308,7 +325,7 @@ export function revision(): string[] {
 export function gone(): boolean {
   const saved = JSON.parse(engine.save()) as DocumentAfter3c;
   const { bearing: _gone, ...rest } = saved.documents;
-  const loaded = engine.load(JSON.stringify({ ...saved, documents: rest }));
+  const loaded = spare.load(JSON.stringify({ ...saved, documents: rest }));
   return loaded.ok && loaded.state.evaluation.features['b1'].status === 'error' && JSON.stringify(loaded.state.evaluation.features['b1'].error?.refs) === '[{"document":"bearing"}]';
 }
 
@@ -329,12 +346,12 @@ export function loading(): string[] {
   const withField = { ...doc, documents: { ...doc.documents, bearing: { ...doc.documents['bearing'], source: '/tmp/608.json' } } };
   const newer = { ...doc, documents: { ...doc.documents, bearing: { document: { ...doc.documents['bearing'].document, schemaVersion: 99 } } } };
   const messageOf = (o: object): string => {
-    const result = engine.load(JSON.stringify(o));
+    const result = spare.load(JSON.stringify(o));
     return result.ok ? fail('expected a refusal') : result.error.message;
   };
   return [
     messageOf(withField), // documents.bearing.source: not a field of a stored document
-    messageOf(newer), // documents.bearing.document: the schema version 99 is newer than this build reads
+    messageOf(newer), // documents.bearing.document: the schema version 99 is newer than this build reads (the path from validateDocument(value, what, depth))
   ];
 }
 
@@ -361,7 +378,7 @@ export function nested(): boolean {
   return (
     state.evaluation.features['kit'].bodies.join() === 'kit/b/ring' &&
     behind?.feature.type === 'extrude' &&
-    keyOf(face) === 'kit/b/ring/endCap/@kit/b/p:1' &&
+    keyOf(face) === 'kit/"b/\\"ring/endCap/@p:1\\""' &&
     MAX_INSERT_DEPTH === 8
   );
 }
@@ -382,5 +399,5 @@ export function answered(answer: InsertDocumentAnswer): boolean {
   );
 }
 export function shown(document: StoredDocumentShown, model: StoredDocumentSummary): boolean {
-  return document.features === 3 && document.documents === 0 && model.parameters['D'] === 22 && model.usedBy.join() === 'b1,b2';
+  return document.features === 2 && document.documents === 0 && model.parameters['D'] === 22 && model.usedBy.join() === 'b1,b2';
 }

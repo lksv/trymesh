@@ -12,13 +12,14 @@ import { hardwareHole } from './hardware-hole';
 import { interference } from './interference';
 import { mass } from './mass';
 import { mechanism } from './mechanism';
+import { partsList } from './parts-list';
 import { measure } from './measure';
 import { print } from './print';
 import { section } from './section';
 import { constraintExplanation, sketchDiagnosis } from './sketch';
 import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
 
-export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap, mass, print, hardwareHole, mechanism };
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, body, catalog, measure, section, gap, mass, print, hardwareHole, mechanism, partsList };
 
 const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 

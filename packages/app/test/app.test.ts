@@ -8,7 +8,7 @@
 // has to change one has changed behaviour, and says in its message what and why. To write the
 // snapshots again: `npx vitest run packages/app/test/app.test.ts -u`.
 import { writeFileSync } from 'node:fs';
-import { type Command, emptyDocument } from '@trymesh/engine';
+import { type Command, emptyDocument, emptySketch } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
 import { readZip } from '../../engine/test/zip-reader';
@@ -1450,5 +1450,68 @@ describe('the app, driven as a user drives it', () => {
       saved.mockRestore();
     }
     await matches(h, 'export');
+  });
+
+  it('the parts list: asked as its form opens, the three groups, a picked row of bodies and of hardware, the sums; the table as a file (D57)', async () => {
+    const h = await start();
+    const saved = vi.spyOn(URL, 'createObjectURL');
+    const exportMenu = (): HTMLSelectElement => h.document.querySelectorAll<HTMLSelectElement>('#toolbar select')[1];
+    const rows = (): HTMLElement[] => Array.from(h.document.querySelectorAll('#panel .row')) as HTMLElement[];
+    try {
+      const XY = { kind: 'base', plane: 'XY' } as const;
+      const corners: [number, number][] = [[0, 0], [40, 0], [40, 30], [0, 30]];
+      const extrude = (id: string, sketch: string, loop: string[], start: number, distance: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: loop }] }, extent: { type: 'distance', start, distance }, operation: 'new' } });
+      // a plate with a labelled hole, in a row of three; a motor bought with the mass of its data
+      // sheet; a body kept free, which is no part
+      outside(h, {
+        type: 'batch',
+        commands: [
+          { type: 'addFeature', feature: emptySketch('s', 's', XY) },
+          ...corners.map(([x, y], i): Command => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x, y })),
+          ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: 's', id: `l${i}`, curve: { type: 'line', a: `p${i}`, b: `p${(i + 1) % 4}` } })),
+          extrude('plate', 's', ['l0', 'l1', 'l2', 'l3'], 0, 5),
+          { type: 'addFeature', feature: emptySketch('hs', 'hs', XY) },
+          { type: 'addPoint', sketch: 'hs', id: 'q', x: 10, y: 10 },
+          { type: 'addFeature', feature: { id: 'holes', name: 'Holes', suppressed: false, type: 'hole', sketch: 'hs', points: ['q'], shape: { type: 'plain', diameter: 3.4 }, extent: { type: 'distance', start: 5, distance: -6 }, targets: ['plate'], label: 'M3x8 screw' } },
+          { type: 'addFeature', feature: { id: 'row', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 50 } } } },
+          { type: 'addFeature', feature: emptySketch('ms', 'ms', XY) },
+          { type: 'addPoint', sketch: 'ms', id: 'mc', x: 20, y: 60 },
+          { type: 'addCurve', sketch: 'ms', id: 'mk', curve: { type: 'circle', center: 'mc' }, radius: 8 },
+          extrude('motor', 'ms', ['mk'], 0, 20),
+          extrude('keep', 'ms', ['mk'], 30, 10),
+          { type: 'setBodyMaterial', body: 'plate', material: 'PLA' },
+          { type: 'setBodyProperties', body: 'motor', patch: { name: 'Motor', color: '#30343a', use: 'reference', mass: 60 } },
+          { type: 'setBodyProperties', body: 'keep', patch: { use: 'auxiliary' } },
+        ],
+      });
+      h.record('a plate with a labelled hole in a row of three, a motor bought, a body kept free');
+      h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'partsList', true);
+      h.record('the parts list opened: asked at once; to print, to buy, the hardware, the sums, the body that is no part; the note counts the three');
+      rows()[0].click();
+      h.record('the row of the plate picked: its three bodies drawn in the colour of a selection');
+      rows()[2].click();
+      h.record('the row of the screws picked: the bores of the hole feature painted in the three plates');
+      outside(h, { type: 'setBodyProperties', body: 'row/2', patch: { color: '#000000' } });
+      h.press('panel', 'Ask');
+      h.record('a copy painted black and asked again: a row of its own, with a patch of its colour, a copy of the plate');
+      h.press('panel', 'Close');
+      h.type(exportMenu(), 'partsCsv', true);
+      h.record('the export Parts list (CSV) opened: no option, its button alone');
+      h.press('panel', 'Export');
+      h.record('exported: the table saved under its suggested name');
+      const text = await (saved.mock.calls[0][0] as Blob).text();
+      expect(text.split('\r\n')).toEqual([
+        'Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),Note,IDs',
+        expect.stringMatching(/^printed,plate,2,PLA,,[0-9.]+,[0-9.]+,,plate row\/1$/),
+        expect.stringMatching(/^printed,plate,1,PLA,#000000,[0-9.]+,[0-9.]+,copy of plate,row\/2$/),
+        'bought,Motor,1,,#30343a,60,60,,motor',
+        'hardware,M3x8 screw,3,,,,,,holes',
+        '',
+      ]);
+      h.press('panel', 'Close');
+    } finally {
+      saved.mockRestore();
+    }
+    await matches(h, 'parts-list');
   });
 });

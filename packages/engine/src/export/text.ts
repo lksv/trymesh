@@ -61,3 +61,11 @@ export function xmlText(text: string): string {
   }
   return out;
 }
+
+// One field of a CSV record (RFC 4180, D57): a control character (U+0000 to U+001F, U+007F: a tab,
+// a line break) as a space, so no field holds one; a field with a comma or a double quote in double
+// quotes, a double quote inside it doubled. No other field is quoted.
+export function csvField(value: string): string {
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ');
+  return /[",]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}

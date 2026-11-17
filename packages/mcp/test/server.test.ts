@@ -349,7 +349,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, perBody: true })).toEqual({ error: 'unknown argument "perBody"; the tool takes format, path, options, overwrite, at, after' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
-    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg' });
+    expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
@@ -358,6 +358,11 @@ describe('MCP server: bodies', () => {
     await expect(readdir(nowhere)).rejects.toThrow();
     const other = await connect();
     expect(await other.call('export', { format: 'stl', path: nowhere })).toEqual({ error: 'the model has no body to export' });
+    // the parts list as a file (D57): one CSV table; a model with nothing to list is refused
+    const csv = await session.call('export', { format: 'partsCsv', path: join(dir, 'export', 'parts.csv') });
+    expect(csv.files).toEqual([expect.objectContaining({ path: join(dir, 'export', 'parts.csv'), rows: expect.any(Number) })]);
+    expect((await readFile(join(dir, 'export', 'parts.csv'), 'utf8')).startsWith('Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),Note,IDs\r\n')).toBe(true);
+    expect(await other.call('export', { format: 'partsCsv', path: nowhere })).toEqual({ error: 'the model has no part and no labelled hole to list' });
     await expect(readdir(nowhere)).rejects.toThrow();
     await Promise.all([session.close(), other.close()]);
   });

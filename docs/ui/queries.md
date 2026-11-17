@@ -1,6 +1,6 @@
 # UI: queries
 
-Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38); the gap view (D40); the print view (D42).
+Part of [ui.md](../ui.md); how to read the tables is said there. The generic form of a query, measuring, and what a view of a query adds (D39); the section view (D38); the gap view (D40); the print view (D42); the parts list view (D57).
 
 ## Queries (D39)
 
@@ -40,6 +40,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
   - **Interference** (the collisions, [bodies.md](bodies.md)): asked as soon as it opens; a row per colliding pair and per fit, a click on a row highlights its two bodies.
   - **Section**: the model cut by the plane, below.
   - **Smallest gap**: the pairs of bodies that are close, below.
+  - **Print check** and **Parts list**: below.
 
 ## The section view (D38)
 
@@ -80,6 +81,20 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **Under all rows** a line says how many faces were listed of how many (those on the bed and those overhanging by the smallest area listed or more), when the limit cut any list.
 - **The note** in the status bar counts the bodies and the orientations, and the rows that do not fit the bed.
 
+## The parts list view (D57)
+
+| Function | Command / call | Reads |
+|---|---|---|
+| What to print and what to buy | `engine.query('partsList', {}, { at })` | `printed`, `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `mass`, `totalMass`, `noMass`, `copyOf`, `mirrored`, `differs`), `hardware` (`label`, `count`, `holes`), `unlabelled`, `auxiliary`, `totals` |
+| See the bodies of a row, or the holes of a row of hardware | UI state | the picked row; for hardware the faces of the state (`faceNames`, `bodies`, `bodyProperties`) |
+| The table as a file | `engine.export('partsCsv', {}, { at })` from the menu *Export…* | the file `parts.csv` |
+
+- **The form** has no argument: the query is asked as soon as it opens (`immediate`). *Ask again* asks once more after the document changed.
+- **The panel** has three groups under their headings, *To print*, *To buy* and *Hardware*, each only when it has a row. A row of bodies is "plate × 3" with a patch of its colour when it has one, and beside it the material, the mass of one and of all (four significant digits; *no mass: set a material or a mass*, or *the mass cannot be evaluated*) and what the row comes from (*copy of*, *mirror image of*, *differs from* the body its chain starts at, by the name of that body). A row of hardware is "M3x8 screw × 3" with its hole features by name and the holes of each. Under the groups the sums of printed and bought bodies (with how many are not in a mass), the hole features without a label and the auxiliary bodies, each only when there is something to say; a list with no row says so.
+- **A picked row** of bodies draws its bodies in the colour of a selection; a picked row of hardware paints the bores and heads of its hole features in the bodies that are not auxiliary, the faces the count was taken from, looked up in the state of the answer. A click on the picked row drops the pick.
+- **The note** in the status bar counts the bodies to print and to buy and the pieces of hardware.
+- **The export** `partsCsv` is in the menu *Export…* like every format of the catalog; it has no option, so its form is its button alone, and the file is saved under `parts.csv`.
+
 ## Implementation status
 
 - The print view was run in a browser on 2026-11-15 on a plate with a wider ledge on its top and a pin on the ledge, and a bar beside it: three orientations (as modelled, on the top of the ledge, on a side), a bed too small. The rows, the two warnings (the pin reaches below the top of the ledge), the picked rows. What it showed and the tests of the app could not: as modelled, the painted faces are underneath and nothing is seen until the model is turned; the line under a picked row now says so.
@@ -91,5 +106,6 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - Not offered: asking over a preview or while a form of a feature is open (the model panel is not shown then), several answers at once, a question saved with the document.
 - The section view, not offered: a section by more than one plane, hatching and a colour per body, measuring inside the section, a click on the filled cut that selects its body, a step other than 1 mm, dragging the plane.
 - The gap view, not offered: a zoom to the picked gap, the gap of two groups of bodies, a sweep of a parameter.
+- The parts list view (D57), implemented 2026-11-17 and tested in `packages/app/test/app.test.ts` (snapshot `parts-list.txt`); not run in a browser. Not offered: a picked row of hardware selecting its features on the timeline, the rows of one link, a sort or a filter of the rows.
 - The print view, not offered: the model turned onto a bed, a view from below at a click, the faces on the bed listed by name (they are painted and counted), a comparison that names the best orientation.
 - The labels of the tree are the keys of the result, in English.

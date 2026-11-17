@@ -1,7 +1,9 @@
 // The export of the form (D54) over an engine of the test: what is asked (`at` only when the marker
 // is after a feature), what is saved, and a set whose ZIP cannot be built shown as a refusal. The
 // form as a user drives it is in app.test.ts (snapshot `export.txt`).
-import { type Engine, type Exported, type QueryOutcome, ZIP_NAME_LIMIT } from '@trymesh/engine';
+import { type Command, type Engine, type Exported, type QueryOutcome, ZIP_NAME_LIMIT, createEngine } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import type { PanelHost } from '../src/host';
 import { type SaveFile, runExportForm } from '../src/panels/export';
@@ -9,7 +11,7 @@ import type { QueryPanel } from '../src/panels/query';
 import { readZip } from '../../engine/test/zip-reader';
 
 const stl = (path: string) => ({ path, mediaType: 'model/stl', bytes: new Uint8Array([1, 2, 3]) });
-function harness(answer: QueryOutcome<Exported>, marker: string | null) {
+function harness(answer: QueryOutcome<Exported>, marker: string | null, format = 'stl', draft: Record<string, unknown> = { perBody: true }) {
   const asked: unknown[][] = [];
   const said: string[] = [];
   const saved: [string, Uint8Array, string][] = [];
@@ -20,7 +22,7 @@ function harness(answer: QueryOutcome<Exported>, marker: string | null) {
     refresh: () => undefined,
   } as unknown as PanelHost;
   const save: SaveFile = (name, bytes, mediaType) => void saved.push([name, bytes, mediaType]);
-  const panel: QueryPanel = { exporting: { format: 'stl', draft: { perBody: true } } };
+  const panel: QueryPanel = { exporting: { format, draft } } as QueryPanel;
   runExportForm(panel, host, save);
   return { asked, said, saved, problem: panel.exporting?.problem };
 }
@@ -56,5 +58,29 @@ describe('the export of the form', () => {
     expect([refused.problem, refused.saved]).toEqual([{ message: 'stl: bodies[0]: the body "x" is not in the state asked about', arg: ['bodies', 0] }, []]);
     const empty = harness({ ok: true, result: { layout: 'file', files: [stl('model.stl')], empty: 'the model has no body to export' } }, null);
     expect([empty.problem, empty.saved]).toEqual([{ message: 'the model has no body to export' }, []]);
+  });
+
+  it('the set of a robot (5b) is saved as one ZIP: the description and a mesh per body', async () => {
+    const engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() });
+    const disc = (id: string, start: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start, distance: 10 }, operation: 'new' } });
+    const done = engine.execute({
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 's', name: 's', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } },
+        { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+        disc('low', 0),
+        disc('high', 10),
+        { type: 'setBodyProperties', body: 'low', patch: { density: 1.2 } },
+        { type: 'setBodyProperties', body: 'high', patch: { density: 1.2 } },
+        { type: 'setLink', id: 'base', bodies: ['low'] },
+        { type: 'setLink', id: 'top', bodies: ['high'] },
+        { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'top', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0 } },
+      ],
+    });
+    expect(done.ok).toBe(true);
+    const { saved, said } = harness(engine.export('mjcf', {}), null, 'mjcf', {});
+    expect(saved.map(([name, , mediaType]) => [name, mediaType])).toEqual([['mjcf.zip', 'application/zip']]);
+    expect(readZip(saved[0][1]).map((entry) => entry.name)).toEqual(['robot.xml', 'low.stl', 'high.stl']);
+    expect(said).toHaveLength(1);
   });
 });

@@ -145,8 +145,10 @@ export const URDF_OPTIONS = {
 export const MJCF_OPTIONS = ROBOT_OPTIONS;
 
 // The catalog after the package (a stated map, as in 3e: merging into the real `ExportFormats`
-// would make the real catalog lack two entries in this program).
-export interface ExportFormatsAfter5b extends ExportFormats {
+// would make the real catalog lack two entries in this program). Since the implementation the real
+// map has both formats; the draft keeps its own options beside them (the summary of `meshPrefix`
+// of the code says more, design.md "As implemented").
+export interface ExportFormatsAfter5b extends Omit<ExportFormats, 'urdf' | 'mjcf'> {
   urdf: typeof URDF_OPTIONS;
   mjcf: typeof MJCF_OPTIONS;
 }
@@ -356,8 +358,8 @@ export interface HostOperationAfter5b<S> {
 // section stays the last, optional parameter (the tests of 1f use it). With a section, a drawn
 // body whose pose is not known (a blocked link) is refused with the operation's own text (the
 // joints, and `after: setPose` to zero or fewer bodies); without one it is drawn.
-const { at: _movedToThePath, ...VIEW_IMAGE_ARGS_REST } = VIEW_IMAGE_ARGS;
-export const VIEW_IMAGE_ARGS_AFTER_5B = VIEW_IMAGE_ARGS_REST;
+// (Since the implementation `VIEW_IMAGE_ARGS` of the code has no `at`.)
+export const VIEW_IMAGE_ARGS_AFTER_5B = VIEW_IMAGE_ARGS;
 export type ViewImageArgsAfter5b = RunArgsOf<typeof VIEW_IMAGE_ARGS_AFTER_5B>;
 export declare function imageRequestAfter5b(host: Host, args: ViewImageArgsAfter5b, state: EngineState, budget?: number): ImageRequest | Extract<QueryOutcome<ToolAnswer>, { ok: false }>;
 // `about` of the picture gains two members, for a state whose mechanism holds a pose:

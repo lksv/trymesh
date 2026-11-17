@@ -23,6 +23,21 @@ export function decimals(value: number, places: number): string {
 // Nine decimals of a millimetre are far under the precision of the coordinates (float32).
 export const plain = (value: number): string => decimals(value, 9);
 
+// A number of a robot description (5b, D59) with nine significant digits of `scale` (the number
+// itself without it): no exponent, no trailing zeros, never "-0". With the scale of a group, what
+// lies under its ninth digit is written 0 (the noise of a product of inertia that is zero by
+// symmetry, against the largest diagonal element of its tensor). A scale of zero writes `plain`.
+export function significant(value: number, scale = value): string {
+  if (!Number.isFinite(value)) return notFinite(value);
+  if (!Number.isFinite(scale) || scale === 0) return plain(value);
+  // the exponent of the scale as it rounds to nine digits (999999999.6 is 1.00000000e+9)
+  const exponent = Number(Math.abs(scale).toExponential(8).split('e')[1]);
+  const places = 8 - exponent;
+  if (places >= 0) return decimals(value, Math.min(places, 100)); // `toFixed` takes at most 100
+  const step = 10 ** -places;
+  return decimals(Math.round(value / step) * step, 0);
+}
+
 // A coordinate of a mesh in 3MF: the shortest decimal text that reads back as the same float32
 // (`Math.fround(Number(text)) === value`), so a reader gets the very numbers of the mesh and of the
 // STL of the same body, and no digits beyond them (3MF core 4.1.3.1). It may use an exponent

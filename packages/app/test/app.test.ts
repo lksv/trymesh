@@ -1335,6 +1335,24 @@ describe('the app, driven as a user drives it', () => {
     h.record('removing the link Base, which the joint names, is refused with the reason');
     h.press('panel', 'Edit', 1);
     h.record('the form of the joint, filled in from the document');
+    // ----- the drive (5b): four optional fields, each in its own unit
+    h.type(h.field('Effort (N·mm or an expression; optional)'), '1100');
+    h.type(h.field('Velocity (rad/s or an expression; optional)'), '6.2');
+    h.type(h.field('Rotor inertia (g·mm² or an expression; optional)'), '5400');
+    h.type(h.field('Gear ratio (a number or an expression; optional)'), '5.18');
+    h.press('panel', 'OK');
+    h.record('the drive of the joint: one setJoint with the four fields, the velocity in rad/s as typed (no degrees)');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ effort: 1100, velocity: 6.2, rotorInertia: 5400, gearRatio: 5.18 });
+    h.press('panel', 'Edit', 1);
+    h.record('the form of the joint with its drive filled in');
+    h.type(h.field('Effort (N·mm or an expression; optional)'), '');
+    h.press('panel', 'OK');
+    h.record('an emptied drive field of an edited joint is sent as null: the effort removed, the rest of the drive kept');
+    expect(h.engine.getState().document.mechanism.joints.joint1).not.toHaveProperty('effort');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ velocity: 6.2, rotorInertia: 5400, gearRatio: 5.18 });
+    h.press('panel', 'Edit', 1);
+    h.choose('Kind', 'continuous');
+    h.record('a continuous joint has the same drive: the typed fields stay');
     h.choose('Kind', 'prismatic');
     h.record('another kind: the numbers start from the defaults of its unit');
     h.press('panel', 'Cancel');

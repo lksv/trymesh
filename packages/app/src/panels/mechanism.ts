@@ -4,16 +4,16 @@
 // has a field that takes an expression and a slider between its limits: dragging the slider
 // previews the pose (the view shows the preview), releasing it writes it. The forms of a link and
 // of a joint are in the panel too. Every confirmation is one command.
-import { type AxisRef, type EngineState, type Expr, type Id, type Input, JOINT_FIELDS, type Joint, type JointResult, type MechanismResult, type Unit } from '@trymesh/engine';
+import { type AxisRef, type EngineState, type Expr, type Id, JOINT_DRIVE_FIELDS, JOINT_FIELDS, type Joint, type JointDriveField, type JointInput, type JointResult, type MechanismResult, type Unit } from '@trymesh/engine';
 import { axisRows } from '../axis-picker';
 import { h, markProblem } from '../dom';
-import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, valueText } from '../fields';
+import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, unitLabel, valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { changeAxis } from '../sketch-commands';
 
 type JointType = Joint['type'];
 type Limited = Extract<Joint, { lower: number }>;
-type NumberPath = 'lower' | 'upper' | 'value';
+type NumberPath = 'lower' | 'upper' | 'value' | JointDriveField;
 
 // A link being made or changed: its ID, its name, its bodies (as ticked).
 interface LinkForm {
@@ -51,6 +51,8 @@ const DEGREES = 180 / Math.PI;
 const shown = (value: number, unit: Unit): number => (unit === 'rad' ? value * DEGREES : value);
 const stored = (value: number, unit: Unit): number => (unit === 'rad' ? value / DEGREES : value);
 const fieldLabel = (title: string, unit: Unit): string => `${title} (${unit === 'rad' ? '°' : 'mm'} or an expression${unit === 'rad' ? ' in radians' : ''})`;
+// A field of the drive (5b): optional, each in its own unit, which the form takes as it is.
+const driveLabel = (title: string, unit: Unit): string => `${title} (${unitLabel(unit) || 'a number'} or an expression; optional)`;
 // The defaults of the numbers of a new joint, as typed: a turn either way, a slide of 100 mm.
 const DEFAULTS: Record<JointType, Partial<Record<NumberPath, string>>> = { revolute: { lower: '-180', upper: '180', value: '0' }, continuous: { value: '0' }, prismatic: { lower: '0', upper: '100', value: '0' }, fixed: {} };
 // The range of the slider of a continuous joint, which has no limits: a turn either way, widened to
@@ -293,6 +295,11 @@ function openJoint(host: PanelHost, panel: MechanismPanel, id?: Id): void {
   if (joint && id !== undefined) {
     const unit = unitOf(joint.type);
     const numbers = Object.fromEntries(JOINT_FIELDS[joint.type].map(({ path }) => [path, fieldText(joint.expressions?.[path as NumberPath] ?? (joint as unknown as Record<string, number>)[path], unit)]));
+    // the drive fields the joint states, each in its own unit
+    for (const { path, spec } of JOINT_DRIVE_FIELDS[joint.type]) {
+      const stored = joint.expressions?.[path as NumberPath] ?? (joint as unknown as Record<string, number | undefined>)[path];
+      if (stored !== undefined) numbers[path] = fieldText(stored, spec.unit);
+    }
     panel.form = { kind: 'joint', editing: true, id, name: joint.name ?? '', type: joint.type, parent: joint.parent, child: joint.child, axis: 'axis' in joint ? joint.axis : { kind: 'base', axis: 'Z' }, numbers };
   } else {
     // the parent: the first link; the child: the first other link that hangs on no joint yet
@@ -324,25 +331,32 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
     {
       onchange: () => {
         const next = type.value as JointType;
+        const previous = form.numbers;
         // the numbers keep what was typed while the unit stays; another unit starts from its defaults
         form.numbers = unitOf(next) === unit ? Object.fromEntries(JOINT_FIELDS[next].map(({ path }) => [path, form.numbers[path as NumberPath] ?? DEFAULTS[next][path as NumberPath]])) : { ...DEFAULTS[next] };
+        // a drive field keeps what was typed when the new kind has it in the same unit
+        for (const { path, spec } of JOINT_DRIVE_FIELDS[next]) {
+          const typed = form.numbers[path as NumberPath] ?? previous[path as NumberPath];
+          if (typed !== undefined && JOINT_DRIVE_FIELDS[form.type].some((field) => field.path === path && field.spec.unit === spec.unit)) form.numbers[path as NumberPath] = typed;
+        }
         form.type = next;
         rebuild();
       },
     },
     ...(Object.keys(TYPES) as JointType[]).map((kind) => option(kind, TYPES[kind], kind === form.type)),
   );
-  const number = (path: NumberPath, title: string): HTMLElement => {
+  const number = (path: NumberPath, title: string, own?: Unit): HTMLElement => {
     const input = h('input', {
       value: form.numbers[path] ?? '',
       oninput: () => {
         form.numbers[path] = input.value;
-        const parsed = parseField(input.value, unit);
+        const parsed = parseField(input.value, own ?? unit);
         markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
       },
     });
-    return h('label', {}, fieldLabel(title, unit), input);
+    return h('label', {}, own === undefined ? fieldLabel(title, unit) : driveLabel(title, own), input);
   };
+  const drive = JOINT_DRIVE_FIELDS[form.type];
   return [
     h('h2', {}, form.editing ? `Joint ${jointName(host, form.id)}` : 'New joint'),
     h('label', {}, 'ID', id),
@@ -353,11 +367,14 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
     ...(form.type === 'fixed' ? [] : axisRows(host, form.axis, sketches, (change) => ((form.axis = changeAxis(form.axis, change, sketches)), rebuild()), 'An axis through a point needs a sketch.')),
     ...(form.type === 'fixed' ? [] : [h('p', { className: 'hint' }, form.type === 'prismatic' ? 'The child slides along the direction of the axis.' : 'A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule).')]),
     ...JOINT_FIELDS[form.type].map(({ path, spec }) => number(path as NumberPath, spec.title)),
+    ...(drive.length ? [h('p', { className: 'hint' }, 'The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):'), ...drive.map(({ path, spec }) => number(path as NumberPath, spec.title, spec.unit))] : []),
     h('div', { className: 'buttons' }, h('button', { className: 'primary', textContent: 'OK', onclick: () => confirmJoint(host, panel, form) }), h('button', { textContent: 'Cancel', onclick: () => ((panel.form = undefined), host.renderPanel()) })),
   ];
 }
 
 // One command: setJoint with the whole joint in the input form (a number, or an expression as typed).
+// An empty drive field is left out of a new joint and sent as `null` for a joint being edited:
+// setJoint keeps a drive field it is not given.
 function confirmJoint(host: PanelHost, panel: MechanismPanel, form: JointForm): void {
   const unit = unitOf(form.type);
   const numbers: Partial<Record<NumberPath, number | Expr>> = {};
@@ -366,8 +383,14 @@ function confirmJoint(host: PanelHost, panel: MechanismPanel, form: JointForm): 
     if (parsed === undefined) return host.say(`${spec.title}: fill in a number or an expression.`, true);
     numbers[path as NumberPath] = parsed;
   }
+  const drive: Partial<Record<NumberPath, number | Expr | null>> = {};
+  for (const { path, spec } of JOINT_DRIVE_FIELDS[form.type]) {
+    const parsed = parseField(form.numbers[path as NumberPath] ?? '', spec.unit);
+    if (parsed !== undefined) drive[path as NumberPath] = parsed;
+    else if (form.editing) drive[path as NumberPath] = null;
+  }
   const name = form.name.trim();
-  const joint = { type: form.type, ...(name === '' ? {} : { name }), parent: form.parent, child: form.child, ...(form.type === 'fixed' ? {} : { axis: form.axis }), ...numbers } as Input<Joint>;
+  const joint = { type: form.type, ...(name === '' ? {} : { name }), parent: form.parent, child: form.child, ...(form.type === 'fixed' ? {} : { axis: form.axis }), ...numbers, ...drive } as JointInput;
   panel.form = undefined;
   if (!host.run({ type: 'setJoint', id: form.id, joint }, `${form.editing ? 'The joint' : 'A joint'} ${name || form.id}${form.editing ? ' changed' : ' made'}.`)) panel.form = form;
 }

@@ -80,18 +80,38 @@ export interface Link {
 //   number and takes an expression over the parameters, kept in `expressions` of the joint under
 //   the name of the field. A coupled motion is two values that follow one parameter (`q` and
 //   `-2 * q`).
+// - The drive (5b, D59): optional numeric fields, by the same rule, read by nothing but the export
+//   of a robot description (URDF, MJCF). A fault of one blocks no pose (`JointResult.driveErrors`).
+//   - `effort`: the largest torque or force the drive gives at the joint: N·mm for a revolute and
+//     a continuous joint (a servo of 11 kg·cm is 1078), N for a prismatic one. Above 0.
+//   - `velocity`: the largest speed of the joint: rad/s, or mm/s for a prismatic one. Above 0.
+//   - `rotorInertia` (revolute, continuous): the moment of inertia of what turns inside the drive
+//     (a rotor, the first stage of a gearbox) about its own axis, at the motor, in g·mm² (the unit
+//     of the query `mass`; a data sheet in g·cm² ×100, in kg·m² ×1e9). At least 0.
+//   - `gearRatio` (revolute, continuous): turns of the motor per turn of the joint. Above 0; 1
+//     when it is not stated.
 export type Joint = JointBase &
   (
-    | { type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number }
-    | { type: 'continuous'; axis: AxisRef; value: number }
-    | { type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number }
+    | ({ type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number } & TurningDrive)
+    | ({ type: 'continuous'; axis: AxisRef; value: number } & TurningDrive)
+    | ({ type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number } & ShiftingDrive)
     | { type: 'fixed' }
   );
 export interface JointBase {
   name?: string;
   parent: Id; // a link
   child: Id; // a link
-  expressions?: { value?: Expr; lower?: Expr; upper?: Expr };
+  expressions?: { value?: Expr; lower?: Expr; upper?: Expr; effort?: Expr; velocity?: Expr; rotorInertia?: Expr; gearRatio?: Expr };
+}
+export interface TurningDrive {
+  effort?: number;
+  velocity?: number;
+  rotorInertia?: number;
+  gearRatio?: number;
+}
+export interface ShiftingDrive {
+  effort?: number;
+  velocity?: number;
 }
 
 // What a body is used as. It decides who reads the body:
@@ -688,7 +708,7 @@ export interface LinkResult {
 }
 // `status: 'error'`: something about the joint is wrong.
 // - brokenReference: the sketch or the point of the axis is not in the state;
-// - invalidExpression: a numeric field has an expression in error (`fieldErrors`);
+// - invalidExpression: a numeric field of the pose has an expression in error (`fieldErrors`);
 // - jointLimits: `lower` is above `upper` (after a change of a parameter);
 // - jointOutOfLimits: `value` is outside the limits (after a change of a parameter).
 // A joint in error has no motion and blocks what hangs on it, with one exception: a joint whose
@@ -709,6 +729,12 @@ export interface JointResult {
   // blocked.
   axis?: { origin: Vec3; direction: Vec3 };
   axisInPose?: { origin: Vec3; direction: Vec3 };
+  // The drive (5b): the fields the joint states, resolved (absent when it states none), and the
+  // fields whose expression does not evaluate, left out of `drive`. A fault of the drive is not
+  // a fault of the joint: `status`, `error` and `fieldErrors` are of the pose alone, so a broken
+  // effort blocks no pose. The export of a robot refuses a joint with `driveErrors`.
+  drive?: TurningDrive;
+  driveErrors?: { effort?: ExpressionError; velocity?: ExpressionError; rotorInertia?: ExpressionError; gearRatio?: ExpressionError };
 }
 
 // The properties of a body of the state, with what it inherits and the defaults filled in. Computed
@@ -1077,10 +1103,14 @@ export type Command =
   //   null` removes the name. A body that is in another link is an invalid command: take it out
   //   there first, in the same batch. Only bodies the link did not have before are checked.
   // - removeLink is refused while a joint names the link.
-  // - setJoint creates the joint `id` or replaces it, whole, in the input form: a numeric field
-  //   takes a number or an expression, which has to evaluate now. A string equal to the expression
-  //   the field already has is kept without evaluation. Only an axis the joint did not have before
-  //   is checked.
+  // - setJoint creates the joint `id` or replaces it in the input form: a numeric field takes
+  //   a number or an expression, which has to evaluate now. A string equal to the expression the
+  //   field already has is kept without evaluation. Only an axis the joint did not have before is
+  //   checked. What a joint of 5a has (the type, the links, the axis, the value and the limits) is
+  //   replaced whole and is required. The drive (`effort`, `velocity`, `rotorInertia`,
+  //   `gearRatio`) is a patch: a drive field the command does not name is kept from the joint of
+  //   the same type it replaces, `null` removes it, and a joint of another type starts without
+  //   a drive.
   // - setPose sets the values of the joints named; the others keep theirs. A number removes the
   //   expression of the value (and with it a coupling), a string sets one. A fixed joint has no
   //   value. It is the command a sweep previews at every step, and the one for `after` of the tool
@@ -1091,11 +1121,15 @@ export type Command =
   // expression names the field by `<joint>/<field>` in `error.expression.path`.
   | { type: 'setLink'; id: Id; name?: string | null; bodies?: Id[] }
   | { type: 'removeLink'; id: Id }
-  | { type: 'setJoint'; id: Id; joint: Input<Joint> }
+  | { type: 'setJoint'; id: Id; joint: JointInput }
   | { type: 'removeJoint'; id: Id }
   | { type: 'setPose'; values: Record<Id, number | Expr> }
   // složený
   | { type: 'batch'; commands: Command[] };
+
+// The joint of setJoint: the input form of a joint, with `null` for a drive field (removes it).
+export type JointDriveField = 'effort' | 'velocity' | 'rotorInertia' | 'gearRatio';
+export type JointInput = Joint extends infer J ? (J extends Joint ? { [K in keyof J]: K extends JointDriveField ? number | Expr | null : Input<J[K]> } : never) : never;
 
 // What setBodyProperties changes: the fields it names. `null` removes a field (the body then
 // inherits it or has its default); a number in a numeric field removes its expression, a string

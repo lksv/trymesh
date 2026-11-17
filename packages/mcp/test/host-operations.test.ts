@@ -16,11 +16,11 @@ import { connect, newEngine } from './kit';
 // The test checks them against the description; the operation itself needs the app to run, so
 // its package tests it there (`view_image`: view-image.test.ts).
 const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {
-  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, at: 'disc', width: 640, height: 480 },
+  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480 },
 };
 // Every argument of every operation and whether a caller may leave it out, as the type says.
 const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {
-  view_image: { view: 'optional', bodies: 'optional', section: 'optional', at: 'optional', width: 'optional', height: 'optional' },
+  view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional' },
 };
 const ENTRIES = Object.entries(HOST_OPERATIONS as Record<string, AnyHostOperation>);
 
@@ -125,7 +125,7 @@ describe('an operation of the app', () => {
       description: 'Renders what the user sees. Returns a PNG image. It runs in the app: without a connected app it answers notAvailable.',
       inputSchema: { type: 'object', properties: { body: { description: 'the ID of a body. The body to look at.' }, width: { description: expect.stringMatching(/^a number, .*default 320\. Width of the picture in pixels\.$/) } }, required: ['body'], additionalProperties: false },
     });
-    expect(hostOperations(OPERATIONS)[0]).toMatchObject({ query: 'view_image', args: [{ name: 'body', required: true }, { name: 'width', required: false }], returns: 'a PNG image.' });
+    expect(hostOperations(OPERATIONS)[0]).toMatchObject({ query: 'view_image', args: [{ name: 'body', required: true }, { name: 'width', required: false }, { name: 'at', required: false }, { name: 'after', required: false }], returns: 'a PNG image.' });
     // no app: the operation has nothing to run in, whatever the document of the server holds
     session.engine.execute(disc);
     expect(await session.call('count_bodies')).toEqual({ error: expect.stringMatching(/^notAvailable: count_bodies: the operation runs in the app and no app is connected/) });

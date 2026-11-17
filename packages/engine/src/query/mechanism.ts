@@ -30,7 +30,7 @@ export const mechanism: QuerySpec<typeof MECHANISM_ARGS, MechanismAnswer> = {
     'Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.',
   returns:
     '`links` (per link: `bodies` the state has, `missing` bodies it lists that the state has not, `transform` from as modelled to the pose as `matrix` rows and `translation`, `blockedBy` the joint that has no motion), ' +
-    '`joints` (per joint: `status`, `error`, `fieldErrors`, the numbers used `value`, `lower`, `upper`, `axis` as modelled and `axisInPose`, each `origin` and unit `direction`), `roots` and `unassigned` (bodies in no link); ' +
+    '`joints` (per joint: `status`, `error`, `fieldErrors`, the numbers used `value`, `lower`, `upper`, `axis` as modelled and `axisInPose`, each `origin` and unit `direction`, `drive` (the fields of its drive that it states, resolved: `effort`, `velocity`, `rotorInertia`, `gearRatio`) and `driveErrors` (the fields of the drive whose expression fails; not a fault of the joint)), `roots` and `unassigned` (bodies in no link); ' +
     'with `beyond`: `beyond` with `links`, `bodies` and `missing` beyond that joint. Lengths in mm, angles in rad.',
   args: MECHANISM_ARGS,
   units: { origin: 'mm', translation: 'mm' },

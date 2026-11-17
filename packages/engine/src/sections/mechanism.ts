@@ -10,7 +10,7 @@ import { axis as axisOf, issue } from '../recompute/services';
 import type { State } from '../recompute/state';
 import { bodyOwner } from '../sketch-content';
 import { IDENTITY, compose, isIdentity, rotation, shift, transformPoint, transformVector } from '../solid';
-import type { BodyResult, Document, Expr, Id, Issue, Joint, JointResult, Link, LinkResult, Mechanism, MechanismResult, RigidTransform } from '../types';
+import type { BodyResult, Document, Expr, Id, Issue, Joint, JointDriveField, JointResult, Link, LinkResult, Mechanism, MechanismResult, RigidTransform } from '../types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, has, unit3 } from '../util';
 import { CommandError, type Dict, type FieldMode, Fields, type RefContext, axisRef, fail, newId, object, oneOf, onlyFields, string } from '../validation';
 import { bodyKey, label } from './body-properties';
@@ -39,6 +39,27 @@ export const JOINT_FIELDS: { readonly [T in JointType]: readonly EntryField[] } 
   ],
   fixed: [],
 };
+// The drive of a joint (5b, D59), by its type: optional numeric fields beside those of the pose,
+// read by nothing but the export of a robot description. `JOINT_FIELDS` stays the fields of the
+// pose, which `setPose`, the limits and the slider of the app read. A prismatic joint has no rotor:
+// what a rotor reflects through a screw is a mass and needs the lead.
+const positive = (title: string, unit: NumberSpec['unit']): NumberSpec => ({ title, unit, min: { value: 0, open: true } });
+const TURNING_DRIVE: readonly EntryField[] = [
+  { path: 'effort', spec: positive('Effort', 'N·mm'), optional: true },
+  { path: 'velocity', spec: positive('Velocity', 'rad/s'), optional: true },
+  { path: 'rotorInertia', spec: { title: 'Rotor inertia', unit: 'g·mm2', min: { value: 0 } }, optional: true },
+  { path: 'gearRatio', spec: positive('Gear ratio', 'none'), optional: true },
+];
+export const JOINT_DRIVE_FIELDS: { readonly [T in JointType]: readonly EntryField[] } = {
+  revolute: TURNING_DRIVE,
+  continuous: TURNING_DRIVE,
+  prismatic: [
+    { path: 'effort', spec: positive('Effort', 'N'), optional: true },
+    { path: 'velocity', spec: positive('Velocity', 'mm/s'), optional: true },
+  ],
+  fixed: [],
+};
+const allFields = (type: JointType): readonly EntryField[] => [...JOINT_FIELDS[type], ...JOINT_DRIVE_FIELDS[type]];
 // "Within the limits" has a tolerance, the tolerances of the engine: a value outside by no more
 // than that is the limit, and is used and stored as the limit. The last step of a sweep computed in
 // floating point, and a limit read from a tool that prints six decimal places, are otherwise
@@ -78,13 +99,15 @@ function link(o: Dict, what: string): Link {
 // checked for its shape; a command checks its target where it sets a new one.
 function joint(o: Dict, given: Record<string, Expr>, mode: FieldMode, environment: () => Environment, key: Id, what: string): Joint {
   const type = oneOf(o.type, JOINT_TYPES, `${what}.type`);
-  const fields = JOINT_FIELDS[type];
+  // the fields of the pose are required, those of the drive optional
+  const fields = allFields(type);
   onlyFields(o, ['type', 'name', 'parent', 'child', ...(hasAxis(type) ? ['axis'] : []), ...fields.map((field) => field.path), ...(fields.length ? ['expressions'] : [])], what, `a joint of the type ${type}`);
   const name = o.name === undefined ? undefined : label(o.name, `${what}.name`);
   const parent = newId(o.parent, `${what}.parent`);
   const child = newId(o.child, `${what}.child`);
   const axis = hasAxis(type) ? axisRef(SHAPE_ONLY, o.axis, `${what}.axis`) : undefined;
-  for (const { path } of fields) if (o[path] === undefined) fail(`${what}.${path}: a joint of the type ${type} has ${fields.map((field) => `\`${field.path}\``).join(', ')}`);
+  const required = JOINT_FIELDS[type];
+  for (const { path } of required) if (o[path] === undefined) fail(`${what}.${path}: a joint of the type ${type} has ${required.map((field) => `\`${field.path}\``).join(', ')}`);
   const { numbers, expressions } = readEntryFields(o, given, fields, mode, environment, key, what);
   return {
     type,
@@ -92,7 +115,7 @@ function joint(o: Dict, given: Record<string, Expr>, mode: FieldMode, environmen
     parent,
     child,
     ...(axis === undefined ? {} : { axis }),
-    ...Object.fromEntries(fields.map(({ path }) => [path, numbers[path]])),
+    ...Object.fromEntries(fields.filter(({ path }) => numbers[path] !== undefined).map(({ path }) => [path, numbers[path]])),
     ...(expressions ? { expressions } : {}),
   } as Joint;
 }
@@ -196,8 +219,18 @@ function setJoint(doc: Document, cmd: Dict): Section {
     o[path] = expr;
   }
   const given: Record<string, Expr> = {};
+  // The drive is a patch (5b): a drive field the command does not name is kept from the joint of
+  // the same type, with its expression; `null` removes it. A joint of another type starts without.
+  for (const { path } of JOINT_DRIVE_FIELDS[type]) {
+    if (o[path] === null) delete o[path];
+    else if (o[path] === undefined && old?.type === type && (old as unknown as Dict)[path] !== undefined) {
+      o[path] = (old as unknown as Dict)[path];
+      const stored = old.expressions?.[path as JointDriveField];
+      if (stored !== undefined) given[path] = stored;
+    }
+  }
   if (old?.type === type) {
-    for (const { path } of JOINT_FIELDS[type]) {
+    for (const { path } of allFields(type)) {
       const stored = old.expressions?.[path as 'value'];
       if (stored !== undefined && typeof o[path] === 'string' && (o[path] as string).trim() === stored) {
         o[path] = (old as unknown as Dict)[path];
@@ -319,11 +352,21 @@ function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, B
     const entry = resolveEntryFields(j as unknown as Dict, JOINT_FIELDS[j.type], environment);
     entries.set(id, entry);
     const done = resolveJoint(id, j, entry, state);
+    // The drive is resolved apart from the pose: a fault of it is not a fault of the joint (5b).
+    const drive = resolveEntryFields(j as unknown as Dict, JOINT_DRIVE_FIELDS[j.type], environment);
+    if (Object.keys(drive.values).length || Object.keys(drive.errors).length) {
+      done.result = {
+        ...done.result,
+        ...(Object.keys(drive.values).length ? { drive: drive.values } : {}),
+        ...(Object.keys(drive.errors).length ? { driveErrors: drive.errors as JointResult['driveErrors'] } : {}),
+      };
+    }
     resolved.set(id, done);
     // What is written back: the limits whenever they are in the range of their fields; a value that
-    // its expression takes out of the limits is not, and keeps its last valid number.
+    // its expression takes out of the limits is not, and keeps its last valid number. The numbers
+    // of the drive that evaluate; a field in `driveErrors` keeps its last valid number.
     const out = done.result.error?.code === 'jointOutOfLimits' ? { ...entry.values, value: (j as { value: number }).value } : { ...entry.values, ...(done.result.value === undefined ? {} : { value: done.result.value }) };
-    const next = writtenEntry(j as unknown as Dict, { values: out, errors: entry.errors }) as unknown as Joint;
+    const next = writtenEntry(j as unknown as Dict, { values: { ...out, ...drive.values }, errors: entry.errors }) as unknown as Joint;
     if (next !== j) (written ??= { ...section.joints })[id] = next;
   }
 
@@ -369,7 +412,7 @@ function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, B
 
 // ---------------------------------------------------------------- the entry of the registry
 
-const FIELD_INFO = JOINT_TYPES.flatMap((type) => JOINT_FIELDS[type].map((field) => ({ owner: 'joint', ...field, when: { path: 'type', equals: type } })));
+const FIELD_INFO = JOINT_TYPES.flatMap((type) => allFields(type).map(({ path, spec }) => ({ owner: 'joint', path, spec, when: { path: 'type', equals: type } })));
 
 export const mechanism: SectionSpec<Section, MechanismResult> = {
   info: {
@@ -377,7 +420,8 @@ export const mechanism: SectionSpec<Section, MechanismResult> = {
     summary:
       'Links (bodies that move as one piece; a body in at most one link) and joints between them (revolute, continuous, prismatic, fixed), each with a parent and a child link, an axis (`AxisRef`, as modelled), limits and a value. The joints form a forest; a link that is no joint\'s child is a root and stands as modelled. ' +
       'The model as modelled is the zero of every joint: the values are displacements from it (rad, by the right-hand rule about the direction of the axis; mm along it). The bodies of the evaluation stay as modelled; queries answer in the pose (`evaluation.mechanism`). ' +
-      'A pose is stepped by previewing setPose (with `after` of the tool query); a coupled motion is two values that follow one parameter.',
+      'A pose is stepped by previewing setPose (with `after` of the tool query); a coupled motion is two values that follow one parameter. ' +
+      'The drive of a joint (`effort`, `velocity`, and for a turning joint `rotorInertia` and `gearRatio`) is optional and read only by the export of a robot description (`urdf`, `mjcf`); setJoint keeps a drive field it is not given (null removes it), and a drive field whose expression fails blocks no pose (`driveErrors` of the joint).',
     commands: ['setLink', 'removeLink', 'setJoint', 'removeJoint', 'setPose'],
     fields: FIELD_INFO,
   },
@@ -491,7 +535,7 @@ export function poseNote(mechanism: MechanismResult | undefined, section: Mechan
 
 // The joints without a motion on the way from the root to the link of a body, the one nearest the
 // root first: every joint whose own fault blocks what hangs on it.
-function blockingJoints(section: Mechanism, mechanism: MechanismResult, body: Id): Id[] {
+export function blockingJoints(section: Mechanism, mechanism: MechanismResult, body: Id): Id[] {
   const jointOf = new Map(Object.entries(section.joints).map(([id, j]): [Id, Id] => [j.child, id]));
   const out: Id[] = [];
   const seen = new Set<Id>();

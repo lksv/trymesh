@@ -125,7 +125,7 @@ The rows for step 6 in "Shared places" of [README.md](README.md). In short: befo
      └─▶ 6e              (track M, trim, extend, split; the engine side needs only D52)
 ```
 
-Proposed priority after 6a: **6b and 6e** first, because they close most of what the conversion lost (constraints on derived sketches and the axes, crossing curves split with their constraints); then **6d** (splines, which 6f needs); then **6c**; then **6f**. The order of D36 does not say more than "step 6", so this is a proposal (question 9). A package that merges after 6d adds the spline case to what it does (a projected spline, a mirrored spline) or refuses it with a reason.
+**Priority (owner, 2026-11-17):** crossing curves first, then mirror and pattern in a sketch. So **6a and 6e** are designed at the same time (the engine side of 6e needs only D52; it waits for 6a only for the table of the app's sketch tools, so it is implemented right after 6a), then **6c** (designed once the vocabulary of 6a is settled), then **6b**, **6d** and **6f**. The plan proposed 6b and 6e first, then 6d, 6c, 6f (question 9). A package that merges after 6d adds the spline case to what it does (a projected spline, a mirrored spline) or refuses it with a reason.
 
 ## Validation scenario 15
 
@@ -142,6 +142,8 @@ Proposed priority after 6a: **6b and 6e** first, because they close most of what
 The steps of 6a are not in the scenario: it changes no behaviour, so its test is that every existing test passes unchanged.
 
 ## Questions for the owner
+
+**Answered by the owner on 2026-11-17: all ten recommendations agreed**, with the priority changed: crossing curves (6e) first, then mirror and pattern in a sketch (6c), "if it makes sense"; it does (see "Order and tracks").
 
 1. **6a as a preparatory package** (the registry of reference kinds, the profile from a list of shapes, exhaustive switches on the kind of a curve, the table of the app's sketch tools; no change of behaviour) together with the vocabulary of step 6, before any other package of step 6 is designed. *Recommendation: yes; full designs of 6b to 6f when each starts, as for steps 3 to 5.*
 2. **Crossing curves**: tools (split, trim, extend) instead of regions made automatically. *Recommendation: tools; automatic regions deferred, because they need a new way of naming regions and side faces.*

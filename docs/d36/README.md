@@ -83,7 +83,7 @@ Step 6 ([6-plan.md](6-plan.md)) has a preparatory package of its own, 6a, which 
      └─▶ 6e              (track M, trim, extend, split; its engine side needs only D52)
 ```
 
-Right after 6a: 6b, 6c, 6d and 6e. The proposed priority is 6b and 6e (what the Onshape conversion lost), then 6d, 6c and 6f (question 9 of the plan). A package merged after 6d handles the spline (a projected or mirrored spline) or refuses it with a reason.
+Right after 6a: 6b, 6c, 6d and 6e. Priority (owner, 2026-11-17, who agreed to all the recommendations of the plan): crossing curves first, then mirror and pattern in a sketch; so 6a and 6e are designed together, 6e is implemented right after 6a, then 6c, then 6b, 6d and 6f. A package merged after 6d handles the spline (a projected or mirrored spline) or refuses it with a reason.
 
 ## Shared places
 

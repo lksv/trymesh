@@ -23,6 +23,7 @@ pnpm workspace (`pnpm@9.15.9`), Node, TypeScript, Vitest. `pnpm` is often not on
 | Run the app | `pnpm dev` (Vite, port 5173) |
 | More kernel fuzz cases | `FUZZ_COUNT=30000 FUZZ_FIRST=1 npx vitest run packages/kernel-manifold/test/fuzz.test.ts` |
 | More fuzz cases with tapered tools | `TAPER_FUZZ_COUNT=5000 TAPER_FUZZ_FIRST=1 npx vitest run packages/kernel-manifold/test/taper-fuzz.test.ts` |
+| Convert an Onshape model | `node tools/onshape/fetch.ts <url> <dir>`, then `ONSHAPE_IN=<dir> npx vitest run --config tools/onshape/vitest.config.ts` (`docs/onshape-import.md`) |
 
 There is no linter. Before a commit run the tests, both type checks, the spikes and the MCP build.
 
@@ -80,6 +81,7 @@ The docs are living documents kept good enough to repeat the implementation from
 | `docs/architecture.md`, `docs/architecture/` | The design as implemented: the overview and the list of sections, and a file per area (document, sketch, naming, extrusion, pattern, ports, recompute, API, interface for AI, repository, verification) |
 | `docs/ui.md`, `docs/ui/` | UI functions as tables of commands and state read, a file per panel or form, each with the implementation status of its area |
 | `docs/backlog.md` | Features not done yet and why the design does not block them |
+| `docs/onshape-import.md` | Converting a model from Onshape with `tools/onshape/`: what needed work and the gaps it found |
 | `docs/d35-contract/` | Draft contract for D35, type-checked only; deviations are recorded in its README |
 
 Record a new requirement or decision from a conversation in `requirements.md` or `decisions.md` when it is made.

@@ -77,6 +77,13 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
     },
 
     boolean(op, a, b, { prepare = true, restore = true, second = true } = {}) {
+      // The precondition of the port for a union and a difference (D56): the two operands share no
+      // face number. The adapter tells the faces of the tool from those of the body by their
+      // numbers; with a shared number a union comes out with a wrong volume without a word.
+      if (op !== 'intersection') {
+        const shared = sharedFace(a, b);
+        if (shared !== undefined) throw new Error(`the operands of a ${op} share the face number ${shared}; a union and a difference take operands whose face numbers differ (the precondition of the port)`);
+      }
       if (!prepare) return rawBoolean(op, a, b);
       const t = tolerances(a, b);
       const { tool, shifts } = prepareTool(op, a, b, t);
@@ -167,6 +174,13 @@ interface RawTriangulate {
   Vector2_vec2: new () => EmbindVector;
   Vector_vec2: new () => EmbindVector;
   _Triangulate(polygons: EmbindVector, epsilon: number, allowConvex: boolean): EmbindVector;
+}
+
+// A face number both solids have, or undefined: one pass over each list.
+function sharedFace(a: Solid, b: Solid): number | undefined {
+  const own = new Set<number>(a.faceIds);
+  for (const id of b.faceIds) if (own.has(id)) return id;
+  return undefined;
 }
 
 // Proč vstupní těleso nejde použít; undefined = v pořádku. Prázdné těleso je v pořádku.

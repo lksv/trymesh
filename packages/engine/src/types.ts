@@ -562,6 +562,8 @@ export interface ComputedMesh {
 
 export interface SolidKernel {
   // Vyhodí výjimku, když výsledek není uzavřené těleso; engine ji ohlásí jako `kernelFailure`.
+  // A union and a difference take operands that share no face number (D56); an implementation
+  // throws for such operands. An intersection may share them.
   boolean(op: BooleanOp, a: Solid, b: Solid): Solid;
   // 2D polygon s dírami; vrací trojice indexů do vrcholů všech smyček za sebou
   triangulate(loops: Float64Array[]): Uint32Array;

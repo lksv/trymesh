@@ -76,14 +76,14 @@ The coefficient has no bounds in the catalog; these failures are its bounds, and
 
 **The polygon lies inside the exact disc.** A chord of a lobe lies inside the curve, a chord of a bottom between two lobes outside it (the curve bends around the pin there), so a polygon of points on the curve would enter the pins by up to the chord tolerance. The disc is therefore built for pins larger by the largest distance of its chords from the curve (with a margin of 0.1 %), found while the number of points is chosen: the polygon then lies inside the exact profile everywhere, at most twice the chord tolerance away from it, the rule of the tool of a ring gear. Measured on the disc of the scenario: 704 points, the chords within 3.2e-3 of the curve, the smallest distance to pins tessellated as the engine does 0.0022 to 0.0032 mm at four input angles, no overlap; with a clearance of 0.1 it is 0.103.
 
-**The checks of the profile see the radius that is built.** The compensation of the chords makes the pins of the build larger than `Rr + clearance` by the largest deviation of a chord (at most the chord tolerance). The two conditions on the profile, the undercut and the circle of the bottoms, are checked with that radius, not the one before the compensation; the overlap of the pins is a condition on the pins themselves and uses their radius `Rr` alone, and `E · N < R` has no radius. A disc just inside the limit of undercut would otherwise pass the check and be built past it a disc just inside the limit of undercut would otherwise pass the check and be built past it (a review's case: R 25, N 12, E 2, Rr 2.5737, the limit 2.57372; with the chords of the tolerance 0.01 the compensated radius is past it). When the compensated radius fails a condition the uncompensated one passes, the generator takes more points (the deviation falls with the square of their number) until it passes, within `MAX_PROFILE_POINTS` (a review counted about 9 000 for that case); otherwise the failure names the condition and says that the disc is within the chord tolerance of it.
+**The checks of the profile see the radius that is built.** The compensation of the chords makes the pins of the build larger than `Rr' = Rr + clearance` by the largest deviation δ of a chord (at most the chord tolerance): the radius built is `Rc = Rr' + δ`. The two conditions on the profile, the undercut and the circle of the bottoms, are checked with that radius, not the one before the compensation; the overlap of the pins is a condition on the pins themselves and uses their radius `Rr` alone, and `E · N < R` has no radius. A disc just inside the limit of undercut would otherwise pass the check and be built past it (a review's case: R 25, N 12, E 2, Rr 2.5737, the limit 2.57372; with the chords of the tolerance 0.01 the compensated radius is past it). When the compensated radius fails a condition the uncompensated one passes, the generator takes more points (the deviation falls with the square of their number) until it passes, within `MAX_PROFILE_POINTS` (a review counted about 9 000 for that case); otherwise the failure names the condition and says that the disc is within the chord tolerance of it.
 
 **When the disc cannot be built** (`invalidProfile` with the message):
 
 - `E · N ≥ R`: the curve of the pin centres makes loops and the profile has no meaning (Sources, [S1]: the condition on the coefficient `E N / R < 1`).
-- The pins, taken with the clearance, are not smaller than the smallest radius of curvature of the curve of the pin centres where it bends towards the disc: the profile turns back on itself (undercut). Checked against a direct test ("Measured", the spike `undercut`): for five drives the polygon of the profile crosses itself at 1.05 times that radius and does not at 0.95 times.
+- The pins as built, `Rc`, are not smaller than the smallest radius of curvature of the curve of the pin centres where it bends towards the disc: the profile turns back on itself (undercut). Checked against a direct test ("Measured", the spike `undercut`): for five drives the polygon of the profile crosses itself at 1.05 times that radius and does not at 0.95 times.
 - The pins overlap one another: `Rr ≥ R sin(π/N)` (the clearance is not part of a pin).
-- The circle of the bottoms is not above zero: `R − Rr' − E ≤ 0`, with `Rr'` the compensated radius.
+- The circle of the bottoms is not above zero: `R − Rc − E ≤ 0`.
 - More points than `MAX_PROFILE_POINTS`, as for every generator.
 
 **Rejected:**
@@ -275,3 +275,16 @@ The diff of the fixes of both packages, to the same reviewers: the internal suba
 Found holding by both: the disc rotation with `pinAngle` (π/11 for the example; codex sampled it clear with the angle and 1.959 mm into the pins without it), the `setField` of a fixed point, the new failures of a shift and that they bound the coefficient both ways, the refinement within the limit of points (about 9 000 for the case at the edge of undercut), `GeneratorInputAfter` and `gt2At`, all diameters and limits of scenario 9.
 
 A third and last round reads the diff of these fixes ("Round 3").
+
+### Round 3 (2026-11-17), the last: the diff of the fixes of round 2, at `a7b60d6`
+
+The same reviewers (agy still out of quota). On this package:
+
+| Finding | Who | Severity | Accepted? | What changed |
+|---|---|---|---|---|
+| A clause of "The checks of the profile see the radius that is built" was written twice | codex, internal | nit | Yes | Once |
+| `Rr'` meant both `Rr + clearance` and the compensated radius | internal | minor | Yes | The radius built is `Rc = Rr' + δ`, used in the undercut and the circle of the bottoms |
+
+Found holding: which checks use which radius; the gap helper and `cleared`; the two discs 1 mm apart and both within the pins; the narrowing of the gear's operand.
+
+Still open after the last round, as known limits: the groove of the pulley is not Gates' (an open question); a shifted centre distance and undercut are deferred.

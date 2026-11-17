@@ -73,13 +73,14 @@ export const GEAR_SHIFT_FACT = { shift: 'profile shift coefficient x; the profil
 // - The polygon lies inside the exact profile everywhere: it is built for Rr' larger by the largest
 //   distance of its chords from the curve (with a margin), so a disc without clearance does not
 //   overlap its pins. It is smaller than the exact disc by at most twice the chord tolerance.
-// - The undercut and the circle of the bottoms are checked with the radius that is built (Rr' and
-//   the compensation of the chords); when only the compensation fails one, more points are taken,
-//   within the limit of points. The overlap of the pins uses Rr alone; E · N < R no radius.
+// - The radius built is Rc = Rr' + δ, δ the largest distance of a chord from the curve. The
+//   undercut and the circle of the bottoms are checked with Rc; when only δ fails one, more points
+//   are taken, within the limit of points. The overlap of the pins uses Rr alone; E · N < R no
+//   radius.
 // - Failures (`invalidProfile` with the message): E · N ≥ R (the curve of the pin centres loops);
-//   Rr' not below the smallest radius of curvature of the curve of the pin centres where it bends
+//   Rc not below the smallest radius of curvature of the curve of the pin centres where it bends
 //   towards the disc (the profile would turn back on itself: undercut); the pins overlap one
-//   another (Rr ≥ R sin(π / N)); the inner circle of the disc R − Rr' − E not above 0 (Rr' with the compensation); the profile
+//   another (Rr ≥ R sin(π / N)); the inner circle of the disc R − Rc − E not above 0; the profile
 //   above the limit of points.
 // - One side face, `lobes`.
 export const CYCLOIDAL_DISC_PARAMS = {

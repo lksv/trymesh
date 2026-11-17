@@ -7,14 +7,16 @@
 // a test in packages/scenarios.
 //
 // The numbers in the comments were measured on 2026-11-17 with a prototype of this entry over the
-// arm as `packages/scenarios/test/arm.ts` builds it, with the real adapters (design.md,
+// arm as `packages/scenarios/test/arm.ts` builds it, with the real adapters and, for
+// `shapeOrigin`, a copy of the repository with the twenty lines of `solid.ts` applied (design.md,
 // "Measured"). They become the expectations of the test.
 
-import type { ArgsOf, BodyPropertiesResult, Command, EngineState, ExportFile, Exported, FaceName, HoleShape, Id, Input, PatternFeature, QueryContext, QueryOutcome, Solid } from '../../../packages/engine/src/index';
-import { DATA_CATALOGS, coordinatePrecision, emptySketch } from '../../../packages/engine/src/index';
+import type { ArgsOf, BodyPropertiesResult, Command, EngineState, ExportFile, Exported, HoleShape, Id, Input, QueryContext, QueryOutcome, Solid, Vec3 } from '../../../packages/engine/src/index';
+import { DATA_CATALOGS, emptySketch } from '../../../packages/engine/src/index';
+import { bodySource } from '../../../packages/engine/src/features/index';
 import { arm, cylinder } from '../../../packages/scenarios/test/arm';
-import type { BodyCopy, EngineAfter3e, ExportFormatsAfter3e, FeatureModuleAfter3e, HardwareRow, HoleCount, PartFamily, PartRow, PartsCsvAbout, PartsList, PartsListView, PartsSum, QueriesAfter3e, ShapeOfBody } from './contract';
-import { CONVENTION, PARTS_CSV, PARTS_CSV_OPTIONS, PARTS_CSV_TEXTS, PARTS_LIST_ARGS, PARTS_LIST_SIGNIFICANT, PARTS_LIST_TEXTS, PARTS_LIST_UNITS, bodyCopy, type csvField, type holeCounts, type partFamily, type partsCsv, type partsList, type sameShape } from './contract';
+import type { EngineAfter3e, ExportFormatsAfter3e, HardwareRow, HoleCount, PartRow, PartsCsvAbout, PartsList, PartsListView, PartsSum, QueriesAfter3e, ViewGroup } from './contract';
+import { CONVENTION, PARTS_CSV, PARTS_CSV_OPTIONS, PARTS_CSV_TEXTS, PARTS_LIST_ARGS, PARTS_LIST_SIGNIFICANT, PARTS_LIST_TEXTS, PARTS_LIST_UNITS, type csvField, type holeCounts, type partsCsv, type partsList, shapeOrigin, type sourceRoot } from './contract';
 
 declare const engine: EngineAfter3e;
 declare function fail(message: string): never;
@@ -32,116 +34,99 @@ const own = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined
 
 // ================================================================ the entry, written out
 
-// ---------------------------------------------------------------- the registry
+// ---------------------------------------------------------------- the root of a chain of sources
 
-// The one line of `features/pattern.ts`.
-export const copyOfPattern: NonNullable<FeatureModuleAfter3e<PatternFeature>['copyOf']> = (f) => (f.source.type === 'body' ? { body: f.source.body, mirrored: f.transform.type === 'mirror' } : undefined);
-
-// `partFamily` of `features/index.ts`, over `bodyCopy`.
-export const familyAsWritten: typeof partFamily = (doc, body) => {
+// `sourceRoot` of `features/index.ts`, over `bodySource` (D48).
+export const rootAsWritten: typeof sourceRoot = (doc, body) => {
   const seen: Id[] = [body];
-  let mirrored = false;
-  for (let copy: BodyCopy | undefined = bodyCopy(doc, body); copy !== undefined && !seen.includes(copy.body); copy = bodyCopy(doc, copy.body)) {
-    mirrored = mirrored !== copy.mirrored;
-    seen.push(copy.body);
-  }
-  return { root: seen[seen.length - 1], mirrored };
-};
-
-// ---------------------------------------------------------------- the same shape
-
-export const sameShapeAsWritten: typeof sameShape = (a, b) => a.triangles === b.triangles && Math.abs(a.volume - b.volume) <= Math.max(a.precision, b.precision) * Math.max(a.surface, b.surface);
-// The surface of a mesh: one pass over its triangles.
-function surfaceOf({ positions: p, triangles: t }: Solid): number {
-  let area = 0;
-  for (let i = 0; i < t.length; i += 3) {
-    const [a, b, c] = [3 * t[i], 3 * t[i + 1], 3 * t[i + 2]];
-    const u = [p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]];
-    const v = [p[c] - p[a], p[c + 1] - p[a + 1], p[c + 2] - p[a + 2]];
-    area += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
-  }
-  return area;
-}
-const shapeOf = (context: QueryContext, body: Id): ShapeOfBody => {
-  const result = context.bodies[body];
-  return { triangles: result.solid.triangles.length / 3, volume: result.volume, surface: context.memo([result.solid], 'surface', () => surfaceOf(result.solid)), precision: coordinatePrecision(result) };
+  for (let source = bodySource(doc, body); source !== undefined && !seen.includes(source); source = bodySource(doc, source)) seen.push(source);
+  return seen[seen.length - 1];
 };
 
 // ---------------------------------------------------------------- the holes of the model
 
-const SIDES: readonly FaceName['role'][] = ['holeBore', 'holeHead', 'holeFlat'];
-export const holeCountsAsWritten: typeof holeCounts = (doc, bodies, faceNames, counted) => {
+const ANGLE_TOLERANCE = 1e-4; // of `util.ts`
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const length = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
+interface Line {
+  point: Vec3;
+  direction: Vec3; // a unit vector
+}
+// One line: parallel within the angle tolerance, and the point of one within the precision of the
+// coordinates of the other.
+function sameLine(a: Line, b: Line): boolean {
+  if (length(cross(a.direction, b.direction)) > ANGLE_TOLERANCE) return false;
+  const precision = 1e-6 * Math.max(1, ...a.point.map(Math.abs), ...b.point.map(Math.abs));
+  return length(cross([b.point[0] - a.point[0], b.point[1] - a.point[1], b.point[2] - a.point[2]], a.direction)) <= precision;
+}
+export const holeCountsAsWritten: typeof holeCounts = (doc, bodies, faceNames, surface) => {
   const holes = new Set(doc.features.filter((f) => f.type === 'hole').map((f) => f.id));
   const ofFeatures = (pattern: Id): boolean => doc.features.some((f) => f.id === pattern && f.type === 'pattern' && f.source.type === 'features');
-  // feature → application (its point and the copy of a pattern of features) → family → the names
-  // the faces of the application have in that family beyond the tag of the application
-  const seen = new Map<Id, Map<string, Map<Id, Set<string>>>>();
+  // feature → application (its point and the copy of a pattern of features) → the axes its holes lie on
+  const seen = new Map<Id, Map<string, Line[]>>();
   const at = <K, V>(map: Map<K, V>, key: K, make: () => V): V => map.get(key) ?? (map.set(key, make()), map.get(key) as V);
   for (const [id, body] of Object.entries(bodies)) {
-    if (!counted(id)) continue;
-    const { root } = familyAsWritten(doc, id);
     for (const face of body.faces) {
       const name = faceNames[face.id];
-      if (!holes.has(name.feature) || !SIDES.includes(name.role) || !('point' in name)) continue;
+      if (!holes.has(name.feature) || (name.role !== 'holeBore' && name.role !== 'holeHead')) continue;
+      const shape = surface(id, face.id);
+      if (shape?.kind !== 'cylinder' && shape?.kind !== 'cone') continue;
+      const axis: Line = { point: shape.kind === 'cylinder' ? shape.origin : shape.apex, direction: shape.axis.map((part) => part / length(shape.axis)) as Vec3 };
       const tags = name.copy ?? [];
-      const applied = tags.length > 0 && ofFeatures(tags[0].pattern) ? 1 : 0;
-      const application = JSON.stringify([name.point, tags.slice(0, applied)]);
-      at(at(at(seen, name.feature, () => new Map()), application, () => new Map()), root, () => new Set()).add(JSON.stringify(tags.slice(applied)));
+      const application = JSON.stringify([name.point, tags.length > 0 && ofFeatures(tags[0].pattern) ? tags[0] : null]);
+      const axes = at(at(seen, name.feature, () => new Map<string, Line[]>()), application, () => []);
+      if (!axes.some((other) => sameLine(other, axis))) axes.push(axis);
     }
   }
-  return new Map([...seen].map(([feature, applications]) => [feature, [...applications.values()].reduce((sum, families) => sum + Math.max(...[...families.values()].map((names) => names.size)), 0)]));
+  return new Map([...seen].map(([feature, applications]) => [feature, [...applications.values()].reduce((sum, axes) => sum + axes.length, 0)]));
 };
 
 // ---------------------------------------------------------------- the rows
 
-// What a body weighs by, as a text: bodies of one row say the same.
-const weighsBy = (p: BodyPropertiesResult): string => (p.fieldErrors?.mass || p.fieldErrors?.density ? 'error' : p.massFrom === 'mass' ? `mass ${p.mass}` : p.massFrom === 'density' ? `density ${p.density}` : 'none');
+// What a body weighs by, as a text: the mass the properties resolved, by its source and its
+// number; without one, whether a field is in error or nothing is stated. (A mass that is stated
+// beside a density in error is a mass.)
+const weighsBy = (p: BodyPropertiesResult): string => (p.mass !== undefined ? (p.massFrom === 'mass' ? `mass ${p.mass}` : `density ${p.density}`) : p.fieldErrors ? 'error' : 'none');
 
 const runAsWritten: (typeof partsList)['run'] = (context) => {
   const { document: doc, evaluation } = context.state;
   const properties = evaluation.bodyProperties;
-  interface Group {
-    key: string;
-    bodies: Id[];
-    family: PartFamily;
-    shape: ShapeOfBody;
-  }
-  const groups: Group[] = [];
+  const nameOf = (body: Id): string => own(doc.bodyProperties, body)?.name ?? own(properties, rootAsWritten(doc, body))?.name ?? properties[body].name;
+  // a number per mesh, for the key of a row
+  const meshes = new Map<Solid, number>();
+  const numberOf = (solid: Solid): number => meshes.get(solid) ?? (meshes.set(solid, meshes.size), meshes.size - 1);
+  const groups = new Map<string, Id[]>(); // in the order of their first bodies
   const auxiliary: Id[] = [];
-  for (const id of Object.keys(context.bodies)) {
+  for (const [id, body] of Object.entries(context.bodies)) {
     const result = properties[id];
     if (result.use === 'auxiliary') {
       auxiliary.push(id);
       continue;
     }
-    const family = familyAsWritten(doc, id);
-    // the name of the root names the row; a name of its own on a copy makes it another part
-    const named = id === family.root ? '' : (own(doc.bodyProperties, id)?.name ?? '');
-    const key = JSON.stringify([family.root, family.mirrored, result.use, result.material ?? null, result.color ?? null, weighsBy(result), named]);
-    const shape = shapeOf(context, id);
-    const group = groups.find((candidate) => candidate.key === key && sameShapeAsWritten(candidate.shape, shape));
-    if (group) group.bodies.push(id);
-    else groups.push({ key, bodies: [id], family, shape });
+    const origin = shapeOrigin(body.solid);
+    const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), nameOf(id)]);
+    groups.set(key, [...(groups.get(key) ?? []), id]);
   }
-  const row = ({ bodies, family, shape }: Group): PartRow => {
+  const row = (bodies: Id[]): PartRow => {
     const first = properties[bodies[0]];
-    const masses = bodies.map((id) => properties[id].mass);
-    const total = masses.every((mass) => mass !== undefined) ? masses.reduce<number>((sum, mass) => sum + (mass as number), 0) : undefined;
+    const root = rootAsWritten(doc, bodies[0]);
     return {
-      name: own(doc.bodyProperties, bodies[0])?.name ?? own(properties, family.root)?.name ?? first.name,
+      name: nameOf(bodies[0]),
       count: bodies.length,
       bodies,
       ...(first.material === undefined ? {} : { material: first.material }),
       ...(first.color === undefined ? {} : { color: first.color }),
-      volume: shape.volume,
+      volume: context.bodies[bodies[0]].volume,
       ...(first.density === undefined ? {} : { density: first.density }),
-      ...(first.mass === undefined || first.massFrom === undefined ? { noMass: first.fieldErrors ? ('inError' as const) : ('notStated' as const) } : { mass: first.mass, massFrom: first.massFrom }),
-      ...(total === undefined ? {} : { totalMass: total }),
-      ...(bodies.includes(family.root) ? {} : { copyOf: family.root }),
-      ...(family.mirrored ? { mirrored: true as const } : {}),
+      // the bodies of a row weigh by the same, so all of them have a mass or none has
+      ...(first.mass === undefined || first.massFrom === undefined
+        ? { noMass: first.fieldErrors ? ('inError' as const) : ('notStated' as const) }
+        : { mass: first.mass, massFrom: first.massFrom, totalMass: bodies.reduce((sum, id) => sum + (properties[id].mass ?? 0), 0) }),
+      ...(bodies.includes(root) ? {} : { copyOf: root }),
+      ...(shapeOrigin(context.bodies[bodies[0]].solid).mirrored ? { mirrored: true as const } : {}),
     };
   };
-  const rowsOf = (use: 'part' | 'reference'): PartRow[] => groups.filter((group) => properties[group.bodies[0]].use === use).map(row);
+  const rowsOf = (use: 'part' | 'reference'): PartRow[] => [...groups.values()].filter((bodies) => properties[bodies[0]].use === use).map(row);
   const sum = (rows: PartRow[]): PartsSum => ({
     count: rows.reduce((total, r) => total + r.count, 0),
     mass: rows.reduce((total, r) => total + (r.totalMass ?? 0), 0),
@@ -150,7 +135,8 @@ const runAsWritten: (typeof partsList)['run'] = (context) => {
   const [printed, bought] = [rowsOf('part'), rowsOf('reference')];
 
   // the hardware: the holes the bodies that are parts have, by the label of their feature
-  const counts = holeCountsAsWritten(doc, context.bodies, evaluation.faceNames, (body) => properties[body].use !== 'auxiliary');
+  const parts = Object.fromEntries(Object.entries(context.bodies).filter(([id]) => properties[id].use !== 'auxiliary'));
+  const counts = holeCountsAsWritten(doc, parts, evaluation.faceNames, (body, face) => context.surface(body, evaluation.faceNames[face]));
   const hardware: HardwareRow[] = [];
   const unlabelled: HoleCount[] = [];
   for (const feature of doc.features) {
@@ -181,16 +167,25 @@ export const entry: typeof partsList = { ...PARTS_LIST_TEXTS, args: PARTS_LIST_A
 
 // ---------------------------------------------------------------- the file
 
-export const csvFieldAsWritten: typeof csvField = (value) => (/[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
-// A mass as the tools print it: six significant digits, no exponent, no trailing zeros.
-const grams = (value: number | undefined): string => (value === undefined ? '' : String(Number(value.toPrecision(6)) + 0));
+export const csvFieldAsWritten: typeof csvField = (value) => {
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ');
+  return /[",]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+// A mass: six significant digits, as the tools print it, then written as `plain` of
+// `export/text.ts` writes a number: at most nine decimals, no exponent, no trailing zeros.
+function grams(value: number | undefined): string {
+  if (value === undefined) return '';
+  const text = Number(value.toPrecision(6)).toFixed(9).replace(/\.?0+$/, '');
+  return text === '-0' ? '0' : text;
+}
 export function csvOf(list: PartsList): string {
-  const body = (kind: string, r: PartRow): string[] => [kind, r.mirrored ? `${r.name}${PARTS_CSV.mirrored}` : r.name, String(r.count), r.material ?? '', r.color ?? '', grams(r.mass), grams(r.totalMass), r.bodies.join(' ')];
+  const note = (r: PartRow): string => (r.copyOf === undefined ? '' : `${r.mirrored ? PARTS_CSV.mirror : PARTS_CSV.copy}${r.copyOf}`);
+  const body = (kind: string, r: PartRow): string[] => [kind, r.name, String(r.count), r.material ?? '', r.color ?? '', grams(r.mass), grams(r.totalMass), note(r), r.bodies.join(' ')];
   const records: string[][] = [
     [...PARTS_CSV.header],
     ...list.printed.map((r) => body('printed', r)),
     ...list.bought.map((r) => body('bought', r)),
-    ...list.hardware.map((r) => ['hardware', r.label, String(r.count), '', '', '', '', r.holes.map((hole) => hole.feature).join(' ')]),
+    ...list.hardware.map((r) => ['hardware', r.label, String(r.count), '', '', '', '', '', r.holes.map((hole) => hole.feature).join(' ')]),
   ];
   return records.map((record) => `${record.map(csvFieldAsWritten).join(',')}\r\n`).join('');
 }
@@ -198,7 +193,7 @@ export const format: typeof partsCsv = {
   ...PARTS_CSV_TEXTS,
   options: PARTS_CSV_OPTIONS,
   // the context of an export has the bodies as modelled, which is what the entry asks for itself
-  run: (context) => {
+  run: (context: QueryContext) => {
     const list = runAsWritten(context, {});
     const rows = list.printed.length + list.bought.length + list.hardware.length;
     const about: PartsCsvAbout = { rows, printed: list.printed.length, bought: list.bought.length, hardware: list.hardware.length };
@@ -327,8 +322,8 @@ export function mirroredFoot(): boolean {
   return told(foot) === 'foot × 1: foot' && told(image) === 'foot × 1: feet/1' && image.mirrored === true && image.copyOf === 'foot' && foot.mirrored === undefined && mirrored.hardware[1].count === 2;
 }
 // A copy that a later feature changed is no longer the part its source is: a notch of radius 2
-// cut into `feet/1` alone (at (−10, 17.32), where the pattern put it). Its volume is 1041.004 mm3
-// against 1053.490; the number of its triangles changed as well (484 against 356).
+// cut into `feet/1` alone (at (−10, 17.32), where the pattern put it). Its solid is a new one, so
+// it is a copy of no mesh any more; its volume is 1041.004 mm3 against 1053.490.
 export function changedCopy(): boolean {
   const notched = list(preview(...cylinder('notch', -10, 17.32, 2, -21, -15, 'cut', 'feet/1'))).printed;
   const [, , , feet, one] = notched;
@@ -370,13 +365,16 @@ export function hardwareFollows(labels: { m3: string; m4: string }): boolean {
   const bare = list(preview({ type: 'updateFeature', id: 'footHole', patch: { label: null } }));
   // the label is the name of the piece: what the catalog does not know is typed into it
   const brass = list(preview({ type: 'updateFeature', id: 'inserts', patch: { label: 'M3 insert, brass' } })).hardware;
-  // one screw through the link and the forearm is one hole feature with both as targets, and one piece
+  // one screw through the link and the forearm is one hole feature with both as targets, and one
+  // piece. Its clearance hole is the catalog's; its label is the screw, with the length the hole
+  // is deep, in place of the label of the catalog, which names the hole
+  const clearance = unwrap(engine.query('hardwareHole', { use: 'clearance', size: 'M3' }));
   const through = list(
     preview(
       { type: 'addFeature', feature: emptySketch('throughSketch', 'throughSketch', XY) },
       { type: 'addPoint', sketch: 'throughSketch', id: 't1', x: 125, y: 20 },
       { type: 'addConstraint', sketch: 'throughSketch', id: 't1Fix', constraint: { type: 'fixed', point: 't1', x: 125, y: 20 } },
-      { type: 'addFeature', feature: { id: 'through', name: 'through', suppressed: false, type: 'hole', sketch: 'throughSketch', points: ['t1'], shape: { type: 'plain', diameter: 3.4 }, extent: { type: 'distance', start: 16, distance: -16 }, targets: ['upper', 'forearm'], label: 'M3x16 screw' } },
+      { type: 'addFeature', feature: { id: 'through', name: 'through', suppressed: false, type: 'hole', sketch: 'throughSketch', points: ['t1'], shape: clearance.shape, extent: { type: 'distance', start: 16, distance: -16 }, targets: ['upper', 'forearm'], label: 'M3x16 screw' } },
     ),
   ).hardware;
   return (
@@ -388,7 +386,7 @@ export function hardwareFollows(labels: { m3: string; m4: string }): boolean {
     brass[0].label === 'M3 insert, brass' &&
     brass[0].count === 4 &&
     through[2].label === 'M3x16 screw' &&
-    through[2].count === 1 // the bore is a face of `upper` and of `forearm`: one hole
+    through[2].count === 1 // the bore is a face of `upper` and of `forearm`, on one axis: one hole
   );
 }
 
@@ -424,18 +422,24 @@ export function asCsv(labels: { m3: string; m4: string }): boolean {
   const file = only(unwrap(engine.export('partsCsv', {})));
   const about = file.about as PartsCsvAbout;
   const expected = [
-    'Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),IDs',
-    'printed,base,1,PETG,,36.4016,36.4016,base',
-    'printed,upper,1,PETG,,155.046,155.046,upper',
-    'printed,forearm,1,PLA,,153.175,153.175,forearm',
-    'printed,foot,3,TPU,,1.31686,3.95059,foot feet/1 feet/2',
-    'bought,NEMA 17 motor,1,,#30343a,280,280,motor',
-    'bought,M3x6 screw,4,steel,,0.9,3.6,screw screws/1 screws/2 screws/3',
-    `hardware,${labels.m3},4,,,,,inserts`,
-    `hardware,${labels.m4},3,,,,,footHole`,
+    'Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),Note,IDs',
+    'printed,base,1,PETG,,36.4016,36.4016,,base',
+    'printed,upper,1,PETG,,155.046,155.046,,upper',
+    'printed,forearm,1,PLA,,153.175,153.175,,forearm',
+    'printed,foot,3,TPU,,1.31686,3.95059,,foot feet/1 feet/2',
+    'bought,NEMA 17 motor,1,,#30343a,280,280,,motor',
+    'bought,M3x6 screw,4,steel,,0.9,3.6,,screw screws/1 screws/2 screws/3',
+    `hardware,${labels.m3},4,,,,,,inserts`,
+    `hardware,${labels.m4},3,,,,,,footHole`,
   ];
-  // a label with a comma is one field in quotes, and a mirror image says so in its name
-  const quoted = new TextDecoder().decode(only(unwrap(engine.export('partsCsv', {}, { state: preview({ type: 'updateFeature', id: 'inserts', patch: { label: 'M3 insert, brass' } }, { type: 'updateFeature', id: 'feet', patch: { transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } }) }))).bytes);
+  // a label with a comma is one field in quotes; a tab in a name is a space; a row of copies that
+  // differ from their source says so in its note
+  const changed = preview(
+    { type: 'updateFeature', id: 'inserts', patch: { label: 'M3 insert, brass' } },
+    { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17\tmotor' } },
+    { type: 'updateFeature', id: 'feet', patch: { transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } },
+  );
+  const quoted = new TextDecoder().decode(only(unwrap(engine.export('partsCsv', {}, { state: changed }))).bytes);
   return (
     file.path === PARTS_CSV.path &&
     file.mediaType === 'text/csv' &&
@@ -444,8 +448,10 @@ export function asCsv(labels: { m3: string; m4: string }): boolean {
     about.printed === 4 &&
     about.bought === 2 &&
     about.hardware === 2 &&
-    quoted.includes('hardware,"M3 insert, brass",4,,,,,inserts\r\n') &&
-    quoted.includes('printed,foot (mirror image),1,TPU,,1.31686,1.31686,feet/1\r\n')
+    quoted.includes('hardware,"M3 insert, brass",4,,,,,,inserts\r\n') &&
+    quoted.includes('bought,NEMA 17 motor,1,,#30343a,280,280,,motor\r\n') &&
+    quoted.includes('printed,foot,1,TPU,,1.31686,1.31686,,foot\r\n') &&
+    quoted.includes('printed,foot,1,TPU,,1.31686,1.31686,mirror image of foot,feet/1\r\n')
   );
 }
 // A model with nothing to list says so in `empty`, and a tool that writes files refuses with the
@@ -479,34 +485,43 @@ export const said: string = CONVENTION;
 
 // ---------------------------------------------------------------- i. the view of the app
 
-const SELECT = 0x2f80ed; // the colour of a selection (`COLOR.select` of the app)
+declare const SELECT: number; // the colour of a selection (`COLOR.select` of `packages/app/src/draw.ts`)
 const allRows = (result: PartsList): (PartRow | HardwareRow)[] => [...result.printed, ...result.bought, ...result.hardware];
 export const view: PartsListView = {
   immediate: true,
-  answer(result, panel) {
-    const each = (r: PartRow): string => (r.mass === undefined ? (r.noMass === 'inError' ? 'the mass cannot be evaluated' : 'no mass: set a material or a mass') : r.count === 1 ? panel.number(r.mass, 'g') : `${panel.number(r.mass, 'g')} each, ${panel.number(r.totalMass ?? 0, 'g')}`);
-    const rows = allRows(result).map((r, index) =>
-      'label' in r
-        ? { text: `${r.label} × ${r.count}`, detail: r.holes.map((hole) => hole.feature).join(', '), picked: panel.picked === index }
-        : { text: `${r.name}${r.mirrored ? ' (mirror image)' : ''} × ${r.count}`, detail: [r.material, each(r)].filter((part) => part !== undefined).join(' · '), picked: panel.picked === index },
-    );
+  answer(result, _args, panel) {
+    const weighs = (r: PartRow): string => (r.mass === undefined ? (r.noMass === 'inError' ? 'the mass cannot be evaluated' : 'no mass: set a material or a mass') : r.count === 1 ? panel.number(r.mass, 'g') : `${panel.number(r.mass, 'g')} each, ${panel.number(r.totalMass ?? 0, 'g')}`);
+    const source = (r: PartRow): string | undefined => (r.copyOf === undefined ? undefined : `${r.mirrored ? 'mirror image' : 'copy'} of ${panel.bodyName(r.copyOf)}`);
+    // rows are counted through the three groups, in the order of `allRows`
+    let index = 0;
+    const bodies = (heading: string, rows: PartRow[]): ViewGroup => ({
+      heading,
+      rows: rows.map((r) => ({ text: `${r.name} × ${r.count}`, detail: [r.material, weighs(r), source(r)].filter((part) => part !== undefined).join(' · '), ...(r.color === undefined ? {} : { swatch: r.color }), picked: panel.picked === index++ })),
+    });
+    const groups: ViewGroup[] = [bodies('To print', result.printed), bodies('To buy', result.bought)];
+    groups.push({ heading: 'Hardware', rows: result.hardware.map((r) => ({ text: `${r.label} × ${r.count}`, detail: r.holes.map((hole) => `${hole.feature} (${hole.count})`).join(', '), picked: panel.picked === index++ })) });
     const { printed, bought } = result.totals;
+    const without = (count: number): string => (count ? `, not counting ${count} without a mass` : '');
     const hints = [
-      `To print: ${printed.count} bodies, ${panel.number(printed.mass, 'g')}${printed.withoutMass ? ` without the ${printed.withoutMass} that state no mass` : ''}. To buy: ${bought.count}, ${panel.number(bought.mass, 'g')}${bought.withoutMass ? ` without the ${bought.withoutMass} that state no mass` : ''}.`,
+      `To print: ${printed.count} bodies, ${panel.number(printed.mass, 'g')}${without(printed.withoutMass)}. To buy: ${bought.count}, ${panel.number(bought.mass, 'g')}${without(bought.withoutMass)}.`,
       ...(result.unlabelled ? [`Holes without a label: ${result.unlabelled.map((hole) => `${hole.feature} (${hole.count})`).join(', ')}. Label a hole with the piece that goes into it.`] : []),
       ...(result.auxiliary ? [`No parts (auxiliary): ${result.auxiliary.map((body) => panel.bodyName(body)).join(', ')}.`] : []),
     ];
-    return { rows, hints };
+    return { groups: groups.filter((group) => group.rows.length > 0), hints };
   },
-  scene(result, panel) {
+  scene(result, _args, panel) {
     const picked = panel.picked === undefined ? undefined : allRows(result)[panel.picked];
     if (!picked) return {};
     if (!('label' in picked)) return { bodies: picked.bodies.map((body) => ({ body, color: SELECT })) };
-    // the side faces of the hole features of the row, in the bodies of the state the answer is of:
-    // the faces a selected hole feature shows, looked up, not computed
+    // The faces the count was taken from: the bores and the heads of the hole features of the row,
+    // in the bodies of the state that are parts. Looked up, not computed.
     const features = new Set(picked.holes.map((hole) => hole.feature));
-    const { bodies, faceNames } = panel.state.evaluation;
-    return { faces: Object.entries(bodies).flatMap(([body, result]) => result.faces.map((face) => faceNames[face.id]).filter((name) => features.has(name.feature)).map((face) => ({ body, face, color: SELECT, opacity: 0.6 }))) };
+    const { bodies, faceNames, bodyProperties } = panel.state.evaluation;
+    return {
+      faces: Object.entries(bodies)
+        .filter(([body]) => bodyProperties[body].use !== 'auxiliary')
+        .flatMap(([body, shape]) => shape.faces.map((face) => faceNames[face.id]).filter((name) => features.has(name.feature) && (name.role === 'holeBore' || name.role === 'holeHead')).map((face) => ({ body, face, color: SELECT, opacity: 0.6 }))),
+    };
   },
   note: (result) => ({ text: `Parts list: ${result.totals.printed.count} to print, ${result.totals.bought.count} to buy, ${result.totals.hardware.count} pieces of hardware. Pick a row to see it.`, error: false }),
 };

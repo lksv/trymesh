@@ -525,7 +525,7 @@
     +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
     -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
   panel:
-    + h2: "Úprava: Mesh 1"
+    + h2: "Edit: Mesh 1"
     + label
     +   "Stored mesh"
     +   select value="tetra_1"
@@ -685,7 +685,7 @@
     +   button: "Add"
     + h2: "Mechanism"
     + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
-    - h2: "Úprava: Mesh 1"
+    - h2: "Edit: Mesh 1"
     - label
     -   "Stored mesh"
     -   select value="tetra_1"

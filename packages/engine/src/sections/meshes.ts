@@ -20,6 +20,9 @@ function entry(v: unknown, what: string, limit: number): StoredMesh {
   onlyFields(o, ENTRY_FIELDS, what, 'a stored mesh');
   const name = o.name === undefined ? undefined : label(o.name, `${what}.name`);
   const stored: StoredMesh = { ...(name === undefined ? {} : { name }), positions: string(o.positions, `${what}.positions`), triangles: string(o.triangles, `${what}.triangles`) };
+  // more triangles than the limit are refused before the data is decoded: `limit` triangles are
+  // 12 · limit bytes, 16 · limit characters of base64
+  if (stored.triangles.length > 16 * limit) fail(`${what}: the mesh has more than ${limit} triangles, the most a stored mesh may have here`);
   const problem = meshProblem(indexedMesh(stored, what), limit);
   if (problem) fail(`${what}: ${problem.message}`);
   return stored;

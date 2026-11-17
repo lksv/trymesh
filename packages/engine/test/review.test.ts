@@ -946,3 +946,102 @@ describe('the review of D57: the count of holes', () => {
     expect(joined).toBeGreaterThan(1000);
   });
 });
+
+// ---------------------------------------------------------------- the review of 3b (D55)
+
+describe('the import of a mesh: regressions of the review of 3b (D55)', async () => {
+  const { storedMesh } = await import('../src/mesh');
+  const { importMesh } = await import('../src/import/index');
+  const { toStl } = await import('../src/solid');
+  type Box = number[];
+  // an axis-aligned box as corners, outwards or inside out
+  const box = (min: number[], max: number[], outward = true): Box => {
+    const out: Box = [];
+    for (let k = 0; k < 3; k++) {
+      const [u, v] = [(k + 1) % 3, (k + 2) % 3];
+      for (const high of [false, true]) {
+        const at = (a: boolean, b: boolean): number[] => {
+          const p = [0, 0, 0];
+          p[k] = high ? max[k] : min[k];
+          p[u] = a ? max[u] : min[u];
+          p[v] = b ? max[v] : min[v];
+          return p;
+        };
+        const [p00, p10, p11, p01] = [at(false, false), at(true, false), at(true, true), at(false, true)];
+        out.push(...(high === outward ? [p00, p10, p11, p00, p11, p01] : [p00, p11, p10, p00, p01, p11]).flat());
+      }
+    }
+    return out;
+  };
+  const stl = (corners: Box): Uint8Array => {
+    const count = corners.length / 9;
+    return toStl([{ positions: Float32Array.from(corners), triangles: Uint32Array.from({ length: 3 * count }, (_, i) => i), faceIds: new Uint32Array(count) }]);
+  };
+  const solver = { solve: () => ({ status: 'failed', points: {}, radii: {}, degreesOfFreedom: 0, conflicting: [], redundant: [] }) } as never;
+  const newEngine = () => createEngine({ solver, kernel: {} as never });
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const TETRA = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+  const ok = (engine: ReturnType<typeof newEngine>, command: Command) => {
+    const result = engine.execute(command);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+
+  it('six features placing one stored mesh keep their bodies across an edit before them (the kept solids are per feature)', () => {
+    const engine = newEngine();
+    const ids = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+    const before = ok(engine, {
+      type: 'batch',
+      commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, ...ids.map((id, i): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, x: 20 * i } } }))],
+    });
+    const after = ok(engine, { type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'plane', base: XY, offset: 3 }, index: 0 });
+    expect(ids.map((id) => after.evaluation.bodies[id].solid === before.evaluation.bodies[id].solid)).toEqual(ids.map(() => true));
+  });
+
+  it('the remembered step of a mesh feature is reused through its input: an unrelated change after a write-back recomputes nothing', () => {
+    const engine = newEngine();
+    ok(engine, { type: 'batch', commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, { type: 'setParameter', name: 'h', expr: '5' }, { type: 'addFeature', feature: { id: 'm', name: 'm', suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, z: 'h' as never } } }] });
+    const first = engine.getState();
+    expect(first.document.features[0]).toMatchObject({ placement: { z: 5 } }); // written back: a new feature object
+    const other = ok(engine, { type: 'setParameter', name: 'unused', expr: '2' });
+    expect(other.evaluation.features.m).toBe(first.evaluation.features.m);
+    expect(other.evaluation.bodies.m).toBe(first.evaluation.bodies.m);
+  });
+
+  it('a part inside out in the hollow of a solid is turned over (a second level of turning), not refused', () => {
+    // a box, its hollow (inwards, correct) and a part in the hollow written inside out
+    const corners = [...box([0, 0, 0], [30, 30, 30]), ...box([5, 5, 5], [25, 25, 25], false), ...box([10, 10, 10], [20, 20, 20], false)];
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 3, cavities: 1, turned: 1 });
+    expect(outcome.report.volume).toBeCloseTo(27000 - 8000 + 1000, 6);
+    // and the inverted box with the same inside: turned with what it contains, the part then on its own
+    const inverted = [...box([0, 0, 0], [30, 30, 30], false), ...box([5, 5, 5], [25, 25, 25]), ...box([10, 10, 10], [20, 20, 20], false)];
+    const again = importMesh('stl', stl(inverted));
+    if (!again.ok) throw new Error(again.error.message);
+    expect(again.report.volume).toBeCloseTo(20000, 6);
+  });
+
+  it('turning many shells over takes one pass over their containers: 4000 boxes, half inside out', () => {
+    const corners: number[] = [];
+    for (let i = 0; i < 4000; i++) corners.push(...box([3 * (i % 64), 3 * Math.floor(i / 64), 0], [3 * (i % 64) + 1, 3 * Math.floor(i / 64) + 1, 1], i % 2 === 0));
+    const started = performance.now();
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 4000, turned: 2000 });
+    expect(outcome.report.volume).toBeCloseTo(4000, 3);
+    expect(performance.now() - started).toBeLessThan(20_000); // a generous bound: it was quadratic
+  });
+
+  it('the ASCII reader: `solid` in any case, a coordinate only as a decimal number, the limit said as "more than"', () => {
+    const ascii = (head: string, coordinate = '0') => new TextEncoder().encode(`${head}\n${[0, 1, 2, 3].map(() => `facet normal 0 0 1 outer loop vertex ${coordinate} 0 0 vertex 1 0 0 vertex 0 1 0 endloop endfacet`).join('\n')}\nendsolid`);
+    expect(importMesh('stl', ascii('SOLID part'))).toMatchObject({ ok: false, error: { code: 'notASolid' } }); // read, then refused as no solid
+    expect(importMesh('stl', ascii('solid part', '0x1A'))).toMatchObject({ ok: false, error: { code: 'unreadable', message: expect.stringContaining('"0x1A"') } });
+    expect(importMesh('stl', ascii('solid part', '1e2'))).toMatchObject({ ok: false, error: { code: 'notASolid' } });
+  });
+
+  it('a load refuses a stored mesh with more triangles than its limit before it decodes it', () => {
+    const big = { positions: TETRA.positions, triangles: 'A'.repeat(16 * 100_000 + 4) };
+    expect(() => validateDocument({ ...emptyDocument(), meshes: { big } })).toThrow(/document\.meshes\.big: the mesh has more than 100000 triangles/);
+  });
+});

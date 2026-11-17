@@ -31,7 +31,7 @@ declare module './spec' {
   }
 }
 
-const tooLarge = (count: number): ImportFailure => new ImportFailure('tooLarge', `the file has ${count} triangles, more than the ${MESH_LIMITS.triangles} an import reads; simplify the mesh outside`);
+const tooLarge = (count?: number): ImportFailure => new ImportFailure('tooLarge', `the file has ${count === undefined ? 'more than' : `${count} triangles, more than`} the ${MESH_LIMITS.triangles} triangles an import reads; simplify the mesh outside`);
 
 function binary(bytes: Uint8Array, scale: number): Float32Array {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -49,6 +49,8 @@ function binary(bytes: Uint8Array, scale: number): Float32Array {
 }
 
 const SOLID = [115, 111, 108, 105, 100]; // `solid`
+// A coordinate: a decimal number with an optional exponent (not `0x1A`, `Infinity` or an empty word).
+const DECIMAL = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
 // The text of an ASCII STL as corners, or undefined when the bytes are not one.
 function ascii(bytes: Uint8Array, scale: number): Float32Array | undefined {
   let at = 0;
@@ -61,17 +63,18 @@ function ascii(bytes: Uint8Array, scale: number): Float32Array | undefined {
     return at - start > 64 ? '' : String.fromCharCode(...bytes.subarray(start, at));
   };
   while (at < n && bytes[at] <= 32) at++;
-  if (!SOLID.every((code, i) => bytes[at + i] === code)) return undefined;
+  // `solid` in any case of letters, as `vertex`
+  if (!SOLID.every((code, i) => (bytes[at + i] | 32) === code)) return undefined;
   const corners: number[] = [];
   for (let word = next(); word !== undefined; word = next()) {
     if (word.toLowerCase() !== 'vertex') continue;
     for (let k = 0; k < 3; k++) {
       const token = next();
-      const value = token === undefined || token === '' ? NaN : Number(token);
+      const value = token !== undefined && DECIMAL.test(token) ? Number(token) : NaN;
       if (!Number.isFinite(value)) throw new ImportFailure('unreadable', `the vertex ${corners.length / 3} of the text has a coordinate ${JSON.stringify(token ?? '')} that is not a finite number`);
       corners.push(value * scale);
     }
-    if (corners.length > 9 * MESH_LIMITS.triangles) throw tooLarge(Math.ceil(corners.length / 9));
+    if (corners.length > 9 * MESH_LIMITS.triangles) throw tooLarge();
   }
   if (corners.length === 0) return undefined;
   if (corners.length % 9 !== 0) throw new ImportFailure('unreadable', `the text has ${corners.length / 3} vertices, which are not whole triangles of three`);

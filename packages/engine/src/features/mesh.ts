@@ -52,23 +52,28 @@ function unplaced(entry: StoredMesh): Solid {
   }
   return solid;
 }
-// The placed solid: kept by the entry object, the transform, the number of its face and the ID of
-// the feature, the last few of each entry, so that a step run again for an edit before the feature
-// gives the same object (what the queries remember by a solid stays). It is a copy of the mesh in
-// its own frame (`transformSolid`), so two bodies placed from one entry are one shape to the parts
-// list.
-const PLACED_KEPT = 4;
-const PLACED = new WeakMap<StoredMesh, Map<string, Solid>>();
+// The placed solid: kept by the entry object, the ID of the feature, the transform and the number of
+// its face, the last few of each feature of each entry, so that a step run again for an edit before
+// the feature gives the same object (what the queries remember by a solid stays), however many
+// features place one entry. It is a copy of the mesh in its own frame (`transformSolid`), so two
+// bodies placed from one entry are one shape to the parts list.
+const PLACED_KEPT = 4; // per feature
+const FEATURES_KEPT = 256; // per entry: the features the last runs placed it by
+const PLACED = new WeakMap<StoredMesh, Map<string, Map<string, Solid>>>();
+// The value under `key` of a map kept in the order of use, at most `size` long.
+function kept<T>(map: Map<string, T>, key: string, size: number, make: () => T): T {
+  let value = map.get(key);
+  if (value !== undefined) map.delete(key);
+  else value = make();
+  map.set(key, value);
+  if (map.size > size) map.delete(map.keys().next().value as string);
+  return value;
+}
 function placed(entry: StoredMesh, transform: RigidTransform, face: number, feature: string): Solid {
-  let kept = PLACED.get(entry);
-  if (!kept) PLACED.set(entry, (kept = new Map()));
-  const key = JSON.stringify([transform.matrix, transform.translation, face, feature]);
-  let solid = kept.get(key);
-  if (solid) kept.delete(key);
-  else solid = transformSolid(transform, unplaced(entry), () => face);
-  kept.set(key, solid);
-  if (kept.size > PLACED_KEPT) kept.delete(kept.keys().next().value as string);
-  return solid;
+  let byFeature = PLACED.get(entry);
+  if (!byFeature) PLACED.set(entry, (byFeature = new Map()));
+  const solids = kept(byFeature, feature, FEATURES_KEPT, () => new Map<string, Solid>());
+  return kept(solids, JSON.stringify([transform.matrix, transform.translation, face]), PLACED_KEPT, () => transformSolid(transform, unplaced(entry), () => face));
 }
 
 const tidy = (v: Vec3): Vec3 => [v[0] + 0, v[1] + 0, v[2] + 0];

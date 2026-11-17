@@ -89,7 +89,7 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 | `query/mechanism.ts` | the query `mechanism` (D49): the resolved mechanism of a state, and what hangs on a joint |
 | `query/index.ts` | the catalog `QUERIES` and the runner |
 | `export/spec.ts`, `export/bodies.ts`, `export/text.ts`, `export/zip.ts`, `export/outline.ts`, `export/stl.ts`, `export/threemf.ts`, `export/dxf.ts`, `export/svg.ts`, `export/index.ts` | what an export format is (`ExportFormatSpec`, the map `ExportFormats`); the list of bodies of a print export (`chosenBodies`); numbers and texts of a file; the ZIP the engine writes, its entries stored or deflated by the port `Deflater` (`zip`, D54); the outline of a plane over the query `section` (D54); the formats `stl`, `3mf`, `dxf` and `svg`; the catalog `EXPORT_FORMATS`, the runner and the form of the paths of an export |
-| `import/spec.ts`, `import/stl.ts`, `import/index.ts` | what an import format is (`ImportFormatSpec`, the map `ImportFormats`, `ImportFailure`); the STL reader, binary and ASCII, with its unit; the catalog `IMPORT_FORMATS`, `importFormatOf` and `importMesh`, the pipeline from bytes to a stored mesh and its report (D55) |
+| `import/spec.ts`, `import/stl.ts`, `import/index.ts` | what an import format is (`ImportFormatSpec`, the map `ImportFormats`, `ImportFailure`); the STL reader, binary and ASCII, with its unit; the catalog `IMPORT_FORMATS`, `importFormatOf` and `importMesh`, the pipeline from bytes to a stored mesh and its report, and the names from a path the server and the app share (`meshNameOf`, `idFromFile`, `importAccept`) (D55) |
 | `sketch-tools.ts` | sketch tools: whole shapes as batches of commands, shared by the app and MCP (D35, point 7) |
 | `engine.ts` | the facade |
 

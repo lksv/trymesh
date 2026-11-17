@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type ImportFormat, type MeshReport, exportPathProblem, importFormatOf, importMesh } from '@trymesh/engine';
+import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type Document, type ImportFormat, type MeshReport, documentIds, exportPathProblem, fileStemOf, idFromFile, importFormatOf, importMesh, meshNameOf, namedBySections } from '@trymesh/engine';
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
@@ -39,15 +39,6 @@ const FILE_WORDING: Wording = {
 
 const COMPACT_FROM = 20_000; // znaků
 
-// The ID a stored mesh gets from the name of its file (D55): the name without its extension reduced
-// to letters, digits and underscores; `mesh` when that is no ID (empty, `origin`, or a property every
-// object has); with `_2`, `_3`, … when the document has a stored mesh of that ID already.
-export function meshIdOf(file: string, taken: readonly string[]): string {
-  const stem = basename(file).replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_]/g, '_');
-  const base = stem === '' || stem === 'origin' || stem in Object.prototype ? 'mesh' : stem;
-  if (!taken.includes(base)) return base;
-  for (let n = 2; ; n++) if (!taken.includes(`${base}_${n}`)) return `${base}_${n}`;
-}
 const rounded = (value: unknown): unknown =>
   typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
 
@@ -184,23 +175,25 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         } catch (error) {
           throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
         }
-        const name = args.name === undefined || args.name === null ? basename(target) : args.name;
-        if (typeof name !== 'string') throw new Failure('argument "name": a text is expected');
+        // the name of the file, trimmed and cut to the length of a name, unless one is given
+        const name = args.name === undefined || args.name === null ? meshNameOf(target) : args.name;
+        if (name !== undefined && typeof name !== 'string') throw new Failure('argument "name": a text is expected');
         const outcome = importMesh(format, bytes, (args.options ?? undefined) as never, name);
         if (!outcome.ok) throw new Failure(`${outcome.error.code}: ${outcome.error.message}`);
         // the ID: given, or from the name of the file, among the stored meshes of the engine the other tools use
-        const model = (await must(session, 'get_model')) as { features: { id: string }[]; meshes?: { id: string }[] };
-        const id = args.id === undefined || args.id === null ? meshIdOf(target, (model.meshes ?? []).map((mesh) => mesh.id)) : args.id;
+        const document = (await must(session, 'get_document')) as unknown as Document;
+        const id = args.id === undefined || args.id === null ? idFromFile(target, (taken) => Object.prototype.hasOwnProperty.call(document.meshes, taken)) : args.id;
         const added = await call(session, 'execute', { command: { type: 'addMesh', id, mesh: outcome.mesh } });
         if (!added.ok) throw new Failure(added.error);
-        // the feature takes the ID of the mesh when no feature has it
-        const features = new Set(model.features.map((feature) => feature.id));
+        // the feature takes the ID of the mesh when the document does not use it (a feature, an entity
+        // of a sketch, an ID a section names), else the next free one
+        const used = new Set([...documentIds(document), ...namedBySections(document)]);
         let feature = String(id);
-        for (let n = 2; features.has(feature); n++) feature = `${id}_${n}`;
+        for (let n = 2; used.has(feature); n++) feature = `${id}_${n}`;
         const command: Command = {
           type: 'batch',
           commands: [
-            { type: 'addFeature', feature: { id: feature, name: name.replace(/\.[^.]*$/, '') || feature, suppressed: false, type: 'mesh', mesh: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } },
+            { type: 'addFeature', feature: { id: feature, name: fileStemOf(target).trim() || feature, suppressed: false, type: 'mesh', mesh: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } },
             { type: 'setBodyProperties', body: feature, patch: { use: 'reference' } },
           ],
         };

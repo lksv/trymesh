@@ -547,6 +547,12 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
   //   a change (also the rare one that moves nothing, as the drag of a point that is fixed).
   const content = (feature: Feature): string => JSON.stringify(feature.type === 'sketch' ? { ...feature, solved: undefined } : feature);
   const changes = (command: Command): boolean => {
+    // a stored mesh is decided without a preview, which would check megabytes once more before the
+    // command does: added under a free ID, removed when the section has it and nothing places it
+    // (a command the engine then refuses is counted as a change)
+    const { meshes, features } = state.document;
+    if (command.type === 'addMesh') return typeof command.id === 'string' && !Object.prototype.hasOwnProperty.call(meshes, command.id);
+    if (command.type === 'removeMesh') return typeof command.id === 'string' && Object.prototype.hasOwnProperty.call(meshes, command.id) && !features.some((f) => f.type === 'mesh' && f.mesh === command.id);
     const result = engine.preview(command);
     if (!result.ok) return false;
     const [next, now] = [result.state.document, state.document];

@@ -2,7 +2,7 @@
 // mesh (or imports a file into one), the frame (a base plane, a plane feature, a planar face picked
 // in the view, or a point of a sketch) and the six numbers of the placement; a new feature is
 // a bought part (`use: 'reference'`) unless the box says otherwise.
-import { type BodyPlacement, type Command, type Expr, type FrameRef, IMPORT_FORMATS, type Id, type Input, type MeshFeature, type PlaneRef, type SketchFeature, featureInput, importFormatOf, importMesh } from '@trymesh/engine';
+import { type BodyPlacement, type Command, type Expr, type FrameRef, IMPORT_FORMATS, type Id, type Input, type MeshFeature, type PlaneRef, type SketchFeature, featureInput, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
 import type { PanelHost } from '../host';
@@ -35,17 +35,8 @@ function meshText(host: PanelHost, id: Id): string {
   return result ? `${result.name ?? id} (${result.triangles} triangles)` : `${id} (missing)`;
 }
 
-// The ID of a stored mesh from the name of its file: letters, digits and underscores, numbered when
-// the document has it already.
-function meshId(host: PanelHost, file: string): Id {
-  const stem = file.replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_]/g, '_');
-  const base = stem === '' || stem === 'origin' || stem in Object.prototype ? 'mesh' : stem;
-  const taken = (id: Id) => Object.prototype.hasOwnProperty.call(host.doc.meshes, id);
-  if (!taken(base)) return base;
-  let n = 2;
-  while (taken(`${base}_${n}`)) n++;
-  return `${base}_${n}`;
-}
+// The ID of a stored mesh from the name of its file, numbered when the document has it already.
+const meshId = (host: PanelHost, file: string): Id => idFromFile(file, (id) => Object.prototype.hasOwnProperty.call(host.doc.meshes, id));
 
 // Reads a file the user chose into a stored mesh (addMesh, one undo step) and answers with its ID;
 // a file the import refuses is said in the status line with its reason.
@@ -55,7 +46,7 @@ export async function importFile(host: PanelHost, file: File): Promise<Id | unde
     host.say(`${file.name}: the app reads ${Object.entries(IMPORT_FORMATS).map(([, spec]) => `.${spec.extensions.join(', .')}`).join(', ')} files.`, true);
     return undefined;
   }
-  const outcome = importMesh(format, new Uint8Array(await file.arrayBuffer()), {}, file.name);
+  const outcome = importMesh(format, new Uint8Array(await file.arrayBuffer()), {}, meshNameOf(file.name));
   if (!outcome.ok) {
     host.say(`${file.name} cannot be imported: ${outcome.error.message}`, true);
     return undefined;
@@ -69,7 +60,7 @@ export async function importFile(host: PanelHost, file: File): Promise<Id | unde
 
 // The control that chooses a file: a hidden input and its button.
 function importControl(host: PanelHost, then: (id: Id) => void): HTMLElement[] {
-  const input = h('input', { type: 'file', accept: '.stl,model/stl', hidden: true, id: 'mesh-file' });
+  const input = h('input', { type: 'file', accept: importAccept(), hidden: true, id: 'mesh-file' });
   input.onchange = () => {
     const file = input.files?.[0];
     if (file) void importFile(host, file).then((id) => id !== undefined && then(id));
@@ -163,7 +154,7 @@ function meshPanel(m: MeshMode, host: PanelHost): HTMLElement[] {
     draftChanged(host);
   };
   return [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'New mesh'),
+    h('h2', {}, m.editing ? `Edit: ${m.draft.name}` : 'New mesh'),
     stored.length || m.draft.mesh !== ''
       ? h(
           'label',

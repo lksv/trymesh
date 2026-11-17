@@ -7,10 +7,9 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type AnyImportFormat, type Command, type Engine, IMPORT_FORMATS, type ImportFormat, type ImportOptions, specProblems } from '@trymesh/engine';
+import { type AnyImportFormat, type Command, type Engine, IMPORT_FORMATS, type ImportFormat, type ImportOptions, idFromFile, meshNameOf, specProblems } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { apiDescription, apiText } from '../src/api';
-import { meshIdOf } from '../src/server';
 import { callTool, changesDocument } from '../src/tools';
 import { type Session, connect, newEngine } from './kit';
 
@@ -121,11 +120,35 @@ describe('the catalog of import formats and the tool import_mesh (D55)', () => {
   });
 
   it('the ID from the name of the file: letters, digits and underscores; `mesh` when that is no ID; numbered when taken', () => {
-    expect(meshIdOf('/parts/NEMA 17-motor.v2.stl', [])).toBe('NEMA_17_motor_v2');
-    expect(meshIdOf('/parts/origin.stl', [])).toBe('mesh');
-    expect(meshIdOf('/parts/constructor.stl', [])).toBe('mesh');
-    expect(meshIdOf('/parts/.stl', [])).toBe('mesh');
-    expect(meshIdOf('/parts/motor.stl', ['motor', 'motor_2'])).toBe('motor_3');
+    const none = () => false;
+    expect(idFromFile('/parts/NEMA 17-motor.v2.stl', none)).toBe('NEMA_17_motor_v2');
+    expect(idFromFile('C:\\parts\\motor.stl', none)).toBe('motor');
+    expect(idFromFile('/parts/origin.stl', none)).toBe('mesh');
+    expect(idFromFile('/parts/constructor.stl', none)).toBe('mesh');
+    expect(idFromFile('/parts/.stl', none)).toBe('mesh');
+    expect(idFromFile('/parts/motor.stl', (id) => ['motor', 'motor_2'].includes(id))).toBe('motor_3');
+  });
+
+  it('the name of a stored mesh from its file: trimmed and cut to the length of a name (review)', async () => {
+    expect(meshNameOf('/parts/ motor.stl ')).toBe('motor.stl');
+    expect(meshNameOf(`/parts/${'a'.repeat(300)}.stl`)).toBe('a'.repeat(200));
+    expect(meshNameOf('/parts/ ')).toBeUndefined();
+    const file = join(dir, ` ${'b'.repeat(250)}.stl`);
+    await writeFile(file, disc());
+    const answer = await session.call('import_mesh', { path: file });
+    expect(answer.error).toBeUndefined();
+    expect(session.engine.getState().document.meshes[answer.mesh].name).toBe('b'.repeat(200));
+  });
+
+  it('the feature it proposes avoids every ID of the document, also a point of a sketch (review)', async () => {
+    const sketch = { id: 'sk', name: 'sk', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: { servo: { x: 0, y: 0 } }, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } };
+    expect((await session.call('execute', { command: { type: 'addFeature', feature: sketch } })).error).toBeUndefined();
+    const file = join(dir, 'servo.stl');
+    await writeFile(file, disc());
+    const answer = await session.call('import_mesh', { path: file });
+    expect(answer.mesh).toBe('servo');
+    expect(answer.next.command.commands[0].feature).toMatchObject({ id: 'servo_2', name: 'servo' });
+    expect((await session.call('execute', { command: answer.next.command })).error).toBeUndefined();
   });
 });
 
@@ -162,6 +185,10 @@ describe('a stored mesh in the tools that read the document', () => {
     const before = engine.getState().document;
     expect(changesDocument(engine, 'execute', { command: { type: 'batch', commands: [] } })).toBe(false);
     expect(changesDocument(engine, 'execute', { command: { type: 'removeMesh', id: 'disc' } })).toBe(true);
+    // decided without a preview (review): a free ID adds, a taken one does not; a mesh in use is not removed
+    expect(changesDocument(engine, 'execute', { command: { type: 'addMesh', id: 'disc', mesh: engine.getState().document.meshes.disc } })).toBe(false);
+    expect(changesDocument(engine, 'execute', { command: { type: 'addMesh', id: 'other', mesh: engine.getState().document.meshes.disc } })).toBe(true);
+    expect(changesDocument(engine, 'execute', { command: { type: 'removeMesh', id: 'nothing' } })).toBe(false);
     expect(engine.getState().document).toBe(before);
   });
 });

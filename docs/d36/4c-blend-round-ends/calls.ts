@@ -14,9 +14,11 @@
 // e. a box whose top edge a hole breaks: accepted where the chamfer crosses the hole, refused as a
 //    bridge where it passes behind it;
 // f. what is refused: stops (a rib's top edge into the boss, a rib's foot flush with the rim of a
-//    disc, the rim of a lobe under another lobe), an edge between two cylinders, an end at a cone,
-//    a crossing too flat, pockets too shallow for the chamfer. Each refusal is a preview of the
-//    feature inserted right after the feature it is about, evaluated up to it.
+//    disc), two faces at an end (the rim of a lobe under another lobe), an edge between two
+//    cylinders, an end at a cone, a crossing too flat, an end at an earlier fillet along an edge of
+//    the kind `other`, a pin standing in a hole within the run-out, pockets too shallow for the
+//    chamfer. Each refusal is a preview of the feature inserted right after the feature it is
+//    about, evaluated up to it.
 // Then a change of parameters, and a save and load.
 
 import { emptySketch } from '../../../packages/engine/src/index';
@@ -67,8 +69,8 @@ function polygon(s: Id, p: string, corners: [number, number][]): CommandAfter[] 
   return [...corners.map(([x, y], i) => point(s, `${p}p${i}`, x, y)), ...corners.map((_, i) => line(s, `${p}${i}`, `${p}p${i}`, `${p}p${(i + 1) % corners.length}`))];
 }
 const curvesOf = (p: string, n: number): Id[] => Array.from({ length: n }, (_, i) => `${p}${i}`);
-function extrude(id: Id, s: Id, regions: Id[][], distance: number, operation: 'new' | 'add' | 'cut' = 'new', target?: Id, taper?: number): CommandAfter {
-  return { type: 'addFeature', feature: { ...base(id), type: 'extrude', profile: { type: 'regions', sketch: s, regions: regions.map((outer) => ({ outerLoop: [...outer].sort() })) }, extent: { type: 'distance', start: 0, distance, ...(taper ? { taper } : {}) }, operation, ...(target ? { targets: [target] } : {}) } };
+function extrude(id: Id, s: Id, regions: Id[][], distance: number, operation: 'new' | 'add' | 'cut' = 'new', target?: Id, taper?: number, index?: number): CommandAfter {
+  return { type: 'addFeature', feature: { ...base(id), type: 'extrude', profile: { type: 'regions', sketch: s, regions: regions.map((outer) => ({ outerLoop: [...outer].sort() })) }, extent: { type: 'distance', start: 0, distance, ...(taper ? { taper } : {}) }, operation, ...(target ? { targets: [target] } : {}) }, index };
 }
 
 // ================================================================ a. the housing
@@ -105,6 +107,21 @@ export function rimChecks(before: StateAfter, after: StateAfter): boolean {
   const facts = after.evaluation.features['rimChamfer'].facts ?? {};
   const taken = volume(before, 'plate') - volume(after, 'plate');
   return coneOk && meetsEveryPocket && facts['setback/0'] === 0.5 && facts['cut/0'] === true && Math.abs(taken - 13.78) < 0.05 && allOk(after);
+}
+
+// The pockets cut a second time by an extrusion flush with the first (the same circles, 2 deep),
+// inserted before the chamfer: the chamfer still runs out into every pocket and takes the same
+// volume (measured: one face of a pocket at each end of the rim, whichever cut names it).
+export function flushPockets(before: StateAfter): boolean {
+  const at = engine.getState().document.features.findIndex((f) => f.id === 'rimChamfer');
+  const commands: CommandAfter[] = [
+    { type: 'addFeature', feature: emptySketch('pinsAgain', 'pinsAgain', { kind: 'base', plane: 'XY' }), index: at },
+    { type: 'setSketchPlane', sketch: 'pinsAgain', plane: onFace('plate', top('plate')) },
+    ...POCKETS.flatMap((id, k): CommandAfter[] => circle('pinsAgain', `${id}f`, 29 * Math.cos((k * Math.PI) / 8), 29 * Math.sin((k * Math.PI) / 8), 2.5)),
+    extrude('pocketsAgain', 'pinsAgain', POCKETS.map((id) => [`${id}f`]), -2, 'cut', 'plate', undefined, at + 1),
+  ];
+  const after = done(engine.preview({ type: 'batch', commands }, 'rimChamfer'));
+  return after.evaluation.features['rimChamfer']?.status === 'ok' && Math.abs(volume(after, 'plate') - volume(before, 'plate')) < 1e-3;
 }
 
 // ================================================================ b. a hub with a keyway
@@ -236,10 +253,12 @@ export function notchChecks(): boolean {
 
 // A disc of radius 25 at (0, 200) with a radial rib flush with its rim (the motor shell); two
 // eccentric lobes stacked at (−200, 0) (the input shaft); a box with a hole crossing its edge at 8°;
-// a box with a countersunk (tapered) hole through its edge.
+// a box with a countersunk (tapered) hole through its edge; a box with a hole and a pin standing in
+// it where the chamfer runs on; a box with a leaning top whose vertical front-right edge is filleted.
 export function refusedParts(): StateAfter {
   const end = Math.sqrt(25 * 25 - 1);
   const flat = 4 * Math.cos((8 * Math.PI) / 180); // the centre behind the front face: a crossing of 8°
+  const pinX = 530 - Math.sqrt(12) + 0.75; // 0.75 past the end of the edge at the hole (centre 2 in front)
   return run(
     ...sketch('discSketch', XY),
     ...circle('discSketch', 'w', 0, 200, 25),
@@ -273,26 +292,53 @@ export function refusedParts(): StateAfter {
     ...sketch('sinkHoleSketch', onFace('sinkBox', top('sinkBox'))),
     ...circle('sinkHoleSketch', 'j', 430, 0, 4),
     extrude('sinkHole', 'sinkHoleSketch', [['j']], -25, 'cut', 'sinkBox', 0.3),
+    ...sketch('pinBoxSketch', XY),
+    ...polygon('pinBoxSketch', 'a', [[500, 0], [560, 0], [560, 40], [500, 40]]),
+    extrude('pinBox', 'pinBoxSketch', [curvesOf('a', 4)], 20),
+    ...sketch('pinHoleSketch', onFace('pinBox', top('pinBox'))),
+    ...circle('pinHoleSketch', 'i', 530, -2, 4),
+    extrude('pinHole', 'pinHoleSketch', [['i']], -25, 'cut', 'pinBox'),
+    ...sketch('pinSketch', XY),
+    ...circle('pinSketch', 'e', pinX, 0.5, 0.2),
+    extrude('pin', 'pinSketch', [['e']], 20, 'add', 'pinBox'),
+    // in the plane YZ: (y, z); the body runs along X from 0 to 60, y from 600 to 640, its top falling
+    // from 20 at the front to 16 at the back
+    ...sketch('leanSketch', { kind: 'base', plane: 'YZ' }),
+    ...polygon('leanSketch', 'g', [[600, 0], [640, 0], [640, 16], [600, 20]]),
+    extrude('lean', 'leanSketch', [curvesOf('g', 4)], 60),
+    add(fillet('leanCorner', 'lean', [edge(side('lean', 'g3'), top('lean'))], 5)),
   );
 }
 export function stillRefused(): boolean {
   const unsupported = (issue: IssueAfter | undefined, face: FaceNameAfter): boolean => issue?.code === 'unsupportedEdge' && issue.message.startsWith(MESSAGE_UNSUPPORTED_EDGE) && names(issue, face);
-  // stops: the rib's top edge into the boss's wall; the foot of the disc's rib past the rim; the
-  // rim of the lower lobe under the upper one
+  // stops: the rib's top edge into the boss's wall; the foot of the disc's rib past the rim (it
+  // ends at the disc's side alone: the fin's end flush with it does not reach the end vertex)
   const ribTop = refusalAfter('boss', chamfer('e1', 'deck', [RIB_TOP], 1));
   const disc = refusalAfter('fin', chamfer('e2', 'disc', [edge(top('disc'), side('fin', 'f2'))], 4));
+  const stops = unsupported(ribTop, side('boss', 'b')) && /material of the end face/.test(ribTop?.message ?? '') && unsupported(disc, side('disc', 'w')) && /past the end face/.test(disc?.message ?? '');
+  // two faces at an end: the rim of the lower lobe meets the upper lobe's side and its underside
+  // where it overhangs (both named in refs)
   const lobe = refusalAfter('upper', chamfer('e3', 'lobe', [edge(top('lobe'), side('lobe', 'l1'))], 0.5));
-  const stops = unsupported(ribTop, side('boss', 'b')) && disc?.code === 'unsupportedEdge' && lobe?.code === 'unsupportedEdge';
+  const several = unsupported(lobe, side('upper', 'l2')) && names(lobe, { feature: 'upper', role: 'startCap' });
   // an edge between two cylinders (a pocket and the bore): of the kind `other`, as in D63
   const ridge = refusalAfter('pockets', fillet('e4', 'plate', [edge(side('bore', 'h'), side('pockets', 'k0'))], 1));
   // an end at a cone (a tapered hole); a crossing of 8°, under BLEND_MIN_CROSSING
   const cone = refusalAfter('sinkHole', chamfer('e5', 'sinkBox', [edge(top('sinkBox'), side('sinkBox', 'z0'))], 1));
   const flat = refusalAfter('flatHole', chamfer('e6', 'flatBox', [edge(top('flatBox'), side('flatBox', 'm0'))], 1));
   const flatOk = BLEND_MIN_CROSSING > (8 * Math.PI) / 180 && unsupported(flat, side('flatHole', 'v'));
-  // pockets 0.3 deep: the run-out of the rim's chamfer reaches their floors
-  const shallow = done(engine.preview({ type: 'updateFeature', id: 'pockets', patch: { extent: { type: 'distance', start: 0, distance: -0.3 } } }, 'rimChamfer'));
+  // an end at an earlier fillet: the leaning top-front edge runs on smoothly into the fillet of the
+  // corner, along the edge between the leaning top and the fillet (of the kind other); D63 advised
+  // adding that edge to the feature
+  const earlier = refusalAfter('leanCorner', chamfer('e7', 'lean', [edge(side('lean', 'g2'), side('lean', 'g3'))], 1));
+  const filletEnd = unsupported(earlier, filletFace('leanCorner', 0)) && !/add it to this feature/.test(earlier?.message ?? '');
+  // the void check: a pin standing in the hole where the chamfer runs on (measured: 0.046 mm³ of
+  // it would be taken); pockets 0.1 deep, whose floors the run-out of the rim's chamfer reaches
+  const pinned = refusalAfter('pin', chamfer('e8', 'pinBox', [edge(top('pinBox'), side('pinBox', 'a0'))], 1));
+  const pinOk = pinned?.code === 'blendDoesNotFit' && names(pinned, side('pinHole', 'i'));
+  const shallow = done(engine.preview({ type: 'updateFeature', id: 'pockets', patch: { extent: { type: 'distance', start: 0, distance: -0.1 } } }, 'rimChamfer'));
   const shallowError = shallow.evaluation.features['rimChamfer']?.error;
-  return stops && ridge?.code === 'unsupportedEdge' && unsupported(cone, side('sinkHole', 'j')) && flatOk && shallowError?.code === 'blendDoesNotFit';
+  const shallowOk = shallowError?.code === 'blendDoesNotFit' && POCKETS.some((id) => names(shallowError, side('pockets', id)));
+  return stops && several && ridge?.code === 'unsupportedEdge' && unsupported(cone, side('sinkHole', 'j')) && flatOk && filletEnd && pinOk && shallowOk;
 }
 
 // ================================================================ g. parameters, save and load
@@ -315,7 +361,7 @@ export function roundTrip(): boolean {
 
 export function scenario17(): boolean {
   const housed = housing();
-  const rim = rimChecks(housed, rimChamfer());
+  const rim = rimChecks(housed, rimChamfer()) && flushPockets(engine.getState());
   hub();
   const keyed = hubChecks(hubChamfer());
   const ribbed = ribAndBoss();

@@ -334,7 +334,7 @@ export function tooManyPlaces(before: number): boolean {
 export function onePlaceTwice(): boolean {
   const error = errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X, span: { type: 'spacing', spacing: 5 } } } } }), 'drains');
   const paths = ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'];
-  return error?.code === 'invalidPattern' && JSON.stringify(error.refs) === JSON.stringify(paths) && error.message.includes('1 and 1000');
+  return error?.code === 'invalidPattern' && JSON.stringify(error.refs) === JSON.stringify(paths) && error.message.includes('the copies 1 and 1000 would stand in one place');
 }
 // Parallel directions alone are not the error. Two rows along X, the second half a step from the
 // first (2.5): eight separate holes on one line, 0.5 mm of floor between neighbours, the copy

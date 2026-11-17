@@ -7,7 +7,8 @@
 //
 // The grid (an addition to D53 of 2026-11-17, designed in grid.md) is marked "the grid" below: a
 // second direction of the variant `linear`, the numbers of its copies, its numeric fields and one
-// error code. Written against `master` at 633a6ca, where the two variants above are implemented.
+// error code. Written against `master` at 633a6ca, where the two variants above are implemented,
+// and checked again at c2a506c (master has since gained only the compressed 3MF).
 
 import type { AxisRef, FieldSpec, Id, NumberSpec, Patch, PatternFeature, PatternTransform, RigidTransform, Vec3 } from '../../../packages/engine/src/index';
 import type { PlaneRefAfter } from '../00-prep/contract';
@@ -67,10 +68,13 @@ export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'
 //   their numbers, which is the order they are made in (row by row).
 // - `count × second.count` is at most `MAX_PATTERN_PLACES`, and no two places may be one place:
 //   at most the length tolerance of the engine apart (1e-6 mm; the original is a place). Places
-//   meet when the two directions are parallel and steps of the two add up to the same shift (5 and
-//   5 meet, 5 and 6 over 4 × 3 places do not), or when a step is shorter than the tolerance. The
-//   places are compared, not the meshes: places further apart than the tolerance and closer than
-//   the step of float32 at their coordinates give copies that are one mesh, and are accepted.
+//   meet when the two directions are parallel and whole numbers of steps of the two reach the same
+//   shift (5 and 5, 5 and 10, 5 and −5 meet; 5 and 6 over 4 × 3 places do not), when a step is
+//   shorter than the tolerance, or when the directions are nearly parallel (1e-8 rad apart with a
+//   step of 10 mm). The place is the translation of the transform that is built. The places are
+//   compared, not the meshes: places further apart than the tolerance and closer than the step of
+//   float32 at the coordinates of the copied body give copies that coincide to float32 (each
+//   vertex the same float or one float32 step apart), and are accepted.
 //   A linear pattern without `second` is not compared (the row of today). Both rules are judged by
 //   the recompute, where the values of expressions and the directions are known: the error
 //   `invalidPattern` of the pattern.
@@ -106,7 +110,8 @@ declare module '../00-prep/contract' {
   // - two places of a grid would be one place: `refs` are the paths of what the places are computed
   //   from (`transform/direction`, `transform/count`, the numeric field of the span,
   //   `transform/span/spacing` or `transform/span/length`, and the same three under
-  //   `transform/second/`); the detail names the two copies (or the copy and the original), and
+  //   `transform/second/`: paths into the feature, numeric or not, since the two directions are
+  //   references and not numeric fields); the detail names the two copies (or the copy and the original), and
   //   is all a user is told, so the step has to hand it on.
   // The pattern is in error as a whole and the model stays as it was before it.
   interface IssueCodes {

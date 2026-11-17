@@ -60,6 +60,8 @@ function patternTransform(transform: Dict, what: string, context: ValidationCont
     onlyFields(transform, ['type', 'direction', 'count', 'span', 'second'], what, owner);
     const first = linearDirection(transform, what, 'transform', context);
     if (transform.second === undefined) return { type, ...first };
+    // `null` removes a second direction in a patch; in a feature it is no value: a row leaves the field out
+    if (transform.second === null) return fail(`${what}.second: an object { direction, count, span } is expected; leave the field out for a row`);
     const given = object(transform.second, `${what}.second`);
     // a second direction is not a transform of its own: no `type`, and no `second` in it
     onlyFields(given, ['direction', 'count', 'span'], `${what}.second`, 'a second direction');

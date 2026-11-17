@@ -520,3 +520,14 @@ Where the code differs from the design, or the design left a choice:
 - **Docs**: `ui/errors.md` and the copy of the issue codes in `architecture/recompute.md` also got the row of `invalidHole` they lacked. The paragraph "A grid, later" of `design.md` got a line that points here.
 - Not done here, for the merging session: the rows of `docs/d36/README.md` and `docs/decisions.md` ("Rows for the indexes"). Not checked in a browser: the form is driven by `app.test.ts` (snapshot `pattern-kinds.txt`) and its logic by the unit tests.
 
+### Review of the implementation (2026-11-17)
+
+A fresh subagent (Opus 5.5), read-only, on the diff of the implementation with this design as the reference: no blocker, no major, one minor finding and three nits. Regressions are in `packages/engine/test/review.test.ts` and in a new `packages/app/test/review.test.ts`.
+
+| Finding | Severity | What changed |
+|---|---|---|
+| The test of the fields checked only that each field `fieldsOf` reports is listed in the registry, not the conditions (`transform/second/count` is listed twice, under `transform/second/span/type`) | minor | A regression compares, for a row with either span, a grid with a spacing and one with a length, a circular pattern and a mirror, the entries of the registry whose condition holds with what `fieldsOf` reports, as path and spec |
+| The hint that no sketch is before the pattern would show twice when both directions are pickers | nit | The second picker passes no hint; `axisRows` shows none for an empty one |
+| `addFeature` with `transform.second: null` was refused with the generic Czech text of an object, while a patch accepts `second: null` | nit | Refused in English: "an object { direction, count, span } is expected; leave the field out for a row" (also on a load); the patch still removes it. `null` is not taken for "absent" in a feature, because a feature has one spelling |
+| Long lines of the comments of `types.ts` that `describe_api` reads verbatim | nit | Re-wrapped |
+

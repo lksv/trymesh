@@ -23,7 +23,8 @@ export const SECOND_DIRECTION: DirectionLabels = { direction: 'Second direction'
 
 // The rows of the picker. `sketches`: the sketches the axis may go through, in the order of the
 // timeline; a sketch or a point that is not among them stays in its list marked as missing, so
-// that it can be replaced. `noSketch`: the hint shown when there is no sketch to offer.
+// that it can be replaced. `noSketch`: the hint shown when there is no sketch to offer (empty:
+// none, for a second picker of the same form).
 // `direction`: the picker of a direction, with these labels and without the row of the point.
 export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (change: AxisChange) => void, noSketch: string, direction?: DirectionLabels): HTMLElement[] {
   const labels = direction ? DIRECTIONS : AXES;
@@ -49,6 +50,6 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
       select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),
       h('p', { className: 'hint' }, 'The axis is the normal of the sketch plane through the point.'),
     );
-  } else if (sketches.length === 0) out.push(h('p', { className: 'hint' }, noSketch));
+  } else if (sketches.length === 0 && noSketch) out.push(h('p', { className: 'hint' }, noSketch));
   return out;
 }

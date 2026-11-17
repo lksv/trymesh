@@ -104,7 +104,8 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
     if (second) {
       const along = (change: Parameters<typeof set>[0]['second'], rebuild = true) => set({ second: change }, rebuild);
       out.push(
-        ...axisRows(host, second.direction, choices.sketches, (change) => along(change), noSketch, SECOND_DIRECTION),
+        // the hint that no sketch is there is shown once, by the first picker
+        ...axisRows(host, second.direction, choices.sketches, (change) => along(change), '', SECOND_DIRECTION),
         draftField(host, m, 'Count along the second direction (a whole number or an expression)', 'transform/second/count', (value) => along({ count: value }, false)),
         select('Second span', (value) => along({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbouring rows', second.span.type === 'spacing'), option('length', 'Length between the first and the last row', second.span.type === 'length')),
         second.span.type === 'spacing'

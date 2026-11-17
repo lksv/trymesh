@@ -323,8 +323,8 @@ export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 //   list lets a hole repeat with its pocket.
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
 //   numbered from 1 (a grid numbers its copies i + 1000 · j, with gaps: see PatternTransform; read
-//   the IDs from `bodies` of the result, do not compose them by counting). A copy is a body like any other: a sketch can stand on it, it can be cut and its
-//   edges projected.
+//   the IDs from `bodies` of the result, do not compose them by counting). A copy is a body like
+//   any other: a sketch can stand on it, it can be cut and its edges projected.
 // - `count` includes the original; 1 means the original alone. A mirror has no count and makes one
 //   copy, number 1 (`<pattern>/1`; another number of a mirror is not a body a command may name).
 //   The pattern is atomic: when any copy fails, the whole pattern is in error and the model stays
@@ -415,12 +415,13 @@ export type HoleExtent = { type: 'distance'; start: number; distance: number } |
 //   copy at (i, j) has the number i + 1000 · j: the row of the original keeps the numbers 1 …
 //   count − 1 of a row, the second row is 1000, 1001, …, the third 2000, …. A number does not
 //   depend on the counts, so with spacings a larger count adds copies and moves none; the numbers
-//   have gaps, and `bodies` of the result lists the copies that exist, in the order of their numbers
-//   (row by row, the order they are applied in). The recompute refuses, as the error
+//   have gaps, and `bodies` of the result lists the copies that exist, in the order of their
+//   numbers (row by row, the order they are applied in). The recompute refuses, as the error
 //   `invalidPattern`, a grid of more than 200 places (count × second count, the original included)
 //   and a grid of which two places would be one place (whole numbers of steps along parallel
 //   directions that reach the same place, such as the steps 5 and 5, 5 and 10, 5 and −5; a step
-//   below 1e-6 mm; directions a hair apart). `{ second: null }` in `updateFeature` makes a row again.
+//   below 1e-6 mm; directions a hair apart). `{ second: null }` in `updateFeature` makes a row
+//   again; a new linear pattern without a grid leaves `second` out.
 // - `mirror`: one copy, the mirror image in `plane` (a base plane, a plane feature or a planar face
 //   of a body, as the plane of a sketch; for a face the whole plane it lies in), resolved in the
 //   state before the pattern. A plane of symmetry is a base plane or a plane feature offset by an

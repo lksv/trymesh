@@ -804,3 +804,47 @@ describe('the numbers, texts and arcs of an export: the review of D54', () => {
   });
 });
 
+describe('the grid: the review of D53', () => {
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const X = { kind: 'base', axis: 'X' } as const;
+  const Y = { kind: 'base', axis: 'Y' } as const;
+  // a body A and a pattern P of it with the given transform
+  const withPattern = (transform: object): Document => {
+    const commands: Command[] = [
+      { type: 'addFeature', feature: emptySketch('S', 'S', XY) },
+      { type: 'addCurve', sketch: 'S', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+      { type: 'addFeature', feature: { id: 'A', name: 'A', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } },
+      { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'body', body: 'A' }, transform } as never },
+    ];
+    return commands.reduce(applyCommand, emptyDocument());
+  };
+  const row = { type: 'linear', direction: X, count: 3, span: { type: 'spacing', spacing: 5 } };
+
+  // the test of the fields checked only that each read field is listed, not the conditions
+  it('the conditions of the registry give exactly the fields the validator reads, for every kind and both spans of a grid', () => {
+    for (const transform of [
+      row,
+      { ...row, span: { type: 'length', length: 20 } },
+      { ...row, second: { direction: Y, count: 2, span: { type: 'spacing', spacing: 7 } } },
+      { ...row, span: { type: 'length', length: 20 }, second: { direction: Y, count: 2, span: { type: 'length', length: 30 } } },
+      { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'angle', angle: 1 } },
+      { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } },
+    ]) {
+      const f = withPattern(transform).features[2];
+      const listed = FEATURE_TYPE_INFO.pattern.fields.filter((field) => !field.when || atPath(f, field.when.path) === field.when.equals);
+      expect(fieldsOf(f).map((field) => [field.path, field.spec])).toEqual(listed.map((field) => [field.path, field.spec]));
+    }
+  });
+
+  // `second: null` in a feature was refused with the Czech message of a generic object
+  it('a feature with `second: null` is refused in English: a row leaves the field out', () => {
+    expect(() => withPattern({ ...row, second: null })).toThrow(/transform\.second: an object \{ direction, count, span \} is expected; leave the field out for a row/);
+    const doc = withPattern(row);
+    const saved = JSON.parse(JSON.stringify(doc));
+    saved.features[2].transform.second = null;
+    expect(() => validateDocument(saved)).toThrow(/leave the field out for a row/);
+    // removing it by a patch stays accepted
+    expect(applyCommand(doc, { type: 'updateFeature', id: 'P', patch: { transform: { second: null } } } as Command).features[2]).toEqual(doc.features[2]);
+  });
+});
+

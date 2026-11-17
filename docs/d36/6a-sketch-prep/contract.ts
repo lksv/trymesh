@@ -228,8 +228,8 @@ export declare function updateProblem(sketch: SketchFeature, id: Id, before: Ext
 // is no operand of a constraint of its own sketch.
 export declare function entityOf(sketch: SketchFeature, id: Id): Entity | undefined;
 // As today, for the kinds whose entities follow from the entry alone (the projection of an edge):
-// the derived points of the entry. Kept because the engine exports it; nothing in the engine, the
-// app or MCP calls it after part 5. A kind whose entities need the sketch (6c) does not go through
+// the derived points of the entry. Kept because the engine exports it; after part 5 nothing in the
+// app or MCP calls it, and in the engine only the own rule of a constraint does. A kind whose entities need the sketch (6c) does not go through
 // it: 6c removes it from the exports or makes it take the sketch.
 export declare function derivedPoints(id: Id, ref: ExternalRef): Id[];
 // Every entity of one entry, in the order of its kind (for the edge: the curve, then `a` and `b`,

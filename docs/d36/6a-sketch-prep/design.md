@@ -422,7 +422,8 @@ As designed: `SketchResult.curves` (`ResultCurve` in `types.ts`), filled by the 
 
 - **`ReferenceUi.repair`** is data, `{ title, tool, hint }`: the panel chooses the tool, sets the entry to repair and says the hint, which is what the button did. A function `start(host, m, id)` would have made the rows import the sketch mode, which imports the rows (the hover marks).
 - **The hover** of a row sets `m.hover` to the entry's ID as before; the scene marks `hoverMarks(sketch, id)`: the curves of an entry, or the entry itself when it has none. For an edge that is its curve, the ID it marked before.
-- **`describe_api`** does not show `SketchResult`: the type is after the marker `// --- přepočet` of `types.ts`, outside the part the description cuts out. The design's statement that it does was wrong; nothing changed for it.
+- **`describe_api`** shows `ResultCurve` and the new field of `SketchResult` with their comments, as the design says (`engineTypes` of `packages/mcp/src/api.ts` leaves out only the ports, between `// --- porty` and `// --- přepočet`); nothing in `packages/mcp` changed for it. The AI reads `source: 'reference' | 'derived'` before a derived kind exists.
+- **`ResultCurve.source`** is written `'reference' | 'derived'` in `types.ts`, which does not import `references/spec.ts`; `GeometrySource` there is `'own' | ResultCurve['source']`, so the two cannot drift apart. The step takes the source of a result curve from the kind of its entry (`kindOf(ref).source`).
 - **Checked before and after** in a copy of `master`: `get_sketch` of a sketch with a projected line and circle (and of the same sketch with the circle's projection lost, frozen) answers byte for byte as before; the documents, results and meshes are the same apart from the new field.
 
 ## Rows for the indexes

@@ -5,13 +5,14 @@
 // derived IDs, the regions, the joins) is in docs/architecture/sketch.md.
 import type { EntityKind } from '../catalog';
 import type { State } from '../recompute/state';
-import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, Point2, Projected, SketchFeature } from '../types';
+import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, Point2, Projected, ResultCurve, SketchFeature } from '../types';
 import type { Dict, FeatureRef, ValidationContext } from '../validation';
 
 // Where a curve or a point of a sketch comes from: drawn in it (`own`, the solver moves it), an
 // entry computed before the solver (`reference`, fixed for the solver; constraints may name it),
 // or an entry computed after the solver from the solved own geometry (`derived`, 6c).
-export type GeometrySource = 'own' | 'reference' | 'derived';
+// The sources that are not own are those a curve of the result has (`ResultCurve`, types.ts).
+export type GeometrySource = 'own' | ResultCurve['source'];
 
 // The geometry of one entry in the coordinates of its sketch, under the IDs of its entities.
 // - `curves` run over IDs of `points` (or `origin`); the radius of a circle is in `radii`.

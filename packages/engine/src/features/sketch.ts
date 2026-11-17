@@ -136,7 +136,8 @@ function resultCurves(feature: SketchFeature, resolved: Record<Id, ResolvedRefer
   const out: Record<Id, ResultCurve> = {};
   for (const id of Object.keys(feature.external)) {
     const geometry = resolved[id]?.geometry;
-    if (geometry) for (const [curve, shape] of Object.entries(geometry.curves)) out[curve] = { shape, source: 'reference', regions: geometry.regions.includes(curve) };
+    const source = kindOf(feature.external[id]).source;
+    if (geometry) for (const [curve, shape] of Object.entries(geometry.curves)) out[curve] = { shape, source, regions: geometry.regions.includes(curve) };
   }
   return out;
 }

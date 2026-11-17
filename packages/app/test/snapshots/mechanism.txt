@@ -80,7 +80,7 @@
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
       {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -1178,7 +1178,7 @@
 === 19. the value follows the parameter q: the slider is disabled, the field shows the expression and its value
   engine: execute({"type":"setParameter","name":"q","expr":"0.5"}) -> ok
   engine: execute({"type":"setPose","values":{"joint1":"q"}}) -> ok
-  document: {"parameters":[{"name":"q","expr":"0.5"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[{"name":"q","expr":"0.5"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0.5,"expressions":{"value":"q"}}}}
   panel:
     + h2: "Parameters (1)"
@@ -1204,7 +1204,7 @@
 
 === 20. q = 3 is outside the limits: the joint is in error, the arm is drawn with it at zero and marked, the status line names the joint
   engine: execute({"type":"setParameter","name":"q","expr":"3"}) -> ok
-  document: {"parameters":[{"name":"q","expr":"3"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  document: {"parameters":[{"name":"q","expr":"3"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   panel:
     +   input.expr value="3" placeholder="expression, e.g. 2 * a"
     +   small.computed: "= 3"

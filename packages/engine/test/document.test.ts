@@ -402,11 +402,11 @@ describe('načtení dokumentu', () => {
       change(copy);
       expect(() => validateDocument(copy)).toThrow(pattern);
     };
-    bad((d) => (d.schemaVersion = 10), /the schema version 10 is newer than this build reads \(it saves 9\)/);
+    bad((d) => (d.schemaVersion = 11), /the schema version 11 is newer than this build reads \(it saves 10\)/);
     bad((d) => (d.schemaVersion = 0), /the schema version 0 is not a version of the document/);
     bad((d) => delete d.schemaVersion, /the schema version undefined is not a version of the document/);
     bad((d) => (d.schemaVersion = '3'), /the schema version "3" is not a version of the document/);
-    bad((d) => (d.schemaSteps = ['5b-export']), /this build has no upgrade step "5b-export" after version 9/);
+    bad((d) => (d.schemaSteps = ['5b-export']), /this build has no upgrade step "5b-export" after version 10/);
     bad((d) => (d.settings.chordTolerance = 0), /musí být kladná/);
     bad((d) => (d.features[0].curves.l1.b = 'p9'), /není vlastní bod/);
     bad((d) => (d.features[0].points.p1.x = null), /konečné číslo/);

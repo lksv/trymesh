@@ -32,4 +32,4 @@ The button *Hole* on the toolbar opens the form (after *Vysunutí*); a hole on t
 
 A selected hole highlights its faces and the model panel says its label, kind and sizes (with their expressions), its extent, the number of its points and its sketch, its targets, and the depth of the hole and of its head from the facts; with a start plane its label after the extent and where the mouth is. The faces of a hole are named in labels as "bore of a hole (at p1)", "head of a hole (at p1)", "flat of a nut pocket (2 at p1)", "seat of a hole". A hole has no body of its own, so its eye on the timeline is disabled.
 
-**Implementation status**: implemented (D46, branch `d36/2c`), covered by `packages/app/test/app.test.ts` (snapshot `hole.txt`); the start plane (D66, branch `d36/2h`) by the snapshot `extent-start.txt`.
+**Implementation status**: implemented (D46, branch `d36/2c`), covered by `packages/app/test/app.test.ts` (snapshot `hole.txt`); the start plane (D66) by the snapshot `extent-start.txt`.

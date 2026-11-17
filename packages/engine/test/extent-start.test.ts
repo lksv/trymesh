@@ -127,8 +127,8 @@ describe('the start of an extent at a plane in the document', () => {
     const step = UPGRADES.find((entry) => entry.name === '2h-extent-start');
     expect(step).toBeDefined();
     expect(UPGRADES[UPGRADES.length - 1]).toBe(step);
-    // the branch d36/2h: the step is pending (0 after its merge)
-    expect(SCHEMA_PENDING).toBe(1);
+    // merged: the step counts in the version (10)
+    expect(SCHEMA_PENDING).toBe(0);
     const doc = run(base(), add(extrude('X', { extent: { type: 'distance', from: TOP, start: 0, distance: 1 }, operation: 'add', targets: ['A'] })));
     const saved = JSON.parse(JSON.stringify(doc));
     expect(step?.run(saved)).toBe(saved);
@@ -137,8 +137,8 @@ describe('the start of an extent at a plane in the document', () => {
     const older = JSON.parse(JSON.stringify({ ...base(), schemaVersion: 9 }));
     delete older.schemaSteps;
     expect(validateDocument(older)).toEqual(base());
-    // a build without the step refuses the name of the step it does not have
-    expect(() => upgradeDocument(saved, UPGRADES.slice(0, -1), 0)).toThrow(/this build has no upgrade step "2h-extent-start"/);
+    // a build without the step (version 9) refuses the document of version 10
+    expect(() => upgradeDocument(saved, UPGRADES.slice(0, -1), 0)).toThrow(/the schema version 10 is newer than this build reads \(it saves 9\)/);
   });
 });
 

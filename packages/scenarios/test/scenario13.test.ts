@@ -4,7 +4,9 @@
 // mass query, the print exports, the print query and the IDs a section names do with them. The
 // part of 5a (D49): "two revolute joints; the pose stepped through the range of one joint with the
 // collisions asked at each step; the mass of what hangs beyond the first joint", with what is posed,
-// what stays as modelled and a joint in error (docs/d36/5a-mechanism/calls.ts).
+// what stays as modelled and a joint in error (docs/d36/5a-mechanism/calls.ts). The part of 3e
+// (D57): "what to print and what to buy", the query `partsList` and the file `partsCsv` over the
+// arm with inserts under the screws and three feet (docs/d36/3e-parts-list/calls.ts).
 //
 // The model, every shape a cylinder along Z from a circle of its own sketch on XY (mm):
 // - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder (0, 0), up to z = 8.
@@ -14,7 +16,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Id, type MassProperties, QUERIES, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type Engine, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -672,5 +674,236 @@ describe.each([
     const plain = unwrap(engine.query('gap', { bodies: ['forearm', 'upper'] }, { state: answered }));
     expect(plain.pairs).toEqual([{ a: 'forearm', b: 'upper', distance: 0, contact: 'fit' }]);
     expect(plain.cleared).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------- the part of 3e
+
+describe('scenario 13, the part of 3e: what to print and what to buy, one question and one file', () => {
+  let engine: Engine;
+  let labels: { m3: string; m4: string };
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const list = (state?: EngineState): PartsList => unwrap(engine.query('partsList', {}, state ? { state } : {}));
+  const told = (r: PartRow): string => `${r.name} × ${r.count}: ${r.bodies.join(' ')}`;
+  const changed = (...commands: Command[]): EngineState => previewed(engine, commands.length === 1 ? commands[0] : { type: 'batch', commands });
+  const close = (actual: number | undefined, expected: number, tolerance = 1e-3): void => expect(Math.abs((actual ?? Infinity) - expected)).toBeLessThanOrEqual(tolerance);
+  // No size of an insert is written here: the shape, the label and the depth are answers of the
+  // query `hardwareHole` (D46). The sizes are the first M3 and the first M4 row of the catalog.
+  const insertOf = (thread: number) => {
+    const rows = DATA_CATALOGS.heatSetInserts.rows;
+    const size = Object.keys(rows).find((key) => rows[key].thread === thread) as string;
+    const answer = unwrap(engine.query('hardwareHole', { use: 'heatSetInsert', size, allowance: 'holeComp' }));
+    return { shape: answer.shape, label: answer.label, depth: answer.depth as number };
+  };
+  const hole = (id: Id, sketch: Id, point: Id, target: Id, shape: Input<HoleShape>, start: number, distance: number, label: string): Command => ({
+    type: 'addFeature',
+    feature: { id, name: id, suppressed: false, type: 'hole', sketch, points: [point], shape, extent: { type: 'distance', start, distance }, targets: [target], label },
+  });
+
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, arm());
+    // the properties of the part of 3a: materials from the catalog, the motor and the screws as
+    // bought parts with the masses of their data sheets
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'base', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17 motor', color: '#30343a', use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { name: 'M3x6 screw', use: 'reference', material: 'steel', mass: 0.9 } },
+      ],
+    });
+    // what holds it together: a heat-set insert in `upper` under each of the four screws (one hole
+    // feature under the first screw and a pattern of it about the centre of the motor), and three
+    // feet under the base, each with an insert for a levelling screw (a body with a hole, then
+    // a pattern of the body, so every copy has the hole)
+    const [m3, m4] = [insertOf(3), insertOf(4)];
+    labels = { m3: m3.label, m4: m4.label };
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setParameter', name: 'holeComp', expr: '0.2' },
+        { type: 'addFeature', feature: emptySketch('insertSketch', 'insertSketch', XY) },
+        { type: 'addPoint', sketch: 'insertSketch', id: 'i1', x: 80, y: 0 },
+        { type: 'addConstraint', sketch: 'insertSketch', id: 'i1Fix', constraint: { type: 'fixed', point: 'i1', x: 80, y: 0 } },
+        hole('inserts', 'insertSketch', 'i1', 'upper', m3.shape, 8, -m3.depth, m3.label),
+        { type: 'addFeature', feature: { id: 'insertPattern', name: 'insertPattern', suppressed: false, type: 'pattern', source: { type: 'features', features: ['inserts'] }, transform: { type: 'circular', axis: { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' }, count: 4, span: { type: 'full' } } } },
+        // the foot: a cylinder of radius 6 under the base, from z = −20 to −10, with its hole from below
+        ...cylinder('foot', 20, 0, 6, -20, -10),
+        hole('footHole', 'footSketch', 'footCentre', 'foot', m4.shape, -20, m4.depth, m4.label),
+        { type: 'addFeature', feature: { id: 'feet', name: 'Feet', suppressed: false, type: 'pattern', source: { type: 'body', body: 'foot' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'full' } } } },
+        { type: 'setBodyMaterial', body: 'foot', material: 'TPU' },
+      ],
+    });
+    expect(labels).toEqual({ m3: 'M3x3x4.5 heat-set insert', m4: 'M4x3x5 heat-set insert' });
+  });
+
+  it('a. the whole list: four kinds of printed parts, the motor and four screws, seven inserts counted from the holes, the sums', () => {
+    const { printed, bought, hardware, totals, unlabelled, auxiliary } = list();
+    // the three feet are one row, named by the body they are copies of
+    expect(printed.map(told)).toEqual(['base × 1: base', 'upper × 1: upper', 'forearm × 1: forearm', 'foot × 3: foot feet/1 feet/2']);
+    expect(printed.map((r) => r.material)).toEqual(['PETG', 'PETG', 'PLA', 'TPU']);
+    // density times volume: 36.4016 g, 155.046 g (the four insert holes are out of it), 153.175 g, 1.31686 g a foot
+    for (const r of printed) {
+      expect(r.massFrom).toBe('density');
+      close(r.mass, ((r.density ?? 0) * r.volume) / 1000, 1e-9);
+    }
+    close(printed[1].volume, 122083.556);
+    close(printed[3].totalMass, 3.95059, 1e-5);
+    // the motor and the four screws, with the masses of their data sheets
+    expect(bought.map(told)).toEqual(['NEMA 17 motor × 1: motor', 'M3x6 screw × 4: screw screws/1 screws/2 screws/3']);
+    expect(bought[0]).toMatchObject({ mass: 280, color: '#30343a' });
+    expect(bought[1].massFrom).toBe('mass');
+    close(bought[1].totalMass, 3.6, 1e-9);
+    // four inserts under the screws (the hole and the three copies of its pattern), three in the
+    // feet (one hole, in the body and in its two copies)
+    expect(hardware).toEqual([
+      { label: labels.m3, count: 4, holes: [{ feature: 'inserts', count: 4 }] },
+      { label: labels.m4, count: 3, holes: [{ feature: 'footHole', count: 3 }] },
+    ]);
+    // 6 printed bodies of 348.573 g, 5 bought ones of 283.6 g, 7 pieces of hardware
+    expect(totals.printed).toMatchObject({ count: 6, withoutMass: 0 });
+    close(totals.printed.mass, 348.573);
+    expect(totals.bought).toMatchObject({ count: 5, withoutMass: 0 });
+    close(totals.bought.mass, 283.6, 1e-9);
+    expect(totals.hardware.count).toBe(7);
+    expect([unlabelled, auxiliary]).toEqual([undefined, undefined]);
+  });
+
+  it('b. a copy in another colour or with a name of its own is a row of its own; six screws are one field and stand against four inserts', () => {
+    const black = list(changed({ type: 'setBodyProperties', body: 'screws/2', patch: { color: '#000000' } })).bought;
+    expect(black.map(told)).toEqual(['NEMA 17 motor × 1: motor', 'M3x6 screw × 3: screw screws/1 screws/3', 'M3x6 screw × 1: screws/2']);
+    expect(black[2]).toMatchObject({ color: '#000000', copyOf: 'screw' });
+    close(black[1].totalMass, 2.7, 1e-9);
+    const spare = list(changed({ type: 'setBodyProperties', body: 'screws/3', patch: { name: 'spare screw' } })).bought;
+    expect(spare.map(told)).toEqual(['NEMA 17 motor × 1: motor', 'M3x6 screw × 3: screw screws/1 screws/2', 'spare screw × 1: screws/3']);
+    const six = list(changed({ type: 'setField', feature: 'screws', path: 'transform/count', value: 6 }));
+    expect(six.bought[1].count).toBe(6);
+    close(six.bought[1].totalMass, 5.4, 1e-9);
+    expect(six.hardware[0].count).toBe(4);
+  });
+
+  it('c. a mirrored foot is another part, and so is a foot with a notch cut after the pattern', () => {
+    const mirrored = list(changed({ type: 'updateFeature', id: 'feet', patch: { transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } }));
+    const [, , , foot, image] = mirrored.printed;
+    expect([told(foot), told(image)]).toEqual(['foot × 1: foot', 'foot × 1: feet/1']);
+    expect(image).toMatchObject({ mirrored: true, copyOf: 'foot' });
+    expect([image.differs, foot.mirrored]).toEqual([undefined, undefined]);
+    expect(mirrored.hardware[1].count).toBe(2);
+    // a notch of radius 2 cut into `feet/1` alone, at (−10, 17.32), where the pattern put it: its
+    // solid is a new one, a copy of no mesh any more, so its row says that it differs from `foot`
+    const notched = list(changed(...cylinder('notch', -10, 17.32, 2, -21, -15, 'cut', 'feet/1'))).printed;
+    const [, , , feet, one] = notched;
+    expect([told(feet), told(one)]).toEqual(['foot × 2: foot feet/2', 'foot × 1: feet/1']);
+    expect(one).toMatchObject({ copyOf: 'foot', differs: true });
+    expect(one.mirrored).toBeUndefined();
+    close(one.volume, 1041.004);
+    close(feet.volume, 1053.49);
+  });
+
+  it('d. a part without a mass is listed and the sum says so; an auxiliary body is no part', () => {
+    const bare = list(changed({ type: 'removeBodyProperties', body: 'forearm' }));
+    expect(bare.printed[2]).toMatchObject({ noMass: 'notStated' });
+    expect([bare.printed[2].mass, bare.printed[2].totalMass]).toEqual([undefined, undefined]);
+    expect(bare.totals.printed).toMatchObject({ count: 6, withoutMass: 1 });
+    close(bare.totals.printed.mass, 195.398); // 348.573 less the forearm
+    // a density that cannot be evaluated is not "nothing stated"
+    const broken = list(changed({ type: 'setParameter', name: 'rho', expr: '1.2' }, { type: 'setBodyProperties', body: 'forearm', patch: { density: 'rho' } }, { type: 'setParameter', name: 'rho', expr: 'nope' }));
+    expect(broken.printed[2].noMass).toBe('inError');
+    expect(broken.totals.printed.withoutMass).toBe(1);
+    const kept = list(changed({ type: 'setBodyProperties', body: 'base', patch: { use: 'auxiliary' } }));
+    expect(kept.auxiliary).toEqual(['base']);
+    expect(kept.printed.some((r) => r.bodies.includes('base'))).toBe(false);
+    expect(kept.totals.printed.count).toBe(5);
+    close(kept.totals.printed.mass, 312.171);
+  });
+
+  it('e. the hardware follows the model and the labels: a suppressed pattern, a removed label, a label of its own, a screw through two links', () => {
+    const one = list(changed({ type: 'setSuppressed', id: 'insertPattern', suppressed: true })).hardware;
+    expect(one.map((r) => r.count)).toEqual([1, 3]);
+    const bare = list(changed({ type: 'updateFeature', id: 'footHole', patch: { label: null } }));
+    expect(bare.hardware.map((r) => r.label)).toEqual([labels.m3]);
+    expect(bare.unlabelled).toEqual([{ feature: 'footHole', count: 3 }]);
+    expect(bare.totals.hardware.count).toBe(4);
+    const brass = list(changed({ type: 'updateFeature', id: 'inserts', patch: { label: 'M3 insert, brass' } })).hardware;
+    expect(brass[0]).toMatchObject({ label: 'M3 insert, brass', count: 4 });
+    // one screw through the link and the forearm is one hole feature with both as targets and one
+    // piece; the clearance hole is the catalog's, its label the screw
+    const clearance = unwrap(engine.query('hardwareHole', { use: 'clearance', size: 'M3' }));
+    const through = list(
+      changed(
+        { type: 'addFeature', feature: emptySketch('throughSketch', 'throughSketch', XY) },
+        { type: 'addPoint', sketch: 'throughSketch', id: 't1', x: 125, y: 20 },
+        { type: 'addConstraint', sketch: 'throughSketch', id: 't1Fix', constraint: { type: 'fixed', point: 't1', x: 125, y: 20 } },
+        { type: 'addFeature', feature: { id: 'through', name: 'through', suppressed: false, type: 'hole', sketch: 'throughSketch', points: ['t1'], shape: clearance.shape, extent: { type: 'distance', start: 16, distance: -16 }, targets: ['upper', 'forearm'], label: 'M3x16 screw' } },
+      ),
+    ).hardware;
+    expect(through[2]).toEqual({ label: 'M3x16 screw', count: 1, holes: [{ feature: 'through', count: 1 }] });
+  });
+
+  it('f. the state after the motor: no screws, no feet, no hole yet', () => {
+    const early = unwrap(engine.query('partsList', {}, { at: 'motor' }));
+    expect(early.printed.map(told)).toEqual(['base × 1: base', 'upper × 1: upper', 'forearm × 1: forearm']);
+    close(early.printed[1].mass, 155.353);
+    expect(early.bought.map(told)).toEqual(['NEMA 17 motor × 1: motor']);
+    expect([early.hardware, early.totals.hardware.count]).toEqual([[], 0]);
+  });
+
+  it('f. a parts list does not depend on the pose: it answers where a posed query cannot read a body', () => {
+    const state = changed(
+      { type: 'setLink', id: 'ground', bodies: ['base'] },
+      { type: 'setLink', id: 'arm', bodies: ['upper', 'motor'] },
+      { type: 'setLink', id: 'fore', bodies: ['forearm'] },
+      { type: 'setJoint', id: 'shoulder', joint: { type: 'revolute', parent: 'ground', child: 'arm', axis: SHOULDER, lower: -3, upper: 3, value: 0.5 } },
+      { type: 'setJoint', id: 'elbow', joint: { type: 'revolute', parent: 'arm', child: 'fore', axis: ELBOW, lower: -3, upper: 3, value: 0.7 } },
+      { type: 'removeFeature', id: 'layout' },
+    );
+    const posed = engine.query('mass', { bodies: ['forearm'] }, { state });
+    expect(posed.ok ? 'ok' : posed.error.code).toBe('failed');
+    const parts = list(state);
+    expect([parts.totals.printed.count, parts.totals.hardware.count]).toEqual([6, 7]);
+    close(parts.totals.printed.mass, 348.573);
+  });
+
+  it('g. the same table as a file; a label with a comma, a tab in a name, a mirror image noted; a model with nothing to list', () => {
+    const exported = unwrap(engine.export('partsCsv', {}));
+    expect([exported.layout, exported.files.length, exported.empty]).toEqual(['file', 1, undefined]);
+    const [file] = exported.files;
+    expect([file.path, file.mediaType]).toEqual([PARTS_CSV.path, 'text/csv']);
+    expect(new TextDecoder().decode(file.bytes)).toBe(
+      [
+        'Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),Note,IDs',
+        'printed,base,1,PETG,,36.4016,36.4016,,base',
+        'printed,upper,1,PETG,,155.046,155.046,,upper',
+        'printed,forearm,1,PLA,,153.175,153.175,,forearm',
+        'printed,foot,3,TPU,,1.31686,3.95059,,foot feet/1 feet/2',
+        'bought,NEMA 17 motor,1,,#30343a,280,280,,motor',
+        'bought,M3x6 screw,4,steel,,0.9,3.6,,screw screws/1 screws/2 screws/3',
+        `hardware,${labels.m3},4,,,,,,inserts`,
+        `hardware,${labels.m4},3,,,,,,footHole`,
+      ]
+        .map((record) => `${record}\r\n`)
+        .join(''),
+    );
+    expect(file.about as PartsCsvAbout).toEqual({ rows: 8, printed: 4, bought: 2, hardware: 2 });
+    const state = changed(
+      { type: 'updateFeature', id: 'inserts', patch: { label: 'M3 insert, brass' } },
+      { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17\tmotor' } },
+      { type: 'updateFeature', id: 'feet', patch: { transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } },
+    );
+    const quoted = new TextDecoder().decode(unwrap(engine.export('partsCsv', {}, { state })).files[0].bytes);
+    expect(quoted).toContain('hardware,"M3 insert, brass",4,,,,,,inserts\r\n');
+    expect(quoted).toContain('bought,NEMA 17 motor,1,,#30343a,280,280,,motor\r\n');
+    expect(quoted).toContain('printed,foot,1,TPU,,1.31686,1.31686,,foot\r\n');
+    expect(quoted).toContain('printed,foot,1,TPU,,1.31686,1.31686,mirror image of foot,feet/1\r\n');
+    // the state before the first body: the file says so in `empty`, and a tool that writes files refuses
+    expect(unwrap(engine.export('partsCsv', {}, { at: 'baseSketch' })).empty).toBe(PARTS_CSV.empty);
+  });
+
+  it('h. an argument the query does not have is refused', () => {
+    const outcome = engine.query('partsList', { bodies: ['base'] } as {});
+    expect(outcome.ok ? 'ok' : outcome.error.code).toBe('invalidArguments');
   });
 });

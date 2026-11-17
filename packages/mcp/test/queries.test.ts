@@ -52,6 +52,7 @@ const FIXTURES: { [N in QueryName]: QueryArgs<N> } = {
   print: { orientations: [{ by: { up: [0, 0, 1] } }] },
   hardwareHole: { use: 'countersunk', size: 'M3', allowance: 'holeComp' },
   mechanism: {},
+  partsList: {},
 };
 // Every argument of every query and whether a caller may leave it out, as the type says. The
 // compiler asks for each name and for the right word; the test compares the entry of the catalog.
@@ -68,6 +69,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   print: { bodies: 'optional', orientations: 'required', bed: 'optional', overhang: 'optional', minArea: 'optional', maxFaces: 'optional' },
   hardwareHole: { use: 'required', size: 'required', fit: 'optional', allowance: 'optional' },
   mechanism: { beyond: 'optional' },
+  partsList: {},
 };
 const ENTRIES = Object.entries(QUERIES as Record<string, AnyQuery>);
 
@@ -188,5 +190,26 @@ describe('the query hardwareHole through the tool (D46)', () => {
     const feature = engine.getState().document.features.find((f) => f.id === 'H');
     expect(feature).toMatchObject({ shape: { type: 'countersink', angle: Math.PI / 2 }, expressions: { 'shape/angle': 'deg(90)' } });
     expect(call(engine, { query: 'hardwareHole', args: { use: 'nutPocket', size: 'nope' } })).toEqual({ error: expect.stringMatching(/^notAvailable: hardwareHole: size: the catalog clearanceHoles has no size "nope"/) });
+  });
+});
+
+describe('the query partsList through the tool (D57)', () => {
+  it('a row of twelve copies: the masses to six significant digits, the counts as they are; after a previewed command; no note of a pose', () => {
+    const engine = model();
+    execute(engine, { type: 'addFeature', feature: { id: 'row', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'body', body: 'low' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 12, span: { type: 'spacing', spacing: 20 } } } });
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { mass: 1.23456789 } });
+    const answer = call(engine, { query: 'partsList' });
+    expect(answer.printed.map((row: { name: string; count: number; mass?: number; totalMass?: number }) => [row.name, row.count, row.mass, row.totalMass])).toEqual([
+      ['low', 12, 1.23457, 14.8148],
+      ['high', 1, undefined, undefined],
+    ]);
+    expect(answer.printed[0].bodies).toEqual(['low', ...Array.from({ length: 11 }, (_, i) => `row/${i + 1}`)]);
+    expect(answer.totals).toEqual({ printed: { count: 13, mass: 14.8148, withoutMass: 1 }, bought: { count: 0, mass: 0, withoutMass: 0 }, hardware: { count: 0 } });
+    expect(answer.pose).toBeUndefined();
+    // what the list would be with three copies, nothing written
+    const before = engine.save();
+    expect(call(engine, { query: 'partsList', after: { type: 'setField', feature: 'row', path: 'transform/count', value: 3 } }).printed[0].count).toBe(3);
+    expect(engine.save()).toBe(before);
+    expect(call(engine, { query: 'partsList', args: { bodies: ['low'] } })).toEqual({ error: 'invalidArguments: partsList: bodies: there is no such argument' });
   });
 });

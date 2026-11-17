@@ -37,6 +37,7 @@ const FIXTURES: { [F in ExportFormat]: ExportOptions<F> } = {
   '3mf': { bodies: ['low'] },
   dxf: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
   svg: { plane: { kind: 'base', plane: 'XY' }, offset: 5 },
+  partsCsv: {},
 };
 // Every option of every format and whether a caller may leave it out, as the type says.
 const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]: {} extends Pick<ExportOptions<F>, K> ? 'optional' : 'required' } } = {
@@ -44,6 +45,7 @@ const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]:
   '3mf': { bodies: 'optional' },
   dxf: { plane: 'required', offset: 'optional', bodies: 'optional' },
   svg: { plane: 'required', offset: 'optional', bodies: 'optional' },
+  partsCsv: {},
 };
 const ENTRIES = Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>);
 
@@ -117,7 +119,7 @@ describe('the tool that hands the files of an export to the server', () => {
 
   it('refuses in words: an unknown format or option, a body that is not there, a command that is not valid, an empty model', () => {
     const engine = model();
-    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg' });
+    expect(exported(engine, { format: 'step' })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv' });
     expect(exported(engine, {})).toEqual({ error: expect.stringContaining('format') });
     expect(exported(engine, { format: 'stl', options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
     expect(exported(engine, { format: 'stl', options: { bodies: ['nope'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nope" is not in the state asked about' });

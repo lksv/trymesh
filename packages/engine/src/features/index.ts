@@ -50,6 +50,17 @@ export function bodySource(doc: Document, body: Id): Id | undefined {
   return spec.createsBody(f, local) ? spec.bodySource?.(f, local) : undefined;
 }
 
+// The chain of sources of a body over `bodySource`, the body first and nearest first. It stops at
+// a body it has seen (a document edited by hand may hold a cycle). Its bodies need not be bodies
+// of a state.
+export function sourceChain(doc: Document, body: Id): Id[] {
+  const chain: Id[] = [body];
+  for (let source = bodySource(doc, body); source !== undefined && !chain.includes(source); source = bodySource(doc, source)) chain.push(source);
+  return chain;
+}
+// The body the chain of sources of a body starts at (D57); the body itself when it has no source.
+export const sourceRoot = (doc: Document, body: Id): Id => sourceChain(doc, body).at(-1) ?? body;
+
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
 // odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.

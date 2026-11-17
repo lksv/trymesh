@@ -91,7 +91,7 @@ describe('Engine.export', () => {
     expect(failure(engine.export('stl', { bodies: 'PLATE' } as never))).toEqual(['invalidArguments', ['bodies'], 'stl: bodies: a list is expected']);
     expect(failure(engine.export('stl', { perBody: 1 } as never))).toEqual(['invalidArguments', ['perBody'], 'stl: perBody: true or false is expected']);
     expect(failure(engine.export('stl', { perbody: true } as never))).toEqual(['invalidArguments', ['perbody'], 'stl: perbody: there is no such argument']);
-    expect(failure(engine.export('step' as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format "step"; the formats are stl, 3mf, dxf, svg']);
+    expect(failure(engine.export('step' as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv']);
     expect(() => engine.exportMesh('stl', ['nope'])).toThrow('exportMesh: the body "nope" does not exist');
     expect(() => engine.exportMesh('stl', 'PLATE' as never)).toThrow('exportMesh: bodies is a list of body IDs');
     expect(() => engine.exportMesh('step' as never)).toThrow('export: formát step není podporovaný');

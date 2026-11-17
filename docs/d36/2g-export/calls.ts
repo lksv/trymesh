@@ -267,7 +267,7 @@ export const overMcp = [
 ] as const;
 // Over the model of that test (two discs, `low` from z = 0 and `high` on it), typed as the tables
 // of the test are (there over every format of the catalog).
-type Added = Exclude<ExportFormatAfter, 'stl'>;
+type Added = Exclude<ExportFormatAfter, 'stl' | 'partsCsv'>; // partsCsv: the format of 3e (D57)
 export const FIXTURES: { [F in Added]: ExportOptionsAfter<F> } = {
   '3mf': { bodies: ['low'] },
   dxf: { plane: XY, offset: 5 },

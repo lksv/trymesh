@@ -44,6 +44,7 @@ type AxisRef = { kind: 'base'; axis: 'X' | 'Y' | 'Z' } | { kind: 'sketchPoint'; 
 
 - The copy gets a new face number for every face the body has at that moment, whichever feature or earlier pattern it came from. The name is the old one with the copy tag appended and the analytic description is moved with the copy (`transformFace`), so the top of a copy is still a plane a sketch can stand on and the rim of its hole is still a circle.
 - `transformSolid` moves the vertices and renumbers the faces; with a negative determinant (a mirror) it turns the triangles over, as `applyTool` does for a tool.
+- `transformSolid` also records which solid the copy was made from and whether it mirrors (D57): `shapeOrigin` of a copy is the mesh its chain of copies starts at and its hand. A copy and its source are one part of the parts list while neither was changed after the pattern; a copy of a mirror image is a mirror image of the source, a mirror of a mirror is not. A feature that changes a copy after the pattern gives it a new solid, which is a copy of nothing.
 - `FeatureResult.bodies` lists the copies in the order of their numbers. A feature that refers to a copy the count no longer reaches is `brokenReference`.
 - What is added to the source after the pattern is not copied; what is moved before it is.
 - The facts of a generated profile stay with the source feature; a copy publishes none.

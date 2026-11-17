@@ -1,6 +1,6 @@
 
 === 1. the button Insert without a stored document: the form says to insert a file, OK is disabled
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -87,7 +87,7 @@
   view: 0 scene(s) set
 
 === 3. the part stored: one undo step (addDocument), the form uses it, the preview places it on XY with both of its bodies
-  engine: execute({"type":"addDocument","id":"disc_part","document":{"schemaVersion":8,"schemaSteps":["3c-document-insert"],"settings":{"chordTolerance":0.01},"parameters":[{"name":"H","expr":"5"}],"checks":[],"features":[{"id":"s","name":"Disc","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{"c":5},"curves":{"c":{"type":"circle","center":"origin"}},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},{"id":"disc","name":"Disc","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":0,"distance":5},"operation":"new","expressions":{"extent/distance":"H"}},{"id":"pin","name":"Pin","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":20,"distance":2},"operation":"new"}],"bodyProperties":{"disc":{"name":"Disc part","use":"reference","mass":3}},"mechanism":{"links":{},"joints":{}},"meshes":{},"documents":{}},"name":"disc part.json"}) -> ok
+  engine: execute({"type":"addDocument","id":"disc_part","document":{"schemaVersion":9,"settings":{"chordTolerance":0.01},"parameters":[{"name":"H","expr":"5"}],"checks":[],"features":[{"id":"s","name":"Disc","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{"c":5},"curves":{"c":{"type":"circle","center":"origin"}},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},{"id":"disc","name":"Disc","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":0,"distance":5},"operation":"new","expressions":{"extent/distance":"H"}},{"id":"pin","name":"Pin","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s","regions":[{"outerLoop":["c"]}]},"extent":{"type":"distance","start":20,"distance":2},"operation":"new"}],"bodyProperties":{"disc":{"name":"Disc part","use":"reference","mass":3}},"mechanism":{"links":{},"joints":{}},"meshes":{},"documents":{}},"name":"disc part.json"}) -> ok
   engine: preview({"type":"addFeature","feature":{"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}}},"index":0}, "i1") -> ok  (x2)
   documents: {"disc_part":"disc part.json: s disc pin; H=5"}
   panel:

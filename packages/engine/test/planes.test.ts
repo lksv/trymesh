@@ -255,10 +255,10 @@ describe('the upgrade step 5c-more-planes', () => {
     const step = UPGRADES.find((entry) => entry.name === '5c-more-planes');
     expect(step).toBeDefined();
     expect(UPGRADES[6]).toBe(step);
-    // merged; the branch d36/3c appends its pending step after it, which its merge makes 0
-    expect(SCHEMA_PENDING).toBe(1);
+    // merged; the step of 3c follows it
+    expect(SCHEMA_PENDING).toBe(0);
     const doc = run(base(), plane('P', { tilt: { axis: X, angle: 0.5 }, midplaneWith: { kind: 'face', body: 'E', face: TOP } }));
-    const saved = JSON.parse(JSON.stringify({ ...schemaHeader(), ...doc }));
+    const saved = JSON.parse(JSON.stringify({ ...doc, schemaVersion: 8 }));
     expect(step?.run(saved)).toBe(saved);
     expect(validateDocument(saved)).toEqual(doc);
     // a build without the step (master before the merge of 5c) refuses it by its version

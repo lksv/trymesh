@@ -1,6 +1,6 @@
 
 === 1. an extrusion needs a sketch
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

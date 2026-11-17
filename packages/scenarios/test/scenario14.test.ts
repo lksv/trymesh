@@ -328,8 +328,8 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
     expect(after.evaluation.bodies.pulley.volume).toBeGreaterThan(before.evaluation.bodies.pulley.volume);
     expect(allOk(after)).toBe(true);
     const saved = engine.save();
-    // no step of 4a: only the pending step of the branch d36/3c, which its merge removes
-    expect(JSON.parse(saved).schemaSteps).toEqual(['3c-document-insert']);
+    // no step of 4a, none pending
+    expect(JSON.parse(saved).schemaSteps).toBeUndefined();
     const loaded = engine.load(saved);
     if (!loaded.ok) throw new Error(loaded.error.message);
     for (const id of Object.keys(before.evaluation.bodies)) {
@@ -439,8 +439,8 @@ describe('scenario 14: chamfers and fillets of the turned parts (4b, D63)', () =
     expect(keptFaces(before, after, 'pulley')).toBe(true);
     expect(allOk(after)).toBe(true);
     const saved = engine.save();
-    // no step of 4b: only the pending step of the branch d36/3c, which its merge removes
-    expect(JSON.parse(saved).schemaSteps).toEqual(['3c-document-insert']);
+    // no step of 4b, none pending
+    expect(JSON.parse(saved).schemaSteps).toBeUndefined();
     const loaded = engine.load(saved);
     if (!loaded.ok) throw new Error(loaded.error.message);
     for (const id of Object.keys(before.evaluation.bodies)) expect(loaded.state.evaluation.bodies[id].volume).toBe(before.evaluation.bodies[id].volume);

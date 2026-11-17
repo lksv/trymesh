@@ -10,7 +10,7 @@
       point axis: {"x":60,"y":0}
       radius pins: 25
       curve pins: {"construction":true,"type":"circle","center":"origin"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"

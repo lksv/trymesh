@@ -592,8 +592,7 @@ describe('the feature mesh: a stored mesh placed as a body with one face', () =>
     ok(engine, { type: 'addMesh', id: 'box', mesh: BOX_STORED }, placedMesh('a', 'box'));
     const saved = JSON.parse(engine.save());
     expect(saved.meshes).toEqual({ box: BOX_STORED });
-    // the branch d36/3c saves the version of master with its pending step; the merge makes it [9, undefined]
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([8, ['3c-document-insert']]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([9, undefined]);
     engine.undo();
     expect(engine.getState().document.meshes).toEqual({});
     engine.redo();

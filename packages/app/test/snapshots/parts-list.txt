@@ -30,7 +30,7 @@
       {"id":"motor","name":"motor","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"ms","regions":[{"outerLoop":["mk"]}]},"extent":{"type":"distance","start":0,"distance":20},"operation":"new"}
   feature keep:
       {"id":"keep","name":"keep","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"ms","regions":[{"outerLoop":["mk"]}]},"extent":{"type":"distance","start":30,"distance":10},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
   bodyProperties: {"plate":{"material":"PLA","density":1.24},"motor":{"name":"Motor","color":"#30343a","use":"reference","mass":60},"keep":{"use":"auxiliary"}}
   toolbar:
       div.group

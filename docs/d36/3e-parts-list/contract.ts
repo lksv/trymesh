@@ -30,7 +30,8 @@ import type { ArgSpecs, ArgsOf, Document, Engine, EngineState, ExportFormatSpec,
 // were changed alike.
 // It says what the recompute did, not what the coordinates of the copy hold: `transformSolid`
 // writes float32, and a copy moved so far that float32 cannot hold its shape (1e8 mm: volume 0) is
-// still a copy of its origin. Such a body is broken for every query; nothing here can see it.
+// still a copy of its origin. The parts list takes a body whose volume is not above zero for no
+// copy (the rule of the rows); a copy distorted short of that is not seen.
 export interface MeshOrigin {
   solid: Solid; // the mesh the chain of copies starts at
   mirrored: boolean; // the solid asked about is the mirror image of it
@@ -139,7 +140,7 @@ export interface PartsList {
 
 // Two bodies are in one row when all of this holds:
 // 1. their solids have the same origin (`shapeOrigin`: one mesh, moved) and the same hand
-//    (`mirrored`);
+//    (`mirrored`); a body whose volume is not above zero is taken for no copy (its own origin);
 // 2. their properties say the same: `use`, `material`, `color`, `density`, and what they weigh by:
 //    the mass the properties resolved, by its source and its number (a stated mass, or a density);
 //    else, without a mass, whether a field is in error or nothing is stated;
@@ -155,27 +156,31 @@ export interface PartsList {
 // - A cut is what one build of a hole feature left in the bodies of one placement: the faces of
 //   that feature with the same point and the same copy tags (`FaceName.point`, `FaceName.copy`),
 //   in whichever bodies they are. One build gives one face number in every target, so a bore
-//   through two bodies, or through the two flanges of one body, is one cut. A copy of a pattern of
-//   features starts its tags with that pattern, a copy of a body made afterwards adds one: each is
-//   a cut of its own.
+//   through two bodies, or through the two flanges of one body, is one cut, and a cut is always
+//   one hole. A copy of a pattern of features starts its tags with that pattern, a copy of a body
+//   made afterwards adds one: each is a cut of its own.
 // - A cut has a line, the axis of its surfaces (a cylinder's `origin`, a cone's `apex`, `axis`),
-//   and a stretch of it: from the lowest to the highest point of the triangles of its faces,
-//   measured along the line.
-// - Cuts of one feature are one hole when they lie on one line and their stretches touch or
-//   overlap; joined so one after the other (a stack of three copies is one hole). The count of
-//   a feature is the number of its holes.
+//   and per body an interval of it: from the lowest to the highest point of the triangles of its
+//   faces in that body, measured along the line. The gap between two bodies of one cut is not
+//   in any interval.
+// - Two cuts of one feature are one hole when they lie on one line and an interval of one touches
+//   or overlaps an interval of the other; joined so one after the other (a stack of three copies
+//   is one hole). The count of a feature is the number of its holes.
 // - Two lines are one when they are parallel within `ANGLE_TOLERANCE` and the point of one lies
-//   on the other within max(`LENGTH_TOLERANCE`, 1e-9 x the largest coordinate of the two points):
-//   the surfaces are moved in double precision, so lines meant to be one differ by far less, and
-//   the bound does not grow with the distance along the line.
-// - Two stretches touch within 1e-6 x the largest coordinate of the triangles of the two cuts (at
-//   least 1e-6 mm): the triangles are float32.
+//   on the other within max(`LENGTH_TOLERANCE`, 1e-9 x the larger distance of the two lines from
+//   the origin): the surfaces are moved in double precision, and where on a line its point lies
+//   does not matter.
+// - Two intervals touch within max(`LENGTH_TOLERANCE`, 1e-6 x the coordinates of their triangles
+//   as the line sees them: the sum over the axes of the component of the direction times the
+//   largest coordinate along that axis): the triangles are float32, and only the coordinates along
+//   the line move a point along it.
 // So a point whose hole missed every body, a copy of a pattern that ran off the part, a hole
 // a later cut removed whole and a suppressed feature count nothing; a copy of a pattern of the
 // feature that cuts its own hole again adds nothing; a plate copied onto itself, or a half
 // mirrored in its parting plane, continues the hole; copies of a body at other places, also on
-// the same line, have holes of their own; and three lids in a row have three times the holes of
-// one.
+// the same line and in the gap of a cut through two bodies, have holes of their own; and three
+// lids in a row have three times the holes of one. Two bodies of one cut with a gap between them,
+// both copied by patterns, are two holes per copied pair (a known limit).
 //
 // `bodies` are the bodies to look in (the caller leaves the auxiliary ones out), with their solids
 // (the triangles of a face are those whose `faceIds` entry is its number); `surface` answers the
@@ -194,7 +199,7 @@ export const PARTS_LIST_TEXTS = {
     'Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). ' +
     'So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.',
   returns:
-    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the source when it is in another row), `mirrored` (the mesh of the source, mirrored), `differs` (no longer the mesh of the source)), ' +
+    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the body the chain of sources starts at, when it is a body of the model and not in this row), `mirrored` (the mesh of that body, mirrored), `differs` (no longer the mesh of that body)), ' +
     '`hardware` (rows: `label`, `count`, `holes`: the hole features with the label and the holes of each), `unlabelled` (hole features without a label, with their holes), `auxiliary` (bodies that are no parts), ' +
     '`totals` (`printed` and `bought`: `count` of bodies, `mass` in g of those that have one, `withoutMass`: how many have none; `hardware.count`). Hardware has no mass.',
 } as const;
@@ -298,7 +303,7 @@ export interface EngineAfter3e extends Omit<Engine, 'query' | 'export'> {
 export const CONVENTION =
   'The parts list is the query `partsList` (no arguments) and, as a file, the export format `partsCsv`: printed parts (bodies with the use `part`), bought parts (use `reference`, with the mass of their data sheet) and hardware. ' +
   'Hardware is counted from the labels of the hole features, one piece per hole of the model, so `label` should name the piece that goes into the hole. The label the query `hardwareHole` gives is a start: add what the catalog does not know, such as the length of the screw ("M3x10 countersunk screw"). ' +
-  'For a plain clearance hole it names the hole ("M3 clearance hole"), not a piece: write the screw into it when its head sits on the surface, and remove the label when the screw is counted by the hole of its head or of its nut. One screw through two parts is best one hole feature with both bodies as targets: a hole copied with its body is a hole of every copy unless the copies continue it. ' +
+  'For a plain clearance hole it names the hole ("M3 clearance hole"), not a piece: write the screw into it when its head sits on the surface, and remove the label when the screw is counted by the hole of its head or of its nut. One screw through two parts is best one hole feature with both bodies as targets: a hole copied with its body is a hole of every copy unless the copies continue it, so parts held by one screw that are copied should touch along the hole, or the hole be cut after the copies. ' +
   'A screw modelled as a body with the use `reference` is a bought part; do not label its hole as well, or it is listed twice. Copies of a body made by a pattern are one row with a count while no feature after the pattern changes one of them: model what every copy should have before the pattern, and give a material to the source. ' +
   'Every copy counts, also copies laid out for printing, with their holes.';
 

@@ -67,35 +67,49 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0
 const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const minus = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const length = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
-const largest = (a: Vec3): number => Math.max(Math.abs(a[0]), Math.abs(a[1]), Math.abs(a[2]));
-// One cut: its line, and the stretch of it its faces cover (from `point` along `direction`).
+// One cut: the faces of one build of a hole feature in one placement (its point and its copy
+// tags). Its line, and per body the interval of the line its faces cover there (from `point` along
+// `direction`), with the largest coordinate of those triangles along each axis.
+interface Span {
+  from: number;
+  to: number;
+  reach: Vec3;
+}
 interface Cut {
   point: Vec3;
   direction: Vec3; // a unit vector
-  from: number;
-  to: number;
-  reach: number; // the largest coordinate of its triangles
+  spans: Map<Id, Span>;
 }
 // One line: parallel within the angle tolerance, the point of one on the other. The surfaces are
-// moved in double precision; the bound does not grow with the distance along the line.
+// moved in double precision; the bound grows with the distance of the lines from the origin, not
+// with where on them their points lie.
+const offAxis = (c: Cut): number => length(cross(c.point, c.direction));
 function sameLine(a: Cut, b: Cut): boolean {
   if (length(cross(a.direction, b.direction)) > ANGLE_TOLERANCE) return false;
-  const precision = Math.max(LENGTH_TOLERANCE, 1e-9 * Math.max(largest(a.point), largest(b.point)));
+  const precision = Math.max(LENGTH_TOLERANCE, 1e-9 * Math.max(offAxis(a), offAxis(b)));
   return length(cross(minus(b.point, a.point), a.direction)) <= precision;
 }
-// The stretches of two cuts on one line touch or overlap, within the precision of float32.
+// An interval of one touches or overlaps an interval of the other. The triangles are float32: the
+// bound is a millionth of their coordinates as the line sees them (each axis weighted by how much
+// of the line runs along it), a millionth of a millimetre at least.
 function touch(a: Cut, b: Cut): boolean {
   const offset = dot(minus(b.point, a.point), a.direction);
-  const [from, to] = dot(a.direction, b.direction) > 0 ? [offset + b.from, offset + b.to] : [offset - b.to, offset - b.from];
-  const precision = 1e-6 * Math.max(1, a.reach, b.reach);
-  return from <= a.to + precision && a.from <= to + precision;
+  const alike = dot(a.direction, b.direction) > 0;
+  for (const p of a.spans.values())
+    for (const q of b.spans.values()) {
+      const [from, to] = alike ? [offset + q.from, offset + q.to] : [offset - q.to, offset - q.from];
+      const along = a.direction.reduce((sum, part, axis) => sum + Math.abs(part) * Math.max(p.reach[axis], q.reach[axis]), 0);
+      const precision = Math.max(LENGTH_TOLERANCE, 1e-6 * along);
+      if (from <= p.to + precision && p.from <= to + precision) return true;
+    }
+  return false;
 }
 export const holeCountsAsWritten: typeof holeCounts = (doc, bodies, faceNames, surface) => {
   const holes = new Set(doc.features.filter((f) => f.type === 'hole').map((f) => f.id));
   // feature → cut (its point and its copy tags) → where it is
   const cuts = new Map<Id, Map<string, Cut>>();
   for (const [id, body] of Object.entries(bodies)) {
-    const mine = new Map<number, Cut>(); // the faces of this body that are bores and heads, and their cuts
+    const mine = new Map<number, { cut: Cut; span: Span }>(); // the bores and heads of this body
     for (const face of body.faces) {
       const name = faceNames[face.id];
       if (!holes.has(name.feature) || (name.role !== 'holeBore' && name.role !== 'holeHead')) continue;
@@ -104,29 +118,31 @@ export const holeCountsAsWritten: typeof holeCounts = (doc, bodies, faceNames, s
       const ofFeature = cuts.get(name.feature) ?? new Map<string, Cut>();
       cuts.set(name.feature, ofFeature);
       const key = JSON.stringify([name.point ?? null, name.copy ?? []]);
-      const cut = ofFeature.get(key) ?? { point: shape.kind === 'cylinder' ? shape.origin : shape.apex, direction: shape.axis.map((part) => part / length(shape.axis)) as Vec3, from: Infinity, to: -Infinity, reach: 0 };
+      const cut = ofFeature.get(key) ?? { point: shape.kind === 'cylinder' ? shape.origin : shape.apex, direction: shape.axis.map((part) => part / length(shape.axis)) as Vec3, spans: new Map<Id, Span>() };
       ofFeature.set(key, cut);
-      mine.set(face.id, cut);
+      const span = cut.spans.get(id) ?? { from: Infinity, to: -Infinity, reach: [0, 0, 0] as Vec3 };
+      cut.spans.set(id, span);
+      mine.set(face.id, { cut, span });
     }
     if (mine.size === 0) continue;
     const { positions, triangles, faceIds } = body.solid;
     for (let t = 0; t < faceIds.length; t++) {
-      const cut = mine.get(faceIds[t]);
-      if (cut === undefined) continue;
+      const found = mine.get(faceIds[t]);
+      if (found === undefined) continue;
       for (let corner = 0; corner < 3; corner++) {
         const v = 3 * triangles[3 * t + corner];
         const at: Vec3 = [positions[v], positions[v + 1], positions[v + 2]];
-        const along = dot(minus(at, cut.point), cut.direction);
-        cut.from = Math.min(cut.from, along);
-        cut.to = Math.max(cut.to, along);
-        cut.reach = Math.max(cut.reach, largest(at));
+        const along = dot(minus(at, found.cut.point), found.cut.direction);
+        found.span.from = Math.min(found.span.from, along);
+        found.span.to = Math.max(found.span.to, along);
+        for (let axis = 0; axis < 3; axis++) found.span.reach[axis] = Math.max(found.span.reach[axis], Math.abs(at[axis]));
       }
     }
   }
   const counts = new Map<Id, number>();
   for (const [feature, ofFeature] of cuts) {
-    const list = [...ofFeature.values()].filter((cut) => cut.from <= cut.to);
-    // cuts on one line whose stretches touch are one hole: joined one after the other
+    const list = [...ofFeature.values()].filter((cut) => [...cut.spans.values()].some((span) => span.from <= span.to));
+    // a cut is one hole; cuts on one line with intervals that touch are one hole, joined one after the other
     const group = list.map((_, index) => index);
     const find = (index: number): number => (group[index] === index ? index : (group[index] = find(group[index])));
     for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) if (sameLine(list[a], list[b]) && touch(list[a], list[b])) group[find(a)] = find(b);
@@ -145,18 +161,21 @@ const weighsBy = (p: BodyPropertiesResult): string => (p.mass !== undefined ? (p
 const runAsWritten: (typeof partsList)['run'] = (context) => {
   const { document: doc, evaluation } = context.state;
   const properties = evaluation.bodyProperties;
+  // the mesh a body is a copy of; a body whose volume is not above zero (a copy float32 could not
+  // hold) is taken for no copy
+  const originOf = (id: Id) => (context.bodies[id].volume > 0 ? shapeOrigin(context.bodies[id].solid) : { solid: context.bodies[id].solid, mirrored: false });
   // a number per mesh, for the key of a row
   const meshes = new Map<Solid, number>();
   const numberOf = (solid: Solid): number => meshes.get(solid) ?? (meshes.set(solid, meshes.size), meshes.size - 1);
   const groups = new Map<string, Id[]>(); // in the order of their first bodies
   const auxiliary: Id[] = [];
-  for (const [id, body] of Object.entries(context.bodies)) {
+  for (const id of Object.keys(context.bodies)) {
     const result = properties[id];
     if (result.use === 'auxiliary') {
       auxiliary.push(id);
       continue;
     }
-    const origin = shapeOrigin(body.solid);
+    const origin = originOf(id);
     const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), partNameAsWritten(doc, id)]);
     groups.set(key, [...(groups.get(key) ?? []), id]);
   }
@@ -165,8 +184,8 @@ const runAsWritten: (typeof partsList)['run'] = (context) => {
     const root = rootAsWritten(doc, bodies[0]);
     // what the row comes from, when that body is in the state and not in the row, and whether the
     // row is still its mesh
-    const origin = shapeOrigin(context.bodies[bodies[0]].solid);
-    const source = bodies.includes(root) || !Object.hasOwn(context.bodies, root) ? undefined : shapeOrigin(context.bodies[root].solid);
+    const origin = originOf(bodies[0]);
+    const source = bodies.includes(root) || !Object.hasOwn(context.bodies, root) ? undefined : originOf(root);
     const same = source !== undefined && source.solid === origin.solid;
     return {
       name: partNameAsWritten(doc, bodies[0]),

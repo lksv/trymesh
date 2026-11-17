@@ -28,6 +28,9 @@ import type { ArgSpecs, ArgsOf, Document, Engine, EngineState, ExportFormatSpec,
 // ARE the same mesh, moved: the question is answered by what was computed, with no tolerance.
 // It errs one way only: bodies changed after the copy are never called the same, also when they
 // were changed alike.
+// It says what the recompute did, not what the coordinates of the copy hold: `transformSolid`
+// writes float32, and a copy moved so far that float32 cannot hold its shape (1e8 mm: volume 0) is
+// still a copy of its origin. Such a body is broken for every query; nothing here can see it.
 export interface MeshOrigin {
   solid: Solid; // the mesh the chain of copies starts at
   mirrored: boolean; // the solid asked about is the mirror image of it
@@ -39,6 +42,15 @@ export declare function shapeOrigin(solid: Solid): MeshOrigin;
 // (a document edited by hand may hold a cycle). The root need not be a body of the state.
 export declare function sourceRoot(doc: Document, body: Id): Id;
 
+// `sections/body-properties.ts`, beside `defaultName` (the name of a body without one of its own):
+// the name of the kind of part a body is. The name of its own of the nearest body of its chain of
+// sources (the body itself first; `bodyProperties` of the document), else the default name of the
+// body the chain starts at (after its feature). So the copies of a copy named "spare" are "spare",
+// as they inherit its colour and material, and the copies of an unnamed `screw` are "screw", not
+// "Screws / 1". Read from the document alone, so it holds when the root is not a body of the state
+// (3d: a body a later feature used up).
+export declare function partName(doc: Document, body: Id): string;
+
 // ================================================================ the query
 
 // No argument: the parts list is of the whole state asked about (now, `at` a feature, or a state
@@ -46,10 +58,8 @@ export declare function sourceRoot(doc: Document, body: Id): Id;
 export const PARTS_LIST_ARGS = {} as const satisfies ArgSpecs;
 
 // One kind of part and the bodies that are it.
-// - `name`: the name of the part: the name of its own that a body has (body properties), else the
-//   name of the body its chain of sources starts at (`sourceRoot`), else its name in the state.
-//   So the three copies of "M3x6 screw" are "M3x6 screw", not "Screws / 1". Every body of a row
-//   has the name of the row.
+// - `name`: the name of the part (`partName`). So the three copies of "M3x6 screw" are
+//   "M3x6 screw", not "Screws / 1". Every body of a row has the name of the row.
 // - `count`, `bodies`: how many, and which, in the order of the model.
 // - `material`, `color`, `density` (g/cm3): of the body properties, own or inherited; the same for
 //   every body of the row.
@@ -59,9 +69,12 @@ export const PARTS_LIST_ARGS = {} as const satisfies ArgSpecs;
 // - `noMass`, in place of `mass`: `notStated` (the properties state neither a mass nor a density)
 //   or `inError` (the one that would be used cannot be evaluated; `get_model` has the message).
 // - `totalMass`: g, the sum over the bodies of the row; absent with `noMass`.
-// - `copyOf`: the body the chain of sources of the bodies starts at, when it is not in this row
-//   (it was changed, or they were; other properties; another name; the other hand).
-// - `mirrored`: the bodies of the row are mirror images of the mesh they are copies of.
+// - `copyOf`: the body the chain of sources of the bodies starts at (`sourceRoot`), when it is
+//   a body of the state and not in this row. With it, one of:
+//   - nothing more: the row is the mesh of that body, with other properties or another name;
+//   - `mirrored`: the row is the mesh of that body, mirrored;
+//   - `differs`: the row is not that body's mesh any more: a feature changed the row's bodies, or
+//     that body, after the copy. A changed row says no hand: its shape is its own.
 export interface PartRow {
   name: string;
   count: number;
@@ -76,6 +89,7 @@ export interface PartRow {
   totalMass?: number;
   copyOf?: Id;
   mirrored?: true;
+  differs?: true;
 }
 
 // A hole feature and the holes of it that the model has.
@@ -134,29 +148,39 @@ export interface PartsList {
 
 // ---------------------------------------------------------------- the rule of the holes
 
-// Holes are counted from the model, not from the document, and by where they are.
+// Holes are counted from the model, not from the document, by where they are and how far along
+// their axes they reach.
 // - A hole is there when its bore or its head (`holeBore`, `holeHead`: a cylinder or a cone, so
 //   a face with an axis) is a face of a body of the state that is not auxiliary.
-// - An application of a hole feature is one of its points, cut by the feature itself or by one
-//   copy of a pattern of features (the first copy tag of the face, when that pattern has features
-//   as its source).
-// - An application counts once per axis its faces lie on. Its faces in the bodies it was cut into
-//   have one axis, so a hole through two bodies is one hole; a copy of such a body made afterwards
-//   has the face with its surface moved, so a copy at another place is another hole, and a copy
-//   that continues the hole (a plate copied onto itself, a half mirrored in the parting plane) is
-//   the same one.
-// - Two axes are one line when they are parallel within `ANGLE_TOLERANCE` and a point of one is
-//   within the precision of the coordinates of the other (a millionth of the largest coordinate,
-//   a millionth of a millimetre at least). The surfaces are exact (double precision), so lines
-//   that are meant to be one differ by far less and lines that are not by a hole's width.
-// - The count of a feature is the sum over its applications.
+// - A cut is what one build of a hole feature left in the bodies of one placement: the faces of
+//   that feature with the same point and the same copy tags (`FaceName.point`, `FaceName.copy`),
+//   in whichever bodies they are. One build gives one face number in every target, so a bore
+//   through two bodies, or through the two flanges of one body, is one cut. A copy of a pattern of
+//   features starts its tags with that pattern, a copy of a body made afterwards adds one: each is
+//   a cut of its own.
+// - A cut has a line, the axis of its surfaces (a cylinder's `origin`, a cone's `apex`, `axis`),
+//   and a stretch of it: from the lowest to the highest point of the triangles of its faces,
+//   measured along the line.
+// - Cuts of one feature are one hole when they lie on one line and their stretches touch or
+//   overlap; joined so one after the other (a stack of three copies is one hole). The count of
+//   a feature is the number of its holes.
+// - Two lines are one when they are parallel within `ANGLE_TOLERANCE` and the point of one lies
+//   on the other within max(`LENGTH_TOLERANCE`, 1e-9 x the largest coordinate of the two points):
+//   the surfaces are moved in double precision, so lines meant to be one differ by far less, and
+//   the bound does not grow with the distance along the line.
+// - Two stretches touch within 1e-6 x the largest coordinate of the triangles of the two cuts (at
+//   least 1e-6 mm): the triangles are float32.
 // So a point whose hole missed every body, a copy of a pattern that ran off the part, a hole
-// a later cut removed whole and a suppressed feature count nothing, and three lids in a row have
-// three times the holes of one.
+// a later cut removed whole and a suppressed feature count nothing; a copy of a pattern of the
+// feature that cuts its own hole again adds nothing; a plate copied onto itself, or a half
+// mirrored in its parting plane, continues the hole; copies of a body at other places, also on
+// the same line, have holes of their own; and three lids in a row have three times the holes of
+// one.
 //
-// `bodies` are the bodies to look in (the caller leaves the auxiliary ones out); `surface` answers
-// the surface of a face of a body by its number, as `context.surface` does by its name.
-export declare function holeCounts(doc: Document, bodies: Readonly<Record<Id, { faces: { id: number }[] }>>, faceNames: readonly FaceName[], surface: (body: Id, face: number) => Surface | undefined): Map<Id, number>;
+// `bodies` are the bodies to look in (the caller leaves the auxiliary ones out), with their solids
+// (the triangles of a face are those whose `faceIds` entry is its number); `surface` answers the
+// surface of a face of a body by its number, as `context.surface` does by its name.
+export declare function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: Solid; faces: { id: number }[] }>>, faceNames: readonly FaceName[], surface: (body: Id, face: number) => Surface | undefined): Map<Id, number>;
 
 // ---------------------------------------------------------------- the entry
 
@@ -167,10 +191,10 @@ export const PARTS_LIST_TEXTS = {
   summary:
     'What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. ' +
     'A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). ' +
-    'Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole; a copy of a body at another place has its holes too; a hole that missed or was cut away is not counted). ' +
+    'Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). ' +
     'So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.',
   returns:
-    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the source when it is in another row), `mirrored`), ' +
+    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the source when it is in another row), `mirrored` (the mesh of the source, mirrored), `differs` (no longer the mesh of the source)), ' +
     '`hardware` (rows: `label`, `count`, `holes`: the hole features with the label and the holes of each), `unlabelled` (hole features without a label, with their holes), `auxiliary` (bodies that are no parts), ' +
     '`totals` (`printed` and `bought`: `count` of bodies, `mass` in g of those that have one, `withoutMass`: how many have none; `hardware.count`). Hardware has no mass.',
 } as const;
@@ -218,8 +242,9 @@ export interface ExportFormatsAfter3e extends ExportFormats {
 // Colour         | `color`, or empty                                      | empty
 // Mass each (g)  | `mass`, or empty                                       | empty
 // Mass total (g) | `totalMass`, or empty                                  | empty
-// Note           | with `copyOf`: "copy of <copyOf>", or for a mirrored   | empty
-//                | row "mirror image of <copyOf>"; else empty             |
+// Note           | with `copyOf`: "copy of <copyOf>", "mirror image of    | empty
+//                | <copyOf>" (`mirrored`) or "differs from <copyOf>"      |
+//                | (`differs`); else empty                                |
 // IDs            | the bodies, separated by a space                       | the hole features, separated by a space
 //
 // `IDs` is for a reader who looks for the bodies in the model: an ID may itself hold a space, so
@@ -230,6 +255,7 @@ export const PARTS_CSV = {
   header: ['Kind', 'Name', 'Count', 'Material', 'Colour', 'Mass each (g)', 'Mass total (g)', 'Note', 'IDs'],
   copy: 'copy of ',
   mirror: 'mirror image of ',
+  differs: 'differs from ',
   // `Exported.empty`: the list has no row at all (no printed part, no bought part, no labelled hole)
   empty: 'the model has no part and no labelled hole to list',
 } as const;
@@ -247,7 +273,7 @@ export type PartsCsvAbout = {
 export const PARTS_CSV_TEXTS = {
   title: 'Parts list (CSV)',
   summary:
-    'The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that differ from their source, and the IDs of its bodies or hole features. ' +
+    'The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. ' +
     'Comma separated, UTF-8, a decimal point. One file.',
 } as const;
 // `export/parts-csv.ts`: it runs the entry `partsList` with the context of the export and writes
@@ -272,7 +298,7 @@ export interface EngineAfter3e extends Omit<Engine, 'query' | 'export'> {
 export const CONVENTION =
   'The parts list is the query `partsList` (no arguments) and, as a file, the export format `partsCsv`: printed parts (bodies with the use `part`), bought parts (use `reference`, with the mass of their data sheet) and hardware. ' +
   'Hardware is counted from the labels of the hole features, one piece per hole of the model, so `label` should name the piece that goes into the hole. The label the query `hardwareHole` gives is a start: add what the catalog does not know, such as the length of the screw ("M3x10 countersunk screw"). ' +
-  'For a plain clearance hole it names the hole ("M3 clearance hole"), not a piece: write the screw into it when its head sits on the surface, and remove the label when the screw is counted by the hole of its head or of its nut. One screw through two parts is best one hole feature with both bodies as targets. ' +
+  'For a plain clearance hole it names the hole ("M3 clearance hole"), not a piece: write the screw into it when its head sits on the surface, and remove the label when the screw is counted by the hole of its head or of its nut. One screw through two parts is best one hole feature with both bodies as targets: a hole copied with its body is a hole of every copy unless the copies continue it. ' +
   'A screw modelled as a body with the use `reference` is a bought part; do not label its hole as well, or it is listed twice. Copies of a body made by a pattern are one row with a count while no feature after the pattern changes one of them: model what every copy should have before the pattern, and give a material to the source. ' +
   'Every copy counts, also copies laid out for printing, with their holes.';
 
@@ -288,7 +314,7 @@ export const CONVENTION =
 // - `immediate`: the query has no argument, so it is asked as soon as its form opens.
 // - `answer`: three groups under their headings, *To print*, *To buy* and *Hardware*, each a row
 //   per row of the answer ("M3x6 screw × 4", with the material, the colour, the mass of one and of
-//   all, and what the row is a copy of), then the sums, the hole features without a label and the
+//   all, and what the row comes from), then the sums, the hole features without a label and the
 //   auxiliary bodies, each only when there is something to say. Rows are counted through the three
 //   groups for `picked`.
 // - `scene`: a picked row of bodies draws its bodies in the colour of a selection; a picked row of

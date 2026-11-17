@@ -51,6 +51,8 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 6e | Trim, extend and split as sketch tools over `setCurvePoint` with the patches of D52; split keeps the constraints of the curve, in place of regions made from crossing curves automatically | 6 | M | 6a for the table of the app's tools; the engine side needs only D52 | outline ([6-plan.md](6-plan.md)) |
 | 6f | Import of an outline: DXF, then a subset of SVG, read by hand-written code; stored in the document and placed in a sketch as reference geometry that forms regions; the tool `import_outline` | 6 | J | 6a, 6b (the same code of reference geometry); 6d for splines and Béziers | outline ([6-plan.md](6-plan.md)) |
 | 6g | Gear as a block in a sketch | 6 | | 6a, 6c, 6d | not proposed: stays in the backlog ([6-plan.md](6-plan.md), question 7) |
+| 2h | The start of an extent at a face or a plane (`from` of the extent; found missing by the conversion from Onshape, [onshape-import.md](../onshape-import.md)) | 2 | B | 2f | design being written ([2h-extent-start/design.md](2h-extent-start/design.md)) |
+| 4c | Chamfers and fillets of edges that end at round faces or run between them (the limits of D63 the conversion from Onshape met) | 4 | G | 4b | design being written ([4c-blend-round-ends/design.md](4c-blend-round-ends/design.md)) |
 | 7 | Tube along a path, twist and threads, names of reference dimensions | 7 | | | not yet |
 
 The full designs of tracks A (1a to 1f), B (2a, 2b, 2c, 2f) and E (3a, 5a) and of 5e exist in their directories, and the design of 5f (a `design.md` alone); the others are not written yet.
@@ -142,5 +144,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g; D55 3b, D56 3d, D57 3e; D58 4a, D59 5b, D60 5c, D61 5d, D62 3c, D63 4b; D64 6a, D65 6e (taken when their designs started) | D66 |
-| Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a); 14 track G (4a, then 4b); 15 step 6 | 16 |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g; D55 3b, D56 3d, D57 3e; D58 4a, D59 5b, D60 5c, D61 5d, D62 3c, D63 4b; D64 6a, D65 6e; D66 2h, D67 4c (taken when their designs started) | D68 |
+| Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a); 14 track G (4a, then 4b); 15 step 6; 16 2h; 17 4c | 18 |

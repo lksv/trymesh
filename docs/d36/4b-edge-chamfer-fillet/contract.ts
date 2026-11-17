@@ -26,8 +26,12 @@ import type { FaceInfoD, RevolveExtent, RevolveSetup } from '../4a-revolve/contr
 //   - circular between two faces about one axis whose profile in a half plane through the axis is
 //     a straight line: a plane across the axis, a cylinder, a cone (kind `circle`). Not a circle
 //     with a sphere or a torus (the rim of a dome).
-//   An edge ends at another edge of the feature (both end in their mitre, the plane through the
-//   vertex halving the angle of the two in the face they share), at one planar face, whose plane
+//   An edge ends at another edge of the feature that shares a face with it: smoothly (both end in
+//   the plane across them), at the same angle to the shared face (both end in their mitre, the
+//   plane through the vertex halving the angle of the two in that face), or, both convex at
+//   a convex corner of that face, each in the plane of the other's other face; else the feature
+//   is refused (an arc at an angle to another edge, the top loop of a D-shaped boss). Or at one
+//   planar face, whose plane
 //   the chamfer or fillet ends in (an arc: a plane through its axis), or runs on smoothly into the
 //   next edge of a face (a line of an outline with round corners into the arc of the corner; also
 //   across a seam where both faces of the edge continue into flush faces); that next edge has to be
@@ -90,7 +94,8 @@ declare module '../00-prep/contract' {
   // - its kind, or the surfaces of its faces (a sphere, a torus, a cylinder along a plane);
   // - its faces meet at less than 0.01 rad from flat or from folded;
   // - the side of a face along the edge is not clear (its triangles along it disagree);
-  // - the pieces of the edge need different chamfers (another side of a face, another angle);
+  // - the pieces of the edge need different chamfers (another side of a face);
+  // - it meets another edge of the feature at a vertex in a way the feature cannot join;
   // - an end has no face besides its own, two or more that are not a seam, a round face that does not continue a face
   //   of the edge, (a straight edge) a plane within 0.01 rad of the edge, (an arc) a plane that
   //   does not hold its axis;
@@ -105,7 +110,8 @@ declare module '../00-prep/contract' {
   //   a hollow just inside them (the foot of a boss that reaches the edge of the plate), seen in
   //   a face of the tool left in the result or in more volume taken than the tools' wedges hold;
   // - it reaches the axis of a circular edge;
-  // - the faces at the two ends of a straight edge meet within it;
+  // - the ends of a straight piece meet within it;
+  // - two tools that should meet at a vertex leave a step between them;
   // - the tools would have more triangles than 4a's MAX_REVOLVE_TRIANGLES.
   interface IssueCodes {
     unsupportedEdge: true;
@@ -124,13 +130,13 @@ const SHARED_SUMMARY =
   'Each edge gets one new face `{ feature, role, edge: <its place in edges, from 0> }`; the faces of the edge keep their names. The facts `setback/<i>` (how far from edge i the new face meets its faces) and `cut/<i>` (true where material was cut).';
 export const CHAMFER_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
   title: 'Chamfer',
-  summary: `Chamfers edges of one body by one distance along both faces of each edge. ${SHARED_SUMMARY} The face of a straight edge is a plane a sketch can stand on; of a circular edge a cone.`,
+  summary: `Chamfers edges of one body by one distance along both faces of each edge. ${SHARED_SUMMARY} The face of a straight edge is a plane a sketch can stand on; of a circular edge a cone, or a plane across its axis or a cylinder.`,
   fields: [{ path: 'distance', spec: CHAMFER_DISTANCE }],
   bodies: 'none',
 };
 export const FILLET_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
   title: 'Fillet',
-  summary: `Rounds edges of one body by one radius. ${SHARED_SUMMARY} The face of a straight edge is a cylinder, of a circular edge a torus. Where three fillets meet at a corner the corner is a crease, not a ball.`,
+  summary: `Rounds edges of one body by one radius. ${SHARED_SUMMARY} The face of a straight edge is a cylinder, of a circular edge a torus, or a sphere where the centre of its arc lies on the axis. Where three fillets meet at a corner the corner is a crease, not a ball.`,
   fields: [{ path: 'radius', spec: FILLET_RADIUS }],
   bodies: 'none',
 };
@@ -151,7 +157,8 @@ export const BLEND_FACTS = {
 // a chamfer's end along the chamfer's own line (its surface stays exact), a fillet's along the
 // normal of the face. An end on a plane stays on it. The polygon of a round face lies up to the chord tolerance inside its surface; a tool
 // whose end stands on the exact surface grazes it (measured: 7.5 % of 3 600 random edges refused,
-// ledges in the rest; with the lift none of 7 192).
+// ledges in the rest; with the lift along the normal none of 7 192, and along the chamfer's line
+// none of 3 592 either). Along the line the end moves 1.5 × tol / sin((π − β)/2).
 export const BLEND_LIFT = 1.5;
 // The tool reaches past both faces: past a convex edge (outside the body) by max(size,
 // BLEND_OVERSHOOT × chord tolerance), the size being the distance or the radius (measured: smaller
@@ -166,10 +173,11 @@ export const BLEND_MIN_ANGLE = 0.01;
 // `blendDoesNotFit`. Measured: 0 in every case that fits.
 export const BLEND_SLIVER = 1e-4;
 // The volume check: what the feature cut or added may exceed what the parts of its tools inside
-// their wedges hold (the profile closed along the two faces) by at most BLEND_VOLUME × the chord
+// their wedges hold together (the profile closed along the two faces, the parts united, the cut
+// and the added material each) by at most BLEND_VOLUME × the chord
 // tolerance × the area of the strips the blends eat (twice the setback times the length of each
 // piece), plus 10⁻³ mm³; more is `blendDoesNotFit` (material swallowed by the overshoot). Measured:
-// at most 0.28 of the bound on 3 600 random edges; equal to the last digit with mitres.
+// at most 0.28 of the bound on 3 592 random single edges, twice; equal to the last digit with mitres.
 export const BLEND_VOLUME = 0.5;
 
 // ================================================================ the recompute
@@ -207,7 +215,8 @@ export interface BlendCorner {
 //   computed.
 // - `setback`: how far along each face from the corner the blend meets it.
 // The ends of the blend on a round face are lifted (BLEND_LIFT); the overshoot is
-// max(size, BLEND_OVERSHOOT × chordTolerance).
+// max(size, BLEND_OVERSHOOT × chordTolerance) past a convex edge and BLEND_OVERSHOOT ×
+// chordTolerance past a concave one.
 export type BlendSide = 'blend' | 'pastB' | 'cornerB' | 'cornerA' | 'pastA';
 export interface BlendProfile {
   points: Vec2[];
@@ -217,8 +226,9 @@ export interface BlendProfile {
 }
 export declare function blendProfile(kind: BlendKind, size: number, corner: BlendCorner, chordTolerance: number): BlendProfile;
 
-// Where the tool of a piece of a straight edge ends: the mitre with another edge of the feature,
-// the plane of the face at the end, or the plane across the edge at a smooth end or a seam.
+// Where the tool of a piece of a straight edge ends: the mitre with another edge of the feature at
+// the same angle, the plane of the other edge's face at a convex corner, the plane of the face at
+// the end, or the plane across the edge at a smooth end or a seam.
 export interface EndPlane {
   point: Vec3;
   normal: Vec3;
@@ -242,7 +252,9 @@ export declare function edgePrism(profile: BlendProfile, frame: Frame, ends: [En
 // The tool of a piece of a circular edge is 4a's `buildRevolve` with this setup: the profile, and its
 // exact blend, carried from the coordinates of the corner into (ρ, z) by `place` (the edge's point
 // in (ρ, z), the unit direction of face `a` there, and the unit direction across it towards face
-// `b`), as the one region of a `RevolveSetup` in a frame whose origin is the centre of the circle,
+// `b`; where those two are a left-handed pair in (ρ, z) the profile is mirrored, so its points are
+// reversed and its keys shifted to keep it counter-clockwise, as a `Region` must be), as the one
+// region of a `RevolveSetup` in a frame whose origin is the centre of the circle,
 // X the radial direction at the start of the piece (for a whole circle the model's X projected
 // across the axis, its Y where the axis is within 0.1 rad of X) and Y the axis, turned by a whole
 // turn or by the arc of the piece. 4a's rules give the blend its surface: a cone, a plane across

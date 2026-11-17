@@ -9,14 +9,19 @@
 // 2c-hole/calls.ts, imported here for the order of the parts, was written before 2c was
 // implemented and asks the catalog for an insert of the size `M3`; the catalog as implemented
 // names its rows as sold (`M3x3x4.5`), and the test of this part follows box.ts.
+//
+// The grid (an addition to D53, grid.md) has its part at the end of this file, `scenario12grid`:
+// the vents of both long walls as one pattern, drain holes in the floor as a grid of a hole
+// feature, and six lids for the print bed as a grid of a body. Its numbers were measured with
+// a prototype of the second direction against the real adapters (grid.md, "What was measured").
 
 import { SCHEMA_VERSION } from '../../../packages/engine/src/index';
 import type { Id, Input } from '../../../packages/engine/src/index';
 import type { CommandAfter, FaceNameAfter, PlaneRefAfter, QueryToolInput, StateAfter } from '../00-prep/contract';
-import { RIB_LEFT, done, engine, onFace, pointAt, run, sameName, sketchOn, unwrap } from '../2a-offset/calls';
+import { FLOOR, RIB_LEFT, done, engine, onFace, pointAt, run, sameName, sketchOn, unwrap } from '../2a-offset/calls';
 import { scenario12 } from '../2c-hole/calls';
-import type { LinearTransform, PatternFeatureD, PatternTransformD } from './contract';
-import { PATTERN_FIELDS } from './contract';
+import type { LinearTransform, PatternFeatureD, PatternTransformD, SecondDirection } from './contract';
+import { GRID_STRIDE, MAX_PATTERN_PLACES, PATTERN_FIELDS, copyBody, copyNumber } from './contract';
 
 const volumeOf = (state: StateAfter, body: Id): number => state.evaluation.bodies[body].volume;
 const about = (value: number | undefined, expected: number, tolerance = 1e-3): boolean => value !== undefined && Math.abs(value - expected) < tolerance;
@@ -219,7 +224,8 @@ export function scenario12e(): boolean {
   const before = volumeOf(engine.getState(), 'box');
   const row = ventChecks(before, vents()) && oneMore(before);
   const past = pastTheEnd();
-  const spans = past.status === 'warning' && past.idle?.length === 2 && byLength() === 'ok' && !zeroSpacing() && fieldsListed().length === 5;
+  // five fields of the kinds and four of the second direction of the grid
+  const spans = past.status === 'warning' && past.idle?.length === 2 && byLength() === 'ok' && !zeroSpacing() && fieldsListed().length === 9;
   midPlanes();
   const withVents = volumeOf(engine.getState(), 'box');
   const mirrored = ribMirrorChecks(withVents, ribMirror()) && sketchOnTheCopy() && withoutItsPlane() === 'brokenReference' && inARoundFace() === 'nonPlanarFace' && toARowInstead() && !halfAPatch();
@@ -227,4 +233,181 @@ export function scenario12e(): boolean {
   const corners = padChecks(built) && padProperties(built) && sketchUnderAPad() === 'ok' && !secondCopyOfAMirror() && asOneLink().length === 5;
   const lids = lidsInARow()?.join() === 'lids/1,lids/2';
   return trackB && row && spans && mirrored && corners && lids && roundTrip();
+}
+
+// ================================================================ the grid (an addition to 2e, grid.md)
+
+const X = { kind: 'base', axis: 'X' } as const;
+const Y = { kind: 'base', axis: 'Y' } as const;
+const second = (id: Id, direction: Input<SecondDirection>['direction'], count: number | string, spacing: number | string): CommandAfter => ({ type: 'updateFeature', id, patch: { transform: { second: { direction, count, span: { type: 'spacing', spacing } } } } });
+const preview = (...commands: CommandAfter[]): StateAfter => done(engine.preview(commands.length === 1 ? commands[0] : { type: 'batch', commands }));
+const errorOf = (state: StateAfter, id: Id) => state.evaluation.features[id].error;
+const patternOf = (state: StateAfter, id: Id): PatternFeatureD | undefined => {
+  const feature = state.document.features.find((f) => f.id === id);
+  return feature?.type === 'pattern' ? feature : undefined;
+};
+
+// ---------------------------------------------------------------- the vents of both long walls: a row gets a second direction
+
+// The slot is cut `wall + 1` deep from the outer face of the wall at y = 0. Shifted by
+// `W - wall - 0.5` along Y the same tool stands astride the other long wall (from y = 47.5 to 50.5),
+// so one pattern cuts both: the row of 2e gets a second direction with a count of 2. The patch
+// names the second direction alone; the first is merged with what the row has.
+export const ventsOnBothWalls = (): StateAfter => run(second('ventRow', Y, 2, 'W - wall - 0.5'));
+// A face of a slot in the far wall: the copy `i` steps along X and one step along Y, number 1000 + i.
+export const farVent = (i: number): FaceNameAfter => ({ feature: 'vent', role: 'side', curve: 'vd', copy: [{ pattern: 'ventRow', index: copyNumber(i, 1) }] });
+const nearVent = (i: number): FaceNameAfter => ({ feature: 'vent', role: 'side', curve: 'vd', copy: [{ pattern: 'ventRow', index: copyNumber(i, 0) }] });
+// The far wall loses what the near one lost (five slots, 240 mm³). The copies of the row keep their
+// numbers 1 to 4 and their faces; the far wall has the numbers 1000 (the place across from the
+// original) to 1004; the fields of the second direction hold numbers with their expressions.
+export function bothWallsChecks(before: number, state: StateAfter): boolean {
+  const transform = patternOf(state, 'ventRow')?.transform;
+  if (transform?.type !== 'linear' || !transform.second || transform.second.span.type !== 'spacing') return false;
+  const expressions = patternOf(state, 'ventRow')?.expressions;
+  const fields = transform.count === 5 && transform.second.count === 2 && transform.second.span.spacing === 47.5 && expressions?.['transform/second/span/spacing'] === 'W - wall - 0.5' && expressions?.['transform/count'] === 'vents';
+  const faces = hasFace(state, 'box', nearVent(4)) && hasFace(state, 'box', farVent(0)) && hasFace(state, 'box', farVent(4)) && !hasFace(state, 'box', nearVent(5)) && !hasFace(state, 'box', farVent(5));
+  const report = unwrap(engine.query('interference', { bodies: ['box', 'lid'] }));
+  return fields && statusOf(state, 'ventRow') === 'ok' && about(before - volumeOf(state, 'box'), 5 * 2 * 12 * 2) && faces && farVent(0).copy?.[0].index === GRID_STRIDE && report.pairs.length === 0;
+}
+// A sketch on a slot of the far wall, and then a sixth slot per wall: one parameter, two more
+// copies (5 and 1005), and no copy moves: the sketch stands where it stood.
+export function sixPerWall(before: number): boolean {
+  const standing = run(...sketchOn('onFarVent', onFace('box', farVent(4))));
+  const six = preview({ type: 'setParameter', name: 'vents', expr: '6' });
+  const [was, is] = [standing.evaluation.features['onFarVent'].plane?.origin, six.evaluation.features['onFarVent'].plane?.origin];
+  const stays = was !== undefined && is !== undefined && was.every((value, axis) => about(is[axis], value, 1e-9));
+  return statusOf(six, 'onFarVent') === 'ok' && stays && hasFace(six, 'box', nearVent(5)) && hasFace(six, 'box', farVent(5)) && about(before - volumeOf(six, 'box'), 7 * 2 * 12 * 2);
+}
+// Eighteen per wall run past the end of the box in both rows: the idle copies are named by their
+// numbers, row by row: 16, 17, 1016, 1017.
+export const pastTheEndOfBoth = (): unknown[] | undefined => preview({ type: 'setParameter', name: 'vents', expr: '18' }).evaluation.features['ventRow'].warnings[0]?.refs;
+
+// ---------------------------------------------------------------- drain holes in the floor: a grid of a hole feature
+
+// One plain hole of 2 mm through the floor at a point of a sketch on the floor of the cavity, and
+// a grid of it: columns 5 apart along X, rows 6 apart along Y, both counts parameters.
+export function drains(): StateAfter {
+  return run(
+    { type: 'setParameter', name: 'drainCols', expr: '4' },
+    { type: 'setParameter', name: 'drainRows', expr: '3' },
+    ...sketchOn('drainSketch', onFace('box', FLOOR)),
+    ...pointAt('drainSketch', 'd1', '18', '10'),
+    { type: 'addFeature', feature: { id: 'drain', name: 'drain', suppressed: false, type: 'hole', sketch: 'drainSketch', points: ['d1'], shape: { type: 'plain', diameter: 2 }, extent: { type: 'throughAll', side: 'backward' }, targets: ['box'] } },
+    pattern('drains', { type: 'features', features: ['drain'] }, { type: 'linear', direction: X, count: 'drainCols', span: { type: 'spacing', spacing: 5 }, second: { direction: Y, count: 'drainRows', span: { type: 'spacing', spacing: 6 } } }),
+  );
+}
+export const drainBore = (i: number, j: number): FaceNameAfter => ({ feature: 'drain', role: 'holeBore', point: 'd1', copy: [{ pattern: 'drains', index: copyNumber(i, j) }] });
+// What one hole removes (6.2053 mm³ measured: a polygon of the circle through the floor of 2).
+const oneDrain = (before: number): number => before - volumeOf(preview({ type: 'setSuppressed', id: 'drains', suppressed: true }), 'box');
+// Twelve holes for one; every copy cut through the floor ("through all" is measured per copy); the
+// bore of the last place is the bore of the hole with the number 2003, and there is no fifth
+// column and no fourth row.
+export function drainChecks(before: number, state: StateAfter): boolean {
+  const places = hasFace(state, 'box', drainBore(3, 2)) && drainBore(3, 2).copy?.[0].index === 2003 && hasFace(state, 'box', drainBore(0, 1)) && !hasFace(state, 'box', drainBore(4, 0)) && !hasFace(state, 'box', drainBore(0, 3));
+  return statusOf(state, 'drains') === 'ok' && about(before - volumeOf(state, 'box'), 12 * oneDrain(before), 1e-4) && places;
+}
+// One more column and one more row are two parameters: eight more holes (4, 1004, 2004 and the row
+// 3000 to 3004), and every hole that was there keeps its number.
+export function oneMoreEachWay(before: number): boolean {
+  const more = preview({ type: 'setParameter', name: 'drainCols', expr: '5' }, { type: 'setParameter', name: 'drainRows', expr: '4' });
+  return statusOf(more, 'drains') === 'ok' && about(before - volumeOf(more, 'box'), 20 * oneDrain(before), 1e-4) && hasFace(more, 'box', drainBore(3, 2)) && hasFace(more, 'box', drainBore(4, 0)) && hasFace(more, 'box', drainBore(4, 3));
+}
+// A grid has at most 200 places. Fifty columns of five rows are an error of the pattern, found by
+// the recompute (each count is within its own range, and either may be an expression); the fields
+// are named, and the model stays as it was before the pattern.
+export function tooManyPlaces(before: number): boolean {
+  const over = preview({ type: 'setParameter', name: 'drainCols', expr: '50' }, { type: 'setParameter', name: 'drainRows', expr: '5' });
+  const error = errorOf(over, 'drains');
+  return 50 * 5 > MAX_PATTERN_PLACES && error?.code === 'invalidPattern' && JSON.stringify(error.refs) === JSON.stringify(['transform/count', 'transform/second/count']) && about(before - volumeOf(over, 'box'), oneDrain(before), 1e-9);
+}
+// Two parallel directions would put two copies into one place: an error of the pattern.
+export const parallelDirections = (): string | undefined => errorOf(preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: { direction: X } } } }), 'drains')?.code; // invalidPattern
+// `second: null` makes it a row again: the four holes of the first row, and the expression of the
+// second count goes with its field.
+export function aRowAgain(before: number): boolean {
+  const row = preview({ type: 'updateFeature', id: 'drains', patch: { transform: { second: null } } });
+  const expressions = patternOf(row, 'drains')?.expressions;
+  return statusOf(row, 'drains') === 'ok' && about(before - volumeOf(row, 'box'), 4 * oneDrain(before), 1e-4) && expressions?.['transform/count'] === 'drainCols' && expressions['transform/second/count'] === undefined;
+}
+// Only a linear pattern has a second direction: on a mirror (and on a circular pattern) the field
+// is an invalid command.
+export const secondOnAMirror = (): boolean => engine.preview(second('ribMirror', X, 2, 5)).ok; // false
+
+// ---------------------------------------------------------------- six lids for the print bed: a grid of a body
+
+// The row of three lids of 2e, and a second row beside it: the bodies of the first row keep the
+// IDs they had, the second row is `lids/1000` to `lids/1002`.
+export const LIDS: Id[] = [copyBody('lids', 1, 0), copyBody('lids', 2, 0), copyBody('lids', 0, 1), copyBody('lids', 1, 1), copyBody('lids', 2, 1)]; // lids/1, lids/2, lids/1000, lids/1001, lids/1002
+const lidRow = (): CommandAfter => pattern('lids', { type: 'body', body: 'lid' }, { type: 'linear', direction: X, count: 3, span: { type: 'spacing', spacing: 'L + 5' } });
+// A second direction is whole or absent: a patch that brings half of one to a row is refused.
+export const halfASecond = (): boolean => engine.preview({ type: 'batch', commands: [lidRow(), { type: 'updateFeature', id: 'lids', patch: { transform: { second: { count: 2 } } } }] }).ok; // false
+export const sixLids = (): StateAfter => run(lidRow(), second('lids', Y, 2, 'W + 5'), { type: 'setBodyMaterial', body: 'lid', material: 'PETG' });
+// Five copies, listed in the order of their numbers; the last stands two lids along X and one
+// along Y from the original; each takes the material of the lid (D48) and weighs what it weighs;
+// a link lists copies of both rows (D49); a sketch stands on a face of a copy of the second row;
+// the six do not collide.
+export function lidChecks(state: StateAfter): boolean {
+  const listed = state.evaluation.features['lids'].bodies.join() === LIDS.join();
+  const last = state.evaluation.bodies['lids/1002'];
+  const placed = about(last.bounds.min[0], 170, 1e-4) && about(last.bounds.min[1], 55, 1e-4) && about(last.volume, volumeOf(state, 'lid'), 1e-2);
+  const properties = state.evaluation.bodyProperties['lids/1002'];
+  const mass = unwrap(engine.query('mass', { bodies: ['lid', ...LIDS] }));
+  const weighed = properties.material === 'PETG' && properties.from === 'lid' && about(mass.mass, 6 * (mass.bodies[0].mass ?? NaN), 1e-3);
+  const linked = preview({ type: 'setLink', id: 'bed', bodies: ['lid', 'lids/1', 'lids/1000', 'lids/1002'] }).evaluation.mechanism.links['bed'];
+  const under: FaceNameAfter = { feature: 'lid', role: 'startCap', copy: [{ pattern: 'lids', index: 1001 }] };
+  const sketched = statusOf(preview(...sketchOn('underALid', onFace('lids/1001', under))), 'underALid') === 'ok';
+  const report = unwrap(engine.query('interference', { bodies: ['lid', ...LIDS] }));
+  return listed && placed && weighed && linked.bodies.length === 4 && linked.missing.length === 0 && sketched && report.pairs.length === 0 && report.failed.length === 0;
+}
+// A fourth lid per row: `lids/3` and `lids/1003` are new, and `lids/1002` is the body it was, in
+// its place. One row instead of two: the bodies of the second row are gone, and a link that lists
+// one names it as missing.
+export function lidCounts(): boolean {
+  const four = preview({ type: 'setField', feature: 'lids', path: 'transform/count', value: 4 });
+  const added = four.evaluation.features['lids'].bodies.join() === 'lids/1,lids/2,lids/3,lids/1000,lids/1001,lids/1002,lids/1003' && about(four.evaluation.bodies['lids/1002'].bounds.min[0], 170, 1e-4);
+  const one = preview({ type: 'setLink', id: 'bed', bodies: ['lid', 'lids/1', 'lids/1002'] }, { type: 'setField', feature: 'lids', path: 'transform/second/count', value: 1 });
+  return added && one.evaluation.features['lids'].bodies.join() === 'lids/1,lids/2' && one.evaluation.mechanism.links['bed'].missing.join() === 'lids/1002';
+}
+
+// ---------------------------------------------------------------- the document, and what must not compile
+
+// No step of the schema for the grid either: the version is the one of the build, and the document
+// loads to the same model. (A build without the grid refuses it: its linear transform lists its
+// fields, and `second` is not among them.)
+export function roundTripGrid(): boolean {
+  const before = engine.getState();
+  const saved = engine.save();
+  const loaded = engine.load(saved);
+  return (
+    loaded.ok &&
+    (JSON.parse(saved) as { schemaVersion: number }).schemaVersion === SCHEMA_VERSION &&
+    loaded.state.evaluation.features['drains'].status === 'ok' &&
+    loaded.state.evaluation.features['lids'].bodies.join() === LIDS.join() &&
+    about(volumeOf(loaded.state, 'box'), volumeOf(before, 'box'), 1e-9)
+  );
+}
+
+export const wrongGrid = (): void => {
+  const along = { direction: Y, count: 2, span: { type: 'spacing', spacing: 5 } } as const;
+  // @ts-expect-error only a linear pattern has a second direction
+  engine.execute(pattern('c', { type: 'body', body: 'pad' }, { type: 'circular', axis: X, count: 2, span: { type: 'full' }, second: along }));
+  // @ts-expect-error a second direction has a span
+  engine.execute(pattern('g', { type: 'body', body: 'pad' }, { type: 'linear', direction: X, count: 2, span: { type: 'spacing', spacing: 5 }, second: { direction: Y, count: 2 } }));
+  // @ts-expect-error a second direction is not a transform: it has no `type`
+  engine.execute(pattern('g', { type: 'body', body: 'pad' }, { type: 'linear', direction: X, count: 2, span: { type: 'spacing', spacing: 5 }, second: { type: 'linear', ...along } }));
+  // @ts-expect-error the rows are the count of the second direction, not a field of the first
+  engine.execute(pattern('g', { type: 'body', body: 'pad' }, { type: 'linear', direction: X, count: 2, span: { type: 'spacing', spacing: 5 }, rows: 2 }));
+};
+
+// ---------------------------------------------------------------- the part of the scenario
+
+export function scenario12grid(): boolean {
+  const part2e = scenario12e();
+  const walls = volumeOf(engine.getState(), 'box');
+  const vents = bothWallsChecks(walls, ventsOnBothWalls()) && sixPerWall(walls) && JSON.stringify(pastTheEndOfBoth()?.map((ref) => (ref as { copy: number }).copy)) === '[16,17,1016,1017]';
+  const floor = volumeOf(engine.getState(), 'box');
+  const holes = drainChecks(floor, drains()) && oneMoreEachWay(floor) && tooManyPlaces(floor) && parallelDirections() === 'invalidPattern' && aRowAgain(floor) && !secondOnAMirror();
+  const half = halfASecond();
+  const lids = !half && lidChecks(sixLids()) && lidCounts();
+  return part2e && vents && holes && lids && roundTripGrid();
 }

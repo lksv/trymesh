@@ -4,14 +4,20 @@
 // variants of `PatternTransform`, their numeric fields, a reflection among the transforms, and one
 // rule of `applyTool`. No feature type, no command, no query, no face role, no issue code and no
 // upgrade step.
+//
+// The grid (an addition to D53 of 2026-11-17, designed in grid.md) is marked "the grid" below: a
+// second direction of the variant `linear`, the numbers of its copies, its numeric fields and one
+// error code. Written against `master` at 633a6ca, where the two variants above are implemented.
 
-import type { AxisRef, FieldSpec, NumberSpec, Patch, PatternFeature, PatternTransform, RigidTransform, Vec3 } from '../../../packages/engine/src/index';
+import type { AxisRef, FieldSpec, Id, NumberSpec, Patch, PatternFeature, PatternTransform, RigidTransform, Vec3 } from '../../../packages/engine/src/index';
 import type { PlaneRefAfter } from '../00-prep/contract';
 
 // ================================================================ the transform
 
-// The kind of today, unchanged: copies turned around an axis.
-export type CircularTransform = PatternTransform;
+// The kind of today, unchanged: copies turned around an axis. (Since 2e is implemented the type of
+// the engine holds all three kinds; the grid changes the variant `linear`, so the variant of the
+// engine is taken for `circular` alone.)
+export type CircularTransform = Extract<PatternTransform, { type: 'circular' }>;
 
 // `linear`: copies shifted along a direction.
 // - `direction`: an axis as a circular pattern has one (`AxisRef`: a base axis of the model, or the
@@ -32,11 +38,71 @@ export type CircularTransform = PatternTransform;
 //     is no copy and the length is not used.
 // - The variant lists its fields; any other is an invalid command (`axis` belongs to the circular
 //   pattern, `plane` to the mirror).
+// - `second` (the grid): a second direction, see `SecondDirection`. Without it the pattern is a row,
+//   as before the grid.
 export interface LinearTransform {
   type: 'linear';
   direction: AxisRef;
   count: number;
-  span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number };
+  span: LinearSpan;
+  second?: SecondDirection;
+}
+export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };
+
+// ================================================================ the grid: a second direction
+
+// The second direction of a linear pattern: the row of the first direction is repeated along it.
+// - `direction`, `count`, `span`: as for the first direction, each with its own value. The numeric
+//   fields are `transform/second/count`, `transform/second/span/spacing` and
+//   `transform/second/span/length`. `count` includes the row of the original; 1 is that row alone.
+// - The places of the grid are the pairs (i, j): i steps along `direction` (0 … count − 1) and
+//   j steps along `second.direction` (0 … second.count − 1). The place (0, 0) is the original; every
+//   other place is one copy, shifted by `i · step + j · second step`.
+// - The number of the copy at (i, j) is `i + GRID_STRIDE · j` (`copyNumber`): the row of the
+//   original has the numbers 1 … count − 1 of a pattern of one direction, the next row starts at
+//   1000, the one after at 2000. A number does not depend on the counts, so with the span `spacing`
+//   in both directions a larger count adds copies and moves none, and what refers to a copy
+//   (`<pattern>/<number>`, a face tagged `index: <number>`, a link) keeps meaning the same place.
+//   The numbers have gaps; `FeatureResult.bodies` lists the copies that exist, in the order of
+//   their numbers, which is the order they are made in (row by row).
+// - `count × second.count` is at most `MAX_PATTERN_PLACES`, and the two directions must not be
+//   parallel when both counts are above 1 (two places would be one). Both are judged by the
+//   recompute, where the values of expressions and the directions are known: the error
+//   `invalidPattern` of the pattern, with the two fields in `refs`.
+// - Listed fields only (`onlyFields`): a field of the first direction's variant (`type`, `second`)
+//   or of another kind is an invalid command.
+// - `updateFeature`: a patch `{ transform: { second: { … } } }` merges by field with the second
+//   direction the pattern has, or is the new one and has to be complete; `{ second: null }` removes
+//   it (accepted also on a row) and its expressions with it.
+export interface SecondDirection {
+  direction: AxisRef;
+  count: number;
+  span: LinearSpan;
+}
+
+// The stride of the numbers of a grid. Above every count (`MAX_PATTERN_COUNT`, 200), and part of
+// the meaning of every document with a grid: it is never changed, and the bound of a count can
+// grow to 999 at most.
+export const GRID_STRIDE = 1000;
+// The number of the copy `first` steps along the first direction and `second` steps along the
+// second; (0, 0) is the original and has none.
+export const copyNumber = (first: number, second: number): number => first + GRID_STRIDE * second;
+// The body of that copy of a pattern of a body.
+export const copyBody = (pattern: Id, first: number, second: number): Id => `${pattern}/${copyNumber(first, second)}`;
+// A pattern has at most this many places, the original included, in a row or in a grid: the bound
+// of a count, for the product of the two counts.
+export const MAX_PATTERN_PLACES = 200;
+
+declare module '../00-prep/contract' {
+  // `invalidPattern`, an error of a pattern, reported by the recompute:
+  // - the grid has more places than `MAX_PATTERN_PLACES`: `refs` are the fields
+  //   `transform/count` and `transform/second/count`, the detail says the product;
+  // - the two directions of a grid are parallel and both counts are above 1: `refs` are
+  //   `transform/direction` and `transform/second/direction`.
+  // The pattern is in error as a whole and the model stays as it was before it.
+  interface IssueCodes {
+    invalidPattern: true;
+  }
 }
 
 // `mirror`: one copy, the mirror image of the source in a plane.
@@ -114,6 +180,12 @@ export const PATTERN_FIELDS: FieldSpec[] = [
   { path: 'transform/count', spec: PATTERN_COUNT, when: { path: 'transform/type', equals: 'linear' } },
   { path: 'transform/span/spacing', spec: PATTERN_SPACING, when: { path: 'transform/span/type', equals: 'spacing' } },
   { path: 'transform/span/length', spec: PATTERN_LENGTH, when: { path: 'transform/span/type', equals: 'length' } },
+  // the grid: the fields of the second direction. Its count is listed once per span it can have
+  // (a condition names one value, and a pattern without a second direction has neither).
+  { path: 'transform/second/count', spec: PATTERN_COUNT, when: { path: 'transform/second/span/type', equals: 'spacing' } },
+  { path: 'transform/second/span/spacing', spec: PATTERN_SPACING, when: { path: 'transform/second/span/type', equals: 'spacing' } },
+  { path: 'transform/second/count', spec: PATTERN_COUNT, when: { path: 'transform/second/span/type', equals: 'length' } },
+  { path: 'transform/second/span/length', spec: PATTERN_LENGTH, when: { path: 'transform/second/span/type', equals: 'length' } },
 ];
 
 // ================================================================ the transforms of the copies
@@ -129,6 +201,15 @@ export declare function mirrors(transform: RigidTransform): boolean;
 // What `transformsOf` of features/pattern.ts answers for the kinds, the original excluded:
 // - linear: `shift(direction, k · step)` for `k` from 1 to `count − 1`;
 // - mirror: `[reflection(origin, normal)]` of the frame of the plane.
+// The grid: the function answers the copies with their numbers instead of a bare list, because the
+// number of a copy is no longer its position in the list. For a grid, row by row:
+// `{ transform: compose(shift(direction, i · step), shift(second.direction, j · second step)),
+// index: copyNumber(i, j) }` for j from 0, i from 0, without (0, 0). The step of a direction is its
+// `spacing`, or `length / (count − 1)`.
+export interface PatternCopy {
+  transform: RigidTransform;
+  index: number; // the number of the copy: `<pattern>/<index>`, `copy: [{ pattern, index }]`, `refs: [{ copy: index, … }]`
+}
 // A transform of a pattern is thus an isometry that may mirror. The transform of a link of the
 // mechanism (`LinkResult.transform`, the same type) never does: it is composed of turns and shifts.
 
@@ -157,8 +238,11 @@ export const MIRRORED_TOOL = 'applyTool turns the triangles of a tool over when 
 // - No upgrade step: a build without the package refuses a transform of a type it does not know
 //   (`patternFeature` lists the types: "transform.type: čeká se jedna z hodnot circular", an invalid
 //   document on load), and the two variants list their own fields, so a later field of them is
-//   refused by this build in turn.
-// - No issue code: a mirror plane fails like the plane of a sketch; a copy fails as copies do today.
+//   refused by this build in turn. The grid is such a field: `master` refuses a document with
+//   `transform.second` ("a transform of the type linear has no such field", measured), so the grid
+//   has no step either; the second direction lists its fields in turn.
+// - No issue code for the two kinds: a mirror plane fails like the plane of a sketch; a copy fails
+//   as copies do today. (The grid adds `invalidPattern`, above.)
 // - No face role and no change of a face name: a face of a copy is the name of its source with the
 //   tag of the copy, for every kind.
 // - Nothing in `AxisRef` and nothing in `PlaneRef`.

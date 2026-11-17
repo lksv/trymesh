@@ -35,7 +35,7 @@ The step is the step of D36 and gives the priority. The track groups packages th
 | 3b | Import of a mesh as a reference body | 3 | E | 3a | outline |
 | 3c | Inserting another document as a part | 3 | E | 3b | outline |
 | 3d | Boolean of bodies, subtraction with a clearance, split by a plane | 3 | E | 00 | outline |
-| 3e | Parts list | 3 | E | 3a, 2c | outline |
+| 3e | Parts list | 3 | E | 3a, 2c | full design 2026-11-17, D57 ([3e-parts-list/design.md](3e-parts-list/design.md)): the query `partsList` (printed and bought parts as rows of bodies, a body and its unchanged copies one row; hardware as the labels of the hole features counted by the holes the model has, by the line of each and how far along it the hole reaches), the export format `partsCsv`, `shapeOrigin` (what a solid is a copy of), `partName`, the view of the app; nothing added to the document, no schema step |
 | 4a | Revolve | 4 | G | 2b (same code: tool build, face kinds) | outline |
 | 4b | Chamfer and fillet of edges: spike, chamfer, fillet | 4 | G | 4a | outline; the spike can run any time |
 | 5a | Mechanism description and the posed queries | 5 | H | 1c, 3a; scenario 13 also 1d; its app side the generic form of 1b | implemented and merged 2026-11-16 ([5a-mechanism/design.md](5a-mechanism/design.md), "As implemented"); the section `mechanism`, the pose of the queries with `pairInFrame` and `geometry: 'modelled'`, the query `mechanism`, the panel of the app; schema version 6 |
@@ -118,5 +118,5 @@ Assigned when the design of a package starts, so that two packages never take th
 
 | Kind | Taken | Next |
 |---|---|---|
-| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g (taken when their designs started) | D55 |
+| Decisions | D1 to D37 (D37 is the preparatory step); D38 to D43 track A (1a to 1f); D44 2a, D45 2b, D46 2c, D47 2f; D48 3a; D49 5a; D50 5e; D51 5f; D52 2d, D53 2e, D54 2g; D55 3b, D56 3d, D57 3e (taken when their designs started) | D58 |
 | Validation scenarios | 1 to 9; 10 is reserved for the optional prototype of D35; 11 track A, 12 track B, 13 3a and 5a (5e adds its poses to the part of 5a) | 14 |

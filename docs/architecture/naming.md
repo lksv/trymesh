@@ -37,7 +37,7 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | Stěna zanikne | Jméno nemá žádný trojúhelník → reference je rozbitá → feature je v chybě. |
 | Dvě stěny splynou do jedné roviny | Zůstávají dvě stěny s různými jmény. |
 | Kružnice nebo oblouk | Všechny segmenty mají stejné jméno, válcová plocha je jedna stěna. |
-| A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. |
+| A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. The copy of a grid i steps along the first direction and j along the second has the number i + 1000 · j (D53, [pattern.md](pattern.md)): one tag per face as for a row, a number with gaps that does not depend on the counts, so a larger count renames no face. `faceKey` appends `/@<pattern>:<index>` as for a row; nothing compares the numbers of two tags as numbers. |
 | A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
 
 The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has four kinds: a plane, a cylinder, a cone (the side of an arc or a circle of a tapered extrusion, D45; the head of a countersink, D46) and a general surface swept along the extrusion axis (the side of a generated profile). Only a plane can carry a sketch, and an edge is a circle where its two surfaces meet in one (`circleBetween`, [extrude.md](extrude.md), "Taper").

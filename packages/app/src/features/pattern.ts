@@ -1,12 +1,12 @@
 // The pattern in the app: its form (what to repeat, the kind of the transform, the axis or the
 // direction, the count and the span, or the plane of a mirror), its summary, and the faces of its
 // copies.
-import { type Id, type Input, type PatternFeature, type PlaneRef, type Unit, producesTool } from '@trymesh/engine';
+import { GRID_STRIDE, type Id, type Input, MAX_PATTERN_PLACES, type PatternFeature, type PlaneRef, type Unit, producesTool } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { bodyName } from '../issue-text';
-import { axisRows } from '../axis-picker';
+import { FIRST_DIRECTION, SECOND_DIRECTION, axisRows } from '../axis-picker';
 import { type LinearSpan, NEW_TRANSFORM, type PatternChange, type PatternChoices, type PatternKind, type PatternMemory, type PatternSpan, changePattern, draftCommand, patternIncomplete, patternSource, rememberPattern } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -78,7 +78,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
       h('p', { className: 'hint' }, 'The copies are new bodies; what is added to the source after the pattern is not copied.'),
     );
   }
-  const count = () => draftField(host, m, 'Count with the original (a whole number or an expression)', 'transform/count', (value) => set({ count: value }, false));
+  const count = (label = 'Count with the original (a whole number or an expression)') => draftField(host, m, label, 'transform/count', (value) => set({ count: value }, false));
   if (transform.type === 'circular') {
     const { axis, span } = transform;
     out.push(
@@ -88,16 +88,31 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
       span.type === 'angle' ? draftField(host, m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
     );
   } else if (transform.type === 'linear') {
-    const { direction, span } = transform;
+    const { direction, span, second } = transform;
+    const noSketch = 'The normal of a sketch plane needs a sketch before this place of the timeline.';
     out.push(
-      ...axisRows(host, direction, choices.sketches, set, 'The normal of a sketch plane needs a sketch before this place of the timeline.', true),
-      count(),
+      ...axisRows(host, direction, choices.sketches, set, noSketch, FIRST_DIRECTION),
+      count(second ? 'Count along the direction (a whole number or an expression)' : undefined),
       select('Span', (value) => set({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbours', span.type === 'spacing'), option('length', 'Length between the first and the last copy', span.type === 'length')),
       span.type === 'spacing'
         ? draftField(host, m, 'Spacing (mm or an expression; negative = against the direction)', 'transform/span/spacing', (spacing) => set({ spacing }, false))
         : draftField(host, m, 'Length (mm or an expression; negative = against the direction)', 'transform/span/length', (length) => set({ length }, false)),
       h('p', { className: 'hint' }, span.type === 'spacing' ? 'A larger count adds copies at the far end and moves none.' : 'The copies divide the length evenly; a change of the count moves them all.'),
+      // a grid (D53): the row repeated along a second direction
+      h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: second !== undefined, onchange: () => set({ grid: second === undefined }) }), 'A second direction (a grid)'),
     );
+    if (second) {
+      const along = (change: Parameters<typeof set>[0]['second'], rebuild = true) => set({ second: change }, rebuild);
+      out.push(
+        ...axisRows(host, second.direction, choices.sketches, (change) => along(change), noSketch, SECOND_DIRECTION),
+        draftField(host, m, 'Count along the second direction (a whole number or an expression)', 'transform/second/count', (value) => along({ count: value }, false)),
+        select('Second span', (value) => along({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbouring rows', second.span.type === 'spacing'), option('length', 'Length between the first and the last row', second.span.type === 'length')),
+        second.span.type === 'spacing'
+          ? draftField(host, m, 'Second spacing (mm or an expression; negative = against the direction)', 'transform/second/span/spacing', (spacing) => along({ spacing }, false))
+          : draftField(host, m, 'Second length (mm or an expression; negative = against the direction)', 'transform/second/span/length', (length) => along({ length }, false)),
+        h('p', { className: 'hint' }, `Copy numbers: steps along the first direction + ${GRID_STRIDE} × steps along the second, so the second row starts at ${GRID_STRIDE}. At most ${MAX_PATTERN_PLACES} places.`),
+      );
+    }
   } else out.push(...mirrorRows(m, host, transform.plane, set));
   out.push(h('p', { id: 'draft-bodies', className: 'hint' }, patternBodies(m, host)), ...draftButtons(host, m));
   return out.filter((element): element is HTMLElement => element !== null);
@@ -197,9 +212,15 @@ export const pattern: FeatureUi<PatternFeature, Extra> = {
     const source = f.source.type === 'features' ? `features: ${f.source.features.map((id) => host.nameOf(id)).join(', ')}` : `body: ${host.bodyName(f.source.body)}`;
     if (t.type === 'mirror') return [h('p', { className: 'hint' }, `Mirrored in ${planeText(host, t.plane)}; ${source}.`)];
     if (t.type === 'linear') {
-      const along = t.direction.kind === 'base' ? `axis ${t.direction.axis}` : `the normal of ${host.nameOf(t.direction.sketch)}`;
-      const extent = t.span.type === 'spacing' ? `spacing ${field('transform/span/spacing', t.span.spacing, 'mm')}` : `length ${field('transform/span/length', t.span.length, 'mm')}`;
-      return [h('p', { className: 'hint' }, `Count ${field('transform/count', t.count, 'count')} with the original, along ${along}, ${extent}; ${source}.`)];
+      // one direction: along what, and by which span, at `transform/` or `transform/second/`
+      const way = (prefix: string, d: { direction: typeof t.direction; span: typeof t.span }): string => {
+        const along = d.direction.kind === 'base' ? `axis ${d.direction.axis}` : `the normal of ${host.nameOf(d.direction.sketch)}`;
+        const extent = d.span.type === 'spacing' ? `spacing ${field(`${prefix}/span/spacing`, d.span.spacing, 'mm')}` : `length ${field(`${prefix}/span/length`, d.span.length, 'mm')}`;
+        return `along ${along}, ${extent}`;
+      };
+      const count = field('transform/count', t.count, 'count');
+      if (!t.second) return [h('p', { className: 'hint' }, `Count ${count} with the original, ${way('transform', t)}; ${source}.`)];
+      return [h('p', { className: 'hint' }, `Count ${count} × ${field('transform/second/count', t.second.count, 'count')} with the original, ${way('transform', t)}, and ${way('transform/second', t.second)}; ${source}.`)];
     }
     const around = t.axis.kind === 'base' ? `axis ${t.axis.axis}` : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
     const extent = t.span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', t.span.angle, 'rad')}`;

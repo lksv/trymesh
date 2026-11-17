@@ -20,6 +20,8 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Errors of featu
 | `sketchConflict` (varování, model zůstává) | otevřít skicu, smazat konfliktní vazbu | `removeConstraint` |
 | `invalidExpression` (an error; a warning for a sketch, which keeps the last valid value) | fix the expression or the parameter, or enter a number | `setParameter`, `updateFeature`, `setConstraintValue` |
 | `invalidExtent` (D47) | pick another plane (not parallel to the direction, not through the start), or a smaller gap | `updateFeature` |
+| `invalidHole` (D46) | make the head wider than the bore and shallower than the hole, or move the points apart | `updateFeature`, `setField` |
+| `invalidPattern` (D53, a grid) | fewer places (the product of the two counts at most 200), or another step or direction where the message names two copies in one place; or `second: null` for a row | `updateFeature`, `setField`, `setParameter` |
 
 Text chyby čte UI z `features[id].error`, varování z `features[id].warnings`; dotčené reference jsou v `refs`.
 

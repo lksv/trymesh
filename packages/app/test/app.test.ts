@@ -66,6 +66,9 @@ const COUNT = 'Count with the original (a whole number or an expression)';
 const ANGLE = 'Angle (° or an expression in radians)';
 const SPACING = 'Spacing (mm or an expression; negative = against the direction)';
 const LENGTH = 'Length (mm or an expression; negative = against the direction)';
+const SECOND_COUNT = 'Count along the second direction (a whole number or an expression)';
+const SECOND_SPACING = 'Second spacing (mm or an expression; negative = against the direction)';
+const SECOND_LENGTH = 'Second length (mm or an expression; negative = against the direction)';
 const OFFSET = 'Offset along the normal (mm or an expression)';
 const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
 const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
@@ -762,6 +765,26 @@ describe('the app, driven as a user drives it', () => {
     h.record('edited into a row of the plate: another kind replaces the transform; the copy keeps its ID');
     h.row('Mirror 1').click();
     h.record('the summary of a row');
+    // the grid (D53): the row of the plate gets a second direction
+    doubleClick(h, 'Mirror 1');
+    tick(h, 'A second direction (a grid)');
+    h.record('a second direction: along Y, a count of 2 and a spacing of 10; the copies 1, 1000, 1001');
+    h.choose('Second direction', 'X');
+    h.type(h.field(SECOND_SPACING), '50');
+    h.record('along X with the step of the first: the preview says that the copies 1 and 1000 would stand in one place');
+    h.choose('Second direction', 'Y');
+    h.choose('Second span', 'length');
+    h.type(h.field(SECOND_LENGTH), '70');
+    h.type(h.field(SECOND_COUNT), '3');
+    h.press('panel', 'OK');
+    h.record('OK: a grid 2 × 3 over a length of 70 along Y');
+    expect(h.engine.getState().evaluation.features[h.engine.getState().document.features.find((f) => f.name === 'Mirror 1')?.id as string].bodies).toHaveLength(5);
+    h.row('Mirror 1').click();
+    h.record('the summary of a grid');
+    doubleClick(h, 'Mirror 1');
+    tick(h, 'A second direction (a grid)');
+    h.press('panel', 'OK');
+    h.record('the checkbox cleared: a row again, the command removes the second direction by name');
     // review of D53: a direction whose point is gone can be repaired in the form
     outside(h, { type: 'addPoint', sketch, id: 'pp', x: 30, y: 25 });
     outside(h, { type: 'addFeature', feature: { id: 'lin', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'features', features: ['hole'] }, transform: { type: 'linear', direction: { kind: 'sketchPoint', sketch, point: 'pp' }, count: 2, span: { type: 'spacing', spacing: 15 } } } });

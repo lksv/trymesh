@@ -314,6 +314,7 @@ type Command =
 - A profile of regions takes its offset the same way: `{ profile: { offset: 2 } }` sets it and `{ profile: { offset: null } }` removes it, also from a feature that did not have it (an optional numeric field, D44). The curves of a wall are a list and are replaced whole; each curve the feature did not have before is verified as an own curve of the sketch.
 - Odkaz (objekt s polem `kind`: `PlaneRef`, or the `AxisRef` of a pattern) a seznam se nahrazují celé. Půlka odkazu (objekt bez `kind` tam, kde odkaz je) je neplatný příkaz: sloučení by vybralo jinou stěnu téhož tělesa.
 - `null` volitelné pole odebere (`targets: null`). Pole s hodnotou `undefined` (jen z kódu, v JSON není) znamená „neměnit".
+- The second direction of a linear pattern (a grid, D53) is an object without a `type`: `{ transform: { second: { count: 4 } } }` merges with the second direction the pattern has, and on a row it is the new value and has to be complete. `{ transform: { second: null } }` makes a row again and drops the expressions under `transform/second/`; it is accepted also on a row (a name the feature knows, `removable` of the module), not on another kind.
 - Pole, které výsledná feature nemá (překlep, pole jiné varianty rozsahu), je neplatný příkaz, ne úspěch bez účinku.
 - Měnit jde jen pole, která typ feature v registru vyjmenovává (rovina `base`, `offset`; vysunutí `profile`, `extent`, `operation`, `targets`; a pattern `source`, `transform`). ID, jméno, potlačení a typ feature mají vlastní příkazy nebo se nemění; skica se mění jen svými příkazy.
 - Přechod na `operation: 'new'` cíle zahodí, pokud je změna sama neuvádí.
@@ -330,7 +331,7 @@ type Command =
 - **Hodnoty.** Čísla jsou konečná a v rozsahu ±1e9; záporná nula se ukládá jako nula. `extent.distance` u extrude není nula a `profile.regions` není prázdné (tatáž oblast dvakrát je jedna oblast). `add` has exactly one body in `targets`, `cut` one or more without repeats, `new` none. The extent `throughAll` is accepted only with `cut` and needs `side`. Poloměr nové kružnice je kladný. Hodnoty kót splňují konvenci znamének.
 - `origin` a odvozené entity promítnuté geometrie nejde smazat ani jimi táhnout.
 
-Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature.
+Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (konfliktní vazba, zaniklá stěna), se provede a problém se objeví ve stavu feature. So does a grid whose two counts are each in range and too many together, or whose places meet: the error `invalidPattern` of the recompute (D53), not a refused command, because either count may be an expression and the directions are known to the recompute only; a document holding such a grid loads.
 
 **Chování fasády:**
 

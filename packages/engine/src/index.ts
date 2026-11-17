@@ -20,6 +20,7 @@ export {
   withPath,
 } from './document';
 export { generatorOf, producesTool } from './features/index';
+export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
 export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
 export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow, SocketHeadScrewRow } from './catalogs/hardware';

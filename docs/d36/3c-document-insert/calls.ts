@@ -30,7 +30,8 @@ declare const clipShop: Engine;
 declare const workshop: EngineAfter3c; // a second engine with this package, for a document that inserts another
 declare const spare: EngineAfter3c; // a third, for loads that should not change `engine`
 // The saved text of a document as `master` before 3b and 3c writes it: the sections `meshes` and
-// `documents` left out and the schema version of that `master` (6). A build of the same sources
+// `documents` and the field `schemaSteps` left out (a step it names would be taken as done) and the
+// schema version of that `master` (6). A build of the same sources
 // cannot save an older version, so the older file is made from the newer one.
 declare function asSavedByMaster(json: string): unknown;
 declare function fail(message: string): never;
@@ -137,7 +138,7 @@ export function inserted(): EngineStateAfter3c {
   );
 }
 
-// What came in: one body each, named after the insertion (it brings one body), a bought part of
+// What came in: one body each, named after the insertion and its name there, a bought part of
 // 12 g by what the bearing's own document says, with the faces of the document under prefixed names.
 // The stored copy is the upgraded document: it has the sections of this build, its own stored
 // documents among them.
@@ -152,7 +153,7 @@ export function whatCameIn(): boolean {
     features['b2'].bodies.join() === 'b2/ring' &&
     JSON.stringify(features['b1'].facts?.origin) === '[120,0,0.5]' &&
     JSON.stringify(features['b2'].facts?.axisZ) === '[0,0,1]' &&
-    ring.name === 'Elbow bearing' &&
+    ring.name === 'Elbow bearing / 608 bearing' &&
     ring.use === 'reference' &&
     ring.mass === 12 &&
     ring.massFrom === 'mass' &&
@@ -169,9 +170,10 @@ export function whatCameIn(): boolean {
   );
 }
 
-// The two insertions are one part: made from one solid of the inserted document (the evaluator
-// remembers its recompute, and the elbow's parameter has the value the document has), so they have
-// one origin and the parts list counts them in one row.
+// The two insertions are one part: b1 sets `D` to 22 and b2 sets nothing, which is one environment of
+// the bearing's parameters, so b2 takes the recompute of b1 from the state before it
+// (`State.insertions`), whatever the memo of the evaluator kept; they have one origin and the parts
+// list counts them in one row.
 export function onePart(): boolean {
   const state = engine.getState();
   const a = shapeOrigin(state.evaluation.bodies['b1/ring'].solid);
@@ -350,8 +352,8 @@ export function loading(): string[] {
     return result.ok ? fail('expected a refusal') : result.error.message;
   };
   return [
-    messageOf(withField), // documents.bearing.source: not a field of a stored document
-    messageOf(newer), // documents.bearing.document: the schema version 99 is newer than this build reads (the path from validateDocument(value, what, depth))
+    messageOf(withField), // document.documents.bearing.source: not a field of a stored document
+    messageOf(newer), // document.documents.bearing.document: the schema version 99 is newer than this build reads (the path from validateDocument(value, what, depth))
   ];
 }
 

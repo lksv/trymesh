@@ -151,8 +151,10 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
   const p = solid.positions;
   const position = (i: number): Vec3 => [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
   const precision = 1e-6 * Math.max(1, reach(solid));
-  const slack = (radius: number): number => ANGLE_TOLERANCE + (10 * precision) / radius;
-  const lift = liftOf(tolerance, bandOf(solid));
+  // at most five angle tolerances: a small radius far from the origin must not make any end smooth
+  const slack = (radius: number): number => Math.min(ANGLE_TOLERANCE + (10 * precision) / radius, 5 * ANGLE_TOLERANCE);
+  const band = bandOf(solid);
+  const lift = liftOf(tolerance, band);
 
   // The canonical vertex of every vertex of the mesh: vertices at one place are one.
   const canonical = new Int32Array(p.length / 3);
@@ -458,10 +460,24 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
       if (index === undefined) return refuse('unsupportedEdge', [edge.name, continuation], 'the edge continues smoothly into the second edge in refs; add it to this feature');
       return { vertex, point, joint: index, plane: across };
     };
-    if (list.length === 1) {
-      const [c] = list;
-      if (continues(c, a, point)) return smooth(nameOfEdge(c, b));
-      if (continues(c, b, point)) return smooth(nameOfEdge(c, a));
+    // planes at the end that lie in one plane (a plate and a wall added flush with its end) are one
+    // end face; what a tool leaves in it is named by the one next to face a, else the first
+    const flush = (): number | undefined => {
+      if (list.length < 2) return undefined;
+      const infos = list.map(faceInfo);
+      const first = infos[0];
+      if (!first.planar) return undefined;
+      const normal = unit3(first.normal);
+      const one = infos.every((info) => info.planar && Math.abs(Math.abs(dot3(unit3(info.normal), normal)) - 1) <= 1 - Math.cos(ANGLE_TOLERANCE) && Math.abs(dot3(sub3(info.origin, first.origin), normal)) <= LENGTH_TOLERANCE + 10 * precision);
+      if (!one) return undefined;
+      const besideA = list.find((face) => [...(edgesAt.get(vertex) ?? [])].some((e) => e !== edge.data && ((e.a === a && e.b === face) || (e.b === a && e.a === face))));
+      return besideA ?? list[0];
+    };
+    const single = list.length === 1 ? list[0] : flush();
+    if (single !== undefined) {
+      const c = single;
+      if (list.length === 1 && continues(c, a, point)) return smooth(nameOfEdge(c, b));
+      if (list.length === 1 && continues(c, b, point)) return smooth(nameOfEdge(c, a));
       const info = faceInfo(c);
       if (!info.planar) return refuse('unsupportedEdge', [edge.name], `the edge ends at a round face (${named}) that does not continue a face of the edge`);
       if (edge.line) return { vertex, point, face: c, plane: crossing({ point: info.origin, normal: info.normal }, [edge.name], `the edge ends at a plane (${named}) within 0.01 rad of the edge`) };
@@ -638,7 +654,6 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
   // The bound: BLEND_VOLUME × the chord tolerance (or the share of a lift held up by the band) ×
   // the strips the blends eat, the shift the kernel may leave where a cap lies flush on an end
   // face (4 bands × the area of the profile at each end, ports.md, guarantee 3), and 10⁻³ mm³.
-  const band = bandOf(solid);
   const strips = (list: Build[]): number => list.reduce((sum, build) => sum + 2 * build.piece.edge.profile.setback * build.piece.length, 0);
   const caps = (list: Build[]): number => list.reduce((sum, build) => sum + 2 * Math.abs(polygonArea(build.piece.edge.profile.points)), 0);
   const checkVolume = (list: Build[], changed: number, what: string): void => {
@@ -650,6 +665,49 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
   };
   checkVolume(cutBuilds, volumeOf(solid) - volumeOf(afterCut), 'took');
   checkVolume(addBuilds, volumeOf(result) - volumeOf(afterCut), 'added');
+
+  // What the cap of a tool leaves in the plane of its end face C is C extended only where it faces
+  // the way C does. A cap facing against C is new material beyond the plane of C (a chamfer that
+  // reaches past a riser lower than it into the material beyond, an added fillet standing above a
+  // lower end wall): above a sliver it is refused, a sliver goes to the blend.
+  const outwardOf = new Map<number, Vec3>();
+  const normalOf = (mesh: Solid, t: number): Vec3 => {
+    const q = mesh.positions;
+    const at = (i: number): Vec3 => [q[3 * i], q[3 * i + 1], q[3 * i + 2]];
+    const [i, j, k] = [mesh.triangles[3 * t], mesh.triangles[3 * t + 1], mesh.triangles[3 * t + 2]];
+    return cross3(sub3(at(j), at(i)), sub3(at(k), at(i)));
+  };
+  const outward = (face: number): Vec3 => {
+    let sum = outwardOf.get(face);
+    if (sum) return sum;
+    sum = [0, 0, 0];
+    for (let t = 0; t < solid.faceIds.length; t++) if (solid.faceIds[t] === face) sum = add3(sum, normalOf(solid, t));
+    outwardOf.set(face, sum);
+    return sum;
+  };
+  const capOf = new Map<number, { edge: Edge; face: number }>();
+  for (const edge of edges)
+    for (const piece of edge.pieces)
+      piece.ends.forEach((end, k) => {
+        if (end?.face !== undefined) capOf.set(endNumber(piece, k as 0 | 1), { edge, face: end.face });
+      });
+  const against = new Map<number, number>(); // the area of a cap facing against its end face
+  const wrongWay = new Set<number>(); // the triangles of such caps
+  for (let t = 0; t < result.faceIds.length; t++) {
+    const cap = capOf.get(result.faceIds[t]);
+    if (!cap) continue;
+    const n = normalOf(result, t);
+    if (dot3(n, outward(cap.face)) >= 0) continue;
+    wrongWay.add(t);
+    against.set(result.faceIds[t], (against.get(result.faceIds[t]) ?? 0) + len3(n) / 2);
+  }
+  // the bound: the step of the lift as at a joint, and the band of the kernel along the outline of
+  // the profile (a cap lying in the plane of C, which the kernel may leave shifted by the band)
+  const perimeter = (points: readonly Vec2[]): number => points.reduce((sum, q, i) => sum + Math.hypot(points[(i + 1) % points.length][0] - q[0], points[(i + 1) % points.length][1] - q[1]), 0);
+  for (const [number, area] of against) {
+    const { edge, face } = capOf.get(number) as { edge: Edge; face: number };
+    if (area > lift * (size + edge.profile.overshoot) + 4 * band * perimeter(edge.profile.points)) refuse('blendDoesNotFit', [edge.name, state.faceNames[face]], `the ${kind} reaches past the end face in refs: ${shown(area)} mm² of its end faces the other way, ${edge.corner.convex ? 'into material beyond that face' : 'standing out over that face'}`);
+  }
 
   // ------------------------------------------------ 11. the renumbering
   const final = new Map<number, number>();
@@ -663,7 +721,8 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
       });
     }
   }
-  const faceIds = result.faceIds.map((face) => (face < firstNumber ? face : (final.get(face) ?? face)));
+  const blendOfCap = (number: number): number => state.faceNames.length + (capOf.get(number) as { edge: Edge }).edge.index;
+  const faceIds = result.faceIds.map((face, t) => (face < firstNumber ? face : wrongWay.has(t) ? blendOfCap(face) : (final.get(face) ?? face)));
   if (faceIds.some((face) => face >= firstNumber)) throw new Error('a face of a tool of the chamfer or fillet has no number');
   const facts: Facts = {};
   for (const edge of edges) {

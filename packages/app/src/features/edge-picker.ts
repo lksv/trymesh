@@ -114,7 +114,10 @@ function form(kind: Kind): FeatureForm<Blend, Extra> {
     draft(host, at) {
       const bodies = bodiesBefore(host, at.index);
       if (bodies.length === 0) return { problem: `A ${kind} needs a body with edges. Create one first.` };
-      const picked = host.selected?.kind === 'edge' && bodies.includes(host.selected.body) && (host.selected.edgeKind === 'line' || host.selected.edgeKind === 'circle') ? host.selected : undefined;
+      // the edge selected in the view, when the body has it before the feature and it can take one
+      const selected = host.selected?.kind === 'edge' ? host.selected : undefined;
+      const before = selected && bodies.includes(selected.body) ? kindOf(host, at.index, selected.body, selected.name) : undefined;
+      const picked = selected && (before === 'line' || before === 'circle') ? selected : undefined;
       const body = picked?.body ?? (host.selected && host.selected.kind !== 'plane' && bodies.includes(host.selected.body) ? host.selected.body : bodies[bodies.length - 1]);
       const id = host.newId(spec.prefix);
       const common = { id, name: `${spec.title} ${id.slice(spec.prefix.length)}`, suppressed: false, body, edges: picked ? [picked.name] : [] };
@@ -134,10 +137,11 @@ function form(kind: Kind): FeatureForm<Blend, Extra> {
       if (!m.extra.picking) return;
       if (pick?.kind !== 'edge') return host.say(`Click an edge. ${spec.edges}`, true);
       if (pick.edgeKind !== 'line' && pick.edgeKind !== 'circle') return host.say(`That edge is ${KINDS[pick.edgeKind]}: only a straight or a circular edge can take a ${kind}.`, true);
+      // the body first: two bodies can have edges of the same name (the halves of a split)
+      if (m.draft.edges.length && pick.body !== m.draft.body) return host.say(`The edges of one ${kind} belong to one body (${host.bodyName(m.draft.body)}); another body is another feature.`, true);
       const key = edgeKeyOf(pick.name);
       const at = edgesOf(m.draft).findIndex((edge) => edgeKeyOf(edge) === key);
       if (at >= 0) m.draft = { ...m.draft, edges: m.draft.edges.filter((_, i) => i !== at) };
-      else if (m.draft.edges.length && pick.body !== m.draft.body) return host.say(`The edges of one ${kind} belong to one body (${host.bodyName(m.draft.body)}); another body is another feature.`, true);
       else m.draft = { ...m.draft, body: pick.body, edges: [...m.draft.edges, pick.name] };
       host.say(`${m.draft.edges.length} edge${m.draft.edges.length === 1 ? '' : 's'} picked.`);
       draftChanged(host);

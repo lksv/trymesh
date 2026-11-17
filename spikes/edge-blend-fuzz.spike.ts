@@ -9,8 +9,11 @@
 // - revolved parts (4a): a ring with a cone on its outside, its four rims;
 // - tilted copies: a box turned by a circular pattern of the body about a random axis.
 // Each body is made at one of the chord tolerances 0.001, 0.01 and 0.05 in turn. What counts: no
-// `kernelFailure` (the adapter refused a tool, or the engine's checks found what should not be);
-// the refusals are listed by their detail.
+// `kernelFailure` (the adapter refused a tool, or the engine's checks found what should not be),
+// and in every accepted result, checked here apart from the engine: the faces of the edge are
+// there, the volume changed the way the edge says (less for a convex edge, more for a concave
+// one), and no flat face of the body has gained triangles facing against it (a face turned round,
+// the finding of the review of D63); the refusals are listed by their detail.
 // More cases: BLEND_FUZZ_COUNT=600 (bodies), another seed: BLEND_FUZZ_SEED, farther: BLEND_FUZZ_FAR.
 // Run from the root of the repository: npx vitest run --config spikes/vitest.config.ts
 import { expect, test } from 'vitest';
@@ -34,6 +37,45 @@ function random(seed: number): () => number {
   };
 }
 const rnd = random(Number(process.env.BLEND_FUZZ_SEED ?? 1));
+
+// Per face of a body: the sum of the normals of its triangles (by area) and its area.
+function faceNormals(state: EngineState, body: Id): Map<string, { normal: number[]; area: number; triangles: number[][] }> {
+  const s = state.evaluation.bodies[body].solid;
+  const p = s.positions;
+  const out = new Map<string, { normal: number[]; area: number; triangles: number[][] }>();
+  for (let t = 0; t < s.faceIds.length; t++) {
+    const [i, j, k] = [s.triangles[3 * t], s.triangles[3 * t + 1], s.triangles[3 * t + 2]];
+    const u = [0, 1, 2].map((d) => p[3 * j + d] - p[3 * i + d]);
+    const v = [0, 1, 2].map((d) => p[3 * k + d] - p[3 * i + d]);
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const key = JSON.stringify(state.evaluation.faceNames[s.faceIds[t]]);
+    const entry = out.get(key) ?? { normal: [0, 0, 0], area: 0, triangles: [] };
+    entry.normal = entry.normal.map((x, d) => x + n[d] / 2);
+    entry.area += Math.hypot(n[0], n[1], n[2]) / 2;
+    entry.triangles.push(n);
+    out.set(key, entry);
+  }
+  return out;
+}
+
+// What is wrong with an accepted result, checked apart from the engine; undefined when nothing.
+function wrongResult(before: EngineState, after: EngineState, body: Id, edge: EdgeName, convex: boolean): string | undefined {
+  const old = faceNormals(before, body);
+  const now = faceNormals(after, body);
+  for (const face of [edge.a, edge.b]) if (!now.has(JSON.stringify(face))) return `the face ${JSON.stringify(face)} of the edge is gone`;
+  const change = after.evaluation.bodies[body].volume - before.evaluation.bodies[body].volume;
+  if (convex ? change >= 0 : change <= 0) return `the volume changed by ${change} at a ${convex ? 'convex' : 'concave'} edge`;
+  for (const [key, was] of old) {
+    if (Math.hypot(...was.normal) < 0.999 * was.area) continue; // flat faces only
+    const is = now.get(key);
+    if (!is) continue;
+    // what faces against the face, against what did before (a body far out may have some already)
+    const against = (triangles: number[][]): number => triangles.reduce((sum, n) => (n[0] * was.normal[0] + n[1] * was.normal[1] + n[2] * was.normal[2] < 0 ? sum + Math.hypot(n[0], n[1], n[2]) / 2 : sum), 0);
+    const gained = against(is.triangles) - against(was.triangles);
+    if (gained > 1e-3) return `${gained.toFixed(4)} mm² more of ${key} face against it`;
+  }
+  return undefined;
+}
 
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
 const XZ: PlaneRef = { kind: 'base', plane: 'XZ' };
@@ -182,6 +224,10 @@ test('the fuzz of single edges', () => {
       const result = c.engine.preview({ type: 'addFeature', feature } as Command);
       if (!result.ok) throw new Error(`${c.label}: ${result.error.message}`);
       const outcome = result.state.evaluation.features.blend;
+      if (outcome.status === 'ok') {
+        const wrong = wrongResult(c.engine.getState(), result.state, c.body, c.edge, result.state.evaluation.features.blend.facts?.['cut/0'] === true);
+        if (wrong) failures.push(`${c.label} ${kind} ${size}: accepted, but ${wrong}`);
+      }
       const key = outcome.error ? `${outcome.error.code}: ${outcome.error.message.replace(/^[^(]*\(/, '(').replace(/[0-9.]+ mm/g, 'N mm')}` : outcome.status;
       outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
       if (outcome.error) examples.set(key, [...(examples.get(key) ?? []), `${c.label} ${kind} ${size}`].slice(0, 5));

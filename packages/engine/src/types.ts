@@ -547,7 +547,8 @@ export interface RevolveFeature extends FeatureBase {
 // - Where an edge ends: at another edge of the same feature that shares a face with it (smoothly;
 //   at the same angle to the shared face, in their mitre; both straight and convex at a convex
 //   corner of that face, each in the plane of the other's other face); at one planar face, whose
-//   plane the chamfer or fillet ends in (an arc: a plane through its axis); or it runs on smoothly
+//   plane the chamfer or fillet ends in (an arc: a plane through its axis; planes flush in one
+//   plane, a plate and a wall flush with its end, count as one); or it runs on smoothly
 //   into the next edge of a face (a line of an outline with round corners into the arc of the
 //   corner; also across a seam where both faces of the edge continue into flush faces), and that
 //   next edge has to be in the same feature: the error names it. An arc that meets another edge of
@@ -559,7 +560,8 @@ export interface RevolveFeature extends FeatureBase {
 //   a cylinder (a chamfer of a circular edge), a torus (a fillet of one; a sphere where the centre
 //   of its arc lies on the axis). Taking an edge out of the middle of the list renames the faces of
 //   the edges after it. The two faces of the edge keep their names and get narrower; an end face
-//   keeps its name and grows by what an added fillet leaves in its plane.
+//   keeps its name and grows by what an added fillet leaves in its plane facing its way (more than
+//   a sliver facing the other way is refused, see blendDoesNotFit).
 // - Where three fillets meet at a vertex the corner is a crease (0.225 r proud of a rolling ball at
 //   the corner of a box); three chamfers meet exactly.
 // - The result tells in `facts`: `setback/<i>` (mm: how far from edge i the chamfer or fillet meets
@@ -1221,6 +1223,9 @@ export interface Issue {
 //   a hollow just inside them (the foot of a boss that reaches the edge of the plate);
 // - it reaches the axis of a circular edge;
 // - the ends of a straight piece meet within it (a piece shorter than the slant of its ends);
+// - it reaches past the end face in `refs`: deeper than a riser the edge ends at, into the
+//   material beyond it, or (added) standing out over a lower end wall;
+// - it is too small for the chord tolerance (it lies within the polygons of the faces);
 // - the tools would have more than 1 000 000 triangles (raise the chord tolerance).
 export type ErrorCode =
   | 'brokenReference'

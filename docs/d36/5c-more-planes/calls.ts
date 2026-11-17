@@ -163,12 +163,14 @@ export function alongTheHinge(): boolean {
 }
 
 // The axis of a round face: the mass of the wrist about the axis of its own side, which passes
-// through its centre of mass (no distance) with the moment of a cylinder, m r² / 2 (the polygon of
-// the circle a little less).
+// through its centre of mass (no distance, to the rounding of float32 coordinates near x = 230) with
+// the moment of the prism of the polygon of the circle: 71 sides at the chord tolerance 0.01, so
+// m r² (2 + cos(2π/71)) / 6, 0.13 % below the m r² / 2 of the exact cylinder.
 export function aboutItsBore(): boolean {
   const side = asAxis({ kind: 'face', body: 'wrist', face: { feature: 'wrist', role: 'side', curve: 'wr' } });
   const mass = unwrap(engine.query('mass', { bodies: ['wrist'], density: 1.24, about: side }));
-  return mass.about !== undefined && near(mass.about.distance, 0, 1e-6) && near(mass.about.moment, (mass.mass * 10 * 10) / 2, 1e-3 * mass.about.moment);
+  const polygon = (mass.mass * 10 * 10 * (2 + Math.cos((2 * Math.PI) / 71))) / 6;
+  return mass.about !== undefined && near(mass.about.distance, 0, 1e-4) && near(mass.about.moment, polygon, 1e-5 * polygon);
 }
 // A planar face has no axis: the error of the query names the argument.
 export function flatFaceAxis(): boolean {

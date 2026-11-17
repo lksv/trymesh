@@ -375,7 +375,7 @@ export const dShape = (state: StateAfter): boolean =>
 
 // ================================================================ the fillet of a source corner
 
-// A corner of two source lines filleted (D52): the arc joins every entry that lists both lines, by
+// A corner of two source lines filleted (D52): the arc joins every entry that lists a line at each of its ends, by
 // `updateExternal` of the entry's input form, so the count stays the expression `copies`; the copy
 // of the arc joins every stored region that holds the copies of both lines, read from the region,
 // so the region of copy 2, which the count 2 does not make now, is patched too and is right when

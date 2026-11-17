@@ -81,8 +81,14 @@ export type GeometrySource = 'own' | 'reference' | 'derived';
 //   and its source, so that a point on the axis of a mirror joins its image).
 // - `keys`: a join key per point: every two points of the entries of a sketch with the same key are
 //   such a pair. A key carries the vertex a point comes from, across entries: the copies of two
-//   joined source points (6c: `<owner>/<n>` and the vertex of the source point), the projections
-//   of one point of another sketch by two entries (6b: the source sketch and the vertex there).
+//   joined source points (6c: the entry, the copy and the vertex of the source point by the joins of
+//   the whole sketch before the derived entries), the projections of one point of another sketch by
+//   two entries (6b: the source sketch and the vertex there, carried in the stored value, since
+//   `geometry` does not see the source). A key is a tuple written as JSON whose first element names
+//   the kind that made it (`["mirror","m",1,"p3"]`), so no two kinds and no IDs with a colon make
+//   two keys alike.
+// `joins` and `keys` are a slot: no kind of today declares any, and the first package that does
+// (6c, 6b) writes their reading in `joinPairs` with its tests.
 // - `hidden`: points the curves need that are no entities: no constraint names them, the app does
 //   not draw them, `get_sketch` does not list them (the far point of an axis, 6b).
 export interface EntryGeometry {
@@ -107,8 +113,12 @@ export interface ReferenceContext {
 //   kind is derived: the validator of the sketch creates the keys of `external` in the order of the
 //   document and fills the entries of a derived kind after the curves), and the reader of numeric
 //   fields: a numeric field of an entry is read at `external/<id>/<name>`, so `fieldsOf`,
-//   `setField` and `renameParameter` reach it, and `withConstraints` keeps its expression while the
-//   entry is there (6c: the count, the angle, the spacing).
+//   `setField` and `renameParameter` reach it (6c: the count, the angle, the spacing). The commands
+//   validate an entry with a fresh reader over no expressions, as `addConstraint` does, and hand its
+//   expressions on as changes; `updateExternal` first sets every address under `external/<id>/` to
+//   null, so a number removes an expression. `withConstraints` keeps an expression under
+//   `external/<id>/` while the entry is there and its kind reads the address, which it learns by
+//   validating the entry once (as `fieldsOf` does). A slot: the edge has no field, and 6c writes it.
 // - `refs` are the references of the entry to other features, at the path `external/<id>`.
 // - `faces` are the faces of bodies the entry reads (the edge: its two faces), for the fillet's
 //   list `shortened`.
@@ -149,11 +159,13 @@ export interface DerivedKindSpec<R> extends KindBase<R> {
   derive(id: Id, ref: R, solved: SolvedOwn): EntryGeometry | { code: IssueCode; refs: Id[] };
 }
 // What a derived kind reads: the sketch, its curves (own and reference, the axes of the origin
-// included) and every used position after the solver.
+// included), every used position after the solver, and the vertices of the sketch by its joins
+// before the derived entries (coincidents and the joins and keys of the references).
 export interface SolvedOwn {
   sketch: SketchFeature;
   curves: ReadonlyMap<Id, SketchCurve>;
   geometry: SketchGeometry;
+  joins: (id: Id) => Id;
 }
 
 // The values of each kind of reference, by the `type` of its entry. 6a has the projection of an
@@ -192,7 +204,8 @@ export declare function kindOf(ref: ExternalRefAfter): ReferenceKindSpec<Externa
 // `updateExternal` call it with a reader of numeric fields over the sketch's expressions.
 export declare function externalRef(context: ValidationContext, sketch: SketchFeature, id: Id, entry: unknown, what: string): ExternalRefAfter;
 
-// What an update of an entry may not do (`updateExternal`), the text when it does:
+// What an update of an entry may not do (`updateExternal`), checked in this order, the text when it
+// does (the third part is written by the first package that can reach it, 6c or 6f):
 // - change the source of the entry (reference to derived or back);
 // - change the kind of an entity that stays (the same ID): for the edge, whose curve `<id>` is
 //   a line or a circle by `kind`, this is today's rule with today's text ("druh promítnutí změnit
@@ -225,8 +238,10 @@ export declare function referenceEntities(sketch: SketchFeature, id: Id): Record
 
 // One entry of `external` as the sketch step resolved it: its value (fresh, or the last valid one)
 // and its geometry. `lost` holds the code when the value is the last valid one or missing. A
-// resolved reference without a value enters the input of the solver and is neither stamped nor
-// stored: the axes of the origin (6b), under the key `origin`, when a constraint names one.
+// resolved reference without a value, under a key that is no entry, enters the input of the solver
+// and is neither stamped nor stored: the axes of the origin (6b), under the key `origin`, when
+// a constraint names one. The list of curves (part 2) has the axes whatever the constraints. A slot
+// that 6b writes.
 export interface ResolvedReference {
   value?: StoredValue;
   geometry: EntryGeometry;
@@ -272,7 +287,8 @@ export interface SketchCurve {
 export declare function sketchCurves(feature: SketchFeature, references: Record<Id, ResolvedReference>): SketchCurve[];
 
 // The pairs of points that may join: the operands of every `coincident` of the sketch, then the
-// `joins` of the entries, then every two points of the entries with the same join key. One rule
+// `joins` of the entries, then every two points of the entries with the same join key (those two
+// written by 6c and 6b). The state's joins are built after the derived entries of 6c. One rule
 // for the profile and the chain of a wall: a pair is joined when
 // its two points are within the length tolerance in the used positions, transitively, and a vertex
 // is named by the smallest ID it holds (as today). The corner of the fillet keeps `pointJoins`
@@ -288,9 +304,9 @@ export declare function profileOf(curves: readonly SketchCurve[], joins: (id: Id
 // used position. Every reader of its curves reads `curves`: `curveOf` of recompute/profile.ts (the
 // shape of a side), the wall (own curves only: its validator refuses others), the axis `sketchLine`
 // (`axis` of recompute/services.ts) and the circle operand of a generator (`generated`), which read
-// the input of the solver today. The shape of a side is one function over a curve and a reader of
-// positions: `curveOf` reads the raw positions of the curve's points, the profile and the wall the
-// joined vertices, each as today.
+// the input of the solver today. The shape of a side or of a profile's curve is one function over
+// a curve and a reader of the positions of its ends: `curveOf` reads raw positions throughout; the
+// profile and the wall read the ends at their joined vertices and a centre raw, each as today.
 export interface SketchStateAfter extends SketchState {
   curves: ReadonlyMap<Id, SketchCurve>;
   joins: (id: Id) => Id;
@@ -320,6 +336,13 @@ export interface AnchorStandIn {
   at: Vec2;
   snap?: { kind: 'point'; id: Id } | { kind: 'curve'; id: Id };
 }
+// A place of the app: an anchor, or the place a tool's own picker made, whose snap may name an
+// entity of another sketch (6b). The mode keeps it as it is; it drops a kept place only when its
+// own snap is gone from the open sketch.
+export interface PlaceStandIn {
+  at: Vec2;
+  snap?: AnchorStandIn['snap'] | { kind: 'foreign'; sketch: Id; id: Id };
+}
 export interface ViewPickStandIn {
   kind: 'face' | 'edge' | 'plane';
 }
@@ -332,7 +355,7 @@ export interface SketchHostStandIn {
 export interface SketchModeStandIn {
   id: Id;
   tool: SketchToolName;
-  clicks: AnchorStandIn[];
+  clicks: PlaceStandIn[];
   selection: Id[];
   construction?: boolean;
 }
@@ -348,7 +371,8 @@ export type HTMLElementStandIn = { readonly tagName: string };
 // - `picks`: what the pointer looks for while the tool is active. `sketch` (the default): a place
 //   in the sketch, snapped to a point or a curve, points first (an `Anchor`), as today; `curve`:
 //   a place on a curve only, of the curves `eligible` lets through, its `at` the point of the curve
-//   nearest the pointer (trim, extend, split of 6e: a click near a crossing still gives the curve);
+//   nearest the pointer, as a snap to a curve is today, and the bare pointer without a snap away
+//   from every such curve (trim, extend, split of 6e: a click near a crossing still gives the curve);
 //   `edge`: an edge of the model; or the tool's own picker `pick` for what the mode does not know
 //   (6b: the geometry of another sketch), which turns the pointer into a place.
 // - `clicks`: how many places a shape takes (a line 2, an arc 3). The places before the last are
@@ -370,9 +394,10 @@ export type HTMLElementStandIn = { readonly tagName: string };
 //   sketch: the shape in progress (the rubber band), or what a click would change (the piece
 //   a trim would remove, 6e). Drawn dashed, as the rubber band is today; the marker of a snap is
 //   drawn by the app for every tool that picks places, except the select tool.
-// - The mode redraws nothing by itself after a click: each `click` makes the calls of its branch of
-//   today (`renderScene` after a kept click, a shape and select, `renderPanel` after select, none
-//   after the point tool), since the snapshots of the app count the scenes set.
+// - The redraws after a click are those of today, since the snapshots of the app count the scenes
+//   set: the mode redraws the scene when it keeps the places of an unfinished shape (`clicks` not
+//   reached); each `click` makes the calls of its branch (`renderScene` after a shape and after
+//   select, `renderPanel` after select, none after the point tool).
 // - `options`: what the tool remembers between sketches (the sides of the polygon, the radius of
 //   the fillet) with its start value, and its part of the panel while the tool is active. The app
 //   keeps it by tool; nothing else reads it.
@@ -382,7 +407,7 @@ interface ToolBase<O> {
   options?: { initial: O; panel(host: SketchHostStandIn, value: O, set: (value: O) => void): HTMLElementStandIn[] };
 }
 export interface SketchPlaceTool<O> extends ToolBase<O> {
-  picks?: 'sketch' | 'curve' | { pick(host: SketchHostStandIn, event: { clientX: number; clientY: number }, context: SketchContextStandIn): AnchorStandIn | undefined };
+  picks?: 'sketch' | 'curve' | { pick(host: SketchHostStandIn, event: { clientX: number; clientY: number }, context: SketchContextStandIn): PlaceStandIn | undefined };
   eligible?(curve: Id, context: SketchContextStandIn): boolean; // with `picks: 'curve'`
   clicks?: number;
   infer?: boolean;
@@ -392,9 +417,9 @@ export interface SketchPlaceTool<O> extends ToolBase<O> {
   // inferred direction of a line), except for a tool with `atClick`: the place under the click
   // (the select tool and the fillet, as today).
   atClick?: boolean;
-  click(host: SketchHostStandIn, m: SketchModeStandIn, places: AnchorStandIn[], context: SketchContextStandIn, options: O, event: { shiftKey: boolean }): AnchorStandIn[] | void;
-  finish?(host: SketchHostStandIn, m: SketchModeStandIn, places: AnchorStandIn[], context: SketchContextStandIn, options: O): void;
-  draw?(places: Vec2[], cursor: AnchorStandIn, context: SketchContextStandIn, options: O): Vec2[][];
+  click(host: SketchHostStandIn, m: SketchModeStandIn, places: PlaceStandIn[], context: SketchContextStandIn, options: O, event: { shiftKey: boolean }): PlaceStandIn[] | void;
+  finish?(host: SketchHostStandIn, m: SketchModeStandIn, places: PlaceStandIn[], context: SketchContextStandIn, options: O): void;
+  draw?(places: Vec2[], cursor: PlaceStandIn, context: SketchContextStandIn, options: O): Vec2[][];
 }
 export interface SketchEdgeTool<O> extends ToolBase<O> {
   picks: 'edge';
@@ -437,7 +462,8 @@ export declare function curvePoints(shape: CurveShape): Id[];
 // The app reads the entries of `external` through a table by kind, typed by the union of all kinds,
 // reference and derived, so a kind added to the engine does not compile in the app until it has
 // its row. The rest of a row reads the entities of the entry (`referenceEntities`): "no geometry"
-// when none has a position, the hover marks them all.
+// when none has a position; the hover marks the curves of the entry (an edge: its curve, as today),
+// or its point when the entry is one.
 // - `title`: the name of a row in the list of entries of the panel ("Úsečka", "Kružnice" for an
 //   edge by its `kind`), and `detail` what follows it (the body today).
 // - `tag`: the word the pickers of the app add after an entity of the entry ("projected").

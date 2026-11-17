@@ -16,7 +16,7 @@
 import type { CurveShape, Id, IssueCode, Point2, Projected, SketchFeature, SolveInput } from '../../../packages/engine/src/index';
 import type { EntityKind } from '../../../packages/engine/src/catalog';
 import type { CommandAfter, EngineAfter, StateAfter } from '../00-prep/contract';
-import type { AnchorStandIn, DerivedKindSpec, EntryGeometry, ReferenceKindSpec, ResultCurve, SketchCurve, SketchPlaceTool, SketchResultAfter } from './contract';
+import type { DerivedKindSpec, EntryGeometry, PlaceStandIn, ReferenceKindSpec, ResolvedReference, ResultCurve, SketchCurve, SketchPlaceTool, SketchResultAfter } from './contract';
 import { REFERENCE_KINDS, entityOf, joinPairs, joinsOf, profileOf, referenceEntities, resolveReferences, sketchCurves, solverSetup, unreachable } from './contract';
 
 declare const engine: EngineAfter;
@@ -143,7 +143,10 @@ interface PlugSketchRef {
   kind: 'point' | 'line' | 'circle' | 'arc';
   regions?: boolean; // the flag of question 4: a projected curve forms regions only with it
 }
-type PlugValue = Projected | { kind: 'arc'; center: [number, number]; start: [number, number]; end: [number, number] } | { kind: 'point'; at: [number, number] };
+// The value carries the join key of each projected point (the source sketch and the vertex of the
+// source point there), since `geometry` does not see the source sketch; it is stored and stamped
+// with the value, and a frozen value keeps it.
+type PlugValue = (Projected | { kind: 'arc'; center: [number, number]; start: [number, number]; end: [number, number] } | { kind: 'point'; at: [number, number] }) & { keys?: Record<string, string> };
 const at = (v: [number, number]): Point2 => ({ x: v[0], y: v[1] });
 
 export const plugSketch: ReferenceKindSpec<PlugSketchRef, PlugValue> = {
@@ -160,15 +163,18 @@ export const plugSketch: ReferenceKindSpec<PlugSketchRef, PlugValue> = {
     ref.kind === 'point' ? { [id]: 'point' } : ref.kind === 'line' ? { [id]: 'line', [`${id}/a`]: 'point', [`${id}/b`]: 'point' } : ref.kind === 'circle' ? { [id]: 'circle', [`${id}/center`]: 'point' } : { [id]: 'arc', [`${id}/center`]: 'point', [`${id}/start`]: 'point', [`${id}/end`]: 'point' },
   compute: (ref, context): PlugValue | IssueCode => (context.state.sketches[ref.sketch] ? fail('6b computes it') : 'brokenProjection'),
   value: (stored, ref) => ((stored as PlugValue).kind === ref.kind ? (stored as PlugValue) : undefined),
-  // Each projected point is keyed by its source (6b: the sketch and the vertex of the point there),
-  // so two entries that project the two ends of one corner join, and a projected outline closes.
+  // Each projected point is keyed by its source (6b: the sketch and the vertex of the point there,
+  // read from the value), so two entries that project the two ends of one corner join, and
+  // a projected outline closes.
   geometry: (id, ref, value): EntryGeometry => {
     const regions = ref.regions === true && value.kind !== 'point' ? [id] : [];
     const geometry = shapes(id, value, regions);
-    return { ...geometry, keys: Object.fromEntries(Object.keys(geometry.points).map((point) => [point, `${ref.sketch}:${sourceVertex(ref, point)}`])) };
+    // `value.keys` maps the local name of a point (`a`, `center`, or '' for a projected point) to
+    // its vertex in the source sketch
+    const local = (point: Id): string => (point === id ? '' : point.slice(id.length + 1));
+    return { ...geometry, keys: Object.fromEntries(Object.keys(geometry.points).map((point) => [point, JSON.stringify(['sketch', ref.sketch, value.keys?.[local(point)] ?? point])])) };
   },
 };
-declare function sourceVertex(ref: PlugSketchRef, projected: Id): Id; // 6b: the vertex in the source sketch
 function shapes(id: Id, value: PlugValue, regions: Id[]): EntryGeometry {
   {
     switch (value.kind) {
@@ -194,19 +200,23 @@ function shapes(id: Id, value: PlugValue, regions: Id[]): EntryGeometry {
 
 // ================================================================ c. the axes of the origin (6b)
 
-// `origin/x` and `origin/y` are lines through `origin`; their far points are no entities. They
-// enter the input of the solver only when something of the sketch names them (a constraint, the
-// axis of a mirror), so the stamp of every sketch of today stays.
-export function axes(used: (id: Id) => boolean): EntryGeometry {
+// `origin/x` and `origin/y` are lines through `origin`; their far points are no entities. They are
+// in the list of curves and the geometry of every sketch (a mirror, a revolve, a joint about an
+// axis finds them), and in the input of the solver only when a constraint names one, so the stamp
+// of every sketch of today stays.
+export function axes(): EntryGeometry {
   const geometry: EntryGeometry = { points: {}, curves: {}, radii: {}, regions: [], hidden: [] };
   for (const [axis, far] of [['origin/x', { x: 1, y: 0 }], ['origin/y', { x: 0, y: 1 }]] as const) {
-    if (!used(axis)) continue;
     geometry.points[`${axis}/b`] = far;
     geometry.curves[axis] = { type: 'line', a: 'origin', b: `${axis}/b` };
     geometry.hidden?.push(`${axis}/b`);
   }
   return geometry;
 }
+// What the solver gets of them: a resolved reference without a value under `origin`, only when
+// a constraint of the sketch names an axis.
+export const axesForSolver = (sketch: SketchFeature): Record<Id, ResolvedReference> =>
+  Object.values(sketch.constraints).some((c) => Object.values(c).some((v) => v === 'origin/x' || v === 'origin/y')) ? { origin: { geometry: axes() } } : {};
 
 // ================================================================ d. a kind of derived geometry (6c)
 
@@ -240,18 +250,17 @@ export const plugMirror: DerivedKindSpec<PlugMirrorRef> = {
     return out;
   },
   // The axis is any line of the list: own, projected, or an axis of the origin.
-  derive: (id, ref, { sketch, curves, geometry }) => {
+  derive: (id, ref, { sketch, curves, geometry, joins: vertex }) => {
     const axis = curves.get(ref.axis)?.shape;
     if (axis?.type !== 'line') return { code: 'brokenReference', refs: [ref.axis] };
     const [a, b] = [geometry.points[axis.a], geometry.points[axis.b]];
-    const vertex = joinsOf(joinPairs(sketch, {}), geometry); // the vertices of the solved own sketch
     const out: EntryGeometry = { points: {}, curves: {}, radii: {}, regions: [], joins: [], keys: {} };
     const copy = (point: Id): Id => {
       const image = `${id}/1/${point}`;
       if (!out.points[image]) {
         out.points[image] = mirrorPoint(geometry.points[point], a, b);
         out.joins?.push([image, point]); // one point of the profile when it falls on its source
-        if (out.keys) out.keys[image] = `${id}/1:${vertex(point)}`; // images of joined points join
+        if (out.keys) out.keys[image] = JSON.stringify(['mirror', id, 1, vertex(point)]); // images of joined points join
       }
       return image;
     };
@@ -275,12 +284,20 @@ export const plugMirror: DerivedKindSpec<PlugMirrorRef> = {
         default:
           return unreachable(source, 'curve');
       }
+      // a copy that occupies what its source occupies (a line on the axis) is left out; a half
+      // circle with its centre and ends on the axis is the other half and stays
+      if (liesOnSource(shape, source, out.points, geometry)) continue;
       out.curves[image] = shape;
       if (!source.construction) out.regions.push(image);
     }
     return out;
   },
 };
+
+// What a curve occupies, compared within the length tolerance: a line its segment, a circle its
+// centre and radius, an arc also its sweep (6c writes it).
+declare function liesOnSource(image: CurveShape, source: CurveShape, imagePoints: Record<Id, Point2>, geometry: SketchGeometryOf): boolean;
+type SketchGeometryOf = { points: Record<Id, Point2>; radii: Record<Id, number> };
 
 // The half of a lid drawn up to the Y axis and mirrored: the ends on the axis join their images,
 // so the profile has one region whose outer loop holds both halves, and its side faces are named
@@ -337,7 +354,7 @@ export function pointsOfWithSpline(shape: CurveShape | PlugSpline): Id[] {
 // a crossing point still gives the curve), the batch of the engine's
 // sketch tool run as it is (not through `drawn`: its curves are not drawn ones), and the piece
 // the click would remove drawn while the pointer moves. 6e decides the engine side.
-declare function trimBatch(context: unknown, at: AnchorStandIn): { ok: true; commands: unknown[]; piece: [number, number][] } | { ok: false; message: string };
+declare function trimBatch(context: unknown, at: PlaceStandIn): { ok: true; commands: unknown[]; piece: [number, number][] } | { ok: false; message: string };
 export const plugTrim: SketchPlaceTool<undefined> = {
   label: 'Trim',
   picks: 'curve',

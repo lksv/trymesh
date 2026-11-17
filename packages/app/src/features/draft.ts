@@ -35,6 +35,10 @@ export interface FeatureForm<F extends Feature, Extra> {
   // view shows the state before the feature instead of the preview, so that what is picked is what
   // the feature will work on (a picked edge is gone from the preview).
   picks?(mode: DraftMode<F, Extra>): { faces?: true; planes?: true; edges?: true; before?: true } | undefined;
+  // Escape in the draft mode: asked before the draft is left. A form that consumes the key (a pick
+  // armed in the view: it disarms it) answers true, and the draft stays; otherwise the draft is
+  // left as before.
+  cancel?(mode: DraftMode<F, Extra>, host: PanelHost): boolean;
   hover?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): boolean; // true: redraw the scene
   click?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): void;
   overlay?(mode: DraftMode<F, Extra>, scene: SceneModel, host: PanelHost): void; // what the draft draws

@@ -58,14 +58,16 @@ export interface ExtentStart {
   from?: PlaneRefAfter;
 }
 
-type Distance = Extract<Extent, { type: 'distance' }>;
-type UpTo = Extract<Extent, { type: 'upTo' }>;
-type ThroughAllExtent = Extract<Extent, { type: 'throughAll' }>;
-// As types.ts will have it: one member per variant, `from` optional on each; the rule "`from` only
+// The real types carry `from` since the implementation (as `PlaneRef`); the contract states it with
+// `PlaneRefAfter` of the preparatory step, so it takes the variants without it.
+type Distance = Omit<Extract<Extent, { type: 'distance' }>, 'from'>;
+type UpTo = Omit<Extract<Extent, { type: 'upTo' }>, 'from'>;
+type ThroughAllExtent = Omit<Extract<Extent, { type: 'throughAll' }>, 'from'>;
+// As types.ts has it: one member per variant, `from` optional on each; the rule "`from` only
 // with forward or backward" is in the comment and in the validator, not in the type, so that
 // `extent.from` reads on every variant (calls.ts checks the rule with a stricter type of its own).
 export type ExtentH = (Distance | UpTo | ThroughAllExtent) & ExtentStart;
-export type HoleExtentH = HoleExtent & ExtentStart;
+export type HoleExtentH = (Omit<Extract<HoleExtent, { type: 'distance' }>, 'from'> | Omit<Extract<HoleExtent, { type: 'throughAll' }>, 'from'>) & ExtentStart;
 
 export type ExtrudeFeatureH = Omit<ExtrudeFeature, 'extent'> & { extent: ExtentH };
 export type HoleFeatureH = Omit<HoleFeature, 'extent'> & { extent: HoleExtentH };

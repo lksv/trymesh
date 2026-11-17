@@ -83,6 +83,9 @@
           option selected value="distance": "Distance"
           option value="throughAll" disabled: "Through all (a cut only)"
           option value="upTo": "Up to a plane or face"
+      p: "Start at: Sketch plane"
+      div.buttons
+        button: "Pick the start"
       label
         "Start (mm or an expression; offset from the sketch plane along its normal)"
         span.field
@@ -272,6 +275,11 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -283,9 +291,7 @@
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Vysunutí přidáno.
@@ -419,6 +425,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -623,6 +632,11 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -634,9 +648,7 @@
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Vysunutí přidáno.
@@ -794,6 +806,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -1029,6 +1044,11 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -1040,9 +1060,7 @@
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Vysunutí přidáno.
@@ -1052,7 +1070,7 @@
     - line #f97316 width 1 dashed: 576 numbers, sum -3.284
 
 === 9. editing: the field shows the shift
-  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":0.3},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}, "e3") -> ok
+  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":0.3},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"new"}}, "e3") -> ok
   engine: getState("e2")
   engine: getState("s")  (x2)
   toolbar:
@@ -1191,6 +1209,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -1225,7 +1246,7 @@
   view: 1 scene(s) set
 
 === 10. the field emptied: the draft has no shift, the patch removes it
-  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}, "e3") -> ok
+  engine: preview({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"new"}}, "e3") -> ok
   engine: getState("s")
   panel:
     +     input value=""
@@ -1252,7 +1273,7 @@
 === 11. OK: the shift is removed from the feature
   engine: getState("e2")
   engine: getState("s")  (x2)
-  engine: execute({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null},"operation":"new"}}) -> ok
+  engine: execute({"type":"updateFeature","id":"e3","patch":{"profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":null},"refs":{"meshWith":null}},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"new"}}) -> ok
   feature e3:
     + {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false}},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
     - {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"generated","generator":"involuteGear","sketch":"s","operands":{"circle":"pins"},"params":{"teeth":18,"pressureAngle":0.3490658503988659,"backlash":0,"rotation":0,"internal":false,"shift":0.3}},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
@@ -1407,6 +1428,11 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field
@@ -1418,9 +1444,7 @@
     -     input value="10"
     -     small.computed data-field="extent/distance" data-unit="mm"
     - p#draft-problem.issue.warning
-    +   button title="Bodies that move as one piece": "New link"
-    +   button disabled title="A joint moves its child link against its parent link": "New joint"
-    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    - div.buttons
     -   button.primary: "OK"
     -   button: "Zrušit"
   status: Změna uložena.

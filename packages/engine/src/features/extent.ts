@@ -2,7 +2,7 @@
 // its references and its numeric fields. Every feature that takes an extent uses it; the recompute
 // half is recompute/extent.ts.
 import type { FieldSpec, NumberSpec } from '../catalog';
-import type { ExtrudeFeature } from '../types';
+import type { ExtrudeFeature, HoleExtent, PlaneRef } from '../types';
 import { type FeatureRef, type ValidationContext, fail, object, oneOf, onlyFields, planeRef, planeRefs } from '../validation';
 
 const EXTENT_START: NumberSpec = { title: 'Start', unit: 'mm' };
@@ -30,34 +30,41 @@ export const EXTENT_FIELD_SPECS: FieldSpec[] = [
 // the far end would depend on the targets or on the plane.
 // The variant `upTo` lists its own fields, so a key it does not know is refused (the older two
 // variants drop such keys).
+// Every variant may start from a plane (`from`, D66), read as the plane of a sketch is; "through
+// all" from a plane goes forward or backward only.
 export function extentOf(context: ValidationContext, v: unknown, what: string, allows: { throughAll: boolean; upTo: boolean; noTaper?: string; noBoth?: string }): ExtrudeFeature['extent'] {
   const { fields } = context;
   const given = object(v, what);
   const type = oneOf(given.type, ['distance', 'throughAll', 'upTo'] as const, `${what}.type`);
+  const from: { from?: PlaneRef } = given.from === undefined ? {} : { from: planeRef(context, given.from, `${what}.from`) };
   if (type === 'distance') {
     const start = fields.number(given.start, 'extent/start', EXTENT_START, `${what}.start`);
     const distance = fields.number(given.distance, 'extent/distance', EXTENT_DISTANCE, `${what}.distance`);
-    if (given.taper === undefined) return { type: 'distance', start, distance };
+    if (given.taper === undefined) return { type: 'distance', ...from, start, distance };
     if (allows.noTaper !== undefined) fail(`${what}.taper: ${allows.noTaper}`);
-    return { type: 'distance', start, distance, taper: fields.number(given.taper, 'extent/taper', EXTENT_TAPER, `${what}.taper`) };
+    return { type: 'distance', ...from, start, distance, taper: fields.number(given.taper, 'extent/taper', EXTENT_TAPER, `${what}.taper`) };
   }
   if (given.taper !== undefined) fail(`${what}.taper: only the extent distance has a taper; the size of the far end of ${type} would depend on the ${type === 'upTo' ? 'plane' : 'targets'}`);
   if (type === 'upTo') {
     if (!allows.upTo) fail(`${what}.type: this feature has no extent upTo`);
-    onlyFields(given, ['type', 'plane', 'start', 'gap'], what, 'the extent upTo');
+    onlyFields(given, ['type', 'from', 'plane', 'start', 'gap'], what, 'the extent upTo');
     const plane = planeRef(context, given.plane, `${what}.plane`);
     const start = fields.number(given.start, 'extent/start', EXTENT_START, `${what}.start`);
-    return given.gap === undefined ? { type, plane, start } : { type, plane, start, gap: fields.number(given.gap, 'extent/gap', EXTENT_GAP, `${what}.gap`) };
+    return given.gap === undefined ? { type, ...from, plane, start } : { type, ...from, plane, start, gap: fields.number(given.gap, 'extent/gap', EXTENT_GAP, `${what}.gap`) };
   }
   if (!allows.throughAll) fail(`${what}.type: throughAll is only for the operation cut`);
   const side = oneOf(given.side, ['forward', 'backward', 'both'] as const, `${what}.side`);
   if (side === 'both' && allows.noBoth !== undefined) fail(`${what}.side: ${allows.noBoth}`);
-  return { type: 'throughAll', side };
+  if (side === 'both' && from.from) fail(`${what}.side: through all from a plane goes forward or backward: both sides of a start are all of the targets`);
+  return { type: 'throughAll', side, ...from };
 }
 
-// The references of an extent: the plane an extent `upTo` ends in.
-export const extentRefs = (extent: ExtrudeFeature['extent']): FeatureRef[] => (extent.type === 'upTo' ? planeRefs(extent.plane, 'extent/plane') : []);
+// The references of an extent: the plane it starts from and the plane an extent `upTo` ends in.
+export const extentRefs = (extent: ExtrudeFeature['extent'] | HoleExtent): FeatureRef[] => [
+  ...(extent.from ? planeRefs(extent.from, 'extent/from') : []),
+  ...(extent.type === 'upTo' ? planeRefs(extent.plane, 'extent/plane') : []),
+];
 
 // What `null` in a patch may remove from an extent: its optional fields. A patch that asks for an
 // extent without one is accepted also where the extent has none, or becomes another variant.
-export const removableFromExtent = (path: string[]): boolean => path.length === 1 && (path[0] === 'taper' || path[0] === 'gap');
+export const removableFromExtent = (path: string[]): boolean => path.length === 1 && (path[0] === 'taper' || path[0] === 'gap' || path[0] === 'from');

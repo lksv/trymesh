@@ -1,0 +1,1208 @@
+
+=== 1. a new extrusion: the row "Start at" says the sketch plane
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":15,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":4}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p5","x":32,"y":22}]}) -> ok
+  engine: getState("s1")  (x9)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x6)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]},{"outerLoop":["c5"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]},{"outerLoop":["c5"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]},{"outerLoop":["c5"]}]},"operation":"new"},"index":1}) -> ok
+  engine: getState("s1")
+  engine: getState("e1")  (x3)
+  engine: getState("s1")  (x5)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  features: s1, e1
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":15,"y":15}
+      point p5: {"x":32,"y":22}
+      radius c5: 4
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]},{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":9}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button disabled title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button: "Zobrazit vše"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon disabled title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Vysunutí 1"
+        button.icon disabled title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Nové vysunutí"
+      label
+        "Profile"
+        select value="regions"
+          option selected value="regions": "Sketch regions"
+          option value="wall": "Wall along curves"
+          option value="involuteGear": "Involute gear"
+          option value="cycloidalDisc": "Cycloidal disc"
+          option value="gt2Pulley": "GT2 pulley"
+      label
+        "Skica"
+        select value="s1"
+          option selected value="s1": "Skica 1"
+      p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+      div.buttons
+        button: "Zrušit výběr oblastí"
+      label
+        "Offset (mm or an expression; positive grows the profile; empty = none)"
+        span.field
+          input value=""
+          small.computed data-field="profile/offset" data-unit="mm"
+      label
+        "Operace"
+        select value="add"
+          option value="new": "Nové těleso"
+          option selected value="add": "Přidat k tělesu"
+          option value="cut": "Odebrat z tělesa"
+      label
+        "Extent"
+        select value="distance"
+          option selected value="distance": "Distance"
+          option value="throughAll" disabled: "Through all (a cut only)"
+          option value="upTo": "Up to a plane or face"
+      p: "Start at: Sketch plane"
+      div.buttons
+        button: "Pick the start"
+      label
+        "Start (mm or an expression; offset from the sketch plane along its normal)"
+        span.field
+          input value="0"
+          small.computed data-field="extent/start" data-unit="mm"
+      label
+        "Distance (mm or an expression; negative = against the normal)"
+        span.field
+          input value="10"
+          small.computed data-field="extent/distance" data-unit="mm"
+      label
+        "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+        span.field
+          input value=""
+          small.computed data-field="extent/taper" data-unit="rad"
+      label
+        "Těleso"
+        select value="e1"
+          option selected value="e1": "Vysunutí 1"
+      p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+      div.buttons
+        button.primary: "OK"
+        button: "Zrušit"
+  status: Klikáním v pohledu vyberte oblasti skici.
+  view: 32 scene(s) set
+  scene:
+      bodies: e1
+      line #26303c width 1.5: 72 numbers, sum 4060
+      line #8b9bb4 width 1: 24 numbers, sum 374.778
+      line #8b9bb4 width 1: 24 numbers, sum 249.852
+      line #8b9bb4 width 1: 24 numbers, sum 124.926
+      line #5b7aa8 width 1.5: 600 numbers, sum 24448.814
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+      fill #64748b opacity 0.15 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 90 numbers, sum 5344.147
+      fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. the pick of the start armed: the view shows the state before the feature
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")  (x2)
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")
+  panel:
+    +   button: "Picking the start… (click to stop)"
+    -   button: "Pick the start"
+  status: Click a plane or a planar face in the view: the extent starts from its plane.
+  view: 1 scene(s) set
+  scene:
+    + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
+    - fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
+
+=== 3. Escape disarms the pick and keeps the draft
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   button: "Pick the start"
+    -   button: "Picking the start… (click to stop)"
+  status: Click regions of the sketch in the view to pick them.
+  view: 1 scene(s) set
+
+=== 4. the top of the plate picked: the boss starts on it, the preview says where
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")  (x2)
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    + p: "Start at: stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    - p: "Start at: Sketch plane"
+    +   button: "Sketch plane"
+    + p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    +   "Start (mm or an expression; offset from the start plane along the normal of the sketch)"
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+  view: 3 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 36211.608
+    + line #8b9bb4 width 1: 24 numbers, sum 395.81
+    + line #8b9bb4 width 1: 24 numbers, sum 263.873
+    + line #8b9bb4 width 1: 24 numbers, sum 131.937
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    + face e1 #1 #0ea5e9 opacity 0.3
+
+=== 5. up to a plane: the start plane goes along
+  engine: getState("e1")
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")
+  panel:
+    +   select value="upTo"
+    +     option value="distance": "Distance"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    +     option selected value="upTo": "Up to a plane or face"
+    -     option value="upTo": "Up to a plane or face"
+    + p#draft-start.hint
+    - p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    + p: "Plane: none yet"
+    + div.buttons
+    +   button: "Pick"
+    +   "Gap before the plane (mm or an expression; negative = past it; empty = none)"
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    +     small.computed data-field="extent/gap" data-unit="mm"
+    + p.hint: "The tool ends in the plane of the face on whichever side it lies, also beside the face itself; the length follows the model."
+    + p#draft-length.hint
+    -     small.computed data-field="extent/taper" data-unit="rad"
+    + p#draft-problem.issue.error
+    - p#draft-problem.issue.warning
+    +   button.primary disabled: "OK"
+    -   button.primary: "OK"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - line #26303c width 1.5: 612 numbers, sum 36211.608
+    - line #8b9bb4 width 1: 24 numbers, sum 395.81
+    - line #8b9bb4 width 1: 24 numbers, sum 263.873
+    - line #8b9bb4 width 1: 24 numbers, sum 131.937
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+
+=== 6. through all from the plane: backward, both sides disabled
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   select value="cut"
+    -   select value="add"
+    +     option value="add": "Přidat k tělesu"
+    +     option selected value="cut": "Odebrat z tělesa"
+    -     option selected value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    +   select value="throughAll"
+    -   select value="upTo"
+    +     option selected value="throughAll": "Through all"
+    +     option value="upTo": "Up to a plane or face"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option selected value="upTo": "Up to a plane or face"
+    + p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    - p#draft-start.hint
+    +   "Side"
+    +   select value="backward"
+    +     option value="both" disabled: "Both sides"
+    +     option value="forward": "Along the normal"
+    +     option selected value="backward": "Against the normal"
+    + p.hint: "The length follows the target bodies at every recompute. On a face the normal points out of the body, so an ordinary hole goes against it."
+    + fieldset.targets
+    +   legend: "Target bodies"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Vysunutí 1"
+    + p#draft-problem.issue.warning
+    -   "Start (mm or an expression; offset from the start plane along the normal of the sketch)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - p: "Plane: none yet"
+    +   button.primary: "OK"
+    -   button: "Pick"
+    - label
+    -   "Gap before the plane (mm or an expression; negative = past it; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/gap" data-unit="mm"
+    - p.hint: "The tool ends in the plane of the face on whichever side it lies, also beside the face itself; the length follows the model."
+    - p#draft-length.hint
+    - label
+    -   "Těleso"
+    -   select value="e1"
+    -     option selected value="e1": "Vysunutí 1"
+    - p#draft-problem.issue.error
+    - div.buttons
+    -   button.primary disabled: "OK"
+  view: 3 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 29045.408
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 7. the start plane removed: through all may go to both sides again
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"throughAll","side":"backward"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    + p: "Start at: Sketch plane"
+    - p: "Start at: stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    -   button: "Sketch plane"
+    - p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    +     option value="both": "Both sides"
+    -     option value="both" disabled: "Both sides"
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+    - p#draft-problem.issue.warning
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 612 numbers, sum 29045.408
+
+=== 8. the distance the draft had comes back without the start plane
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   select value="distance"
+    +     option selected value="distance": "Distance"
+    +     option value="throughAll": "Through all"
+    -   select value="throughAll"
+    -     option value="distance": "Distance"
+    -     option selected value="throughAll": "Through all"
+    +   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Distance (mm or an expression; negative = against the normal)"
+    +   span.field
+    +     input value="10"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    + label
+    +   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    +   span.field
+    +     input value=""
+    +     small.computed data-field="extent/taper" data-unit="rad"
+    -   "Side"
+    -   select value="backward"
+    -     option value="both": "Both sides"
+    -     option value="forward": "Along the normal"
+    -     option selected value="backward": "Against the normal"
+    - p.hint: "The length follows the target bodies at every recompute. On a face the normal points out of the body, so an ordinary hole goes against it."
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 29045.408
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 9. OK: the boss with its start plane is in the document
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")
+  engine: getState("e1")
+  engine: getState("s1")
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}) -> ok
+  features: s1, e1, e2
+  feature e2:
+      {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"start":0,"distance":10},"operation":"add","targets":["e1"]}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Chamfer edges of a body by a distance": "Chamfer"
+    +   button title="Round edges of a body by a radius": "Fillet"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Vysunutí 2"
+    +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "Nové vysunutí"
+    - label
+    -   "Profile"
+    -   select value="regions"
+    -     option selected value="regions": "Sketch regions"
+    -     option value="wall": "Wall along curves"
+    -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
+    - label
+    -   "Skica"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Zrušit výběr oblastí"
+    - label
+    -   "Offset (mm or an expression; positive grows the profile; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="profile/offset" data-unit="mm"
+    - label
+    -   "Operace"
+    -   select value="cut"
+    -     option value="new": "Nové těleso"
+    -     option value="add": "Přidat k tělesu"
+    -     option selected value="cut": "Odebrat z tělesa"
+    - label
+    -   "Extent"
+    -   select value="distance"
+    -     option selected value="distance": "Distance"
+    -     option value="throughAll": "Through all"
+    -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
+    - label
+    -   "Start (mm or an expression; offset from the sketch plane along its normal)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Distance (mm or an expression; negative = against the normal)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    - label
+    -   "Taper (degrees or an expression; positive widens away from the start; empty = none)"
+    -   span.field
+    -     input value=""
+    -     small.computed data-field="extent/taper" data-unit="rad"
+    - fieldset.targets
+    -   legend: "Target bodies"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Vysunutí 1"
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Vysunutí přidáno.
+  view: 5 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 36211.608
+    + line #8b9bb4 width 1: 24 numbers, sum 395.81
+    + line #8b9bb4 width 1: 24 numbers, sum 263.873
+    + line #8b9bb4 width 1: 24 numbers, sum 131.937
+    - line #26303c width 1.5: 612 numbers, sum 29045.408
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #64748b opacity 0.15 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 90 numbers, sum 5344.147
+    - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 10. selected: the summary names the start plane and the facts say where the boss starts
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Vysunutí"
+    + label
+    +   "Název"
+    +   input value="Vysunutí 2"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Přidat k tělesu, distance 10 mm from stěna Vysunutí 1 – protější víko (Vysunutí 1), regions: 1, bodies: Vysunutí 1."
+    + p.hint: "the start is 10 mm from the sketch plane along its normal"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face e1 #7 #f97316 opacity 0.3
+    + face e1 #8 #f97316 opacity 0.3
+
+=== 11. edited: the start plane removed from the feature
+  engine: preview({"type":"updateFeature","id":"e2","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}],"offset":null},"extent":{"type":"distance","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"start":0,"distance":10,"taper":null},"operation":"add","targets":["e1"]}}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"updateFeature","id":"e2","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"add","targets":["e1"]}}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  engine: execute({"type":"updateFeature","id":"e2","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"add","targets":["e1"]}}) -> ok
+  feature e2:
+    + {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"add","targets":["e1"]}
+    - {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"start":0,"distance":10},"operation":"add","targets":["e1"]}
+  timeline:
+    + div.row.warning title="Operace těleso nezměnila. (Vysunutí 1)"
+    +   span.dot: "▲"
+    - div.row.ok.selected
+    -   span.dot: "●"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Vysunutí"
+    - label
+    -   "Název"
+    -   input value="Vysunutí 2"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Přidat k tělesu, distance 10 mm from stěna Vysunutí 1 – protější víko (Vysunutí 1), regions: 1, bodies: Vysunutí 1."
+    - p.hint: "the start is 10 mm from the sketch plane along its normal"
+  status: Změna uložena.
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - line #26303c width 1.5: 612 numbers, sum 36211.608
+    - line #8b9bb4 width 1: 24 numbers, sum 395.81
+    - line #8b9bb4 width 1: 24 numbers, sum 263.873
+    - line #8b9bb4 width 1: 24 numbers, sum 131.937
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
+    - face e1 #7 #f97316 opacity 0.3
+    - face e1 #8 #f97316 opacity 0.3
+
+=== 12. a pick armed in a new draft: the first Escape disarms it, the second leaves the draft
+  engine: getState("s1")
+  engine: getState("e2")  (x3)
+  engine: getState("s1")  (x2)
+  engine: getState("e2")
+  engine: getState("s1")
+  engine: getState("e2")
+  engine: getState("s1")
+  engine: getState("e2")
+  engine: getState("s1")
+  engine: getState("e2")
+  engine: getState("s1")
+  status: Click regions of the sketch in the view to pick them.
+  view: 4 scene(s) set
+
+=== 13. a new hole through all backward from the sketch plane: it misses the plate
+  engine: getState("e2")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Chamfer edges of a body by a distance": "Chamfer"
+    -   button title="Round edges of a body by a radius": "Fillet"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "New hole"
+    + label
+    +   "Sketch"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + fieldset
+    +   legend: "Points"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "origin of the sketch"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p1"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p2"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p3"
+    +   label.check
+    +     input type=checkbox unchecked
+    +     "p4"
+    +   label.check
+    +     input type=checkbox checked
+    +     "p5"
+    +   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    + label
+    +   "Kind"
+    +   select value="plain"
+    +     option selected value="plain": "Plain"
+    +     option value="counterbore": "Counterbore"
+    +     option value="countersink": "Countersink"
+    +     option value="nutPocket": "Nut pocket"
+    + label
+    +   "Diameter (mm or an expression)"
+    +   span.field
+    +     input value="3"
+    +     small.computed data-field="shape/diameter" data-unit="mm"
+    + label
+    +   "Extent"
+    +   select value="throughAll"
+    +     option selected value="throughAll": "Through all"
+    +     option value="distance": "Distance"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
+    + label
+    +   "Side"
+    +   select value="backward"
+    +     option selected value="backward": "Against the normal"
+    +     option value="forward": "Along the normal"
+    + p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+    + fieldset.targets
+    +   legend: "Target bodies"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Vysunutí 1"
+    + label
+    +   "Label (for people and a parts list; empty = none)"
+    +   input value=""
+    + fieldset
+    +   legend: "From the catalog"
+    +   label
+    +     "For"
+    +     select value="clearance"
+    +       option selected value="clearance": "Clearance hole"
+    +       option value="socketHead": "Socket head cap screw"
+    +       option value="countersunk": "Countersunk screw"
+    +       option value="nutPocket": "Hex nut"
+    +       option value="heatSetInsert": "Heat-set insert"
+    +   label
+    +     "Size"
+    +     select value="M2"
+    +       option selected value="M2": "M2"
+    +       option value="M2.5": "M2.5"
+    +       option value="M3": "M3"
+    +       option value="M3.5": "M3.5"
+    +       option value="M4": "M4"
+    +   label
+    +     "Series of the through hole"
+    +     select value="medium"
+    +       option value="fine": "Fine"
+    +       option selected value="medium": "Medium"
+    +       option value="coarse": "Coarse"
+    +   label
+    +     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    +     input value=""
+    +   div.buttons
+    +     button: "Fill from the catalog"
+    + p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Tick the points of the sketch; the sizes of a screw, a nut or an insert come from the catalog.
+  view: 2 scene(s) set
+
+=== 14. the pick of the mouth armed: the view shows the state before the hole
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")  (x3)
+  panel:
+    +   button: "Picking the start… (click to stop)"
+    -   button: "Pick the start"
+  status: Click a plane or a planar face in the view: the mouth starts from its plane.
+  view: 1 scene(s) set
+
+=== 15. the top of the plate picked: the hole goes down through it from the top
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  panel:
+    + p: "Start at: stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    - p: "Start at: Sketch plane"
+    +   button: "Pick the start"
+    +   button: "Sketch plane"
+    + p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    -   button: "Picking the start… (click to stop)"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+  status: The mouth starts from the plane picked.
+  view: 2 scene(s) set
+  scene:
+    + line #26303c width 1.5: 408 numbers, sum 30189.874
+    - line #26303c width 1.5: 72 numbers, sum 4060
+    + face e1 #1 #0ea5e9 opacity 0.3
+
+=== 16. a distance: the start plane goes along
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"distance","start":0,"distance":-10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  panel:
+    +   select value="distance"
+    +     option value="throughAll": "Through all"
+    +     option selected value="distance": "Distance"
+    -   select value="throughAll"
+    -     option selected value="throughAll": "Through all"
+    -     option value="distance": "Distance"
+    +   "Start of the mouth (mm or an expression; offset from the start plane along the normal of the sketch)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="extent/start" data-unit="mm"
+    + label
+    +   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    +   span.field
+    +     input value="-10"
+    +     small.computed data-field="extent/distance" data-unit="mm"
+    -   "Side"
+    -   select value="backward"
+    -     option selected value="backward": "Against the normal"
+    -     option value="forward": "Along the normal"
+    - p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+  view: 1 scene(s) set
+
+=== 17. filled from the catalog: a counterbore with its head at the top, the start plane kept
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"forward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")  (x2)
+  engine: query("hardwareHole", {"use":"socketHead","size":"M2","fit":"medium"}) -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  panel:
+    +   select value="counterbore"
+    +     option value="plain": "Plain"
+    +     option selected value="counterbore": "Counterbore"
+    -   select value="plain"
+    -     option selected value="plain": "Plain"
+    -     option value="counterbore": "Counterbore"
+    +     input value="2.4"
+    -     input value="3"
+    +   "Head diameter (mm or an expression)"
+    +   span.field
+    +     input value="3.98"
+    +     small.computed data-field="shape/headDiameter" data-unit="mm"
+    + label
+    +   "Head depth (mm or an expression)"
+    +   span.field
+    +     input value="2"
+    +     small.computed data-field="shape/headDepth" data-unit="mm"
+    + label
+    +   select value="throughAll"
+    +     option selected value="throughAll": "Through all"
+    +     option value="distance": "Distance"
+    -   select value="distance"
+    -     option value="throughAll": "Through all"
+    -     option selected value="distance": "Distance"
+    +   "Side"
+    +   select value="backward"
+    +     option selected value="backward": "Against the normal"
+    +     option value="forward": "Along the normal"
+    + p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+    -   "Start of the mouth (mm or an expression; offset from the start plane along the normal of the sketch)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="extent/start" data-unit="mm"
+    - label
+    -   "Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)"
+    -   span.field
+    -     input value="-10"
+    -     small.computed data-field="extent/distance" data-unit="mm"
+    +   input value="M2 socket head cap screw"
+    -   input value=""
+    +     select value="socketHead"
+    +       option value="clearance": "Clearance hole"
+    +       option selected value="socketHead": "Socket head cap screw"
+    -     select value="clearance"
+    -       option selected value="clearance": "Clearance hole"
+    -       option value="socketHead": "Socket head cap screw"
+    -       option value="M3.5": "M3.5"
+  status: M2 socket head cap screw: the sizes from clearanceHoles and socketHeadScrews; the extent stays through all (against the normal).
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 840 numbers, sum 65603.632
+    - line #26303c width 1.5: 408 numbers, sum 30189.874
+
+=== 18. selected: the summary names the start plane
+  engine: getState("e2")
+  engine: execute({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"},"index":3}) -> ok
+  features: s1, e1, e2, d1
+  feature d1:
+      {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Chamfer edges of a body by a distance": "Chamfer"
+    +   button title="Round edges of a body by a radius": "Fillet"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected
+    +   span.dot: "●"
+    +   span.name: "Hole 1"
+    +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Hole"
+    - h2: "New hole"
+    +   "Název"
+    +   input value="Hole 1"
+    -   "Sketch"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - fieldset
+    -   legend: "Points"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "origin of the sketch"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "p1"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "p2"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "p3"
+    -   label.check
+    -     input type=checkbox unchecked
+    -     "p4"
+    -   label.check
+    -     input type=checkbox checked
+    -     "p5"
+    -   p.hint: "One hole at every point ticked; a point of projected geometry cannot carry a hole (draw a point and make it coincident with it)."
+    - label
+    -   "Kind"
+    -   select value="counterbore"
+    -     option value="plain": "Plain"
+    -     option selected value="counterbore": "Counterbore"
+    -     option value="countersink": "Countersink"
+    -     option value="nutPocket": "Nut pocket"
+    - label
+    -   "Diameter (mm or an expression)"
+    -   span.field
+    -     input value="2.4"
+    -     small.computed data-field="shape/diameter" data-unit="mm"
+    - label
+    -   "Head diameter (mm or an expression)"
+    -   span.field
+    -     input value="3.98"
+    -     small.computed data-field="shape/headDiameter" data-unit="mm"
+    - label
+    -   "Head depth (mm or an expression)"
+    -   span.field
+    -     input value="2"
+    -     small.computed data-field="shape/headDepth" data-unit="mm"
+    - label
+    -   "Extent"
+    -   select value="throughAll"
+    -     option selected value="throughAll": "Through all"
+    -     option value="distance": "Distance"
+    - p: "Start at: stěna Vysunutí 1 – protější víko (Vysunutí 1)"
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "M2 socket head cap screw: counterbore ⌀ 2.4 mm, head ⌀ 3.98 mm, 2 mm deep; through all (against the normal) from stěna Vysunutí 1 – protější víko (Vysunutí 1); 1 point of Skica 1; bodies: Vysunutí 1."
+    + p.hint: "The hole is 10 mm deep, its head 2 mm."
+    + p.hint: "The mouth: the start is 10 mm from the sketch plane along its normal."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    -   button: "Pick the start"
+    -   button: "Sketch plane"
+    - p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
+    - label
+    -   "Side"
+    -   select value="backward"
+    -     option selected value="backward": "Against the normal"
+    -     option value="forward": "Along the normal"
+    - p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
+    - fieldset.targets
+    -   legend: "Target bodies"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Vysunutí 1"
+    - label
+    -   "Label (for people and a parts list; empty = none)"
+    -   input value="M2 socket head cap screw"
+    - fieldset
+    -   legend: "From the catalog"
+    -   label
+    -     "For"
+    -     select value="socketHead"
+    -       option value="clearance": "Clearance hole"
+    -       option selected value="socketHead": "Socket head cap screw"
+    -       option value="countersunk": "Countersunk screw"
+    -       option value="nutPocket": "Hex nut"
+    -       option value="heatSetInsert": "Heat-set insert"
+    -   label
+    -     "Size"
+    -     select value="M2"
+    -       option selected value="M2": "M2"
+    -       option value="M2.5": "M2.5"
+    -       option value="M3": "M3"
+    -       option value="M4": "M4"
+    -   label
+    -     "Series of the through hole"
+    -     select value="medium"
+    -       option value="fine": "Fine"
+    -       option selected value="medium": "Medium"
+    -       option value="coarse": "Coarse"
+    -   label
+    -     "Allowance (an expression added to the diameters, such as a parameter; empty = none)"
+    -     input value=""
+    -   div.buttons
+    -     button: "Fill from the catalog"
+    - p#draft-problem.issue.warning
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Hole přidáno.
+  view: 3 scene(s) set
+  scene:
+    + face e1 #8 #f97316 opacity 0.3
+    + face e1 #9 #f97316 opacity 0.3
+    + face e1 #10 #f97316 opacity 0.3
+    - face e1 #1 #0ea5e9 opacity 0.3
+
+=== 19. edited: the start plane removed, the hole misses the plate again
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"}}, "d1") -> ok
+  engine: getState("e2")
+  engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":null},"targets":["e1"],"label":"M2 socket head cap screw"}}, "d1") -> ok
+  engine: getState("e2")  (x2)
+  engine: execute({"type":"updateFeature","id":"d1","patch":{"sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":null},"targets":["e1"],"label":"M2 socket head cap screw"}}) -> ok
+  feature d1:
+    + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"],"label":"M2 socket head cap screw"}
+    - {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"}
+  timeline:
+    + div.row.warning title="Operace těleso nezměnila. (Vysunutí 1)"
+    +   span.dot: "▲"
+    - div.row.ok.selected
+    -   span.dot: "●"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Hole"
+    - label
+    -   "Název"
+    -   input value="Hole 1"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "M2 socket head cap screw: counterbore ⌀ 2.4 mm, head ⌀ 3.98 mm, 2 mm deep; through all (against the normal) from stěna Vysunutí 1 – protější víko (Vysunutí 1); 1 point of Skica 1; bodies: Vysunutí 1."
+    - p.hint: "The hole is 10 mm deep, its head 2 mm."
+    - p.hint: "The mouth: the start is 10 mm from the sketch plane along its normal."
+  status: Změna uložena.
+  view: 4 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 840 numbers, sum 65603.632
+    - face e1 #8 #f97316 opacity 0.3
+    - face e1 #9 #f97316 opacity 0.3
+    - face e1 #10 #f97316 opacity 0.3

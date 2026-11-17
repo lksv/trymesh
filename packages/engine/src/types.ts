@@ -464,8 +464,9 @@ export interface PatternFeature extends FeatureBase {
 // - The query `hardwareHole` composes `shape` and `label` from the hardware catalogs (and the
 //   depth of a hole for a heat-set insert); the document stores the numbers, not the size.
 // - Errors: `invalidHole` (see ErrorCode), `brokenReference` (the sketch, a point or a target is
-//   missing), `emptyResult` and `kernelFailure` as for a cut; the warning `noEffect` names the
-//   targets the holes missed.
+//   missing, or the plane `extent.from`), `nonPlanarFace` and `invalidExtent` from the start plane of
+//   its extent (`refs: [from]`), `emptyResult` and `kernelFailure` as for a cut; the warning
+//   `noEffect` names the targets the holes missed.
 export interface HoleFeature extends FeatureBase {
   type: 'hole';
   sketch: Id;
@@ -663,16 +664,22 @@ export type HoleShape =
   | { type: 'nutPocket'; diameter: number; acrossFlats: number; headDepth: number; rotation: number };
 
 // The extent of a hole: two of the variants of a cut, without a taper and without `upTo`.
-// - `distance`: `start` is the offset of the mouth from the sketch plane along its normal;
-//   `distance` is the depth of the whole hole, head included, and its sign is the direction. For
-//   a sketch on a face the normal points out of the body, so a hole into it has a negative distance.
-// - `throughAll`: from the sketch plane through all targets, `forward` or `backward` (not `both`:
-//   a hole has a mouth). The depth of the hole is then how far the targets reach from the sketch
-//   plane on that side; the tool is longer by the overshoot of every "through all".
+// - `distance`: `start` is the offset of the mouth from the sketch plane (or from `from`) along the
+//   normal of the sketch plane; `distance` is the depth of the whole hole, head included, and its
+//   sign is the direction. For a sketch on a face the normal points out of the body, so a hole into
+//   it has a negative distance.
+// - `throughAll`: from the mouth through all targets, `forward` or `backward` (not `both`: a hole
+//   has a mouth). The mouth is the sketch plane, or the plane `from`. The depth of the hole is then
+//   how far the targets reach from the mouth on that side; the tool is longer by the overshoot of
+//   every "through all".
+// - `from` (optional, D66): the mouth starts from this plane instead of the sketch plane, as for the
+//   extent of an extrusion (see Extent): the top of a part whose sketch is at the bottom is `from`
+//   that face, through all `backward`, and the head of a counterbore is at the top.
 // The result tells in `facts`: `depth`, the depth of the whole hole in mm for the feature itself
-// (for "through all" measured on the meshes of the targets, so with their float32 rounding), and
-// `headDepth`, the depth of the head (absent for a plain hole).
-export type HoleExtent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' };
+// (for "through all" measured from the mouth on the meshes of the targets, so with their float32
+// rounding), `headDepth`, the depth of the head (absent for a plain hole), and with `from`
+// `startLevel`, the level of the mouth along the normal of the sketch plane, from the sketch plane.
+export type HoleExtent = { type: 'distance'; from?: PlaneRef; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward'; from?: PlaneRef };
 
 // A stored mesh placed as a body (D55): a bought or given part to design around.
 // - `mesh`: a key of the section `meshes`. A command that sets it checks that the section has it;
@@ -878,10 +885,41 @@ export type AxisRef =
 // - Errors: `brokenReference`, `nonPlanarFace` (the face is not planar), `invalidExtent` (the plane
 //   is parallel to the direction of the extrusion or within 0.01 rad of it; it passes through or
 //   touches the start of the tool; the gap reaches the start). For every operation; no taper.
+// `from` (optional, D66, on every variant): the plane the extent starts from instead of the sketch
+// plane. A base plane, a plane feature or a planar face of a body, referred to as a sketch refers to
+// its plane; for a face it is the whole plane the face lies in (the profile need not lie over it).
+// - `start` keeps its meaning, now measured from `from`: the offset along the normal of the sketch
+//   plane (not of the face; its sign means what it means without `from`). The tool starts at the
+//   effective start, the level of the plane plus `start`, and lies in the plane only when `start` is
+//   0; `distance` is measured from there. `{ from: <the top of the plate>, start: 0, distance: 12 }`
+//   is a boss on the plate; `{ from: <the top>, start: -0.6, distance: -3 }` a cavity under a skin of
+//   0.6.
+// - The plane has to be parallel to the sketch plane: its level may differ over the outline of the
+//   profile at the start by no more than 1e-6 mm. A tilted plane is refused (`invalidExtent`); put
+//   the sketch on that face instead, or start from a plane parallel to the sketch.
+// - `upTo` runs from the effective start to its plane, and its refusals apply to the effective
+//   start (`from` equal to `plane` with `start: 0` passes through the start; with `start: -2` it is
+//   a tool 2 mm long); `lengthMin` and `lengthMax` are measured from it.
+// - `throughAll` with `from` goes `forward` or `backward` only, from the plane through all targets
+//   on that side; `both` with `from` is an invalid command (both sides of any start are all of the
+//   targets).
+// - The plane is resolved at every recompute, in the state before the feature, so the start follows
+//   the face when the model changes. A copy made by a pattern of features carries its start with it,
+//   as it carries its sketch plane: it starts at the image of the face (a boss mirrored in the middle
+//   plane of its plate starts at the underside), not at the face itself. The end of `upTo` does not
+//   move with a copy, so a post from the top of a plate up to a lid, mirrored in the middle plane of
+//   the plate, starts at the underside and runs up through the plate to the lid.
+// - The result tells the effective start in `facts.startLevel` (mm along the normal of the sketch
+//   plane, from it), only with `from`.
+// - Errors with `from` in `refs`: `brokenReference` (the plane, the body or the face is not in the
+//   state before the feature), `nonPlanarFace`, `invalidExtent` (the plane is within 0.01 rad of the
+//   direction, or tilted against the sketch plane; the message says which and by how much).
+// - `updateFeature`: `{ extent: { from: <ref> } }` sets or replaces it, `{ extent: { from: null } }`
+//   removes it (also where the extent has none).
 export type Extent =
-  | { type: 'distance'; start: number; distance: number; taper?: number }
-  | { type: 'throughAll'; side: 'forward' | 'backward' | 'both' }
-  | { type: 'upTo'; plane: PlaneRef; start: number; gap?: number };
+  | { type: 'distance'; from?: PlaneRef; start: number; distance: number; taper?: number }
+  | { type: 'throughAll'; side: 'forward' | 'backward' | 'both'; from?: PlaneRef }
+  | { type: 'upTo'; from?: PlaneRef; plane: PlaneRef; start: number; gap?: number };
 
 // ---------------------------------------------------------------- jména
 
@@ -1307,8 +1345,10 @@ export interface Issue {
 // range of the field (details in `fieldErrors`). For a sketch it is a warning: the sketch is computed
 // with the last valid value of the field, so that it stays visible and can be fixed. For other
 // feature types it is an error.
-// invalidExtent: the extent `upTo` cannot reach its plane (parallel to the direction, through the
-// start of the tool, or a gap as large as the way to it).
+// invalidExtent: the extent cannot use one of its planes (`refs` name which): the extent `upTo`
+// cannot reach its plane (parallel to the direction, through the start of the tool, or a gap as
+// large as the way to it), or the extent of an extrusion or a hole cannot start in its plane `from`
+// (within 0.01 rad of the direction, or tilted against the sketch plane).
 // invalidClearance: a tool of a combine cannot be moved outwards by the clearance without a change
 // of its shape (D56). `refs` start with the tool body and name the faces concerned: a hole no
 // wider than twice the clearance closes, two parts of the tool are nearer than twice the clearance

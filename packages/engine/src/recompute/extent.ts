@@ -1,8 +1,8 @@
 // The extent of a tool along the normal of its sketch plane.
 import type { Region } from '../sketch';
 import { toWorld } from '../solid';
-import type { ExtrudeFeature, Frame, Solid, Vec3 } from '../types';
-import { LENGTH_TOLERANCE, dot3, sub3, unit3 } from '../util';
+import type { ExtrudeFeature, Frame, HoleExtent, Solid, Vec3 } from '../types';
+import { LENGTH_TOLERANCE, cross3, dot3, len3, sub3, unit3 } from '../util';
 
 // The interval of a tool along the normal of the sketch plane, measured from the plane: [start,
 // end] with one level for the whole end, or the end as a level per point of the profile (a plane
@@ -23,19 +23,24 @@ export interface TiltedSpan {
 // adapter takes the cap as flush with the face, which it handles like any flush face.
 // A side on which the targets do not reach gets just the overshoot: the tool then misses them and
 // the feature reports `noEffect`. The extent `upTo` is measured by `upToSpan`.
-export function toolSpan(extent: Exclude<ExtrudeFeature['extent'], { type: 'upTo' }>, frame: Frame, targets: Solid[]): [number, number] {
+// The extent is the resolved one (`resolveStart`): a distance carries its effective start in
+// `start`; `start` here is where "through all" starts (the level of its plane `from`, D66; 0
+// without one), passed explicitly by every caller.
+export function toolSpan(extent: Exclude<ResolvedExtent, { type: 'upTo' }>, frame: Frame, targets: Solid[], start: number): [number, number] {
   if (extent.type === 'distance') return [extent.start, extent.start + extent.distance];
-  return throughAll(extent.side, frame, targets).span;
+  return throughAll(extent.side, frame, targets, start).span;
 }
 
-// What "through all" measures (D46 asks for the parts a hole needs):
+// What "through all" measures (D46 asks for the parts a hole needs), from `start`, the level along
+// the normal it starts at (the level of a plane `from`, D66; 0 for the sketch plane and always for
+// `both`):
 // - `span`: the interval of the tool, as `toolSpan` answers it;
-// - `reach`: how far the targets go from the sketch plane on the side asked for, without the
-//   overshoot (zero when no vertex of a target lies on that side; for `both` the larger of the two
-//   sides). It is measured on float32 positions against a frame in doubles, so a target that ends
-//   in the sketch plane has a reach of noise, not of zero;
-// - `scale`: the largest coordinate of the targets and of the sketch plane, which the overshoot and
-//   the resolution of the kernel adapter follow;
+// - `reach`: how far the targets go from the start on the side asked for, without the overshoot
+//   (zero when no vertex of a target lies on that side; for `both` the larger of the two sides).
+//   It is measured on float32 positions against a frame in doubles, so a target that ends in the
+//   plane of the start has a reach of noise, not of zero;
+// - `scale`: the largest coordinate of the targets, of the sketch plane and of the start, which the
+//   overshoot and the resolution of the kernel adapter follow;
 // - `overshoot`: what is added beyond the reach.
 export interface ThroughAll {
   span: [number, number];
@@ -43,8 +48,8 @@ export interface ThroughAll {
   scale: number;
   overshoot: number;
 }
-export function throughAll(side: 'forward' | 'backward' | 'both', frame: Frame, targets: Solid[]): ThroughAll {
-  let [low, high, scale] = [0, 0, Math.max(...frame.origin.map(Math.abs))];
+export function throughAll(side: 'forward' | 'backward' | 'both', frame: Frame, targets: Solid[], start: number): ThroughAll {
+  let [low, high, scale] = [start, start, Math.max(...frame.origin.map(Math.abs), ...toWorld(frame, 0, 0, start).map(Math.abs))];
   for (const solid of targets) {
     const p = solid.positions;
     for (let i = 0; i < p.length; i += 3) {
@@ -55,9 +60,104 @@ export function throughAll(side: 'forward' | 'backward' | 'both', frame: Frame, 
     }
   }
   const overshoot = Math.max(1, 0.01 * scale);
-  if (side === 'forward') return { span: [0, high + overshoot], reach: high, scale, overshoot };
-  if (side === 'backward') return { span: [0, low - overshoot], reach: -low, scale, overshoot };
-  return { span: [low - overshoot, high + overshoot], reach: Math.max(high, -low), scale, overshoot };
+  if (side === 'forward') return { span: [start, high + overshoot], reach: high - start, scale, overshoot };
+  if (side === 'backward') return { span: [start, low - overshoot], reach: start - low, scale, overshoot };
+  return { span: [low - overshoot, high + overshoot], reach: Math.max(high - start, start - low), scale, overshoot };
+}
+
+// ---------------------------------------------------------------- the start at a plane (D66)
+
+// The outline of a profile at the start, by the exact curves the builds put their vertices on, in
+// the coordinates of the sketch: a line by its two ends, a circle (also the circle of an arc) by
+// its centre and radius, and a curve without an exact form by the points of its polyline.
+export type ExactCurve = { type: 'line'; a: [number, number]; b: [number, number] } | { type: 'circle'; center: [number, number]; radius: number } | { type: 'points'; xy: readonly number[] };
+
+// The exact curves of the start of an extrusion: the `exact` curves of the loops of its regions
+// (`Loop.exact`, the curves the polylines were divided from, as the taper reads them; for unoffset
+// regions their ends are where the profile joined coincident ends, which may differ from the solved
+// sketch by the join tolerance), each line by its ends, each arc by its whole circle and its two
+// ends as points, each circle by itself; a loop without `exact` (a generated profile) by its
+// vertices. Every vertex a build makes at the start lies on these curves: the prism, the rings of
+// a taper however they resample the outline.
+export function exactStart(regions: readonly Region[]): ExactCurve[] {
+  const out: ExactCurve[] = [];
+  for (const region of regions) {
+    for (const loop of [region.outer, ...region.holes]) {
+      if (!loop.exact) {
+        out.push({ type: 'points', xy: loop.xy });
+        continue;
+      }
+      for (const curve of loop.exact) {
+        if (curve.type === 'line') out.push({ type: 'line', a: [curve.from[0], curve.from[1]], b: [curve.to[0], curve.to[1]] });
+        else {
+          out.push({ type: 'circle', center: [curve.center[0], curve.center[1]], radius: curve.radius });
+          if (curve.type === 'arc') out.push({ type: 'points', xy: [curve.from[0], curve.from[1], curve.to[0], curve.to[1]] });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// The level of the plane `from` in the frame a tool is built in: where the plane crosses the line
+// along the normal of the sketch through a point of the outline, measured from the sketch plane,
+// as the middle of its extremes over the exact outline at the start; or why the plane cannot be
+// a start (`detail`).
+// - A plane within `UP_TO_MIN_ANGLE` of the direction has no level worth the name (as for `upTo`).
+// - The level is linear in (u, v), so a line is tested at its ends and a circle analytically (its
+//   extremes are the level at the centre ± r · |gradient|); points one by one. A spread of more
+//   than `LENGTH_TOLERANCE` is a plane tilted against the sketch: refused, not built.
+// `what`: the feature the detail speaks of.
+export function planeLevel(plane: EndPlane, frame: Frame, outline: readonly ExactCurve[], what: 'extrusion' | 'hole' = 'extrusion'): { level: number } | { detail: string } {
+  const normal = unit3(plane.normal);
+  const across = dot3(normal, frame.normal);
+  if (Math.abs(across) <= Math.sin(UP_TO_MIN_ANGLE)) return { detail: `the start plane is parallel to the direction of the ${what}, or within 0.01 rad of it` };
+  // level(u, v) = at + gu · u + gv · v
+  const at = dot3(normal, sub3(plane.point, frame.origin)) / across;
+  const [gu, gv] = [-dot3(normal, frame.x) / across, -dot3(normal, frame.y) / across];
+  const gradient = Math.hypot(gu, gv);
+  let [low, high] = [Infinity, -Infinity];
+  const take = (value: number): void => {
+    low = Math.min(low, value);
+    high = Math.max(high, value);
+  };
+  const level = (u: number, v: number): number => at + gu * u + gv * v;
+  for (const curve of outline) {
+    if (curve.type === 'line') {
+      take(level(curve.a[0], curve.a[1]));
+      take(level(curve.b[0], curve.b[1]));
+    } else if (curve.type === 'circle') {
+      const centre = level(curve.center[0], curve.center[1]);
+      take(centre - curve.radius * gradient);
+      take(centre + curve.radius * gradient);
+    } else for (let k = 0; k + 1 < curve.xy.length; k += 2) take(level(curve.xy[k], curve.xy[k + 1]));
+  }
+  // an empty outline (no profile reaches this point): the level at the origin of the sketch
+  if (low > high) return { level: at };
+  const spread = high - low;
+  if (spread > LENGTH_TOLERANCE) {
+    const tilt = Math.atan2(len3(cross3(normal, frame.normal)), Math.abs(across));
+    // three digits, small numbers as powers of ten
+    const shown = (value: number): string => {
+      const short = Number(value.toPrecision(3));
+      return short !== 0 && Math.abs(short) < 1e-3 ? short.toExponential() : String(short);
+    };
+    return {
+      detail: `the start plane is tilted against the sketch plane by ${shown(tilt)} rad: its level differs by ${shown(spread)} mm over the profile, more than ${shown(LENGTH_TOLERANCE)} mm; put the sketch on that face, or start from a plane parallel to the sketch`,
+    };
+  }
+  return { level: (low + high) / 2 };
+}
+
+// The extent the builds see, made once by the step of the feature: `from` dropped, and for
+// `distance` and `upTo` `start` raised by the level of the plane (the effective start). "Through
+// all" keeps its variant; the level goes to `toolSpan` and `throughAll` as their `start`. The same
+// for the extrusion and the hole.
+export type WithoutFrom<E> = E extends unknown ? Omit<E, 'from'> : never;
+export type ResolvedExtent = WithoutFrom<ExtrudeFeature['extent']>;
+export function resolveStart<E extends ExtrudeFeature['extent'] | HoleExtent>(extent: E, level: number): WithoutFrom<E> {
+  const { from: _from, ...rest } = extent as ExtrudeFeature['extent'];
+  return (rest.type === 'throughAll' ? rest : { ...rest, start: rest.start + level }) as WithoutFrom<E>;
 }
 
 // ---------------------------------------------------------------- up to a plane (D47)
@@ -90,7 +190,7 @@ export interface UpTo {
 // - The gap moves the plane along its own normal towards the side of the start.
 // - When the lengths differ by no more than the length tolerance (a plane parallel to the sketch),
 //   the tool gets one length, the middle of the extremes, and is the prism of a distance extent.
-export function upToSpan(extent: Extract<ExtrudeFeature['extent'], { type: 'upTo' }>, plane: EndPlane, frame: Frame, regions: Region[]): UpTo | { detail: string } {
+export function upToSpan(extent: Extract<ResolvedExtent, { type: 'upTo' }>, plane: EndPlane, frame: Frame, regions: Region[]): UpTo | { detail: string } {
   const normal = unit3(plane.normal);
   const across = dot3(normal, frame.normal);
   if (Math.abs(across) <= Math.sin(UP_TO_MIN_ANGLE)) return { detail: 'the plane is parallel to the direction of the extrusion, or within 0.01 rad of it' };

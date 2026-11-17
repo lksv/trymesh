@@ -628,3 +628,20 @@ describe('the review of D63: the chamfer and the fillet of edges', () => {
     expect(round.change - (1 - Math.PI / 4) * 16 * 60).toBeLessThan(2);
   });
 });
+
+describe('the start of an extent at a plane: the design review of D66, round 2', () => {
+  it('a hole whose mouth is 1000 above a target 10 thick: the guards of the kernel resolution see the mouth (round 2)', () => {
+    const engine = newEngine();
+    const plane = (id: string, offset: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset } });
+    const state = run(
+      engine,
+      addSketch('S', XY),
+      rectangle('S', 'r', 0, 0, 40, 30),
+      batch({ type: 'addPoint', sketch: 'S', id: 'h', x: 20, y: 15 }, { type: 'addConstraint', sketch: 'S', id: 'hFix', constraint: { type: 'fixed', point: 'h', x: 20, y: 15 } }),
+      addExtrude('A', 'S', [rectLoop('r')], -10),
+      plane('High', 1000),
+      { type: 'addFeature', feature: { id: 'H', name: 'H', suppressed: false, type: 'hole', sketch: 'S', points: ['h'], shape: { type: 'counterbore', diameter: 3.4, headDiameter: 6, headDepth: 1000 }, extent: { type: 'distance', from: { kind: 'plane', feature: 'High' }, start: 0, distance: -1000.01 }, targets: ['A'] } },
+    );
+    expect(state.evaluation.features.H.error).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the bore below the head has to be longer than 0\.1 mm/) });
+  });
+});

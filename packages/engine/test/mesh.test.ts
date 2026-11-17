@@ -592,7 +592,8 @@ describe('the feature mesh: a stored mesh placed as a body with one face', () =>
     ok(engine, { type: 'addMesh', id: 'box', mesh: BOX_STORED }, placedMesh('a', 'box'));
     const saved = JSON.parse(engine.save());
     expect(saved.meshes).toEqual({ box: BOX_STORED });
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([9, undefined]);
+    // the branch d36/2h: version 9 with its pending step; the merge makes it version 10 without names
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([9, ['2h-extent-start']]);
     engine.undo();
     expect(engine.getState().document.meshes).toEqual({});
     engine.redo();

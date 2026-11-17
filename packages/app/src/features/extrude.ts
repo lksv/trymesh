@@ -1,10 +1,10 @@
 // The extrusion in the app: its form with the profile (regions of a sketch picked in the view and
 // their offset, a wall along curves of a sketch picked in the view, or a profile generator of the
 // catalog), the extent and the targets; its summary; what it draws.
-import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type RegionRef, type SketchFeature, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
+import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type PlaneRef, type RegionRef, type SketchFeature, derivedPoints, generatorOf, isFlag } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import type { PanelHost } from '../host';
-import { OPERATIONS, SIDES, factsText, lengthText, shownValue } from '../labels';
+import { OPERATIONS, SIDES, factsText, lengthText, shownValue, startText } from '../labels';
 import { type ExtentKind, type ExtentSide, type ExtrudeChange, type ExtrudeDraft, type ProfileKind, type RememberedProfiles, type UpToDraft, changeExtrude, draftCommand, noPlane, profileKind, rememberedProfile } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -14,7 +14,9 @@ import { clickProfile, hoverProfile, profileOverlay, regionsFields, sketchRegion
 interface Extra {
   distance?: ExtrudeDraft['extent']; // the distance extent the draft had last, to return to from "through all"
   upTo?: UpToDraft; // the extent up to a plane the draft had last, to return to
-  picking?: boolean; // the button "Pick" is armed: the next click in the view takes a plane or a planar face
+  // a button "Pick" is armed: the next click in the view takes a plane or a planar face, for the
+  // start of the extent (`from`, D66) or for the end of an extent up to a plane
+  picking?: 'start' | 'end';
   profiles?: RememberedProfiles; // the profile of each kind the draft had last, to return to from the other source
   hover?: RegionRef; // the region under the pointer
   hoverCurve?: Id; // the curve under the pointer, for a wall
@@ -72,7 +74,8 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
     if (m.draft.extent.type === 'upTo') m.extra.upTo = m.draft.extent;
     m.extra.profiles = { ...m.extra.profiles, [profileKind(m.draft.profile)]: m.draft.profile };
     m.draft = changeExtrude(m.draft, change, bodies, m.extra.distance, m.extra.profiles, m.extra.upTo);
-    if (m.draft.extent.type !== 'upTo') m.extra.picking = false;
+    // the pick of an end goes with the extent up to a plane; the pick of a start survives any change
+    if (m.draft.extent.type !== 'upTo' && m.extra.picking === 'end') m.extra.picking = undefined;
     draftChanged(host, rebuild);
   };
   const targets = m.draft.targets ?? [];
@@ -144,9 +147,10 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
         option('upTo', EXTENTS.upTo, extent.type === 'upTo'),
       ),
     ),
+    ...startFields(host, m, set),
     ...(extent.type === 'distance'
       ? [
-          draftField(host, m, 'Start (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ start }, false)),
+          draftField(host, m, startLabel(extent.from), 'extent/start', (start) => set({ start }, false)),
           draftField(host, m, 'Distance (mm or an expression; negative = against the normal)', 'extent/distance', (distance) => set({ distance }, false)),
           // a generated profile has no curves to move, so it has no taper
           m.draft.profile.type === 'generated'
@@ -163,7 +167,8 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
             h(
               'select',
               { onchange: (event: Event) => set({ side: (event.target as HTMLSelectElement).value as ExtentSide }) },
-              ...(Object.keys(SIDES) as ExtentSide[]).map((side) => option(side, SIDES[side], side === extent.side)),
+              // from a plane, through all goes forward or backward
+              ...(Object.keys(SIDES) as ExtentSide[]).map((side) => h('option', { value: side, textContent: SIDES[side], selected: side === extent.side, disabled: side === 'both' && extent.from !== undefined })),
             ),
           ),
           h('p', { className: 'hint' }, 'The length follows the target bodies at every recompute. On a face the normal points out of the body, so an ordinary hole goes against it.'),
@@ -202,21 +207,43 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
 const clickHint = (draft: ExtrudeDraft): string =>
   draft.profile.type === 'wall' ? 'Click curves of the sketch in the view: the wall follows them.' : draft.profile.type === 'regions' ? 'Click regions of the sketch in the view to pick them.' : '';
 
+// Arms a pick of a plane in the view for the start or the end, or disarms it when it is armed.
+function arm(host: PanelHost, m: ExtrudeMode, what: 'start' | 'end'): void {
+  m.extra.picking = m.extra.picking === what ? undefined : what;
+  // no region or curve stays highlighted while the view picks faces
+  m.extra.hover = undefined;
+  m.extra.hoverCurve = undefined;
+  host.say(m.extra.picking === 'start' ? 'Click a plane or a planar face in the view: the extent starts from its plane.' : m.extra.picking === 'end' ? 'Click a plane or a planar face in the view: the extrusion ends in its plane.' : clickHint(m.draft));
+  draftChanged(host, true);
+}
+
+// The label of the field of the start: from what the offset is measured.
+const startLabel = (from: PlaneRef | undefined): string => (from ? 'Start (mm or an expression; offset from the start plane along the normal of the sketch)' : 'Start (mm or an expression; offset from the sketch plane along its normal)');
+
+// The row "Start at" of every extent (D66): the sketch plane, or the plane picked in the view; the
+// button that arms the pick, and with a plane the button that returns to the sketch plane.
+function startFields(host: PanelHost, m: ExtrudeMode, set: (change: ExtrudeChange, rebuild?: boolean) => void): HTMLElement[] {
+  const { from } = m.draft.extent;
+  const rows: (HTMLElement | null)[] = [
+    h('p', {}, `Start at: ${from ? planeText(host, from) : 'Sketch plane'}`),
+    h(
+      'div',
+      { className: 'buttons' },
+      h('button', { textContent: m.extra.picking === 'start' ? 'Picking the start… (click to stop)' : 'Pick the start', onclick: () => arm(host, m, 'start') }),
+      from ? h('button', { textContent: 'Sketch plane', onclick: () => set({ from: null }) }) : null,
+    ),
+    from ? h('p', { id: 'draft-start', className: 'hint' }, startText(m.preview?.evaluation.features[m.draft.id])) : null,
+  ];
+  return rows.filter((element): element is HTMLElement => element !== null);
+}
+
 // The part of the extrusion form for an extent up to a plane (D47): the start, the plane with the
 // button that arms a pick in the view, the gap, and the length the preview got.
 function upToFields(host: PanelHost, m: ExtrudeMode, extent: UpToDraft, set: (change: ExtrudeChange, rebuild?: boolean) => void): HTMLElement[] {
-  const arm = () => {
-    m.extra.picking = !m.extra.picking;
-    // no region or curve stays highlighted while the view picks faces
-    m.extra.hover = undefined;
-    m.extra.hoverCurve = undefined;
-    host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the extrusion ends in its plane.' : clickHint(m.draft));
-    draftChanged(host, true);
-  };
   return [
-    draftField(host, m, 'Start (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ start }, false)),
+    draftField(host, m, startLabel(extent.from), 'extent/start', (start) => set({ start }, false)),
     h('p', {}, `Plane: ${extent.plane ? planeText(host, extent.plane) : 'none yet'}`),
-    h('div', { className: 'buttons' }, h('button', { textContent: m.extra.picking ? 'Picking… (click to stop)' : 'Pick', onclick: arm })),
+    h('div', { className: 'buttons' }, h('button', { textContent: m.extra.picking === 'end' ? 'Picking… (click to stop)' : 'Pick', onclick: () => arm(host, m, 'end') })),
     draftField(host, m, 'Gap before the plane (mm or an expression; negative = past it; empty = none)', 'extent/gap', (gap) => set({ gap: typeof gap === 'number' && Number.isNaN(gap) ? null : gap }, false)),
     h('p', { className: 'hint' }, 'The tool ends in the plane of the face on whichever side it lies, also beside the face itself; the length follows the model.'),
     h('p', { id: 'draft-length', className: 'hint' }, lengthText(m.draft, m.preview?.evaluation.features[m.draft.id])),
@@ -293,20 +320,32 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
     if (facts) facts.textContent = factsText(m.draft, m.preview?.evaluation.features[m.draft.id]);
     const length = document.getElementById('draft-length');
     if (length) length.textContent = lengthText(m.draft, m.preview?.evaluation.features[m.draft.id]);
+    const start = document.getElementById('draft-start');
+    if (start) start.textContent = startText(m.preview?.evaluation.features[m.draft.id]);
   },
-  // a face or a plane while the button "Pick" of an extent up to a plane is armed; otherwise nothing
-  picks: (m) => (m.extra.picking ? { faces: true, planes: true } : undefined),
+  // a face or a plane while a button "Pick" is armed, otherwise nothing; for the start the view
+  // shows the state before the feature, in which the plane is resolved
+  picks: (m) => (m.extra.picking === 'start' ? { faces: true, planes: true, before: true } : m.extra.picking === 'end' ? { faces: true, planes: true } : undefined),
+  // Escape while a pick is armed disarms it and keeps the draft
+  cancel(m, host) {
+    if (!m.extra.picking) return false;
+    m.extra.picking = undefined;
+    host.say(clickHint(m.draft));
+    draftChanged(host, true);
+    return true;
+  },
   // No pick of the view: the form finds the region of its sketch under the pointer itself, and for
   // a wall the curve.
   hover: (m, event, _pick, host) => hoverProfile(host, event, m.draft.profile, m.extra),
   click(m, event, pick, host) {
     if (m.extra.picking) {
+      const start = m.extra.picking === 'start';
       const plane = host.planeRefOf(pick);
-      if (!plane) return host.say('The extrusion can end in a plane or a planar face.', true);
-      // the view shows the preview: its own faces exist only after the extrusion
-      if (plane.kind === 'face' && (plane.face.feature === m.draft.id || plane.body === m.draft.id)) return host.say('The extrusion cannot end in a face of its own; pick a plane or a face that exists before it.', true);
-      m.extra.picking = false;
-      m.draft = changeExtrude(m.draft, { plane }, []);
+      if (!plane) return host.say(start ? 'The extrusion can start at a plane or a planar face.' : 'The extrusion can end in a plane or a planar face.', true);
+      // the view shows the preview while the end is picked: its own faces exist only after the extrusion
+      if (plane.kind === 'face' && (plane.face.feature === m.draft.id || plane.body === m.draft.id)) return host.say(`The extrusion cannot ${start ? 'start at' : 'end in'} a face of its own; pick a plane or a face that exists before it.`, true);
+      m.extra.picking = undefined;
+      m.draft = changeExtrude(m.draft, start ? { from: plane } : { plane }, []);
       host.say(clickHint(m.draft));
       draftChanged(host, true);
       return;
@@ -327,13 +366,14 @@ export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
     const start = f.extent.type === 'distance' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : '';
     const taper = f.extent.type === 'distance' && f.extent.taper !== undefined ? `, taper ${f.expressions?.['extent/taper'] ? `${f.expressions['extent/taper']} = ` : ''}${fmt((f.extent.taper * 180) / Math.PI)}°` : '';
     const gap = f.extent.type === 'upTo' && f.extent.gap !== undefined ? `, gap ${shownValue(f, 'extent/gap', f.extent.gap)} mm` : '';
-    const from = f.extent.type === 'upTo' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : '';
+    const upToStart = f.extent.type === 'upTo' && (f.extent.start !== 0 || f.expressions?.['extent/start']) ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : '';
+    const from = f.extent.from ? ` from ${planeText(host, f.extent.from)}` : '';
     const extent =
       f.extent.type === 'distance'
-        ? `distance ${shownValue(f, 'extent/distance', f.extent.distance)} mm${start}${taper}`
+        ? `distance ${shownValue(f, 'extent/distance', f.extent.distance)} mm${from}${start}${taper}`
         : f.extent.type === 'upTo'
-          ? `up to ${planeText(host, f.extent.plane)}${from}${gap}`
-          : `through all (${SIDES[f.extent.side].toLowerCase()})`;
+          ? `up to ${planeText(host, f.extent.plane)}${from}${upToStart}${gap}`
+          : `through all (${SIDES[f.extent.side].toLowerCase()})${from}`;
     const targets = f.targets?.length ? `, bodies: ${f.targets.map((id) => host.bodyName(id)).join(', ')}` : '';
     const offset = f.profile.type === 'regions' && f.profile.offset !== undefined ? `, offset ${shownValue(f, 'profile/offset', f.profile.offset)} mm` : '';
     const profile =
@@ -347,6 +387,8 @@ export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
     if (facts) out.push(h('p', { className: 'hint' }, facts));
     const length = lengthText(f, host.view().evaluation.features[f.id]);
     if (length) out.push(h('p', { className: 'hint' }, length));
+    const startAt = startText(host.view().evaluation.features[f.id]);
+    if (startAt) out.push(h('p', { className: 'hint' }, startAt));
     return out;
   },
   ownsFace: (feature, name) => name.feature === feature.id,

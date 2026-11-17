@@ -91,9 +91,15 @@ const morePlanes: UpgradeStep = { name: '5c-more-planes', run: (o) => o };
 // other step when it is validated, from its own version, because it is validated as a document.
 const documents: UpgradeStep = { name: '3c-document-insert', run: (o) => ('documents' in o ? o : { ...o, documents: {} }) };
 
-export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes, morePlanes, documents];
+// D66 (2h): the optional field `from` of an extent (an extrusion's and a hole's). It converts
+// nothing; a build without the step would drop the field from the variants `distance` and
+// `throughAll` on load without a word (every such tool would start at the sketch plane), so it has
+// to refuse the document instead.
+const extentStart: UpgradeStep = { name: '2h-extent-start', run: (o) => o };
+
+export const UPGRADES: readonly UpgradeStep[] = [profilesAndParameters, schemaSteps, taper, bodyProperties, mechanism, meshes, morePlanes, documents, extentStart];
 // The number of steps at the end of `UPGRADES` that `master` does not have yet. Zero on `master`.
-export const SCHEMA_PENDING = 0;
+export const SCHEMA_PENDING = 1;
 
 // The version a build with these steps saves, and the names it saves next to it.
 export const savedVersion = (upgrades: readonly UpgradeStep[] = UPGRADES, pending: number = SCHEMA_PENDING): number => upgrades.length + 1 - pending;

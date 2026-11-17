@@ -4,8 +4,10 @@
 import { type Command, DATA_CATALOGS, FEATURE_TYPE_INFO, type HoleFeature, type HoleShape, type Id, type Input, type QueryArgs, type SketchFeature } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import type { PanelHost } from '../host';
-import { SIDES, shownValue } from '../labels';
+import { SIDES, shownValue, startText } from '../labels';
+import { withFrom } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
+import { planeText } from './plane';
 
 type HoleDraft = Input<HoleFeature>;
 type ShapeDraft = HoleDraft['shape'];
@@ -19,6 +21,7 @@ interface Extra {
   size?: string;
   fit: Fit;
   allowance: string;
+  picking?: boolean; // the button "Pick the start" is armed: the next click in the view takes a plane or a planar face (D66)
 }
 type HoleMode = DraftMode<HoleFeature, Extra>;
 
@@ -66,11 +69,17 @@ const extentText = (extent: HoleDraft['extent']): string =>
 // The own points of a sketch and its origin, as the form offers them.
 const pointsOf = (sketch: SketchFeature | undefined): Id[] => (sketch ? ['origin', ...Object.keys(sketch.points)] : []);
 
+// A patch of the same variant merges with the feature, so a start plane the draft no longer has is
+// removed by name, as the label is.
 function holeCommand(draft: HoleDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   const { id, sketch, points, shape, extent, targets, label } = draft;
-  return { type: 'updateFeature', id, patch: { sketch, points, shape, extent, targets, label: label ?? null } };
+  return { type: 'updateFeature', id, patch: { sketch, points, shape, extent: { ...extent, from: extent.from ?? null }, targets, label: label ?? null } };
 }
+
+// The label of the field of the mouth: from what the offset is measured.
+const mouthLabel = (extent: HoleDraft['extent']): string =>
+  extent.from ? 'Start of the mouth (mm or an expression; offset from the start plane along the normal of the sketch)' : 'Start of the mouth (mm or an expression; offset from the sketch plane along its normal)';
 
 function holePanel(m: HoleMode, host: PanelHost): HTMLElement[] {
   const sketches = host.doc.features.slice(0, m.index).filter((f): f is SketchFeature => f.type === 'sketch');
@@ -118,18 +127,29 @@ function holePanel(m: HoleMode, host: PanelHost): HTMLElement[] {
       'Extent',
       (value) => {
         if (m.draft.extent.type === 'distance') m.extra.distance = m.draft.extent;
-        set({ ...m.draft, extent: value === 'distance' ? (m.extra.distance ?? { type: 'distance', start: 0, distance: -10 }) : { type: 'throughAll', side: 'backward' } });
+        // the start plane of the draft goes with it to the other variant; a remembered one never comes back
+        const next: HoleDraft['extent'] = value === 'distance' ? (m.extra.distance ?? { type: 'distance', start: 0, distance: -10 }) : { type: 'throughAll', side: 'backward' };
+        set({ ...m.draft, extent: withFrom(next, m.draft.extent.from) });
       },
       option('throughAll', 'Through all', extent.type === 'throughAll'),
       option('distance', 'Distance', extent.type === 'distance'),
     ),
+    // the row "Start at" (D66): the sketch plane, or a plane picked in the view
+    h('p', {}, `Start at: ${extent.from ? planeText(host, extent.from) : 'Sketch plane'}`),
+    h(
+      'div',
+      { className: 'buttons' },
+      h('button', { textContent: m.extra.picking ? 'Picking the start… (click to stop)' : 'Pick the start', onclick: () => arm(host, m) }),
+      extent.from ? h('button', { textContent: 'Sketch plane', onclick: () => set({ ...m.draft, extent: withFrom(m.draft.extent, undefined) }) }) : null,
+    ),
+    extent.from ? h('p', { id: 'draft-start', className: 'hint' }, startText(m.preview?.evaluation.features[m.draft.id])) : null,
     ...(extent.type === 'distance'
       ? [
-          draftField(host, m, 'Start of the mouth (mm or an expression; offset from the sketch plane along its normal)', 'extent/start', (start) => set({ ...m.draft, extent: { ...(m.draft.extent as typeof extent), start } }, false)),
+          draftField(host, m, mouthLabel(extent), 'extent/start', (start) => set({ ...m.draft, extent: { ...(m.draft.extent as typeof extent), start } }, false)),
           draftField(host, m, 'Depth of the whole hole (mm or an expression; negative = against the normal, into the body under a face)', 'extent/distance', (distance) => set({ ...m.draft, extent: { ...(m.draft.extent as typeof extent), distance } }, false)),
         ]
       : [
-          select('Side', (value) => set({ ...m.draft, extent: { type: 'throughAll', side: value as (typeof SIDE_OPTIONS)[number] } }), ...SIDE_OPTIONS.map((side) => option(side, SIDES[side], side === extent.side))),
+          select('Side', (value) => set({ ...m.draft, extent: withFrom<HoleDraft['extent']>({ type: 'throughAll', side: value as (typeof SIDE_OPTIONS)[number] }, m.draft.extent.from) }), ...SIDE_OPTIONS.map((side) => option(side, SIDES[side], side === extent.side))),
           h('p', { className: 'hint' }, 'The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it.'),
         ]),
     h(
@@ -182,7 +202,7 @@ function catalogFields(m: HoleMode, host: PanelHost, option: (value: string, lab
     // an expression in the distance is read from the preview
     const distance = current.type === 'distance' ? (typeof current.distance === 'number' ? current.distance : m.preview?.evaluation.features[m.draft.id]?.values?.['extent/distance']) : undefined;
     const sign = current.type === 'throughAll' ? (current.side === 'backward' ? -1 : 1) : distance !== undefined && distance > 0 ? 1 : -1;
-    const extent: HoleDraft['extent'] = depth === undefined ? current : { type: 'distance', start: current.type === 'distance' ? current.start : 0, distance: sign * depth };
+    const extent: HoleDraft['extent'] = depth === undefined ? current : withFrom<HoleDraft['extent']>({ type: 'distance', start: current.type === 'distance' ? current.start : 0, distance: sign * depth }, current.from);
     m.draft = { ...m.draft, shape, label, extent };
     host.say(`${label}: the sizes from ${answer.result.from.join(' and ')}; the extent ${depth === undefined ? 'stays' : 'is now'} ${extentText(extent)}.`);
     draftChanged(host);
@@ -221,7 +241,38 @@ const form: FeatureForm<HoleFeature, Extra> = {
   command: holeCommand,
   incomplete: (draft) => draft.points.length === 0 || draft.targets.length === 0,
   panel: holePanel,
+  live(m) {
+    const start = document.getElementById('draft-start');
+    if (start) start.textContent = startText(m.preview?.evaluation.features[m.draft.id]);
+  },
+  // a face or a plane while the button "Pick the start" is armed, in the state before the hole
+  picks: (m) => (m.extra.picking ? { faces: true, planes: true, before: true } : undefined),
+  click(m, _event, pick, host) {
+    if (!m.extra.picking) return;
+    const plane = host.planeRefOf(pick);
+    if (!plane) return host.say('The mouth of a hole can start at a plane or a planar face.', true);
+    if (plane.kind === 'face' && plane.face.feature === m.draft.id) return host.say('The mouth cannot start at a face of the hole itself; pick a plane or a face that exists before it.', true);
+    m.extra.picking = false;
+    m.draft = { ...m.draft, extent: withFrom(m.draft.extent, plane) };
+    host.say('The mouth starts from the plane picked.');
+    draftChanged(host, true);
+  },
+  // Escape while the pick is armed disarms it and keeps the draft
+  cancel(m, host) {
+    if (!m.extra.picking) return false;
+    m.extra.picking = false;
+    host.say('The pick is off.');
+    draftChanged(host, true);
+    return true;
+  },
 };
+
+// Arms the pick of the plane of the mouth in the view, or disarms it.
+function arm(host: PanelHost, m: HoleMode): void {
+  m.extra.picking = !m.extra.picking;
+  host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the mouth starts from its plane.' : 'The pick is off.');
+  draftChanged(host, true);
+}
 
 // The shape of a hole in words, for the summary: "counterbore ⌀ 3.4 mm, head ⌀ 6 mm 3 mm deep".
 function shapeText(f: HoleFeature): string {
@@ -239,11 +290,14 @@ export const hole: FeatureUi<HoleFeature, Extra> = {
   create: { run: (host, at) => startDraft(host, form, at) },
   edit: (host, feature) => editDraft(host, form, feature, { shapes: {}, use: 'clearance', fit: 'medium', allowance: '' }),
   summary(host, f, result) {
-    const extent = f.extent.type === 'distance' ? `depth ${shownValue(f, 'extent/distance', f.extent.distance)} mm${f.extent.start !== 0 || f.expressions?.['extent/start'] ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : ''}` : `through all (${SIDES[f.extent.side].toLowerCase()})`;
+    const from = f.extent.from ? ` from ${planeText(host, f.extent.from)}` : '';
+    const extent = f.extent.type === 'distance' ? `depth ${shownValue(f, 'extent/distance', f.extent.distance)} mm${from}${f.extent.start !== 0 || f.expressions?.['extent/start'] ? `, start ${shownValue(f, 'extent/start', f.extent.start)} mm` : ''}` : `through all (${SIDES[f.extent.side].toLowerCase()})${from}`;
     const points = `${f.points.length} ${f.points.length === 1 ? 'point' : 'points'} of ${host.nameOf(f.sketch)}`;
     const out = [h('p', { className: 'hint' }, `${f.label ? `${f.label}: ` : ''}${shapeText(f)}; ${extent}; ${points}; bodies: ${f.targets.map((id) => host.bodyName(id)).join(', ')}.`)];
     const depth = result?.facts?.depth;
     if (typeof depth === 'number') out.push(h('p', { className: 'hint' }, `The hole is ${fmt(depth)} mm deep${typeof result?.facts?.headDepth === 'number' ? `, its head ${fmt(result.facts.headDepth)} mm` : ''}.`));
+    const startAt = startText(result);
+    if (startAt) out.push(h('p', { className: 'hint' }, `The mouth: ${startAt}.`));
     return out;
   },
   ownsFace: (feature, name) => name.feature === feature.id,

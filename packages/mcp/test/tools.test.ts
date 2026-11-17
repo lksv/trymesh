@@ -647,6 +647,21 @@ describe('model, tělesa a příkazy', () => {
     expect(ok(engine, 'get_body', { body: 'g1' }).faces.map((face: { label: string; planar: boolean }) => [face.label, face.planar])).toEqual([['g1/startCap', true], ['g1/endCap', true], ['g1/side/teeth', false]]);
   });
 
+  it('the start of an extent at a plane (D66): the field from types.ts and the rewritten paragraphs of CONVENTIONS', () => {
+    const text = apiText();
+    // the field and its comment are cut from types.ts, so they lie between the two markers
+    expect(text).toContain("| { type: 'distance'; from?: PlaneRef; start: number; distance: number; taper?: number }");
+    expect(text).toContain("export type HoleExtent = { type: 'distance'; from?: PlaneRef; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward'; from?: PlaneRef };");
+    expect(text).toContain('// `from` (optional, D66, on every variant): the plane the extent starts from instead of the sketch');
+    expect(text).toContain('`start` is the offset of the start along the normal of the sketch plane, from the sketch plane or from `from`');
+    expect(text).toContain('and with `from` the side is `forward` or `backward`');
+    expect(text).toContain('Any extent may start from a plane instead of the sketch plane: `from`');
+    expect(text).toContain('while the start itself moves with the copy');
+    expect(text).toContain('a copy of a feature with `from` carries its start');
+    expect(text).toContain('`{ type: "throughAll", side: "backward", from: <the top face> }`, and `facts.depth` is then measured from the mouth');
+    expect(text).toContain('Any extent may start from a plane or a planar face parallel to the sketch (extent.from)');
+  });
+
   it('the generators of 5d (D61): every entry with its example, the optional shift, a point as an operand; each example is accepted', () => {
     const description = apiDescription();
     const text = apiText();

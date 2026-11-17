@@ -615,6 +615,9 @@
     +     option selected value="distance": "Distance"
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
+    + p: "Start at: Sketch plane"
+    + div.buttons
+    +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
     +   span.field
@@ -661,7 +664,7 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
 === 11. a load: the app starts over with the new document
-  engine: load("{\"schemaVersion\":9,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{},\"documents\":{}}") -> ok
+  engine: load("(214 characters)") -> ok
   features: (none)
   toolbar:
     +   button disabled: "Export STL"
@@ -792,6 +795,9 @@
     -     option selected value="distance": "Distance"
     -     option value="throughAll" disabled: "Through all (a cut only)"
     -     option value="upTo": "Up to a plane or face"
+    - p: "Start at: Sketch plane"
+    - div.buttons
+    -   button: "Pick the start"
     - label
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
     -   span.field

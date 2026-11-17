@@ -43,6 +43,13 @@ export function lengthText(f: { extent: ExtrudeDraft['extent'] }, result: Featur
   return `length ${length} mm, ${facts.forward ? 'along' : 'against'} the normal of the sketch plane`;
 }
 
+// Where an extent from a plane starts (D66), for a human: "the start is 10 mm from the sketch plane
+// along its normal"; empty without the fact.
+export function startText(result: FeatureResult | undefined): string {
+  const level = result?.facts?.startLevel;
+  return typeof level === 'number' ? `the start is ${fmt(level)} mm from the sketch plane along its normal` : '';
+}
+
 // What the generator of a feature published, for a human: "module 0.9 mm, pitch ⌀ 16.2 mm, …".
 export function factsText(f: { profile: ExtrudeDraft['profile'] }, result: FeatureResult | undefined): string {
   if (f.profile.type !== 'generated' || !result?.facts) return '';

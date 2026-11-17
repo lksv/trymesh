@@ -70,11 +70,26 @@ export function faceParts(name: FaceName, roles: RoleCatalog = FACE_ROLES): (str
 // `feature` and from the tags that come first and have a slash (the rule of form of a face name,
 // `faceName` in validation.ts). The exception to "at most one field holds a free ID" above: the
 // quoted key keeps the prefixed IDs apart from the fields of the role.
+// The key of a face of an insertion is kept by its name object (a name is not changed once made):
+// the solids of an insertion look up every face many times, and the key of a prefixed name is a
+// few times dearer than a plain one.
+const PREFIXED_KEYS = new WeakMap<FaceName, string>();
+
 export function faceKey(name: FaceName, roles: RoleCatalog = FACE_ROLES): string {
   const tags = name.copy ?? [];
   const tagKey = (tag: { pattern: string; index: number }): string => `/@${tag.pattern}:${tag.index}`;
   const slash = name.feature.indexOf('/');
   if (slash < 0) return [name.feature, name.role, ...faceParts(name, roles)].join('/') + tags.map(tagKey).join('');
+  if (roles === FACE_ROLES) {
+    const kept = PREFIXED_KEYS.get(name);
+    if (kept !== undefined) return kept;
+  }
+  const key = prefixedKey(name, tags, slash, roles, tagKey);
+  if (roles === FACE_ROLES) PREFIXED_KEYS.set(name, key);
+  return key;
+}
+
+function prefixedKey(name: FaceName, tags: readonly { pattern: string; index: number }[], slash: number, roles: RoleCatalog, tagKey: (tag: { pattern: string; index: number }) => string): string {
   let inner = 0;
   while (inner < tags.length && tags[inner].pattern.includes('/')) inner++;
   const there = tags.slice(0, inner).map((tag) => ({ pattern: tag.pattern.slice(tag.pattern.indexOf('/') + 1), index: tag.index }));

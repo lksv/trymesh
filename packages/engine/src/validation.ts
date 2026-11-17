@@ -218,7 +218,7 @@ export function edgeName(v: unknown, what: string): EdgeName {
 //   owner of a prefixed ID in a face name (D62).
 // - `parameter` is a reference to a parameter (`id` its name) of the stored document `document`
 //   (D62): a value an insertion sets. It names no feature.
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh' | 'document' | 'insertion' | 'parameter';
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh' | 'document' | 'insertion' | 'parameter' | 'documentBody';
 export interface FeatureRef {
   path: string;
   id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
@@ -228,7 +228,7 @@ export interface FeatureRef {
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types

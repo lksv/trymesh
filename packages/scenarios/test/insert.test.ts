@@ -97,9 +97,13 @@ describe('the recompute of an insertion', () => {
     expect(body.bounds.min[2]).toBeCloseTo(5, 6);
   });
 
-  it('a listed body the document does not have with these parameters, a document with no body, a parameter the revision lost', () => {
-    const missing = preview(engine, insertion('a', 'ring', { bodies: ['ring/2'] }));
-    expect(missing.evaluation.features.a).toMatchObject({ status: 'error', error: { code: 'brokenReference', refs: [{ body: 'ring/2' }] } });
+  it('a listed body the revision lost, a document with no body, a parameter the revision lost', () => {
+    // a body no feature there can make is refused by the command (the review of 3c); one the
+    // revision lost is the recompute's broken reference
+    const refused = engine.preview(insertion('a', 'ring', { bodies: ['ring/2'] }));
+    expect(refused.ok ? undefined : refused.error.message).toMatch(/the stored document "ring" cannot make the body "ring\/2"/);
+    const missing = preview(engine, insertion('a', 'ring', { bodies: ['ring'] }), { type: 'replaceDocument', id: 'ring', document: parsed(newEngine()) });
+    expect(missing.evaluation.features.a).toMatchObject({ status: 'error', error: { code: 'brokenReference', refs: [{ body: 'ring' }] } });
     const empty = preview(engine, { type: 'addDocument', id: 'nothing', document: parsed(newEngine()) }, insertion('a', 'nothing'));
     expect(empty.evaluation.features.a.error).toMatchObject({ code: 'emptyResult', message: expect.stringContaining('the inserted document has no body to bring') });
     const set = exec(engine, insertion('lost', 'ring', { parameters: { R: 12 } }));

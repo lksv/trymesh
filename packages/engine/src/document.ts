@@ -155,8 +155,8 @@ export function featureRefs(f: Feature): Id[] {
       specOf(f)
         .refs(f)
         // an entity belongs to a sketch that is referred to anyway; a stored mesh (D55), a stored
-        // document and a parameter of one (D62) are no features
-        .filter((ref) => ref.kind !== 'entity' && ref.kind !== 'mesh' && ref.kind !== 'document' && ref.kind !== 'parameter')
+        // document, a parameter and a body of one (D62) are no features
+        .filter((ref) => ref.kind !== 'entity' && ref.kind !== 'mesh' && ref.kind !== 'document' && ref.kind !== 'parameter' && ref.kind !== 'documentBody')
         .map((ref) => (ref.kind === 'body' ? bodyOwner(ref.id).feature : ref.id)),
     ),
   ];

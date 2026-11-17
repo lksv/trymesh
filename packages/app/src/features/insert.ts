@@ -2,7 +2,7 @@
 // stored document (or reads a file into one), the frame and the six numbers of the placement as the
 // mesh feature has them, values for the parameters of the stored document, and which of its bodies
 // come in.
-import { type BodyPlacement, type Command, type Expr, type Id, type Input, type InsertFeature, type PlaneRef, featureInput, fileNameOf, idFromFile, meshNameOf } from '@trymesh/engine';
+import { type BodyPlacement, type Command, type Expr, type Id, type Input, type InsertFeature, type PlaneRef, type StoredDocument, featureInput, fileNameOf, idFromFile, meshNameOf } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import type { PanelHost } from '../host';
@@ -13,8 +13,8 @@ interface Extra {
   picking?: boolean; // the button "Pick" is armed
   cleared: string[]; // parameters whose value the form emptied: the patch removes them
   // the bodies of the stored document with the values of the draft, from a preview without a list,
-  // kept while the document and the values are what they were
-  listed?: { key: string; bodies: Id[] };
+  // kept while the entry of the stored document and the values are what they were
+  listed?: { entry: StoredDocument | undefined; values: string; bodies: Id[] };
 }
 type InsertMode = DraftMode<InsertFeature, Extra>;
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
@@ -56,16 +56,20 @@ export function documentFileControl(host: PanelHost, label: string, title: strin
 // the document's own.
 function parameterRows(m: InsertMode, host: PanelHost): HTMLElement[] {
   const stored = host.engine.getState().evaluation.documents[m.draft.document];
-  if (!stored || stored.parameters.length === 0) return [];
+  // a value set for a name the stored document does not have (or of a stored document that is
+  // gone) has its field too, so that it can be emptied
+  const rows: { name: string; expr: string; value?: number; gone?: boolean }[] = [...(stored?.parameters ?? [])];
+  for (const name of Object.keys(m.draft.parameters ?? {})) if (!rows.some((p) => p.name === name)) rows.push({ name, expr: '', gone: true });
+  if (rows.length === 0) return [];
   const names = host.doc.parameters.map((p) => p.name);
   const values = m.preview?.evaluation.features[m.draft.id]?.values;
   return [
     h('h3', {}, 'Parameters of the inserted document'),
-    ...stored.parameters.map((p) => {
+    ...rows.map((p) => {
       const given = m.draft.parameters?.[p.name];
       const input = h('input', {
         value: given === undefined ? '' : fieldText(given, 'none'),
-        placeholder: p.value === undefined ? p.expr : valueText(p.value, 'none'),
+        placeholder: p.gone ? 'empty it' : p.value === undefined ? p.expr : valueText(p.value, 'none'),
         oninput: () => {
           const text = input.value.trim();
           const { [p.name]: _old, ...rest } = m.draft.parameters ?? {};
@@ -83,7 +87,8 @@ function parameterRows(m: InsertMode, host: PanelHost): HTMLElement[] {
         },
       });
       const used = values?.[`parameters/${p.name}`];
-      return h('label', {}, `${p.name} (there ${p.expr}${p.value === undefined ? '' : ` = ${valueText(p.value, 'none')}`})`, h('span', { className: 'field' }, input, h('small', { className: 'computed' }, used === undefined ? '' : `= ${valueText(used, 'none')}`)));
+      const there = p.gone ? 'not in the stored document' : `there ${p.expr}${p.value === undefined ? '' : ` = ${valueText(p.value, 'none')}`}`;
+      return h('label', {}, `${p.name} (${there})`, h('span', { className: 'field' }, input, h('small', { className: 'computed' }, used === undefined ? '' : `= ${valueText(used, 'none')}`)));
     }),
   ];
 }
@@ -92,13 +97,15 @@ function parameterRows(m: InsertMode, host: PanelHost): HTMLElement[] {
 // a preview of the draft without a list.
 function bodyRows(m: InsertMode, host: PanelHost): HTMLElement[] {
   if (m.draft.document === '') return [];
-  const key = JSON.stringify([m.draft.document, m.draft.parameters ?? {}, host.doc.documents[m.draft.document] ? Object.keys(host.doc.documents).indexOf(m.draft.document) : -1]);
-  if (m.extra.listed?.key !== key) {
+  const entry = Object.prototype.hasOwnProperty.call(host.doc.documents, m.draft.document) ? host.doc.documents[m.draft.document] : undefined;
+  const values = JSON.stringify(m.draft.parameters ?? {});
+  let listed = m.extra.listed;
+  if (!listed || listed.entry !== entry || listed.values !== values) {
     const { bodies: _list, ...all } = m.draft;
     const previewed = host.engine.preview(insertForm.command(all as Input<InsertFeature>, m.editing, m.index, m.extra), m.draft.id);
-    m.extra.listed = { key, bodies: previewed.ok ? (previewed.state.evaluation.features[m.draft.id]?.bodies ?? []).map((body) => body.slice(m.draft.id.length + 1)) : [] };
+    listed = m.extra.listed = { entry, values, bodies: previewed.ok ? (previewed.state.evaluation.features[m.draft.id]?.bodies ?? []).map((body) => body.slice(m.draft.id.length + 1)) : [] };
   }
-  const there = m.extra.listed.bodies;
+  const there = listed.bodies;
   if (there.length < 2) return [];
   const chosen = new Set(m.draft.bodies ?? there);
   const toggle = (body: Id) => {
@@ -119,9 +126,13 @@ function insertPanel(m: InsertMode, host: PanelHost): HTMLElement[] {
   const stored = Object.keys(host.doc.documents);
   const facts = m.preview?.evaluation.features[m.draft.id]?.facts;
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
+  // another stored document: the values set and the list of bodies belong to the one before; an
+  // edit removes every value the feature has
   const use = (document: Id) => {
-    m.draft = { ...m.draft, document, parameters: {} };
-    m.extra.cleared = [];
+    const had = m.editing ? Object.keys((host.doc.features.find((f) => f.id === m.draft.id) as InsertFeature | undefined)?.parameters ?? {}) : [];
+    const { bodies: _list, parameters: given, ...rest } = m.draft;
+    m.draft = { ...rest, document, parameters: {} };
+    m.extra.cleared = m.editing ? [...new Set([...m.extra.cleared, ...had, ...Object.keys(given ?? {})])] : [];
     draftChanged(host);
   };
   return [

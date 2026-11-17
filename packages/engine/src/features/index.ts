@@ -125,6 +125,15 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
     if (!stored.document.parameters.some((p) => p.name === ref.id)) fail(`${what}: the stored document "${ref.document}" has no parameter "${ref.id}"; its parameters are ${stored.document.parameters.map((p) => p.name).join(', ') || 'none'}`);
     return;
   }
+  // a body of a stored document (D62) that an insertion lists: one a feature there can make, as
+  // `setBodyProperties` of the inserted body asks
+  if (ref.kind === 'documentBody') {
+    const stored = ref.document !== undefined && has(doc.documents, ref.document) ? doc.documents[ref.document] : undefined;
+    if (!stored) return fail(`${what}: the document has no stored document "${String(ref.document)}"`);
+    const problem = bodyProblem(stored.document, ref.id);
+    if (problem !== undefined) fail(`${what}: the stored document "${ref.document}" cannot make the body "${ref.id}": ${problem}`);
+    return;
+  }
   if (ref.kind === 'entity') {
     // The sketch itself is verified by its own reference; here only the entity inside it.
     const sketch = doc.features.find((f) => f.id === ref.sketch);

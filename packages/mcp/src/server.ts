@@ -279,7 +279,14 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         let feature = String(id);
         for (let n = 2; used.has(feature); n++) feature = `${id}_${n}`;
         const command: Command = { type: 'addFeature', feature: { id: feature, name: (typeof name === 'string' ? name : fileStemOf(target)).replace(/\.json$/i, '').trim() || feature, suppressed: false, type: 'insert', document: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } };
-        const preview = (await must(session, '_insertion', { document: id, command })) as { parameters: Json[]; bodies: { id: string; use: string; material?: string; mass?: number }[]; warning?: string };
+        // the document is stored by now: a preview that fails says so in the answer, not as an error
+        type Preview = { parameters: Json[]; bodies: { id: string; use: string; material?: string; mass?: number }[]; warning?: string };
+        let preview: Preview;
+        try {
+          preview = (await must(session, '_insertion', { document: id, command })) as Preview;
+        } catch (error) {
+          preview = { parameters: [], bodies: [], warning: `the document is ${replace ? 'replaced' : 'stored'}, but what an insertion would bring could not be previewed: ${error instanceof Error ? error.message : String(error)}` };
+        }
         const printed = preview.bodies.filter((body) => body.use === 'part').map((body) => body.id);
         return {
           document: id,

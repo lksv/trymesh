@@ -51,6 +51,7 @@ function insertFeature(o: Dict, what: string, context: ValidationContext): Inser
   if (o.bodies !== undefined) {
     if (!Array.isArray(o.bodies) || o.bodies.length === 0) fail(`${what}.bodies: a list of the body IDs of the inserted document that is not empty is expected; leave the field out for all its bodies`);
     bodies = (o.bodies as unknown[]).map((id, i) => bodyId(id, `${what}.bodies[${i}]`));
+    for (const [i, body] of bodies.entries()) context.requireRef({ id: body, kind: 'documentBody', document }, `${what}.bodies[${i}]`);
     const twice = bodies.find((id, i) => bodies?.indexOf(id) !== i);
     if (twice !== undefined) fail(`${what}.bodies: the body "${twice}" is listed twice`);
   }
@@ -160,6 +161,7 @@ export const insert: FeatureModule<InsertFeature> = {
     ...frameRefs(f.placement.frame, 'placement/frame'),
     { path: 'document', id: f.document, kind: 'document' },
     ...Object.keys(f.parameters ?? {}).map((name): FeatureRef => ({ path: `parameters/${name}`, id: name, kind: 'parameter', document: f.document })),
+    ...(f.bodies ?? []).map((body, i): FeatureRef => ({ path: `bodies/${i}`, id: body, kind: 'documentBody', document: f.document })),
   ],
   // every local name in the form of a body ID, or the listed ones; whether the stored document can
   // make it is asked by `bodyProblem` and `requireRef`, which see the document

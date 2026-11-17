@@ -152,4 +152,5 @@ export interface StepContext {
   failed: Failed;
   drag?: DragTarget; // read by the sketch only
   badFields: FieldPath[]; // fields whose expression failed; read by a type that keeps the last valid values
+  input?: object; // what `input` of the module answered for the document (D55); read by the mesh feature only
 }

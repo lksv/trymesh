@@ -3,7 +3,7 @@
 // imports neither the registry, nor document.ts, nor evaluate.ts.
 import type { FieldSpec } from '../catalog';
 import type { Step, StepContext } from '../recompute/state';
-import type { Feature, Id } from '../types';
+import type { Document, Feature, Id } from '../types';
 import type { Dict, FeatureRef, ValidationContext } from '../validation';
 
 // Veřejný popis typu feature (pro UI a popis API).
@@ -39,6 +39,10 @@ export interface FeatureModule<F extends Feature> {
   namesFaces: boolean; // does the feature name faces of bodies?
   // Does the feature leave a tool recipe that a pattern can repeat?
   producesTool(f: F): boolean;
+  // May a copy tag of a face name (`CopyTag`, a reference of the kind `pattern`) name the feature?
+  // A pattern always; a combine as a difference, whose tools moved by a clearance leave tagged faces
+  // (D56). Absent: never.
+  tagsFaces?(f: F): boolean;
   // The generator of its profile, when it has a profile and the profile comes from one.
   generator?(f: F): string | undefined;
   // A failed expression of a field is a warning and the step runs with the last valid value, instead
@@ -48,6 +52,11 @@ export interface FeatureModule<F extends Feature> {
   // `removable`: may `null` in a patch name this path although the feature did not have it? (An
   // optional field, an entry of a dictionary with known names.) `f` is the feature after the change.
   patch?: { fields: readonly string[]; normalize?(merged: Dict, patch: Dict): void; removable?(f: F, path: string[]): boolean };
+  // The object of the document, outside the feature, that the step reads (D55): a mesh feature
+  // answers with the entry of the section `meshes` it places, undefined when the section has none.
+  // The recompute hands it to the step (`StepContext.input`) and uses a remembered step only when it
+  // was computed from the same object. A module reads the document nowhere else.
+  input?(f: F, doc: Document): object | undefined;
   // The step of the recompute: the state after the feature.
   step(feature: F, context: StepContext): Step;
 }

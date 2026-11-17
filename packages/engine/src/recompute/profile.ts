@@ -64,10 +64,16 @@ function generated(id: Id, source: Extract<ProfileSource, { type: 'generated' }>
   const spec = GENERATORS[source.generator];
   const { points, radii } = sketch.geometry;
   const operands: Record<string, ResolvedOperand> = {};
-  for (const { field } of spec.operands) {
-    // own curves and projected ones; validation let only the kinds of the catalog in (circles today)
+  for (const { field, kinds } of spec.operands) {
+    // By the kinds of the catalog, which validation let in: a point (an own point, the origin or
+    // a point of projected geometry) or a circle (an own curve or a projected one).
     const entity = source.operands[field];
-    const curve = lookup(sketch.input.curves, entity);
+    const point = kinds.includes('point') ? lookup(points, entity) : undefined;
+    if (point) {
+      operands[field] = { kind: 'point', at: [point.x, point.y] };
+      continue;
+    }
+    const curve = kinds.includes('circle') ? lookup(sketch.input.curves, entity) : undefined;
     const center = curve?.type === 'circle' ? lookup(points, curve.center) : undefined;
     const radius = lookup(radii, entity);
     if (!center || radius === undefined) return { code: 'brokenReference', refs: [entity] };

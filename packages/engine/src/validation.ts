@@ -4,7 +4,7 @@
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { type Environment, analyzeExpression, evaluateNumber } from './expression';
 import { FACE_ROLES, type RoleCatalog } from './face-roles';
-import type { AxisRef, CommandResult, CopyTag, Document, EdgeName, Expr, FaceName, FieldPath, Id, PlaneRef } from './types';
+import type { AxisRef, CommandResult, CopyTag, Document, EdgeName, Expr, FaceName, FieldPath, FrameRef, Id, PlaneRef } from './types';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
 // Neplatný příkaz nebo dokument. `commandIndex` říká, který příkaz dávky to byl.
@@ -181,7 +181,9 @@ export function edgeName(v: unknown, what: string): EdgeName {
 // - `tool` is a reference to a feature that applies a tool to bodies and can be repeated by
 //   a pattern: an extrusion with the operation add or cut, a hole.
 // - `pattern` is a reference to a pattern (the one that made the copy a face name speaks of).
-export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern';
+// - `mesh` is a reference to a stored mesh of the section `meshes` (D55), not to a feature: it
+//   takes no part in the order on the timeline.
+export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh';
 export interface FeatureRef {
   path: string;
   id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
@@ -190,7 +192,7 @@ export interface FeatureRef {
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'pole (pattern)' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types
@@ -248,6 +250,26 @@ export function axisRef(context: RefContext, v: unknown, what: string): AxisRef 
   context.requireRef({ id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
   return { kind, sketch, point };
 }
+// A directed frame (D55): a plane reference, or a point of a sketch (the frame of the sketch moved to
+// the point; an own point, `origin` or a point of projected geometry).
+export function frameRef(context: RefContext, v: unknown, what: string): FrameRef {
+  const o = object(v, what);
+  if (o.kind !== 'sketchPoint') return planeRef(context, o, what);
+  onlyFields(o, ['kind', 'sketch', 'point'], what, 'a frame of the kind sketchPoint');
+  const sketch = string(o.sketch, `${what}.sketch`);
+  context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
+  const point = string(o.point, `${what}.point`);
+  context.requireRef({ id: point, kind: 'entity', sketch, accepts: ['point'] }, `${what}.point`);
+  return { kind: 'sketchPoint', sketch, point };
+}
+export const frameRefs = (frame: FrameRef, path: string): FeatureRef[] =>
+  frame.kind === 'sketchPoint'
+    ? [
+        { path, id: frame.sketch, kind: 'sketch' },
+        { path, id: frame.point, kind: 'entity', sketch: frame.sketch, accepts: ['point'] },
+      ]
+    : planeRefs(frame, path);
+
 export const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
   axis.kind === 'base'
     ? []

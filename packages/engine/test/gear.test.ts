@@ -1,5 +1,6 @@
-// The involute gear generator as a pure function (D35, point 3): dimensions of the profile, the
-// meaning of backlash, rotation from the gear in mesh and its checks. Planar measurements in float64
+// The involute gear generator as a pure function (D35, point 3; the profile shift D61): dimensions
+// of the profile, the meaning of backlash and of the profile shift, rotation from the gear in mesh
+// and its checks. Planar measurements in float64
 // on the polyline the generator returns; the solid side is tested in packages/scenarios.
 import { describe, expect, it } from 'vitest';
 import { GENERATORS, type GeneratedProfile, type GeneratorInput, MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
@@ -18,6 +19,7 @@ interface GearInput {
   backlash?: number;
   rotation?: number;
   pressureAngle?: number;
+  shift?: number; // left out: the parameter is not given, as in a document without it
   meshWith?: Facts | null; // null: the reference is declared but its feature has no facts
   frame?: Frame;
   chordTolerance?: number;
@@ -26,7 +28,7 @@ function input(g: GearInput): GeneratorInput {
   const module = g.module ?? 0.9;
   return {
     operands: { circle: { kind: 'circle', center: g.center ?? [0, 0], radius: (module * g.teeth) / 2 } },
-    params: { teeth: g.teeth, pressureAngle: g.pressureAngle ?? 20 * DEG, backlash: g.backlash ?? 0, rotation: g.rotation ?? 0, internal: g.internal ?? false },
+    params: { teeth: g.teeth, pressureAngle: g.pressureAngle ?? 20 * DEG, backlash: g.backlash ?? 0, rotation: g.rotation ?? 0, internal: g.internal ?? false, ...(g.shift === undefined ? {} : { shift: g.shift }) },
     refs: g.meshWith === undefined ? {} : { meshWith: g.meshWith ?? undefined },
     frame: g.frame ?? XY,
     chordTolerance: g.chordTolerance ?? TOLERANCE,
@@ -211,6 +213,7 @@ describe('involute gear: the profile', () => {
       center: [0, 3, 9],
       axis: [1, 0, 0],
       toothDirection: [0, expect.closeTo(Math.cos(0.3), 12), expect.closeTo(Math.sin(0.3), 12)],
+      shift: 0,
     });
     expect(Object.keys(g.facts).sort()).toEqual(Object.keys(GENERATORS.involuteGear.facts).sort());
     // the rotation is the direction of a tooth axis: a tip point lies on it
@@ -394,5 +397,123 @@ describe('involute gear: rotation from the gear in mesh', () => {
     expect(ring(24, 72).warnings).toEqual([]);
     expect(ring(36, 90).warnings).toEqual([]);
     expect(ring(20, 24).warnings).toMatchObject([{ code: 'gearInterference', detail: expect.stringMatching(/this ring gear/) }]);
+  });
+});
+
+describe('involute gear: the profile shift (D61)', () => {
+  const tan = Math.tan(20 * DEG);
+  it('a shift of 0 is the gear without the parameter, point for point', () => {
+    for (const g of [{ teeth: 18 }, { teeth: 72, internal: true, backlash: 0.05 }, { teeth: 27, rotation: 0.4 }]) {
+      expect(gear({ ...g, shift: 0 }).loop).toEqual(gear(g).loop);
+      expect(gear(g).facts.shift).toBe(0);
+    }
+  });
+
+  it('an external gear: tip r + m (1 + x), root r − m (1.25 − x), tooth m (π/2 + 2 x tan α) on the pitch circle (KHK)', () => {
+    for (const teeth of [12, 18, 30]) {
+      for (const shift of [-0.3, 0.3, 0.5]) {
+        for (const backlash of [0, 0.05]) {
+          const g = gear({ teeth, shift, backlash });
+          const [m, r] = [0.9, (0.9 * teeth) / 2];
+          const all = radii(g.loop);
+          expect(Math.max(...all)).toBeCloseTo(r + m * (1 + shift), 9);
+          expect(Math.min(...all)).toBeCloseTo(r - m * (1.25 - shift), 9);
+          const exact = m * (Math.PI / 2 + 2 * shift * tan) - backlash;
+          const width = widthAtPitch(g.loop, r, teeth);
+          expect(width, `${teeth}/${shift}/${backlash}`).toBeLessThanOrEqual(exact + 1e-9);
+          // each flank lies inside by at most the tolerance across it, so the width along the arc by 2 tol / cos α
+          expect(width, `${teeth}/${shift}/${backlash}`).toBeGreaterThan(exact - (2 * TOLERANCE) / Math.cos(20 * DEG));
+          expect(g.facts).toMatchObject({ shift, tipDiameter: expect.closeTo(2 * r + 2 * m * (1 + shift), 9), rootDiameter: expect.closeTo(2 * r - 2 * m * (1.25 - shift), 9) });
+        }
+      }
+    }
+  });
+
+  it('a ring gear: tip r − m (1 − x), root r + m (1.25 + x), tooth space m (π/2 + 2 x tan α) (KHK, Table 4.6)', () => {
+    for (const teeth of [60, 72]) {
+      for (const shift of [-0.3, 0.3]) {
+        const g = gear({ teeth, shift, internal: true });
+        const [m, r] = [0.9, (0.9 * teeth) / 2];
+        const all = radii(g.loop);
+        expect(Math.min(...all)).toBeCloseTo(r - m * (1 - shift), 9);
+        expect(Math.max(...all)).toBeGreaterThan(r + m * (1.25 + shift));
+        expect(Math.max(...all)).toBeLessThan(r + m * (1.25 + shift) + TOLERANCE);
+        const exact = m * (Math.PI / 2 + 2 * shift * tan);
+        const width = widthAtPitch(g.loop, r, teeth);
+        expect(width).toBeGreaterThanOrEqual(exact - 1e-9);
+        expect(width).toBeLessThan(exact + 2 * TOLERANCE);
+        expect(g.facts).toMatchObject({ shift, tipDiameter: expect.closeTo(2 * (r - m * (1 - shift)), 9), rootDiameter: expect.closeTo(2 * (r + m * (1.25 + shift)), 9) });
+      }
+    }
+  });
+
+  it('the numbers of scenario 9 (module 0.9): the sun 12 with +0.3, the planets 30 and the ring 72 with −0.3', () => {
+    expect(gear({ teeth: 12, shift: 0.3 }).facts).toMatchObject({ tipDiameter: expect.closeTo(13.14, 9), rootDiameter: expect.closeTo(9.09, 9) });
+    expect(gear({ teeth: 30, shift: -0.3 }).facts).toMatchObject({ tipDiameter: expect.closeTo(28.26, 9), rootDiameter: expect.closeTo(24.21, 9) });
+    expect(gear({ teeth: 72, shift: -0.3, internal: true }).facts).toMatchObject({ tipDiameter: expect.closeTo(62.46, 9), rootDiameter: expect.closeTo(66.51, 9) });
+  });
+
+  it('balanced pairs mesh at the reference centre distance: they touch and do not overlap while turning', () => {
+    // external pairs (design.md, "Measured", `shift`): x1 + x2 = 0
+    for (const [z1, z2, x, module] of [[12, 30, 0.3, 0.9], [18, 27, 0.2, 0.9], [10, 40, 0.5, 1]] as const) {
+      const a = (module * (z1 + z2)) / 2;
+      const firstInput = { teeth: z1, module, shift: x, rotation: 0.1 };
+      const first = gear(firstInput);
+      const secondInput = { teeth: z2, module, shift: -x, center: [a * Math.cos(0.4), a * Math.sin(0.4)] as P };
+      const second = gear({ ...secondInput, meshWith: first.facts });
+      expect(second.warnings, `${z1}/${z2}`).toEqual([]);
+      expect(second.facts.meshed).toBe(true);
+      const turn = sweep({ ...firstInput, rotation: first.facts.rotation as number }, { ...secondInput, rotation: second.facts.rotation as number });
+      expect(turn.overlap, `${z1}/${z2}`).toBeLessThan(1e-9);
+      expect(turn.gapMax).toBeLessThan(TOLERANCE);
+    }
+    // gears in a ring: x_ring = x_gear
+    for (const [zp, zr, x] of [[30, 72, -0.3], [27, 72, 0.3]] as const) {
+      const ringInput = { teeth: zr, shift: x, internal: true, rotation: 0.05 };
+      const ring = gear(ringInput);
+      const planetInput = { teeth: zp, shift: x, center: [(0.9 * (zr - zp)) / 2, 0] as P };
+      const planet = gear({ ...planetInput, meshWith: ring.facts });
+      expect(planet.warnings, `${zp} in ${zr}`).toEqual([]);
+      const turn = sweep({ ...planetInput, rotation: planet.facts.rotation as number }, ringInput);
+      expect(turn.overlap, `${zp} in ${zr}`).toBeLessThan(1e-9);
+      expect(turn.gapMax).toBeLessThan(2 * TOLERANCE);
+    }
+  });
+
+  it('the shift is what a pinion with few teeth needs: 12/30 interferes without it and not with ±0.3', () => {
+    const pair = (x: number) => gear({ teeth: 30, shift: -x, center: [18.9, 0], meshWith: gear({ teeth: 12, shift: x }).facts });
+    expect(pair(0).warnings).toMatchObject([{ code: 'gearInterference', detail: expect.stringMatching(/this gear with 30 teeth \(radius 14\.4\) is above the limit 14\.237852/) }]);
+    expect(pair(0.3).warnings).toEqual([]);
+    // without the shift the pair overlaps while turning, with it it does not
+    const first = gear({ teeth: 12, rotation: 0 });
+    const second = gear({ teeth: 30, center: [18.9, 0], meshWith: first.facts });
+    expect(sweep({ teeth: 12, rotation: first.facts.rotation as number }, { teeth: 30, center: [18.9, 0], rotation: second.facts.rotation as number }).overlap).toBeGreaterThan(1e-3);
+  });
+
+  it('shifts that do not balance are gearMesh with the difference; the parameter rotation is used', () => {
+    const sun = gear({ teeth: 18, shift: 0.3 });
+    const planet = gear({ teeth: 27, shift: -0.2, center: [20.25, 0], rotation: 0.7, meshWith: sun.facts });
+    expect(planet.warnings).toMatchObject([{ code: 'gearMesh', detail: expect.stringMatching(/the profile shifts do not keep the reference centre distance: x1 \+ x2 = 0\.1 .*a shifted centre distance is not supported; the parameter rotation is used/) }]);
+    expect(planet.facts).toMatchObject({ rotation: 0.7, meshed: false });
+    // a ring left without the shift of its planet, whichever refers
+    const balancedPlanet = gear({ teeth: 27, shift: -0.3, center: [20.25, 0], meshWith: gear({ teeth: 18, shift: 0.3 }).facts });
+    expect(balancedPlanet.warnings).toEqual([]);
+    const ring = gear({ teeth: 72, internal: true, meshWith: balancedPlanet.facts });
+    expect(ring.warnings).toMatchObject([{ code: 'gearMesh', detail: expect.stringMatching(/x of the ring − x of the gear = 0\.3/) }]);
+    expect(gear({ teeth: 27, shift: -0.3, center: [20.25, 0], meshWith: gear({ teeth: 72, internal: true }).facts }).warnings).toMatchObject([{ code: 'gearMesh', detail: expect.stringMatching(/= 0\.3 /) }]);
+    expect(gear({ teeth: 72, shift: -0.3, internal: true, meshWith: balancedPlanet.facts }).warnings).toEqual([]);
+  });
+
+  it('the bounds of the shift: a pointed tooth, a tip at the base circle, a root at the centre', () => {
+    expect(failure({ teeth: 12, shift: 1.2 })).toMatch(/the tooth is pointed: with 12 teeth, the pressure angle 20°, the profile shift 1\.2 and the backlash 0 mm/);
+    // the review's case: module 1, 12 teeth, x = −1.5: the tip 5.5 below the base circle 5.638
+    expect(failure({ teeth: 12, module: 1, shift: -1.5 })).toMatch(/the tip circle \(radius 5\.5\) is not above the base circle \(radius 5\.638156\)/);
+    // the root of a gear at the centre: 4 teeth, r = 2 m, x = −0.8
+    expect(failure({ teeth: 4, module: 1, shift: -0.8 })).toMatch(/the root circle \(radius -0\.05\) is not above the centre/);
+    // the tip of a ring at the centre: x = −1.2
+    expect(failure({ teeth: 4, module: 1, shift: -1.2, internal: true })).toMatch(/the tip circle of the ring \(radius -0\.2\) is not above the centre/);
+    // a ring whose root circle falls below the base circle: r + m (1.25 + x) = 5.55
+    expect(failure({ teeth: 12, module: 1, shift: -1.7, internal: true })).toMatch(/the root circle of the ring \(radius 5\.55\) is not above the base circle/);
+    expect(failure({ teeth: 12, shift: -0.5 })).toBe('');
   });
 });

@@ -71,12 +71,12 @@ const near = (a: Vec3, b: Vec3) => a.forEach((x, i) => expect(x).toBeCloseTo(b[i
 describe('the section and its upgrade step', () => {
   it('is always in the document, after body properties; an empty one has no link and no joint', () => {
     expect(emptyDocument().mechanism).toEqual({ links: {}, joints: {} });
-    expect(Object.keys(emptyDocument()).slice(-2)).toEqual(['bodyProperties', 'mechanism']);
+    expect(Object.keys(emptyDocument()).slice(-3)).toEqual(['bodyProperties', 'mechanism', 'meshes']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {
     const step = UPGRADES.find((entry) => entry.name === '5a-mechanism');
-    expect(UPGRADES.at(-1)).toBe(step);
+    expect(UPGRADES.indexOf(step as never)).toBe(4); // the fifth of the list (3b-mesh-import follows)
     const older = { schemaVersion: 5, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [], bodyProperties: {} };
     expect(step?.run(older)).toEqual({ ...older, mechanism: { links: {}, joints: {} } });
     expect(step?.run({ ...older, mechanism: null })).toEqual({ ...older, mechanism: null });

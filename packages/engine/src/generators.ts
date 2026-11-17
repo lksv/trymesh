@@ -1,12 +1,17 @@
-// Catalog of profile generators (D35, point 3). A generator turns a few entities of a sketch and
-// a few parameters into the closed loops an extrusion sweeps: a gear from its pitch circle today,
-// a cycloidal disc, a pulley or text later. Like the constraint catalog, the catalog is the single
+// Catalog of profile generators (D35, point 3; D61). A generator turns a few entities of a sketch
+// and a few parameters into the closed loops an extrusion sweeps: a gear from its pitch circle,
+// a cycloidal disc from the circle of its pins, a GT2 pulley at a point; text later. Like the constraint catalog, the catalog is the single
 // source of truth: validation, expressions in parameters, the app's form and the API description
 // follow it. A new generator is an entry here and a build function; the document shape does not
 // change.
 import type { NumberSpec, OperandSpec } from './catalog';
 import type { Facts, Frame, GeneratorName, Vec2, Vec3, WarningCode } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross3, dot3, len3, sub3 } from './util';
+import { DEGREE, MAX_PROFILE_POINTS, TAU, arcSteps, directionInModel, fail, round, toModel, tooLarge } from './generators/common';
+import { CYCLOIDAL_DISC, cycloidalDisc } from './generators/cycloid';
+import { GT2_PULLEY, gt2Pulley } from './generators/gt2';
+
+export { MAX_PROFILE_POINTS } from './generators/common';
 
 // ---------------------------------------------------------------- catalog
 
@@ -17,7 +22,11 @@ export interface FlagSpec {
   flag: true;
   default: boolean;
 }
-export type ParamSpec = NumberSpec | FlagSpec;
+// A number may be optional (D61): it is stored only when it is given (also a zero), and its absence
+// is its default, as for the offset of a profile. A parameter added to an existing generator is
+// optional, so that a document that does not use it stays readable by a build without it.
+export type NumberParamSpec = NumberSpec & { optional?: true };
+export type ParamSpec = NumberParamSpec | FlagSpec;
 export const isFlag = (spec: ParamSpec): spec is FlagSpec => 'flag' in spec;
 
 export interface GeneratorSpec {
@@ -30,12 +39,12 @@ export interface GeneratorSpec {
   refs: Record<string, { title: string; summary: string; generators: readonly GeneratorName[] }>;
   sides: readonly string[]; // names of the side faces the generator creates (`FaceName.curve`)
   facts: Record<string, string>; // what the generator publishes about the profile (`FeatureResult.facts`)
+  // The required parameters of a profile that builds: the example of the description for the AI and
+  // what a new draft of the app starts with. The other parameters have defaults.
+  example: Record<string, number>;
 }
 
-const DEGREE = Math.PI / 180;
 export const MAX_TEETH = 500;
-// A profile above this size would block the synchronous engine in triangulation and booleans.
-export const MAX_PROFILE_POINTS = 50_000;
 
 export const GENERATORS: Record<GeneratorName, GeneratorSpec> = {
   involuteGear: {
@@ -43,7 +52,10 @@ export const GENERATORS: Record<GeneratorName, GeneratorSpec> = {
     summary:
       'Involute gear teeth over a pitch circle of the sketch (it may be a construction or a projected circle). The module is not entered: it follows from the diameter of the circle and the number of teeth. ' +
       'An external profile is the shape of a gear (tip circle r + m, root circle r − 1.25 m). An internal profile (`internal: true`) is the shape that is cut out of a body to make a ring gear: ' +
-      'it reaches from the tip circle of the ring r − m to its root circle r + 1.25 m and removes the centre as well, so it is cut into solid material. No profile shift.',
+      'it reaches from the tip circle of the ring r − m to its root circle r + 1.25 m and removes the centre as well, so it is cut into solid material. ' +
+      '`shift` is the profile shift coefficient x (KHK): the profile moves x · m away from the axis, the tooth of a gear (the tooth space of a ring) gets thicker on the pitch circle by 2 x m tan α, and the tip and the root circle move by x m (a gear: tip r + m (1 + x), root r − m (1.25 − x); a ring: tip r − m (1 − x), root r + m (1.25 + x)). ' +
+      'A positive shift is what a pinion with few teeth needs against interference. Gears in mesh keep the reference centre distance (their pitch circles touch), so their shifts must balance: x1 + x2 = 0 for two external gears, x of the ring = x of the gear inside it; otherwise the warning gearMesh. ' +
+      'A shift whose tip or root circle passes the base circle or the centre cannot be built (invalidProfile with the reason).',
     operands: [{ field: 'circle', kinds: ['circle'] }],
     params: {
       teeth: { title: 'Number of teeth', unit: 'count', integer: true, min: { value: 4 }, max: { value: MAX_TEETH } },
@@ -51,13 +63,14 @@ export const GENERATORS: Record<GeneratorName, GeneratorSpec> = {
       backlash: { title: 'Backlash', unit: 'mm', min: { value: 0 }, default: 0 },
       rotation: { title: 'Rotation', unit: 'rad', default: 0 },
       internal: { title: 'Internal (the cut that makes a ring gear)', flag: true, default: false },
+      shift: { title: 'Profile shift coefficient', unit: 'none', default: 0, optional: true },
     },
     refs: {
       meshWith: {
         title: 'In mesh with',
         summary:
           'An earlier extrusion with gear teeth. The rotation is then computed so that a tooth of one gear faces a tooth space of the other on the line of centres, and the parameter `rotation` is not used. ' +
-          'The gears must have the same module and pressure angle, parallel axes and tangent pitch circles (two external gears from outside, an external gear inside an internal one); otherwise the feature reports the warning gearMesh and uses `rotation`.',
+          'The gears must have the same module and pressure angle, parallel axes, tangent pitch circles (two external gears from outside, an external gear inside an internal one) and balanced profile shifts; otherwise the feature reports the warning gearMesh and uses `rotation`.',
         generators: ['involuteGear'],
       },
     },
@@ -77,13 +90,19 @@ export const GENERATORS: Record<GeneratorName, GeneratorSpec> = {
       center: 'centre of the pitch circle in model coordinates',
       axis: 'direction of the gear axis in model coordinates',
       toothDirection: 'direction of the axis of one tooth (for a ring gear of one tooth space) in model coordinates',
+      shift: 'profile shift coefficient x; the profile is moved by x · module away from the axis',
     },
+    example: { teeth: 18 },
   },
+  cycloidalDisc: CYCLOIDAL_DISC,
+  gt2Pulley: GT2_PULLEY,
 };
 
 // ---------------------------------------------------------------- build
 
-export type ResolvedOperand = { kind: 'circle'; center: Vec2; radius: number };
+// An operand as the recompute hands it over, by the kind of the entity: a circle with its solved
+// centre and radius, or a point (an own point, the origin, a point of projected geometry).
+export type ResolvedOperand = { kind: 'circle'; center: Vec2; radius: number } | { kind: 'point'; at: Vec2 };
 
 export interface GeneratorInput {
   operands: Record<string, ResolvedOperand>;
@@ -107,12 +126,12 @@ export interface GeneratedProfile {
 // ends with the error `invalidProfile` and this message.
 export type GeneratorResult = ({ ok: true } & GeneratedProfile) | { ok: false; message: string };
 
-const tooLarge = (points: number): string => `the generated profile has ${points} points, more than ${MAX_PROFILE_POINTS}; lower the number of teeth or raise the chord tolerance`;
-
 // The limit on the number of points holds for every generator; one that knows the size of its
-// profile beforehand refuses it before building (the gear does).
+// profile beforehand refuses it before building (the gear does). A parameter the profile does not
+// hold (an optional one) is handed over with its default.
 export function generateProfile(generator: GeneratorName, input: GeneratorInput): GeneratorResult {
-  const result = BUILD[generator](input);
+  const defaults = Object.fromEntries(Object.entries(GENERATORS[generator].params).flatMap(([name, spec]) => (spec.default === undefined ? [] : [[name, spec.default]])));
+  const result = BUILD[generator]({ ...input, params: { ...defaults, ...input.params } });
   if (!result.ok) return result;
   const points = result.regions.reduce((sum, region) => sum + [region.outer, ...region.holes].reduce((n, loop) => n + loop.xy.length / 2, 0), 0);
   if (points > MAX_PROFILE_POINTS) return { ok: false, message: tooLarge(points) };
@@ -121,19 +140,9 @@ export function generateProfile(generator: GeneratorName, input: GeneratorInput)
 
 // ---------------------------------------------------------------- involute gear
 
-const TAU = 2 * Math.PI;
 const involute = (angle: number): number => Math.tan(angle) - angle;
 const frac = (x: number): number => x - Math.floor(x);
-const fail = (message: string): GeneratorResult => ({ ok: false, message });
-
-// Number of chords for an arc of the given sweep, the same rule as for arcs of a sketch, with the
-// same cap: a tolerance far below the radius must not ask for an endless arc.
-const MAX_ARC_STEPS = 4096;
 const MAX_FLANK_STEPS = 256; // chords of one flank; a finer tolerance is not met
-function arcSteps(sweep: number, radius: number, chordTolerance: number): number {
-  const step = Math.min(2 * Math.acos(1 - Math.min(chordTolerance / radius, 1)), Math.PI / 4);
-  return Math.min(MAX_ARC_STEPS, Math.max(1, Math.ceil(sweep / step - 1e-9)));
-}
 
 // What one gear needs to know about the other one to mesh with it; read from its facts.
 interface Mate {
@@ -145,6 +154,7 @@ interface Mate {
   pitchRadius: number;
   tipRadius: number;
   internal: boolean;
+  shift: number;
 }
 
 // Reads the facts of the gear in `meshWith` in the coordinates of this sketch. A text = why the
@@ -165,6 +175,7 @@ function mate(facts: Facts | undefined, frame: Frame): Mate | string {
     pitchRadius: number('pitchDiameter') / 2,
     tipRadius: number('tipDiameter') / 2,
     internal: facts.internal === true,
+    shift: typeof facts.shift === 'number' ? facts.shift : 0,
   };
 }
 
@@ -176,9 +187,14 @@ interface GearShape {
   pitchRadius: number;
   tipRadius: number; // of the gear: for a ring gear the inner circle
   internal: boolean;
+  shift: number;
 }
 
-// The rotation of `gear` in mesh with `other`, or the reason they do not mesh.
+// The rotation of `gear` in mesh with `other`, or the reason they do not mesh. The pitch circles
+// touch, so the profile shifts must keep the reference centre distance: x1 + x2 = 0 for two
+// external gears, x_ring = x_gear for a gear in a ring (KHK, Tables 4.3 and 4.6: the working
+// pressure angle is the reference one exactly then). The rotation of a pair that balances is the
+// rotation without shifts: a shifted tooth is still symmetric about its axis.
 // The phase of a gear in a direction from its centre is the fractional part of
 // (direction − rotation) · teeth / 2π; zero means the axis of a tooth points that way.
 // - Two external gears: at the pitch point the phases of the two add up to 1/2 (a tooth faces a space).
@@ -194,12 +210,14 @@ function meshRotation(gear: GearShape, other: Mate): { rotation: number; distanc
   const tolerance = 1e-6 * Math.max(1, gear.pitchRadius + other.pitchRadius);
   if (!gear.internal && !other.internal) {
     if (Math.abs(distance - (gear.pitchRadius + other.pitchRadius)) > tolerance) return `the pitch circles are not tangent from outside (centre distance ${round(distance)}, sum of the radii ${round(gear.pitchRadius + other.pitchRadius)})`;
+    if (Math.abs(gear.shift + other.shift) > SHIFT_BALANCE) return `the profile shifts do not keep the reference centre distance: x1 + x2 = ${round(gear.shift + other.shift)} (it must be 0); a shifted centre distance is not supported`;
     const toGear = Math.atan2(gear.center[1] - other.center[1], gear.center[0] - other.center[0]);
     return { rotation: toGear + Math.PI - (frac(0.5 - phase(toGear)) * TAU) / gear.teeth, distance };
   }
   const [ring, planet] = gear.internal ? [gear, other] : [other, gear];
   const expected = ring.pitchRadius - planet.pitchRadius;
   if (expected <= tolerance || Math.abs(distance - expected) > tolerance) return `the pitch circle of the gear does not touch the pitch circle of the ring from inside (centre distance ${round(distance)}, difference of the radii ${round(expected)})`;
+  if (Math.abs(ring.shift - planet.shift) > SHIFT_BALANCE) return `the profile shifts do not keep the reference centre distance: x of the ring − x of the gear = ${round(ring.shift - planet.shift)} (it must be 0); a shifted centre distance is not supported`;
   const toPlanet = Math.atan2(planet.center[1] - ring.center[1], planet.center[0] - ring.center[0]);
   return { rotation: toPlanet - (phase(toPlanet) * TAU) / gear.teeth, distance };
 }
@@ -224,27 +242,37 @@ function tipInterference(gear: GearShape, other: GearShape, distance: number): s
   return out;
 }
 
-const round = (value: number): number => Math.round(value * 1e6) / 1e6;
+// Shifts are written as numbers or simple expressions (0.3 and −0.3 are exact), so the balance of
+// a pair is held to the rounding of a sum.
+const SHIFT_BALANCE = 1e-9;
 
 function involuteGear(input: GeneratorInput): GeneratorResult {
   const circle = input.operands.circle;
+  if (circle?.kind !== 'circle') return fail('the operand circle is not a circle');
   const { frame, chordTolerance } = input;
   const teeth = input.params.teeth as number;
   const pressureAngle = input.params.pressureAngle as number;
   const backlash = input.params.backlash as number;
   const internal = input.params.internal === true;
+  const shift = input.params.shift as number;
   const r = circle.radius;
   const module = (2 * r) / teeth;
   const rb = r * Math.cos(pressureAngle);
   // The loop is the gear, or the tool that cuts a ring gear. The "tooth" of the tool is a tooth
-  // space of the ring: it starts at the tip circle of the ring and reaches to its root circle.
-  const [inner, outer] = internal ? [r - module, r + 1.25 * module] : [r - 1.25 * module, r + module];
-  // Half-angle of the tooth of the loop on the pitch circle: an external tooth is thinner by the
-  // backlash, a tooth space of a ring wider by it.
-  const psi = Math.PI / (2 * teeth) + ((internal ? 1 : -1) * backlash) / (2 * r);
+  // space of the ring: it starts at the tip circle of the ring and reaches to its root circle. The
+  // profile shift moves both circles by x · m away from the axis (KHK, Tables 3.5 and 4.6).
+  const [inner, outer] = internal ? [r - module * (1 - shift), r + module * (1.25 + shift)] : [r - module * (1.25 - shift), r + module * (1 + shift)];
+  const what = `with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}°, the profile shift ${round(shift)} and the backlash ${round(backlash)} mm`;
+  // The bounds of the shift: the involute starts at the base circle, and the loop needs a centre.
+  if (outer <= rb) return fail(`the ${internal ? 'root circle of the ring' : 'tip circle'} (radius ${round(outer)}) is not above the base circle (radius ${round(rb)}): ${what} the tooth has no involute flank; raise the profile shift`);
+  if (inner <= 0) return fail(`the ${internal ? 'tip circle of the ring' : 'root circle'} (radius ${round(inner)}) is not above the centre: ${what}; raise the profile shift`);
+  // Half-angle of the tooth of the loop on the pitch circle: the shift makes it thicker by
+  // 2 x m tan α along the pitch arc (KHK, Table 5.1; for a ring its tooth space), an external tooth
+  // is thinner by the backlash, a tooth space of a ring wider by it.
+  const psi = Math.PI / (2 * teeth) + (2 * shift * Math.tan(pressureAngle)) / teeth + ((internal ? 1 : -1) * backlash) / (2 * r);
   const halfAt = (rho: number): number => psi + involute(pressureAngle) - involute(Math.acos(Math.min(1, rb / rho)));
   // the width of the tooth at the outer circle, as a length: an edge shorter than the tolerance is no edge
-  if (2 * halfAt(outer) * outer <= LENGTH_TOLERANCE) return fail(`the tooth is pointed: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm it has no width at the ${internal ? 'root' : 'tip'} circle`);
+  if (2 * halfAt(outer) * outer <= LENGTH_TOLERANCE) return fail(`the tooth is pointed: ${what} it has no width at the ${internal ? 'root' : 'tip'} circle`);
 
   // The flank is an involute from the base circle (or from the inner circle, if that is larger) to
   // the outer circle, divided evenly in arc length until the chords stay within the tolerance.
@@ -301,10 +329,10 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
   if (inner < rb) flank.unshift([inner, flank[0][1]]); // below the base circle the flank is radial
   const pitch = TAU / teeth;
   const [innerHalf, outerHalf] = [flank[0][1], flank[flank.length - 1][1]];
-  if ((pitch - 2 * innerHalf) * inner <= LENGTH_TOLERANCE) return fail(`the teeth overlap at the ${internal ? 'tip' : 'root'} circle: with ${teeth} teeth, the pressure angle ${round(pressureAngle / DEGREE)}° and the backlash ${round(backlash)} mm no space is left between them`);
+  if ((pitch - 2 * innerHalf) * inner <= LENGTH_TOLERANCE) return fail(`the teeth overlap at the ${internal ? 'tip' : 'root'} circle: ${what} no space is left between them`);
 
   // rotation: from the gear in mesh, or the parameter
-  const shape: GearShape = { center: circle.center, teeth, module, pressureAngle, pitchRadius: r, tipRadius: internal ? inner : outer, internal };
+  const shape: GearShape = { center: circle.center, teeth, module, pressureAngle, pitchRadius: r, tipRadius: internal ? inner : outer, internal, shift };
   const warnings: GeneratedProfile['warnings'] = [];
   let rotation = input.params.rotation as number;
   let meshed = false;
@@ -346,8 +374,6 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
     arc(inner, axis + innerHalf, innerSweep, innerSteps);
   }
 
-  const toModel = (u: number, v: number): Vec3 => [frame.origin[0] + u * frame.x[0] + v * frame.y[0], frame.origin[1] + u * frame.x[1] + v * frame.y[1], frame.origin[2] + u * frame.x[2] + v * frame.y[2]];
-  const direction: Vec3 = [0, 1, 2].map((i) => Math.cos(rotation) * frame.x[i] + Math.sin(rotation) * frame.y[i]) as Vec3;
   const facts: Facts = {
     module,
     teeth,
@@ -360,11 +386,12 @@ function involuteGear(input: GeneratorInput): GeneratorResult {
     rootDiameter: 2 * (internal ? outer : inner),
     rotation,
     meshed,
-    center: toModel(circle.center[0], circle.center[1]),
+    center: toModel(frame, circle.center[0], circle.center[1]),
     axis: frame.normal,
-    toothDirection: direction,
+    toothDirection: directionInModel(frame, rotation),
+    shift,
   };
   return { ok: true, regions: [{ outer: { xy, side: 'teeth' }, holes: [] }], facts, warnings };
 }
 
-const BUILD: Record<GeneratorName, (input: GeneratorInput) => GeneratorResult> = { involuteGear };
+const BUILD: Record<GeneratorName, (input: GeneratorInput) => GeneratorResult> = { involuteGear, cycloidalDisc, gt2Pulley };

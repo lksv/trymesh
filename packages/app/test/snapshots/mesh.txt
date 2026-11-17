@@ -1,0 +1,851 @@
+
+=== 1. a sketch with a rectangle: its corners are points a frame can be
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  features: s1
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+          option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+        select value="" title="Export the model in a format of the engine"
+          option selected value="": "Export…"
+          option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+          option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+          option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+          option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+          option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+          option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+          option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+        button disabled title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok.selected
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Skica"
+      label
+        "Název"
+        input value="Skica 1"
+      div.buttons
+        button.primary: "Upravit"
+        button: "Potlačit"
+        button: "Smazat"
+      button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+  status: Skica dokončena.
+  view: 11 scene(s) set
+  scene:
+      bodies: (none)
+      line #8b9bb4 width 1: 24 numbers, sum 367.5
+      line #8b9bb4 width 1: 24 numbers, sum 245
+      line #8b9bb4 width 1: 24 numbers, sum 122.5
+      line #f97316 width 2.5: 24 numbers, sum 1400
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. the button Mesh without a stored mesh: the form says to import a file, OK is disabled
+  engine: getState("s1")
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "New mesh"
+    + p.hint: "The document has no stored mesh yet: import an STL file of the part."
+    + div.buttons
+    +   button title="Read an STL file into a stored mesh of the document": "Import a file…"
+    +   input#mesh-file type=file hidden
+    + label
+    +   "Frame"
+    +   select value="base:XY"
+    +     option selected value="base:XY": "rovina XY"
+    +     option value="base:XZ": "rovina XZ"
+    +     option value="base:YZ": "rovina YZ"
+    +     option value="point": "A point of a sketch"
+    + div.buttons
+    +   button: "Pick"
+    + label
+    +   "Offset along X (mm or an expression)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/x" data-unit="mm"
+    + label
+    +   "Offset along Y (mm or an expression)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/y" data-unit="mm"
+    + label
+    +   "Offset along the normal (mm or an expression)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/z" data-unit="mm"
+    + label
+    +   "Turn about X (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/rx" data-unit="rad"
+    + label
+    +   "Turn about Y (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/ry" data-unit="rad"
+    - h2: "Skica"
+    +   "Turn about the normal (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/rz" data-unit="rad"
+    + label.check
+    +   input type=checkbox checked
+    +   "A bought part (a reference body, not printed)"
+    + p#draft-placed.hint
+    + p#draft-problem.issue.error
+    -   "Název"
+    -   input value="Skica 1"
+    +   button.primary disabled: "OK"
+    +   button: "Zrušit"
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+  status: Import an STL file of the part.
+  view: 1 scene(s) set
+
+=== 3. a file that is no STL: the status line says why, nothing is stored
+  status: broken.stl cannot be imported: stl: not an STL file: it has 100 bytes, where a binary STL of the 4 triangles its header counts has 284 (a file cut short?), and it is not a text that begins with "solid" and holds vertices  [error]
+  view: 0 scene(s) set
+
+=== 4. the tetrahedron imported: one undo step (addMesh), the report in the status line, the form uses it, the preview places it on XY
+  engine: getState("s1")
+  engine: execute({"type":"addMesh","id":"tetra_1","mesh":{"name":"tetra 1.stl","positions":"AAAAAAAAAAAAAAAAAAAAAAAAIEEAAAAAAAAgQQAAAAAAAAAAAAAAAAAAAAAAACBB","triangles":"AAAAAAEAAAACAAAAAAAAAAIAAAADAAAAAAAAAAMAAAABAAAAAgAAAAEAAAADAAAA"}}) -> ok
+  engine: preview({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"base","plane":"XY"}}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}, "m1") -> ok
+  meshes: {"tetra_1":"tetra 1.stl 64+64 characters"}
+  panel:
+    + label
+    +   "Stored mesh"
+    +   select value="tetra_1"
+    +     option selected value="tetra_1": "tetra 1.stl (4 triangles)"
+    - p.hint: "The document has no stored mesh yet: import an STL file of the part."
+    + p#draft-placed.hint: "The origin of the mesh at (0, 0, 0), its X axis along (1, 0, 0), its Z axis along (0, 0, 1)."
+    + p#draft-problem.issue.warning
+    - p#draft-placed.hint
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  status: Imported tetra 1.stl as "tetra_1": 4 triangles, 1 shell, 10 mm × 10 mm × 10 mm.
+  view: 2 scene(s) set
+  scene:
+    + bodies: m1
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - bodies: (none)
+    - line #8b9bb4 width 1: 24 numbers, sum 367.5
+    - line #8b9bb4 width 1: 24 numbers, sum 245
+    - line #8b9bb4 width 1: 24 numbers, sum 122.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+
+=== 5. a point of a sketch as the frame: the latest sketch, its origin
+  engine: preview({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"origin"}}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}, "m1") -> ok
+  panel:
+    +   select value="point"
+    +     option value="base:XY": "rovina XY"
+    -   select value="base:XY"
+    -     option selected value="base:XY": "rovina XY"
+    +     option selected value="point": "A point of a sketch"
+    + label
+    +   "Sketch"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + label
+    +   "Point"
+    +   select value="origin"
+    +     option selected value="origin": "origin of the sketch"
+    +     option value="p1": "p1"
+    +     option value="p2": "p2"
+    +     option value="p3": "p3"
+    + p.hint: "The frame of the sketch moved to the point: the centre of a bolt pattern drawn from the data sheet."
+    -     option value="point": "A point of a sketch"
+  view: 1 scene(s) set
+
+=== 6. a corner of the rectangle, 5 mm up, turned by 90°: the facts of the preview say where the origin and the axes are
+  engine: preview({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"}}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}, "m1") -> ok
+  engine: preview({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}, "m1") -> ok
+  engine: preview({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5,"rz":1.5707963267948966}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}, "m1") -> ok
+  panel:
+    +   select value="p3"
+    +     option value="origin": "origin of the sketch"
+    -   select value="origin"
+    -     option selected value="origin": "origin of the sketch"
+    +     option selected value="p3": "p3"
+    -     option value="p3": "p3"
+    +     input value="5"
+    -     input value="0"
+    +     input value="90"
+    -     input value="0"
+    + p#draft-placed.hint: "The origin of the mesh at (0, 30, 5), its X axis along (0, 1, 0), its Z axis along (0, 0, 1)."
+    - p#draft-placed.hint: "The origin of the mesh at (0, 0, 0), its X axis along (1, 0, 0), its Z axis along (0, 0, 1)."
+  view: 3 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 483.371
+    + line #8b9bb4 width 1: 24 numbers, sum 322.247
+    + line #8b9bb4 width 1: 24 numbers, sum 161.124
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 23.018
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 23.018
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 23.018
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+
+=== 7. confirmed: one batch, the feature and the use reference (a bought part)
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5,"rz":1.5707963267948966}},"index":1},{"type":"setBodyProperties","body":"m1","patch":{"use":"reference"}}]}) -> ok
+  features: s1, m1
+  feature m1:
+      {"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5,"rz":1.5707963267948966}}
+  bodyProperties: {"m1":{"use":"reference"}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+    +   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    + div.row.ok
+    - div.row.ok.selected
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Mesh 1"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Stored meshes"
+    + div.row.mesh
+    +   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; placed by Mesh 1."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New mesh"
+    - label
+    -   "Stored mesh"
+    -   select value="tetra_1"
+    -     option selected value="tetra_1": "tetra 1.stl (4 triangles)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button title="Read an STL file into a stored mesh of the document": "Import a file…"
+    -   input#mesh-file type=file hidden
+    - label
+    -   "Frame"
+    -   select value="point"
+    -     option value="base:XY": "rovina XY"
+    -     option value="base:XZ": "rovina XZ"
+    -     option value="base:YZ": "rovina YZ"
+    -     option selected value="point": "A point of a sketch"
+    - label
+    -   "Sketch"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - label
+    -   "Point"
+    -   select value="p3"
+    -     option value="origin": "origin of the sketch"
+    -     option value="p1": "p1"
+    -     option value="p2": "p2"
+    -     option selected value="p3": "p3"
+    - p.hint: "The frame of the sketch moved to the point: the centre of a bolt pattern drawn from the data sheet."
+    - div.buttons
+    -   button: "Pick"
+    - label
+    -   "Offset along X (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/x" data-unit="mm"
+    - label
+    -   "Offset along Y (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/y" data-unit="mm"
+    - label
+    -   "Offset along the normal (mm or an expression)"
+    -   span.field
+    -     input value="5"
+    -     small.computed data-field="placement/z" data-unit="mm"
+    - label
+    -   "Turn about X (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/rx" data-unit="rad"
+    - label
+    -   "Turn about Y (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/ry" data-unit="rad"
+    - label
+    -   "Turn about the normal (° or an expression in radians)"
+    -   span.field
+    -     input value="90"
+    -     small.computed data-field="placement/rz" data-unit="rad"
+    - label.check
+    -   input type=checkbox checked
+    -   "A bought part (a reference body, not printed)"
+    - p#draft-placed.hint: "The origin of the mesh at (0, 30, 5), its X axis along (0, 1, 0), its Z axis along (0, 0, 1)."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Mesh přidáno.
+  view: 2 scene(s) set
+  scene:
+    + line #5b7aa8 width 1.5: 24 numbers, sum 1400
+    - line #f97316 width 2.5: 24 numbers, sum 1400
+
+=== 8. the feature edited: every number shown, a zero for one it does not have, no box of a bought part
+  engine: preview({"type":"updateFeature","id":"m1","patch":{"mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"x":null,"y":null,"z":5,"rx":null,"ry":null,"rz":1.5707963267948966}}}, "m1") -> ok
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.editing
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Edit: Mesh 1"
+    + label
+    +   "Stored mesh"
+    +   select value="tetra_1"
+    +     option selected value="tetra_1": "tetra 1.stl (4 triangles)"
+    + div.buttons
+    +   button title="Read an STL file into a stored mesh of the document": "Import a file…"
+    +   input#mesh-file type=file hidden
+    + label
+    +   "Frame"
+    +   select value="point"
+    +     option value="base:XY": "rovina XY"
+    +     option value="base:XZ": "rovina XZ"
+    +     option value="base:YZ": "rovina YZ"
+    +     option selected value="point": "A point of a sketch"
+    + label
+    +   "Sketch"
+    +   select value="s1"
+    +     option selected value="s1": "Skica 1"
+    + label
+    +   "Point"
+    +   select value="p3"
+    +     option value="origin": "origin of the sketch"
+    +     option value="p1": "p1"
+    +     option value="p2": "p2"
+    +     option selected value="p3": "p3"
+    + p.hint: "The frame of the sketch moved to the point: the centre of a bolt pattern drawn from the data sheet."
+    + div.buttons
+    +   button: "Pick"
+    + label
+    +   "Offset along X (mm or an expression)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/x" data-unit="mm"
+    + label
+    +   "Offset along Y (mm or an expression)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/y" data-unit="mm"
+    + label
+    +   "Offset along the normal (mm or an expression)"
+    +   span.field
+    +     input value="5"
+    +     small.computed data-field="placement/z" data-unit="mm"
+    + label
+    +   "Turn about X (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/rx" data-unit="rad"
+    + label
+    +   "Turn about Y (° or an expression in radians)"
+    +   span.field
+    +     input value="0"
+    +     small.computed data-field="placement/ry" data-unit="rad"
+    + label
+    +   "Turn about the normal (° or an expression in radians)"
+    +   span.field
+    +     input value="90"
+    +     small.computed data-field="placement/rz" data-unit="rad"
+    + p#draft-placed.hint: "The origin of the mesh at (0, 30, 5), its X axis along (0, 1, 0), its Z axis along (0, 0, 1)."
+    + p#draft-problem.issue.warning
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Stored meshes"
+    - div.row.mesh
+    -   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; placed by Mesh 1."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 1 scene(s) set
+
+=== 9. the turn set back to zero: the patch removes it
+  engine: preview({"type":"updateFeature","id":"m1","patch":{"mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"x":null,"y":null,"z":5,"rx":null,"ry":null,"rz":null}}}, "m1") -> ok
+  engine: execute({"type":"updateFeature","id":"m1","patch":{"mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"x":null,"y":null,"z":5,"rx":null,"ry":null,"rz":null}}}) -> ok
+  feature m1:
+    + {"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5}}
+    - {"id":"m1","name":"Mesh 1","suppressed":false,"type":"mesh","mesh":"tetra_1","placement":{"frame":{"kind":"sketchPoint","sketch":"s1","point":"p3"},"z":5,"rz":1.5707963267948966}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.editing
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Stored meshes"
+    + div.row.mesh
+    +   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; placed by Mesh 1."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "Edit: Mesh 1"
+    - label
+    -   "Stored mesh"
+    -   select value="tetra_1"
+    -     option selected value="tetra_1": "tetra 1.stl (4 triangles)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button title="Read an STL file into a stored mesh of the document": "Import a file…"
+    -   input#mesh-file type=file hidden
+    - label
+    -   "Frame"
+    -   select value="point"
+    -     option value="base:XY": "rovina XY"
+    -     option value="base:XZ": "rovina XZ"
+    -     option value="base:YZ": "rovina YZ"
+    -     option selected value="point": "A point of a sketch"
+    - label
+    -   "Sketch"
+    -   select value="s1"
+    -     option selected value="s1": "Skica 1"
+    - label
+    -   "Point"
+    -   select value="p3"
+    -     option value="origin": "origin of the sketch"
+    -     option value="p1": "p1"
+    -     option value="p2": "p2"
+    -     option selected value="p3": "p3"
+    - p.hint: "The frame of the sketch moved to the point: the centre of a bolt pattern drawn from the data sheet."
+    - div.buttons
+    -   button: "Pick"
+    - label
+    -   "Offset along X (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/x" data-unit="mm"
+    - label
+    -   "Offset along Y (mm or an expression)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/y" data-unit="mm"
+    - label
+    -   "Offset along the normal (mm or an expression)"
+    -   span.field
+    -     input value="5"
+    -     small.computed data-field="placement/z" data-unit="mm"
+    - label
+    -   "Turn about X (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/rx" data-unit="rad"
+    - label
+    -   "Turn about Y (° or an expression in radians)"
+    -   span.field
+    -     input value="0"
+    -     small.computed data-field="placement/ry" data-unit="rad"
+    - label
+    -   "Turn about the normal (° or an expression in radians)"
+    -   span.field
+    -     input value="90"
+    -     small.computed data-field="placement/rz" data-unit="rad"
+    - p#draft-placed.hint: "The origin of the mesh at (0, 30, 5), its X axis along (0, 1, 0), its Z axis along (0, 0, 1)."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  status: Změna uložena.
+  view: 3 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 430.148
+    + line #8b9bb4 width 1: 24 numbers, sum 286.765
+    + line #8b9bb4 width 1: 24 numbers, sum 143.383
+    - line #8b9bb4 width 1: 24 numbers, sum 483.371
+    - line #8b9bb4 width 1: 24 numbers, sum 322.247
+    - line #8b9bb4 width 1: 24 numbers, sum 161.124
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.483
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.483
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.483
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 23.018
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 23.018
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 23.018
+
+=== 10. the feature deleted: the stored mesh is not placed, the panel offers to remove it
+  engine: execute({"type":"removeFeature","id":"m1"}) -> ok
+  features: s1
+  toolbar:
+    +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok
+    -   span.dot: "●"
+    -   span.name: "Mesh 1"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+  panel:
+    + h2: "Properties without a body"
+    + p.hint: "These bodies are not in the model now. A body made again under the same ID takes its properties over."
+    + p.hint.body
+    +   "m1: reference"
+    +   button.link: "Remove"
+    +   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; not placed."
+    +   button title="Remove the stored mesh from the document": "Remove"
+    -   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; placed by Mesh 1."
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - div.buttons
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Smazáno: Mesh 1. Závislé prvky zůstávají a hlásí chybu.
+  view: 2 scene(s) set
+  scene:
+    + bodies: (none)
+    + line #8b9bb4 width 1: 24 numbers, sum 367.5
+    + line #8b9bb4 width 1: 24 numbers, sum 245
+    + line #8b9bb4 width 1: 24 numbers, sum 122.5
+    - bodies: m1
+    - line #8b9bb4 width 1: 24 numbers, sum 430.148
+    - line #8b9bb4 width 1: 24 numbers, sum 286.765
+    - line #8b9bb4 width 1: 24 numbers, sum 143.383
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 20.483
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 20.483
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 20.483
+
+=== 11. the stored mesh removed; the properties of the body stay, listed as without a body
+  engine: execute({"type":"removeMesh","id":"tetra_1"}) -> ok
+  meshes: {}
+  panel:
+    - h2: "Stored meshes"
+    - div.row.mesh
+    -   span: "tetra 1.stl (tetra_1): 4 triangles, 10 mm × 10 mm × 10 mm; not placed."
+    -   button title="Remove the stored mesh from the document": "Remove"
+  status: The stored mesh tetra_1 was removed.
+  view: 1 scene(s) set

@@ -80,7 +80,7 @@
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
       {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -100,6 +100,9 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
       div.group
         select value="" title="Ask a query about the model"
           option selected value="": "Queries…"
@@ -224,6 +227,9 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -363,6 +369,9 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -471,7 +480,7 @@
   engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
   engine: getState("e3")
   engine: getState("s2")  (x2)
-  engine: load("{\"schemaVersion\": 99}") -> invalidDocument: document: the schema version 99 is newer than this build reads (it saves 6); open the document with a newer build
+  engine: load("{\"schemaVersion\": 99}") -> invalidDocument: document: the schema version 99 is newer than this build reads (it saves 7); open the document with a newer build
   engine: preview({"type":"addFeature","feature":{"id":"e4","name":"Vysunutí 4","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":5}, "e4") -> ok
   engine: getState("e3")
   engine: getState("s2")  (x2)
@@ -484,6 +493,9 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
@@ -556,6 +568,8 @@
     +     option selected value="regions": "Sketch regions"
     +     option value="wall": "Wall along curves"
     +     option value="involuteGear": "Involute gear"
+    +     option value="cycloidalDisc": "Cycloidal disc"
+    +     option value="gt2Pulley": "GT2 pulley"
     + label
     +   "Skica"
     +   select value="s2"
@@ -617,7 +631,7 @@
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: AI: otevření dokumentu selhalo: document: the schema version 99 is newer than this build reads (it saves 6); open the document with a newer build  [error]
+  status: AI: otevření dokumentu selhalo: document: the schema version 99 is newer than this build reads (it saves 7); open the document with a newer build  [error]
   view: 2 scene(s) set
   scene:
     + bodies: e1, e2, e3, e4
@@ -627,7 +641,7 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
 
 === 11. a load: the app starts over with the new document
-  engine: load("{\"schemaVersion\":6,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}}}") -> ok
+  engine: load("{\"schemaVersion\":7,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{}}") -> ok
   features: (none)
   toolbar:
     +   button disabled: "Export STL"
@@ -638,6 +652,9 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -725,6 +742,8 @@
     -     option selected value="regions": "Sketch regions"
     -     option value="wall": "Wall along curves"
     -     option value="involuteGear": "Involute gear"
+    -     option value="cycloidalDisc": "Cycloidal disc"
+    -     option value="gt2Pulley": "GT2 pulley"
     - label
     -   "Skica"
     -   select value="s2"

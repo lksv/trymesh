@@ -629,6 +629,52 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'offset');
   });
 
+  it('the generators of 5d: a GT2 pulley at a point, a cycloidal disc over a circle, the profile shift of a gear typed and emptied (D61)', async () => {
+    const h = await start();
+    const SHIFT = 'Profile shift coefficient (a number or an expression; empty = 0)';
+    // a sketch with a point and a construction circle of radius 25 about the origin, made by the AI
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch('s', 'Drive', { kind: 'base', plane: 'XY' }) },
+        { type: 'addPoint', sketch: 's', id: 'axis', x: 60, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'pins', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+      ],
+    });
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'gt2Pulley');
+    h.record('a GT2 pulley: its operand is a point, the select lists the origin and the points of the sketch; the example of the catalog, 20 grooves');
+    h.choose('center (point of the sketch)', 'axis');
+    h.type(h.field('Number of grooves'), '40');
+    h.record('at the point, 40 grooves: the facts follow the preview');
+    h.press('panel', 'OK');
+    h.record('the pulley');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'cycloidalDisc');
+    h.record('a cycloidal disc over the circle: the example of the catalog, its facts');
+    h.type(h.field('Input angle (° or an expression in radians)'), '90');
+    h.type(h.field(DISTANCE), '3');
+    h.press('panel', 'OK');
+    h.record('the disc at the input angle 90°');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'involuteGear');
+    h.record('a gear: the shift is empty, the draft has none');
+    h.type(h.field(SHIFT), '0.3');
+    h.record('a shift typed: the tip and the root move, the facts say the shift');
+    h.press('panel', 'OK');
+    h.record('the gear with its shift');
+    doubleClick(h, 'Vysunutí 3');
+    h.record('editing: the field shows the shift');
+    h.type(h.field(SHIFT), '');
+    h.record('the field emptied: the draft has no shift, the patch removes it');
+    h.press('panel', 'OK');
+    h.record('OK: the shift is removed from the feature');
+    await matches(h, 'generators');
+  });
+
   it('a taper on the extent of an extrusion (D45)', async () => {
     const h = await start();
     h.press('toolbar', 'Skica');
@@ -1245,6 +1291,56 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'model');
   });
 
+  it('a combine of finished bodies with a clearance, and a split of a body by a plane (D56)', async () => {
+    const h = await start();
+    // two bodies built by commands: a plate and a block that stands in it
+    const box = (id: string, x0: number, y0: number, x1: number, y1: number, z0: number, z1: number): Command[] => {
+      const sketch = `${id}S`;
+      const corners: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      return [
+        { type: 'addFeature', feature: emptySketch(sketch, `${id} sketch`, { kind: 'base', plane: 'XY' }) },
+        ...corners.flatMap(([x, y], i): Command[] => [
+          { type: 'addPoint', sketch, id: `${id}p${i}`, x, y },
+          { type: 'addConstraint', sketch, id: `${id}f${i}`, constraint: { type: 'fixed', point: `${id}p${i}`, x, y } },
+        ]),
+        ...corners.map((_, i): Command => ({ type: 'addCurve', sketch, id: `${id}l${i}`, curve: { type: 'line', a: `${id}p${i}`, b: `${id}p${(i + 1) % 4}` } })),
+        { type: 'addFeature', feature: { id, name: id === 'plate' ? 'Plate' : 'Block', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}l${i}`) }] }, extent: { type: 'distance', start: z0, distance: z1 - z0 }, operation: 'new' } },
+      ];
+    };
+    outside(h, { type: 'batch', commands: [...box('plate', 0, 0, 40, 30, 0, 10), ...box('block', 10, 10, 20, 20, 5, 15)] });
+    h.record('a plate and a block that stands in it');
+
+    h.press('toolbar', 'Combine');
+    h.record('a new combine: a difference that keeps its tools, no target yet');
+    h.choose('Target', 'plate');
+    tick(h, 'Block');
+    h.record('the plate less the block: the preview');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.record('with a clearance of 0.3: the pocket is the block grown by it');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.0001');
+    h.record('a clearance too small to tell from none: the form says why');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.choose('Operation', 'union');
+    h.record('a union: no clearance offered');
+    h.choose('Operation', 'difference');
+    h.type(h.field('Clearance (mm or an expression; empty for none)'), '0.3');
+    h.press('panel', 'OK');
+    h.record('OK: the combine is in the document');
+    expect(h.engine.getState().document.features.find((f) => f.type === 'combine')).toMatchObject({ operation: 'difference', target: 'plate', tools: ['block'], keepTools: true, clearance: 0.3 });
+    h.row('Combine 1').click();
+    h.record('selected: the summary');
+
+    h.press('toolbar', 'Split');
+    h.record('a new split of the latest body, the block, by XY until a plane is picked: XY does not cut it, the form says so');
+    h.click(at(35, 25, 10));
+    h.record('the top of the plate picked: the block split by its plane');
+    h.choose('New body', 'forward');
+    h.press('panel', 'OK');
+    h.record('OK: the split is in the document, the part above the plate a body of its own');
+    expect(Object.keys(h.engine.getState().evaluation.bodies)).toContain(h.engine.getState().document.features.find((f) => f.type === 'split')?.id);
+    await matches(h, 'combine-split');
+  });
+
   it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {
     const h = await start();
     h.press('toolbar', 'Skica');
@@ -1604,5 +1700,69 @@ describe('the app, driven as a user drives it', () => {
       saved.mockRestore();
     }
     await matches(h, 'parts-list');
+  });
+
+  it('a bought part from an STL file: the form, the import, the placement on a point of a sketch, a reference part, the stored meshes in the panel (D55)', async () => {
+    const h = await start();
+    // a tetrahedron, its four faces outwards, as binary STL
+    const corners = [
+      [0, 0, 0, 0, 10, 0, 10, 0, 0],
+      [0, 0, 0, 10, 0, 0, 0, 0, 10],
+      [0, 0, 0, 0, 0, 10, 0, 10, 0],
+      [10, 0, 0, 0, 10, 0, 0, 0, 10],
+    ];
+    const bytes = new Uint8Array(84 + 50 * corners.length);
+    const data = new DataView(bytes.buffer);
+    data.setUint32(80, corners.length, true);
+    corners.forEach((triangle, t) => triangle.forEach((value, k) => data.setFloat32(84 + 50 * t + 12 + 4 * k, value, true)));
+    const choose = async (name: string, content: Uint8Array<ArrayBuffer>): Promise<void> => {
+      const input = h.document.getElementById('mesh-file') as HTMLInputElement;
+      const FileOf = (h.document.defaultView as unknown as { File: typeof File }).File;
+      Object.defineProperty(input, 'files', { value: [new FileOf([content], name)], configurable: true });
+      const before = Object.keys(h.engine.getState().document.meshes).length;
+      const status = h.document.getElementById('status') as HTMLElement;
+      const said = status.textContent;
+      h.type(input, '', true);
+      await until(() => Object.keys(h.engine.getState().document.meshes).length > before || status.textContent !== said, 'the import');
+    };
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.record('a sketch with a rectangle: its corners are points a frame can be');
+    h.press('toolbar', 'Mesh');
+    h.record('the button Mesh without a stored mesh: the form says to import a file, OK is disabled');
+    await choose('broken.stl', bytes.slice(0, 100));
+    h.record('a file that is no STL: the status line says why, nothing is stored');
+    await choose('tetra 1.stl', bytes);
+    h.record('the tetrahedron imported: one undo step (addMesh), the report in the status line, the form uses it, the preview places it on XY');
+    h.choose('Frame', 'point');
+    h.record('a point of a sketch as the frame: the latest sketch, its origin');
+    const corner = Object.keys((h.engine.getState().document.features[0] as { points: Record<string, unknown> }).points)[2];
+    h.choose('Point', corner);
+    h.type(h.field(OFFSET), '5');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '90');
+    h.timers();
+    h.record('a corner of the rectangle, 5 mm up, turned by 90°: the facts of the preview say where the origin and the axes are');
+    h.press('panel', 'OK');
+    h.record('confirmed: one batch, the feature and the use reference (a bought part)');
+    expect(h.engine.getState().evaluation.bodyProperties.m1?.use).toBe('reference');
+    doubleClick(h, 'Mesh 1');
+    h.record('the feature edited: every number shown, a zero for one it does not have, no box of a bought part');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '0');
+    h.timers();
+    h.press('panel', 'OK');
+    h.record('the turn set back to zero: the patch removes it');
+    expect(h.engine.getState().document.features[1]).toMatchObject({ placement: { z: 5 } });
+    expect('rz' in (h.engine.getState().document.features[1] as { placement: object }).placement).toBe(false);
+    h.row('Mesh 1').click();
+    h.press('panel', 'Smazat');
+    h.record('the feature deleted: the stored mesh is not placed, the panel offers to remove it');
+    titled(h, 'Remove the stored mesh from the document').click();
+    h.record('the stored mesh removed; the properties of the body stay, listed as without a body');
+    expect(h.engine.getState().document.meshes).toEqual({});
+    await matches(h, 'mesh');
   });
 });

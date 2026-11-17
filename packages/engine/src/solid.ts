@@ -19,7 +19,10 @@ export type FaceInfo =
   | { planar: false; surface: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
-  | { planar: false; surface: 'swept'; axis: Vec3 };
+  | { planar: false; surface: 'swept'; axis: Vec3 }
+  // The surface of an imported mesh (D55): nothing is known of it, flat regions included. Published
+  // as a general surface; the same after any transform.
+  | { planar: false; surface: 'mesh' };
 // The surface of a face as the evaluation publishes it. `FaceInfo` stays internal and keeps what only
 // the engine needs: the `y` direction of a planar face, from which the frame of a sketch on the
 // face is built.
@@ -36,6 +39,8 @@ export function surfaceOf(info: FaceInfo): Surface {
       return { kind: 'torus', center: info.center, axis: info.axis, majorRadius: info.majorRadius, minorRadius: info.minorRadius };
     case 'swept':
       return { kind: 'swept', axis: info.axis };
+    case 'mesh':
+      return { kind: 'general' };
   }
 }
 
@@ -158,6 +163,8 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
       return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
     case 'swept':
       return { ...info, axis: transformVector(t, info.axis) };
+    case 'mesh':
+      return info;
   }
 }
 
@@ -365,7 +372,7 @@ function pieces(solid: Solid): number[][] {
 }
 
 // The connected pieces of a mesh, each a mesh over the same positions.
-const pieceSolids = (solid: Solid): Solid[] =>
+export const pieceSolids = (solid: Solid): Solid[] =>
   pieces(solid).map((triangles) => ({
     positions: solid.positions,
     triangles: Uint32Array.from(triangles.flatMap((t) => [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]])),

@@ -9,6 +9,8 @@
 // arm with inserts under the screws and three feet (docs/d36/3e-parts-list/calls.ts). The part of 5b
 // (D59): "the arm as URDF and as MJCF" with the drive of each joint (docs/d36/5b-robot-export/calls.ts);
 // its picture of a pose that is not written is in packages/mcp/test/view-image.test.ts.
+// The part of 3b (D55): the motor as the mesh of a bought part, read from an STL file and placed at
+// the centre of its bolt pattern (docs/d36/3b-mesh-import/calls.ts).
 //
 // The model, every shape a cylinder along Z from a circle of its own sketch on XY (mm):
 // - `base`: a plate below z = 0 with a pin of radius 4 at the shoulder (0, 0), up to z = 8.
@@ -18,7 +20,7 @@
 // - `layout`: the sketch of the two axes the joints of 5a turn about.
 // - `motor`: a block on top of `upper`, from z = 8 to 38, around (60, 0).
 // - `screw` and the pattern `screws` that copies it three times about the centre of the motor.
-import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO } from '@trymesh/engine';
+import { type Command, type ExportFile, type Exported, NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, DATA_CATALOGS, type Engine, GENERATORS, type EngineState, type HoleShape, type Id, type Input, type MassProperties, PARTS_CSV, type PartRow, type PartsCsvAbout, type PartsList, QUERIES, emptySketch, type SolidKernel, SCHEMA_PENDING, UPGRADES, carriedBy, createEngine, takenOver, namedBySections, poseNote, printedBodies, bodyPropertiesWithoutBody, SECTION_INFO, IMPORT_FORMATS, type ImportOutcome, type IndexedMesh, MESH_LIMITS, type MeshFeature, type MeshReport, PLACEMENT_FIELDS, type StoredMesh, importMesh, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, withoutWalls, type CommandResult, type CombineFeature, FACE_ROLES, FEATURE_TYPE_INFO, type FaceName, type PlaneRef, type SplitFeature, type Surface, faceKey } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -227,12 +229,12 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: version 6, the step of the section before the one of 5a, and a field this build does not know is refused', () => {
-    // master after the merge of 5a: no step is pending, the step of 3a is the one before the last
+  it('e. save and load: version 7, the step of the section before those of 5a and 3b, and a field this build does not know is refused', () => {
+    // master after the merge of 3b: no step is pending; the steps of 5a and 3b come after the one of 3a
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.map((step) => step.name).slice(-2)).toEqual(['3a-body-properties', '5a-mechanism']);
+    expect(UPGRADES.map((step) => step.name).slice(-3)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import']);
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaVersion).toBe(6);
+    expect(saved.schemaVersion).toBe(7);
     expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
@@ -555,11 +557,11 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     engine.undo();
   });
 
-  it('f. save and load: version 6, a field this build does not know is refused, a removed axis loads', () => {
+  it('f. save and load: version 7, a field this build does not know is refused, a removed axis loads', () => {
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    expect(UPGRADES.at(-2)?.name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([6, undefined]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, undefined]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
@@ -1104,10 +1106,715 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
 
   it('f. save and load: the drive is kept with its expression; no upgrade step (the joint validator refuses fields it does not know)', () => {
     expect(SCHEMA_PENDING).toBe(0);
-    expect(UPGRADES.at(-1)?.name).toBe('5a-mechanism');
+    expect(UPGRADES.map((step) => step.name)).not.toContain('5b-drive');
     const saved = engine.save();
     expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
     const loaded = engine.load(saved);
     expect(loaded.ok && loaded.state.document.mechanism.joints.shoulder).toMatchObject({ effort: 2000, velocity: 3, rotorInertia: 5400, gearRatio: 5.18 });
+  });
+});
+
+// The part of 5d (D61, docs/d36/5d-generators/calls.ts): below the base a cycloidal stage for the
+// shoulder (twelve ring pins and a disc over their circle), and a GT2 belt stage from the motor to
+// the elbow (a pulley of 20 grooves on the motor and one of 40 above the elbow).
+describe('scenario 13, the part of 5d: a cycloidal stage at the shoulder and a GT2 belt stage from the motor to the elbow', () => {
+  let engine: Engine;
+  const param = (name: string, expr: string): Command => ({ type: 'setParameter', name, expr });
+  const facts = (state: EngineState, id: Id) => state.evaluation.features[id]?.facts ?? {};
+  const previewed = (...commands: Command[]): EngineState => {
+    const result = engine.preview(commands.length === 1 ? commands[0] : { type: 'batch', commands });
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+  const DISC_PARAMS = { pins: 'nPins', pinRadius: 'pinR', eccentricity: 'ecc', clearance: 0, rotation: 0, pinAngle: 0 };
+  const discFeature = (id: Id, params: Record<string, number | string>, start = -20): Command => ({
+    type: 'addFeature',
+    feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'cycloidalDisc', sketch: 'cyclo', operands: { circle: 'pinCircle' }, params }, extent: { type: 'distance', start, distance: 3 }, operation: 'new' },
+  });
+  const PINS: Id[] = ['pin', ...Array.from({ length: 11 }, (_, k) => `ringPins/${k + 1}`)];
+  const ofDisc = (disc: Id) => (pair: { a: Id; b: Id }): boolean => pair.a === disc || pair.b === disc;
+  // The smallest gap between the disc and a pin, when the pair is measured and does not touch.
+  const nearestGap = (disc: Id, state?: EngineState): number | undefined => {
+    const gap = engine.query('gap', { bodies: [disc, ...PINS], within: 1 }, state ? { state } : {});
+    if (!gap.ok || gap.result.failed.some(ofDisc(disc)) || (gap.result.cleared ?? []).some(ofDisc(disc))) return undefined;
+    const nearest = gap.result.pairs.find(ofDisc(disc));
+    return nearest !== undefined && nearest.contact === undefined ? nearest.distance : undefined;
+  };
+  // The disc and the pins share no volume and do not touch: the disc in no list of the collision
+  // check, and its smallest gap to the pins above zero and a few hundredths at most.
+  const clearOfThePins = (disc: Id = 'disc', state?: EngineState): number => {
+    const report = unwrap(engine.query('interference', { bodies: [disc, ...PINS] }, state ? { state } : {}));
+    expect([...report.pairs, ...report.fits, ...report.failed, ...(report.cleared ?? [])].filter(ofDisc(disc))).toEqual([]);
+    const distance = nearestGap(disc, state);
+    expect(distance).toBeGreaterThan(0);
+    expect(distance).toBeLessThan(0.03);
+    return distance as number;
+  };
+  const pulley = (id: Id, x: number, z: number, teeth: number): Command[] => {
+    const sketch = `${id}Sketch`;
+    return [
+      { type: 'addFeature', feature: emptySketch(sketch, sketch, { kind: 'base', plane: 'XY' }) },
+      { type: 'addPoint', sketch, id: `${id}Axis`, x, y: 0 },
+      { type: 'addConstraint', sketch, id: `${id}AxisFix`, constraint: { type: 'fixed', point: `${id}Axis`, x, y: 0 } },
+      {
+        type: 'addFeature',
+        feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'gt2Pulley', sketch, operands: { center: `${id}Axis` }, params: { teeth, allowance: 0, rotation: 0 } }, extent: { type: 'distance', start: z, distance: 6 }, operation: 'new' },
+      },
+    ];
+  };
+
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, arm());
+    // the pins from z −20 to −10 and the disc from −20 to −17: the circle of the pins about the
+    // shoulder, a pin of radius 2.5 on it at (25, 0) and its circular pattern, the disc over the circle
+    run(
+      engine,
+      {
+        type: 'batch',
+        commands: [
+          param('nPins', '12'),
+          param('pinR', '2.5'),
+          param('ecc', '1'),
+          { type: 'addFeature', feature: emptySketch('cyclo', 'cyclo', { kind: 'base', plane: 'XY' }) },
+          { type: 'addCurve', sketch: 'cyclo', id: 'pinCircle', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pinCircleR', constraint: { type: 'radius', curve: 'pinCircle', value: 25, driving: true } },
+          { type: 'addPoint', sketch: 'cyclo', id: 'pc', x: 25, y: 0 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pcFix', constraint: { type: 'fixed', point: 'pc', x: 25, y: 0 } },
+          { type: 'addCurve', sketch: 'cyclo', id: 'pinOutline', curve: { type: 'circle', center: 'pc' }, radius: 2.5 },
+          { type: 'addConstraint', sketch: 'cyclo', id: 'pinOutlineR', constraint: { type: 'radius', curve: 'pinOutline', value: 'pinR', driving: true } },
+          { type: 'addFeature', feature: { id: 'pin', name: 'pin', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'cyclo', regions: [{ outerLoop: ['pinOutline'] }] }, extent: { type: 'distance', start: -20, distance: 10 }, operation: 'new' } },
+          { type: 'addFeature', feature: { id: 'ringPins', name: 'ringPins', suppressed: false, type: 'pattern', source: { type: 'body', body: 'pin' }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 'nPins', span: { type: 'full' } } } },
+          discFeature('disc', DISC_PARAMS),
+        ],
+      },
+    );
+  });
+
+  it('a. the disc publishes 11 lobes, the ratio 11, the tips at 47 and the bottoms at 43, its centre 1 mm off the axis', () => {
+    const state = engine.getState();
+    expect(state.evaluation.features.disc.status).toBe('ok');
+    const f = facts(state, 'disc');
+    expect(Object.keys(f).sort()).toEqual(Object.keys(GENERATORS.cycloidalDisc.facts).sort());
+    expect(f).toMatchObject({ lobes: 11, ratio: 11, pins: 12, outerDiameter: expect.closeTo(47, 9), innerDiameter: expect.closeTo(43, 9), center: [1, 0, 0], ringCenter: [0, 0, 0], discRotation: 0 });
+    expect(state.document.features.find((feature) => feature.id === 'disc')?.expressions).toEqual({ 'profile/params/eccentricity': 'ecc', 'profile/params/pinRadius': 'pinR', 'profile/params/pins': 'nPins' });
+    // one side face, `lobes`
+    expect(state.evaluation.faceNames.filter((name) => name.feature === 'disc').map((name) => ('curve' in name ? `${name.role}/${name.curve}` : name.role)).sort()).toEqual(['endCap', 'side/lobes', 'startCap']);
+  });
+
+  it('b. the disc and the pins share no volume and do not touch; a quarter turn of the input and the second disc at π stay clear', () => {
+    clearOfThePins();
+    // a quarter turn of the input: the disc moves round the eccentric and turns back by 1/11 of that
+    const turned = previewed({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { rotation: 'deg(90)' } } } });
+    expect(facts(turned, 'disc')).toMatchObject({ center: [expect.closeTo(0, 9), expect.closeTo(1, 9), 0], discRotation: expect.closeTo(-Math.PI / 2 / 11, 12) });
+    clearOfThePins('disc', turned);
+    // the second disc of a two-disc drive: the input at π, from −16 to −13
+    const second = previewed(discFeature('disc2', { ...DISC_PARAMS, rotation: 'pi' }, -16));
+    expect(facts(second, 'disc2').center).toEqual([expect.closeTo(-1, 9), expect.closeTo(0, 9), 0]);
+    clearOfThePins('disc2', second);
+  });
+
+  it('c. pins drawn half a pitch round are met with `pinAngle` 15° and cut into without it', () => {
+    const pinsMoved: Command[] = [
+      { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/x', value: '25 * cos(deg(15))' },
+      { type: 'setField', feature: 'cyclo', path: 'constraints/pcFix/y', value: '25 * sin(deg(15))' },
+    ];
+    const withAngle = previewed(...pinsMoved, { type: 'updateFeature', id: 'disc', patch: { profile: { params: { pinAngle: 'deg(15)' } } } });
+    expect(facts(withAngle, 'disc').discRotation).toBeCloseTo(Math.PI / 11, 12);
+    clearOfThePins('disc', withAngle);
+    const without = previewed(...pinsMoved);
+    expect(unwrap(engine.query('interference', { bodies: ['disc', ...PINS] }, { state: without })).pairs.some(ofDisc('disc'))).toBe(true);
+  });
+
+  it('d. a clearance of 0.1 keeps the disc at least 0.1 from the pins', () => {
+    const state = previewed({ type: 'updateFeature', id: 'disc', patch: { profile: { params: { clearance: 0.1 } } } });
+    const distance = nearestGap('disc', state);
+    expect(distance).toBeGreaterThanOrEqual(0.1);
+    expect(distance).toBeLessThan(0.13);
+  });
+
+  it('e. what cannot be built is an error of the disc with the reason', () => {
+    // E · N = 36 ≥ R = 25
+    expect(previewed(param('ecc', '3')).evaluation.features.disc.error).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/the eccentricity times the number of pins \(36\) is not below the radius of the pin circle 25/) });
+    // pins of radius 7 overlap: they touch at R sin(π/12) = 6.4705
+    expect(previewed(param('pinR', '7')).evaluation.features.disc.error).toMatchObject({ code: 'invalidProfile', message: expect.stringMatching(/the pins overlap one another/) });
+  });
+
+  it('f. a pulley of 20 grooves on the motor and one of 40 above the elbow: the diameters of Gates\' table, one face `grooves` each', () => {
+    const state = run(engine, { type: 'batch', commands: [...pulley('motorPulley', 60, 38, 20), ...pulley('elbowPulley', 120, 16.5, 40)] });
+    const [small, large] = [facts(state, 'motorPulley'), facts(state, 'elbowPulley')];
+    expect(small).toMatchObject({ teeth: 20, pitch: 2, pitchDiameter: expect.closeTo(40 / Math.PI, 12), outsideDiameter: expect.closeTo(40 / Math.PI - 0.508, 12), center: [60, 0, 0], axis: [0, 0, 1] });
+    expect(large).toMatchObject({ teeth: 40, outsideDiameter: expect.closeTo(80 / Math.PI - 0.508, 12), center: [120, 0, 0] });
+    expect(Math.abs((small.outsideDiameter as number) - 12.22)).toBeLessThan(0.005);
+    expect(Math.abs((large.outsideDiameter as number) - 24.96)).toBeLessThan(0.005);
+    // the volume is the area of the outline times 6 (the exact outlines 103.020 and 460.278 mm²; the
+    // polygon is smaller by its chords)
+    expect(volumeOf(state, 'motorPulley')).toBeLessThan(6 * 103.02);
+    expect(volumeOf(state, 'motorPulley')).toBeGreaterThan(6 * (103.02 - 0.2));
+    expect(volumeOf(state, 'elbowPulley')).toBeLessThan(6 * 460.278);
+    expect(volumeOf(state, 'elbowPulley')).toBeGreaterThan(6 * (460.278 - 0.4));
+    expect(state.evaluation.faceNames.filter((name) => name.feature === 'motorPulley' && name.role === 'side').map((name) => ('curve' in name ? name.curve : ''))).toEqual(['grooves']);
+    // the pulleys stand clear of the motor, the forearm and the pin of the elbow
+    expect(unwrap(engine.query('interference', {})).pairs.filter((pair) => /Pulley/.test(pair.a) || /Pulley/.test(pair.b))).toEqual([]);
+    // fewer than 12 grooves is an invalid command
+    expect(engine.preview({ type: 'updateFeature', id: 'motorPulley', patch: { profile: { params: { teeth: 10 } } } })).toMatchObject({ ok: false, error: { message: expect.stringMatching(/params\.teeth: the value 10 is not in the interval \[12, 500\]/) } });
+  });
+
+  it('g. the document saves and loads unchanged', () => {
+    const saved = engine.save();
+    const other = newEngine();
+    expect(other.load(saved).ok).toBe(true);
+    expect(other.save()).toBe(saved);
+  });
+});
+
+// ---------------------------------------------------------------- the part of 3b
+
+// The part of 3b (D55, docs/d36/3b-mesh-import/calls.ts): the motor as the mesh of a bought part.
+// Its file is modelled in a second engine and written as binary STL (a test has no file of a real
+// motor; this one has what matters of one: round faces cut into triangles, a frame of its own, no
+// unit), read by the import, stored in the document and placed by a mesh feature in the place and
+// under the ID of the cylinder that stood for the motor.
+describe('scenario 13, the part of 3b: the motor as the mesh of a bought part', () => {
+  let engine: Engine;
+  let shop: Engine; // the second engine, in which the part that is "bought" is modelled
+  let file: Uint8Array;
+  const read = (outcome: ImportOutcome): { mesh: StoredMesh; report: MeshReport } => {
+    if (!outcome.ok) throw new Error(`${outcome.error.code}: ${outcome.error.message}`);
+    return outcome;
+  };
+  const codeOf = (outcome: ImportOutcome): string => (outcome.ok ? 'ok' : outcome.error.code);
+  const MOTOR_POINT = { kind: 'sketchPoint', sketch: 'motorSketch', point: 'motorCentre' } as const;
+  // a cylinder with a list of targets (the helper of arm.ts takes one)
+  const cylinderInto = (id: Id, x: number, y: number, radius: number, from: number, to: number, operation: 'add' | 'cut', targets: Id[]): Command[] => {
+    const commands = cylinder(id, x, y, radius, from, to);
+    const last = commands[commands.length - 1] as Extract<Command, { type: 'addFeature' }>;
+    return [...commands.slice(0, -1), { type: 'addFeature', feature: { ...(last.feature as object), operation, targets } as never }];
+  };
+  // a box from a rectangle of its own sketch on XY, between two heights
+  const box = (id: Id, x0: number, y0: number, x1: number, y1: number, from: number, to: number): Command[] => {
+    const sketchId = `${id}Sketch`;
+    const corners: [number, number][] = [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ];
+    return [
+      { type: 'addFeature', feature: emptySketch(sketchId, sketchId, { kind: 'base', plane: 'XY' }) },
+      ...corners.flatMap(([x, y], i): Command[] => [
+        { type: 'addPoint', sketch: sketchId, id: `${id}P${i}`, x, y },
+        { type: 'addConstraint', sketch: sketchId, id: `${id}F${i}`, constraint: { type: 'fixed', point: `${id}P${i}`, x, y } },
+      ]),
+      ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: sketchId, id: `${id}L${i}`, curve: { type: 'line', a: `${id}P${i}`, b: `${id}P${(i + 1) % 4}` } })),
+      {
+        type: 'addFeature',
+        feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: [0, 1, 2, 3].map((i) => `${id}L${i}`).sort() }] }, extent: { type: 'distance', start: from, distance: to - from }, operation: 'new' },
+      },
+    ];
+  };
+  // the same triangles as text: `solid`, a `facet` with three `vertex` lines per triangle, `endsolid`
+  const asciiStl = (binary: Uint8Array): Uint8Array => {
+    const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
+    const lines = ['solid motor'];
+    for (let t = 0; t < view.getUint32(80, true); t++) {
+      lines.push('  facet normal 0 0 0', '    outer loop');
+      for (let k = 0; k < 3; k++) lines.push(`      vertex ${[0, 1, 2].map((axis) => view.getFloat32(84 + 50 * t + 12 + 12 * k + 4 * axis, true)).join(' ')}`);
+      lines.push('    endloop', '  endfacet');
+    }
+    lines.push('endsolid motor');
+    return new TextEncoder().encode(lines.join('\n'));
+  };
+  // a binary STL without its last triangle (the count at byte 80 lowered by one)
+  const withoutLastTriangle = (binary: Uint8Array): Uint8Array => {
+    const out = binary.slice(0, binary.length - 50);
+    new DataView(out.buffer).setUint32(80, (binary.length - 84) / 50 - 1, true);
+    return out;
+  };
+
+  beforeAll(() => {
+    // the arm after the parts of 3a and 5a: the motor a named reference part of 280 g, in the link `upper`
+    engine = newEngine();
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyMaterial', body: 'forearm', material: 'PLA' },
+        { type: 'setBodyProperties', body: 'motor', patch: { name: 'NEMA 17 motor', color: '#30343a', use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'reference', mass: 0.9 } },
+      ],
+    });
+    run(engine, mechanismOfTheArm());
+    // the motor as its maker would publish it: a can of radius 14 and height 30 with a shaft of
+    // radius 2.5 and length 10 on top, its axis along Z through the origin, standing on z = 0
+    shop = newEngine();
+    run(shop, { type: 'batch', commands: [...cylinder('can', 0, 0, 14, 0, 30), ...cylinder('shaft', 0, 0, 2.5, 30, 40, 'add', 'can')] });
+    file = shop.exportMesh('stl', ['can']);
+  });
+
+  it('a. the file is read: one shell, nothing left out, the volume of the body it was written from to the last digit, its box', () => {
+    const { mesh, report } = read(importMesh('stl', file, {}, 'motor.stl'));
+    const can = shop.getState().evaluation.bodies.can;
+    expect(report).toMatchObject({ format: 'stl', about: { encoding: 'binary', unit: 'mm' }, dropped: 0, walls: 0, shells: 1, cavities: 0, insideOut: false, turned: 0, nested: 0, notes: [] });
+    expect(report.triangles).toBe(can.solid.triangles.length / 3);
+    expect(report.facets).toBe(report.triangles);
+    expect(report.volume).toBe(can.volume);
+    expect([report.bounds.min[2], report.bounds.max[2]]).toEqual([0, 40]);
+    expect(mesh.name).toBe('motor.stl');
+    expect(meshProblem(indexedMesh(mesh))).toBeUndefined();
+    // the same triangles as ASCII give the same stored mesh, text for text
+    const ascii = read(importMesh('stl', asciiStl(file)));
+    expect(ascii.report.about.encoding).toBe('ascii');
+    expect([ascii.mesh.positions, ascii.mesh.triangles]).toEqual([mesh.positions, mesh.triangles]);
+    // a file in metres: the bounds say so
+    expect(read(importMesh('stl', file, { unit: 'm' })).report.bounds.max).toEqual([14_000, 14_000, 40_000]);
+    expect(read(importMesh('stl', file, { unit: 'm' })).report.notes).toEqual([expect.stringContaining('is the unit of the file right')]);
+  });
+
+  it('a. solids stacked on one outline are one solid: the two layers of each common face are left out', () => {
+    run(shop, { type: 'batch', commands: [...box('low', 0, 0, 42, 42, 0, 10), ...box('stack', 0, 0, 42, 42, 10, 30), ...box('high', 0, 0, 42, 42, 30, 40)] });
+    const { report } = read(importMesh('stl', shop.exportMesh('stl', ['low', 'stack', 'high'])));
+    expect([report.walls, report.shells]).toEqual([4, 1]);
+    expect(Math.abs(report.volume - 42 * 42 * 40)).toBeLessThan(1e-6);
+    // the bodies of the engine: three cylinders (the motor of the arm) on one outline
+    run(shop, { type: 'batch', commands: [...cylinder('c1', 200, 0, 14, 0, 10), ...cylinder('c2', 200, 0, 14, 10, 20), ...cylinder('c3', 200, 0, 14, 20, 30)] });
+    const cans = read(importMesh('stl', shop.exportMesh('stl', ['c1', 'c2', 'c3'])));
+    expect(cans.report.shells).toBe(1);
+    expect(cans.report.volume).toBeCloseTo(3 * shop.getState().evaluation.bodies.c1.volume, 6);
+  });
+
+  it('a. a pair of opposite triangles is left out only between two solids that both face outwards', () => {
+    const positions = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 20, 20, 5]);
+    const outward = [0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2];
+    const second = (apex: number): number[] => [0, 1, 2, 0, apex, 1, 1, apex, 2, 0, 2, apex]; // its base faces +Z
+    const inwards = withoutWalls({ positions, triangles: Uint32Array.from([...outward, ...second(4)]) });
+    expect([inwards.walls, meshDefects(inwards.mesh).overused, meshProblem(inwards.mesh)?.code]).toEqual([0, 3, 'notASolid']);
+    const below = Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10, 2, 2, -5]);
+    const stacked = withoutWalls({ positions: below, triangles: Uint32Array.from([...outward, ...second(4)]) });
+    expect(stacked.walls).toBe(1);
+    expect(meshProblem(stacked.mesh)).toBeUndefined();
+    expect(shellsOf(stacked.mesh).map((shell) => shell.volume)[0]).toBeCloseTo(250, 9);
+  });
+
+  it('a. what the import refuses, each with a code and a reason the caller can act on', () => {
+    const open = importMesh('stl', withoutLastTriangle(file));
+    expect(open).toMatchObject({ ok: false, error: { code: 'notASolid', defects: { open: 3 } } });
+    run(shop, { type: 'batch', commands: [...box('left', 0, 0, 10, 10, 100, 110), ...box('right', 10, 10, 20, 20, 100, 110)] });
+    expect(importMesh('stl', shop.exportMesh('stl', ['left', 'right']))).toMatchObject({ ok: false, error: { code: 'notASolid', defects: { overused: 1 } } });
+    expect(codeOf(importMesh('stl', new TextEncoder().encode('not a mesh')))).toBe('unreadable');
+    expect(codeOf(importMesh('stl', new Uint8Array(0)))).toBe('unreadable');
+    expect(importMesh('stl', file, { unit: 'ft' } as never)).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['unit'] } });
+    expect(importMesh('step' as never, file)).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['format'] } });
+  });
+
+  it('a. the checks of a stored mesh are the engine own: a mesh built by hand goes through the same function', () => {
+    const mesh: IndexedMesh = { positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) };
+    const turned: IndexedMesh = { positions: mesh.positions, triangles: Uint32Array.from([0, 1, 2, 0, 3, 1, 1, 3, 2, 0, 2, 3]) };
+    const two: IndexedMesh = {
+      positions: Float32Array.from([...mesh.positions, 50, 0, 0, 55, 0, 0, 50, 5, 0, 50, 0, 5]),
+      triangles: Uint32Array.from([...mesh.triangles, ...Array.from(turned.triangles, (vertex) => vertex + 4)]),
+    };
+    const stored = storedMesh(mesh, 'tetrahedron');
+    expect([stored.positions.length, stored.triangles.length]).toEqual([64, 64]);
+    expect(meshProblem(turned)?.code).toBe('notASolid');
+    expect(meshDefects({ positions: mesh.positions, triangles: mesh.triangles.slice(0, 9) }).open).toBe(3);
+    expect(meshProblem(two)).toMatchObject({ code: 'notASolid', message: expect.stringContaining('inside out') });
+    expect(shellsOf(two).map((shell) => shell.kind)).toEqual(['solid', 'insideOut']);
+  });
+
+  it('b. the mesh enters the document and replaces the cylinder of the motor under its ID, in one batch and one undo step', () => {
+    const { mesh } = read(importMesh('stl', file, {}, 'motor.stl'));
+    const before = engine.getState();
+    const massBefore = massOf(engine, { bodies: [...before.evaluation.mechanism.links.upper.bodies, 'forearm'] }).mass;
+    const index = before.document.features.findIndex((feature) => feature.id === 'motor');
+    const feature: MeshFeature = { id: 'motor', name: 'Motor', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: MOTOR_POINT, z: 8 } };
+    const command: Command = { type: 'batch', commands: [{ type: 'removeFeature', id: 'motor' }, { type: 'addMesh', id: 'nema', mesh }, { type: 'addFeature', feature, index }] };
+    expect(takenOver(before.document, command)).toEqual(['motor']);
+    const { document, evaluation, canUndo } = run(engine, command);
+    const stored = evaluation.meshes.nema;
+    const body = evaluation.bodies.motor;
+    const facts = evaluation.features.motor.facts ?? {};
+    expect(Object.keys(document.meshes)).toEqual(['nema']);
+    expect(stored).toMatchObject({ name: 'motor.stl', shells: 1, usedBy: ['motor'], triangles: body.solid.triangles.length / 3 });
+    expect(evaluation.features.motor).toMatchObject({ status: 'ok', bodies: ['motor'] });
+    // one face for the whole surface, not planar, and no edge
+    expect(body.faces).toEqual([{ id: body.faces[0].id, planar: false }]);
+    expect(evaluation.faceNames[body.faces[0].id]).toEqual({ feature: 'motor', role: 'mesh' });
+    expect(evaluation.faceSurfaces[body.faces[0].id]).toEqual({ kind: 'general' });
+    expect(body.edges).toEqual([]);
+    // where the file has z = 0 … 40 the model has z = 8 … 48, about the point (60, 0)
+    expect([body.bounds.min[2], body.bounds.max[2]]).toEqual([8, 48]);
+    expect([facts.origin, facts.axisZ]).toEqual([
+      [60, 0, 8],
+      [0, 0, 1],
+    ]);
+    expect(Math.abs(body.volume - stored.volume)).toBeLessThan(1e-6 * stored.volume);
+    // the body keeps what the document says about `motor`: a reference part of 280 g in the link `upper`
+    expect(evaluation.bodyProperties.motor).toMatchObject({ name: 'NEMA 17 motor', use: 'reference', mass: 280, massFrom: 'mass' });
+    expect(evaluation.mechanism.links.upper.bodies).toContain('motor');
+    expect(canUndo).toBe(true);
+    // the mass beyond the shoulder is what it was: the motor weighs what its data sheet says
+    expect(massOf(engine, { bodies: [...evaluation.mechanism.links.upper.bodies, 'forearm'] }).mass).toBeCloseTo(massBefore, 9);
+    // one undo takes the feature and the stored mesh away and brings the cylinder back
+    engine.undo();
+    expect(Object.keys(engine.getState().document.meshes)).toEqual([]);
+    expect(engine.getState().evaluation.bodies.motor.faces).toHaveLength(3);
+    engine.redo();
+    expect(engine.getState().evaluation.bodies.motor.faces).toHaveLength(1);
+  });
+
+  it('c. no sketch or plane stands on it: a plane on its face is a valid command and the error nonPlanarFace', () => {
+    const preview = previewed(engine, { type: 'addFeature', feature: { id: 'onMotor', name: 'On the motor', suppressed: false, type: 'plane', base: { kind: 'face', body: 'motor', face: { feature: 'motor', role: 'mesh' } }, offset: 0 } });
+    expect(preview.evaluation.features.onMotor.error?.code).toBe('nonPlanarFace');
+  });
+
+  it('c. no feature changes it: a hole through it, a boss on it, a cut with it among two targets end in importedTarget', () => {
+    const before = engine.getState().evaluation.bodies;
+    const { features, bodies } = previewed(engine, {
+      type: 'batch',
+      commands: [
+        ...cylinderInto('bore', 60, 0, 1, 0, 60, 'cut', ['motor']),
+        ...cylinderInto('boss', 60, 0, 5, 48, 52, 'add', ['motor']),
+        ...cylinderInto('both', 60, 0, 1, 0, 60, 'cut', ['upper', 'motor']),
+        ...cylinderInto('link', 60, 0, 1, 0, 60, 'cut', ['upper']),
+      ],
+    }).evaluation;
+    for (const id of ['bore', 'boss', 'both']) expect(features[id], id).toMatchObject({ status: 'error', error: { code: 'importedTarget', refs: ['motor'] } });
+    expect(features.link.status).toBe('ok');
+    expect(bodies.motor.solid).toBe(before.motor.solid);
+    expect(bodies.upper.volume).toBeLessThan(before.upper.volume); // by `link` alone
+    // neither does a copy of it made by a pattern: the copy carries the face of the mesh
+    const twin = previewed(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'twin', name: 'Twin', suppressed: false, type: 'pattern', source: { type: 'body', body: 'motor' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 40 } } } },
+        ...cylinderInto('boreTwin', 60, 40, 1, 0, 60, 'cut', ['twin/1']),
+      ],
+    });
+    expect(twin.evaluation.features.boreTwin.error).toMatchObject({ code: 'importedTarget', refs: ['twin/1'] });
+    expect(twin.evaluation.faceNames[twin.evaluation.bodies['twin/1'].faces[0].id]).toEqual({ feature: 'motor', role: 'mesh', copy: [{ pattern: 'twin', index: 1 }] });
+  });
+
+  it('d. the sweep of the elbow finds the forearm in the motor from the same step as with the cylinder', () => {
+    for (let degrees = -135; degrees <= 135; degrees += 27) {
+      const report = unwrap(engine.query('interference', {}, { state: previewed(engine, pose({ elbow: degrees * DEG })) }));
+      expect(names(report.pairs).includes('forearm|motor'), `${degrees}°`).toBe(Math.abs(degrees) >= 108);
+    }
+  });
+
+  it('d. the gap to the motor is measured to the triangles of the mesh in the pose', () => {
+    const bent = unwrap(engine.query('gap', { bodies: ['forearm', 'motor'], within: 30 }, { state: previewed(engine, pose({ elbow: 1.2 })) }));
+    const centre = [120 + 60 * Math.cos(1.2), 60 * Math.sin(1.2)];
+    expect(bent.pairs[0].distance).toBeCloseTo(Math.hypot(centre[0] - 60, centre[1]) - 70 - 14, 1);
+  });
+
+  it('d. an edit before the motor that keeps the number of faces leaves its body the same object', () => {
+    const preview = previewed(engine, { type: 'setField', feature: 'base', path: 'extent/distance', value: 9 });
+    expect(preview.evaluation.bodies.base.volume).not.toBe(engine.getState().evaluation.bodies.base.volume);
+    expect(preview.evaluation.bodies.motor.solid).toBe(engine.getState().evaluation.bodies.motor.solid);
+  });
+
+  it('d. an overlap with the motor shallower than the chord tolerance is a fit: its surface counts as round', () => {
+    const report = unwrap(engine.query('interference', { bodies: ['upper', 'motor'] }, { state: previewed(engine, { type: 'setField', feature: 'motor', path: 'placement/z', value: 7.995 }) }));
+    expect([report.fits.length, report.pairs.length]).toEqual([1, 0]);
+  });
+
+  it('d. the exports: a print export without a list leaves the reference part out, a list that names it writes it', () => {
+    const printed = unwrap(engine.export('stl', {}));
+    const listed = unwrap(engine.export('3mf', { bodies: ['upper', 'motor'] }));
+    expect((printed.files[0].about as { bodies: Id[] }).bodies).not.toContain('motor');
+    expect((listed.files[0].about as { bodies: Id[] }).bodies).toEqual(['upper', 'motor']);
+  });
+
+  it('e. the six numbers are numeric fields: a turn as an expression in degrees, an offset where the feature had none', () => {
+    const decoded = indexedMesh(engine.getState().document.meshes.nema);
+    const state = run(engine, { type: 'batch', commands: [{ type: 'updateFeature', id: 'motor', patch: { placement: { rz: 'deg(90)' } } }, { type: 'setField', feature: 'motor', path: 'placement/x', value: 2 }] });
+    const motor = state.document.features.find((feature) => feature.id === 'motor') as MeshFeature;
+    const facts = state.evaluation.features.motor.facts ?? {};
+    expect(motor.placement.rz).toBeCloseTo(Math.PI / 2, 12);
+    expect(motor.expressions).toEqual({ 'placement/rz': 'deg(90)' });
+    expect(motor.placement.x).toBe(2);
+    expect(motor.placement).not.toHaveProperty('y'); // absent means 0 and is not stored
+    // the X axis of the mesh now points along +Y of the model; the offset is in the frame, not in the turned part
+    expect((facts.axisX as number[])[1]).toBeCloseTo(1, 12);
+    expect(facts.origin).toEqual([62, 0, 8]);
+    expect(PLACEMENT_FIELDS).toHaveLength(6);
+    // the stored mesh is not decoded again
+    expect(indexedMesh(state.document.meshes.nema)).toBe(decoded);
+    // the order of the turns: first about X, then about Y, then about the normal, the axes staying where they are
+    const ordered = previewed(engine, { type: 'updateFeature', id: 'motor', patch: { placement: { rx: 'deg(90)', ry: null, rz: 'deg(90)' } } });
+    const axisZ = ordered.evaluation.features.motor.facts?.axisZ as number[];
+    [1, 0, 0].forEach((value, axis) => expect(axisZ[axis]).toBeCloseTo(value, 12));
+    // a frame that is not there: the error of the feature, with the frame in `refs`
+    const lost = previewed(engine, { type: 'removeFeature', id: 'motorSketch' }).evaluation.features.motor.error;
+    expect(lost).toMatchObject({ code: 'brokenReference', refs: [MOTOR_POINT] });
+  });
+
+  it('f. a second motor from the same stored mesh: a feature and no data, upside down on the bottom face of the link', () => {
+    const before = JSON.stringify(engine.getState().document.meshes).length;
+    const under = { kind: 'face', body: 'upper', face: { feature: 'upper', role: 'startCap' } } as const;
+    const state = run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'motor2', name: 'Motor 2', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: under, x: -60 } } },
+        { type: 'setBodyProperties', body: 'motor2', patch: { use: 'reference', mass: 280 } },
+      ],
+    });
+    const origin = state.evaluation.features.motor2.facts?.origin as number[];
+    expect(JSON.stringify(state.document.meshes).length).toBe(before);
+    expect(state.evaluation.meshes.nema.usedBy).toEqual(['motor', 'motor2']);
+    expect(Math.abs(origin[0] - 60) + Math.abs(origin[1])).toBeLessThan(1e-9);
+    expect(state.evaluation.bodies.motor2.bounds.max[2]).toBe(0); // the normal of that face points down
+  });
+
+  it('f. a stored mesh in use is not removed; unused, it is listed as such and removed', () => {
+    expect(refusal(engine, { type: 'removeMesh', id: 'nema' })).toMatch(/motor, motor2/);
+    const spare = read(importMesh('stl', file, {}, 'spare.stl')).mesh;
+    const state = run(engine, { type: 'addMesh', id: 'spare', mesh: spare });
+    expect(Object.entries(state.evaluation.meshes).filter(([, mesh]) => mesh.usedBy.length === 0).map(([id]) => id)).toEqual(['spare']);
+    expect(Object.keys(run(engine, { type: 'removeMesh', id: 'spare' }).document.meshes)).toEqual(['nema']);
+  });
+
+  it('f. what the commands refuse', () => {
+    const tetrahedron = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+    const refused = (command: unknown) => refusal(engine, command as Command);
+    expect(refused({ type: 'addMesh', id: 'nema', mesh: tetrahedron })).toMatch(/has a stored mesh "nema" already/);
+    expect(refused({ type: 'addMesh', id: 'a/b', mesh: tetrahedron })).toMatch(/addMesh\.id/);
+    expect(refused({ type: 'addMesh', id: 'bad', mesh: { positions: 'AAAA', triangles: 'AAAA' } })).toMatch(/not whole triples/);
+    expect(refused({ type: 'addMesh', id: 'bad', mesh: { ...tetrahedron, colour: '#ff0000' } })).toMatch(/colour: a stored mesh has no such field/);
+    expect(refused({ type: 'removeMesh', id: 'none' })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'addFeature', feature: { id: 'ghost', name: 'Ghost', suppressed: false, type: 'mesh', mesh: 'none', placement: { frame: { kind: 'base', plane: 'XY' } } } })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'updateFeature', id: 'motor', patch: { mesh: 'none' } })).toMatch(/no stored mesh "none"/);
+    expect(refused({ type: 'updateFeature', id: 'motor', patch: { placement: { rz: 7 } } })).toMatch(/placement\.rz/);
+    expect(refused({ type: 'setField', feature: 'motor', path: 'placement/scale', value: 2 })).toMatch(/not a numeric field/);
+  });
+
+  it('g. save and load: the section in the saved document, a mesh edited to be open refused, a lost mesh a broken reference', () => {
+    const json = engine.save();
+    const document = JSON.parse(json);
+    // master after the merge of 3b: version 7, no names
+    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, undefined]);
+    expect(UPGRADES.at(-1)?.name).toBe('3b-mesh-import');
+    expect(typeof document.meshes.nema.positions).toBe('string');
+    expect(document.meshes.nema.name).toBe('motor.stl');
+    const other = newEngine();
+    const loaded = other.load(json);
+    expect(loaded.ok && loaded.state.evaluation.bodies.motor.solid.triangles.length).toBe(engine.getState().evaluation.bodies.motor.solid.triangles.length);
+    const answer = (changed: unknown): string => {
+      const result = other.load(JSON.stringify(changed));
+      return result.ok ? (result.state.evaluation.features.motor?.error?.code ?? 'ok') : result.error.message;
+    };
+    const decoded = indexedMesh(document.meshes.nema);
+    const holed = storedMesh({ positions: decoded.positions, triangles: decoded.triangles.slice(3) });
+    expect(answer({ ...document, meshes: { nema: holed } })).toMatch(/document\.meshes\.nema: the mesh is not a closed solid: 3 edges with one triangle/);
+    expect(answer({ ...document, meshes: { nema: { ...document.meshes.nema, faces: 'AAAA' } } })).toMatch(/faces: a stored mesh has no such field/);
+    expect(answer({ ...document, meshes: {} })).toBe('brokenReference');
+    // a document of master before the merge of 3b (version 6, no names) gets the empty section
+    expect(answer({ ...document, meshes: undefined, schemaVersion: 6, schemaSteps: undefined, features: [], bodyProperties: {}, mechanism: { links: {}, joints: {} } })).toBe('ok');
+  });
+
+  it('h. the description: the section with its commands, the formats with their extensions and options, the limit', () => {
+    expect(SECTION_INFO.meshes.commands).toEqual(['addMesh', 'removeMesh']);
+    expect(IMPORT_FORMATS.stl.extensions).toEqual(['stl']);
+    expect(Object.keys(IMPORT_FORMATS.stl.options)).toEqual(['unit']);
+    expect(MESH_LIMITS.triangles).toBe(100_000);
+  });
+});
+
+// The part of 3d (D56, docs/d36/3d-body-boolean/calls.ts): a mount around the motor with a pocket
+// shaped by the motor and the screws themselves, with a print clearance; the mount joined to the
+// link; the link split into two shells for printing. The arm stands as it is modelled.
+describe('scenario 13, the part of 3d: a pocket with a clearance, a union and a split', () => {
+  let engine: Engine;
+  const TOOLS: Id[] = ['motor', 'screw', 'screws/1', 'screws/2', 'screws/3'];
+  const AROUND: Id[] = ['mount', ...TOOLS];
+  const MOTOR_SIDE: FaceName = { feature: 'motor', role: 'side', curve: 'motorCircle' };
+  const POCKET_WALL: FaceName = { ...MOTOR_SIDE, copy: [{ pattern: 'pocket', index: 1 }] };
+  const SCREW_TOP: FaceName = { feature: 'screw', role: 'endCap' };
+  const POCKET_CEILING: FaceName = { ...SCREW_TOP, copy: [{ pattern: 'pocket', index: 2 }] };
+  // a copy of the screw made by the pattern carries the tag of the pattern first, then that of the pocket
+  const COPY_CEILING: FaceName = { ...SCREW_TOP, copy: [{ pattern: 'screws', index: 2 }, { pattern: 'pocket', index: 4 }] };
+  const CUT: FaceName = { feature: 'lower', role: 'splitFace' };
+  // the mount less the motor's hole right through and four blind pockets open below
+  const POCKETED = Math.PI * (24 * 24 - 14.3 * 14.3) * 10 - 4 * Math.PI * 1.8 * 1.8 * 6.3;
+  const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
+  const faceNumber = (state: EngineState, name: FaceName): number => state.evaluation.faceNames.findIndex((other) => faceKey(other) === faceKey(name));
+  const surfaceOf = (state: EngineState, name: FaceName): Surface | undefined => state.evaluation.faceSurfaces[faceNumber(state, name)];
+  const hasFace = (state: EngineState, body: Id, name: FaceName): boolean => state.evaluation.bodies[body]?.faces.some((face) => face.id === faceNumber(state, name)) ?? false;
+  const done = (result: CommandResult): EngineState => {
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+    return result.state;
+  };
+  const combine = (id: Id, fields: Omit<Input<CombineFeature>, 'id' | 'name' | 'suppressed' | 'type'>, index?: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'combine', ...fields }, ...(index === undefined ? {} : { index }) });
+  const split = (id: Id, name: string, fields: Omit<Input<SplitFeature>, 'id' | 'name' | 'suppressed' | 'type'>): Command => ({ type: 'addFeature', feature: { id, name, suppressed: false, type: 'split', ...fields } });
+  const sketchOn = (id: Id, plane: PlaneRef): Command[] => [{ type: 'addFeature', feature: emptySketch(id, id, { kind: 'base', plane: 'XY' }) }, { type: 'setSketchPlane', sketch: id, plane }];
+  const codeOf = (state: EngineState, feature: Id): string | undefined => state.evaluation.features[feature].error?.code;
+  const gapOf = (options = {}): number | undefined => unwrap(engine.query('gap', { bodies: ['mount', 'motor'] }, options)).pairs[0]?.distance;
+
+  beforeAll(() => {
+    engine = newEngine();
+    run(engine, arm());
+    run(engine, {
+      type: 'batch',
+      commands: [
+        { type: 'setBodyMaterial', body: 'upper', material: 'PETG' },
+        { type: 'setBodyProperties', body: 'motor', patch: { use: 'reference', mass: 280 } },
+        { type: 'setBodyProperties', body: 'screw', patch: { use: 'reference', mass: 0.9 } },
+      ],
+    });
+  });
+
+  it('a. a ring around the motor, modelled without a thought for it: five collisions', () => {
+    run(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'fit', expr: '0.3' }, ...cylinder('mount', 60, 0, 24, 8, 18), { type: 'setLink', id: 'upper', bodies: ['upper', 'mount', ...TOOLS] }] });
+    const report = unwrap(engine.query('interference', { bodies: AROUND }));
+    expect(report.failed).toEqual([]);
+    expect(report.pairs.map((pair) => `${pair.a}|${pair.b}`).sort()).toEqual(['motor|mount', 'mount|screw', 'mount|screws/1', 'mount|screws/2', 'mount|screws/3']);
+  });
+
+  it('a. the pocket: the motor and the screws subtracted moved outwards by the clearance; its faces are theirs with a tag, exact', () => {
+    const state = run(engine, combine('pocket', { operation: 'difference', target: 'mount', tools: TOOLS, keepTools: true, clearance: 'fit' }));
+    expect(state.evaluation.features.pocket).toMatchObject({ status: 'ok', bodies: [] });
+    const [wall, ceiling] = [surfaceOf(state, POCKET_WALL), surfaceOf(state, POCKET_CEILING)];
+    expect(wall).toMatchObject({ kind: 'cylinder', origin: [60, 0, expect.any(Number)] });
+    expect(wall?.kind === 'cylinder' && wall.radius).toBeCloseTo(14.3, 12);
+    expect(ceiling?.kind === 'plane' && ceiling.origin[2]).toBeCloseTo(14.3, 12);
+    expect(hasFace(state, 'mount', POCKET_WALL) && hasFace(state, 'mount', COPY_CEILING)).toBe(true);
+    expect(Math.abs(state.evaluation.bodies.mount.volume - POCKETED)).toBeLessThan(0.01 * POCKETED);
+    // the tools stay as they were: bought parts with their mass
+    expect(TOOLS.every((tool) => tool in state.evaluation.bodies)).toBe(true);
+    expect(state.evaluation.bodyProperties.motor.mass).toBe(280);
+  });
+
+  it('a. what the pocket is for: no collision, no fit, the gap is the clearance', () => {
+    const report = unwrap(engine.query('interference', { bodies: AROUND }));
+    expect([report.pairs.length, report.fits.length, report.failed.length]).toEqual([0, 0, 0]);
+    // two polygons of one circle: short of 0.3 by less than the chord tolerance
+    expect(Math.abs((gapOf() as number) - 0.3)).toBeLessThan(0.01);
+    // between two planes it is exact: the top of a screw and the ceiling of its pocket
+    const measured = unwrap(engine.query('measure', { from: { kind: 'face', body: 'screw', face: SCREW_TOP }, to: { kind: 'face', body: 'mount', face: POCKET_CEILING } }));
+    expect(measured.distance).toBeCloseTo(0.3, 9);
+  });
+
+  it('b. the clearance is a numeric field with an expression, optional, and 0 computes as none', () => {
+    const looser = done(engine.preview({ type: 'setParameter', name: 'fit', expr: '0.5' }));
+    const wall = surfaceOf(looser, POCKET_WALL);
+    expect(wall?.kind === 'cylinder' && wall.radius).toBeCloseTo(14.5, 12);
+    expect(looser.evaluation.features.pocket.values?.clearance).toBe(0.5);
+    // without it the pocket is the tools as they are: one face name on the motor and the mount, no tag
+    const without = done(engine.preview({ type: 'updateFeature', id: 'pocket', patch: { clearance: null } }));
+    expect(hasFace(without, 'mount', MOTOR_SIDE) && hasFace(without, 'motor', MOTOR_SIDE)).toBe(true);
+    expect(faceNumber(without, POCKET_WALL)).toBe(-1);
+    expect(gapOf({ state: without })).toBe(0);
+    // setField gives it back to a feature that does not have it
+    const back = done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'pocket', patch: { clearance: null } }, { type: 'setField', feature: 'pocket', path: 'clearance', value: 'fit' }] }));
+    expect(hasFace(back, 'mount', POCKET_WALL)).toBe(true);
+    const zero = done(engine.preview({ type: 'setField', feature: 'pocket', path: 'clearance', value: 0 }));
+    expect(zero.evaluation.features.pocket.status).toBe('ok');
+    expect(hasFace(zero, 'mount', MOTOR_SIDE) && faceNumber(zero, POCKET_WALL) < 0).toBe(true);
+    // a sketch stands on a face of the pocket like on any planar face
+    expect(engine.preview({ type: 'batch', commands: sketchOn('cable', onFace('mount', POCKET_CEILING)) }).ok).toBe(true);
+  });
+
+  it('b. a tool that cannot be moved is an error with the faces; a tool that misses is a warning; invalid commands', () => {
+    // the link has holes of radius 4, which a clearance of 5 would close
+    const narrow = done(engine.preview(combine('tooWide', { operation: 'difference', target: 'mount', tools: ['upper'], keepTools: true, clearance: 5 }))).evaluation.features.tooWide.error;
+    expect(narrow?.code).toBe('invalidClearance');
+    expect(narrow?.refs?.[0]).toBe('upper');
+    expect(narrow?.refs).toContainEqual({ feature: 'shoulderHole', role: 'side', curve: 'shoulderHoleCircle' });
+    const beside = done(engine.preview(combine('beside', { operation: 'difference', target: 'forearm', tools: ['motor'], keepTools: true }))).evaluation.features.beside;
+    expect(beside.status).toBe('warning');
+    expect(beside.warnings[0]).toMatchObject({ code: 'noEffect', refs: ['motor'] });
+    const refused = [
+      combine('a', { operation: 'union', target: 'mount', tools: ['motor'], keepTools: true, clearance: 0.3 }),
+      combine('b', { operation: 'difference', target: 'mount', tools: ['motor'], keepTools: true, clearance: -0.1 }),
+      combine('c', { operation: 'difference', target: 'mount', tools: ['mount'], keepTools: true }),
+      combine('d', { operation: 'difference', target: 'mount', tools: ['motor', 'motor'], keepTools: true }),
+      combine('e', { operation: 'difference', target: 'mount', tools: [], keepTools: true }),
+      combine('f', { operation: 'union', target: 'mount', tools: ['pocket'], keepTools: false }),
+      { type: 'addFeature', feature: { id: 'g', name: 'g', suppressed: false, type: 'pattern', source: { type: 'features', features: ['pocket'] }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } } as Command,
+    ];
+    expect(refused.map((command) => engine.preview(command).ok)).toEqual(refused.map(() => false));
+  });
+
+  it('b. an intersection before the pocket: what the mount and the motor share is a disc of the motor ten high', () => {
+    const before = engine.getState().document.features.findIndex((feature) => feature.id === 'pocket');
+    const probe = done(engine.preview(combine('probe', { operation: 'intersection', target: 'mount', tools: ['motor'], keepTools: true }, before), 'probe'));
+    expect(Math.abs(probe.evaluation.bodies.mount.volume - Math.PI * 14 * 14 * 10)).toBeLessThan(0.01 * Math.PI * 14 * 14 * 10);
+  });
+
+  it('b. the motor bought as a mesh (3b): the pocket refuses the imported tool and changes nothing', () => {
+    // the cylinder of the motor taken over by a mesh of its own triangles, as the part of 3b does
+    const before = engine.getState();
+    const index = before.document.features.findIndex((feature) => feature.id === 'motor');
+    const { positions, triangles } = before.evaluation.bodies.motor.solid;
+    const feature: MeshFeature = { id: 'motor', name: 'Motor', suppressed: false, type: 'mesh', mesh: 'nema', placement: { frame: { kind: 'base', plane: 'XY' } } };
+    const bought = done(engine.preview({ type: 'batch', commands: [{ type: 'removeFeature', id: 'motor' }, { type: 'addMesh', id: 'nema', mesh: storedMesh({ positions, triangles }) }, { type: 'addFeature', feature, index }] }));
+    expect(bought.evaluation.features.motor.status).toBe('ok');
+    expect(bought.evaluation.features.pocket.error).toMatchObject({ code: 'importedTarget', refs: ['motor'] });
+    // the pocket in error is an empty operation: the mount collides with the motor again
+    expect(bought.evaluation.bodies.mount.volume).toBeGreaterThan(before.evaluation.bodies.mount.volume);
+  });
+
+  it('c. the mount joined to the link: the body leaves the model, nothing is counted twice, the motor still sits on the link', () => {
+    const before = engine.getState();
+    const state = run(engine, combine('join', { operation: 'union', target: 'upper', tools: ['mount'], keepTools: false }));
+    expect('mount' in state.evaluation.bodies).toBe(false);
+    expect('mount' in engine.getState('pocket').evaluation.bodies).toBe(true);
+    expect(state.evaluation.mechanism.links.upper.missing).toEqual(['mount']);
+    expect(state.evaluation.bodies.upper.volume).toBeCloseTo(before.evaluation.bodies.upper.volume + before.evaluation.bodies.mount.volume, 3);
+    expect(hasFace(state, 'upper', { feature: 'mount', role: 'endCap' }) && hasFace(state, 'upper', POCKET_WALL)).toBe(true);
+    expect(unwrap(engine.query('gap', { bodies: ['upper', 'motor'] })).pairs[0]?.distance).toBe(0);
+    expect(unwrap(engine.query('interference', { bodies: ['upper', 'motor'] })).pairs).toEqual([]);
+    // a body used up is a broken reference for what comes after
+    expect(codeOf(done(engine.preview({ type: 'batch', commands: cylinder('late', 60, 20, 1, 0, 30, 'cut', 'mount') })), 'late')).toBe('brokenReference');
+    // the link and the motor share nothing: their intersection is no body
+    expect(codeOf(done(engine.preview(combine('none', { operation: 'intersection', target: 'motor', tools: ['upper'], keepTools: true }))), 'none')).toBe('emptyResult');
+  });
+
+  it('d. the link split at half its thickness: one cut face on both shells, a sketch on either, the new shell takes after the link', () => {
+    const before = engine.getState();
+    const state = run(engine, { type: 'batch', commands: [{ type: 'addFeature', feature: { id: 'mid', name: 'mid', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 } }, split('lower', 'Lower shell', { body: 'upper', plane: { kind: 'plane', feature: 'mid' }, side: 'backward' })] });
+    expect(state.evaluation.features.lower.bodies).toEqual(['lower']);
+    const [lower, upper] = [state.evaluation.bodies.lower.volume, state.evaluation.bodies.upper.volume];
+    expect(lower + upper).toBeCloseTo(before.evaluation.bodies.upper.volume, 3);
+    expect(lower).toBeLessThan(upper);
+    const cut = surfaceOf(state, CUT);
+    expect(cut?.kind === 'plane' && cut.origin[2]).toBeCloseTo(4, 12);
+    expect(hasFace(state, 'upper', CUT) && hasFace(state, 'lower', CUT)).toBe(true);
+    const sketches = done(engine.preview({ type: 'batch', commands: [...sketchOn('onLower', onFace('lower', CUT)), ...sketchOn('onUpper', onFace('upper', CUT))] }));
+    expect(sketches.evaluation.features.onLower.plane?.normal[2]).toBeCloseTo(1, 12);
+    expect(sketches.evaluation.features.onUpper.plane?.normal[2]).toBeCloseTo(-1, 12);
+    const [made, link] = [state.evaluation.bodyProperties.lower, state.evaluation.bodyProperties.upper];
+    expect(made).toMatchObject({ from: 'upper', material: 'PETG', name: 'Lower shell', density: link.density });
+    expect(state.evaluation.mechanism.unassigned).toContain('lower');
+  });
+
+  it('d. screws through both shells; the other part by a patch; what a split cannot do', () => {
+    run(engine, { type: 'setLink', id: 'upper', bodies: ['upper', 'lower', ...TOOLS] });
+    const before = engine.getState();
+    const through = run(engine, { type: 'batch', commands: cylinder('bolt', 60, 40, 1.6, -1, 9, 'cut', 'upper').map((command) => (command.type === 'addFeature' && command.feature.type === 'extrude' ? { ...command, feature: { ...command.feature, targets: ['upper', 'lower'] } } : command)) });
+    expect(through.evaluation.features.bolt.status).toBe('ok');
+    for (const body of ['upper', 'lower']) expect(through.evaluation.bodies[body].volume).toBeLessThan(before.evaluation.bodies[body].volume);
+    const other = done(engine.preview({ type: 'updateFeature', id: 'lower', patch: { side: 'forward' } }));
+    expect(other.evaluation.bodies.lower.volume).toBeCloseTo(through.evaluation.bodies.upper.volume, 3);
+    expect(other.evaluation.bodies.upper.volume).toBeCloseTo(through.evaluation.bodies.lower.volume, 3);
+    expect(codeOf(done(engine.preview({ type: 'setField', feature: 'mid', path: 'offset', value: 100 })), 'lower')).toBe('emptyResult');
+    expect(codeOf(done(engine.preview({ type: 'updateFeature', id: 'lower', patch: { plane: onFace('motor', MOTOR_SIDE) } })), 'lower')).toBe('nonPlanarFace');
+    expect(codeOf(done(engine.preview({ type: 'removeFeature', id: 'mid' })), 'lower')).toBe('brokenReference');
+    // a plane in a face of the body itself, where the mount stands on the plate: the mount comes off again
+    const ring = done(engine.preview(split('ring', 'Ring', { body: 'upper', plane: onFace('upper', { feature: 'upper', role: 'endCap' }), side: 'forward' })));
+    expect(Math.abs(ring.evaluation.bodies.ring.volume - POCKETED)).toBeLessThan(0.01 * Math.PI * 24 * 24 * 10);
+  });
+
+  it('e. save and load give the same model; no upgrade step; the description for the AI', () => {
+    const before = engine.getState();
+    const after = done(engine.load(engine.save()));
+    for (const body of ['upper', 'lower', 'motor']) expect(after.evaluation.bodies[body].volume).toBeCloseTo(before.evaluation.bodies[body].volume, 9);
+    expect('mount' in after.evaluation.bodies).toBe(false);
+    expect(SCHEMA_PENDING).toBe(0);
+    expect(UPGRADES.some((step) => step.name.startsWith('3d'))).toBe(false);
+    expect(FEATURE_TYPE_INFO.combine.fields.map((field) => field.path)).toEqual(['clearance']);
+    expect(FACE_ROLES.splitFace.title).toBe('cut face of a split');
   });
 });

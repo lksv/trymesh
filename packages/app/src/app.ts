@@ -537,7 +537,7 @@ export class App implements SketchHost, SceneHost {
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
   issueText(issue: Issue): string {
-    return issueText(issue, this.featureNames, this.bodyNames);
+    return issueText(issue, this.featureNames, this.bodyNames, (id) => this.feature(id)?.type);
   }
 
   issues(result: FeatureResult | undefined): HTMLElement[] {
@@ -552,7 +552,7 @@ export class App implements SketchHost, SceneHost {
 
   describe(pick: Pick): string {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
-    const face = (name: FaceName) => faceLabel(name, this.featureNames);
+    const face = (name: FaceName) => faceLabel(name, this.featureNames, (id) => this.feature(id)?.type);
     if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
     const kinds: Record<EdgeKind, string> = { line: 'úsečka', circle: 'kružnice', coplanar: 'v ploše', other: 'obecná křivka' };
     return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;

@@ -33,9 +33,10 @@ interface Document {
   features: Feature[];                    // časová osa
   bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
   mechanism: Mechanism;                          // a section of the document, see The mechanism (D49)
+  meshes: Record<Id, StoredMesh>;                // a section of the document, see Stored meshes (D55)
 }
 
-type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature;   // a hole: hole.md (D46)
+type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature;   // a hole: hole.md (D46); a mesh: Stored meshes (D55); combine and split: combine.md (D56)
 
 interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?: Record<FieldPath, Expr> }   // expressions: see Parameters and expressions
 
@@ -215,7 +216,7 @@ An expression set by a command must evaluate against the parameter table at that
 
 ### Body properties and the sections of the document (D48)
 
-A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism (D49) the second. A change of a section recomputes no geometry: no step of a feature reads one. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
+A **section of the document** is a field of `Document` beside the timeline, keyed by IDs of the model; `bodyProperties` is the first, the mechanism (D49) the second, the stored meshes (D55) the third. A change of a section recomputes no geometry: no step of a feature reads one, with one exception, the step of a mesh feature, which reads one entry of `meshes` through `input` of its module (see Stored meshes); a command of a section recomputes a feature only when it changes the entry that feature reads. The design and its reasons are [docs/d36/3a-body-properties/design.md](../d36/3a-body-properties/design.md).
 
 ```ts
 type BodyUse = 'part' | 'reference' | 'auxiliary';
@@ -283,3 +284,37 @@ interface ShiftingDrive { effort?: number; velocity?: number }                  
 - `carriedBy(section, result, joint)`: the links beyond a joint, their bodies and their missing bodies. `poseOfBody(result, body)`: the transform of the link of a body, nothing for a body that stands as modelled, or the joint that blocks it. `poseNote(result, section)`: the joints that move the model (no fault, a value that is not zero, a child link not blocked) with their values. `setPose` with the expression the value already has keeps it without evaluation, as `setJoint` does.
 
 The bodies of the evaluation do not move: a feature that refers to a face, a sketch on a face, every export and `get_model` see the model as modelled. The pose reaches the queries through their context ([api.md](api.md), "The pose of a query (D49)").
+
+### Stored meshes and the mesh feature (D55)
+
+A bought part read from an STL file: the third section of the document holds the mesh, and the feature type `mesh` places it as a body. The design and its reasons are [docs/d36/3b-mesh-import/design.md](../d36/3b-mesh-import/design.md).
+
+```ts
+interface StoredMesh {
+  name?: string;        // for people: the file it came from; the rules of a body name
+  positions: string;    // base64 of float32, little-endian: x y z per vertex, millimetres
+  triangles: string;    // base64 of uint32, little-endian: three vertex numbers per triangle, counter-clockwise from outside
+}
+interface MeshFeature extends FeatureBase { type: 'mesh'; mesh: Id; placement: BodyPlacement }
+type FrameRef = PlaneRef | { kind: 'sketchPoint'; sketch: Id; point: Id };
+interface BodyPlacement { frame: FrameRef; x?: number; y?: number; z?: number; rx?: number; ry?: number; rz?: number }
+```
+
+**The section** `meshes` (`sections/meshes.ts`), keyed by an ID the caller chooses (its own namespace: the mesh `nema17` may be placed by the feature `nema17`):
+
+- **Inside the document**, so the document stays one file and undo, a preview and a load work unchanged. A stored mesh is about half the size of the binary STL it came from. The same mesh placed twice is stored once.
+- **An entry does not change.** `addMesh { id, mesh }` validates the entry in full with the import limit and refuses an ID the section has; `removeMesh { id }` is refused while a feature of the document names the mesh, suppressed or not (the message lists them; the meant batch is the feature, then the mesh). There is no command that edits an entry: a new revision of a file is another entry.
+- **Strict entries**: `name`, `positions`, `triangles`, nothing else, on a command and on a load. The base64 is canonical (the standard alphabet, padding, no white space), so one mesh has one spelling. The codec is the engine's own (`toBase64`, `fromBase64` in `mesh.ts`); the decoded arrays are kept by the entry object (`indexedMesh`, a weak map).
+- **What a stored mesh has to be** (`meshProblem` in `mesh.ts`, one function for the importer, `addMesh` and a load; a code, a text and the counts): (1) whole triples, at least 4 triangles and at most the limit (`MESH_LIMITS.triangles`, 100 000, provisional, for an import and `addMesh`; `MESH_LIMITS.stored` for a load, never lowered); (2) finite coordinates within ±10⁹; (3) every index names a position, every position is used, no triangle names a vertex twice; (4) closed: every edge in exactly two triangles, once each way, with the counts of edges with one triangle, with more than two, and running the same way; (5) a positive volume; (6) every shell thicker on average than a millionth of its own size (`MESH_LIMITS.thinnest`); (7) every shell judged by the others (`shellsOf`): at a test point of the shell (a centroid of one of its triangles further than 10⁻⁶ of its size from the other shells around it) the winding of the other shells, summed from the solid angles of their triangles; an outward shell is a `solid` (0) or `nested` (in material: read and reported), an inward one a `hollow` (1 or more) or `insideOut` (0, refused: beside a solid it hides a collision), a negative sum or no test point `undecided` (refused). Only the shells whose bounds hold the point count, found through a grid; the work is counted and bounded by `MESH_LIMITS.work` (10⁷), above which the mesh is `tooLarge`.
+- **The result** `evaluation.meshes[id]` (`MeshResult`): the name, vertices, triangles, the bounds and the volume in its own frame, the shells, and `usedBy`, the features that place it. Computed once per entry object.
+
+**The feature** `mesh` (`features/mesh.ts`):
+
+- The body has the ID of the feature and one face, `{ feature, role: 'mesh' }`, with the internal description `{ planar: false, surface: 'mesh' }`, published as the surface `general`. It has no edges. A sketch or a plane on it is `nonPlanarFace`; nothing of it can be projected.
+- `mesh` is a reference of the kind `mesh` (`RefKind`): checked by a command that sets it, left out of `featureRefs` (it takes no part in the order of the timeline); a mesh that is not there is `brokenReference` with `refs: [{ mesh }]`.
+- **The placement** (`recompute/placement.ts`): the frame is directed as a sketch plane is (a base plane, a plane feature, a planar face, or a sketch point: the frame of the sketch moved to the point, an own point, `origin` or a point of projected geometry). A point `p` of the mesh ends at `O + B · (Rz(rz) · Ry(ry) · Rx(rx) · p + (x, y, z))`, with `O` the origin of the frame and `B` its axes: turns about the fixed axes of the frame, X first (roll, pitch, yaw of a robot description). The six numbers are optional numeric fields (`placement/x` … `placement/rz`, default 0, a turn within ±2π); a patch merges the placement field by field and removes a number with `null`. Errors of the frame are those of a sketch on that plane or an axis through that point, with the frame in `refs`.
+- **The step** reads the entry through `input` of the module (recompute.md), moves the mesh by the transform (`transformSolid`, double precision rounded to float32) with one new face number, and publishes `facts`: `origin`, `axisX`, `axisY`, `axisZ` of the mesh as placed. No call of the kernel. The placed solid is kept by the entry object, the feature ID, the transform and the face number (the last four transforms of each feature), so an edit before the feature leaves the body the same object, however many features place one entry.
+- **No feature changes an imported body.** An extrusion that adds or cuts, a hole, and a pattern of them end in the error `importedTarget` when a target has a face of an imported mesh (the body or a copy of it); `refs` name those targets and none is changed. The one place is `applyTool` (`isImported` in `recompute/services.ts`). The kernel adapter cannot see the flats of one non-planar face, and a flush tool leaves sheets on a turned imported body.
+- A pattern of the body copies it like any body; a pattern of features cannot repeat it (`producesTool` is false). A new body of a bought part is made a reference part by the batch that places it (`setBodyProperties` with `use: 'reference'` and its `mass`).
+
+**The import** (`import/`): `importMesh(format, bytes, options?, name?)` is a function of the engine, not a method of `Engine`: it reads no document and answers with a stored mesh and a report (`MeshReport`), or a refusal with a code (`unreadable`, `notASolid`, `tooLarge`, `invalidArguments`). The formats are a catalog, `IMPORT_FORMATS` (today `stl`: binary when the length is 84 + 50 · the count, else ASCII beginning with `solid`; the option `unit`: `mm`, `cm`, `m`, `in`), built like `EXPORT_FORMATS`. After `read` everything is shared: the weld (corners at the same float32 position, −0 as 0; triangles that lose a corner are left out and counted), the whole mesh turned over when its volume is negative, the walls between solids stacked on one outline left out (`withoutWalls`: a wall is left out only when along every edge of its border there are exactly two other triangles running it opposite ways, one on each side of the wall), the shells written inside out turned over by groups (a shell inside out none of whose containers is inside out, with every shell it contains; judged again and repeated, at most four rounds, so a part inside out in the hollow of a solid is turned too), then the checks. The report has the counts and notes in words (several shells, nested shells, shells turned over, more than 20 000 triangles, a size below 1 mm or above 10 m). The tool `import_mesh` of the server and the form of the app call it and send `addMesh`; they share the names from a path (`meshNameOf`: the file name trimmed and cut to 200 characters; `idFromFile`: its stem as an ID; `importAccept`: the extensions of the formats for a file input). A load compares the length of the text of the triangles with the limit before it decodes it.

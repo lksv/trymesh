@@ -621,6 +621,32 @@ describe('nálezy z revize aplikace', () => {
     expect(generatedProfile('involuteGear', 's', {}).operands).toEqual({});
   });
 
+  it('an extrusion draft with the generators of 5d: the examples of the catalog, the optional shift of a gear (D61)', () => {
+    // a new draft starts from the example of the entry and the defaults; an optional parameter is not in it
+    expect(generatedProfile('cycloidalDisc', 's', { circle: 'c1' }).params).toEqual({ pins: 12, pinRadius: 2.5, eccentricity: 1, clearance: 0, rotation: 0, pinAngle: 0 });
+    expect(generatedProfile('gt2Pulley', 's', { center: 'origin' }).params).toEqual({ teeth: 20, allowance: 0, rotation: 0 });
+    expect(generatedProfile('involuteGear', 's', {}).params).not.toHaveProperty('shift');
+    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: generatedProfile('involuteGear', 's', { circle: 'c1' }), extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    // the shift is in the draft only while it has a value: a number, an expression, and gone again
+    const shifted = changeExtrude(draft, { params: { shift: 0.3 } }, []);
+    expect(shifted.profile).toMatchObject({ params: { shift: 0.3, teeth: 18 } });
+    expect(changeExtrude(shifted, { params: { shift: '-x' } }, []).profile).toMatchObject({ params: { shift: '-x' } });
+    const plain = changeExtrude(shifted, { params: { shift: null } }, []);
+    expect(plain.profile).toEqual(draft.profile);
+    // editing: a shift the draft does not have is removed by name; one it has is sent
+    expect(draftCommand(plain, true, 1)).toMatchObject({ patch: { profile: { params: { shift: null, teeth: 18 } } } });
+    expect(draftCommand(shifted, true, 1)).toMatchObject({ patch: { profile: { params: { shift: 0.3 } } } });
+    // a new feature has no null in it
+    expect(draftCommand(plain, false, 1)).toEqual({ type: 'addFeature', feature: plain, index: 1 });
+    // the engine accepts both, and the patch removes the shift of a gear that has one
+    const { engine, run } = setup();
+    run([{ type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin', construction: true }, radius: 8.1 }]);
+    run([draftCommand(shifted, false, 1)]);
+    expect((engine.getState().document.features[1] as ExtrudeFeature).profile).toMatchObject({ params: { shift: 0.3 } });
+    run([draftCommand(plain, true, 1)]);
+    expect(((engine.getState().document.features[1] as ExtrudeFeature).profile as { params: object }).params).not.toHaveProperty('shift');
+  });
+
   it('an extrusion draft with an offset and with a wall (D44)', () => {
     const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
     // the offset is in the draft only while it has a value: a number, an expression, and gone again

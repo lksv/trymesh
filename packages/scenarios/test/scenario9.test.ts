@@ -3,7 +3,8 @@
 // b) c) the gears with the planets copied by a pattern, the bodies of d), e), f) and g) with their
 // holes repeated by patterns (the holes of the controller by a fixed point, symmetry and equal
 // radii, the nut pockets by the polygon tool), h) the motor, i) the change of the ratio, j) the
-// collision query and k) the export per body with saving and loading.
+// collision query, k) the export per body with saving and loading and l) the profile shift (D61,
+// docs/d36/5d-generators/calls.ts).
 // Parameter names are English: `module` for `modul` of the requirements, `backlash` for `vule`,
 // `centers` (centre distance) for `osa`.
 import { describe, expect, it } from 'vitest';
@@ -330,5 +331,52 @@ describe('scenario 9: robot joint', () => {
     expect(other.getState().evaluation.parameters).toEqual(state.evaluation.parameters);
     expect(other.getState().evaluation.checks).toEqual(state.evaluation.checks);
     expect(gears(other.getState())).toEqual(gears(state));
+  });
+
+  it('l) the profile shift: the ratio 7 with a sun of 12 teeth interferes; +0.3 on the sun and −0.3 on the planets and the ring clears it; shifts that do not balance warn', () => {
+    const engine = newEngine();
+    parametersAndGearSketch(engine);
+    bodiesAndHoles(engine);
+    // the ratio 7: every planet reports that its tip runs into the root of the sun (tip radius 14.4
+    // above the limit 14.237852); the sun and the ring are clean
+    let state = run(engine, batch(param('Zs', '12'), param('Zp', '30')));
+    expect(state.evaluation.features.planet.warnings).toMatchObject([{ code: 'gearInterference', message: expect.stringMatching(/radius 14\.4\) is above the limit 14\.237852/) }]);
+    expect(state.evaluation.features.sunTeeth.warnings).toEqual([]);
+    expect(state.evaluation.features.ring.warnings).toEqual([]);
+    // one parameter, three patches of one parameter of the generator, in one batch
+    state = run(
+      engine,
+      batch(
+        param('shift', '0.3'),
+        { type: 'updateFeature', id: 'sunTeeth', patch: { profile: { params: { shift: 'shift' } } } },
+        { type: 'updateFeature', id: 'planet', patch: { profile: { params: { shift: '-shift' } } } },
+        { type: 'updateFeature', id: 'ring', patch: { profile: { params: { shift: '-shift' } } } },
+      ),
+    );
+    expectAllOk(state);
+    // m = 0.9: the sun's tip d + 2m(1 + x) = 10.8 + 2.34, its root d − 2m(1.25 − x) = 10.8 − 1.71;
+    // the planet's 27 + 1.26 and 27 − 2.79; the ring's tip (inner) 64.8 − 2.34, its root 64.8 + 1.71
+    expect(factsOf(state, 'sunTeeth')).toMatchObject({ tipDiameter: expect.closeTo(13.14, 9), rootDiameter: expect.closeTo(9.09, 9), shift: 0.3, meshed: false });
+    expect(factsOf(state, 'planet')).toMatchObject({ tipDiameter: expect.closeTo(28.26, 9), rootDiameter: expect.closeTo(24.21, 9), shift: -0.3, meshed: true });
+    expect(factsOf(state, 'ring')).toMatchObject({ tipDiameter: expect.closeTo(62.46, 9), rootDiameter: expect.closeTo(66.51, 9), shift: -0.3, meshed: true });
+    expect(state.document.features.find((f) => f.id === 'planet')?.expressions).toMatchObject({ 'profile/params/shift': '-shift' });
+    // the centre distances are those of the pitch circles, and the checks of the parameters hold
+    expect(gears(state).center.x).toBeCloseTo(18.9, 6);
+    expect(Object.values(allChecks(state))).toEqual(['ok', 'ok', 'ok', 'ok']);
+    // the collision check finds nothing between the gears
+    expectClear(engine);
+    // the ring left without its shift: the planet and the ring no longer keep the reference centre
+    // distance; the ring warns and says by how much, and its rotation is the parameter
+    const unbalanced = engine.preview({ type: 'updateFeature', id: 'ring', patch: { profile: { params: { shift: null } } } });
+    if (!unbalanced.ok) throw new Error(unbalanced.error.message);
+    expect(unbalanced.state.evaluation.features.ring.warnings).toMatchObject([{ code: 'gearMesh', message: expect.stringMatching(/the profile shifts do not keep the reference centre distance: x of the ring − x of the gear = 0\.3/) }]);
+    expect(factsOf(unbalanced.state, 'ring')).toMatchObject({ meshed: false, shift: 0 });
+    expect((unbalanced.state.document.features.find((f) => f.id === 'ring') as { profile: { params: object } }).profile.params).not.toHaveProperty('shift');
+    // the document saves and loads unchanged
+    const saved = engine.save();
+    const other = newEngine();
+    expect(other.load(saved).ok).toBe(true);
+    expect(other.save()).toBe(saved);
+    expect(factsOf(other.getState(), 'planet')).toEqual(factsOf(state, 'planet'));
   });
 });

@@ -266,6 +266,7 @@ export const pattern: FeatureModule<PatternFeature> = {
   bodySource: (f) => (f.source.type === 'body' ? f.source.body : undefined),
   namesFaces: false,
   producesTool: () => false,
+  tagsFaces: () => true,
   // `{ transform: { second: null } }` makes a row again; accepted also on a row (a form sends it
   // either way), not on another kind
   patch: { fields: ['source', 'transform'], removable: (f, path) => f.transform.type === 'linear' && path.length === 2 && path[0] === 'transform' && path[1] === 'second' },

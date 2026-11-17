@@ -273,7 +273,14 @@ export type ExtrudeDraft = Input<ExtrudeFeature>;
 type ProfileSourcePatch =
   | (Omit<Input<Extract<ProfileSource, { type: 'regions' }>>, 'offset'> & { offset: number | Expr | null })
   | Input<Extract<ProfileSource, { type: 'wall' }>>
-  | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs'> & { refs: Record<string, Id | null> });
+  | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs' | 'params'> & { params: Record<string, number | Expr | boolean | null>; refs: Record<string, Id | null> });
+// A generated profile as a patch: every reference and every optional parameter of the catalog the
+// draft does not have is removed by name.
+function generatedPatch(profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>): ProfileSourcePatch {
+  const spec = GENERATORS[profile.generator];
+  const optional = Object.entries(spec.params).flatMap(([name, param]) => (!isFlag(param) && param.optional && profile.params[name] === undefined ? [[name, null] as const] : []));
+  return { ...profile, params: { ...profile.params, ...Object.fromEntries(optional) }, refs: Object.fromEntries(Object.keys(spec.refs).map((name) => [name, profile.refs?.[name] ?? null])) };
+}
 export type PlaneDraft = Input<PlaneFeature>;
 
 // A change of an extrusion draft.
@@ -296,7 +303,7 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   a profile generator. A new generated profile gets the operands the form found in the sketch and
 //   the defaults of the catalog; a new wall has no curves yet and the thickness `WALL_THICKNESS`.
 //   `operands`, `params` and `refs` change entries of a generated profile (`null` removes a
-//   reference); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
+//   reference or an optional parameter); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
 //   an optional field); `curves` and `thickness` belong to a wall.
 export type ProfileKind = 'regions' | 'wall' | GeneratorName;
 export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'generated' ? profile.generator : profile.type);
@@ -310,7 +317,7 @@ export interface ExtrudeChange {
   curves?: Id[];
   thickness?: number | Expr;
   operands?: Record<string, Id>;
-  params?: Record<string, number | Expr | boolean>;
+  params?: Record<string, number | Expr | boolean | null>;
   refs?: Record<string, Id | null>;
   extent?: ExtentKind;
   start?: number | Expr;
@@ -325,12 +332,12 @@ export interface ExtrudeChange {
 }
 const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
 export const WALL_THICKNESS = 2; // mm: what a new wall starts with
-// What a new draft starts with where the catalog has no default (the parameter is required).
-const FORM_DEFAULTS: Record<GeneratorName, Record<string, number>> = { involuteGear: { teeth: 18 } };
-
-// A new generated profile: the defaults of the catalog; the operands are filled in by the caller.
+// A new generated profile: the example of the catalog entry for the required parameters and the
+// defaults for the others, except an optional parameter, which a draft holds only while it has
+// a value; the operands are filled in by the caller.
 export function generatedProfile(generator: GeneratorName, sketch: Id, operands: Record<string, Id>): Extract<ExtrudeDraft['profile'], { type: 'generated' }> {
-  const params = Object.fromEntries(Object.entries(GENERATORS[generator].params).map(([name, spec]) => [name, isFlag(spec) ? spec.default : (spec.default ?? FORM_DEFAULTS[generator][name] ?? 0)]));
+  const spec = GENERATORS[generator];
+  const params = Object.fromEntries(Object.entries(spec.params).flatMap(([name, param]): [string, number | boolean][] => (isFlag(param) ? [[name, param.default]] : param.optional ? [] : [[name, param.default ?? spec.example[name] ?? 0]])));
   return { type: 'generated', generator, sketch, operands, params };
 }
 
@@ -354,8 +361,9 @@ function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange, 
   }
   if (next.type === 'wall') return { ...next, sketch, ...(change.curves === undefined ? {} : { curves: [...change.curves].sort() }), ...(change.thickness === undefined ? {} : { thickness: change.thickness }) };
   const refs = Object.fromEntries(Object.entries({ ...next.refs, ...change.refs }).filter((entry): entry is [string, Id] => entry[1] !== null));
+  const params = Object.fromEntries(Object.entries({ ...next.params, ...change.params }).filter((entry): entry is [string, number | Expr | boolean] => entry[1] !== null));
   const { refs: _old, ...rest } = next;
-  return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params: { ...next.params, ...change.params }, ...(Object.keys(refs).length ? { refs } : {}) };
+  return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params, ...(Object.keys(refs).length ? { refs } : {}) };
 }
 export type UpToDraft = Extract<ExtrudeDraft['extent'], { type: 'upTo' }>;
 // An extent up to a plane without a plane yet: the draft of the form holds it so until one is
@@ -596,11 +604,11 @@ export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, ed
   }
   const { id, operation, targets } = draft;
   // The patch merges with the feature, so what the draft no longer has must be removed explicitly:
-  // the offset of regions, a reference of a generated profile, the taper of a distance and the gap
-  // of an extent up to a plane. Every other entry of the profile and of the extent is in the draft.
+  // the offset of regions, a reference and an optional parameter of a generated profile, the taper
+  // of a distance and the gap of an extent up to a plane. Every other entry of the profile and of
+  // the extent is in the draft.
   const extent = draft.extent.type === 'distance' ? { ...draft.extent, taper: draft.extent.taper ?? null } : draft.extent.type === 'upTo' ? { ...draft.extent, gap: draft.extent.gap ?? null } : draft.extent;
-  const profile: ProfileSourcePatch =
-    draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
+  const profile: ProfileSourcePatch = draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : generatedPatch(draft.profile);
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 

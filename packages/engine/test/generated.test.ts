@@ -53,7 +53,8 @@ describe('an extrusion with a generated profile', () => {
     // every parameter given, in another order; a reference to an earlier gear
     const full = run(doc, add(extrude('planet', gearProfile('p', { internal: false, rotation: 0.2, backlash: 0.05, pressureAngle: 25 * DEG, teeth: 27 }, { refs: { meshWith: 'sun' } }))));
     expect(profileOf(full, 'planet')).toEqual({ type: 'generated', generator: 'involuteGear', sketch: 'S1', operands: { circle: 'p' }, params: { teeth: 27, pressureAngle: 25 * DEG, backlash: 0.05, rotation: 0.2, internal: false }, refs: { meshWith: 'sun' } });
-    expect(Object.keys(profileOf(full, 'planet').params)).toEqual(Object.keys(GENERATORS.involuteGear.params));
+    // every parameter but the optional shift, which is stored only when it is given
+    expect(Object.keys(profileOf(full, 'planet').params)).toEqual(Object.keys(GENERATORS.involuteGear.params).filter((name) => name !== 'shift'));
     expect(featureRefs(feature(full, 'planet'))).toEqual(['S1', 'sun']);
     // an empty dictionary of references is the same as none
     expect(profileOf(run(doc, add(extrude('planet', gearProfile('p', { teeth: 27 }, { refs: {} })))), 'planet')).not.toHaveProperty('refs');
@@ -262,5 +263,89 @@ describe('updateFeature on a generated profile', () => {
     // the same entity ID in another sketch is another reference
     const other = run(doc, { type: 'addFeature', feature: emptySketch('S0', 'S0', XY), index: 0 });
     invalid(other, update('planet', { profile: { sketch: 'S0' } }), /the sketch "S0" has no entity "p"/);
+  });
+});
+
+describe('an optional parameter of a generator: the profile shift of a gear (D61)', () => {
+  it('is stored only when given, also a zero, in the order of the catalog; its absence is its default', () => {
+    const doc = run(base(), add(extrude('sun', gearProfile('s'))));
+    expect(profileOf(doc, 'sun').params).not.toHaveProperty('shift');
+    expect(fieldsOf(feature(doc, 'sun')).map((field) => field.path)).not.toContain('profile/params/shift');
+    for (const shift of [0, 0.3, -0.5]) {
+      const given = run(base(), add(extrude('sun', gearProfile('s', { shift, teeth: 18 }))));
+      expect(Object.keys(profileOf(given, 'sun').params)).toEqual(Object.keys(GENERATORS.involuteGear.params));
+      expect(profileOf(given, 'sun').params.shift).toBe(shift);
+      expect(validateDocument(JSON.parse(JSON.stringify(given)))).toEqual(given);
+    }
+    // an expression; the field is then reported
+    const expressed = run(base(), { type: 'setParameter', name: 'x', expr: '0.3' }, add(extrude('sun', gearProfile('s', { teeth: 18, shift: '-x' }))));
+    expect(feature(expressed, 'sun')).toMatchObject({ profile: { params: { shift: -0.3 } }, expressions: { 'profile/params/shift': '-x' } });
+    expect(fieldsOf(feature(expressed, 'sun')).find((field) => field.path === 'profile/params/shift')).toMatchObject({ value: -0.3, expr: '-x' });
+    // the coefficient has no range in the catalog; a string is an expression and has to evaluate
+    invalid(base(), add(extrude('sun', gearProfile('s', { teeth: 18, shift: 'nope' }))), /nope/);
+    invalid(base(), add(extrude('sun', gearProfile('s', { teeth: 18, shift: true }))), /params\.shift/);
+  });
+
+  it('setField adds it, a patch sets, changes and removes it, also on a gear without it', () => {
+    const doc = run(base(), add(extrude('sun', gearProfile('s'))));
+    const set = run(doc, { type: 'setField', feature: 'sun', path: 'profile/params/shift', value: 0.25 });
+    expect(profileOf(set, 'sun').params.shift).toBe(0.25);
+    const patched = run(doc, update('sun', { profile: { params: { shift: 0.3 } } }));
+    expect(profileOf(patched, 'sun').params.shift).toBe(0.3);
+    expect(profileOf(run(patched, update('sun', { profile: { params: { shift: 0 } } })), 'sun').params.shift).toBe(0);
+    const removed = run(patched, update('sun', { profile: { params: { shift: null } } }));
+    expect(profileOf(removed, 'sun').params).not.toHaveProperty('shift');
+    expect(removed.features).toEqual(doc.features);
+    // removing it from a gear that has none changes nothing, as for a reference
+    expect(run(doc, update('sun', { profile: { params: { shift: null } } })).features).toEqual(doc.features);
+    // a setField on a generator without the parameter is refused
+    const disc = run(base(), add(extrude('d', { type: 'generated', generator: 'cycloidalDisc', sketch: 'S1', operands: { circle: 'p' }, params: { pins: 12, pinRadius: 1, eccentricity: 0.5 } })));
+    invalid(disc, { type: 'setField', feature: 'd', path: 'profile/params/shift', value: 0.1 }, /is not a numeric field/);
+  });
+
+  it('a document of an older build (no shift) loads unchanged; one with a shift names the parameter to a build without it', () => {
+    const doc = run(base(), add(extrude('sun', gearProfile('s'))));
+    const saved = JSON.parse(JSON.stringify(doc));
+    expect(validateDocument(saved)).toEqual(doc);
+    // a build without the parameter refuses an entry of params its catalog does not know, with its name
+    const loaded = JSON.parse(JSON.stringify(run(base(), add(extrude('sun', gearProfile('s', { teeth: 18, shift: 0.3 }))))));
+    loaded.features[loaded.features.length - 1].profile.params.helix = 0.3;
+    expect(() => validateDocument(loaded)).toThrow(/params\.helix: the generator involuteGear has no such entry/);
+  });
+});
+
+describe('a point as an operand of a generator: the GT2 pulley (D61)', () => {
+  const pulley = (center: string): Input<ProfileSource> => ({ type: 'generated', generator: 'gt2Pulley', sketch: 'S1', operands: { center }, params: { teeth: 20 } }) as Input<ProfileSource>;
+  it('takes an own point, the origin and a point of projected geometry; not a curve', () => {
+    const doc = run(base(), add(extrude('g', gearProfile('s'))));
+    for (const center of ['cp', 'origin']) expect(profileOf(run(doc, add(extrude('pulley', pulley(center)))), 'pulley')).toEqual({ type: 'generated', generator: 'gt2Pulley', sketch: 'S1', operands: { center }, params: { teeth: 20, allowance: 0, rotation: 0 } });
+    // a point of projected geometry: the centre of a projected circle
+    const projected = run(base(), add(extrude('box', { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['c'] }] })), { type: 'addFeature', feature: emptySketch('S2', 'S2', XY) }, { type: 'addExternal', sketch: 'S2', id: 'e', ref: { type: 'edge', body: 'box', edge: { a: { feature: 'box', role: 'side', curve: 'c' }, b: { feature: 'box', role: 'endCap' } }, kind: 'circle' } } as never);
+    expect(profileOf(run(projected, add(extrude('pulley', { ...pulley('e/center'), sketch: 'S2' } as Input<ProfileSource>))), 'pulley').operands).toEqual({ center: 'e/center' });
+    invalid(doc, add(extrude('pulley', pulley('s'))), /profile\.operands\.center: "s" is a circle, expected point/);
+    invalid(doc, add(extrude('pulley', pulley('l'))), /"l" is a line, expected point/);
+    invalid(doc, add(extrude('pulley', pulley('nope'))), /the sketch "S1" has no entity "nope"/);
+    // and a gear does not take a point
+    invalid(doc, add(extrude('g2', gearProfile('cp'))), /"cp" is a point, expected circle/);
+    // fewer than 12 grooves is outside the range
+    invalid(doc, add(extrude('pulley', { ...pulley('cp'), params: { teeth: 10 } } as Input<ProfileSource>)), /params\.teeth: the value 10 is not in the interval \[12, 500\]/);
+  });
+
+  it('the disc over a circle: the required parameters, and the ranges', () => {
+    const disc = (params: Record<string, unknown>): Input<ProfileSource> => ({ type: 'generated', generator: 'cycloidalDisc', sketch: 'S1', operands: { circle: 's' }, params }) as Input<ProfileSource>;
+    const doc = base();
+    expect(profileOf(run(doc, add(extrude('d', disc(GENERATORS.cycloidalDisc.example)))), 'd').params).toEqual({ pins: 12, pinRadius: 2.5, eccentricity: 1, clearance: 0, rotation: 0, pinAngle: 0 });
+    invalid(doc, add(extrude('d', disc({ pins: 12, pinRadius: 2.5 }))), /params\.eccentricity: the parameter is required/);
+    invalid(doc, add(extrude('d', disc({ pins: 2, pinRadius: 2.5, eccentricity: 1 }))), /params\.pins: the value 2 is not/);
+    invalid(doc, add(extrude('d', disc({ pins: 12, pinRadius: 0, eccentricity: 1 }))), /params\.pinRadius: the value must be positive/);
+    invalid(doc, add(extrude('d', disc({ pins: 12, pinRadius: 2.5, eccentricity: 1, clearance: -0.1 }))), /params\.clearance: the value must not be negative/);
+    invalid(doc, add(extrude('d', { ...disc(GENERATORS.cycloidalDisc.example), operands: { circle: 'cp' } } as Input<ProfileSource>)), /"cp" is a point, expected circle/);
+  });
+
+  it('every entry of the catalog has an example of its required parameters', () => {
+    for (const [name, spec] of Object.entries(GENERATORS)) {
+      const required = Object.entries(spec.params).filter(([, param]) => !('flag' in param) && param.default === undefined).map(([key]) => key);
+      expect(Object.keys(spec.example).sort(), name).toEqual(required.sort());
+    }
   });
 });

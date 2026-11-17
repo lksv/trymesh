@@ -1,10 +1,12 @@
 // The text of a recompute issue and the names of what it refers to, for a human. Pure functions, no DOM.
-import { DOCUMENT_SECTIONS, type Document, type FaceName, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
+import { DOCUMENT_SECTIONS, type Document, type FaceName, type Feature, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
 
 // The name of a feature of the document; undefined when the document has no such feature.
 export type NameOf = (feature: Id) => string | undefined;
 // The name of a body from its properties (D48); undefined when the shown model has no such body.
 export type BodyNameOf = (body: Id) => string | undefined;
+// The type of a feature of the document; undefined when the document has no such feature.
+export type TypeOf = (feature: Id) => Feature['type'] | undefined;
 
 export const ROLES: Record<FaceName['role'], string> = {
   side: 'bok',
@@ -16,6 +18,8 @@ export const ROLES: Record<FaceName['role'], string> = {
   holeHead: 'head of a hole',
   holeFlat: 'flat of a nut pocket',
   holeSeat: 'seat of a hole',
+  mesh: 'surface of an imported mesh',
+  splitFace: 'cut face of a split',
 };
 // What tells apart the faces of a wall and of a hole: the side of its curve, the point of its end
 // or of the hole, the number of a flat.
@@ -34,9 +38,11 @@ export function bodyName(body: Id, nameOf: NameOf, bodyNameOf?: BodyNameOf): str
   return local === undefined ? featureName(feature, nameOf) : `${featureName(feature, nameOf)} / ${local}`;
 }
 
-// A face by the feature that made it and its role; a face of a copy names the copy and its pattern.
-export const faceLabel = (name: FaceName, nameOf: NameOf): string =>
-  `${featureName(name.feature, nameOf)} – ${ROLES[name.role]}${wallPart(name)}${(name.copy ?? []).map((tag) => `, copy ${tag.index} of ${featureName(tag.pattern, nameOf)}`).join('')}`;
+// A face by the feature that made it and its role; a face of a copy names the copy and its pattern,
+// a face a combine moved by a clearance (D56) the tool and the combine (`typeOf` tells them apart;
+// without it every tag reads as a copy).
+export const faceLabel = (name: FaceName, nameOf: NameOf, typeOf?: TypeOf): string =>
+  `${featureName(name.feature, nameOf)} – ${ROLES[name.role]}${wallPart(name)}${(name.copy ?? []).map((tag) => (typeOf?.(tag.pattern) === 'combine' ? `, in the pocket of tool ${tag.index} of ${featureName(tag.pattern, nameOf)}` : `, copy ${tag.index} of ${featureName(tag.pattern, nameOf)}`)).join('')}`;
 
 // A string in `refs`: a feature or a body the document has is named; anything else (a feature that
 // is gone, a point of a sketch such as `x1/center`) stays the ID it is.
@@ -53,16 +59,19 @@ interface CopyRef {
   feature: Id;
 }
 const isCopy = (ref: unknown): ref is CopyRef => typeof ref === 'object' && ref !== null && typeof (ref as { copy?: unknown }).copy === 'number' && typeof (ref as { feature?: unknown }).feature === 'string';
+const isFace = (ref: unknown): ref is FaceName => typeof ref === 'object' && ref !== null && typeof (ref as { feature?: unknown }).feature === 'string' && typeof (ref as { role?: unknown }).role === 'string';
 
 // Issues whose string refs are bodies and features (the targets a cut missed or would remove,
 // a missing target or source). Other issues keep their refs to themselves (constraints, field paths).
-const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference'];
+// A combine names its tool in an invalidClearance (then the faces) and in a kernelFailure (D56).
+const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference', 'invalidClearance', 'kernelFailure'];
 
 // The message of the engine with what the issue is about appended. A pattern names the copy that
 // failed or had no effect as `{ copy, feature }` in refs, whatever the issue is.
-export function issueText(issue: Issue, nameOf: NameOf, bodyNameOf?: BodyNameOf): string {
+export function issueText(issue: Issue, nameOf: NameOf, bodyNameOf?: BodyNameOf, typeOf?: TypeOf): string {
   const named = (issue.refs ?? []).flatMap((ref): string[] => {
     if (isCopy(ref)) return [`copy ${ref.copy} of ${refName(ref.feature, nameOf)}`];
+    if (issue.code === 'invalidClearance' && isFace(ref)) return [faceLabel(ref, nameOf, typeOf)];
     return typeof ref === 'string' && NAMED.includes(issue.code) ? [refName(ref, nameOf, bodyNameOf)] : [];
   });
   return named.length ? `${issue.message} (${named.join(', ')})` : issue.message;

@@ -100,6 +100,13 @@ describe('popis API', () => {
     for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
     expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
     expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
+    // D56: the two types of the boolean of bodies, their role and their error reach the AI from the registry and types.ts
+    expect(description).toContain('export interface CombineFeature extends FeatureBase');
+    expect(description).toContain('export interface SplitFeature extends FeatureBase');
+    expect(description).toContain("role: 'splitFace'");
+    expect(description).toContain('invalidClearance');
+    expect(description).toMatch(/- combine \(Combine\): .*clearance/);
+    expect(description).toContain('Finished bodies are combined by the feature type combine');
     // D58: the revolve, the axis of a line of a sketch, the sphere, the torus and the code invalidAxis
     expect(description).toContain("type: 'revolve';");
     expect(description).toContain("{ kind: 'sketchLine'; sketch: Id; line: Id }");
@@ -629,6 +636,40 @@ describe('model, tělesa a příkazy', () => {
     expect(callTool(engine, 'execute', { command: gear('g3', 'sun', { teeth: 2 }) })).toMatchObject({ ok: false, error: expect.stringContaining('params.teeth: the value 2 is not in the interval [4, 500]') });
     // the side of the teeth is one face that is not planar
     expect(ok(engine, 'get_body', { body: 'g1' }).faces.map((face: { label: string; planar: boolean }) => [face.label, face.planar])).toEqual([['g1/startCap', true], ['g1/endCap', true], ['g1/side/teeth', false]]);
+  });
+
+  it('the generators of 5d (D61): every entry with its example, the optional shift, a point as an operand; each example is accepted', () => {
+    const description = apiDescription();
+    const text = apiText();
+    for (const name of ['cycloidalDisc (Cycloidal disc)', 'gt2Pulley (GT2 pulley)']) expect(text).toContain(`- ${name}: `);
+    expect(text).toContain('  operands: center: point');
+    expect(text).toContain('  - shift: Profile shift coefficient, none, any, default 0; optional: stored only when given');
+    expect(text).toContain('a parameter of a generator its catalog marks optional (the `shift` of a gear');
+    expect(text).toContain('- extrude: profile/params/pinRadius (Radius of a ring pin, mm, positive (only when profile/generator is cycloidalDisc))');
+    expect(text).toContain('- extrude: profile/params/teeth (Number of grooves, count, an integer, in the interval [12, 500] (only when profile/generator is gt2Pulley))');
+    expect(description.generators.map((entry) => [entry.generator, entry.example.params])).toEqual([
+      ['involuteGear', { teeth: 18 }],
+      ['cycloidalDisc', { pins: 12, pinRadius: 2.5, eccentricity: 1 }],
+      ['gt2Pulley', { teeth: 20 }],
+    ]);
+    const engine = newEngine();
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        sketch('s'),
+        { type: 'addPoint', sketch: 's', id: 'cp', x: 60, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'pins', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+      ],
+    });
+    description.generators.forEach((entry, i) => {
+      const example = entry.example as { operands: Record<string, string> };
+      const operands = Object.fromEntries(Object.entries(example.operands).map(([field, kinds]) => [field, kinds === '<point>' ? 'cp' : 'pins']));
+      const command = { type: 'addFeature', feature: { id: entry.generator, name: entry.generator, suppressed: false, type: 'extrude', profile: { ...entry.example, sketch: 's', operands }, extent: { type: 'distance', start: 10 * i, distance: 4 }, operation: 'new' } } as never;
+      expect(execute(engine, command), entry.generator).toMatchObject({ ok: true, problems: [] });
+    });
+    const model = ok(engine, 'get_model');
+    expect(model.features.find((f: { id: string }) => f.id === 'gt2Pulley').facts).toMatchObject({ teeth: 20, center: [60, 0, 0], outsideDiameter: expect.closeTo(40 / Math.PI - 0.508, 5) });
+    expect(model.features.find((f: { id: string }) => f.id === 'cycloidalDisc').facts).toMatchObject({ lobes: 11, outerDiameter: expect.closeTo(47, 9) });
   });
 
   it('a cut through all with two targets: the result names the target the tool missed', () => {

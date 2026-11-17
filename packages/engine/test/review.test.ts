@@ -34,6 +34,9 @@ import { type FaceInfo, IDENTITY, analyzeBody } from '../src/solid';
 import { interferenceReport, sharedBy } from '../src/interference';
 import type { BodyResult, Id, Joint, Mechanism } from '../src/types';
 import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
+import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
+import { smallestCurvatureRadius } from '../src/generators/cycloid';
+import type { Frame } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -327,8 +330,8 @@ describe('a module per feature type (D37): what the move could have changed unse
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'revolve']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole/);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve']);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
@@ -961,5 +964,141 @@ describe('the review of D59: the drive of a joint', () => {
     const posed = applyCommand(before, { type: 'setPose', values: { elbow: 0.5 } });
     expect(Object.keys(posed.mechanism.joints.elbow)).toEqual(['type', 'parent', 'child', 'axis', 'lower', 'upper', 'value', 'effort', 'velocity']);
     expect(applyCommand(posed, { type: 'setJoint', id: 'elbow', joint: { ...elbow, value: 0.5 } as never }).mechanism).toBe(posed.mechanism);
+  });
+});
+
+describe('the review of D61: the generators of 5d', () => {
+  const XY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] };
+  const disc = (params: Record<string, number>, chordTolerance = 0.01) => generateProfile('cycloidalDisc', { operands: { circle: { kind: 'circle', center: [0, 0], radius: params.R ?? 25 } }, params: { pins: 12, pinRadius: 2.5, eccentricity: 1, ...params }, refs: {}, frame: XY, chordTolerance });
+  const pulley = (teeth: number, chordTolerance: number) => generateProfile('gt2Pulley', { operands: { center: { kind: 'point', at: [0, 0] } }, params: { teeth }, refs: {}, frame: XY, chordTolerance });
+
+  it('a pulley too large is refused before its polygon exists, with the count it would have', () => {
+    for (const tolerance of [1e-6, 1e-9, 1e-12]) {
+      const started = performance.now();
+      const result = pulley(500, tolerance);
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(result.ok ? '' : result.message).toMatch(new RegExp(`the generated profile has \\d+ points, more than ${MAX_PROFILE_POINTS}; lower the number of grooves`));
+    }
+    // the count told beforehand is that of the polygon: the same points in every groove, and the
+    // polygon at a tolerance where it is built has the count of its grooves times that
+    const refused = pulley(500, 1e-4);
+    expect(refused.ok ? 0 : Number(refused.message.match(/has (\d+) points/)?.[1]) % 500).toBe(0);
+  });
+
+  it('the disc at the edge of undercut builds; a hair closer it is refused near the limit, not past it', () => {
+    const limit = smallestCurvatureRadius(25, 2, 12);
+    const edge = disc({ eccentricity: 2, pinRadius: 2.5737 });
+    expect(edge.ok).toBe(true);
+    if (edge.ok) expect(25 - edge.regions[0].outer.xy[0]).toBeLessThan(limit);
+    for (const hair of [1e-6, 1e-7, 1e-9]) {
+      const result = disc({ eccentricity: 2, pinRadius: limit - hair });
+      expect(result.ok ? '' : result.message).toMatch(/the disc is within the chord tolerance of the limit of undercut .* within 50000 points; lower the pin radius or the eccentricity/);
+    }
+  });
+
+  it('a disc too fine for the limit of points says so without a count it did not reach, and without fewer than three pins', () => {
+    const three = disc({ pins: 3, R: 10, pinRadius: 1, eccentricity: 0.5 }, 1e-9);
+    expect(three.ok ? '' : three.message).toBe('the disc would need more than 50000 points to keep its chords within the chord tolerance; raise the chord tolerance');
+    const many = disc({ pins: 500, R: 600, pinRadius: 2, eccentricity: 1 }, 1e-7);
+    expect(many.ok ? '' : many.message).toMatch(/would need more than 50000 points .*raise the chord tolerance or lower the number of pins$/);
+  });
+});
+
+// ---------------------------------------------------------------- the review of 3b (D55)
+
+describe('the import of a mesh: regressions of the review of 3b (D55)', async () => {
+  const { storedMesh } = await import('../src/mesh');
+  const { importMesh } = await import('../src/import/index');
+  const { toStl } = await import('../src/solid');
+  type Box = number[];
+  // an axis-aligned box as corners, outwards or inside out
+  const box = (min: number[], max: number[], outward = true): Box => {
+    const out: Box = [];
+    for (let k = 0; k < 3; k++) {
+      const [u, v] = [(k + 1) % 3, (k + 2) % 3];
+      for (const high of [false, true]) {
+        const at = (a: boolean, b: boolean): number[] => {
+          const p = [0, 0, 0];
+          p[k] = high ? max[k] : min[k];
+          p[u] = a ? max[u] : min[u];
+          p[v] = b ? max[v] : min[v];
+          return p;
+        };
+        const [p00, p10, p11, p01] = [at(false, false), at(true, false), at(true, true), at(false, true)];
+        out.push(...(high === outward ? [p00, p10, p11, p00, p11, p01] : [p00, p11, p10, p00, p01, p11]).flat());
+      }
+    }
+    return out;
+  };
+  const stl = (corners: Box): Uint8Array => {
+    const count = corners.length / 9;
+    return toStl([{ positions: Float32Array.from(corners), triangles: Uint32Array.from({ length: 3 * count }, (_, i) => i), faceIds: new Uint32Array(count) }]);
+  };
+  const solver = { solve: () => ({ status: 'failed', points: {}, radii: {}, degreesOfFreedom: 0, conflicting: [], redundant: [] }) } as never;
+  const newEngine = () => createEngine({ solver, kernel: {} as never });
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const TETRA = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+  const ok = (engine: ReturnType<typeof newEngine>, command: Command) => {
+    const result = engine.execute(command);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+
+  it('six features placing one stored mesh keep their bodies across an edit before them (the kept solids are per feature)', () => {
+    const engine = newEngine();
+    const ids = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+    const before = ok(engine, {
+      type: 'batch',
+      commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, ...ids.map((id, i): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, x: 20 * i } } }))],
+    });
+    const after = ok(engine, { type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'plane', base: XY, offset: 3 }, index: 0 });
+    expect(ids.map((id) => after.evaluation.bodies[id].solid === before.evaluation.bodies[id].solid)).toEqual(ids.map(() => true));
+  });
+
+  it('the remembered step of a mesh feature is reused through its input: an unrelated change after a write-back recomputes nothing', () => {
+    const engine = newEngine();
+    ok(engine, { type: 'batch', commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, { type: 'setParameter', name: 'h', expr: '5' }, { type: 'addFeature', feature: { id: 'm', name: 'm', suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, z: 'h' as never } } }] });
+    const first = engine.getState();
+    expect(first.document.features[0]).toMatchObject({ placement: { z: 5 } }); // written back: a new feature object
+    const other = ok(engine, { type: 'setParameter', name: 'unused', expr: '2' });
+    expect(other.evaluation.features.m).toBe(first.evaluation.features.m);
+    expect(other.evaluation.bodies.m).toBe(first.evaluation.bodies.m);
+  });
+
+  it('a part inside out in the hollow of a solid is turned over (a second level of turning), not refused', () => {
+    // a box, its hollow (inwards, correct) and a part in the hollow written inside out
+    const corners = [...box([0, 0, 0], [30, 30, 30]), ...box([5, 5, 5], [25, 25, 25], false), ...box([10, 10, 10], [20, 20, 20], false)];
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 3, cavities: 1, turned: 1 });
+    expect(outcome.report.volume).toBeCloseTo(27000 - 8000 + 1000, 6);
+    // and the inverted box with the same inside: turned with what it contains, the part then on its own
+    const inverted = [...box([0, 0, 0], [30, 30, 30], false), ...box([5, 5, 5], [25, 25, 25]), ...box([10, 10, 10], [20, 20, 20], false)];
+    const again = importMesh('stl', stl(inverted));
+    if (!again.ok) throw new Error(again.error.message);
+    expect(again.report.volume).toBeCloseTo(20000, 6);
+  });
+
+  it('turning many shells over takes one pass over their containers: 4000 boxes, half inside out', () => {
+    const corners: number[] = [];
+    for (let i = 0; i < 4000; i++) corners.push(...box([3 * (i % 64), 3 * Math.floor(i / 64), 0], [3 * (i % 64) + 1, 3 * Math.floor(i / 64) + 1, 1], i % 2 === 0));
+    const started = performance.now();
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 4000, turned: 2000 });
+    expect(outcome.report.volume).toBeCloseTo(4000, 3);
+    expect(performance.now() - started).toBeLessThan(20_000); // a generous bound: it was quadratic
+  });
+
+  it('the ASCII reader: `solid` in any case, a coordinate only as a decimal number, the limit said as "more than"', () => {
+    const ascii = (head: string, coordinate = '0') => new TextEncoder().encode(`${head}\n${[0, 1, 2, 3].map(() => `facet normal 0 0 1 outer loop vertex ${coordinate} 0 0 vertex 1 0 0 vertex 0 1 0 endloop endfacet`).join('\n')}\nendsolid`);
+    expect(importMesh('stl', ascii('SOLID part'))).toMatchObject({ ok: false, error: { code: 'notASolid' } }); // read, then refused as no solid
+    expect(importMesh('stl', ascii('solid part', '0x1A'))).toMatchObject({ ok: false, error: { code: 'unreadable', message: expect.stringContaining('"0x1A"') } });
+    expect(importMesh('stl', ascii('solid part', '1e2'))).toMatchObject({ ok: false, error: { code: 'notASolid' } });
+  });
+
+  it('a load refuses a stored mesh with more triangles than its limit before it decodes it', () => {
+    const big = { positions: TETRA.positions, triangles: 'A'.repeat(16 * 100_000 + 4) };
+    expect(() => validateDocument({ ...emptyDocument(), meshes: { big } })).toThrow(/document\.meshes\.big: the mesh has more than 100000 triangles/);
   });
 });

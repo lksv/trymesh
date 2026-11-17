@@ -19,11 +19,13 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 |---|---|---|
 | Promítnutí geometrie z jiné skici | Společná kostra pro víc dílů: jedna skica s osami, roztečnými kružnicemi a obrysy, na kterou se ostatní skici odkazují. Dnes jde promítnout jen hrana tělesa, takže konstrukční geometrii jiné skici je potřeba překreslit a svázat stejnými výrazy | Odkaz na promítnutou geometrii (`ExternalRef`) má rozlišovač typu; skica přibude jako další varianta vedle hrany. Promítnutí do rovnoběžné roviny stačí na většinu případů, šikmá rovina naráží na elipsu stejně jako u hran |
 | Řez nebo obrázek modelu pro AI | AI model nevidí, ověřuje ho čísly (objem, obálka, kolize). Řez rovinou jako seznam smyček nebo obrázek pohledu by jí dal zpětnou vazbu na tvar | Nový dotaz enginu nad tělesy, vedle kolizí a objemu z D35. Řez poslouží i pro „řez modelem v pohledu" v aplikaci |
-| Spojení, rozdělení, zrcadlení a přesun těles | Odečíst jeden díl od druhého (dutina podle vloženého dílu, drážkovaný otvor podle kola), rozříznout díl pro tisk, zrcadlový díl, rozložení dílů | Nové typy features v registru. Stojí na obecném pravidlu, že feature může vytvořit víc těles s ID `<feature>/<místní jméno>`. Nové je jen to, že těleso může zaniknout; odkaz na zaniklé těleso je rozbitá reference jako každá jiná |
+| Spojení, rozdělení, zrcadlení a přesun těles | Odečíst jeden díl od druhého (dutina podle vloženého dílu, drážkovaný otvor podle kola), rozříznout díl pro tisk, zrcadlový díl, rozložení dílů | Nové typy features v registru. Stojí na obecném pravidlu, že feature může vytvořit víc těles s ID `<feature>/<místní jméno>`. Nové je jen to, že těleso může zaniknout; odkaz na zaniklé těleso je rozbitá reference jako každá jiná. The boolean of bodies (with a clearance) and the split are implemented as 3d (D56, [d36/3d-body-boolean/design.md](d36/3d-body-boolean/design.md)), the mirror as a kind of pattern (D53); a move of bodies is left |
+| A clearance by the sum of Minkowski | A pocket for a tool the clearance by faces refuses (a hole or a gap narrower than twice the clearance, a change of topology) or cannot describe (a bought part imported as a mesh, 3b) | A second way beside `movedOutwards` (D56, "Open", 1): the library has the sum; it takes seconds for a motor and leaves one face without a description, so it fits as an option of the combine, memoised by the solid of the tool |
+| A repair of the near-flush union of the kernel adapter | Parts cut apart and joined again (a split and a union) are refused in a few per cent of the cases, or keep a remnant of the cut face; a union within the band of guarantee 3 may leave the shift of the adapter as material | Inside the adapter (D56, "Open", 2, and the pinned band in `packages/kernel-manifold/test/precondition.test.ts`); the checks of `booleanOfBodies` already turn the wrong volume into a refusal |
 | Revolve | Řemenice s klínovou drážkou, knoflíky, kužely, drážky pro O-kroužky, zahloubení pro zápustnou hlavu | Jiná stavba nástroje nad stejným profilem; recept nástroje je rozhraní. Osa je `AxisRef` z pole. Popis stěny má obecný druh vedle roviny a válce (kvůli ozubení) |
 | Zkosení a zkrut při vysunutí | Úkos stěn, zápustná hlava, šikmé ozubení, přibližný závit | Další stavby nástroje; parametry jsou číselná pole rozsahu |
 | Posuvné pole a zrcadlení features | Větrací otvory v řadě, mřížky, souměrné díly | Další druhy transformace v poli; pole je seznam tuhých transformací a zbytek feature se nemění. Zrcadlení navíc obrací orientaci trojúhelníků |
-| Další generátory profilu | Cykloidní kotouč, řemenice GT2, řetězové kolo, ozubený hřeben, drážkování, text | Položky katalogu generátorů; tvar dokumentu se nemění |
+| Další generátory profilu | Řetězové kolo, ozubený hřeben, drážkování, text; other belts and pulleys (GT2 of 3 and 5 mm, GT3, HTD, T). The cycloidal disc and the GT2 pulley of 2 mm are done (D61) | Položky katalogu generátorů; tvar dokumentu se nemění |
 | Další nástroje skici | Drážka, obdélník středem, odsazení obrysu (lem víka), rozteč děr | Funkce sdíleného modulu nástrojů; engine se nemění. Odsazení obrysu může chtít novou vazbu |
 | Nejmenší vzdálenost těles | Ověření vůle (motor v pouzdře má mít 1 mm), ne jen toho, že se díly neprolínají | Další dotaz nad tělesy |
 | Vlastnosti těles | Jméno, barva, příznak referenčního dílu (motor se netiskne a nemá se exportovat) | Nepovinný údaj v dokumentu klíčovaný ID tělesa |
@@ -35,7 +37,7 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 | Graf závislostí při přepočtu | Rychlost u větších modelů: dnes se přepočítá vše od první změněné feature | Vnitřní věc přepočtu, dokument se nemění |
 | Sloučení nástrojů pole před booleanem, prostorové vyhledávání v adaptéru jádra | Rychlost u stovek kopií | Vnitřní věc pole a adaptéru jádra |
 | Pootočení kopií v poli kolem vlastní osy | Satelity v záběru i tehdy, když počty zubů nejsou dělitelné počtem satelitů | Další údaj transformace kopie |
-| Posunutí profilu ozubení | Kola s málo zuby, úprava osové vzdálenosti | Další parametr generátoru ozubení |
+| Shifted centre distance of gears | The profile shift is done (D61) with balanced shifts at the reference centre distance; a pair whose shifts do not balance needs the working centre distance `a cos α / cos αw` (no closed form) and the tip shortening | Two expression functions (`inv` and its inverse) or a fact `centerDistance` of a gear in mesh; [d36/5d-generators/design.md](d36/5d-generators/design.md), "Deferred" |
 
 ## Co tahle architektura levně nedá
 
@@ -51,8 +53,8 @@ Myšlenková zkouška: co by jiný díl potřeboval navíc proti kloubu a jestli
 | Konstrukce | Co potřebuje navíc | Kam to patří |
 |---|---|---|
 | Krabička na elektroniku s víkem | Díry skrz víko i krabičku; větrací otvory v řadě; lem víka; zaoblené hrany | Výřez do více těles (D35). Posuvné pole a odsazení obrysu později. Zaoblení hran ne |
-| Cykloidní převodovka | Profil cykloidního kotouče; výstředník a kolíky umí vysunutí a pole | Katalog generátorů (D35), nová položka později |
-| Řemenice, knoflík | Profil GT2; klínová drážka; rýhování | Generátor a pole (D35). Klínová drážka je revolve, později |
+| Cykloidní převodovka | The disc is done (D61, `cycloidalDisc`); its bore and output holes for other input angles, and the pins, stay sketch geometry and patterns | Katalog generátorů (D35) |
+| Řemenice, knoflík | Klínová drážka; rýhování. The GT2 pulley of 2 mm is done (D61, `gt2Pulley`) | Generátor a pole (D35). Klínová drážka je revolve, později |
 | Konzole s žebrem | Žebro vysunuté na obě strany roviny | Posun začátku vysunutí (D35) |
 | Držák z více dílů podle společné kostry | Odkaz na geometrii jiné skici | Později; do té doby stejné výrazy ve více skicách |
 | Šroubovací víčko, šikmé ozubení | Zkrut při vysunutí | Později |

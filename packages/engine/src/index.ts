@@ -10,6 +10,7 @@ export {
   constraintOperands,
   constraintPath,
   CURVE_POINTS,
+  derivedPoints,
   documentIds,
   duplicateOf,
   emptyDocument,
@@ -19,7 +20,7 @@ export {
   isDimension,
   withPath,
 } from './document';
-export { bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
+export { bodyRefs, bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
 export { type MeshOrigin, shapeOrigin } from './solid';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
@@ -28,6 +29,11 @@ export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
 export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
+export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
+export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';
+export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
+export { type IndexedMesh, MESH_LIMITS, type MeshDefects, type MeshProblem, type MeshShell, defectsText, fromBase64, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, toBase64, withoutWalls } from './mesh';
+export { PLACEMENT_FIELDS } from './features/mesh';
 export { ZIP_NAME_LIMIT, type ZipEntry, crc32, zip } from './export/zip';
 export type { MeshAbout } from './export/threemf';
 export type { OutlineAbout } from './export/outline';

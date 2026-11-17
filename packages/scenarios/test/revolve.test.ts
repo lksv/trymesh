@@ -4,7 +4,7 @@
 // of a line of a sketch for a pattern, a joint and a query, the limit of the size, and what the
 // design left to verify (a pinched body through the section, the 3MF and the print check, an axis
 // of another sketch far from the origin, a fuzz of profiles that touch the axis).
-import { type AxisRef, type Command, type Engine, type EngineState, type Id, type Input, type RevolveFeature, type Solid, type Surface, emptyDocument, namedBySections } from '@trymesh/engine';
+import { type AxisRef, type Command, type Engine, type EngineState, type Id, type Input, type RevolveFeature, type Solid, type Surface, emptyDocument, namedBySections, shapeOrigin, storedMesh } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { XY, addExtrude, addSketch, batch, expectAllOk, newEngine, rectLoop, rectangle, run, side } from './kit';
 
@@ -476,5 +476,105 @@ describe('what the design of D58 left to verify', () => {
       expect(Math.abs(body.volume - exact), `trial ${trial}`).toBeLessThan(0.01 * 2 * Math.PI * w * (2 * w + 2 * h) * share);
       expect(takenByKernel(engine, 'R'), `trial ${trial}`).toBe(true);
     }
+  });
+});
+
+// Where 4a meets what was merged before it (D58 with D55 and D56): a revolved tool moved outwards
+// by the clearance of a combine (its spheres and tori move along their exact surfaces), a revolve
+// onto an imported body, and the copies of a revolved body in the parts list.
+describe('where the revolve meets 3b and 3d', () => {
+  const block = (engine: Engine) => run(engine, addSketch('P', XY), rectangle('P', 'r', -30, -30, 60, 60, null), addExtrude('block', 'P', [rectLoop('r')], -20));
+  const combine = (id: Id, tool: Id, clearance: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'combine', operation: 'difference', target: 'block', tools: [tool], keepTools: true, clearance } });
+  const pocketSurface = (state: EngineState, combineId: Id, tool: Id, curve: Id): Surface | undefined => {
+    const name = { ...side(tool, curve), copy: [{ pattern: combineId, index: 1 }] };
+    const face = state.evaluation.faceNames.findIndex((other) => JSON.stringify(other) === JSON.stringify(name));
+    return face < 0 ? undefined : state.evaluation.faceSurfaces[face];
+  };
+
+  it('a ball sunk into a block with a clearance: the pocket is a sphere of the radius grown by it', () => {
+    const engine = newEngine();
+    block(engine);
+    run(engine, addSketch('S', XZ), halfDisc('S', 'b', 0, 0, 10), revolve('ball', 'S', ['ba', 'bd']));
+    const state = run(engine, combine('K', 'ball', 0.5));
+    expect(state.evaluation.features.K.status).toBe('ok');
+    expect(pocketSurface(state, 'K', 'ball', 'ba')).toEqual({ kind: 'sphere', center: [0, 0, 0], radius: 10.5 });
+    const pocket = (2 / 3) * Math.PI * 10.5 ** 3;
+    expect(Math.abs(60 * 60 * 20 - state.evaluation.bodies.block.volume - pocket) / pocket).toBeLessThan(5e-3);
+    // the rim of the pocket on the top of the block: a circle of radius 10.5
+    const rims = state.evaluation.bodies.block.edges.filter((edge) => [edge.name.a, edge.name.b].some((name) => name.feature === 'ball'));
+    expect(rims.map((edge) => edge.kind)).toEqual(['circle']);
+  });
+
+  it('an O-ring half sunk into a block: the groove is a torus of the minor radius grown; a ring whose hole the clearance fills is refused', () => {
+    const engine = newEngine();
+    block(engine);
+    run(engine, addSketch('S', XZ), { type: 'addPoint', sketch: 'S', id: 'c', x: 15, y: 0 }, { type: 'addCurve', sketch: 'S', id: 'k', curve: { type: 'circle', center: 'c' }, radius: 2 }, revolve('ring', 'S', ['k']));
+    const state = run(engine, combine('K', 'ring', 0.3));
+    expect(state.evaluation.features.K.status).toBe('ok');
+    expect(pocketSurface(state, 'K', 'ring', 'k')).toEqual({ kind: 'torus', center: [0, 0, 0], axis: [0, 0, 1], majorRadius: 15, minorRadius: 2.3 });
+    const groove = Math.PI * Math.PI * 15 * 2.3 * 2.3;
+    expect(Math.abs(60 * 60 * 20 - state.evaluation.bodies.block.volume - groove) / groove).toBeLessThan(5e-3);
+    // both rims of the groove lie between the same two faces: one edge of two circles, `other`
+    // (a known limit), so no rim of a moved torus has to choose between its two circles here
+    const rims = state.evaluation.bodies.block.edges.filter((edge) => [edge.name.a, edge.name.b].some((name) => name.feature === 'ring'));
+    expect(rims.map((edge) => edge.kind)).toEqual(['other']);
+    // a ring of R 3 and r 2.8: its hole closes at a clearance of 0.5
+    run(engine, addSketch('T', XZ), { type: 'addPoint', sketch: 'T', id: 'tc', x: 3, y: 0 }, { type: 'addCurve', sketch: 'T', id: 'tk', curve: { type: 'circle', center: 'tc' }, radius: 2.8 }, revolve('fat', 'T', ['tk']));
+    const fat = errorOf(engine, combine('F', 'fat', 0.5), 'F');
+    expect(fat.error?.code).toBe('invalidClearance');
+    expect(fat.error?.message).toMatch(/closes at a clearance of 0\.5 mm/);
+  });
+
+  it('an ogive (a torus with a negative major radius and a tip on the axis) moved by a clearance', () => {
+    const engine = newEngine();
+    block(engine);
+    const state = run(
+      engine,
+      addSketch('S', XZ),
+      { type: 'addPoint', sketch: 'S', id: 'a', x: 0, y: -10 },
+      { type: 'addPoint', sketch: 'S', id: 'b', x: 0, y: 10 },
+      { type: 'addPoint', sketch: 'S', id: 'c', x: -15, y: 0 },
+      { type: 'addCurve', sketch: 'S', id: 'arc', curve: { type: 'arc', center: 'c', start: 'a', end: 'b' } },
+      { type: 'addCurve', sketch: 'S', id: 'axis', curve: { type: 'line', a: 'b', b: 'a' } },
+      revolve('ogive', 'S', ['arc', 'axis']),
+      combine('K', 'ogive', 0.5),
+    );
+    expect(state.evaluation.features.K.status).toBe('ok');
+    expect(pocketSurface(state, 'K', 'ogive', 'arc')).toMatchObject({ kind: 'torus', majorRadius: -15, minorRadius: Math.hypot(15, 10) + 0.5 });
+    // the tip moved along the axis to 0.5 from the moved surface: the bottom of the pocket at
+    // z = −(√(18.03² − 15²)) = −10.0…, below the tip of the ogive by more than the clearance
+    const p = state.evaluation.bodies.block.solid.positions;
+    const onAxis = Array.from({ length: p.length / 3 }, (_, i) => i).filter((i) => Math.hypot(p[3 * i], p[3 * i + 1]) < 1e-3 && p[3 * i + 2] > -19);
+    const lowest = Math.min(...onAxis.map((i) => p[3 * i + 2]));
+    expect(lowest).toBeCloseTo(-Math.sqrt((Math.hypot(15, 10) + 0.5) ** 2 - 225), 3);
+  });
+
+  it('a revolve that cuts or adds to an imported body is importedTarget', () => {
+    const engine = newEngine();
+    block(engine);
+    const mesh = engine.getState().evaluation.bodies.block.solid;
+    run(engine, { type: 'addMesh', id: 'cast', mesh: storedMesh({ positions: mesh.positions, triangles: mesh.triangles }) }, { type: 'addFeature', feature: { id: 'M', name: 'M', suppressed: false, type: 'mesh', mesh: 'cast', placement: { frame: { kind: 'base', plane: 'XY' }, z: 100 } } });
+    run(engine, addSketch('S', XZ), halfDisc('S', 'b', 0, 100, 10));
+    for (const operation of ['cut', 'add'] as const) {
+      const error = errorOf(engine, revolve(`R${operation}`, 'S', ['ba', 'bd'], undefined, Z, operation, ['M']), `R${operation}`).error;
+      expect(error).toMatchObject({ code: 'importedTarget', refs: ['M'] });
+    }
+  });
+
+  it('the copies of a revolved body made by a pattern are one row of the parts list', () => {
+    const engine = newEngine();
+    run(
+      engine,
+      addSketch('S', XZ),
+      polygon('S', 'p', PULLEY),
+      revolve('pulley', 'S', lines('p', 8)),
+      { type: 'addFeature', feature: { id: 'row', name: 'row', suppressed: false, type: 'pattern', source: { type: 'body', body: 'pulley' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 50 } } } },
+      { type: 'addFeature', feature: { id: 'flip', name: 'flip', suppressed: false, type: 'pattern', source: { type: 'body', body: 'pulley' }, transform: { type: 'mirror', plane: { kind: 'base', plane: 'XY' } } } },
+    );
+    expect(shapeOrigin(engine.getState().evaluation.bodies['row/2'].solid).solid).toBe(engine.getState().evaluation.bodies.pulley.solid);
+    const list = engine.query('partsList', {});
+    if (!list.ok) throw new Error(list.error.message);
+    const rows = list.result.printed.map((row) => `${row.count} × ${row.bodies.join(', ')}${row.mirrored ? ' mirrored' : ''}${row.copyOf ? ` of ${row.copyOf}` : ''}`);
+    expect(rows).toEqual(['3 × pulley, row/1, row/2', '1 × flip/1 mirrored of pulley']);
   });
 });

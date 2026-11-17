@@ -25,6 +25,9 @@ import { decimals, float32Text, xmlText } from '../src/export/text';
 import { BASE } from '../src/recompute/services';
 import { Memo, queryContext } from '../src/query/context';
 import { QUERIES } from '../src/query/index';
+import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
+import { smallestCurvatureRadius } from '../src/generators/cycloid';
+import type { Frame } from '../src/types';
 import { POSE_STATS } from '../src/query/pose';
 import type { QueryName } from '../src/query/spec';
 import type { State } from '../src/recompute/state';
@@ -944,5 +947,42 @@ describe('the review of D57: the count of holes', () => {
     }
     // the test tests something: most features join some of their cuts
     expect(joined).toBeGreaterThan(1000);
+  });
+});
+
+describe('the review of D61: the generators of 5d', () => {
+  const XY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] };
+  const disc = (params: Record<string, number>, chordTolerance = 0.01) => generateProfile('cycloidalDisc', { operands: { circle: { kind: 'circle', center: [0, 0], radius: params.R ?? 25 } }, params: { pins: 12, pinRadius: 2.5, eccentricity: 1, ...params }, refs: {}, frame: XY, chordTolerance });
+  const pulley = (teeth: number, chordTolerance: number) => generateProfile('gt2Pulley', { operands: { center: { kind: 'point', at: [0, 0] } }, params: { teeth }, refs: {}, frame: XY, chordTolerance });
+
+  it('a pulley too large is refused before its polygon exists, with the count it would have', () => {
+    for (const tolerance of [1e-6, 1e-9, 1e-12]) {
+      const started = performance.now();
+      const result = pulley(500, tolerance);
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(result.ok ? '' : result.message).toMatch(new RegExp(`the generated profile has \\d+ points, more than ${MAX_PROFILE_POINTS}; lower the number of grooves`));
+    }
+    // the count told beforehand is that of the polygon: the same points in every groove, and the
+    // polygon at a tolerance where it is built has the count of its grooves times that
+    const refused = pulley(500, 1e-4);
+    expect(refused.ok ? 0 : Number(refused.message.match(/has (\d+) points/)?.[1]) % 500).toBe(0);
+  });
+
+  it('the disc at the edge of undercut builds; a hair closer it is refused near the limit, not past it', () => {
+    const limit = smallestCurvatureRadius(25, 2, 12);
+    const edge = disc({ eccentricity: 2, pinRadius: 2.5737 });
+    expect(edge.ok).toBe(true);
+    if (edge.ok) expect(25 - edge.regions[0].outer.xy[0]).toBeLessThan(limit);
+    for (const hair of [1e-6, 1e-7, 1e-9]) {
+      const result = disc({ eccentricity: 2, pinRadius: limit - hair });
+      expect(result.ok ? '' : result.message).toMatch(/the disc is within the chord tolerance of the limit of undercut .* within 50000 points; lower the pin radius or the eccentricity/);
+    }
+  });
+
+  it('a disc too fine for the limit of points says so without a count it did not reach, and without fewer than three pins', () => {
+    const three = disc({ pins: 3, R: 10, pinRadius: 1, eccentricity: 0.5 }, 1e-9);
+    expect(three.ok ? '' : three.message).toBe('the disc would need more than 50000 points to keep its chords within the chord tolerance; raise the chord tolerance');
+    const many = disc({ pins: 500, R: 600, pinRadius: 2, eccentricity: 1 }, 1e-7);
+    expect(many.ok ? '' : many.message).toMatch(/would need more than 50000 points .*raise the chord tolerance or lower the number of pins$/);
   });
 });

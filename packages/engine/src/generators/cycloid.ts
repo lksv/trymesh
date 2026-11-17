@@ -160,21 +160,26 @@ export function cycloidalDisc(input: GeneratorInput): GeneratorResult {
   const room = Math.min((limit - r1) / 2, (R - E - r1) / 2) / MARGIN;
   const target = Math.min(chordTolerance, room);
   const near = (limit - r1 <= R - E - r1 ? `the limit of undercut (the pins as built may have a radius below ${round(limit)})` : 'the centre of the disc (the circle of the bottoms)');
-  const refused = (): GeneratorResult =>
-    target < chordTolerance
-      ? fail(`the disc is within the chord tolerance of ${near}: with ${drive}${withClearance} its polygon cannot be built inside the exact profile within ${MAX_PROFILE_POINTS} points; lower the pin radius or the eccentricity`)
-      : fail(tooLarge(lobes * (maxPerLobe + 1), 'lower the number of pins or raise the chord tolerance'));
+  const nearCondition = `the disc is within the chord tolerance of ${near}: with ${drive}${withClearance} its polygon cannot be built inside the exact profile`;
   const points = lobePoints(R, r1, E, N, target, maxPerLobe);
-  if (!points) return refused();
+  if (!points)
+    return fail(
+      target < chordTolerance
+        ? `${nearCondition} within ${MAX_PROFILE_POINTS} points; lower the pin radius or the eccentricity`
+        : `the disc would need more than ${MAX_PROFILE_POINTS} points to keep its chords within the chord tolerance; raise the chord tolerance${N > 3 ? ' or lower the number of pins' : ''}`,
+    );
   // The curve for larger pins is the exact one moved inwards; its chords deviate a little more, so
-  // the radius is found again until its own chords are covered.
+  // the radius is found again until its own chords are covered. It converges in a round or two (the
+  // deviation changes to second order); a radius that does not cover its chords is never built.
   let built = r1 + largestDeviation(R, r1, E, N, points) * MARGIN + 1e-12;
-  for (let i = 0; i < 8; i++) {
+  let covered = false;
+  for (let i = 0; i < 8 && !covered; i++) {
     const own = largestDeviation(R, built, E, N, points);
-    if (built - r1 >= own * MARGIN) break;
-    built = r1 + own * MARGIN + 1e-12;
+    covered = built - r1 >= own * MARGIN;
+    if (!covered) built = r1 + own * MARGIN + 1e-12;
   }
-  if (undercut(built) || noBottom(built)) return refused();
+  if (!covered) return fail(`${nearCondition}: the compensation of its chords does not settle`);
+  if (undercut(built) || noBottom(built)) return fail(nearCondition);
 
   // Placement: the centre of the disc is E from the centre of the ring in the direction of the
   // input angle, and the disc is turned by pinAngle − (rotation − pinAngle) / (N − 1).

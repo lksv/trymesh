@@ -3903,7 +3903,7 @@
     +   button.primary: "Upravit"
     +   button: "Potlačit"
     +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    + p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
@@ -4083,7 +4083,7 @@
     -   button.primary: "Upravit"
     -   button: "Potlačit"
     -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    - p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
@@ -4310,7 +4310,7 @@
     +   button.primary: "Upravit"
     +   button: "Potlačit"
     +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    + p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
@@ -4560,7 +4560,7 @@
     -   button.primary: "Upravit"
     -   button: "Potlačit"
     -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    - p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
@@ -4798,7 +4798,7 @@
     +   button.primary: "Upravit"
     +   button: "Potlačit"
     +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    + p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     + p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     + p.hint.body
     +   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"
@@ -5033,7 +5033,7 @@
     -   button.primary: "Upravit"
     -   button: "Potlačit"
     -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 6 mm, involute gear over c7."
+    - p.hint: "Nové těleso, distance 6 mm, Involute gear (circle c7)."
     - p.hint: "module 1.666667 mm, pitch ⌀ 20 mm, tip ⌀ 23.333333 mm, root ⌀ 15.833333 mm, rotation 0°, shift 0"
     - p.hint.body
     -   "Vysunutí 4: 1812.038 mm³, 23.322 × 23.322 × 6 mm"

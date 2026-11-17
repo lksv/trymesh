@@ -304,7 +304,7 @@ function generatorFields(host: PanelHost, m: ExtrudeMode, profile: Extract<Extru
       isFlag(param)
         ? h('label', { className: 'check' }, h('input', { type: 'checkbox', checked: profile.params[name] === true, onchange: (event: Event) => set({ params: { [name]: (event.target as HTMLInputElement).checked } }) }), param.title)
         : param.optional
-          ? draftField(host, m, `${param.title} (a number or an expression; empty = ${param.default})`, `profile/params/${name}`, (value) => set({ params: { [name]: typeof value === 'number' && Number.isNaN(value) ? null : value } }, false))
+          ? draftField(host, m, `${param.title} (${param.unit === 'rad' ? '° or an expression in radians' : param.unit === 'mm' ? 'mm or an expression' : 'a number or an expression'}; empty = ${param.default})`, `profile/params/${name}`, (value) => set({ params: { [name]: typeof value === 'number' && Number.isNaN(value) ? null : value } }, false))
           : draftField(host, m, `${param.title}${param.unit === 'rad' ? ' (° or an expression in radians)' : param.unit === 'mm' ? ' (mm or an expression)' : ''}`, `profile/params/${name}`, (value) => set({ params: { [name]: value } }, false)),
     ),
     ...Object.entries(spec.refs).map(([name, ref]) => {
@@ -431,7 +431,7 @@ export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
         ? `regions: ${f.profile.regions.length}${offset}`
         : f.profile.type === 'wall'
           ? `a wall ${shownValue(f, 'profile/thickness', f.profile.thickness)} mm thick along ${f.profile.curves.length === 1 ? 'the curve' : 'the curves'} ${f.profile.curves.join(', ')}`
-          : `${GENERATORS[f.profile.generator].title.toLowerCase()} over ${Object.values(f.profile.operands).join(', ')}`;
+          : `${GENERATORS[f.profile.generator].title} (${Object.entries(f.profile.operands).map(([field, id]) => `${field} ${id}`).join(', ')})`;
     const out = [h('p', { className: 'hint' }, `${OPERATIONS[f.operation]}, ${extent}, ${profile}${targets}.`)];
     const facts = factsText(f, host.view().evaluation.features[f.id]);
     if (facts) out.push(h('p', { className: 'hint' }, facts));

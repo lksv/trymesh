@@ -10,7 +10,7 @@
 // tooth height 0.76 of Gates' belt, and one groove for every count where Gates vary it.
 import type { GeneratorInput, GeneratorResult, GeneratorSpec } from '../generators';
 import type { Facts, Vec2 } from '../types';
-import { TAU, arcSteps, fail, round, toModel } from './common';
+import { MAX_PROFILE_POINTS, TAU, arcSteps, fail, round, toModel, tooLarge } from './common';
 
 export const GT2_PITCH = 2; // mm
 export const GT2_GROOVE = {
@@ -127,6 +127,14 @@ export function gt2Pulley(input: GeneratorInput): GeneratorResult {
   const halfGroove = Math.PI / 2 - arcs[0].from; // the angle of the end of the right fillet from the axis
   if (pitch - 2 * halfGroove <= 0) return fail('the grooves overlap: no land is left between them');
   const tipRadius = tip + allowance;
+  const landSweep = pitch - 2 * halfGroove;
+  // The size of the loop is known before it is built: every groove has the same points (the joint
+  // and the inner points of each arc, the end of the last fillet, the inner points of the land), so
+  // a profile that is too large is refused here, not after millions of points exist.
+  const steps = arcs.map((arc) => arcSteps(Math.abs(sweepOf(arc)), arc.radius, chordTolerance));
+  const landSteps = arcSteps(landSweep, tipRadius, chordTolerance);
+  const perGroove = arcs.reduce((sum, arc, i) => sum + 1 + (arc.convex ? steps[i] - 1 : steps[i]), 0) + 1 + (landSteps - 1);
+  if (teeth * perGroove > MAX_PROFILE_POINTS) return fail(tooLarge(teeth * perGroove, 'lower the number of grooves or raise the chord tolerance'));
 
   const xy: number[] = [];
   for (let k = 0; k < teeth; k++) {
@@ -136,9 +144,9 @@ export function gt2Pulley(input: GeneratorInput): GeneratorResult {
     const [cos, sin] = [Math.cos(turn), Math.sin(turn)];
     const push = (x: number, y: number) => xy.push(operand.at[0] + x * cos - y * sin, operand.at[1] + x * sin + y * cos);
     const at = (center: Vec2, radius: number, angle: number) => push(center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle));
-    for (const arc of arcs) {
+    for (const [i, arc] of arcs.entries()) {
       const sweep = sweepOf(arc);
-      const n = arcSteps(Math.abs(sweep), arc.radius, chordTolerance);
+      const n = steps[i];
       at(arc.center, arc.radius, arc.from); // the joint with the arc before, a point of both
       if (arc.convex) for (let i = 1; i < n; i++) at(arc.center, arc.radius, arc.from + (sweep * i) / n);
       else for (let i = 0; i < n; i++) at(arc.center, arc.radius / Math.cos(sweep / (2 * n)), arc.from + (sweep * (i + 0.5)) / n);
@@ -147,8 +155,7 @@ export function gt2Pulley(input: GeneratorInput): GeneratorResult {
     const last = arcs[arcs.length - 1];
     at(last.center, last.radius, last.to);
     const landFrom = Math.PI / 2 + halfGroove;
-    const landSweep = pitch - 2 * halfGroove;
-    const n = arcSteps(landSweep, tipRadius, chordTolerance);
+    const n = landSteps;
     for (let i = 1; i < n; i++) at([0, 0], tipRadius, landFrom + (landSweep * i) / n);
   }
 

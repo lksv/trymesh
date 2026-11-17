@@ -4,7 +4,7 @@
 // the clearance, the failures, and the review's disc at the edge of undercut.
 import { describe, expect, it } from 'vitest';
 import { type GeneratorInput, MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
-import { discPoint, smallestCurvatureRadius } from '../src/generators/cycloid';
+import { smallestCurvatureRadius } from '../src/generators/cycloid';
 import type { Frame, Vec2 } from '../src/types';
 
 const XY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] };
@@ -75,7 +75,8 @@ const selfCrossing = (loop: P[]): boolean => {
 };
 
 // The published curve, written out again here (design.md, [S1]): the frame of the disc at the input
-// angle 0, the ring centre at (−E, 0).
+// angle 0, the ring centre at (−E, 0). It is the formula of the generator; what checks the frame,
+// the orientation and the placement independently are the pins that stand still, below.
 function published(R: number, rr: number, E: number, N: number, t: number): P {
   const psi = Math.atan2(Math.sin((1 - N) * t), R / (E * N) - Math.cos((1 - N) * t));
   return [R * Math.cos(t) - rr * Math.cos(t + psi) - E * Math.cos(N * t), -R * Math.sin(t) + rr * Math.sin(t + psi) + E * Math.sin(N * t)];
@@ -131,7 +132,6 @@ describe('cycloidal disc: the profile', () => {
         expect(off(t), `point ${i}`).toBeLessThan(1e-9);
       }
       expect(t).toBeGreaterThan(0); // the points run once round, in order
-      expect(discPoint(R, built, E, N, 0.7)).toEqual(published(R, built, E, N, 0.7));
     }
   });
 
@@ -263,7 +263,7 @@ describe('cycloidal disc: what cannot be built', () => {
     // or undercut comes first, as here.
     expect(failure({ R: 4, pins: 3, eccentricity: 1.2, pinRadius: 3 })).toMatch(/undercut/);
     // too many points
-    expect(failure({ pins: 500, R: 600, pinRadius: 2, eccentricity: 1, chordTolerance: 1e-7 })).toMatch(new RegExp(`more than ${MAX_PROFILE_POINTS}`));
+    expect(failure({ pins: 500, R: 600, pinRadius: 2, eccentricity: 1, chordTolerance: 1e-7 })).toMatch(new RegExp(`would need more than ${MAX_PROFILE_POINTS} points`));
   });
 
   it('the review\'s disc just inside the limit of undercut: built with more points or refused, never past the limit', () => {
@@ -271,8 +271,8 @@ describe('cycloidal disc: what cannot be built', () => {
     const limit = smallestCurvatureRadius(25, 2, 12);
     expect(d.pinRadius).toBeLessThan(limit);
     const result = build(d);
-    if (!result.ok) expect(result.message).toMatch(/within the chord tolerance of the limit of undercut/);
-    else {
+    expect(result.ok).toBe(true);
+    if (result.ok) {
       const xy = result.regions[0].outer.xy;
       const loop = Array.from({ length: xy.length / 2 }, (_, i): P => [xy[2 * i], xy[2 * i + 1]]);
       expect(25 - loop[0][0]).toBeLessThan(limit); // the radius built
@@ -281,9 +281,11 @@ describe('cycloidal disc: what cannot be built', () => {
       // one lobe is enough to see a crossing: the polygon repeats with the lobes
       expect(selfCrossing(loop.slice(0, loop.length / 11 + 2))).toBe(false);
     }
-    // with a coarse tolerance the compensation alone passes the limit: the polygon is refined or refused
+    // with a coarse tolerance the compensation alone would pass the limit: the polygon is refined
     const coarse = build({ ...d, chordTolerance: 0.05 });
-    if (!coarse.ok) expect(coarse.message).toMatch(/within the chord tolerance/);
-    else expect(25 - coarse.regions[0].outer.xy[0]).toBeLessThan(limit);
+    expect(coarse.ok).toBe(true);
+    if (coarse.ok) expect(25 - coarse.regions[0].outer.xy[0]).toBeLessThan(limit);
+    // a hair closer to the limit it cannot be refined within the limit of points: refused, never past it
+    expect(failure({ eccentricity: 2, pinRadius: limit - 1e-9 })).toMatch(/the disc is within the chord tolerance of the limit of undercut/);
   });
 });

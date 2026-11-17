@@ -17,7 +17,7 @@ const refused = (run: () => unknown, message: RegExp) => {
 
 describe('roles of faces', () => {
   it('the roles of an extrusion and of a hole, in the order they are listed to a client', () => {
-    expect(Object.keys(FACE_ROLES)).toEqual(['side', 'startCap', 'endCap', 'wallSide', 'wallEnd', 'holeBore', 'holeHead', 'holeFlat', 'holeSeat', 'mesh', 'splitFace']);
+    expect(Object.keys(FACE_ROLES)).toEqual(['side', 'startCap', 'endCap', 'wallSide', 'wallEnd', 'holeBore', 'holeHead', 'holeFlat', 'holeSeat', 'mesh', 'splitFace', 'chamfer', 'fillet']);
     expect(Object.fromEntries(Object.entries(FACE_ROLES).map(([role, spec]) => [role, Object.keys(spec.parts)]))).toEqual({
       side: ['curve'],
       startCap: [],
@@ -30,6 +30,8 @@ describe('roles of faces', () => {
       holeSeat: [],
       mesh: [],
       splitFace: [],
+      chamfer: ['edge'],
+      fillet: ['edge'],
     });
   });
 

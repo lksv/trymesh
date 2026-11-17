@@ -129,7 +129,8 @@ export class App implements SketchHost, SceneHost {
     const m = this.mode;
     if (m.kind === 'sketch') this.cache = m.preview ?? this.engine.getState(m.id);
     else if (m.kind === 'model') this.cache = this.mechanism.preview ?? (this.marker ? this.engine.getState(this.marker) : this.engine.getState());
-    else this.cache = m.preview ?? this.stateBefore(m.index);
+    // a form that picks from the model before its feature shows that model while it picks
+    else this.cache = (m.form.picks?.(m)?.before ? undefined : m.preview) ?? this.stateBefore(m.index);
     return this.cache;
   }
   // Before the first feature there is no state of the engine: it is the whole one without what the

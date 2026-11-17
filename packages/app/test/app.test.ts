@@ -1425,6 +1425,58 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'combine-split');
   });
 
+  it('a chamfer and a fillet of edges picked in the view from the body before them: the list, a removal, the size, the summary (D63)', async () => {
+    const h = await start();
+    const sketch = 'plateS';
+    const corners: [number, number][] = [[0, 0], [40, 0], [40, 30], [0, 30]];
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch(sketch, 'plate sketch', { kind: 'base', plane: 'XY' }) },
+        ...corners.flatMap(([x, y], i): Command[] => [
+          { type: 'addPoint', sketch, id: `p${i}`, x, y },
+          { type: 'addConstraint', sketch, id: `f${i}`, constraint: { type: 'fixed', point: `p${i}`, x, y } },
+        ]),
+        ...corners.map((_, i): Command => ({ type: 'addCurve', sketch, id: `l${i}`, curve: { type: 'line', a: `p${i}`, b: `p${(i + 1) % 4}` } })),
+        { type: 'addFeature', feature: { id: 'plate', name: 'Plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: ['l0', 'l1', 'l2', 'l3'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } },
+      ],
+    });
+    h.record('a plate 40 × 30 × 10');
+
+    h.press('toolbar', 'Chamfer');
+    h.record('a new chamfer: picking edges is armed, no edge yet');
+    h.click(at(20, 0, 10));
+    h.record('the top front edge picked: the view shows the plate before the chamfer with the edge over it');
+    h.click(at(40, 15, 10));
+    h.record('the top right edge picked too: two edges in the list');
+    h.click(at(20, 0, 10));
+    h.record('the top front edge clicked again: taken out of the list');
+    h.click(at(20, 0, 10));
+    h.type(h.field('Distance (mm, along both faces)'), '2');
+    h.record('picked again, the distance 2');
+    h.press('panel', 'Picking… (click to stop)');
+    h.record('picking stopped: the view shows the preview, the setbacks under the form');
+    h.press('panel', 'Remove', 0);
+    h.record('the first edge removed by its button');
+    h.press('panel', 'OK');
+    h.record('OK: the chamfer is in the document');
+    expect(h.engine.getState().document.features.find((f) => f.type === 'chamfer')).toMatchObject({ body: 'plate', distance: 2, edges: [{ a: { feature: 'plate', role: 'endCap' }, b: { feature: 'plate', role: 'side', curve: 'l0' } }] });
+    h.row('Chamfer 1').click();
+    h.record('selected: the summary');
+
+    h.press('toolbar', 'Fillet');
+    h.record('a new fillet of the plate, picking armed');
+    h.click(at(0, 15, 5));
+    h.type(h.field('Radius (mm)'), '20');
+    h.record('the top left edge picked, a radius too large for its faces: the error names the edge and the face');
+    h.type(h.field('Radius (mm)'), '3');
+    h.press('panel', 'OK');
+    h.record('a radius of 3: OK, the fillet is in the document');
+    expect(h.engine.getState().document.features.find((f) => f.type === 'fillet')).toMatchObject({ body: 'plate', radius: 3 });
+    expect(h.engine.getState().evaluation.features.fillet1.status).toBe('ok');
+    await matches(h, 'chamfer-fillet');
+  });
+
   it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {
     const h = await start();
     h.press('toolbar', 'Skica');

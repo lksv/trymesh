@@ -1,5 +1,5 @@
 // The text of a recompute issue and the names of what it refers to, for a human. Pure functions, no DOM.
-import { DOCUMENT_SECTIONS, type Document, type FaceName, type Feature, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
+import { DOCUMENT_SECTIONS, type Document, type EdgeName, type FaceName, type Feature, type Id, type Issue, type IssueCode, type NumberSpec, bodyOwner } from '@trymesh/engine';
 
 // The name of a feature of the document; undefined when the document has no such feature.
 export type NameOf = (feature: Id) => string | undefined;
@@ -20,11 +20,21 @@ export const ROLES: Record<FaceName['role'], string> = {
   holeSeat: 'seat of a hole',
   mesh: 'surface of an imported mesh',
   splitFace: 'cut face of a split',
+  chamfer: 'chamfer',
+  fillet: 'fillet',
 };
 // What tells apart the faces of a wall and of a hole: the side of its curve, the point of its end
 // or of the hole, the number of a flat.
 const wallPart = (name: FaceName): string =>
-  name.role === 'wallSide' ? ` (${name.side} of ${name.curve})` : name.role === 'wallEnd' || name.role === 'holeBore' || name.role === 'holeHead' ? ` (at ${name.point})` : name.role === 'holeFlat' ? ` (${name.flat} at ${name.point})` : '';
+  name.role === 'wallSide'
+    ? ` (${name.side} of ${name.curve})`
+    : name.role === 'wallEnd' || name.role === 'holeBore' || name.role === 'holeHead'
+      ? ` (at ${name.point})`
+      : name.role === 'holeFlat'
+        ? ` (${name.flat} at ${name.point})`
+        : name.role === 'chamfer' || name.role === 'fillet'
+          ? ` of edge ${name.edge + 1}`
+          : '';
 
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;
@@ -60,6 +70,11 @@ interface CopyRef {
 }
 const isCopy = (ref: unknown): ref is CopyRef => typeof ref === 'object' && ref !== null && typeof (ref as { copy?: unknown }).copy === 'number' && typeof (ref as { feature?: unknown }).feature === 'string';
 const isFace = (ref: unknown): ref is FaceName => typeof ref === 'object' && ref !== null && typeof (ref as { feature?: unknown }).feature === 'string' && typeof (ref as { role?: unknown }).role === 'string';
+const isEdge = (ref: unknown): ref is EdgeName => typeof ref === 'object' && ref !== null && isFace((ref as { a?: unknown }).a) && isFace((ref as { b?: unknown }).b);
+// The issues of a chamfer and a fillet (D63) name edges and faces; a missing edge of theirs too.
+const BY_FACES: readonly IssueCode[] = ['unsupportedEdge', 'blendDoesNotFit', 'brokenReference'];
+// An edge by the labels of its two faces.
+export const edgeLabel = (name: EdgeName, nameOf: NameOf, typeOf?: TypeOf): string => `${faceLabel(name.a, nameOf, typeOf)} × ${faceLabel(name.b, nameOf, typeOf)}`;
 
 // Issues whose string refs are bodies and features (the targets a cut missed or would remove,
 // a missing target or source). Other issues keep their refs to themselves (constraints, field paths).
@@ -72,6 +87,8 @@ export function issueText(issue: Issue, nameOf: NameOf, bodyNameOf?: BodyNameOf,
   const named = (issue.refs ?? []).flatMap((ref): string[] => {
     if (isCopy(ref)) return [`copy ${ref.copy} of ${refName(ref.feature, nameOf)}`];
     if (issue.code === 'invalidClearance' && isFace(ref)) return [faceLabel(ref, nameOf, typeOf)];
+    if (BY_FACES.includes(issue.code) && isEdge(ref)) return [`the edge ${edgeLabel(ref, nameOf, typeOf)}`];
+    if (BY_FACES.includes(issue.code) && isFace(ref)) return [`the face ${faceLabel(ref, nameOf, typeOf)}`];
     return typeof ref === 'string' && NAMED.includes(issue.code) ? [refName(ref, nameOf, bodyNameOf)] : [];
   });
   return named.length ? `${issue.message} (${named.join(', ')})` : issue.message;

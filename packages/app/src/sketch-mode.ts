@@ -1,23 +1,22 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, type Vec2, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
-import { type Anchor, type FilletOptions, type PolygonOptions, arcCommands, asConstruction, circleCommands, deleteCommands, filletCommands, lineCommands, pointCommands, polygonCommands, positionOf, rectangleCommands } from './sketch-commands';
+import { deleteCommands } from './sketch-commands';
 import { freeEntities } from './sketch-diagnosis';
-import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
+import { type Place, SKETCH_TOOL_UI, type SketchPlaceTool, type SketchToolName, placePosition } from './sketch-tools';
+import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
 import type { SceneModel } from './viewport';
-
-export type Tool = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'fillet' | 'project';
 
 export interface SketchMode {
   kind: 'sketch';
   id: Id;
-  tool: Tool;
-  clicks: Anchor[]; // dosud zadané body rozpracovaného tvaru
-  cursor?: Anchor;
+  tool: SketchToolName; // a tool of the bar (SKETCH_TOOL_UI)
+  clicks: Place[]; // dosud zadané body rozpracovaného tvaru
+  cursor?: Place;
   infer?: 'horizontal' | 'vertical';
   selection: Id[];
   hover?: Id;
@@ -51,8 +50,7 @@ export function sketchContextOf(state: EngineState, id: Id): SketchContext | und
 
 // What the mode remembers beyond one sketch. The app holds it; the mode and its panel read and write it.
 export interface SketchState {
-  polygon: PolygonOptions; // what the polygon tool draws
-  fillet: FilletOptions; // the radius of the fillet tool
+  tools: Partial<Record<SketchToolName, unknown>>; // the options of a tool once set (SketchToolUi.options); its `initial` until then
   explained?: { diagnosis: SketchDiagnosis; id: Id; value: ConstraintExplanation }; // the explanation asked last
 }
 
@@ -64,22 +62,21 @@ export interface SketchHost extends PanelHost {
   pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): ViewPick | undefined; // what is under the pointer in the model
 }
 
-export const TOOLS: [Tool, string, string][] = [
-  ['select', 'Výběr', 'Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.'],
-  ['point', 'Bod', 'Klikněte na místo bodu.'],
-  ['line', 'Úsečka', 'Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.'],
-  ['rect', 'Obdélník', 'Klikněte na dva protilehlé rohy.'],
-  ['polygon', 'Polygon', 'Click the centre and then a vertex; the number of sides is set in the panel.'],
-  ['circle', 'Kružnice', 'Klikněte na střed a pak na bod obvodu.'],
-  ['arc', 'Oblouk', 'Klikněte na střed, začátek a konec (proti směru hodin).'],
-  ['fillet', 'Fillet', 'Click the point where two lines meet; the radius is set in the panel.'],
-  ['project', 'Promítnout', 'Klikněte na hranu tělesa (úsečku nebo kružnici).'],
-];
+// The entry of the active tool when it picks places (every tool but Project).
+const placeTool = (m: SketchMode): SketchPlaceTool<unknown> | undefined => {
+  const tool = SKETCH_TOOL_UI[m.tool];
+  return tool.picks === 'edge' ? undefined : tool;
+};
 
-export function setTool(host: SketchHost, tool: Tool): void {
+// The options of a tool: what was set last, else the start value of its entry.
+export function toolOptions(host: SketchHost, tool: SketchToolName): unknown {
+  return tool in host.sketching.tools ? host.sketching.tools[tool] : SKETCH_TOOL_UI[tool].options?.initial;
+}
+
+export function setTool(host: SketchHost, tool: SketchToolName): void {
   if (!host.sketch) return;
   Object.assign(host.sketch, { tool, clicks: [], cursor: undefined, infer: undefined, hover: undefined, hoverEdge: undefined, repair: undefined });
-  host.say(TOOLS.find(([name]) => name === tool)?.[2] ?? '');
+  host.say(SKETCH_TOOL_UI[tool].hint);
   host.refresh();
 }
 
@@ -87,7 +84,7 @@ export function setTool(host: SketchHost, tool: Tool): void {
 export function settleSketch(m: SketchMode, context: SketchContext | undefined): void {
   const view = context?.view;
   m.selection = m.selection.filter((id) => view && kindOf(view, id));
-  m.clicks = m.clicks.filter((a) => !a.snap || (view && kindOf(view, a.snap.id)));
+  m.clicks = m.clicks.filter((a) => !a.snap || a.snap.kind === 'foreign' || (view && kindOf(view, a.snap.id)));
   if (m.repair && !context?.feature.external[m.repair]) m.repair = undefined;
   // místo pod kurzorem se po změně skici počítá znovu: přichycení mohlo vzniknout nebo zaniknout
   m.cursor = undefined;
@@ -104,9 +101,9 @@ export function sketchEscape(m: SketchMode): void {
   else m.focus = undefined;
 }
 
-// A press with the select tool on a point of the sketch starts its drag. True: the app captures the pointer.
+// A press on a point of the sketch with a tool that drags (Select) starts its drag. True: the app captures the pointer.
 export function sketchDown(host: SketchHost, m: SketchMode, event: PointerEvent): boolean {
-  if (m.tool !== 'select') return false;
+  if (!placeTool(m)?.drags) return false;
   const context = host.sketchContext();
   const anchor = context && anchorAt(host, event, context);
   const id = anchor?.snap?.kind === 'point' ? anchor.snap.id : undefined;
@@ -125,7 +122,7 @@ export function dropPoint(host: SketchHost, m: SketchMode, point: Id, event: Poi
 }
 
 // Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou.
-function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext): Anchor | undefined {
+function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext): Place | undefined {
   const p = host.planePoint(event, context.frame)?.at;
   if (!p) return undefined;
   const reach = PICK_REACH * host.pixelSize();
@@ -134,6 +131,19 @@ function anchorAt(host: SketchHost, event: { clientX: number; clientY: number },
   const curve = hitCurve(context.view, p, reach);
   if (curve) return { at: closestOn(curve.shape, p), snap: { kind: 'curve', id: curve.id } };
   return { at: p };
+}
+
+// The place under the pointer as the tool picks it: in the sketch, points first (`sketch`); on the
+// curves the tool takes, the nearest point of the nearest one, else the bare pointer (`curve`); or
+// by the tool's own picker. Exported for the tests.
+export function placeAt(host: SketchHost, tool: SketchPlaceTool<unknown>, event: { clientX: number; clientY: number }, context: SketchContext): Place | undefined {
+  const picks = tool.picks ?? 'sketch';
+  if (picks === 'sketch') return anchorAt(host, event, context);
+  if (picks !== 'curve') return picks.pick(host, event, context);
+  const p = host.planePoint(event, context.frame)?.at;
+  if (!p) return undefined;
+  const curve = hitCurve(context.view, p, PICK_REACH * host.pixelSize(), (id) => tool.eligible?.(id, context) === false);
+  return curve ? { at: closestOn(curve.shape, p), snap: { kind: 'curve', id: curve.id } } : { at: p };
 }
 
 // A move of the pointer. `down`: where the button went down, while it is held. The answer says what
@@ -153,18 +163,19 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
     host.invalidate();
     return 'drag';
   }
-  if (m.tool === 'project') {
+  const tool = placeTool(m);
+  if (!tool) {
     const edge = host.pick(event, { edges: true });
     if (pickKey(edge) === pickKey(m.hoverEdge)) return undefined;
     m.hoverEdge = edge;
     return 'scene';
   }
-  const anchor = anchorAt(host, event, context);
-  m.hover = m.tool === 'select' ? anchor?.snap?.id : undefined;
+  const anchor = placeAt(host, tool, event, context);
+  m.hover = tool.hovers && anchor?.snap?.kind !== 'foreign' ? anchor?.snap?.id : undefined;
   m.infer = undefined;
   // odvozená vazba: volný konec úsečky skoro vodorovně nebo svisle od začátku
-  if (anchor && !anchor.snap && m.tool === 'line' && m.clicks.length === 1) {
-    const from = positionOf(context.view, m.clicks[0]);
+  if (anchor && !anchor.snap && tool.infer && m.clicks.length === 1) {
+    const from = placePosition(context.view, m.clicks[0]);
     const reach = PICK_REACH * host.pixelSize();
     const [dx, dy] = [Math.abs(anchor.at[0] - from[0]), Math.abs(anchor.at[1] - from[1])];
     if (dy <= reach && dx > reach) [anchor.at, m.infer] = [[anchor.at[0], from[1]], 'horizontal'];
@@ -174,74 +185,39 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
   return 'scene';
 }
 
+// A click: the entry of the tool gets it. A shape of several places keeps the places before the
+// last; the last one runs the tool with all of them.
 export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent): void {
   const context = host.sketchContext();
   if (!context) return;
-  if (m.tool === 'project') return projectEdge(host, m, event, context);
-  if (m.tool === 'fillet') return filletCorner(host, m, event, context);
+  const entry = SKETCH_TOOL_UI[m.tool];
+  if (entry.picks === 'edge') return entry.click(host, m, host.pick(event, { edges: true }), context);
+  const tool: SketchPlaceTool<unknown> = entry;
   // místo kliknutí včetně odvozené vazby spočítal poslední pohyb myši; bez něj se dopočítá
-  const anchor = m.cursor && m.tool !== 'select' ? m.cursor : anchorAt(host, event, context);
-  if (!anchor) return;
-  const { view } = context;
-  const batch = (commands: Command[] | undefined): boolean => commands !== undefined && commands.length > 0 && host.run({ type: 'batch', commands: m.construction ? asConstruction(commands) : commands });
-
-  if (m.tool === 'select') {
-    const id = anchor.snap?.id;
-    if (!id) m.selection = event.shiftKey ? m.selection : [];
-    else if (!event.shiftKey) m.selection = [id];
-    else m.selection = m.selection.includes(id) ? m.selection.filter((other) => other !== id) : [...m.selection, id];
-    host.renderPanel();
+  const place = m.cursor && !tool.atClick ? m.cursor : placeAt(host, tool, event, context);
+  if (!place) return;
+  if (tool.clicks !== undefined && m.clicks.length + 1 < tool.clicks) {
+    m.clicks = [...m.clicks, place];
     return host.renderScene();
   }
-  if (m.tool === 'point') {
-    batch(pointCommands(m.id, view, anchor, host.newId));
-    return;
-  }
-  const needed = m.tool === 'arc' ? 3 : 2;
-  if (m.clicks.length + 1 < needed) {
-    m.clicks = [...m.clicks, anchor];
-    return host.renderScene();
-  }
-  const clicks = m.clicks;
+  const places = [...m.clicks, place];
   m.clicks = [];
-  if (m.tool === 'line') {
-    const line = lineCommands(m.id, view, clicks[0], anchor, host.newId, m.infer);
-    // řetěz pokračuje z konce, dokud se nenapojí na existující bod
-    if (line && batch(line.commands) && anchor.snap?.kind !== 'point' && host.sketch === m) m.clicks = [{ at: anchor.at, snap: { kind: 'point', id: line.end } }];
-  } else if (m.tool === 'rect') batch(rectangleCommands(m.id, context.tool, clicks[0], anchor, host.newId));
-  else if (m.tool === 'polygon') batch(polygonCommands(m.id, context.tool, clicks[0], anchor, host.sketching.polygon, host.newId));
-  else if (m.tool === 'circle') batch(circleCommands(m.id, view, clicks[0], anchor, host.newId));
-  else batch(arcCommands(m.id, view, clicks[0], clicks[1], anchor, host.newId));
+  const kept = tool.click(host, m, places, context, toolOptions(host, m.tool), event);
+  if (kept && kept.length > 0 && host.sketch === m) m.clicks = kept;
+  if (tool.clicks === undefined) return;
   m.infer = undefined;
   host.renderScene();
 }
 
-// The fillet of the corner under the pointer (D52). The batch is sent as the tool made it: the
-// switch of construction curves does not apply, the arc follows its lines.
-function filletCorner(host: SketchHost, m: SketchMode, event: PointerEvent, context: SketchContext): void {
-  const corner = anchorAt(host, event, context)?.snap;
-  if (corner?.kind !== 'point') return host.say('Click a point where two lines meet.', true);
-  const made = filletCommands(context.tool, corner.id, host.sketching.fillet, host.newId);
-  if (!made.ok) return host.say(`Fillet: ${made.message}`, true);
-  const { patched, moved, shortened } = made.ids;
-  const notes = [
-    patched.length === 0 ? 'no feature needed the arc' : `the arc was added to ${patched.length === 1 ? 'the profile of 1 feature' : `the profiles of ${patched.length} features`}`,
-    ...(moved.length > 0 ? [`moved with the start of a line: ${moved.map((id) => host.nameOf(id)).join(', ')}`] : []),
-    ...(shortened.length > 0 ? [`reading one line, check: ${shortened.map((id) => host.nameOf(id)).join(', ')}`] : []),
-  ];
-  host.run({ type: 'batch', commands: made.commands }, `Corner rounded; ${notes.join('; ')}.`);
-}
-
-// Promítne hranu tělesa; je-li vybrané jedno promítnutí, opraví ho (ID zůstane, vazby drží).
-function projectEdge(host: SketchHost, m: SketchMode, event: PointerEvent, context: SketchContext): void {
-  const edge = host.pick(event, { edges: true });
-  if (edge?.kind !== 'edge') return;
-  if (edge.edgeKind !== 'line' && edge.edgeKind !== 'circle') return host.say('Promítnout jde jen hrana, která je úsečka nebo kružnice.', true);
-  const ref = { type: 'edge' as const, body: edge.body, edge: edge.name, kind: edge.edgeKind };
-  const repaired = m.repair ?? (m.selection.length === 1 && context.feature.external[m.selection[0]] ? m.selection[0] : undefined);
-  if (repaired) {
-    if (host.run({ type: 'updateExternal', sketch: m.id, id: repaired, ref }, 'Promítnutí opraveno.')) m.repair = undefined;
-  } else host.run({ type: 'addExternal', sketch: m.id, id: host.newId('x'), ref }, 'Hrana promítnuta.');
+// The key Enter: a tool that collects places (6d: the control points of a spline) finishes with them.
+export function sketchFinish(host: SketchHost, m: SketchMode): void {
+  const context = host.sketchContext();
+  const tool = placeTool(m);
+  if (!context || !tool?.finish) return;
+  const places = m.clicks;
+  m.clicks = [];
+  tool.finish(host, m, places, context, toolOptions(host, m.tool));
+  host.renderScene();
 }
 
 export function addConstraints(host: SketchHost, m: SketchMode, constraints: Constraint[] | undefined): void {
@@ -370,31 +346,14 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     model.labels.push({ at: toWorld(frame, at[0], at[1]), text: c.driving ? text : `(${text})`, tone: result.conflicting.includes(id) ? 'problem' : c.driving ? 'driving' : 'reference' });
   }
 
-  // rozpracovaný tvar
+  // rozpracovaný tvar: what the tool draws, the marker of a snap and the inferred direction
   const cursor = m.cursor;
-  if (cursor && m.tool !== 'select' && m.tool !== 'project') {
+  const tool = placeTool(m);
+  if (cursor && tool && !tool.hovers) {
     const rubber: number[] = [];
     const at = cursor.at;
-    const first = m.clicks[0] && positionOf(view, m.clicks[0]);
-    const shape = (s: Shape) => pushPolyline(rubber, frame, polyline(s));
-    if (first && m.tool === 'line') shape({ type: 'line', a: first, b: at });
-    if (first && m.tool === 'rect') pushPolyline(rubber, frame, [first, [at[0], first[1]], at, [first[0], at[1]], first]);
-    if (first && m.tool === 'circle') shape({ type: 'circle', center: first, radius: Math.hypot(at[0] - first[0], at[1] - first[1]) });
-    if (first && m.tool === 'polygon') {
-      // the circumscribed circle and the polygon with its first vertex at the cursor
-      const [radius, direction, sides] = [Math.hypot(at[0] - first[0], at[1] - first[1]), Math.atan2(at[1] - first[1], at[0] - first[0]), host.sketching.polygon.sides];
-      shape({ type: 'circle', center: first, radius });
-      pushPolyline(rubber, frame, Array.from({ length: sides + 1 }, (_, i): Vec2 => [first[0] + radius * Math.cos(direction + (2 * Math.PI * i) / sides), first[1] + radius * Math.sin(direction + (2 * Math.PI * i) / sides)]));
-    }
-    if (first && m.tool === 'arc') {
-      const start = m.clicks[1] ? positionOf(view, m.clicks[1]) : at;
-      shape({ type: 'line', a: first, b: start });
-      if (m.clicks[1]) {
-        const from = Math.atan2(start[1] - first[1], start[0] - first[0]);
-        const sweep = (Math.atan2(at[1] - first[1], at[0] - first[0]) - from + 4 * Math.PI) % (2 * Math.PI);
-        shape({ type: 'arc', center: first, radius: Math.hypot(start[0] - first[0], start[1] - first[1]), from, sweep: sweep || 2 * Math.PI });
-      }
-    }
+    const places = m.clicks.map((place) => placePosition(view, place));
+    for (const points of tool.draw?.(places, cursor, context, toolOptions(host, m.tool)) ?? []) pushPolyline(rubber, frame, points);
     model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
     if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
     if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : 'svisle', tone: 'reference' });

@@ -371,6 +371,21 @@ Many findings again, though narrower: a third round reads only the diff of these
 
 Sound by both: the fresh reader and the nulling of addresses, ends joined and centres raw, the keys of a projection stamped with its value, the axes and the mirror of calls.ts, the redraw of a kept shape, the face keys, the section "Slots, not mechanisms" against the rule of CLAUDE.md on the depth of a review. This was the last round the owner's rule allows; nothing is left open from it.
 
+## As implemented
+
+The parts in the order of their commits, each with what it changed against the design.
+
+### Part 4: the app's sketch tools as a table
+
+As designed: `packages/app/src/sketch-tools/` with `spec.ts` (`SketchToolUi`, `SketchPlaceTool`, `SketchEdgeTool`, `drawn`), a file per tool and `index.ts` (`SKETCH_TOOL_UI`, `SketchToolName` its keys); `SketchMode.tool` is a `SketchToolName`, `App.sketching` is `{ tools, explained? }`, the panels of the polygon and the fillet moved into their files. The snapshots of the app pass without `-u`; no public type of the engine changed. Beside the contract:
+
+- **`Place`** (`spec.ts`) is the contract's `PlaceStandIn`: an anchor, or a place with a foreign snap. A tool that picks in the sketch reads its places through `anchor(place)`, which drops a foreign snap (only a tool's own picker makes one); the mode positions a kept place by `placePosition` (a foreign snap keeps its `at`).
+- **After the last place of a shape** (a tool with `clicks`) the mode, not each `click`, drops the inferred direction and redraws the scene, which is what the end of `sketchClick` did after every shape; `click` makes only the calls of its own (select: the panel and the scene).
+- **`hovers` also means "no marker of a snap and no shape in progress"**: the mode tells the select tool from the drawing tools by it, as `m.tool !== 'select'` did.
+- **A click whose pointer misses the plane of the sketch** does nothing for every tool. Before, the fillet then said "Click a point where two lines meet."; the pointer misses the plane only when the view looks along it.
+- **Enter** calls `sketchFinish`, which runs the tool's `finish` with the places kept; no tool of today has one.
+- `placeAt` (the place under the pointer as a tool picks it) is exported for `packages/app/test/sketch-tool-table.test.ts`, which checks `picks: 'sketch'`, `'curve'` with and without `eligible`, and a tool's own picker, and the order and kinds of the table.
+
 ## Rows for the indexes
 
 **docs/d36/README.md**, the row of 6a, column "Design now":

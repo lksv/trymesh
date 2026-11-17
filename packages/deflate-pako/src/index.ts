@@ -9,8 +9,10 @@
 //   the default strategy). The stream is that of zlib at level 6 byte for byte (deflate.md,
 //   "Measured": against zlib 1.2.12 and 1.3.2; `pako` 3.0.3 with `legacyHash` gives the same).
 // - Synchronous, in Node and in a browser, with nothing to load: no clock, no randomness.
-// - The library throws an `Error` when its stream reports one; the writer of the engine turns it
-//   into the answer `failed`.
+// - When it cannot compress, 2.1.0 throws: an `Error` when the stream cannot be set up (options out
+//   of range), and the message of zlib as a plain string when the stream reports an error. The
+//   writer of the engine turns either into the answer `failed` (`String` of a thrown value that is
+//   no `Error`).
 import type { Deflater } from '@trymesh/engine';
 import { deflateRaw } from 'pako/lib/deflate.js';
 

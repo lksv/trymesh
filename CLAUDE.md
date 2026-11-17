@@ -39,7 +39,7 @@ app (three.js UI)  ──commands (JSON)──▶  engine  ◀──tools── 
                                            └── deflate-pako         (compressor of 3MF, optional)
 ```
 
-- **`packages/engine`** has no dependencies at all (enforced by its `package.json`). It knows neither the adapters nor the renderer; the adapters are passed to `createEngine({ solver, kernel, deflater? })`. Third-party libraries live only behind the ports `SketchSolver` and `SolidKernel`.
+- **`packages/engine`** has no dependencies at all (enforced by its `package.json`). It knows neither the adapters nor the renderer; the adapters are passed to `createEngine({ solver, kernel, deflater? })`. Third-party libraries live only behind the ports `SketchSolver`, `SolidKernel` and `Deflater`.
 - **`packages/solver-planegcs`, `packages/kernel-manifold`** implement the ports over WASM libraries. Loading is async at creation, the calls are sync. **`packages/deflate-pako`** implements the optional port `Deflater` (a raw DEFLATE stream for the 3MF, D54) over `pako`; creating it is sync.
 - **`packages/scenarios`** has tests only: multi-step validation scenarios (numbered in `docs/requirements.md`) against the real adapters in Node. `test/kit.ts` has the helpers for building sketches and extrusions.
 - **`packages/app`** only composes commands and shows state. Anything that computes belongs to the engine or to a shared module. The class `App` (`app.ts`) holds the state of the UI and dispatches events; panels (`panels/`), forms of feature types (`features/`), the sketch mode and the scene are functions over the interface `PanelHost` (`host.ts`) and never import `app.ts`.

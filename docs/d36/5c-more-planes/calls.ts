@@ -4,13 +4,16 @@
 // packages/scenarios/test/scenario13.test.ts. Lines marked `@ts-expect-error` are calls that must
 // not compile.
 //
+// The part comes after the sweeps of 5a in the scenario (the joint about the tilted axis makes every
+// posed collision check pay seconds per pair across it), or removes the joint before them.
+//
 // The arm is `arm()` of packages/scenarios/test/arm.ts: the forearm is a disc of radius 70 about
 // (180, 0) from z = 8 to 16, every sketch of the arm on the base plane XY. The numbers in the
 // comments were measured on 2026-11-17 (design.md, "Measured"): the frames of the two caps of the
 // forearm and the section through the real engine, the frames of the tilt and of the midplane by
 // the functions of the contract written out in the spike.
 
-import type { Frame, Id, Vec3 } from '../../../packages/engine/src/index';
+import type { AxisRef, Frame, Id, Vec3 } from '../../../packages/engine/src/index';
 import { emptySketch } from '../../../packages/engine/src/index';
 import { arm } from '../../../packages/scenarios/test/arm';
 import type { CommandAfter, EngineAfter, FaceNameAfter, PlaneRefAfter, QueryOutcome, StateAfter } from '../00-prep/contract';
@@ -44,11 +47,11 @@ const plane = (feature: Omit<PlaneFeatureC, 'name' | 'suppressed' | 'type' | 'ti
   type: 'addFeature',
   feature: { name: feature.id, suppressed: false, type: 'plane', ...feature },
 });
-// `AxisRef` of types.ts gets the kind `sketchLine` in the code. A draft cannot widen it inside the
-// types other contracts state with it (a pattern of 2e, a joint of 5a, the argument kind `axis` of
-// the preparatory step), so a command that puts a `sketchLine` there goes through this one cast
-// (design.md, "Needs from the preparatory step").
-const withLineAxis = (command: unknown): CommandAfter => command as CommandAfter;
+// `AxisRef` of types.ts gets the two kinds in the code. A draft cannot widen it inside the types
+// other contracts state with it (a pattern of 2e, a joint of 5a, the argument kind `axis` of the
+// preparatory step), so an axis of a new kind goes there through this one cast (design.md, "Needs
+// from the preparatory step").
+const asAxis = (axis: AxisRefAfter): AxisRef => axis as AxisRef;
 
 // ---------------------------------------------------------------- a. the hinge and the tilted plane
 
@@ -154,9 +157,24 @@ export const aboutX = (): boolean =>
 // The line as the axis of any consumer: a linear pattern of the wrist along the hinge (+Y), the
 // copy 25 mm further. Its volume is that of the wrist.
 export function alongTheHinge(): boolean {
-  const state = run(withLineAxis({ type: 'addFeature', feature: { id: 'wrists', name: 'wrists', suppressed: false, type: 'pattern', source: { type: 'body', body: 'wrist' }, transform: { type: 'linear', direction: HINGE, count: 2, span: { type: 'spacing', spacing: 25 } } } }));
+  const state = run({ type: 'addFeature', feature: { id: 'wrists', name: 'wrists', suppressed: false, type: 'pattern', source: { type: 'body', body: 'wrist' }, transform: { type: 'linear', direction: asAxis(HINGE), count: 2, span: { type: 'spacing', spacing: 25 } } } });
   const [a, b] = [state.evaluation.bodies['wrist'], state.evaluation.bodies['wrists/1']];
   return a !== undefined && b !== undefined && near(b.volume, a.volume, 1e-6 * a.volume) && near(b.bounds.min[1] - a.bounds.min[1], 25, 1e-4);
+}
+
+// The axis of a round face: the mass of the wrist about the axis of its own side, which passes
+// through its centre of mass (no distance) with the moment of a cylinder, m r² / 2 (the polygon of
+// the circle a little less).
+export function aboutItsBore(): boolean {
+  const side = asAxis({ kind: 'face', body: 'wrist', face: { feature: 'wrist', role: 'side', curve: 'wr' } });
+  const mass = unwrap(engine.query('mass', { bodies: ['wrist'], density: 1.24, about: side }));
+  return mass.about !== undefined && near(mass.about.distance, 0, 1e-6) && near(mass.about.moment, (mass.mass * 10 * 10) / 2, 1e-3 * mass.about.moment);
+}
+// A planar face has no axis: the error of the query names the argument.
+export function flatFaceAxis(): boolean {
+  const top = asAxis({ kind: 'face', body: 'forearm', face: FOREARM_TOP });
+  const outcome = engine.query('mass', { bodies: ['wrist'], density: 1.24, about: top });
+  return !outcome.ok && outcome.error.message.includes('no axis');
 }
 
 // ---------------------------------------------------------------- e. refusals
@@ -175,7 +193,7 @@ export function refused(): { notParallel?: string; roundFace?: string; circle: b
   // the angle has no default, so `setField` cannot add a tilt
   const setFieldWithout = !engine.preview({ type: 'setField', feature: 'forearmMid', path: 'tilt/angle', value: 0.2 }).ok;
   // a tilt has exactly an axis and an angle
-  const unknownField = !engine.preview(withLineAxis({ type: 'updateFeature', id: 'wristPlane', patch: { tilt: { axis: HINGE, angle: 0.5, offset: 2 } } })).ok;
+  const unknownField = !engine.preview({ type: 'updateFeature', id: 'wristPlane', patch: { tilt: { axis: HINGE, angle: 0.5, ...({ offset: 2 } as object) } } }).ok;
   return { notParallel, roundFace, circle, noAxis, later, setFieldWithout, unknownField };
 }
 // A patch of the angle alone keeps the axis; null removes the tilt, which leaves the top.
@@ -197,7 +215,7 @@ export const wrong = (): void => {
 // The document loads to the same model; a build of the branch lists the step.
 export function saveAndLoad(): boolean {
   const before = engine.getState();
-  const loaded = engine.load(JSON.parse(engine.save()));
+  const loaded = engine.load(engine.save());
   const after = engine.getState();
   const pending = UPGRADES.slice(UPGRADES.length - SCHEMA_PENDING).map((step) => step.name);
   return loaded.ok && JSON.stringify(after.document) === JSON.stringify(before.document) && pending.includes(MORE_PLANES_STEP.name);
@@ -232,6 +250,8 @@ export function scenario13c(): boolean {
     no.setFieldWithout &&
     no.unknownField &&
     alongTheHinge() &&
+    aboutItsBore() &&
+    flatFaceAxis() &&
     saveAndLoad()
   );
 }

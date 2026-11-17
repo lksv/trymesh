@@ -272,9 +272,17 @@ export const planeRefs = (ref: PlaneRef, path: string): FeatureRef[] =>
 
 export function axisRef(context: RefContext, v: unknown, what: string): AxisRef {
   const o = object(v, what);
-  const kind = oneOf(o.kind, ['base', 'sketchPoint', 'sketchLine'] as const, `${what}.kind`);
-  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : kind === 'sketchPoint' ? ['kind', 'sketch', 'point'] : ['kind', 'sketch', 'line'], what, `an axis of the kind ${kind}`);
+  const kind = oneOf(o.kind, ['base', 'sketchPoint', 'sketchLine', 'face'] as const, `${what}.kind`);
+  onlyFields(o, kind === 'base' ? ['kind', 'axis'] : kind === 'sketchPoint' ? ['kind', 'sketch', 'point'] : kind === 'sketchLine' ? ['kind', 'sketch', 'line'] : ['kind', 'body', 'face'], what, `an axis of the kind ${kind}`);
   if (kind === 'base') return { kind, axis: oneOf(o.axis, ['X', 'Y', 'Z'] as const, `${what}.axis`) };
+  if (kind === 'face') {
+    // the axis of a round face (D60): the body and the face as a sketch on a face names them
+    const body = string(o.body, `${what}.body`);
+    context.requireRef({ id: body, kind: 'body' }, `${what}.body`);
+    const face = faceName(o.face, `${what}.face`);
+    requireFace(context, face, `${what}.face`);
+    return { kind, body, face };
+  }
   const sketch = string(o.sketch, `${what}.sketch`);
   context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
   if (kind === 'sketchLine') {
@@ -310,7 +318,9 @@ export const frameRefs = (frame: FrameRef, path: string): FeatureRef[] =>
 export const axisRefs = (axis: AxisRef, path: string): FeatureRef[] =>
   axis.kind === 'base'
     ? []
-    : [
-        { path, id: axis.sketch, kind: 'sketch' },
-        axis.kind === 'sketchLine' ? { path, id: axis.line, kind: 'entity', sketch: axis.sketch, accepts: ['line'] } : { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
-      ];
+    : axis.kind === 'face'
+      ? [{ path, id: axis.body, kind: 'body' }, ...faceRefs(axis.face, path)]
+      : [
+          { path, id: axis.sketch, kind: 'sketch' },
+          axis.kind === 'sketchLine' ? { path, id: axis.line, kind: 'entity', sketch: axis.sketch, accepts: ['line'] } : { path, id: axis.point, kind: 'entity', sketch: axis.sketch, accepts: ['point'] },
+        ];

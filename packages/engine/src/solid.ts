@@ -9,14 +9,20 @@ import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey
 // Analytický popis stěny; plyne z definice feature, ne ze sítě.
 export type FaceInfo =
   | { planar: true; origin: Vec3; y: Vec3; normal: Vec3 } // rovina bodem `origin`; `normal` bez znaménka směru ven
-  | { planar: false; surface: 'cylinder'; center: Vec3; axis: Vec3; radius: number }
+  // `along` of a round face with an axis (a cylinder, a cone, a torus; D60): the sense of its axis
+  // as its build gives it, which `axis` does not carry (a cylinder's has no sign, a cone's points
+  // to the face and turns with the sign of a taper or the direction of a hole). An extrusion and
+  // a hole set the normal of their sketch, a revolve the direction of its axis; a copy carries it
+  // as `axis`. Required, so that a build of round faces does not compile until it says which sense
+  // it gives. The axis of a face (`AxisRef` of the kind `face`) reads it.
+  | { planar: false; surface: 'cylinder'; center: Vec3; axis: Vec3; radius: number; along: Vec3 }
   // The side of an arc or a circle of a tapered extrusion. `axis` points from the apex towards the
   // face (a cone has two halves); `halfAngle` is between the axis and the surface.
-  | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }
+  | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number; along: Vec3 }
   // A revolved arc or circle (D58): a sphere when its centre lies on the axis, otherwise a torus
   // whose major radius is signed as `Surface` says.
   | { planar: false; surface: 'sphere'; center: Vec3; radius: number }
-  | { planar: false; surface: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number }
+  | { planar: false; surface: 'torus'; center: Vec3; axis: Vec3; majorRadius: number; minorRadius: number; along: Vec3 }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
   | { planar: false; surface: 'swept'; axis: Vec3 }
@@ -154,13 +160,13 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
   if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
   switch (info.surface) {
     case 'cylinder':
-      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis), along: transformVector(t, info.along) };
     case 'cone':
-      return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
+      return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis), along: transformVector(t, info.along) };
     case 'sphere':
       return { ...info, center: transformPoint(t, info.center) };
     case 'torus':
-      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
+      return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis), along: transformVector(t, info.along) };
     case 'swept':
       return { ...info, axis: transformVector(t, info.axis) };
     case 'mesh':

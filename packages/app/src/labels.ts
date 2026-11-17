@@ -9,6 +9,8 @@ export const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO
 export const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
 // A numeric field of a feature for a summary: its expression with the value, or the value alone.
 export const shownValue = (feature: Feature, path: string, value: number): string => (feature.expressions?.[path] ? `${feature.expressions[path]} = ${fmt(value)}` : fmt(value));
+// An angle of a summary in degrees, with its expression.
+export const shownDegrees = (f: Feature, path: string, value: number): string => (f.expressions?.[path] ? `${f.expressions[path]} = ${fmt((value * 180) / Math.PI)}°` : `${fmt((value * 180) / Math.PI)}°`);
 export const SIDES: Record<ExtentSide, string> = { both: 'Both sides', forward: 'Along the normal', backward: 'Against the normal' };
 
 // Facts of a generated profile shown below the form and at the selected feature, with their units.

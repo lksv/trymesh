@@ -2,7 +2,7 @@
 // recompute it came from.
 import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services';
 import type { State } from '../recompute/state';
-import { transformFrame, transformSurface } from '../solid';
+import { transformFrame, transformPoint, transformSurface, transformVector } from '../solid';
 import type { Deflater, Document, Evaluation, SolidKernel } from '../types';
 import { faceNumber, has } from '../util';
 import { poseOf } from './pose';
@@ -85,7 +85,7 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
   const { state } = internals;
   const pose = geometry === 'modelled' ? undefined : poseOf(internals.document.mechanism, evaluation.mechanism, modelledBodies);
   const bodies = pose ? pose.bodies : modelledBodies;
-  const problem = (code: string): RefProblem => ({ problem: code === 'nonPlanarFace' || code === 'invalidAxis' ? code : 'brokenReference' });
+  const problem = (code: string, detail?: string): RefProblem => ({ problem: code === 'nonPlanarFace' || code === 'invalidAxis' ? code : 'brokenReference', ...(detail ? { detail } : {}) });
   return {
     state: { document: internals.document, evaluation: modelled },
     bodies,
@@ -101,9 +101,12 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
       const moved = ref.kind === 'face' ? pose?.transformOf(ref.body) : undefined;
       return moved ? transformFrame(moved, frame) : frame;
     },
+    // the axis of a round face moves with its body, as the frame of a face does (D60)
     axis(ref) {
       const line = axisOf(ref, state);
-      return 'code' in line ? problem(line.code) : { origin: line.point, direction: line.direction };
+      if ('code' in line) return problem(line.code, line.detail);
+      const moved = ref.kind === 'face' ? pose?.transformOf(ref.body) : undefined;
+      return moved ? { origin: transformPoint(moved, line.point), direction: transformVector(moved, line.direction) } : { origin: line.point, direction: line.direction };
     },
     face: (name) => faceNumber(state, name),
     sketch: (id) => lookup(state.sketches, id),

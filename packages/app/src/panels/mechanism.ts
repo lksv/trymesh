@@ -5,10 +5,10 @@
 // previews the pose (the view shows the preview), releasing it writes it. The forms of a link and
 // of a joint are in the panel too. Every confirmation is one command.
 import { type AxisRef, type EngineState, type Expr, type Id, JOINT_DRIVE_FIELDS, JOINT_FIELDS, type Joint, type JointDriveField, type JointInput, type JointResult, type MechanismResult, type Unit } from '@trymesh/engine';
-import { axisRows } from '../axis-picker';
+import { axisLabel, axisRows, roundFaceOf } from '../axis-picker';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, unitLabel, valueText } from '../fields';
-import type { PanelHost } from '../host';
+import type { PanelHost, ViewPick } from '../host';
 import { changeAxis, lineIds } from '../sketch-commands';
 
 type JointType = Joint['type'];
@@ -35,6 +35,7 @@ interface JointForm {
   child: Id;
   axis: AxisRef;
   numbers: Partial<Record<NumberPath, string>>;
+  picking?: boolean; // the next click in the view takes a round face for the axis (D60)
 }
 // What the panel keeps between two renders; the app holds it. `preview`: the state of the pose
 // a slider previews while it is dragged; the view shows it, and a refresh of the app drops it.
@@ -125,7 +126,7 @@ export function mechanismPanel(host: PanelHost, panel: MechanismPanel): HTMLElem
   const jointBlock = (id: Id): HTMLElement => {
     const joint = section.joints[id];
     const state = own(result.joints, id) ? result.joints[id] : undefined;
-    const about = 'axis' in joint ? ` ${joint.type === 'prismatic' ? 'along' : 'about'} ${joint.axis.kind === 'base' ? `the axis ${joint.axis.axis}` : joint.axis.kind === 'sketchLine' ? `the line ${joint.axis.line} of ${host.nameOf(joint.axis.sketch)}` : `the normal through ${joint.axis.point} of ${host.nameOf(joint.axis.sketch)}`}` : '';
+    const about = 'axis' in joint ? ` ${joint.type === 'prismatic' ? 'along' : 'about'} ${axisLabel(host, joint.axis)}` : '';
     return h(
       'div',
       { className: `mech-joint ${state?.status === 'error' ? 'error' : ''}` },
@@ -342,6 +343,7 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
           if (typed !== undefined && JOINT_DRIVE_FIELDS[form.type].some((field) => field.path === path && field.spec.unit === spec.unit)) form.numbers[path as NumberPath] = typed;
         }
         form.type = next;
+        if (next === 'fixed') form.picking = false; // a fixed joint has no axis to pick
         rebuild();
       },
     },
@@ -370,15 +372,46 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
     h('label', {}, 'Kind', type),
     linkSelect('Parent link', 'parent'),
     linkSelect('Child link (moves)', 'child'),
-    ...(form.type === 'fixed' ? [] : axisRows(host, form.axis, sketches, (change) => ((form.axis = changeAxis(form.axis, change, sketches, (id) => {
-      const f = host.feature(id);
-      return f?.type === 'sketch' ? lineIds(f) : [];
-    })), rebuild()), 'An axis through a point needs a sketch.')),
+    ...(form.type === 'fixed'
+      ? []
+      : axisRows(
+          host,
+          form.axis,
+          sketches,
+          (change) => {
+            form.axis = changeAxis(form.axis, change, sketches, (id) => {
+              const f = host.feature(id);
+              return f?.type === 'sketch' ? lineIds(f) : [];
+            });
+            form.picking = false;
+            rebuild();
+          },
+          'An axis through a point needs a sketch.',
+          undefined,
+          { armed: form.picking === true, arm: () => ((form.picking = !form.picking), rebuild()) },
+        )),
     ...(form.type === 'fixed' ? [] : [h('p', { className: 'hint' }, form.type === 'prismatic' ? 'The child slides along the direction of the axis.' : 'A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule).')]),
     ...JOINT_FIELDS[form.type].map(({ path, spec }) => number(path as NumberPath, spec.title)),
     ...(drive.length ? [h('p', { className: 'hint' }, 'The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):'), ...drive.map(({ path, spec }) => number(path as NumberPath, spec.title, spec.unit))] : []),
     h('div', { className: 'buttons' }, h('button', { className: 'primary', textContent: 'OK', onclick: () => confirmJoint(host, panel, form) }), h('button', { textContent: 'Cancel', onclick: () => ((panel.form = undefined), host.renderPanel()) })),
   ];
+}
+
+// Is the form of a joint waiting for a round face for its axis (D60)? The view then picks faces only.
+export const jointPicksFace = (panel: MechanismPanel): boolean => panel.form?.kind === 'joint' && panel.form.picking === true && panel.form.type !== 'fixed';
+// A click in the view while the joint form picks the axis of a round face (D60): true when the form
+// took it (a face that is not round is refused with a message, and the pick stays armed).
+export function takeMechanismSelection(host: PanelHost, panel: MechanismPanel, pick: ViewPick): boolean {
+  const form = panel.form;
+  if (!jointPicksFace(panel) || form?.kind !== 'joint') return false;
+  const face = roundFaceOf(host, pick);
+  if (!face) {
+    host.say('The axis of a joint can be the axis of a cylinder, a cone or a torus; click one of them.', true);
+    return true;
+  }
+  form.axis = changeAxis(form.axis, { face }, []);
+  form.picking = false;
+  return true;
 }
 
 // One command: setJoint with the whole joint in the input form (a number, or an expression as typed).

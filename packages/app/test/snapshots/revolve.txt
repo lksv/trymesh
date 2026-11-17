@@ -1,6 +1,6 @@
 
 === 1. a revolve needs a sketch
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":8}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -308,7 +308,7 @@
     -     option selected value="Z": "Axis Z"
     +     input value="-120"
     -     input value="360"
-    + p#draft-problem.issue.error: "The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it. (the axis is at 90° to the plane of the sketch)"
+    + p#draft-problem.issue.error: "The axis cannot be used: its line has no length or its face has no axis; for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it; for the tilt of a plane it is not parallel to the plane. (the axis is at 90° to the plane of the sketch)"
     - p#draft-problem.issue.error: "Angle: 360° is not between -360° and 360°"
   view: 2 scene(s) set
 
@@ -337,7 +337,7 @@
     + p#draft-facts.hint: "The turn is divided into 34 steps."
     + p#draft-problem.issue.warning
     - p#draft-facts.hint
-    - p#draft-problem.issue.error: "The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it. (the axis is at 90° to the plane of the sketch)"
+    - p#draft-problem.issue.error: "The axis cannot be used: its line has no length or its face has no axis; for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it; for the tilt of a plane it is not parallel to the plane. (the axis is at 90° to the plane of the sketch)"
   view: 1 scene(s) set
   scene:
     + bodies: r1

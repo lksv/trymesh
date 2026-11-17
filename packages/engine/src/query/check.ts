@@ -166,6 +166,8 @@ class Checker {
         const ref = shaped(path, (what) => axisRef(SHAPE_ONLY(this.scope.document), value, what));
         if (ref.kind === 'sketchPoint') this.sketchPoint(this.sketch(ref.sketch, [...path, 'sketch']), ref.point, [...path, 'point']);
         if (ref.kind === 'sketchLine') this.sketchLine(this.sketch(ref.sketch, [...path, 'sketch']), ref.line, [...path, 'line']);
+        // the axis of a round face: a face of the body in the state asked about (D60); whether it is round is the recompute's to say
+        if (ref.kind === 'face') return { kind: 'face', body: this.body(ref.body, [...path, 'body']), face: this.face(ref.body, ref.face, [...path, 'face']) };
         return ref;
       }
       case 'vector':

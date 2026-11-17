@@ -61,7 +61,7 @@ naming.md, "Faces of an insertion": every feature ID of a face name gets the pre
 
 ## Features on an inserted body
 
-Allowed: its planar faces are planar face numbers with exact planes, as for a body modelled here. A body with a face of an imported mesh stays `importedTarget` (`isImported` reads the face table, wherever the face came from).
+Allowed: its planar faces are planar face numbers with exact planes, as for a body modelled here, and its round faces carry their axis (`along` included, moved by `transformFace`), so an axis of the kind `face` (D60) may name one. A body with a face of an imported mesh stays `importedTarget` (`isImported` reads the face table, wherever the face came from).
 
 ## MCP and the app
 

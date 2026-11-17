@@ -293,15 +293,22 @@ describe('catalog of numeric fields', () => {
   });
 
   it('the static field description matches what validation reads', () => {
-    expect(FEATURE_TYPE_INFO.plane.fields.map((f) => f.path)).toEqual(['offset']);
+    expect(FEATURE_TYPE_INFO.plane.fields.map((f) => f.path)).toEqual(['offset', 'tilt/angle']);
     // fields of a variant come with `when`; the parameters of profile generators are listed with their generator
     expect(FEATURE_TYPE_INFO.extrude.fields.filter((f) => f.when?.path !== 'profile/generator').map((f) => f.path)).toEqual(['profile/offset', 'profile/thickness', 'extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     expect(FEATURE_TYPE_INFO.sketch.fields).toEqual([]);
-    const doc = run(base(), { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 0, distance: 5 }) }, { type: 'addFeature', feature: { id: 'P1', name: 'P1', suppressed: false, type: 'plane', base: XY, offset: 3 } });
-    for (const id of ['E1', 'P1']) {
+    const doc = run(
+      base(),
+      { type: 'addFeature', feature: extrude('E1', { type: 'distance', start: 0, distance: 5 }) },
+      { type: 'addFeature', feature: { id: 'P1', name: 'P1', suppressed: false, type: 'plane', base: XY, offset: 3 } },
+      { type: 'addFeature', feature: { id: 'P2', name: 'P2', suppressed: false, type: 'plane', base: XY, offset: 3, tilt: { axis: { kind: 'base', axis: 'X' }, angle: 0.5 } } },
+    );
+    for (const id of ['E1', 'P1', 'P2']) {
       const f = feature(doc, id);
-      // an optional field (its description has a default) is a field of the feature only while the feature has it (D44)
-      const listed = FEATURE_TYPE_INFO[f.type].fields.filter((field) => (!field.when || atPath(f, field.when.path) === field.when.equals) && (field.spec.default === undefined || atPath(f, field.path) !== undefined));
+      // an optional field (its description has a default) is a field of the feature only while the feature has it (D44);
+      // so is a field of an optional part (the angle of the tilt of a plane, D60)
+      const inPart = (path: string): boolean => !path.includes('/') || atPath(f, path.split('/').slice(0, -1).join('/')) !== undefined;
+      const listed = FEATURE_TYPE_INFO[f.type].fields.filter((field) => (!field.when || atPath(f, field.when.path) === field.when.equals) && inPart(field.path) && (field.spec.default === undefined || atPath(f, field.path) !== undefined));
       expect(fieldsOf(f).map((field) => [field.path, field.spec])).toEqual(listed.map((field) => [field.path, field.spec]));
     }
     // dimensions: exactly the constraints with the dimension flag have the value `value`

@@ -107,11 +107,11 @@ function infoOf(surface: Surface): FaceInfo {
     const e: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
     return { planar: true, origin: surface.origin, y: [n[1] * e[2] - n[2] * e[1], n[2] * e[0] - n[0] * e[2], n[0] * e[1] - n[1] * e[0]], normal: n };
   }
-  if (surface.kind === 'cylinder') return { planar: false, surface: 'cylinder', center: surface.origin, axis: surface.axis, radius: surface.radius };
-  if (surface.kind === 'cone') return { planar: false, surface: 'cone', apex: surface.apex, axis: surface.axis, halfAngle: surface.halfAngle };
+  if (surface.kind === 'cylinder') return { planar: false, surface: 'cylinder', center: surface.origin, axis: surface.axis, radius: surface.radius, along: surface.axis };
+  if (surface.kind === 'cone') return { planar: false, surface: 'cone', apex: surface.apex, axis: surface.axis, halfAngle: surface.halfAngle, along: surface.axis };
   if (surface.kind === 'swept') return { planar: false, surface: 'swept', axis: surface.axis };
   if (surface.kind === 'sphere') return { planar: false, surface: 'sphere', center: surface.center, radius: surface.radius };
-  if (surface.kind === 'torus') return { planar: false, surface: 'torus', center: surface.center, axis: surface.axis, majorRadius: surface.majorRadius, minorRadius: surface.minorRadius };
+  if (surface.kind === 'torus') return { planar: false, surface: 'torus', center: surface.center, axis: surface.axis, majorRadius: surface.majorRadius, minorRadius: surface.minorRadius, along: surface.axis };
   throw new Error(`no description for a surface of the kind ${surface.kind}`);
 }
 function engineWith(chordTolerance: number): Engine {

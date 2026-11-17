@@ -97,6 +97,25 @@ describe('the recompute of an insertion', () => {
     expect(body.bounds.min[2]).toBeCloseTo(5, 6);
   });
 
+  // the axis of a round face (D60) of an inserted body: its surface moved with the placement, the
+  // name compared after the lookup by key
+  it('the axis of a round face of an inserted body: a pattern about it; a face it does not have', () => {
+    const face = { feature: 'a/ring', role: 'side', curve: 'ringCircle' } as const;
+    const pattern = (name: FaceName): Command => ({ type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'pattern', source: { type: 'body', body: 'a/ring' }, transform: { type: 'circular', axis: { kind: 'face', body: 'a/ring', face: name }, count: 2, span: { type: 'full' } } } as never });
+    const state = preview(engine, insertion('a', 'ring', { placement: { frame: XY, x: 100, ry: Math.PI / 2 } }), pattern(face));
+    expect(state.evaluation.features.p.status).toBe('ok');
+    // a turn by π about the axis of the ring, now along X through (100, 0, 0), leaves its bounds where they were
+    const [one, two] = [state.evaluation.bodies['a/ring'].bounds, state.evaluation.bodies['p/1'].bounds];
+    for (const i of [0, 1, 2]) {
+      expect(two.min[i]).toBeCloseTo(one.min[i], 3);
+      expect(two.max[i]).toBeCloseTo(one.max[i], 3);
+    }
+    expect(one.min[0]).toBeCloseTo(100, 3);
+    // a face the inserted body does not have is the recompute's broken reference
+    const missing = preview(engine, insertion('a', 'ring'), pattern({ ...face, curve: 'nope' }));
+    expect(missing.evaluation.features.p.error).toMatchObject({ code: 'brokenReference' });
+  });
+
   it('a listed body the revision lost, a document with no body, a parameter the revision lost', () => {
     // a body no feature there can make is refused by the command (the review of 3c); one the
     // revision lost is the recompute's broken reference

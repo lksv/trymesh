@@ -6,7 +6,7 @@ import { h } from '../dom';
 import { valueText } from '../fields';
 import type { PanelHost } from '../host';
 import { bodyName } from '../issue-text';
-import { FIRST_DIRECTION, SECOND_DIRECTION, axisRows } from '../axis-picker';
+import { FIRST_DIRECTION, type FacePick, SECOND_DIRECTION, axisFaceText, axisRows, roundFaceOf } from '../axis-picker';
 import { type LinearSpan, NEW_TRANSFORM, type PatternChange, type PatternChoices, type PatternKind, type PatternMemory, type PatternSpan, changePattern, draftCommand, lineIds, patternIncomplete, patternSource, rememberPattern } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -15,6 +15,9 @@ import { planeText } from './plane';
 interface Extra {
   memory?: PatternMemory; // the transform the draft had in each kind and its spans, to return to
   picking?: boolean; // the button "Pick" of a mirror is armed: the next click in the view takes a plane or a planar face
+  // the next click in the view takes a round face for the axis or the first direction (`first`) or
+  // for the second direction of a grid (`second`) (D60)
+  pickingAxis?: 'first' | 'second';
 }
 const KINDS: Record<PatternKind, string> = { circular: 'Around an axis', linear: 'Along a direction', mirror: 'Mirror in a plane' };
 // The name of a new draft by its kind (`Pattern 7`, `Mirror 7`), while it has the default one.
@@ -49,8 +52,19 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
     // a new draft is named by its kind while its name is the default one
     if (!m.editing && before.name === defaultName(before.transform.type, before.id)) m.draft = { ...m.draft, name: defaultName(m.draft.transform.type, m.draft.id) };
     if (m.draft.transform.type !== 'mirror') m.extra.picking = false;
+    if (change.kind !== undefined || change.axis !== undefined || change.second?.axis !== undefined || change.grid !== undefined || change.face !== undefined || change.second?.face !== undefined) m.extra.pickingAxis = undefined;
     draftChanged(host, rebuild);
   };
+  // the pick of a round face for an axis (D60): one of the two directions at a time
+  const facePick = (which: 'first' | 'second'): FacePick => ({
+    armed: m.extra.pickingAxis === which,
+    arm: () => {
+      m.extra.pickingAxis = m.extra.pickingAxis === which ? undefined : which;
+      m.extra.picking = false;
+      if (m.extra.pickingAxis) host.say('Click a cylinder, a cone or a torus in the view: its axis.');
+      draftChanged(host, true);
+    },
+  });
   const { source, transform } = m.draft;
   const out: (HTMLElement | null)[] = [
     h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : transform.type === 'mirror' ? 'New mirror' : 'New pattern'),
@@ -86,7 +100,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
   if (transform.type === 'circular') {
     const { axis, span } = transform;
     out.push(
-      ...axisRows(host, axis, choices.sketches, set, 'An axis through a point needs a sketch before this place of the timeline.'),
+      ...axisRows(host, axis, choices.sketches, set, 'An axis through a point needs a sketch before this place of the timeline.', undefined, facePick('first')),
       count(),
       select('Span', (value) => set({ span: value as PatternSpan['type'] }), option('full', 'Full circle', span.type === 'full'), option('angle', 'Angle between the first and the last copy', span.type === 'angle')),
       span.type === 'angle' ? draftField(host, m, 'Angle (° or an expression in radians)', 'transform/span/angle', (angle) => set({ angle }, false)) : null,
@@ -95,7 +109,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
     const { direction, span, second } = transform;
     const noSketch = 'The normal of a sketch plane needs a sketch before this place of the timeline.';
     out.push(
-      ...axisRows(host, direction, choices.sketches, set, noSketch, FIRST_DIRECTION),
+      ...axisRows(host, direction, choices.sketches, set, noSketch, FIRST_DIRECTION, facePick('first')),
       count(second ? 'Count along the direction (a whole number or an expression)' : undefined),
       select('Span', (value) => set({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbours', span.type === 'spacing'), option('length', 'Length between the first and the last copy', span.type === 'length')),
       span.type === 'spacing'
@@ -109,7 +123,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
       const along = (change: Parameters<typeof set>[0]['second'], rebuild = true) => set({ second: change }, rebuild);
       out.push(
         // the hint that no sketch is there is shown once, by the first picker
-        ...axisRows(host, second.direction, choices.sketches, (change) => along(change), '', SECOND_DIRECTION),
+        ...axisRows(host, second.direction, choices.sketches, (change) => along(change), '', SECOND_DIRECTION, facePick('second')),
         draftField(host, m, 'Count along the second direction (a whole number or an expression)', 'transform/second/count', (value) => along({ count: value }, false)),
         select('Second span', (value) => along({ span: value as LinearSpan['type'] }), option('spacing', 'Spacing between neighbouring rows', second.span.type === 'spacing'), option('length', 'Length between the first and the last row', second.span.type === 'length')),
         second.span.type === 'spacing'
@@ -136,6 +150,7 @@ function mirrorRows(m: PatternMode, host: PanelHost, plane: Input<PlaneRef>, set
   };
   const arm = () => {
     m.extra.picking = !m.extra.picking;
+    m.extra.pickingAxis = undefined;
     host.say(m.extra.picking ? 'Click a plane or a planar face in the view: the copy is the mirror image in its plane.' : `Mirror plane: ${planeText(host, plane)}.`);
     draftChanged(host, true);
   };
@@ -189,6 +204,19 @@ const form: FeatureForm<PatternFeature, Extra> = {
   // a copy of the preview itself).
   click(m, _event, pick, host) {
     const choices = patternChoices(host, m.index);
+    // the axis of a round face before the pattern (not one of the copies the preview makes)
+    if (m.extra.pickingAxis) {
+      const face = roundFaceOf(host, pick);
+      if (!face) return host.say('The axis of a face is the axis of a cylinder, a cone or a torus; click one of them.', true);
+      if (face.body.startsWith(`${m.draft.id}/`) || (face.face.copy ?? []).some((tag) => tag.pattern === m.draft.id)) return host.say('The axis cannot be that of a face the pattern itself makes; pick a face that exists before it.', true);
+      const which = m.extra.pickingAxis;
+      m.extra.pickingAxis = undefined;
+      m.extra.memory = rememberPattern(m.extra.memory ?? {}, m.draft);
+      m.draft = changePattern(m.draft, which === 'second' ? { second: { face } } : { face }, choices, m.extra.memory);
+      host.say(`Axis: ${axisFaceText(host, face.body, face.face)}.`);
+      draftChanged(host, true);
+      return;
+    }
     if (m.extra.picking) {
       const plane = host.planeRefOf(pick);
       if (!plane) return host.say('A mirror plane is a plane or a planar face.', true);
@@ -219,7 +247,14 @@ export const pattern: FeatureUi<PatternFeature, Extra> = {
     if (t.type === 'linear') {
       // one direction: along what, and by which span, at `transform/` or `transform/second/`
       const way = (prefix: string, d: { direction: typeof t.direction; span: typeof t.span }): string => {
-        const along = d.direction.kind === 'base' ? `axis ${d.direction.axis}` : d.direction.kind === 'sketchLine' ? `the line ${d.direction.line} of ${host.nameOf(d.direction.sketch)}` : `the normal of ${host.nameOf(d.direction.sketch)}`;
+        const along =
+          d.direction.kind === 'base'
+            ? `axis ${d.direction.axis}`
+            : d.direction.kind === 'sketchLine'
+              ? `the line ${d.direction.line} of ${host.nameOf(d.direction.sketch)}`
+              : d.direction.kind === 'face'
+                ? `the axis of ${axisFaceText(host, d.direction.body, d.direction.face)}`
+                : `the normal of ${host.nameOf(d.direction.sketch)}`;
         const extent = d.span.type === 'spacing' ? `spacing ${field(`${prefix}/span/spacing`, d.span.spacing, 'mm')}` : `length ${field(`${prefix}/span/length`, d.span.length, 'mm')}`;
         return `along ${along}, ${extent}`;
       };
@@ -227,7 +262,14 @@ export const pattern: FeatureUi<PatternFeature, Extra> = {
       if (!t.second) return [h('p', { className: 'hint' }, `Count ${count} with the original, ${way('transform', t)}; ${source}.`)];
       return [h('p', { className: 'hint' }, `Count ${count} × ${field('transform/second/count', t.second.count, 'count')} with the original, ${way('transform', t)}, and ${way('transform/second', t.second)}; ${source}.`)];
     }
-    const around = t.axis.kind === 'base' ? `axis ${t.axis.axis}` : t.axis.kind === 'sketchLine' ? `the line ${t.axis.line} of ${host.nameOf(t.axis.sketch)}` : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
+    const around =
+      t.axis.kind === 'base'
+        ? `axis ${t.axis.axis}`
+        : t.axis.kind === 'sketchLine'
+          ? `the line ${t.axis.line} of ${host.nameOf(t.axis.sketch)}`
+          : t.axis.kind === 'face'
+            ? `the axis of ${axisFaceText(host, t.axis.body, t.axis.face)}`
+            : `the point ${t.axis.point} of ${host.nameOf(t.axis.sketch)}`;
     const extent = t.span.type === 'full' ? 'the full circle' : `an angle of ${field('transform/span/angle', t.span.angle, 'rad')}`;
     return [h('p', { className: 'hint' }, `Count ${field('transform/count', t.count, 'count')} with the original, around ${around}, ${extent}; ${source}.`)];
   },

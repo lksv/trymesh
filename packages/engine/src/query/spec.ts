@@ -23,7 +23,8 @@ import type { ArgSpecs, ArgsOf, RunArgsOf } from './args';
 //   A query reads the geometry of bodies nowhere else (the state of the context has neither the
 //   bodies nor the surfaces), and then it answers for a pose without a change.
 // - What does not belong to a body is never posed: a sketch and its points, an axis through
-//   a sketch point, a plane feature, a base plane or axis. They are where the model has them.
+//   a sketch point or along a line of a sketch, a plane feature, a base plane or axis. They are
+//   where the model has them. The axis of a round face (D60) belongs to its body and is posed.
 // - An export is the opposite: its context always has the bodies as modelled.
 export interface QueryContext {
   // The document and the evaluation as modelled, without the geometry of bodies.
@@ -58,9 +59,12 @@ export interface QueryContext {
   //   engine keeps them apart.
   memo<T>(owners: readonly [object, ...object[]], key: string, compute: () => T): T;
 }
-// `invalidAxis`: an axis of the kind `sketchLine` whose line has no length (D58).
+// `invalidAxis`: an axis of the kind `sketchLine` whose line has no length (D58), or of the kind
+// `face` whose face has no axis (D60). `detail`: what the recompute says about it, when it says
+// more than the code.
 export interface RefProblem {
   problem: 'brokenReference' | 'nonPlanarFace' | 'invalidAxis';
+  detail?: string;
 }
 
 // The unit of a number of a result: the units of a numeric field, and those only a result has.

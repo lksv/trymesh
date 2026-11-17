@@ -93,7 +93,7 @@ export const DOCUMENTS_INFO = {
 //   `bodySource` none (what an inserted body inherits comes from the inserted document, not from a
 //   body of this one); `refs` those of the frame, the document (the kind `document`) and one per value
 //   set (the kind `parameter`); `input` the entry of the section; `patch.fields` are `document`, `placement`, `parameters`, `bodies`, and
-//   `patch.removable` answers for the six numbers of the placement, every `parameters/<name>` and
+//   `patch.removable` answers for the six numbers of the placement, `parameters`, every `parameters/<name>` and
 //   `bodies`.
 // - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ` (as for a mesh feature of 3b).
 // - Errors: `brokenReference` (the document, a parameter, a listed body; the frame), `nonPlanarFace`
@@ -134,7 +134,7 @@ export const INSERT_TEXTS = {
 // `pattern` has a slash come first, all with the owner of `feature` (the part before the first
 // slash), the tags after them have no slash, and the name with that owner stripped obeys the same
 // rule. A reference looks a face up by its key and takes it only when the name found is the name
-// asked for, field by field (a text field of a role takes any text, so some names that no feature
+// asked for, field by field, and an edge when both of its faces are (a text field of a role takes any text, so some names that no feature
 // makes key like a real one, on master already).
 export declare function insertedFaceName(name: FaceNameAfter3b, insertion: Id): FaceNameAfter3b;
 
@@ -173,6 +173,7 @@ export declare function insertedFeature(doc: DocumentAfter3c, id: Id): { feature
 // nested document as `validateDocument` does, one level deeper (refused beyond `MAX_INSERT_DEPTH`),
 // with `what` as the path of its messages (`document.documents.bearing.document`); document.ts
 // builds it, so that no section imports document.ts. The sections of master ignore it.
+// `validateSections(o, what, context)` builds the path of each section from `what`.
 export interface SectionContext {
   depth: number; // of the document the section belongs to: 0 for the host
   document(value: unknown, what: string): DocumentAfter3c;
@@ -218,8 +219,9 @@ export interface StepContextAddition3c {
 // Two members are added to the state of the recompute (`State`).
 // - `insertions`: per insertion, the entry object, its environment, and the recompute. The
 //   environment is what the stored document's parameters evaluate to after the values of the
-//   insertion are put in, every parameter by name in sorted order with its value or its error,
-//   written as text. A later insertion of the same entry object with the same environment takes this
+//   insertion are put in, every parameter by name in sorted order with its value or its error (code
+//   and message), written without loss (the shortest text that reads back as the number, −0 as `-0`;
+//   the values put in are written the same way). A later insertion of the same entry object with the same environment takes this
 //   recompute instead of asking the evaluator, so two such insertions are made from the same solids
 //   whatever the memo of the evaluator kept (`{ D: 22 }` and no value share one when `D` is 22 there).
 // - `inserted`: per body an insertion brought, what it inherits. A pattern of an inserted body adds

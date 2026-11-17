@@ -200,24 +200,28 @@ export type StateD = Omit<StateAfter, 'evaluation'> & { evaluation: EvaluationD 
 // - surfaces about one axis (a plane across it, a cylinder, a cone on the half its axis points
 //   along, a sphere whose centre is on it, a torus by its signed major radius): the meeting points
 //   of their curves in a half plane through the axis (a line, a ray, a circle). A point with
-//   `ρ > LENGTH_TOLERANCE` is a circle; a point at `ρ ≤ 0` is not on the face and is dropped, not
-//   folded back. At most two. Touching is tested on the distance, both ways: a line whose
+//   `ρ > LENGTH_TOLERANCE` is a circle; a point with `ρ ≤ LENGTH_TOLERANCE` is none (on the axis,
+//   or across it and not on the face), never folded back. At most two. Touching is tested on the distance, both ways: a line whose
 //   distance from the centre of a circle differs from the radius by at most `LENGTH_TOLERANCE`
 //   meets it at the foot of the perpendicular; two circles whose distance differs from the sum or
 //   the difference of the radii by at most that meet on the line of their centres;
-// - a torus and a plane that holds its axis: the two circles of the tube in that plane, one on
-//   each side of the axis.
+// - a torus and a plane that holds its axis: the two circles of the tube in that plane, centred
+//   at the signed major radius from the axis towards either side (across the axis from the side
+//   it reaches for a negative major radius).
 export declare function circlesBetween(a: SurfaceD, b: SurfaceD): Circle3[];
 // The circle of an edge: the only one of `circlesBetween`, or, of two, the one the points of the
 // edge say (`points`: three numbers a point, the segments of the edge; `tolerance`: the chord
 // tolerance of the document):
 // - about one axis: each circle has a reach, `2 · tolerance / sin θ` plus the precision of the
-//   coordinates, θ the angle at which the two curves meet there in the half plane. The two are
-//   told apart only when they are further apart than the sum of their reaches; then the chosen one
-//   is the circle every point lies within the reach of. Otherwise undefined: the edge is `other`.
+//   coordinates (the formula of `coordinatePrecision`), θ the angle at which the two curves meet
+//   there in the half plane. The two are told apart only when they are further apart (in the half
+//   plane, `hypot(ρ₁ − ρ₂, z₁ − z₂)`) than the sum of their reaches; then the chosen one is the
+//   circle every point lies within the reach of (its shortest distance to the circle). Otherwise
+//   undefined: the edge is `other`.
 // - a torus and a plane through its axis: the side of the axis the points lie on, points within
-//   `LENGTH_TOLERANCE` of the axis left out; points on both sides give undefined.
-// - two possible and no points: undefined.
+//   `LENGTH_TOLERANCE` plus the precision of the coordinates of the axis left out; points on both
+//   sides give undefined. The circle is the one centred at the signed major radius towards that side.
+// - two possible and no points, or no tolerance: undefined.
 // `edgeKind` and `projectEdge` (solid.ts), the description of a body and the shape of an entity
 // (query/body.ts, query/entity.ts) and the circles of a section (query/section.ts) pass the points
 // and the tolerance; the kind of an edge is decided after its segments are collected.

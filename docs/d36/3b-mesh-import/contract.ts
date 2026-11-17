@@ -105,9 +105,11 @@ export const MESH_LIMITS = {
   // above this part of its own size (the largest side of its own bounds). A policy, independent
   // of where the shell stands and of the other shells.
   thinnest: 1e-6,
-  // The most solid angles check 7 sums for one mesh (about 1.5 s); above it the mesh is
-  // `tooLarge`. Only shells nested deep in one another come near it.
-  windings: 10_000_000,
+  // The most work of `shellsOf` for one mesh: every entry of the grid of the bounds, every bounds
+  // tested, every distance and every solid angle, counted in one fixed order (about 1.5 s at the
+  // measured rate); above it the mesh is `tooLarge`. A dense shell around many others reaches it
+  // (50 000 triangles around 200 shells). Never lowered: a load checks it.
+  work: 10_000_000,
 } as const;
 
 // What is wrong with the edges of a mesh that is not closed.
@@ -131,11 +133,13 @@ export interface MeshShell {
   triangles: number; // how many
   volume: number; // signed: negative when the shell faces inwards
   area: number;
-  // By the winding of the other shells at a point of it (check 7): `solid` (outwards, the others
-  // wind 0 times), `hollow` (inwards, at least once), `insideOut` (inwards, 0 times: refused by
-  // check 7, turned over by the importer), `nested` (outwards, at least once: in the material of
-  // another shell, a hollow written outwards or a part inside a part; read and reported),
-  // `undecided` (no point away from other shells: refused).
+  // By the winding of the other shells at its test point (check 7; each other shell winds ±1
+  // when it contains the point, 0 when not; the kind is by the rounded sum): `solid` (outwards,
+  // 0), `hollow` (inwards, 1 or more), `insideOut` (inwards, 0: refused by check 7; the importer
+  // turns it over with the shells it contains when no shell contains it), `nested` (outwards, 1
+  // or more: in the material of another shell, a hollow written outwards or a part inside a
+  // part; read and reported), `undecided` (no test point away from the other shells, or a
+  // negative sum: refused).
   kind: 'solid' | 'hollow' | 'insideOut' | 'nested' | 'undecided';
 }
 
@@ -146,21 +150,23 @@ export interface MeshShell {
 //   for a text that is not canonical base64 of whole triples.
 // - `meshDefects`: the count of the edges that are wrong.
 // - `withoutWalls`: the wall between two solids written one after the other with the same cut.
-//   A candidate is a pair of triangles on the same three vertices that face opposite ways (a
-//   group of more than two triangles on one set of vertices is none); candidates joined through
-//   shared edges make a wall. A wall is left out, with the positions nothing names afterwards,
-//   only when along every edge of its border there are exactly two other triangles, running the
-//   edge opposite ways, one on each side of the wall: the one that runs the edge as the partner
-//   of the wall triangle there does lies behind that triangle or in its plane, the other in front
-//   of it or in its plane, not both in the plane (the side by the sign of the volume of the
-//   triangle and the third vertex, from the float32 positions). Otherwise its pairs stay and the
-//   checks refuse the mesh for its edges. `walls` is the number of pairs left out. Only the
-//   importer calls it, after the weld: a stored mesh is what is left.
+//   The importer calls it after the weld and after turning the whole mesh over when its volume is
+//   negative; a stored mesh is what is left. A candidate is a pair of triangles on the same three
+//   vertices that face opposite ways (a group of more than two triangles on one set of vertices
+//   is none); candidates joined through shared edges make a wall. An edge of a wall is a border
+//   when a triangle not in the wall has it, inside when only triangles of the wall have it. A
+//   wall is left out, with the positions nothing names afterwards, only when it has a border and
+//   along every edge of its border there are exactly two other triangles, running the edge
+//   opposite ways, one on each side of the wall: the one that runs the edge as the partner of the
+//   wall triangle there does lies behind that triangle or in its plane, the other in front of it
+//   or in its plane, not both in the plane ("in the plane": within 1e-6 of the largest coordinate
+//   of the mesh). Otherwise its pairs stay and the checks refuse the mesh (for its edges; a wall
+//   without a border, a closed double sheet, by check 6). `walls` is the number of pairs left out.
 // - `meshProblem`: why a mesh cannot be stored; undefined when it can. `limit` is
-//   `MESH_LIMITS.triangles` for an import and `addMesh`, `MESH_LIMITS.stored` for a load. In this
-//   order:
+//   `MESH_LIMITS.triangles` (the default) for an import and `addMesh`, `MESH_LIMITS.stored` for a
+//   load. In this order:
 //   1. more than `limit` triangles (`tooLarge`); everything below is `notASolid` but the bound
-//      of check 7; fewer than `MESH_LIMITS.fewest`;
+//      of work of check 7; fewer than `MESH_LIMITS.fewest`;
 //   2. a coordinate that is not finite or is beyond ±1e9 (the bound of a number of the document);
 //   3. an index without a position, a position no triangle names, a triangle that names a vertex
 //      twice;
@@ -168,16 +174,16 @@ export interface MeshShell {
 //      `isClosed` of the kernel adapter); `defects` has the three counts;
 //   5. a volume that is not positive: the triangles face inwards;
 //   6. a shell that encloses nothing: its mean thickness is not above `MESH_LIMITS.thinnest` of
-//      its own size (the library drops a shell far thinner than that without a word);
-//   7. a shell that faces inwards and is not a hollow of a solid: the other shells have to wind
-//      around a point of it a whole number of times, at least once. The point is the centroid of
-//      a triangle of the shell; a centroid whose winding is not within 1e-3 of a whole number lies
-//      on another shell and the next one is taken; none: refused. Only the shells whose bounds
-//      hold the point are summed (a closed shell winds 0 times outside its bounds), found through
-//      a grid of the bounds; more than `MESH_LIMITS.windings` solid angles in all is `tooLarge`.
-//      Beside a solid such a shell hides a collision.
+//      its own size (a policy; it does not guarantee that the library keeps a thin shell);
+//   7. a shell of the kind `insideOut` or `undecided` by `shellsOf` (more work than
+//      `MESH_LIMITS.work` is `tooLarge`). Beside a solid an inside-out shell hides a collision.
 //   Not checked: that the surface does not pass through itself, that two shells do not overlap.
-// - `shellsOf`: the pieces of the surface, each with what check 7 says of it (`kind`).
+// - `shellsOf`: the pieces of the surface, each with its kind (`MeshShell.kind`); the one
+//   operation of check 7, for the importer, `addMesh` and a load alike. Per shell a test point:
+//   the centroid of one of its triangles further than 1e-6 of the size of the shell from every
+//   triangle of the other shells summed for it (none: `undecided`). Only the shells whose bounds
+//   hold the point are summed (a closed shell winds 0 times outside its bounds), found through a
+//   grid of the bounds. Throws a `MeshProblem` with `tooLarge` above `MESH_LIMITS.work`.
 export declare function storedMesh(mesh: IndexedMesh, name?: string): StoredMesh;
 export declare function indexedMesh(stored: StoredMesh): IndexedMesh;
 export declare function meshDefects(mesh: IndexedMesh): MeshDefects;
@@ -264,7 +270,8 @@ export interface MeshReport {
   triangles: number;
   shells: number; // connected pieces of the surface
   cavities: number; // of them, hollows: pieces that face inwards inside another piece
-  turned: number; // shells that were inside out and were turned over (all of them when the whole file was)
+  insideOut: boolean; // the whole mesh was inside out and was turned over first (step 3 of importMesh)
+  turned: number; // distinct shells turned over by groups after that (step 4)
   nested: number; // outward shells in the material of others (a hollow written outwards, or an overlap); read
   volume: number; // mm³; an overlap of two shells counts twice
   bounds: { min: Vec3; max: Vec3 }; // mm, in the frame of the file
@@ -291,9 +298,12 @@ export type ImportOutcome =
 // 1. The options are checked against the description of the format and the format reads the bytes.
 // 2. The weld: corners at the same float32 position (−0 taken as 0) become one vertex. Triangles
 //    that lose a corner by it are left out and counted (`dropped`). No tolerance.
-// 3. `withoutWalls` (`walls`).
-// 4. When the mesh is closed: a negative volume turns it over whole; then `shellsOf`, and every
-//    shell of the kind `insideOut` is turned over (`turned` counts both); `nested` is counted.
+// 3. A negative volume turns the whole mesh over (the pairs of the walls cancel in it), then
+//    `withoutWalls` (`walls`).
+// 4. When the mesh is closed: `shellsOf`; every outermost shell (no other contains its test
+//    point) of the kind `insideOut` is turned over together with the shells it contains
+//    (`turned` counts the distinct shells); then `shellsOf` again, whose kinds the report
+//    (`cavities`, `nested`) and the checks take.
 // 5. `meshProblem` with `MESH_LIMITS.triangles`, whose code and message are the refusal.
 // 6. The report, and the mesh in its stored form with `name`.
 // The same bytes and options give the same mesh.

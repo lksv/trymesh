@@ -89,6 +89,7 @@ export function readMotor(): boolean {
     report.walls === 0 &&
     report.shells === 1 &&
     report.cavities === 0 &&
+    !report.insideOut &&
     report.turned === 0 &&
     report.nested === 0 &&
     report.triangles === can.solid.triangles.length / 3 &&

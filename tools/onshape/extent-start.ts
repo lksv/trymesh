@@ -5,44 +5,72 @@ import type { FaceName, Id, PlaneRef } from '../../packages/engine/src/index';
 import { type V3, dot, sub } from './common';
 
 // A planar face of a trymesh body as the query `body` describes it: a point and the normal of its
-// plane, and its normal out of the body.
+// plane, its normal out of the body, and the edges that bound it (lines by their ends, circles by
+// their centre and radius), for telling coplanar faces apart.
+export type BoundaryEdge = { kind: 'line'; from: V3; to: V3 } | { kind: 'circle'; center: V3; radius: number };
 export interface FaceCandidate {
   body: Id;
   name: FaceName;
   origin: V3;
   normal: V3;
   meshNormal: V3;
+  boundary?: BoundaryEdge[];
 }
-// The Onshape face: a point of its plane and its normal out of its part (`evPlane` of the dump).
+// The Onshape face: a point of its plane, its normal out of its part (`evPlane` of the dump), and
+// the midpoints of its boundary edges (`m` of the dump's edges).
 export interface OnshapeFace {
   origin: V3;
   normal: V3;
+  edges?: V3[];
 }
 
-// The trymesh face that is the Onshape face, among the planar faces of the trymesh features made
-// for the Onshape feature that created it (`made`):
-// - a cap (`startCap`, `endCap`) of one of them;
-// - in the plane of the Onshape face: the normals parallel within 1e-6, the point within 1e-3 mm;
+const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// Does a point lie on an edge (within 1e-3 mm)?
+function onEdge(p: V3, e: BoundaryEdge): boolean {
+  if (e.kind === 'circle') return Math.abs(Math.hypot(...sub(p, e.center)) - e.radius) <= 1e-3;
+  const d = sub(e.to, e.from);
+  const length = Math.hypot(...d);
+  if (length === 0) return false;
+  const t = dot(sub(p, e.from), d) / (length * length);
+  return t >= -1e-6 && t <= 1 + 1e-6 && Math.hypot(...cross(sub(p, e.from), d)) / length <= 1e-3;
+}
+
+// The trymesh face that is the Onshape face, among the planar faces of trymesh extrusions:
+// - a cap (`startCap`, `endCap`) of a feature of `made`;
+// - in the plane of the Onshape face: the normals parallel within 1e-6 (|cross| ≤ 1e-6), the point
+//   within 1e-3 mm;
 // - with its normal out of the body along the Onshape face's normal out of its part. The two caps of
 //   a very short extrusion lie within 1e-3 mm of one plane, but their outward normals are opposite:
 //   so the normal also tells the cap role, the start or the end of the extrusion.
-// One candidate is the face. Several, all of features made for the one Onshape extrusion (an
-// extrusion split into groups shares its extent, so the faces move together): the first by the ID
-// of its feature, with a note. None: why, for the report.
-export function faceOf(candidates: readonly FaceCandidate[], face: OnshapeFace, made: readonly Id[]): { ref: PlaneRef; note?: string } | { reason: string } {
+// One candidate is the face. Several:
+// - `oneFeature` (the provenance is known: `made` are the extrusions made for the one Onshape
+//   extrusion that created the face, which share its extent, so the faces move together): the first
+//   by the ID of its feature, with a note;
+// - otherwise (the face was consumed later, so the dump does not say which feature created it, and
+//   `made` are the extrusions of the body that owned it): the one candidate on whose boundary the
+//   most midpoints of the Onshape face's edges lie, when it is one and holds at least one; else
+//   none, as ambiguous.
+// None: why, for the report.
+export function faceOf(candidates: readonly FaceCandidate[], face: OnshapeFace, made: readonly Id[], oneFeature = true): { ref: PlaneRef; note?: string } | { reason: string } {
   const found = candidates.filter(
     (c) =>
       made.includes(c.name.feature) &&
       (c.name.role === 'startCap' || c.name.role === 'endCap') &&
       c.name.copy === undefined &&
-      Math.abs(Math.abs(dot(c.normal, face.normal)) - 1) <= 1e-6 &&
+      Math.hypot(...cross(c.normal, face.normal)) <= 1e-6 &&
       Math.abs(dot(sub(face.origin, c.origin), face.normal)) <= 1e-3 &&
       dot(c.meshNormal, face.normal) > 0,
   );
-  if (!found.length) return { reason: 'no cap of the features made for it lies in its plane with its normal' };
+  if (!found.length) return { reason: 'no cap of the features it may come from lies in its plane with its normal' };
+  const refOf = (c: FaceCandidate): PlaneRef => ({ kind: 'face', body: c.body, face: c.name });
+  if (found.length === 1) return { ref: refOf(found[0]) };
   const sorted = [...found].sort((a, b) => (a.name.feature < b.name.feature ? -1 : a.name.feature > b.name.feature ? 1 : a.name.role < b.name.role ? -1 : 1));
-  const ref: PlaneRef = { kind: 'face', body: sorted[0].body, face: sorted[0].name };
-  return found.length === 1 ? { ref } : { ref, note: `${found.length} faces in its plane (${sorted.map((c) => `${c.name.feature}/${c.name.role}`).join(', ')}), the first taken` };
+  const listed = sorted.map((c) => `${c.name.feature}/${c.name.role}`).join(', ');
+  if (oneFeature) return { ref: refOf(sorted[0]), note: `${found.length} faces in its plane (${listed}), the first taken` };
+  const scores = sorted.map((c) => (face.edges ?? []).filter((m) => (c.boundary ?? []).some((e) => onEdge(m, e))).length);
+  const best = Math.max(...scores);
+  if (best > 0 && scores.filter((score) => score === best).length === 1) return { ref: refOf(sorted[scores.indexOf(best)]), note: `${found.length} faces in its plane (${listed}); the one its boundary matches taken` };
+  return { reason: `${found.length} faces in its plane (${listed}) and its boundary does not tell which` };
 }
 
 // What the extent of a converted extrusion is made of: the Onshape end (`BLIND`, `THROUGH_ALL` or

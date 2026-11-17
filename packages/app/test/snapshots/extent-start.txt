@@ -168,9 +168,38 @@
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
 
-=== 2. the pick of the start armed: the view shows the state before the feature
-  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
-  engine: getState("e1")  (x2)
+=== 2. a cut from the sketch plane: the preview has a hole through the plate
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
+  panel:
+    +   select value="cut"
+    -   select value="add"
+    +     option value="add": "Přidat k tělesu"
+    +     option selected value="cut": "Odebrat z tělesa"
+    -     option selected value="add": "Přidat k tělesu"
+    -     option value="cut": "Odebrat z tělesa"
+    +     option value="throughAll": "Through all"
+    -     option value="throughAll" disabled: "Through all (a cut only)"
+    + fieldset.targets
+    +   legend: "Target bodies"
+    +   label.check
+    +     input type=checkbox checked
+    +     "Vysunutí 1"
+    + p#draft-problem.issue.warning
+    - label
+    -   "Těleso"
+    -   select value="e1"
+    -     option selected value="e1": "Vysunutí 1"
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 29045.408
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 3. the pick of the start armed: the view shows the state before the feature, the plate without the hole
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
   engine: getState("s1")
   engine: getState("e1")
   engine: getState("s1")
@@ -180,11 +209,13 @@
   status: Click a plane or a planar face in the view: the extent starts from its plane.
   view: 1 scene(s) set
   scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 612 numbers, sum 29045.408
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
     - fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
 
-=== 3. Escape disarms the pick and keeps the draft
-  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+=== 4. Escape disarms the pick and keeps the draft: the preview with the hole again
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
   panel:
@@ -192,8 +223,14 @@
     -   button: "Picking the start… (click to stop)"
   status: Click regions of the sketch in the view to pick them.
   view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 612 numbers, sum 29045.408
+    - line #26303c width 1.5: 72 numbers, sum 4060
 
-=== 4. the top of the plate picked: the boss starts on it, the preview says where
+=== 5. the top of the plate picked: the boss starts on it, the preview says where
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
+  engine: getState("e1")
+  engine: getState("s1")  (x2)
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")  (x2)
   engine: getState("s1")
@@ -203,21 +240,36 @@
   engine: getState("e1")
   engine: getState("s1")  (x2)
   panel:
+    +   select value="add"
+    -   select value="cut"
+    +     option selected value="add": "Přidat k tělesu"
+    +     option value="cut": "Odebrat z tělesa"
+    -     option value="add": "Přidat k tělesu"
+    -     option selected value="cut": "Odebrat z tělesa"
+    +     option value="throughAll" disabled: "Through all (a cut only)"
+    -     option value="throughAll": "Through all"
     + p: "Start at: stěna Vysunutí 1 – protější víko (Vysunutí 1)"
     - p: "Start at: Sketch plane"
     +   button: "Sketch plane"
     + p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
     +   "Start (mm or an expression; offset from the start plane along the normal of the sketch)"
     -   "Start (mm or an expression; offset from the sketch plane along its normal)"
-    + p#draft-problem.issue.warning
-    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
-  view: 3 scene(s) set
+    + label
+    +   "Těleso"
+    +   select value="e1"
+    +     option selected value="e1": "Vysunutí 1"
+    - fieldset.targets
+    -   legend: "Target bodies"
+    -   label.check
+    -     input type=checkbox checked
+    -     "Vysunutí 1"
+  view: 4 scene(s) set
   scene:
     + line #26303c width 1.5: 612 numbers, sum 36211.608
     + line #8b9bb4 width 1: 24 numbers, sum 395.81
     + line #8b9bb4 width 1: 24 numbers, sum 263.873
     + line #8b9bb4 width 1: 24 numbers, sum 131.937
-    - line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 612 numbers, sum 29045.408
     - line #8b9bb4 width 1: 24 numbers, sum 374.778
     - line #8b9bb4 width 1: 24 numbers, sum 249.852
     - line #8b9bb4 width 1: 24 numbers, sum 124.926
@@ -229,7 +281,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
     + face e1 #1 #0ea5e9 opacity 0.3
 
-=== 5. up to a plane: the start plane goes along
+=== 6. up to a plane: the start plane goes along
   engine: getState("e1")
   engine: getState("s1")
   engine: getState("e1")
@@ -278,7 +330,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 18.848
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 18.848
 
-=== 6. through all from the plane: backward, both sides disabled
+=== 7. through all from the plane: backward, both sides disabled
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"add","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -341,7 +393,7 @@
     + line #26303c width 1.5: 612 numbers, sum 29045.408
     - line #26303c width 1.5: 72 numbers, sum 4060
 
-=== 7. the start plane removed: through all may go to both sides again
+=== 8. the start plane removed: through all may go to both sides again
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"throughAll","side":"backward"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -359,7 +411,7 @@
     + line #26303c width 1.5: 72 numbers, sum 4060
     - line #26303c width 1.5: 612 numbers, sum 29045.408
 
-=== 8. the distance the draft had comes back without the start plane
+=== 9. the distance the draft had comes back without the start plane
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -397,7 +449,7 @@
     + line #26303c width 1.5: 612 numbers, sum 29045.408
     - line #26303c width 1.5: 72 numbers, sum 4060
 
-=== 9. OK: the boss with its start plane is in the document
+=== 10. OK: the boss with its start plane is in the document
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"cut","targets":["e1"]},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")
@@ -576,7 +628,7 @@
     - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 90 numbers, sum 5341.853
     - face e1 #1 #0ea5e9 opacity 0.3
 
-=== 10. selected: the summary names the start plane and the facts say where the boss starts
+=== 11. selected: the summary names the start plane and the facts say where the boss starts
   timeline:
     + div.row.ok.selected
     - div.row.ok
@@ -598,7 +650,7 @@
     + face e1 #7 #f97316 opacity 0.3
     + face e1 #8 #f97316 opacity 0.3
 
-=== 11. edited: the start plane removed from the feature
+=== 12. edited: the start plane removed from the feature
   engine: preview({"type":"updateFeature","id":"e2","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}],"offset":null},"extent":{"type":"distance","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"start":0,"distance":10,"taper":null},"operation":"add","targets":["e1"]}}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
@@ -649,7 +701,7 @@
     - face e1 #7 #f97316 opacity 0.3
     - face e1 #8 #f97316 opacity 0.3
 
-=== 12. a pick armed in a new draft: the first Escape disarms it, the second leaves the draft
+=== 13. a pick armed in a new draft: the first Escape disarms it, the second leaves the draft
   engine: getState("s1")
   engine: getState("e2")  (x3)
   engine: getState("s1")  (x2)
@@ -664,7 +716,7 @@
   status: Click regions of the sketch in the view to pick them.
   view: 4 scene(s) set
 
-=== 13. a new hole through all backward from the sketch plane: it misses the plate
+=== 14. a new hole through all backward from the sketch plane: it misses the plate
   engine: getState("e2")  (x3)
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
   engine: getState("e2")
@@ -843,16 +895,38 @@
   status: Tick the points of the sketch; the sizes of a screw, a nut or an insert come from the catalog.
   view: 2 scene(s) set
 
-=== 14. the pick of the mouth armed: the view shows the state before the hole
-  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
-  engine: getState("e2")  (x3)
+=== 15. forward from the sketch plane: the preview has the hole through the plate
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"forward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
+  panel:
+    +   select value="forward"
+    +     option value="backward": "Against the normal"
+    +     option selected value="forward": "Along the normal"
+    -   select value="backward"
+    -     option selected value="backward": "Against the normal"
+    -     option value="forward": "Along the normal"
+    + p#draft-problem.issue.warning
+    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+  view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 408 numbers, sum 30189.874
+    - line #26303c width 1.5: 72 numbers, sum 4060
+
+=== 16. the pick of the mouth armed: the view shows the state before the hole, the plate without it
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"forward"},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")  (x2)
   panel:
     +   button: "Picking the start… (click to stop)"
     -   button: "Pick the start"
   status: Click a plane or a planar face in the view: the mouth starts from its plane.
   view: 1 scene(s) set
+  scene:
+    + line #26303c width 1.5: 72 numbers, sum 4060
+    - line #26303c width 1.5: 408 numbers, sum 30189.874
 
-=== 15. the top of the plate picked: the hole goes down through it from the top
+=== 17. the top of the plate picked and backward: the hole goes down through it from the top
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"forward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
+  engine: getState("e2")
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
   engine: getState("e2")
   panel:
@@ -862,16 +936,20 @@
     +   button: "Sketch plane"
     + p#draft-start.hint: "the start is 10 mm from the sketch plane along its normal"
     -   button: "Picking the start… (click to stop)"
-    + p#draft-problem.issue.warning
-    - p#draft-problem.issue.warning: "Operace těleso nezměnila. (Vysunutí 1)"
+    +   select value="backward"
+    +     option selected value="backward": "Against the normal"
+    +     option value="forward": "Along the normal"
+    -   select value="forward"
+    -     option value="backward": "Against the normal"
+    -     option selected value="forward": "Along the normal"
   status: The mouth starts from the plane picked.
-  view: 2 scene(s) set
+  view: 3 scene(s) set
   scene:
     + line #26303c width 1.5: 408 numbers, sum 30189.874
     - line #26303c width 1.5: 72 numbers, sum 4060
     + face e1 #1 #0ea5e9 opacity 0.3
 
-=== 16. a distance: the start plane goes along
+=== 18. a distance: the start plane goes along
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"distance","start":0,"distance":-10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
   engine: getState("e2")
   panel:
@@ -897,7 +975,7 @@
     - p.hint: "The depth follows the target bodies at every recompute. On a face the normal points out of the body, so a hole into it goes against it."
   view: 1 scene(s) set
 
-=== 17. filled from the catalog: a counterbore with its head at the top, the start plane kept
+=== 19. filled from the catalog: a counterbore with its head at the top, the start plane kept
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
   engine: getState("e2")
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"forward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok
@@ -961,7 +1039,7 @@
     + line #26303c width 1.5: 840 numbers, sum 65603.632
     - line #26303c width 1.5: 408 numbers, sum 30189.874
 
-=== 18. selected: the summary names the start plane
+=== 20. selected: the summary names the start plane
   engine: getState("e2")
   engine: execute({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"},"index":3}) -> ok
   features: s1, e1, e2, d1
@@ -1170,7 +1248,7 @@
     + face e1 #10 #f97316 opacity 0.3
     - face e1 #1 #0ea5e9 opacity 0.3
 
-=== 19. edited: the start plane removed, the hole misses the plate again
+=== 21. edited: the start plane removed, the hole misses the plate again
   engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"],"label":"M2 socket head cap screw"}}, "d1") -> ok
   engine: getState("e2")
   engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s1","points":["p5"],"shape":{"type":"counterbore","diameter":2.4,"headDiameter":3.98,"headDepth":2},"extent":{"type":"throughAll","side":"backward","from":null},"targets":["e1"],"label":"M2 socket head cap screw"}}, "d1") -> ok

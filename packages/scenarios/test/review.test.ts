@@ -629,6 +629,39 @@ describe('the review of D63: the chamfer and the fillet of edges', () => {
   });
 });
 
+describe('the start of an extent at a plane: the design review of D66, round 1', () => {
+  // A circle of radius 0.1 tapered to 1 over a distance of 1, from a plane tilted about X by an angle
+  // near the tolerance: the spread of the level over the circle is 0.2 · tan(angle).
+  const tapered = (spread: number): EngineState => {
+    const engine = newEngine();
+    return run(
+      engine,
+      addSketch('S', XY),
+      batch({ type: 'addCurve', sketch: 'S', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 0.1 }, constrain('S', 'cr', { type: 'radius', curve: 'c', value: 0.1, driving: true })),
+      { type: 'addFeature', feature: { id: 'slant', name: 'slant', suppressed: false, type: 'plane', base: XY, offset: 0, tilt: { axis: { kind: 'base', axis: 'X' }, angle: Math.atan(spread / 0.2) } } },
+      { type: 'addFeature', feature: { id: 'T', name: 'T', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', from: { kind: 'plane', feature: 'slant' }, start: 0, distance: 1, taper: Math.atan(0.9) }, operation: 'new' } },
+    );
+  };
+
+  it('a real tapered extrusion: refused at a spread of 1.04e-6 over the exact circle; at 0.98e-6 every vertex of the start ring as built lies within half the tolerance of the plane', () => {
+    expect(tapered(1.04e-6).evaluation.features.T.error).toMatchObject({ code: 'invalidExtent', message: expect.stringMatching(/its level differs by 1.04e-6 mm/) });
+    const state = tapered(0.98e-6);
+    expect(state.evaluation.features.T.status).toBe('ok');
+    const plane = state.evaluation.features.slant.plane as { origin: number[]; normal: number[] };
+    const solid = state.evaluation.bodies.T.solid;
+    const id = state.evaluation.faceNames.findIndex((name) => name.feature === 'T' && name.role === 'startCap');
+    const ring = new Set<number>();
+    for (let t = 0; t < solid.faceIds.length; t++) if (solid.faceIds[t] === id) for (let k = 0; k < 3; k++) ring.add(solid.triangles[3 * t + k]);
+    expect(ring.size).toBeGreaterThan(8); // the taper resamples the circle
+    for (const v of ring) {
+      const [x, y, z] = [0, 1, 2].map((axis) => solid.positions[3 * v + axis]);
+      // the level of the plane under (x, y), along the normal of the sketch (Z)
+      const level = plane.origin[2] - (plane.normal[0] * (x - plane.origin[0]) + plane.normal[1] * (y - plane.origin[1])) / plane.normal[2];
+      expect(Math.abs(z - level)).toBeLessThanOrEqual(0.5e-6 + 1e-9);
+    }
+  });
+});
+
 describe('the start of an extent at a plane: the design review of D66, round 2', () => {
   it('a hole whose mouth is 1000 above a target 10 thick: the guards of the kernel resolution see the mouth (round 2)', () => {
     const engine = newEngine();

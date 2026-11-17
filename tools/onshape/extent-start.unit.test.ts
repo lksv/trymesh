@@ -19,6 +19,24 @@ describe('the trymesh face of an Onshape face', () => {
     expect(faceOf(others, TOP, ['shim'])).toEqual({ reason: expect.stringMatching(/no cap/) });
   });
 
+  it('a plane 1.4 mrad off parallel is not the plane: the normals are compared by their cross product', () => {
+    const tilt = 1.4e-3;
+    expect(faceOf([{ ...cap('shim', 'endCap', 0.0005, 1), normal: [Math.sin(tilt), 0, Math.cos(tilt)] }], TOP, ['shim'])).toEqual({ reason: expect.stringMatching(/no cap/) });
+  });
+
+  it('a face a later feature consumed (no provenance): among the caps on the body of its part, the one its boundary matches', () => {
+    // two coplanar tops facing up on one body: a disc of radius 3 at the origin and a square beside it
+    const disc: FaceCandidate = { ...cap('disc', 'endCap', 0.0005, 1), boundary: [{ kind: 'circle', center: [0, 0, 0.0005], radius: 3 }] };
+    const square: FaceCandidate = { ...cap('square', 'endCap', 0.0005, 1), boundary: [{ kind: 'line', from: [10, 0, 0.0005], to: [14, 0, 0.0005] }, { kind: 'line', from: [14, 0, 0.0005], to: [14, 4, 0.0005] }] };
+    const face = { ...TOP, edges: [[-3, 0, 0.0005]] as [number, number, number][] };
+    expect(faceOf([square, disc], face, ['disc', 'square'], false)).toEqual({ ref: { kind: 'face', body: 'plate', face: { feature: 'disc', role: 'endCap' } }, note: expect.stringMatching(/the one its boundary matches taken/) });
+    expect(faceOf([square, disc], { ...TOP, edges: [[12, 0, 0.0005]] }, ['disc', 'square'], false)).toMatchObject({ ref: { face: { feature: 'square' } } });
+    // the boundary tells nothing: ambiguous, the number is written
+    expect(faceOf([square, disc], { ...TOP, edges: [[50, 50, 0.0005]] }, ['disc', 'square'], false)).toEqual({ reason: expect.stringMatching(/its boundary does not tell which/) });
+    // one cap in the plane: that one, whatever the boundary
+    expect(faceOf([disc], { ...TOP, edges: [] }, ['disc', 'square'], false)).toEqual({ ref: { kind: 'face', body: 'plate', face: { feature: 'disc', role: 'endCap' } } });
+  });
+
   it('several caps of the extrusions made for one Onshape extrusion: the first by ID, with a note', () => {
     const found = faceOf([cap('boss_2', 'endCap', 0.0005, 1, 'b2'), cap('boss_1', 'endCap', 0.0005, 1, 'b1')], TOP, ['boss_1', 'boss_2']);
     expect(found).toEqual({ ref: { kind: 'face', body: 'b1', face: { feature: 'boss_1', role: 'endCap' } }, note: expect.stringMatching(/2 faces in its plane \(boss_1\/endCap, boss_2\/endCap\), the first taken/) });

@@ -174,7 +174,7 @@ describe('the level of a start plane over the exact outline', () => {
     const far = exactStart([region(circleLoop(40000, 0, 1, 64))]);
     const refused = levelOf(tilted(5, 1e-6), far);
     expect(refused).toEqual({ detail: expect.stringMatching(/tilted against the sketch plane by 1e-6 rad: its level differs by 2e-6 mm/) });
-    // radius 0.4: a spread of 8e-7, built; the level is the middle of the extremes, 0.04 above 5
+    // radius 0.4: a spread of 8e-7, built; the level is the middle of the extremes, 0.04 below 5
     const small = levelOf(tilted(5, 1e-6), exactStart([region(circleLoop(40000, 0, 0.4, 64))]));
     expect('level' in small && Math.abs(small.level - (5 - 40000 * Math.tan(1e-6)))).toBeLessThan(1e-9);
   });

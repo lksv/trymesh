@@ -656,6 +656,8 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('`start` is the offset of the start along the normal of the sketch plane, from the sketch plane or from `from`');
     expect(text).toContain('and with `from` the side is `forward` or `backward`');
     expect(text).toContain('Any extent may start from a plane instead of the sketch plane: `from`');
+    expect(text).toContain('`{ type: "throughAll", side: "forward", from: <the top of the plate> }` cuts through a lid above the plate and leaves the plate whole');
+    expect(text).not.toContain('leaves what lies below it');
     expect(text).toContain('while the start itself moves with the copy');
     expect(text).toContain('a copy of a feature with `from` carries its start');
     expect(text).toContain('`{ type: "throughAll", side: "backward", from: <the top face> }`, and `facts.depth` is then measured from the mouth');

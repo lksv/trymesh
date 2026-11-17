@@ -2,7 +2,7 @@
 // pulley and a knob with an O-ring, made by the revolve. Written from docs/d36/4a-revolve/calls.ts.
 // Every part is a half profile in a sketch on XZ (x of the sketch is the radius, y the height along
 // the world Z), turned about an axis in that plane. The steps share one engine and run in order.
-import { type AxisRef, type Command, type EngineState, type Expr, type FaceName, type Id, type Input, type RevolveFeature, type SketchFeature, type Surface, type Vec3, freshIds, sketchTool } from '@trymesh/engine';
+import { type AxisRef, type Command, type EdgeName, type EngineState, type Expr, type FaceName, type Id, type Input, type RevolveFeature, type SketchFeature, type Surface, type Vec3, freshIds, sketchTool } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { addSketch, batch, newEngine, run } from './kit';
 
@@ -335,5 +335,112 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
       expect(loaded.state.evaluation.bodies[id].volume).toBe(before.evaluation.bodies[id].volume);
       expect(loaded.state.evaluation.bodies[id].solid.triangles.length).toBe(before.evaluation.bodies[id].solid.triangles.length);
     }
+  });
+});
+
+// The part of package 4b (D63): the circular edges of the pulley and the knob chamfered and
+// filleted. Written from docs/d36/4b-edge-chamfer-fillet/calls.ts; it goes on with the engine of 4a.
+describe('scenario 14: chamfers and fillets of the turned parts (4b, D63)', () => {
+  const edge = (a: FaceName, b: FaceName): EdgeName => ({ a, b });
+  const blend = (type: 'chamfer' | 'fillet', id: Id, body: Id, edges: EdgeName[], size: number | Expr): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type, body, edges, ...(type === 'chamfer' ? { distance: size } : { radius: size }) } as never });
+  const blendFace = (role: 'chamfer' | 'fillet', feature: Id, i: number): FaceName => ({ feature, role, edge: i });
+  const edgesOf = (state: EngineState, body: Id, face: FaceName) => state.evaluation.bodies[body].edges.filter((e) => sameName(e.name.a, face) || sameName(e.name.b, face));
+  const codeOf = (command: Command, id: Id): string | undefined => preview(command).evaluation.features[id]?.error?.code;
+  const BORE_EDGES = [edge(side('pulley', 't'), side('pulley', 'h')), edge(side('pulley', 'b'), side('pulley', 'h'))];
+  const RIM_EDGES = [edge(side('pulley', 'b'), side('pulley', 'r1')), edge(side('pulley', 'r1'), side('pulley', 'f1')), edge(side('pulley', 'f2'), side('pulley', 'r2')), edge(side('pulley', 'r2'), side('pulley', 't'))];
+  const keptFaces = (before: EngineState, after: EngineState, body: Id): boolean => before.evaluation.bodies[body].faces.every((face) => after.evaluation.bodies[body].faces.some((other) => sameName(after.evaluation.faceNames[other.id], before.evaluation.faceNames[face.id])));
+
+  it('a. the bore of the pulley: a chamfer of 0.5 at both ends, two cones of 45° whose rims are circles', () => {
+    const before = engine.getState();
+    const after = run(engine, blend('chamfer', 'boreChamfer', 'pulley', BORE_EDGES, 0.5));
+    for (const i of [0, 1]) {
+      const cone = surfaceOf(after, 'pulley', blendFace('chamfer', 'boreChamfer', i));
+      expect(cone?.kind).toBe('cone');
+      if (cone?.kind !== 'cone') continue;
+      near(cone.halfAngle, Math.PI / 4, 1e-9);
+      near(Math.abs(cone.axis[2]), 1);
+      near(cone.apex[0], 0);
+      near(cone.apex[1], 0);
+      const rims = edgesOf(after, 'pulley', blendFace('chamfer', 'boreChamfer', i));
+      expect(rims.map((e) => e.kind)).toEqual(['circle', 'circle']);
+    }
+    const facts = after.evaluation.features.boreChamfer.facts ?? {};
+    expect(facts).toMatchObject({ 'setback/0': 0.5, 'setback/1': 0.5, 'cut/0': true, 'cut/1': true });
+    // two triangles of 0.5 × 0.5 / 2 turned at the radius of their centroid
+    const taken = before.evaluation.bodies.pulley.volume - after.evaluation.bodies.pulley.volume;
+    expect(Math.abs(taken - 2 * 2 * Math.PI * (4 + 0.5 / 3) * 0.125)).toBeLessThan(0.2);
+    expect(keptFaces(before, after, 'pulley')).toBe(true);
+    expect(allOk(after)).toBe(true);
+  });
+
+  it('b. the outer rims of the pulley: a fillet of 1 on four edges with the bottom, the top and the flanks, four tori', () => {
+    const before = engine.getState();
+    const after = run(engine, blend('fillet', 'rimFillet', 'pulley', RIM_EDGES, 1));
+    for (const i of RIM_EDGES.keys()) {
+      const torus = surfaceOf(after, 'pulley', blendFace('fillet', 'rimFillet', i));
+      expect(torus?.kind).toBe('torus');
+      if (torus?.kind !== 'torus') continue;
+      near(torus.minorRadius, 1, 1e-9);
+      near(torus.majorRadius, 19, 1e-9);
+      near(torus.center[0], 0);
+      near(torus.center[1], 0);
+      expect(edgesOf(after, 'pulley', blendFace('fillet', 'rimFillet', i)).every((e) => e.kind === 'circle')).toBe(true);
+    }
+    expect(['r1', 'r2'].map((curve) => surfaceOf(after, 'pulley', side('pulley', curve))?.kind)).toEqual(['cylinder', 'cylinder']);
+    expect(after.evaluation.bodies.pulley.volume).toBeLessThan(before.evaluation.bodies.pulley.volume);
+    expect(allOk(after)).toBe(true);
+  });
+
+  it('c. the knob: a fillet of 2 at its foot, a torus R 10 r 2; a chamfer of 0.2 at the mouth of the groove; the ring still clears it', () => {
+    const FOOT = edge(side('knob', 'kb'), side('knob', 'ks'));
+    const MOUTH = [edge(side('ringGroove', 'ga'), side('knob', 'ks')), edge(side('ringGroove', 'gc'), side('knob', 'ks'))];
+    const state = run(engine, blend('fillet', 'knobFoot', 'knob', [FOOT], 2), blend('chamfer', 'grooveMouth', 'knob', MOUTH, 0.2));
+    const foot = surfaceOf(state, 'knob', blendFace('fillet', 'knobFoot', 0));
+    expect(foot?.kind).toBe('torus');
+    if (foot?.kind === 'torus') {
+      near(foot.majorRadius, 10, 1e-9);
+      near(foot.minorRadius, 2, 1e-9);
+      nearVec(foot.center, [60, 0, 2]);
+    }
+    for (const i of [0, 1]) {
+      const mouth = surfaceOf(state, 'knob', blendFace('chamfer', 'grooveMouth', i));
+      expect(mouth?.kind).toBe('cone');
+      if (mouth?.kind === 'cone') near(mouth.halfAngle, Math.PI / 4, 1e-9);
+    }
+    const gap = engine.query('gap', { bodies: ['knob', 'oring'] });
+    if (!gap.ok) throw new Error(gap.error.message);
+    const pair = gap.result.pairs[0];
+    expect(pair && 'between' in pair).toBe(true);
+    if (pair && 'between' in pair) expect(Math.abs(pair.distance - 0.05)).toBeLessThanOrEqual(pair.accuracy + 0.01);
+    expect(engine.query('interference', { bodies: ['knob', 'oring'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+    expect(allOk(state)).toBe(true);
+  });
+
+  it('d. what is refused: the rim of the dome, a fillet larger than the rim, an edge the pulley does not have; invalid commands', () => {
+    expect(codeOf(blend('fillet', 'e1', 'knob', [edge(side('knob', 'kd'), side('knob', 'ks'))], 1), 'e1')).toBe('unsupportedEdge');
+    const tooLarge = preview({ type: 'updateFeature', id: 'rimFillet', patch: { radius: 5 } }).evaluation.features.rimFillet.error;
+    expect(tooLarge?.code).toBe('blendDoesNotFit');
+    expect(tooLarge?.refs?.some((ref) => typeof ref === 'object' && ref !== null && 'role' in ref && sameName(ref as FaceName, side('pulley', 'r1')))).toBe(true);
+    expect(codeOf(blend('chamfer', 'e3', 'pulley', [edge(side('pulley', 'b'), side('pulley', 't'))], 0.5), 'e3')).toBe('brokenReference');
+    const commands: Command[] = [blend('fillet', 'bad1', 'pulley', [], 1), blend('chamfer', 'bad2', 'pulley', [BORE_EDGES[0], BORE_EDGES[0]], 0.5), blend('fillet', 'bad3', 'pulley', [RIM_EDGES[0]], 0)];
+    const messages = commands.map((command) => {
+      const result = engine.execute(command);
+      return result.ok ? 'accepted' : result.error.message;
+    });
+    expect(messages[0]).toMatch(/edges: a non-empty list/);
+    expect(messages[1]).toMatch(/edges\[1\]: the edge is listed twice, also at 0/);
+    expect(messages[2]).toMatch(/radius/);
+  });
+
+  it('e. a larger pulley keeps every face, the new ones too; the document loads to the same model without a schema step', () => {
+    const before = engine.getState();
+    const after = preview({ type: 'setParameter', name: 'D', expr: '50' });
+    expect(keptFaces(before, after, 'pulley')).toBe(true);
+    expect(allOk(after)).toBe(true);
+    const saved = engine.save();
+    expect(JSON.parse(saved).schemaSteps).toBeUndefined();
+    const loaded = engine.load(saved);
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    for (const id of Object.keys(before.evaluation.bodies)) expect(loaded.state.evaluation.bodies[id].volume).toBe(before.evaluation.bodies[id].volume);
   });
 });

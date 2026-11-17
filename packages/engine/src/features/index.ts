@@ -6,8 +6,10 @@ import { bodyOwner, entityOf } from '../sketch-content';
 import type { Document, Feature, Id } from '../types';
 import { ORIGIN, has } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';
+import { chamfer } from './chamfer';
 import { combine } from './combine';
 import { extrude } from './extrude';
+import { fillet } from './fillet';
 import { hole } from './hole';
 import { mesh } from './mesh';
 import type { FeatureModule, FeatureTypeInfo } from './module';
@@ -17,7 +19,7 @@ import { revolve } from './revolve';
 import { sketch } from './sketch';
 import { split } from './split';
 
-export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve };
+export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve, chamfer, fillet };
 
 // The public part of the registry.
 export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(

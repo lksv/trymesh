@@ -405,6 +405,8 @@ const PROFILE_SOURCES: { [T in Feature['type']]: (feature: Extract<Feature, { ty
   combine: () => undefined,
   split: () => undefined,
   revolve: (feature) => feature.profile,
+  chamfer: () => undefined,
+  fillet: () => undefined,
 };
 const profileSourceOf = (feature: Feature): ProfileSource | undefined => (PROFILE_SOURCES[feature.type] as (f: Feature) => ProfileSource | undefined)(feature);
 

@@ -37,6 +37,9 @@ export const MESSAGE: Record<IssueCode, string> = {
   importedTarget: 'A target or a tool is an imported mesh, which no feature may change.',
   invalidClearance: 'The tool cannot be moved outwards by the clearance without a change of its shape.',
   invalidAxis: 'The axis cannot be used: its line has no length, or for a revolve it does not lie in the plane of the profile or the profile lies on both sides of it.',
+  unsupportedEdge:
+    'The edge cannot be chamfered or filleted: only a straight edge between two planes and a circular edge between a plane, a cylinder or a cone about one axis can, ending at one face, meeting another edge of the same feature at a vertex, or running on smoothly into an edge of the same feature.',
+  blendDoesNotFit: 'The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
 };

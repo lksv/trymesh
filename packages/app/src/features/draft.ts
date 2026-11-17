@@ -31,7 +31,10 @@ export interface FeatureForm<F extends Feature, Extra> {
   // What the form wants picked in the view now, asked at every pointer event. Without an answer the
   // app picks nothing and hands over the bare event (the extrusion finds its region with
   // `host.planePoint`); the extrusion asks for a face or a plane while its button "Pick" is armed.
-  picks?(mode: DraftMode<F, Extra>): { faces?: true; planes?: true } | undefined;
+  // `edges`: edges are picked (a chamfer and a fillet, D63). `before`: while it is asked for, the
+  // view shows the state before the feature instead of the preview, so that what is picked is what
+  // the feature will work on (a picked edge is gone from the preview).
+  picks?(mode: DraftMode<F, Extra>): { faces?: true; planes?: true; edges?: true; before?: true } | undefined;
   hover?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): boolean; // true: redraw the scene
   click?(mode: DraftMode<F, Extra>, event: PointerEvent, pick: ViewPick | undefined, host: PanelHost): void;
   overlay?(mode: DraftMode<F, Extra>, scene: SceneModel, host: PanelHost): void; // what the draft draws

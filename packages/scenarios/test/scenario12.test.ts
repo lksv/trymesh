@@ -13,7 +13,7 @@
 // - 2e (D53), the linear pattern and the mirror: a row of vent slots in the long wall, the rib and
 //   its brace mirrored to the other long wall, pads under the corners as mirrors of one body, and
 //   the lid in a row for the print bed.
-import { type Command, DATA_CATALOGS, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type SketchFeature, type SolveInput, type Surface, UPGRADES, faceKey, freshIds, sketchTool, zip } from '@trymesh/engine';
+import { type Command, DATA_CATALOGS, type EdgeName, type Engine, type EngineState, type Exported, type ExportFile, type ExtrudeFeature, type FaceName, FEATURE_TYPE_INFO, type HoleFeature, type Id, type MeshAbout, type OutlineAbout, type PatternFeature, type PlaneRef, producesTool, type QueryOutcome, SCHEMA_VERSION, type SketchFeature, type SolveInput, type Surface, UPGRADES, faceKey, freshIds, sketchTool, zip } from '@trymesh/engine';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { readZip } from '../../engine/test/zip-reader';
 import { NO_PRINTED_BODY } from '../../engine/src/export/bodies';
@@ -1221,5 +1221,66 @@ describe('scenario 12, the part of 2d: round corners by the fillet of the sketch
     expect(other.getState().document).toEqual(before.document);
     expectAllOk(other.getState());
     for (const body of ['box', 'lid']) near(volumeOf(other.getState(), body), volumeOf(before, body), 1e-9);
+  });
+
+  // The part of package 4b (D63), from docs/d36/4b-edge-chamfer-fillet/calls.ts: the loops of the
+  // top of the lid and of the bottom of the box are chains of the four lines of the outline and the
+  // four arcs of its round corners.
+  describe('the part of 4b: a rounded lid and a chamfered foot of the box (D63)', () => {
+    const edge = (a: FaceName, b: FaceName): EdgeName => ({ a, b });
+    const sideOf = (body: Id, curve: Id): FaceName => ({ feature: body, role: 'side', curve });
+    const loopOf = (body: Id, cap: FaceName): EdgeName[] => [...OUTLINE.map((curve) => edge(cap, sideOf(body, curve))), ...CORNERS.map((corner) => edge(cap, sideOf(body, fillets[corner].arc[0])))];
+    const blend = (type: 'chamfer' | 'fillet', id: Id, body: Id, edges: EdgeName[], size: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type, body, edges, ...(type === 'chamfer' ? { distance: size } : { radius: size }) } as never });
+    const surfaceOf = (state: EngineState, body: Id, name: FaceName): Surface | undefined => {
+      const face = state.evaluation.bodies[body].faces.find((f) => faceKey(state.evaluation.faceNames[f.id]) === faceKey(name));
+      return face ? state.evaluation.faceSurfaces[face.id] : undefined;
+    };
+    const TOP: FaceName = { feature: 'lid', role: 'endCap' };
+    const BOTTOM: FaceName = { feature: 'box', role: 'startCap' };
+
+    it('the lines of the top of the lid alone are half of a smooth chain: refused, the edge of an arc named', () => {
+      const lines = loopOf('lid', TOP).slice(0, 4);
+      const error = preview(engine, blend('fillet', 'e5', 'lid', lines, 1.5)).evaluation.features.e5.error;
+      expect(error?.code).toBe('unsupportedEdge');
+      const arcs = CORNERS.map((corner) => faceKey(sideOf('lid', fillets[corner].arc[0])));
+      expect(error?.refs?.some((ref) => typeof ref === 'object' && ref !== null && 'a' in ref && [(ref as EdgeName).a, (ref as EdgeName).b].some((face) => arcs.includes(faceKey(face))))).toBe(true);
+    });
+
+    it('the top loop of the lid gets a fillet of 1.5 in one feature: four cylinders and four tori, and the lid still clears the box', () => {
+      const state = run(engine, blend('fillet', 'lidRound', 'lid', loopOf('lid', TOP), 1.5));
+      expectAllOk(state);
+      const faces = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => surfaceOf(state, 'lid', { feature: 'lidRound', role: 'fillet', edge: i }));
+      for (const surface of faces.slice(0, 4)) expect(surface).toMatchObject({ kind: 'cylinder', radius: 1.5 });
+      for (const surface of faces.slice(4)) {
+        expect(surface?.kind).toBe('torus');
+        if (surface?.kind !== 'torus') continue;
+        near(surface.minorRadius, 1.5, 1e-9);
+        near(surface.majorRadius, 4.5, 1e-9);
+      }
+      expect(engine.query('interference', { bodies: ['box', 'lid'] })).toMatchObject({ ok: true, result: { pairs: [], failed: [] } });
+    });
+
+    it('the bottom loop of the box gets a chamfer of 0.4 against elephant foot; a sketch stands on the chamfer of oa', () => {
+      const state = run(engine, blend('chamfer', 'foot', 'box', loopOf('box', BOTTOM), 0.4), sketchOn('onFoot', onFace('box', { feature: 'foot', role: 'chamfer', edge: 0 })));
+      expectAllOk(state);
+      const faces = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => surfaceOf(state, 'box', { feature: 'foot', role: 'chamfer', edge: i }));
+      for (const surface of faces.slice(0, 4)) expect(surface?.kind).toBe('plane');
+      for (const surface of faces.slice(4)) {
+        expect(surface?.kind).toBe('cone');
+        if (surface?.kind === 'cone') near(surface.halfAngle, Math.PI / 4, 1e-9);
+      }
+      const frame = state.evaluation.features.onFoot.plane!;
+      [6, 0, 0.4].forEach((value, i) => near(frame.origin[i], value, 1e-6));
+      [1, 0, 0].forEach((value, i) => near(frame.y[i], value, 1e-9));
+      [0, -Math.SQRT1_2, -Math.SQRT1_2].forEach((value, i) => near(frame.normal[i], value, 1e-9));
+    });
+
+    it('the document with the rounded lid and the chamfered foot loads to the same model', () => {
+      const before = engine.getState();
+      const other = newEngine();
+      expect(other.load(engine.save()).ok).toBe(true);
+      expectAllOk(other.getState());
+      for (const body of ['box', 'lid']) near(volumeOf(other.getState(), body), volumeOf(before, body), 1e-9);
+    });
   });
 });

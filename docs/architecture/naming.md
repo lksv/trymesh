@@ -21,6 +21,8 @@ type FaceName = (
   | { feature: Id; role: 'holeSeat' }                                      // the step between head and bore, one face for all points
   | { feature: Id; role: 'mesh' }                                          // the whole surface of an imported mesh (D55)
   | { feature: Id; role: 'splitFace' }                                     // the face a split cuts, on both bodies (D56)
+  | { feature: Id; role: 'chamfer'; edge: number }                         // the chamfer of the edge at that place of `edges`, from 0 (D63)
+  | { feature: Id; role: 'fillet'; edge: number }                          // the fillet of the edge at that place of `edges`, from 0 (D63)
 ) & { copy?: { pattern: Id; index: number }[] }; // a face of a copy made by a pattern, or of a pocket a combine with a clearance left (D56)
 ```
 
@@ -43,6 +45,7 @@ Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen pat�
 | A combine without a clearance (D56) | The faces keep their names, from the target or the tool; where a face of a tool lies flush on one of the target and they overlap, the overlapped part takes the tool's name (an intersection: the target's). A face may lie on two bodies, the target and a kept tool. |
 | A combine with a clearance (D56) | The faces a tool leaves are new faces: the name of the face of the tool with `{ pattern: <combine>, index: <the place of the tool in tools> }` appended, described by the moved surface. A crescent of a tool that only marks where two of its faces cross has no face in the pocket ([combine.md](combine.md)). The registry member `tagsFaces` says which features may stand in a tag. |
 | A split (D56) | Both bodies get the cut face `{ feature: <split>, role: 'splitFace' }`, one name on two bodies; the other faces keep their names on the part they lie on. A face of the body in the plane keeps its name, but under an overhang the part the cut face lies on takes its name. |
+| A chamfer or a fillet of edges (D63) | One new face per edge, `{ feature, role, edge }`, the role `chamfer` or `fillet` and `edge` the place of the edge in the list from 0, whatever the pieces of the edge; the faces of the edge keep their names and get narrower. What a tool leaves in the plane of a face it ends at (the riser of a step, the end faces of an added fillet) takes that face's name; a cap where two tools meet goes to the blend. Taking an edge out of the middle of the list renames the faces of the edges after it ([edge-blend.md](edge-blend.md)). |
 | A side of a generated profile | All its segments have one name from the generator catalog: the teeth of a gear are one face `{ feature, role: 'side', curve: 'teeth' }`. The name does not depend on the operand, so another pitch circle does not rename the face. |
 
 The analytic description of a face (`FaceInfo` in `solid.ts`, internal) has five kinds: a plane, a cylinder, a cone (the side of an arc or a circle of a tapered extrusion, D45; the head of a countersink, D46), a general surface swept along the extrusion axis (the side of a generated profile) and the surface of an imported mesh (`surface: 'mesh'`, D55: published as `general`, unchanged by a transform; it may have flat regions, which nothing sees). Only a plane can carry a sketch, and an edge is a circle where its two surfaces meet in one (`circleBetween`, [extrude.md](extrude.md), "Taper").
@@ -80,9 +83,10 @@ interface EdgeName { a: FaceName; b: FaceName }   // a < b v lexikografickém po
 - Hrana se vrací jako seznam úseček (`segments`), ne jako jedna lomená čára: hrana rozdělená výřezem má víc nesouvislých úseků a jedna čára by je spojila přes prázdný prostor.
 - A circular edge is where the surfaces of its two faces meet in a circle (`circleBetween` in `surfaces.ts`): a plane across the axis of a cylinder or a cone, a cylinder and a cone about one axis, two cones about one axis (D45). The centre and the radius are computed from the two surfaces; the mesh only shows that the edge exists.
 - D58 ([revolve.md](revolve.md)) adds the sphere and the torus and replaces the test by `circlesBetween`, every circle two surfaces meet in, with `circleBetween(a, b, points, tolerance)` choosing of two by the points of the edge and the reach of each circle; the pairs above give the circles they gave before. `analyzeBody` decides the kind after the segments of the edge are collected and takes the chord tolerance of the document (`State.chordTolerance`). A revolve names its faces as an extrusion of the same profile (`side` with the curve, `startCap`, `endCap`, the `wall…` roles); a curve along its axis has no face.
+- D63 ([edge-blend.md](edge-blend.md)): a chamfer meets its planes in `line` edges, a cone or a torus of a circular edge meets its coaxial faces in `circle` edges, a fillet cylinder meets the planes it touches in `other` edges (a plane touching a cylinder) and a plane across it in a `circle`; the joins of the tools of a chain or a mitre of fillets are `other`.
 - Other edges (a cylinder or a cone cut by a tilted plane, two cylinders also on one axis, a cone and a tilted plane of a tapered extrusion, the edge of a cap with the side of a generated profile) have the kind `other` and cannot be projected.
 
-Pojmenování hran je zároveň předpokladem pro budoucí rovinu nakloněnou kolem hrany, zaoblení a zkosení.
+Pojmenování hran je zároveň předpokladem pro budoucí rovinu nakloněnou kolem hrany; the chamfer and the fillet of edges (D63) name their edges so.
 
 ### Rovina skici na stěně
 
@@ -99,6 +103,9 @@ Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. S
 | a side of a revolve from a line across its axis (D58) | the start `a` of the line turned to the start of the turn | the direction the angle grows at the start | out of the body |
 | the caps of a partial revolve (D58) | the origin of the parent sketch turned to the start or the end | the Y axis of the parent sketch turned likewise | out of the body |
 | any other side of a revolve (a cylinder, a cone, a sphere, a torus) | not planar → error `nonPlanarFace` | | |
+| a chamfer of a straight edge (D63) | where the chamfer meets the first face of the edge (`a` of its name) at the end the projection of the edge calls `a` (the smaller parameter along n_a × n_b) | along the edge in that direction | out of the body |
+| a chamfer of a circular edge that is a plane across its axis (D63) | as a side of a revolve from a line across its axis, the turn starting at the radial direction of the start of the piece (the model's X projected for a whole circle) | the direction the angle grows there | out of the body |
+| any other face of a chamfer or a fillet (a cone, a cylinder, a torus, a sphere) | not planar → error `nonPlanarFace` | | |
 
 Osa X se dopočítá jako Y × N. Nezávisí tedy na pořadí bodů úsečky ani na orientaci smyčky.
 

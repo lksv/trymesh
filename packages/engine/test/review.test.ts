@@ -330,7 +330,7 @@ describe('a module per feature type (D37): what the move could have changed unse
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve']);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet']);
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);

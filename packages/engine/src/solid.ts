@@ -486,12 +486,16 @@ export function penetration(common: Solid, a: Solid, b: Solid, isPlanar: (face: 
 
 // ---------------------------------------------------------------- stěny a hrany tělesa
 
-interface EdgeData {
+export interface EdgeData {
   a: number; // čísla stěn v kanonickém pořadí jmen
   b: number;
   name: EdgeName;
   kind: EdgeKind;
   segments: number[];
+  // Per segment, in the order of `segments`: the indices of its two vertices in the mesh, and the
+  // triangle of face `a` and of face `b` along it (D63: the side a face lies on, from the triangles).
+  vertices: number[];
+  triangles: number[];
 }
 export interface BodyData {
   result: BodyResult;
@@ -514,12 +518,14 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
   const at = (i: number): Vec3 => [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
   const normalSum = new Map<number, Vec3>();
   const byEdge = new Map<number, number>(); // orientovaná hrana → číslo stěny trojúhelníku
+  const triangleOf = new Map<number, number>(); // the directed side of a triangle → the triangle
   const vertexCount = p.length / 3;
   for (let t = 0; t < solid.triangles.length / 3; t++) {
     const [i, j, k] = [solid.triangles[3 * t], solid.triangles[3 * t + 1], solid.triangles[3 * t + 2]];
     const id = solid.faceIds[t];
     normalSum.set(id, add3(normalSum.get(id) ?? [0, 0, 0], cross3(sub3(at(j), at(i)), sub3(at(k), at(i)))));
     byEdge.set(i * vertexCount + j, id).set(j * vertexCount + k, id).set(k * vertexCount + i, id);
+    triangleOf.set(i * vertexCount + j, t).set(j * vertexCount + k, t).set(k * vertexCount + i, t);
   }
   const edges = new Map<string, EdgeData>();
   for (const [key, id] of byEdge) {
@@ -530,8 +536,11 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
     const [a, b] = faceKey(faceNames[id]) <= faceKey(faceNames[other]) ? [id, other] : [other, id];
     const name: EdgeName = { a: faceNames[a], b: faceNames[b] };
     let edge = edges.get(edgeKey(name));
-    if (!edge) edges.set(edgeKey(name), (edge = { a, b, name, kind: 'other', segments: [] }));
+    if (!edge) edges.set(edgeKey(name), (edge = { a, b, name, kind: 'other', segments: [], vertices: [], triangles: [] }));
     edge.segments.push(...at(i), ...at(j));
+    edge.vertices.push(i, j);
+    const [forward, backward] = [triangleOf.get(key) as number, triangleOf.get(j * vertexCount + i) as number];
+    edge.triangles.push(...(a === id ? [forward, backward] : [backward, forward]));
   }
   // the kind once the segments are collected: of two circles, the points of the edge choose
   for (const edge of edges.values()) edge.kind = edgeKind(faceInfos[edge.a], faceInfos[edge.b], edge.segments, chordTolerance);
@@ -563,6 +572,40 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
 function edgeKind(a: FaceInfo, b: FaceInfo, points: ArrayLike<number>, chordTolerance: number): EdgeKind {
   if (a.planar && b.planar) return len3(cross3(a.normal, b.normal)) <= Math.sin(ANGLE_TOLERANCE) ? 'coplanar' : 'line';
   return circleBetween(surfaceOf(a), surfaceOf(b), points, chordTolerance) ? 'circle' : 'other';
+}
+
+// The unit normal of a surface at a point of it (or near it), without a sign (D63: a face that
+// continues a face of an edge has the same normal at the end point). Undefined for a surface without
+// a normal the engine knows (a swept or an imported surface) and at a point where it has none (the
+// axis of a cylinder, the apex of a cone, the centre of a sphere or of a tube).
+export function normalAt(info: FaceInfo, point: Vec3): Vec3 | undefined {
+  if (info.planar) return unit3(info.normal);
+  const radial = (center: Vec3, axis: Vec3): Vec3 => {
+    const d = sub3(point, center);
+    const u = unit3(axis);
+    return sub3(d, mul3(u, dot3(d, u)));
+  };
+  const unitOrNone = (v: Vec3): Vec3 | undefined => (len3(v) > LENGTH_TOLERANCE ? unit3(v) : undefined);
+  switch (info.surface) {
+    case 'cylinder':
+      return unitOrNone(radial(info.center, info.axis));
+    case 'cone': {
+      const along = unitOrNone(sub3(point, info.apex));
+      const out = unitOrNone(radial(info.apex, info.axis));
+      if (!along || !out) return undefined;
+      return unitOrNone(sub3(out, mul3(along, dot3(out, along))));
+    }
+    case 'sphere':
+      return unitOrNone(sub3(point, info.center));
+    case 'torus': {
+      const out = unitOrNone(radial(info.center, info.axis));
+      if (!out) return undefined;
+      return unitOrNone(sub3(point, add3(info.center, mul3(out, info.majorRadius))));
+    }
+    case 'swept':
+    case 'mesh':
+      return undefined;
+  }
 }
 
 // Normála rovinné stěny ven z tělesa: analytický směr, znaménko ze sítě. undefined = stěna v tělese není.

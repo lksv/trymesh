@@ -29,9 +29,9 @@ import type { FaceInfoD, RevolveExtent, RevolveSetup } from '../4a-revolve/contr
 //   An edge ends at another edge of the feature that shares a face with it: smoothly (both end in
 //   the plane across them), at the same angle to the shared face (both end in their mitre, the
 //   plane through the vertex halving the angle of the two in that face), or, both convex at
-//   a convex corner of that face, each in the plane of the other's other face; else the feature
-//   is refused (an arc at an angle to another edge, the top loop of a D-shaped boss). Or at one
-//   planar face, whose plane
+//   a convex corner of that face and both straight, each in the plane of the other's other face;
+//   else the feature is refused (an arc at an angle to another edge, the top loop of a D-shaped
+//   boss). Or at one planar face, whose plane
 //   the chamfer or fillet ends in (an arc: a plane through its axis), or runs on smoothly into the
 //   next edge of a face (a line of an outline with round corners into the arc of the corner; also
 //   across a seam where both faces of the edge continue into flush faces); that next edge has to be
@@ -95,7 +95,8 @@ declare module '../00-prep/contract' {
   // - its faces meet at less than 0.01 rad from flat or from folded;
   // - the side of a face along the edge is not clear (its triangles along it disagree);
   // - the pieces of the edge need different chamfers (another side of a face);
-  // - it meets another edge of the feature at a vertex in a way the feature cannot join;
+  // - it meets another edge of the feature at a vertex in a way the feature cannot join (an arc at
+  //   an angle, different angles at a reflex corner), or their two tools leave a step there;
   // - an end has no face besides its own, two or more that are not a seam, a round face that does not continue a face
   //   of the edge, (a straight edge) a plane within 0.01 rad of the edge, (an arc) a plane that
   //   does not hold its axis;
@@ -111,7 +112,6 @@ declare module '../00-prep/contract' {
   //   a face of the tool left in the result or in more volume taken than the tools' wedges hold;
   // - it reaches the axis of a circular edge;
   // - the ends of a straight piece meet within it;
-  // - two tools that should meet at a vertex leave a step between them;
   // - the tools would have more triangles than 4a's MAX_REVOLVE_TRIANGLES.
   interface IssueCodes {
     unsupportedEdge: true;
@@ -171,6 +171,9 @@ export const BLEND_MIN_ANGLE = 0.01;
 // What the overshoot faces of the tool of an edge may leave in the result, in mm² per mm of the
 // length of the edge; a sliver up to that is given to the new face of the edge, more is
 // `blendDoesNotFit`. Measured: 0 in every case that fits.
+// A cap left where two tools meet (a smooth end, a mitre, the corner of two edges) goes to the blend
+// of its edge up to BLEND_LIFT × chord tolerance × (size + overshoot) mm², the step the lift leaves
+// between a lifted tool and one that is not; more is `unsupportedEdge` with both edges.
 export const BLEND_SLIVER = 1e-4;
 // The volume check: what the feature cut or added may exceed what the parts of its tools inside
 // their wedges hold together (the profile closed along the two faces, the parts united, the cut
@@ -187,8 +190,8 @@ export type BlendKind = 'chamfer' | 'fillet';
 // The step of both types (recompute/edge-blend.ts), in this order (design.md, "Recompute"): the
 // body, the edges, their kind, their pieces, the corner of each piece, its ends, the mixed
 // vertices, the profile, the tools, the booleans (the cut tools united and subtracted, then the
-// added ones united and joined), the renumbering, the checks, the result with one face per edge
-// and the facts.
+// added ones united and joined), the checks per piece on the temporary face numbers, the
+// renumbering, the result with one face per edge and the facts.
 export declare function blendStep(kind: BlendKind, feature: Id, body: Id, edges: EdgeNameAfter[], size: number, context: StepContext): Step;
 
 // The corner of a piece of an edge, in the plane across a straight edge or in the half plane
@@ -252,8 +255,9 @@ export declare function edgePrism(profile: BlendProfile, frame: Frame, ends: [En
 // The tool of a piece of a circular edge is 4a's `buildRevolve` with this setup: the profile, and its
 // exact blend, carried from the coordinates of the corner into (ρ, z) by `place` (the edge's point
 // in (ρ, z), the unit direction of face `a` there, and the unit direction across it towards face
-// `b`; where those two are a left-handed pair in (ρ, z) the profile is mirrored, so its points are
-// reversed and its keys shifted to keep it counter-clockwise, as a `Region` must be), as the one
+// `b`; where those two are a left-handed pair in (ρ, z) the profile is mirrored, so its n points
+// are reversed, points'[i] = points[n − 1 − i], and its keys with them, keys'[i] =
+// keys[(n − 2 − i) mod n], to keep it counter-clockwise, as a `Region` must be), as the one
 // region of a `RevolveSetup` in a frame whose origin is the centre of the circle,
 // X the radial direction at the start of the piece (for a whole circle the model's X projected
 // across the axis, its Y where the axis is within 0.1 rad of X) and Y the axis, turned by a whole

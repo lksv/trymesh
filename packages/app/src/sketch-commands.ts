@@ -273,7 +273,14 @@ export type ExtrudeDraft = Input<ExtrudeFeature>;
 type ProfileSourcePatch =
   | (Omit<Input<Extract<ProfileSource, { type: 'regions' }>>, 'offset'> & { offset: number | Expr | null })
   | Input<Extract<ProfileSource, { type: 'wall' }>>
-  | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs'> & { refs: Record<string, Id | null> });
+  | (Omit<Input<Extract<ProfileSource, { type: 'generated' }>>, 'refs' | 'params'> & { params: Record<string, number | Expr | boolean | null>; refs: Record<string, Id | null> });
+// A generated profile as a patch: every reference and every optional parameter of the catalog the
+// draft does not have is removed by name.
+function generatedPatch(profile: Extract<ExtrudeDraft['profile'], { type: 'generated' }>): ProfileSourcePatch {
+  const spec = GENERATORS[profile.generator];
+  const optional = Object.entries(spec.params).flatMap(([name, param]) => (!isFlag(param) && param.optional && profile.params[name] === undefined ? [[name, null] as const] : []));
+  return { ...profile, params: { ...profile.params, ...Object.fromEntries(optional) }, refs: Object.fromEntries(Object.keys(spec.refs).map((name) => [name, profile.refs?.[name] ?? null])) };
+}
 export type PlaneDraft = Input<PlaneFeature>;
 
 // A change of an extrusion draft.
@@ -296,7 +303,7 @@ export type PlaneDraft = Input<PlaneFeature>;
 //   a profile generator. A new generated profile gets the operands the form found in the sketch and
 //   the defaults of the catalog; a new wall has no curves yet and the thickness `WALL_THICKNESS`.
 //   `operands`, `params` and `refs` change entries of a generated profile (`null` removes a
-//   reference); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
+//   reference or an optional parameter); `regions` and `offset` belong to a profile of regions (`null` removes the offset,
 //   an optional field); `curves` and `thickness` belong to a wall.
 export type ProfileKind = 'regions' | 'wall' | GeneratorName;
 export const profileKind = (profile: ExtrudeDraft['profile']): ProfileKind => (profile.type === 'generated' ? profile.generator : profile.type);
@@ -310,7 +317,7 @@ export interface ExtrudeChange {
   curves?: Id[];
   thickness?: number | Expr;
   operands?: Record<string, Id>;
-  params?: Record<string, number | Expr | boolean>;
+  params?: Record<string, number | Expr | boolean | null>;
   refs?: Record<string, Id | null>;
   extent?: ExtentKind;
   start?: number | Expr;
@@ -325,12 +332,12 @@ export interface ExtrudeChange {
 }
 const DEFAULT_DISTANCE: ExtrudeDraft['extent'] = { type: 'distance', start: 0, distance: 10 };
 export const WALL_THICKNESS = 2; // mm: what a new wall starts with
-// What a new draft starts with where the catalog has no default (the parameter is required).
-const FORM_DEFAULTS: Record<GeneratorName, Record<string, number>> = { involuteGear: { teeth: 18 } };
-
-// A new generated profile: the defaults of the catalog; the operands are filled in by the caller.
+// A new generated profile: the example of the catalog entry for the required parameters and the
+// defaults for the others, except an optional parameter, which a draft holds only while it has
+// a value; the operands are filled in by the caller.
 export function generatedProfile(generator: GeneratorName, sketch: Id, operands: Record<string, Id>): Extract<ExtrudeDraft['profile'], { type: 'generated' }> {
-  const params = Object.fromEntries(Object.entries(GENERATORS[generator].params).map(([name, spec]) => [name, isFlag(spec) ? spec.default : (spec.default ?? FORM_DEFAULTS[generator][name] ?? 0)]));
+  const spec = GENERATORS[generator];
+  const params = Object.fromEntries(Object.entries(spec.params).flatMap(([name, param]): [string, number | boolean][] => (isFlag(param) ? [[name, param.default]] : param.optional ? [] : [[name, param.default ?? spec.example[name] ?? 0]])));
   return { type: 'generated', generator, sketch, operands, params };
 }
 
@@ -354,8 +361,9 @@ function changeProfile(profile: ExtrudeDraft['profile'], change: ExtrudeChange, 
   }
   if (next.type === 'wall') return { ...next, sketch, ...(change.curves === undefined ? {} : { curves: [...change.curves].sort() }), ...(change.thickness === undefined ? {} : { thickness: change.thickness }) };
   const refs = Object.fromEntries(Object.entries({ ...next.refs, ...change.refs }).filter((entry): entry is [string, Id] => entry[1] !== null));
+  const params = Object.fromEntries(Object.entries({ ...next.params, ...change.params }).filter((entry): entry is [string, number | Expr | boolean] => entry[1] !== null));
   const { refs: _old, ...rest } = next;
-  return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params: { ...next.params, ...change.params }, ...(Object.keys(refs).length ? { refs } : {}) };
+  return { ...rest, sketch, operands: { ...next.operands, ...change.operands }, params, ...(Object.keys(refs).length ? { refs } : {}) };
 }
 export type UpToDraft = Extract<ExtrudeDraft['extent'], { type: 'upTo' }>;
 // An extent up to a plane without a plane yet: the draft of the form holds it so until one is
@@ -437,6 +445,10 @@ export function changeAxis(axis: AxisRef, change: AxisChange, sketches: Id[]): A
 // - `span`: of a circular pattern `full` or `angle`, of a linear one `spacing` or `length`; the
 //   span the draft had last of that type comes back.
 // - `plane`: the plane of a mirror.
+// - `grid`: a linear pattern gets a second direction (D53): the one the draft had last, or a new one
+//   (a base axis other than the first direction, a count of 2 and a spacing of 10); `false`
+//   removes it.
+// - `second`: a change of the second direction: its axis, count and span, as for the first.
 export interface PatternChange extends AxisChange {
   source?: 'features' | 'body';
   toggleFeature?: Id;
@@ -448,20 +460,39 @@ export interface PatternChange extends AxisChange {
   spacing?: number | Expr;
   length?: number | Expr;
   plane?: PlaneRef;
+  grid?: boolean;
+  second?: DirectionChange;
 }
+// One change of a direction of a linear pattern: its axis, its count, the type of its span and
+// the value of the span.
+export interface DirectionChange extends AxisChange {
+  count?: number | Expr;
+  span?: LinearSpan['type'];
+  spacing?: number | Expr;
+  length?: number | Expr;
+}
+export type SecondDraft = NonNullable<LinearDraft['second']>;
 // What the form remembers beyond the draft, to return to: the transform the draft had in each
-// kind, and the span of each type it had last.
+// kind, and the span of each type it had last. The second direction of a grid has slots of its
+// own: `second`, the second direction the draft had last (written only while the draft has one, so
+// that clearing the checkbox, changing the first direction or another kind does not lose it), and
+// `secondSpacing`, `secondLength`, the span of each type it had last (`spacing` and `length` are
+// those of the first direction).
 export interface PatternMemory {
   kinds?: Partial<Record<PatternKind, PatternTransformDraft>>;
   angle?: PatternSpan;
   spacing?: LinearSpan;
   length?: LinearSpan;
+  second?: SecondDraft;
+  secondSpacing?: LinearSpan;
+  secondLength?: LinearSpan;
 }
 // The memory with what the draft has now.
 export function rememberPattern(memory: PatternMemory, draft: PatternDraft): PatternMemory {
   const t = draft.transform;
   const span = t.type === 'circular' && t.span.type === 'angle' ? { angle: t.span } : t.type === 'linear' ? { [t.span.type]: t.span } : {};
-  return { ...memory, ...span, kinds: { ...memory.kinds, [t.type]: t } };
+  const second = t.type === 'linear' && t.second ? { second: t.second, [t.second.span.type === 'spacing' ? 'secondSpacing' : 'secondLength']: t.second.span } : {};
+  return { ...memory, ...span, ...second, kinds: { ...memory.kinds, [t.type]: t } };
 }
 // What the form offers at the place of the pattern on the timeline, in the order of the timeline:
 // extrusions that add or cut, bodies and sketches.
@@ -515,11 +546,12 @@ function changeTransform(given: PatternTransformDraft, change: PatternChange, ch
   if (transform.type === 'mirror') return change.plane ? { ...transform, plane: change.plane } : transform;
   const count = change.count ?? transform.count;
   if (transform.type === 'linear') {
-    let { span } = transform;
-    if ((change.span === 'spacing' || change.span === 'length') && change.span !== span.type) span = memory[change.span] ?? DEFAULT_SPAN[change.span];
-    if (change.spacing !== undefined && span.type === 'spacing') span = { type: 'spacing', spacing: change.spacing };
-    if (change.length !== undefined && span.type === 'length') span = { type: 'length', length: change.length };
-    return { ...transform, direction: changeAxis(transform.direction, change, choices.sketches), count, span };
+    const { second: had, ...rest } = transform;
+    const span = change.span === 'spacing' || change.span === 'length' ? change.span : undefined;
+    const first = changeDirection(rest, { ...change, span }, choices.sketches, memory);
+    let second = change.grid === false ? undefined : (had ?? (change.grid ? (memory.second ?? newSecond(first.direction)) : undefined));
+    if (second && change.second) second = changeDirection(second, change.second, choices.sketches, { spacing: memory.secondSpacing, length: memory.secondLength });
+    return second ? { ...first, second } : first;
   }
   let { span } = transform;
   if ((change.span === 'full' || change.span === 'angle') && change.span !== span.type) span = change.span === 'full' ? { type: 'full' } : (memory.angle ?? DEFAULT_ANGLE);
@@ -527,19 +559,37 @@ function changeTransform(given: PatternTransformDraft, change: PatternChange, ch
   return { ...transform, axis: changeAxis(transform.axis, change, choices.sketches), count, span };
 }
 
+// A direction of a linear pattern changed: the axis, the count, the span of another type (the one
+// of that type it had last, from `spans`), the value of the span.
+function changeDirection<D extends { direction: AxisRef; count: number | Expr; span: LinearSpan }>(d: D, change: DirectionChange, sketches: Id[], spans: { spacing?: LinearSpan; length?: LinearSpan }): D {
+  let { span } = d;
+  if (change.span !== undefined && change.span !== span.type) span = spans[change.span] ?? DEFAULT_SPAN[change.span];
+  if (change.spacing !== undefined && span.type === 'spacing') span = { type: 'spacing', spacing: change.spacing };
+  if (change.length !== undefined && span.type === 'length') span = { type: 'length', length: change.length };
+  return { ...d, direction: changeAxis(d.direction, change, sketches), count: change.count ?? d.count, span };
+}
+// A new second direction: a base axis other than the first direction (Y, or X when the first is
+// Y), a count of 2 and a spacing of 10. It may still lie along a first direction that is the
+// normal of a sketch; the preview then says which copies meet.
+const newSecond = (first: AxisRef): SecondDraft => ({ direction: { kind: 'base', axis: first.kind === 'base' && first.axis === 'Y' ? 'X' : 'Y' }, count: 2, span: DEFAULT_SPAN.spacing });
+
 // Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
 export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   if (draft.type === 'plane') return { type: 'updateFeature', id: draft.id, patch: { base: draft.base, offset: draft.offset } };
-  // the draft holds every field of the source and the transform, so merging them replaces both
-  if (draft.type === 'pattern') return { type: 'updateFeature', id: draft.id, patch: { source: draft.source, transform: draft.transform } };
+  // The draft holds every field of the source and the transform, so merging them replaces both; a
+  // second direction the draft no longer has is removed by name (a patch of the same type merges).
+  if (draft.type === 'pattern') {
+    const transform = draft.transform.type === 'linear' && !draft.transform.second ? { ...draft.transform, second: null } : draft.transform;
+    return { type: 'updateFeature', id: draft.id, patch: { source: draft.source, transform } };
+  }
   const { id, operation, targets } = draft;
   // The patch merges with the feature, so what the draft no longer has must be removed explicitly:
-  // the offset of regions, a reference of a generated profile, the taper of a distance and the gap
-  // of an extent up to a plane. Every other entry of the profile and of the extent is in the draft.
+  // the offset of regions, a reference and an optional parameter of a generated profile, the taper
+  // of a distance and the gap of an extent up to a plane. Every other entry of the profile and of
+  // the extent is in the draft.
   const extent = draft.extent.type === 'distance' ? { ...draft.extent, taper: draft.extent.taper ?? null } : draft.extent.type === 'upTo' ? { ...draft.extent, gap: draft.extent.gap ?? null } : draft.extent;
-  const profile: ProfileSourcePatch =
-    draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : { ...draft.profile, refs: Object.fromEntries(Object.keys(GENERATORS[draft.profile.generator].refs).map((name) => [name, draft.profile.type === 'generated' ? (draft.profile.refs?.[name] ?? null) : null])) };
+  const profile: ProfileSourcePatch = draft.profile.type === 'regions' ? { ...draft.profile, offset: draft.profile.offset ?? null } : draft.profile.type === 'wall' ? draft.profile : generatedPatch(draft.profile);
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 

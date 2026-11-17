@@ -19,6 +19,17 @@ const FACTS_SHOWN: Record<GeneratorName, [name: string, label: string, unit: Uni
     ['tipDiameter', 'tip ⌀', 'mm'],
     ['rootDiameter', 'root ⌀', 'mm'],
     ['rotation', 'rotation', 'rad'],
+    ['shift', 'shift', 'none'],
+  ],
+  cycloidalDisc: [
+    ['lobes', 'lobes', 'count'],
+    ['eccentricity', 'eccentricity', 'mm'],
+    ['outerDiameter', 'outer ⌀', 'mm'],
+    ['innerDiameter', 'inner ⌀', 'mm'],
+  ],
+  gt2Pulley: [
+    ['pitchDiameter', 'pitch ⌀', 'mm'],
+    ['outsideDiameter', 'outside ⌀', 'mm'],
   ],
 };
 

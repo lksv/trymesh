@@ -1,10 +1,10 @@
 // Numeric fields of forms: what the app converts and what it sends to the engine unchanged.
-import { type ExtrudeFeature, type PlaneFeature, createEngine, emptySketch, featureInput } from '@trymesh/engine';
+import { type ExtrudeFeature, type PatternFeature, type PlaneFeature, createEngine, emptySketch, featureInput } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import { expressionProblem, fieldNote, fieldText, parseField, plainNumber, resultText, valueText } from '../src/fields';
-import { changeExtrude, draftCommand } from '../src/sketch-commands';
+import { changeExtrude, changePattern, draftCommand } from '../src/sketch-commands';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
 
@@ -109,5 +109,43 @@ describe('drafts keep expressions', () => {
     // the preview of a draft reports the value of the expression being typed
     const preview = engine.preview(draftCommand(changeExtrude(featureInput(feature<ExtrudeFeature>('e')), { distance: 'h + 1' }, []), true, index('e')), 'e');
     expect(preview.ok && preview.state.evaluation.features.e.values).toEqual({ 'extent/distance': 13 });
+  });
+
+  it('a pattern draft: a row that becomes a grid and a grid that becomes a row again, through the engine (D53)', () => {
+    const engine = createEngine(deps);
+    const run = (...commands: Parameters<typeof engine.execute>[0][]) => {
+      for (const command of commands) {
+        const result = engine.execute(command);
+        if (!result.ok) throw new Error(result.error.message);
+      }
+    };
+    run(
+      { type: 'setParameter', name: 'rows', expr: '3' },
+      { type: 'addFeature', feature: emptySketch('s', 'Sketch', { kind: 'base', plane: 'XY' }) },
+      { type: 'addCurve', sketch: 's', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 2 },
+      { type: 'addFeature', feature: { id: 'e', name: 'e', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } },
+      { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'body', body: 'e' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: 10 } } } },
+    );
+    const choices = { tools: [], bodies: ['e'], sketches: ['s'] };
+    const pattern = (): PatternFeature => engine.getState().document.features[2] as PatternFeature;
+    // an untouched row: the command removes a second direction it does not have, and nothing changes
+    const before = engine.save();
+    const command = draftCommand(featureInput(pattern()), true, 2);
+    expect(command).toMatchObject({ patch: { transform: { second: null } } });
+    run(command);
+    expect(engine.save()).toBe(before);
+    // ticked, with an expression in its count
+    run(draftCommand(changePattern(changePattern(featureInput(pattern()), { grid: true }, choices), { second: { count: 'rows' } }, choices), true, 2));
+    expect(pattern()).toMatchObject({ transform: { second: { direction: { kind: 'base', axis: 'Y' }, count: 3, span: { type: 'spacing', spacing: 10 } } }, expressions: { 'transform/second/count': 'rows' } });
+    expect(engine.getState().evaluation.features.P.bodies).toEqual(['P/1', 'P/1000', 'P/1001', 'P/2000', 'P/2001']);
+    // an untouched grid: the expression stays
+    const grid = engine.save();
+    run(draftCommand(featureInput(pattern()), true, 2));
+    expect(engine.save()).toBe(grid);
+    // cleared: a row again, the expression of the second count gone with it
+    run(draftCommand(changePattern(featureInput(pattern()), { grid: false }, choices), true, 2));
+    expect(pattern().transform).toEqual({ type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: 10 } });
+    expect(pattern().expressions).toBeUndefined();
+    expect(engine.getState().evaluation.features.P.bodies).toEqual(['P/1']);
   });
 });

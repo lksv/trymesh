@@ -4,7 +4,7 @@
 //
 // A draft is the input form of a feature that is not in the document until confirmed. Every
 // change of it is previewed by the engine, and the preview is the state the view shows.
-import { type Command, type EngineState, type Expr, FEATURE_TYPE_INFO, type FaceName, type Feature, type FeatureResult, type Input, type PlaneRef, type Unit, featureInput } from '@trymesh/engine';
+import { type Command, type EngineState, type Expr, FEATURE_TYPE_INFO, type FaceName, type Feature, type FeatureResult, type Input, type PlaneRef, type Unit, atPath, featureInput } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldNote, fieldText, parseField } from '../fields';
 import type { PanelHost, ViewPick } from '../host';
@@ -23,7 +23,8 @@ export interface Start {
 export interface FeatureForm<F extends Feature, Extra> {
   // The draft of a new feature with its defaults, or why there cannot be one yet.
   draft(host: PanelHost, at: Start): { draft: Input<F>; extra: Extra; say?: string } | { problem: string };
-  command(draft: Input<F>, editing: boolean, index: number): Command;
+  // `extra`: what the form remembers (the mesh feature makes a new body a reference part by it)
+  command(draft: Input<F>, editing: boolean, index: number, extra?: Extra): Command;
   incomplete?(draft: Input<F>): boolean; // nothing to compute or to confirm yet
   panel(mode: DraftMode<F, Extra>, host: PanelHost): HTMLElement[];
   live?(mode: DraftMode<F, Extra>, host: PanelHost): void; // the parts of the panel that follow the preview without a rebuild
@@ -119,7 +120,7 @@ export function updatePreview(host: PanelHost): void {
     return;
   }
   const started = performance.now();
-  const result = host.engine.preview(m.form.command(m.draft, m.editing, m.index), m.draft.id);
+  const result = host.engine.preview(m.form.command(m.draft, m.editing, m.index, m.extra), m.draft.id);
   state.cost = performance.now() - started;
   m.preview = result.ok ? result.state : undefined;
   const outcome = result.ok ? result.state.evaluation.features[m.draft.id] : undefined;
@@ -167,7 +168,7 @@ function confirmDraft(host: PanelHost, m: AnyDraft): void {
   // The form is left as soon as the command is in: the refresh the engine triggers must not
   // preview the same change once more on top of the changed document (seconds for a slow pattern).
   host.drafting.confirming = true;
-  const done = host.run(m.form.command(m.draft, m.editing, m.index), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[(m.draft as Feature).type]} přidáno.`);
+  const done = host.run(m.form.command(m.draft, m.editing, m.index, m.extra), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[(m.draft as Feature).type]} přidáno.`);
   host.drafting.confirming = false;
   if (!done) return;
   if (!m.editing) host.inserted(m.draft.id);
@@ -189,7 +190,8 @@ export function draftButtons(host: PanelHost, m: AnyDraft): HTMLElement[] {
 
 // A numeric field of a feature draft: a number or an expression. Next to an expression is its value from the preview.
 export function draftField(host: PanelHost, m: AnyDraft, label: string, path: string, change: (value: number | Expr) => void): HTMLElement {
-  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => field.path === path)?.spec.unit ?? 'mm';
+  // the field of the variant the draft is (several generators have a parameter of one name)
+  const unit = FEATURE_TYPE_INFO[(m.draft as Feature).type].fields.find((field) => field.path === path && (!field.when || atPath(m.draft, field.when.path) === field.when.equals))?.spec.unit ?? 'mm';
   const names = host.doc.parameters.map((p) => p.name);
   const input = h('input', {
     value: fieldText(draftValue(m, path), unit),

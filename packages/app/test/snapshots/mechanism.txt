@@ -80,7 +80,7 @@
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
       {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -99,6 +99,7 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
         button title="Cut a body into two by a plane; both parts get the cut face": "Split"
       div.group
@@ -116,12 +117,16 @@
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
           option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
           option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+          option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
         select value="" title="Export the model in a format of the engine"
           option selected value="": "Export…"
           option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
           option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
           option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
           option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+          option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+          option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+          option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -328,6 +333,19 @@
     + label
     +   "Angle (° or an expression in radians)"
     +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    + label
+    +   "Effort (N·mm or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Velocity (rad/s or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Rotor inertia (g·mm² or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Gear ratio (a number or an expression; optional)"
+    +   input value=""
     +   button.primary: "OK"
     +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
@@ -406,6 +424,19 @@
     - label
     -   "Angle (° or an expression in radians)"
     -   input value="0"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    - label
+    -   "Effort (N·mm or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Velocity (rad/s or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Rotor inertia (g·mm² or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Gear ratio (a number or an expression; optional)"
+    -   input value=""
     +   button title="Bodies that move as one piece": "New link"
     +   button title="A joint moves its child link against its parent link": "New joint"
     +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -727,6 +758,7 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     +   button.primary: "Dokončit skicu"
@@ -744,12 +776,16 @@
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     -   select value="" title="Export the model in a format of the engine"
     -     option selected value="": "Export…"
     -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     -   button.active title="Check which bodies share a volume": "Collisions"
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
@@ -933,6 +969,7 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
@@ -958,12 +995,16 @@
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     +   select value="" title="Export the model in a format of the engine"
     +     option selected value="": "Export…"
     +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     +   button title="Check which bodies share a volume": "Collisions"
     -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
     -   button.primary: "Dokončit skicu"
@@ -1121,7 +1162,7 @@
 === 19. the value follows the parameter q: the slider is disabled, the field shows the expression and its value
   engine: execute({"type":"setParameter","name":"q","expr":"0.5"}) -> ok
   engine: execute({"type":"setPose","values":{"joint1":"q"}}) -> ok
-  document: {"parameters":[{"name":"q","expr":"0.5"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  document: {"parameters":[{"name":"q","expr":"0.5"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0.5,"expressions":{"value":"q"}}}}
   panel:
     + h2: "Parameters (1)"
@@ -1147,7 +1188,7 @@
 
 === 20. q = 3 is outside the limits: the joint is in error, the arm is drawn with it at zero and marked, the status line names the joint
   engine: execute({"type":"setParameter","name":"q","expr":"3"}) -> ok
-  document: {"parameters":[{"name":"q","expr":"3"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  document: {"parameters":[{"name":"q","expr":"3"}],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   panel:
     +   input.expr value="3" placeholder="expression, e.g. 2 * a"
     +   small.computed: "= 3"
@@ -1391,6 +1432,19 @@
     + label
     +   "Angle (° or an expression in radians)"
     +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    + label
+    +   "Effort (N·mm or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Velocity (rad/s or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Rotor inertia (g·mm² or an expression; optional)"
+    +   input value=""
+    + label
+    +   "Gear ratio (a number or an expression; optional)"
+    +   input value=""
     +   button.primary: "OK"
     +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
@@ -1398,29 +1452,326 @@
     -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   view: 0 scene(s) set
 
-=== 28. another kind: the numbers start from the defaults of its unit
+=== 28. the drive of the joint: one setJoint with the four fields, the velocity in rad/s as typed (no degrees)
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":1100,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":1100,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}}
   panel:
-    +   select value="prismatic"
-    +     option value="revolute": "Revolute"
+    - h2: "Joint Elbow"
+    - label
+    -   "ID"
+    -   input value="joint1" disabled
+    - label
+    -   "Name (empty: the ID)"
+    -   input value="Elbow" placeholder="joint1"
+    - label
+    -   "Kind"
     -   select value="revolute"
     -     option selected value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -     option value="prismatic": "Prismatic (a slide)"
+    -     option value="fixed": "Fixed"
+    - label
+    -   "Parent link"
+    -   select value="link1"
+    -     option selected value="link1": "Base"
+    -     option value="link2": "Arm"
+    - label
+    -   "Child link (moves)"
+    -   select value="link2"
+    -     option value="link1": "Base"
+    -     option selected value="link2": "Arm"
+    - label
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    - label
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-90"
+    - label
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="90"
+    - label
+    -   "Angle (° or an expression in radians)"
+    -   input value="0"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    - label
+    -   "Effort (N·mm or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Velocity (rad/s or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Rotor inertia (g·mm² or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Gear ratio (a number or an expression; optional)"
+    -   input value=""
+    +   button title="Bodies that move as one piece": "New link"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  status: The joint Elbow changed.
+  view: 1 scene(s) set
+
+=== 29. the form of the joint with its drive filled in
+  panel:
+    + h2: "Joint Elbow"
+    + label
+    +   "ID"
+    +   input value="joint1" disabled
+    + label
+    +   "Name (empty: the ID)"
+    +   input value="Elbow" placeholder="joint1"
+    + label
+    +   "Kind"
+    +   select value="revolute"
+    +     option selected value="revolute": "Revolute"
+    +     option value="continuous": "Continuous (no limits)"
+    +     option value="prismatic": "Prismatic (a slide)"
+    +     option value="fixed": "Fixed"
+    + label
+    +   "Parent link"
+    +   select value="link1"
+    +     option selected value="link1": "Base"
+    +     option value="link2": "Arm"
+    + label
+    +   "Child link (moves)"
+    +   select value="link2"
+    +     option value="link1": "Base"
+    +     option selected value="link2": "Arm"
+    + label
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    + label
+    +   "Lower limit (° or an expression in radians)"
+    +   input value="-90"
+    + label
+    +   "Upper limit (° or an expression in radians)"
+    +   input value="90"
+    + label
+    +   "Angle (° or an expression in radians)"
+    +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    + label
+    +   "Effort (N·mm or an expression; optional)"
+    +   input value="1100"
+    + label
+    +   "Velocity (rad/s or an expression; optional)"
+    +   input value="6.2"
+    + label
+    +   "Rotor inertia (g·mm² or an expression; optional)"
+    +   input value="5400"
+    + label
+    +   "Gear ratio (a number or an expression; optional)"
+    +   input value="5.18"
+    +   button.primary: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button title="A joint moves its child link against its parent link": "New joint"
+    -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 0 scene(s) set
+
+=== 30. an emptied drive field of an edited joint is sent as null: the effort removed, the rest of the drive kept
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":null,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}}
+  panel:
+    - h2: "Joint Elbow"
+    - label
+    -   "ID"
+    -   input value="joint1" disabled
+    - label
+    -   "Name (empty: the ID)"
+    -   input value="Elbow" placeholder="joint1"
+    - label
+    -   "Kind"
+    -   select value="revolute"
+    -     option selected value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -     option value="prismatic": "Prismatic (a slide)"
+    -     option value="fixed": "Fixed"
+    - label
+    -   "Parent link"
+    -   select value="link1"
+    -     option selected value="link1": "Base"
+    -     option value="link2": "Arm"
+    - label
+    -   "Child link (moves)"
+    -   select value="link2"
+    -     option value="link1": "Base"
+    -     option selected value="link2": "Arm"
+    - label
+    -   "Axis"
+    -   select value="Z"
+    -     option value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option selected value="Z": "Axis Z"
+    -     option value="sketchPoint": "Through a point of a sketch"
+    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    - label
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-90"
+    - label
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="90"
+    - label
+    -   "Angle (° or an expression in radians)"
+    -   input value="0"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    - label
+    -   "Effort (N·mm or an expression; optional)"
+    -   input value="1100"
+    - label
+    -   "Velocity (rad/s or an expression; optional)"
+    -   input value="6.2"
+    - label
+    -   "Rotor inertia (g·mm² or an expression; optional)"
+    -   input value="5400"
+    - label
+    -   "Gear ratio (a number or an expression; optional)"
+    -   input value="5.18"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button title="A joint moves its child link against its parent link": "New joint"
+    +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  view: 1 scene(s) set
+
+=== 31. the parameter of the effort removed: the joint row says the drive field fails and the export refuses it; the joint is not in error
+  engine: execute({"type":"setParameter","name":"torque","expr":"900"}) -> ok
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":"torque","velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  engine: execute({"type":"removeParameter","name":"torque"}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":900,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18,"expressions":{"effort":"torque"}}}}
+  panel:
+    +       p.issue.warning: "effort (drive): unknown name "torque"; the export of a robot refuses the joint until it is fixed"
+  view: 3 scene(s) set
+
+=== 32. the form of the joint: the effort shows its expression and why it has no value
+  panel:
+    + h2: "Joint Elbow"
+    + label
+    +   "ID"
+    +   input value="joint1" disabled
+    + label
+    +   "Name (empty: the ID)"
+    +   input value="Elbow" placeholder="joint1"
+    + label
+    +   "Kind"
+    +   select value="revolute"
+    +     option selected value="revolute": "Revolute"
+    +     option value="continuous": "Continuous (no limits)"
+    +     option value="prismatic": "Prismatic (a slide)"
+    +     option value="fixed": "Fixed"
+    + label
+    +   "Parent link"
+    +   select value="link1"
+    +     option selected value="link1": "Base"
+    +     option value="link2": "Arm"
+    + label
+    +   "Child link (moves)"
+    +   select value="link2"
+    +     option value="link1": "Base"
+    +     option selected value="link2": "Arm"
+    + label
+    +   "Axis"
+    +   select value="Z"
+    +     option value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option selected value="Z": "Axis Z"
+    +     option value="sketchPoint": "Through a point of a sketch"
+    + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
+    + label
+    +   "Lower limit (° or an expression in radians)"
+    +   input value="-90"
+    + label
+    +   "Upper limit (° or an expression in radians)"
+    +   input value="90"
+    + label
+    +   "Angle (° or an expression in radians)"
+    +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    + label
+    +   "Effort (N·mm or an expression; optional)"
+    +   span.field
+    +     input value="torque"
+    +     small.computed title="unknown name "torque"": "= ? (unknown name "torque")"
+    + label
+    +   "Velocity (rad/s or an expression; optional)"
+    +   input value="6.2"
+    + label
+    +   "Rotor inertia (g·mm² or an expression; optional)"
+    +   input value="5400"
+    + label
+    +   "Gear ratio (a number or an expression; optional)"
+    +   input value="5.18"
+    +   button.primary: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button title="A joint moves its child link against its parent link": "New joint"
+    -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 0 scene(s) set
+
+=== 33. a continuous joint has the same drive: the typed fields stay
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":"torque","velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  panel:
+    +   select value="continuous"
+    +     option value="revolute": "Revolute"
+    +     option selected value="continuous": "Continuous (no limits)"
+    -   select value="revolute"
+    -     option selected value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-90"
+    - label
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="90"
+    - label
+  view: 1 scene(s) set
+
+=== 34. another kind: the numbers start from the defaults of its unit
+  panel:
+    +   select value="prismatic"
+    -   select value="continuous"
+    +     option value="continuous": "Continuous (no limits)"
     +     option selected value="prismatic": "Prismatic (a slide)"
+    -     option selected value="continuous": "Continuous (no limits)"
     -     option value="prismatic": "Prismatic (a slide)"
     + p.hint: "The child slides along the direction of the axis."
     - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     +   "Lower limit (mm or an expression)"
-    +   input value="0"
-    -   "Lower limit (° or an expression in radians)"
-    -   input value="-90"
+    -   "Angle (° or an expression in radians)"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
     +   "Upper limit (mm or an expression)"
     +   input value="100"
-    -   "Upper limit (° or an expression in radians)"
-    -   input value="90"
+    -   "Effort (N·mm or an expression; optional)"
+    -   span.field
+    -     input value="torque"
+    -     small.computed title="unknown name "torque"": "= ? (unknown name "torque")"
     +   "Travel (mm or an expression)"
-    -   "Angle (° or an expression in radians)"
+    +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    -   "Velocity (rad/s or an expression; optional)"
+    -   input value="6.2"
+    +   "Effort (N or an expression; optional)"
+    +   input value=""
+    -   "Rotor inertia (g·mm² or an expression; optional)"
+    -   input value="5400"
+    +   "Velocity (mm/s or an expression; optional)"
+    +   input value=""
+    -   "Gear ratio (a number or an expression; optional)"
+    -   input value="5.18"
   view: 0 scene(s) set
 
-=== 29. the joint removed: one removeJoint, the arm stands as modelled
+=== 35. the joint removed: one removeJoint, the arm stands as modelled
   engine: execute({"type":"removeJoint","id":"joint1"}) -> ok
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{}}
   panel:
@@ -1443,6 +1794,7 @@
     -       label.slider
     -         span.hint: "Pose, limits -90° to 90°"
     -         input.pose type=range value="0" title="-90° to 90°"
+    -       p.issue.warning: "effort (drive): unknown name "torque"; the export of a robot refuses the joint until it is fixed"
     -       div.mech-children
     -         div.mech-link
     -           div.mech-head
@@ -1491,6 +1843,13 @@
     - label
     -   "Travel (mm or an expression)"
     -   input value="0"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
+    - label
+    -   "Effort (N or an expression; optional)"
+    -   input value=""
+    - label
+    -   "Velocity (mm/s or an expression; optional)"
+    -   input value=""
     +   button title="Bodies that move as one piece": "New link"
     +   button title="A joint moves its child link against its parent link": "New joint"
     +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"

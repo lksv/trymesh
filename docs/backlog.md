@@ -25,7 +25,7 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 | Revolve | Řemenice s klínovou drážkou, knoflíky, kužely, drážky pro O-kroužky, zahloubení pro zápustnou hlavu | Jiná stavba nástroje nad stejným profilem; recept nástroje je rozhraní. Osa je `AxisRef` z pole. Popis stěny má obecný druh vedle roviny a válce (kvůli ozubení) |
 | Zkosení a zkrut při vysunutí | Úkos stěn, zápustná hlava, šikmé ozubení, přibližný závit | Další stavby nástroje; parametry jsou číselná pole rozsahu |
 | Posuvné pole a zrcadlení features | Větrací otvory v řadě, mřížky, souměrné díly | Další druhy transformace v poli; pole je seznam tuhých transformací a zbytek feature se nemění. Zrcadlení navíc obrací orientaci trojúhelníků |
-| Další generátory profilu | Cykloidní kotouč, řemenice GT2, řetězové kolo, ozubený hřeben, drážkování, text | Položky katalogu generátorů; tvar dokumentu se nemění |
+| Další generátory profilu | Řetězové kolo, ozubený hřeben, drážkování, text; other belts and pulleys (GT2 of 3 and 5 mm, GT3, HTD, T). The cycloidal disc and the GT2 pulley of 2 mm are done (D61) | Položky katalogu generátorů; tvar dokumentu se nemění |
 | Další nástroje skici | Drážka, obdélník středem, odsazení obrysu (lem víka), rozteč děr | Funkce sdíleného modulu nástrojů; engine se nemění. Odsazení obrysu může chtít novou vazbu |
 | Nejmenší vzdálenost těles | Ověření vůle (motor v pouzdře má mít 1 mm), ne jen toho, že se díly neprolínají | Další dotaz nad tělesy |
 | Vlastnosti těles | Jméno, barva, příznak referenčního dílu (motor se netiskne a nemá se exportovat) | Nepovinný údaj v dokumentu klíčovaný ID tělesa |
@@ -37,7 +37,7 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 | Graf závislostí při přepočtu | Rychlost u větších modelů: dnes se přepočítá vše od první změněné feature | Vnitřní věc přepočtu, dokument se nemění |
 | Sloučení nástrojů pole před booleanem, prostorové vyhledávání v adaptéru jádra | Rychlost u stovek kopií | Vnitřní věc pole a adaptéru jádra |
 | Pootočení kopií v poli kolem vlastní osy | Satelity v záběru i tehdy, když počty zubů nejsou dělitelné počtem satelitů | Další údaj transformace kopie |
-| Posunutí profilu ozubení | Kola s málo zuby, úprava osové vzdálenosti | Další parametr generátoru ozubení |
+| Shifted centre distance of gears | The profile shift is done (D61) with balanced shifts at the reference centre distance; a pair whose shifts do not balance needs the working centre distance `a cos α / cos αw` (no closed form) and the tip shortening | Two expression functions (`inv` and its inverse) or a fact `centerDistance` of a gear in mesh; [d36/5d-generators/design.md](d36/5d-generators/design.md), "Deferred" |
 
 ## Co tahle architektura levně nedá
 
@@ -53,8 +53,8 @@ Myšlenková zkouška: co by jiný díl potřeboval navíc proti kloubu a jestli
 | Konstrukce | Co potřebuje navíc | Kam to patří |
 |---|---|---|
 | Krabička na elektroniku s víkem | Díry skrz víko i krabičku; větrací otvory v řadě; lem víka; zaoblené hrany | Výřez do více těles (D35). Posuvné pole a odsazení obrysu později. Zaoblení hran ne |
-| Cykloidní převodovka | Profil cykloidního kotouče; výstředník a kolíky umí vysunutí a pole | Katalog generátorů (D35), nová položka později |
-| Řemenice, knoflík | Profil GT2; klínová drážka; rýhování | Generátor a pole (D35). Klínová drážka je revolve, později |
+| Cykloidní převodovka | The disc is done (D61, `cycloidalDisc`); its bore and output holes for other input angles, and the pins, stay sketch geometry and patterns | Katalog generátorů (D35) |
+| Řemenice, knoflík | Klínová drážka; rýhování. The GT2 pulley of 2 mm is done (D61, `gt2Pulley`) | Generátor a pole (D35). Klínová drážka je revolve, později |
 | Konzole s žebrem | Žebro vysunuté na obě strany roviny | Posun začátku vysunutí (D35) |
 | Držák z více dílů podle společné kostry | Odkaz na geometrii jiné skici | Později; do té doby stejné výrazy ve více skicách |
 | Šroubovací víčko, šikmé ozubení | Zkrut při vysunutí | Později |
@@ -215,7 +215,7 @@ The owner considers moving three groups of the future features of requirements.m
 **Bodies and features**
 
 - **Extent "up to a face".** The cheap variant, up to a planar face, is done (D47, [d36/2f-upto/design.md](d36/2f-upto/design.md)). Still open: up to a curved face, and up to the next face the tool meets.
-- **Linear pattern and mirror of features and bodies.** Further kinds of the transform of the D35 pattern. Mirror reverses the winding, which the transform function of point 4 handles. Implemented as 2e (D53), [d36/2e-pattern-mirror/design.md](d36/2e-pattern-mirror/design.md); what it leaves for later: the grid as a second direction of the linear pattern (designed, [grid.md](d36/2e-pattern-mirror/grid.md)), a pattern of several bodies, a linear pattern to both sides, a key order of the faces of an edge that does not depend on copy tags, and a direction along a sketch line or an edge (with the other kinds of `AxisRef`).
+- **Linear pattern and mirror of features and bodies.** Further kinds of the transform of the D35 pattern. Mirror reverses the winding, which the transform function of point 4 handles. Implemented as 2e (D53), [d36/2e-pattern-mirror/design.md](d36/2e-pattern-mirror/design.md); the grid as a second direction of the linear pattern is implemented as its addition ([grid.md](d36/2e-pattern-mirror/grid.md)). What they leave for later: a pattern of features as a source of a pattern (a mirror of a mirror of features, a circle of rows), a second transform of another kind in one pattern, staggered rows, a third direction, copies left out of a grid, a pattern of several bodies (and so a grid of several), a linear pattern to both sides, a key order of the faces of an edge that does not depend on copy tags, and a direction along a sketch line or an edge (with the other kinds of `AxisRef`). Two holes the grid leaves as they are: a circular pattern of a body whose span is a full turn puts its last copy on the original without an issue, and a row with a step below 10⁻⁶ mm makes copies that coincide to float32 (the grid refuses two places in one; comparing places could close the row, and comparing a turned point, not the translation, which is zero for every turn about an axis through the origin, the circular pattern).
 - **Chamfer and fillet of edges: realistic in a restricted form.** A body is a mesh, but faces carry an exact description (plane, cylinder) and edges a kind (`line`, `circle`, `coplanar`, `other`), so a tool can be built for two cases:
   - a straight edge between two planar faces: a prism along the edge with a triangular profile (chamfer) or a corner minus a quarter circle (fillet); cut on a convex edge, added on a concave one;
   - a circular edge between a plane and a coaxial cylinder (rim of a hole, top of a boss): the same profile revolved about the axis, so it needs the tool of the revolve.

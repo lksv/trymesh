@@ -15,7 +15,10 @@ export type FaceInfo =
   | { planar: false; surface: 'cone'; apex: Vec3; axis: Vec3; halfAngle: number }
   // A general surface swept along `axis` (the side of gear teeth). It is not planar, so a sketch
   // cannot stand on it, and its edges have no analytic shape, so they cannot be projected.
-  | { planar: false; surface: 'swept'; axis: Vec3 };
+  | { planar: false; surface: 'swept'; axis: Vec3 }
+  // The surface of an imported mesh (D55): nothing is known of it, flat regions included. Published
+  // as a general surface; the same after any transform.
+  | { planar: false; surface: 'mesh' };
 // The surface of a face as the evaluation publishes it. `FaceInfo` stays internal and keeps what only
 // the engine needs: the `y` direction of a planar face, from which the frame of a sketch on the
 // face is built.
@@ -23,6 +26,7 @@ export function surfaceOf(info: FaceInfo): Surface {
   if (info.planar) return { kind: 'plane', origin: info.origin, normal: info.normal };
   if (info.surface === 'cylinder') return { kind: 'cylinder', origin: info.center, axis: info.axis, radius: info.radius };
   if (info.surface === 'cone') return { kind: 'cone', apex: info.apex, axis: info.axis, halfAngle: info.halfAngle };
+  if (info.surface === 'mesh') return { kind: 'general' };
   return { kind: 'swept', axis: info.axis };
 }
 
@@ -131,15 +135,46 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
   if (info.planar) return { planar: true, origin: transformPoint(t, info.origin), y: transformVector(t, info.y), normal: transformVector(t, info.normal) };
   if (info.surface === 'cylinder') return { ...info, center: transformPoint(t, info.center), axis: transformVector(t, info.axis) };
   if (info.surface === 'cone') return { ...info, apex: transformPoint(t, info.apex), axis: transformVector(t, info.axis) };
+  if (info.surface === 'mesh') return info;
   return { ...info, axis: transformVector(t, info.axis) };
 }
 
 // A copy of a solid in the transformed position, with its face numbers renumbered by `faceId`.
+// It remembers which solid the copy was made from and whether `t` mirrors (`shapeOrigin`, D57).
 export function transformSolid(t: RigidTransform, solid: Solid, faceId: (old: number) => number): Solid {
   const positions = new Float32Array(solid.positions.length);
   for (let i = 0; i < positions.length; i += 3) positions.set(transformPoint(t, [solid.positions[i], solid.positions[i + 1], solid.positions[i + 2]]), i);
   const moved: Solid = { positions, triangles: Uint32Array.from(solid.triangles), faceIds: solid.faceIds.map(faceId) };
-  return mirrors(t) ? turnedOver(moved) : moved;
+  const copy = mirrors(t) ? turnedOver(moved) : moved;
+  COPIES.set(copy, { of: solid, mirrored: mirrors(t) });
+  return copy;
+}
+
+// The mesh a solid is a copy of (D57, the parts list). `transformSolid` records every copy it
+// makes, by the identity of the copy and weakly, as `analyzeBody` keeps its result by the identity
+// of a mesh: two engines cannot meet in it, and it keeps alive no solid the states do not.
+// What it rests on, and what every step of the recompute keeps to: a body keeps its `Solid` object
+// for as long as no feature changes it (`applyTool` leaves the object of a target it did not
+// change, a pattern of a body leaves its source, every step carries the other bodies over), no
+// step changes a solid in place, and a feature that changes a body gives it a new object, which is
+// a copy of nothing. So two bodies with one origin are one mesh, moved; bodies changed after the
+// copy are never called the same, also when they were changed alike.
+// It says what the recompute did, not what float32 holds: a copy moved so far that its shape is
+// lost is still a copy by the record (the parts list takes a body without a volume for no copy).
+const COPIES = new WeakMap<Solid, { of: Solid; mirrored: boolean }>();
+export interface MeshOrigin {
+  solid: Solid; // the mesh the chain of copies starts at
+  mirrored: boolean; // the solid asked about is its mirror image (an odd number of mirrors on the way)
+}
+// The origin of a solid: the solid the chain of copies starts at, the solid itself when it is no copy.
+export function shapeOrigin(solid: Solid): MeshOrigin {
+  let mirrored = false;
+  let origin = solid;
+  for (let copy = COPIES.get(origin); copy; copy = COPIES.get(origin)) {
+    mirrored = mirrored !== copy.mirrored;
+    origin = copy.of;
+  }
+  return { solid: origin, mirrored };
 }
 
 export function volumeOf(s: Solid): number {

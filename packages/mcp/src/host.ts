@@ -11,7 +11,7 @@
 // the app runs it here, next to `callTool`, which stays synchronous and carries only the engine.
 //
 // This module has no dependency on Node or on a browser: the server and the app share it.
-import { type ArgPath, type ArgSpecs, type ArgsOf, type Engine, type QueryOutcome, type RunArgsOf, checkArgs } from '@trymesh/engine';
+import { type ArgPath, type ArgSpecs, type ArgsOf, type Command, type Engine, type EngineState, type QueryOutcome, type RunArgsOf, checkArgs } from '@trymesh/engine';
 import type { Json, ToolAnswer, ToolOutcome } from './tools';
 import { viewImage } from './view-image';
 
@@ -28,8 +28,19 @@ export interface HostOperation<S> {
   returns: string;
   args: S;
   // Answers like a query: `ok: false` with a code for what the caller can do something about.
-  run: (host: Host, args: RunArgsOf<S>) => Promise<QueryOutcome<ToolAnswer>>;
+  // `state` is the state the call asks about (`at` and `after` on the path, 5b): the arguments were
+  // checked in it, and the operation works on it. `path`: `at` and `after` as the caller gave them,
+  // for a text that offers a command with them.
+  run: (host: Host, args: RunArgsOf<S>, state: EngineState, path: OperationPath) => Promise<QueryOutcome<ToolAnswer>>;
 }
+
+// The state an operation works on (5b, D59): every operation takes `at` and `after` on its path, as
+// the tool `query` does beside its `args`; they are not arguments of its description. The server
+// lists them in the input schema of every operation and describe_api with its arguments.
+export const OPERATION_STATE_ARGS = {
+  at: 'a feature ID. The model as it was after this feature.',
+  after: 'a command (as for execute) to preview first; the operation works on the result and the document does not change (a pose: `{ type: "setPose", values: { … } }`). With `at` too, the document after the command up to `at`.',
+} as const;
 
 // The description of the arguments of every operation, by the name of its tool.
 export interface HostOperations {}
@@ -42,7 +53,11 @@ export interface AnyHostOperation {
   summary: string;
   returns: string;
   args: ArgSpecs;
-  run: (host: Host, args: never) => Promise<QueryOutcome<ToolAnswer>>;
+  run: (host: Host, args: never, state: EngineState, path: OperationPath) => Promise<QueryOutcome<ToolAnswer>>;
+}
+export interface OperationPath {
+  at?: string;
+  after?: unknown;
 }
 export type HostOperationSet = { readonly [name: string]: AnyHostOperation };
 
@@ -63,6 +78,7 @@ export function hostOperationProblems(operations: HostOperationSet, taken: reado
     ...(taken.includes(name) ? [`the operation "${name}" has the name of a tool`] : []),
     ...(name.startsWith('_') ? [`the operation "${name}" has the name of an internal tool (a leading underscore)`] : []),
     ...(name === '' ? ['an operation has no name'] : []),
+    ...Object.keys(OPERATION_STATE_ARGS).flatMap((arg) => (Object.prototype.hasOwnProperty.call(operations[name].args, arg) ? [`the operation "${name}" has an argument "${arg}", which the path of every operation takes`] : [])),
   ]);
 }
 export const isHostOperation = (name: string, operations: HostOperationSet = HOST_OPERATIONS): boolean => own(operations, name);
@@ -72,18 +88,33 @@ export const noAppText = (name: string): string => `notAvailable: ${name}: the o
 
 const refused = (name: string, error: { code: string; message: string; arg?: ArgPath }): ToolOutcome => ({ ok: false, error: `${error.code}: ${error.message.startsWith(`${name}: `) ? '' : `${name}: `}${error.message}` });
 
-// Runs the operation `name` in the app: checks the arguments against its description in the state
-// of the document now (as a query does), runs it and returns its answer as a tool outcome, whose
-// result is a `ToolAnswer`. `host` is missing when the app connected its engine without one.
-// An exception of the operation is a defect and goes on to the caller.
+// Runs the operation `name` in the app: asks the state of `at` and `after` (as the tool `query`
+// does: with `after` the command is previewed where the engine is and the preview answers for `at`
+// too; without it the state after `at`), checks the other arguments against the description in
+// that state, runs the operation on it and returns its answer as a tool outcome, whose result is
+// a `ToolAnswer`. Nothing is written. `host` is missing when the app connected its engine without
+// one. An exception of the operation is a defect and goes on to the caller.
 export async function callHostOperation(host: Host | undefined, name: string, args: unknown, operations: HostOperationSet = HOST_OPERATIONS): Promise<ToolOutcome> {
   if (!own(operations, name)) return { ok: false, error: `there is no operation "${name}"` };
   if (!host) return { ok: false, error: `notAvailable: ${name}: the connected app does not offer operations of the host` };
   const spec = operations[name];
-  const { document, evaluation } = host.engine.getState();
-  const checked = checkArgs(spec.args, args, { document, evaluation });
+  const given = args !== null && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : undefined;
+  const { at: rawAt, after, ...rest } = given ?? {};
+  const at = rawAt === null ? undefined : rawAt;
+  if (at !== undefined && typeof at !== 'string') return refused(name, { code: 'invalidArguments', message: 'at: a feature ID is expected' });
+  let state: EngineState;
+  if (after !== undefined && after !== null) {
+    if (typeof after !== 'object' || Array.isArray(after)) return refused(name, { code: 'invalidArguments', message: 'after: a command is expected' });
+    const previewed = host.engine.preview(after as Command, at);
+    if (!previewed.ok) return { ok: false, error: `after: ${previewed.error.code}: ${previewed.error.message}` };
+    state = previewed.state;
+  } else {
+    if (at !== undefined && !host.engine.getState().document.features.some((feature) => feature.id === at)) return refused(name, { code: 'notAvailable', message: `at: the feature "${at}" is not in the document` });
+    state = host.engine.getState(at);
+  }
+  const checked = checkArgs(spec.args, given ? rest : args, { document: state.document, evaluation: state.evaluation });
   if (!checked.ok) return refused(name, checked);
-  const answer = await spec.run(host, checked.value as never);
+  const answer = await spec.run(host, checked.value as never, state, { ...(at === undefined ? {} : { at }), ...(after === undefined || after === null ? {} : { after }) });
   if (!answer.ok) return refused(name, answer.error);
   // through JSON, as the result of every tool: it has to cross the bridge unchanged
   return { ok: true, result: JSON.parse(JSON.stringify(answer.result)) as Json };

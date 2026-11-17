@@ -5,6 +5,7 @@ import type { EngineState, FaceName, Frame, Id, QueryArgs, QueryName, QueryResul
 import { gapView } from './gap';
 import { interferenceView } from './interference';
 import { measureView } from './measure';
+import { partsListView } from './parts-list';
 import { printView } from './print';
 import { sectionView } from './section';
 
@@ -58,4 +59,4 @@ export interface QueryView<N extends QueryName> {
   note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 
-export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView, print: printView };
+export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView, print: printView, partsList: partsListView };

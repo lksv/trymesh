@@ -631,6 +631,40 @@ describe('model, tělesa a příkazy', () => {
     expect(ok(engine, 'get_body', { body: 'g1' }).faces.map((face: { label: string; planar: boolean }) => [face.label, face.planar])).toEqual([['g1/startCap', true], ['g1/endCap', true], ['g1/side/teeth', false]]);
   });
 
+  it('the generators of 5d (D61): every entry with its example, the optional shift, a point as an operand; each example is accepted', () => {
+    const description = apiDescription();
+    const text = apiText();
+    for (const name of ['cycloidalDisc (Cycloidal disc)', 'gt2Pulley (GT2 pulley)']) expect(text).toContain(`- ${name}: `);
+    expect(text).toContain('  operands: center: point');
+    expect(text).toContain('  - shift: Profile shift coefficient, none, any, default 0; optional: stored only when given');
+    expect(text).toContain('a parameter of a generator its catalog marks optional (the `shift` of a gear');
+    expect(text).toContain('- extrude: profile/params/pinRadius (Radius of a ring pin, mm, positive (only when profile/generator is cycloidalDisc))');
+    expect(text).toContain('- extrude: profile/params/teeth (Number of grooves, count, an integer, in the interval [12, 500] (only when profile/generator is gt2Pulley))');
+    expect(description.generators.map((entry) => [entry.generator, entry.example.params])).toEqual([
+      ['involuteGear', { teeth: 18 }],
+      ['cycloidalDisc', { pins: 12, pinRadius: 2.5, eccentricity: 1 }],
+      ['gt2Pulley', { teeth: 20 }],
+    ]);
+    const engine = newEngine();
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        sketch('s'),
+        { type: 'addPoint', sketch: 's', id: 'cp', x: 60, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'pins', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+      ],
+    });
+    description.generators.forEach((entry, i) => {
+      const example = entry.example as { operands: Record<string, string> };
+      const operands = Object.fromEntries(Object.entries(example.operands).map(([field, kinds]) => [field, kinds === '<point>' ? 'cp' : 'pins']));
+      const command = { type: 'addFeature', feature: { id: entry.generator, name: entry.generator, suppressed: false, type: 'extrude', profile: { ...entry.example, sketch: 's', operands }, extent: { type: 'distance', start: 10 * i, distance: 4 }, operation: 'new' } } as never;
+      expect(execute(engine, command), entry.generator).toMatchObject({ ok: true, problems: [] });
+    });
+    const model = ok(engine, 'get_model');
+    expect(model.features.find((f: { id: string }) => f.id === 'gt2Pulley').facts).toMatchObject({ teeth: 20, center: [60, 0, 0], outsideDiameter: expect.closeTo(40 / Math.PI - 0.508, 5) });
+    expect(model.features.find((f: { id: string }) => f.id === 'cycloidalDisc').facts).toMatchObject({ lobes: 11, outerDiameter: expect.closeTo(47, 9) });
+  });
+
   it('a cut through all with two targets: the result names the target the tool missed', () => {
     const engine = newEngine();
     rectangle(engine, true);
@@ -744,9 +778,21 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('copy: [{ pattern, index }]');
     expect(text).toContain('{ kind: "sketchPoint", sketch, point }');
     expect(text).toContain('PatternFeature');
-    // the count once per kind that has one, and the spans of a linear pattern (D53)
-    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual(['transform/count', 'transform/span/angle', 'transform/count', 'transform/span/spacing', 'transform/span/length']);
-    expect(text).toContain("{ type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }");
+    // the count once per kind that has one, the spans of a linear pattern, and the four fields of
+    // the second direction of a grid (D53)
+    expect(apiDescription().numericFields.filter((entry) => entry.owner === 'pattern').map((entry) => entry.path)).toEqual([
+      'transform/count',
+      'transform/span/angle',
+      'transform/count',
+      'transform/span/spacing',
+      'transform/span/length',
+      'transform/second/count',
+      'transform/second/span/spacing',
+      'transform/second/count',
+      'transform/second/span/length',
+    ]);
+    expect(text).toContain("{ type: 'linear'; direction: AxisRef; count: number; span: LinearSpan; second?: { direction: AxisRef; count: number; span: LinearSpan } }");
+    expect(text).toContain("export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };");
     expect(text).toContain("{ type: 'mirror'; plane: PlaneRef }");
   });
 
@@ -777,6 +823,46 @@ describe('model, tělesa a příkazy', () => {
     // a mirror has one copy: a second one is no body a command may name
     expect(callTool(engine, 'execute', { command: { type: 'setBodyProperties', body: 'mir/2', patch: { color: '#000000' } } })).toMatchObject({ ok: false });
     expect(callTool(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'm2', name: 'm2', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: { ...mirror, count: 2 } } } })).toMatchObject({ ok: false, error: expect.stringContaining('a transform of the type mirror has no such field') });
+  });
+
+  it('a grid through execute: the copies numbered i + 1000 · j in get_model, invalidPattern as a problem (D53)', () => {
+    const engine = newEngine();
+    rectangle(engine, true);
+    execute(engine, {
+      type: 'addFeature',
+      feature: { id: 'plate', name: 'plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' },
+    });
+    const transform = { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 50 }, second: { direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 'h' } } };
+    execute(engine, { type: 'setParameter', name: 'h', expr: '40' });
+    expect(execute(engine, { type: 'addFeature', feature: { id: 'G', name: 'G', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform } as never })).toMatchObject({
+      ok: true,
+      bodies: ['plate', 'G/1', 'G/2', 'G/1000', 'G/1001', 'G/1002'],
+      problems: [],
+    });
+    const summary = ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'G');
+    expect(summary).toMatchObject({ status: 'ok', bodies: ['G/1', 'G/2', 'G/1000', 'G/1001', 'G/1002'], transform: { second: { count: 2, span: { type: 'spacing', spacing: 40 } } } });
+    const top = ok(engine, 'get_body', { body: 'G/1002' }).faces.find((face: { label: string }) => face.label === 'plate/endCap@G:1002');
+    expect(top).toMatchObject({ name: { feature: 'plate', role: 'endCap', copy: [{ pattern: 'G', index: 1002 }] } });
+    // the same step along one line: the error of the pattern names the copies
+    const parallel = execute(engine, { type: 'updateFeature', id: 'G', patch: { transform: { second: { direction: { kind: 'base', axis: 'X' }, span: { type: 'spacing', spacing: 50 } } } } });
+    expect(parallel.problems).toEqual([
+      {
+        id: 'G',
+        name: 'G',
+        status: 'error',
+        error: {
+          code: 'invalidPattern',
+          message: 'The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)',
+          refs: ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'],
+        },
+      },
+    ]);
+    // a row again
+    expect(execute(engine, { type: 'updateFeature', id: 'G', patch: { transform: { second: null } } })).toMatchObject({ ok: true, bodies: ['plate', 'G/1', 'G/2'], problems: [] });
+    // the paragraph of CONVENTIONS
+    const text = apiText();
+    expect(text).toContain('`second: { direction, count, span }` makes a grid');
+    expect(text).toContain('i + 1000 · j');
   });
 
   it('check_interference: a tiny overlap under threshold 0 keeps its digits; planar bodies collide however shallow', () => {
@@ -973,6 +1059,16 @@ describe('model, tělesa a příkazy', () => {
     expect(text).toContain('  commands: setLink, removeLink, setJoint, removeJoint, setPose');
     expect(text).toContain('after: { type: "setPose", values: { elbow: 1.2 } }');
     expect(text).toContain("{ type: 'setPose'; values: Record<Id, number | Expr> }");
+
+    // the drive of a joint (5b): in get_model as stored, and a field that fails in `jointDriveErrors`, not in `jointErrors`
+    execute(engine, { type: 'setSuppressed', id: 'f', suppressed: false });
+    answer = execute(engine, { type: 'batch', commands: [{ type: 'setParameter', name: 'torque', expr: '800' }, { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 'axes', point: 'pivot' }, lower: 'deg(-180)', upper: 'deg(180)', value: 0, effort: 'torque', velocity: 3 } }] });
+    expect(ok(engine, 'get_model').mechanism.joints[0]).toMatchObject({ effort: 800, velocity: 3, expressions: { effort: 'torque' } });
+    answer = execute(engine, { type: 'removeParameter', name: 'torque' });
+    expect(answer).not.toHaveProperty('jointErrors');
+    expect(answer.jointDriveErrors).toEqual([{ joint: 'turn', field: 'effort', message: expect.stringContaining('torque') }]);
+    expect(ok(engine, 'get_model').mechanism.joints[0]).not.toHaveProperty('status');
+    expect(ok(engine, 'get_model', { at: 'f' })).not.toHaveProperty('jointDriveErrors');
   });
 
   it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {

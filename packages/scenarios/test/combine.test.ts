@@ -1,6 +1,6 @@
 // The boolean of bodies, the subtraction with a clearance and the split (D56) against the real
 // adapters (docs/d36/3d-body-boolean/design.md, "Tests the implementation owes").
-import type { CommandResult, Engine, EngineState, FaceName } from '@trymesh/engine';
+import { type CommandResult, type Engine, type Id, type EngineState, type FaceName, storedMesh } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { booleanOfBodies } from '../../engine/src/recompute/body-boolean';
 import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
@@ -299,5 +299,36 @@ describe('what a used-up tool and a split leave behind', () => {
     const state = done(engine.preview(batch(...sketchOn('lost', onFace('A', top)), ...sketchOn('kept', onFace('S', top)))));
     expect(codeOf(state, 'lost')).toBe('brokenReference');
     expect(state.evaluation.features.kept.plane?.origin[2]).toBeCloseTo(10, 9);
+  });
+});
+
+// What 3b (D55) and 3d meet on (design.md, "Imported bodies"): a mesh placed as a body is refused in
+// every role of a combine and as the body of a split, before anything is built or moved.
+describe('an imported body as the target, a tool or the body of a split (D55)', () => {
+  it('importedTarget names the imported bodies; the designed target stays as it was', () => {
+    const { engine } = built(...box('A', 0, 0, 20, 10, 0, 10), ...box('cast', 5, 2, 15, 8, -1, 4));
+    const mesh = solidOf(engine.getState(), 'cast');
+    const before = run(
+      engine,
+      batch(
+        { type: 'removeFeature', id: 'cast' },
+        { type: 'addMesh', id: 'motor', mesh: storedMesh({ positions: mesh.positions, triangles: mesh.triangles }) },
+        { type: 'addFeature', feature: { id: 'M', name: 'M', suppressed: false, type: 'mesh', mesh: 'motor', placement: { frame: { kind: 'base', plane: 'XY' } } } },
+      ),
+    );
+    expect(volumeOf(before, 'M')).toBeCloseTo(300, 3);
+    const cases: [Parameters<typeof combine>[1] | undefined, Id | undefined, Id[]][] = [
+      [{ operation: 'difference', target: 'A', tools: ['M'], keepTools: true }, undefined, ['M']],
+      [{ operation: 'difference', target: 'A', tools: ['M'], keepTools: true, clearance: 0.3 }, undefined, ['M']],
+      [{ operation: 'union', target: 'M', tools: ['A'], keepTools: false }, undefined, ['M']],
+      [undefined, 'M', ['M']],
+    ];
+    for (const [fields, body, refs] of cases) {
+      const state = done(engine.preview(fields ? combine('K', fields) : split('K', { body: body as Id, plane: { kind: 'base', plane: 'XY' }, side: 'backward' })));
+      expect(state.evaluation.features.K.error).toMatchObject({ code: 'importedTarget', refs });
+      expect(state.evaluation.bodies.A.solid).toBe(before.evaluation.bodies.A.solid);
+      expect(state.evaluation.bodies.M.solid).toBe(before.evaluation.bodies.M.solid);
+      expect(state.evaluation.bodies.K).toBeUndefined();
+    }
   });
 });

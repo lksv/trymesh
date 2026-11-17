@@ -2,10 +2,10 @@
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { EXPORT_FORMATS, type Engine, exportPathProblem } from '@trymesh/engine';
+import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type Document, type ImportFormat, type MeshReport, documentIds, exportPathProblem, fileStemOf, idFromFile, importFormatOf, importMesh, meshNameOf, namedBySections } from '@trymesh/engine';
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
@@ -38,6 +38,9 @@ const FILE_WORDING: Wording = {
 };
 
 const COMPACT_FROM = 20_000; // znaků
+
+const rounded = (value: unknown): unknown =>
+  typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
 
 export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const { engine, bridge } = options;
@@ -145,6 +148,68 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       },
     },
     {
+      name: 'import_mesh',
+      description:
+        `Reads a mesh file (${Object.entries(IMPORT_FORMATS).map(([format, spec]) => `${format}: .${spec.extensions.join(', .')}`).join('; ')}) into a stored mesh of the document: the command addMesh, one undo step. The file has to hold a closed solid (refused otherwise, with the count of the edges that are wrong). ` +
+        'It answers with the ID of the stored mesh, the report of the import (triangles, shells, hollows, the volume, the bounds in mm, notes) and `next`: the batch that places the mesh as a body, a feature of the type mesh on the base plane XY and setBodyProperties with `use: "reference"`, to be changed (the frame, the offsets, the turns, the mass of the data sheet) and sent with execute. Options of the formats are in describe_api, section Import formats.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path of the file' },
+          format: { type: 'string', enum: Object.keys(IMPORT_FORMATS), description: 'the format; by default the extension of the path decides' },
+          options: { type: 'object', description: 'the options of the format, by name (STL: `unit`, one of mm, cm, m, in)' },
+          id: { type: 'string', description: 'the ID of the stored mesh; by default the name of the file' },
+          name: { type: 'string', description: 'the name of the stored mesh, for people; by default the name of the file' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const session = bridge?.session();
+        const target = path(args, true) as string;
+        const format = (args.format ?? importFormatOf(target)) as ImportFormat | undefined;
+        if (format === undefined) throw new Failure(`the format of "${basename(target)}" cannot be told from its extension; give \`format\` (${Object.keys(IMPORT_FORMATS).join(', ')})`);
+        let bytes: Uint8Array;
+        try {
+          bytes = new Uint8Array(await readFile(target));
+        } catch (error) {
+          throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // the name of the file, trimmed and cut to the length of a name, unless one is given
+        const name = args.name === undefined || args.name === null ? meshNameOf(target) : args.name;
+        if (name !== undefined && typeof name !== 'string') throw new Failure('argument "name": a text is expected');
+        const outcome = importMesh(format, bytes, (args.options ?? undefined) as never, name);
+        if (!outcome.ok) throw new Failure(`${outcome.error.code}: ${outcome.error.message}`);
+        // the ID: given, or from the name of the file, among the stored meshes of the engine the other tools use
+        const document = (await must(session, 'get_document')) as unknown as Document;
+        const id = args.id === undefined || args.id === null ? idFromFile(target, (taken) => Object.prototype.hasOwnProperty.call(document.meshes, taken)) : args.id;
+        const added = await call(session, 'execute', { command: { type: 'addMesh', id, mesh: outcome.mesh } });
+        if (!added.ok) throw new Failure(added.error);
+        // the feature takes the ID of the mesh when the document does not use it (a feature, an entity
+        // of a sketch, an ID a section names), else the next free one
+        const used = new Set([...documentIds(document), ...namedBySections(document)]);
+        let feature = String(id);
+        for (let n = 2; used.has(feature); n++) feature = `${id}_${n}`;
+        const command: Command = {
+          type: 'batch',
+          commands: [
+            { type: 'addFeature', feature: { id: feature, name: fileStemOf(target).trim() || feature, suppressed: false, type: 'mesh', mesh: String(id), placement: { frame: { kind: 'base', plane: 'XY' } } } },
+            { type: 'setBodyProperties', body: feature, patch: { use: 'reference' } },
+          ],
+        };
+        const report = rounded(outcome.report) as MeshReport;
+        return {
+          mesh: id,
+          file: target,
+          report,
+          next: {
+            say: `The mesh is stored as "${String(id)}"; nothing is placed yet. Change \`command\` as needed (the frame of \`placement\`, for a bought part best the sketch point at the centre of its bolt pattern; the offsets x, y, z and the turns rx, ry, rz in it; the feature ID) and send it with execute. Add the mass of the data sheet in grams to setBodyProperties (\`mass\`): neither the file nor this tool knows it.`,
+            command,
+          },
+        } as unknown as Json;
+      },
+    },
+    {
       name: 'export_stl',
       description:
         'Saves bodies of the model as binary STL. By default the printed bodies (use `part` of the body properties; not the reference and auxiliary bodies) go into the one file `path`, which is overwritten. `bodies` chooses the bodies, whatever their use. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written.',
@@ -234,7 +299,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       description: `${entry.summary} Returns ${entry.returns} It runs in the app: without a connected app it answers notAvailable.`,
       inputSchema: {
         type: 'object',
-        properties: Object.fromEntries(entry.args.map((arg) => [arg.name, { description: arg.description }])),
+        // `at` and `after` of the path (5b) with their types, as the tool `query` declares them
+        properties: Object.fromEntries(entry.args.map((arg) => [arg.name, { ...(arg.name === 'at' ? { type: 'string' } : arg.name === 'after' ? { type: 'object' } : {}), description: arg.description }])),
         required: entry.args.filter((arg) => arg.required).map((arg) => arg.name),
         additionalProperties: false,
       } as JsonSchema,

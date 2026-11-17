@@ -87,6 +87,18 @@ h2 {
 h2:first-child {
   margin-top: 2px;
 }
+h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
 button,
 select,
 input {

@@ -46,7 +46,7 @@
       {"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}
   feature mid:
       {"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}
-  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":6}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":7}
   toolbar:
       div.group
         button title="Prázdný dokument": "Nový"
@@ -65,6 +65,7 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
         button title="Cut a body into two by a plane; both parts get the cut face": "Split"
       div.group
@@ -82,12 +83,16 @@
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
           option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
           option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+          option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
         select value="" title="Export the model in a format of the engine"
           option selected value="": "Export…"
           option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
           option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
           option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
           option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+          option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+          option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+          option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
         button: "Zobrazit vše"
@@ -173,6 +178,7 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
@@ -190,12 +196,16 @@
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     -   select value="" title="Export the model in a format of the engine"
     -     option selected value="": "Export…"
     -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     -   button disabled title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -317,6 +327,9 @@
     +     input value="10"
     +     small.computed data-field="transform/span/spacing" data-unit="mm"
     + p.hint: "A larger count adds copies at the far end and moves none."
+    + label.check
+    +   input type=checkbox unchecked
+    +   "A second direction (a grid)"
     -   select value="full"
     -     option selected value="full": "Full circle"
     -     option value="angle": "Angle between the first and the last copy"
@@ -468,6 +481,9 @@
     -     input value="8"
     -     small.computed data-field="transform/span/spacing" data-unit="mm"
     - p.hint: "A larger count adds copies at the far end and moves none."
+    - label.check
+    -   input type=checkbox unchecked
+    -   "A second direction (a grid)"
     + p#draft-problem.issue.warning: "Operace těleso nezměnila. (some copies changed none or only some of their targets) (copy 1 of Hole)"
     - p#draft-problem.issue.warning
   view: 1 scene(s) set
@@ -727,6 +743,7 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
@@ -744,12 +761,16 @@
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     +   select value="" title="Export the model in a format of the engine"
     +     option selected value="": "Export…"
     +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -911,12 +932,12 @@
 === 18. edited into a row of the plate: another kind replaces the transform; the copy keeps its ID
   engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}}, "n1") -> ok
   engine: getState("mid")
-  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":3,"span":{"type":"spacing","spacing":10}}}}, "n1") -> ok
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":3,"span":{"type":"spacing","spacing":10},"second":null}}}, "n1") -> ok
   engine: getState("mid")
-  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":10}}}}, "n1") -> ok
-  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}}, "n1") -> ok
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":10},"second":null}}}, "n1") -> ok
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":null}}}, "n1") -> ok
   engine: getState("mid")
-  engine: execute({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}}) -> ok
+  engine: execute({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":null}}}) -> ok
   feature n1:
     + {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}
     - {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"mirror","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}}
@@ -1070,15 +1091,11 @@
     + face n1/1 #15 #f97316 opacity 0.3
     + face n1/1 #16 #f97316 opacity 0.3
 
-=== 20. a row along the normal of a sketch whose point is gone: the form warns and offers the origin
-  engine: execute({"type":"addPoint","sketch":"s1","id":"pp","x":30,"y":25}) -> ok
-  engine: execute({"type":"addFeature","feature":{"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}}) -> ok
-  engine: execute({"type":"removeEntity","sketch":"s1","id":"pp"}) -> ok
-  engine: preview({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}}, "lin") -> ok
-  engine: getState("n1")
-  features: s1, e1, hole, mid, n1, lin
-  feature lin:
-      {"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}
+=== 20. a second direction: along Y, a count of 2 and a spacing of 10; the copies 1, 1000, 1001
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":null}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"spacing","spacing":10}}}}}, "n1") -> ok
+  engine: getState("mid")
   toolbar:
     +   button disabled title="Ctrl+Z": "↶ Zpět"
     -   button title="Ctrl+Z": "↶ Zpět"
@@ -1087,6 +1104,7 @@
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     - div.group
@@ -1104,12 +1122,649 @@
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     -   select value="" title="Export the model in a format of the engine"
     -     option selected value="": "Export…"
     -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok.selected.editing
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Posunout později": "↓"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Posunout dřív": "↑"
+    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Úprava: Mirror 1"
+    + label
+    +   "Repeat"
+    +   select value="body"
+    +     option value="features": "Features (extrusions that add or cut)"
+    +     option selected value="body": "A body"
+    - h2: "Pattern"
+    +   "Kind"
+    +   select value="linear"
+    +     option value="circular": "Around an axis"
+    +     option selected value="linear": "Along a direction"
+    +     option value="mirror": "Mirror in a plane"
+    -   "Název"
+    -   input value="Mirror 1"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Count 2 with the original, along axis X, spacing 50 mm; body: Vysunutí 1."
+    - p.hint.body
+    -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Mirror 1 / 1"
+    - p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
+    +   "Body"
+    +   select value="e1"
+    +     option selected value="e1": "Vysunutí 1"
+    + p.hint: "The copies are new bodies; what is added to the source after the pattern is not copied."
+    -   "Name"
+    -   input value="" placeholder="Mirror 1 / 1"
+    +   "Direction"
+    +   select value="X"
+    +     option selected value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    +     option value="Z": "Axis Z"
+    +     option value="sketchPoint": "The normal of a sketch plane"
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "As its source: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    +   "Count along the direction (a whole number or an expression)"
+    +   span.field
+    +     input value="2"
+    +     small.computed data-field="transform/count" data-unit="count"
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    +   "Span"
+    +   select value="spacing"
+    +     option selected value="spacing": "Spacing between neighbours"
+    +     option value="length": "Length between the first and the last copy"
+    -   "Material"
+    -   input value=""
+    +   "Spacing (mm or an expression; negative = against the direction)"
+    -   "Density (g/cm3)"
+    +     input value="50"
+    +     small.computed data-field="transform/span/spacing" data-unit="mm"
+    + p.hint: "A larger count adds copies at the far end and moves none."
+    + label.check
+    +   input type=checkbox checked
+    +   "A second direction (a grid)"
+    + label
+    +   "Second direction"
+    +   select value="Y"
+    +     option value="X": "Axis X"
+    +     option selected value="Y": "Axis Y"
+    +     option value="Z": "Axis Z"
+    +     option value="sketchPoint": "The normal of a sketch plane"
+    -     input value=""
+    +   "Count along the second direction (a whole number or an expression)"
+    -   "Mass (g)"
+    +     input value="2"
+    +     small.computed data-field="transform/second/count" data-unit="count"
+    + label
+    +   "Second span"
+    +   select value="spacing"
+    +     option selected value="spacing": "Spacing between neighbouring rows"
+    +     option value="length": "Length between the first and the last row"
+    -     input value=""
+    +   "Second spacing (mm or an expression; negative = against the direction)"
+    -   "Colour"
+    +     input value="10"
+    +     small.computed data-field="transform/second/span/spacing" data-unit="mm"
+    + p.hint: "Copy numbers: steps along the first direction + 1000 × steps along the second, so the second row starts at 1000. At most 200 places."
+    + p#draft-bodies.hint: "New bodies: Mirror 1 / 1, Mirror 1 / 1000, Mirror 1 / 1001."
+    + p#draft-problem.issue.warning
+    -     input type=color value="#aab7c6"
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary: "OK"
+    +   button: "Zrušit"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1, n1/1, n1/1000, n1/1001
+    + line #26303c width 1.5: 2160 numbers, sum 177281.794
+    + line #8b9bb4 width 1: 24 numbers, sum 727.613
+    + line #8b9bb4 width 1: 24 numbers, sum 485.075
+    + line #8b9bb4 width 1: 24 numbers, sum 242.538
+    + line #8b9bb4 width 1: 24 numbers, sum 1692.538
+    - bodies: e1, n1/1
+    - line #26303c width 1.5: 1080 numbers, sum 81097.557
+    - line #8b9bb4 width 1: 24 numbers, sum 701.145
+    - line #8b9bb4 width 1: 24 numbers, sum 467.43
+    - line #8b9bb4 width 1: 24 numbers, sum 233.715
+    - line #8b9bb4 width 1: 24 numbers, sum 1683.715
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 34.648
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 34.648
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 34.648
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 34.648
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    - face n1/1 #10 #f97316 opacity 0.3
+    - face n1/1 #11 #f97316 opacity 0.3
+    - face n1/1 #12 #f97316 opacity 0.3
+    - face n1/1 #13 #f97316 opacity 0.3
+    - face n1/1 #14 #f97316 opacity 0.3
+    - face n1/1 #15 #f97316 opacity 0.3
+    - face n1/1 #16 #f97316 opacity 0.3
+
+=== 21. along X with the step of the first: the preview says that the copies 1 and 1000 would stand in one place
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":10}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}}}, "n1") -> ok
+  panel:
+    +   select value="X"
+    +     option selected value="X": "Axis X"
+    +     option value="Y": "Axis Y"
+    -   select value="Y"
+    -     option value="X": "Axis X"
+    -     option selected value="Y": "Axis Y"
+    +     input value="50"
+    -     input value="10"
+    + p#draft-bodies.hint
+    + p#draft-problem.issue.error: "The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)"
+    - p#draft-bodies.hint: "New bodies: Mirror 1 / 1, Mirror 1 / 1000, Mirror 1 / 1001."
+    - p#draft-problem.issue.warning
+  view: 2 scene(s) set
+  scene:
+    + bodies: e1
+    + line #26303c width 1.5: 540 numbers, sum 22812.023
+    + line #8b9bb4 width 1: 24 numbers, sum 374.778
+    + line #8b9bb4 width 1: 24 numbers, sum 249.852
+    + line #8b9bb4 width 1: 24 numbers, sum 124.926
+    + line #8b9bb4 width 1: 24 numbers, sum 1574.926
+    - bodies: e1, n1/1, n1/1000, n1/1001
+    - line #26303c width 1.5: 2160 numbers, sum 177281.794
+    - line #8b9bb4 width 1: 24 numbers, sum 727.613
+    - line #8b9bb4 width 1: 24 numbers, sum 485.075
+    - line #8b9bb4 width 1: 24 numbers, sum 242.538
+    - line #8b9bb4 width 1: 24 numbers, sum 1692.538
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 34.648
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 34.648
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 34.648
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 34.648
+
+=== 22. OK: a grid 2 × 3 over a length of 70 along Y
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"spacing","spacing":50}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"length","length":20}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"length","length":70}}}}}, "n1") -> ok
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":70}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: execute({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":70}}}}}) -> ok
+  feature n1:
+    + {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":70}}}}
+    - {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    + div.row.ok
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    -   button.icon disabled title="Posunout později": "↓"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - div.row.ok.selected.editing
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Posunout dřív": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "Úprava: Mirror 1"
+    - label
+    -   "Repeat"
+    -   select value="body"
+    -     option value="features": "Features (extrusions that add or cut)"
+    -     option selected value="body": "A body"
+    - label
+    -   "Kind"
+    -   select value="linear"
+    -     option value="circular": "Around an axis"
+    -     option selected value="linear": "Along a direction"
+    -     option value="mirror": "Mirror in a plane"
+    - label
+    -   "Body"
+    -   select value="e1"
+    -     option selected value="e1": "Vysunutí 1"
+    - p.hint: "The copies are new bodies; what is added to the source after the pattern is not copied."
+    - label
+    -   "Direction"
+    -   select value="X"
+    -     option selected value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option value="Z": "Axis Z"
+    -     option value="sketchPoint": "The normal of a sketch plane"
+    - label
+    -   "Count along the direction (a whole number or an expression)"
+    -   span.field
+    -     input value="2"
+    -     small.computed data-field="transform/count" data-unit="count"
+    - label
+    -   "Span"
+    -   select value="spacing"
+    -     option selected value="spacing": "Spacing between neighbours"
+    -     option value="length": "Length between the first and the last copy"
+    - label
+    -   "Spacing (mm or an expression; negative = against the direction)"
+    -   span.field
+    -     input value="50"
+    -     small.computed data-field="transform/span/spacing" data-unit="mm"
+    - p.hint: "A larger count adds copies at the far end and moves none."
+    - label.check
+    -   input type=checkbox checked
+    -   "A second direction (a grid)"
+    - label
+    -   "Second direction"
+    -   select value="X"
+    -     option selected value="X": "Axis X"
+    -     option value="Y": "Axis Y"
+    -     option value="Z": "Axis Z"
+    -     option value="sketchPoint": "The normal of a sketch plane"
+    - label
+    -   "Count along the second direction (a whole number or an expression)"
+    -   span.field
+    -     input value="2"
+    -     small.computed data-field="transform/second/count" data-unit="count"
+    - label
+    -   "Second span"
+    -   select value="spacing"
+    -     option selected value="spacing": "Spacing between neighbouring rows"
+    -     option value="length": "Length between the first and the last row"
+    - label
+    -   "Second spacing (mm or an expression; negative = against the direction)"
+    -   span.field
+    -     input value="50"
+    -     small.computed data-field="transform/second/span/spacing" data-unit="mm"
+    - p.hint: "Copy numbers: steps along the first direction + 1000 × steps along the second, so the second row starts at 1000. At most 200 places."
+    - p#draft-bodies.hint
+    - p#draft-problem.issue.error: "The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button.primary: "OK"
+    -   button: "Zrušit"
+  view: 6 scene(s) set
+  scene:
+    + bodies: e1, n1/1, n1/1000, n1/1001, n1/2000, n1/2001
+    + line #26303c width 1.5: 3240 numbers, sum 394830.236
+    + line #8b9bb4 width 1: 24 numbers, sum 991.569
+    + line #8b9bb4 width 1: 24 numbers, sum 661.046
+    + line #8b9bb4 width 1: 24 numbers, sum 330.523
+    + line #8b9bb4 width 1: 24 numbers, sum 1780.523
+    - bodies: e1
+    - line #26303c width 1.5: 540 numbers, sum 22812.023
+    - line #8b9bb4 width 1: 24 numbers, sum 374.778
+    - line #8b9bb4 width 1: 24 numbers, sum 249.852
+    - line #8b9bb4 width 1: 24 numbers, sum 124.926
+    - line #8b9bb4 width 1: 24 numbers, sum 1574.926
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.218
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.218
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.218
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.218
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
+
+=== 23. the summary of a grid
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Pattern"
+    + label
+    +   "Název"
+    +   input value="Mirror 1"
+    + div.buttons
+    +   button.primary: "Upravit"
+    +   button: "Potlačit"
+    +   button: "Smazat"
+    + p.hint: "Count 2 × 3 with the original, along axis X, spacing 50 mm, and along axis Y, length 70 mm; body: Vysunutí 1."
+    + p.hint.body
+    +   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + p.hint.body
+    +   "Mirror 1 / 1000: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + p.hint.body
+    +   "Mirror 1 / 1001: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + p.hint.body
+    +   "Mirror 1 / 2000: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + p.hint.body
+    +   "Mirror 1 / 2001: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+  view: 1 scene(s) set
+  scene:
+    + face n1/1 #10 #f97316 opacity 0.3
+    + face n1/1 #11 #f97316 opacity 0.3
+    + face n1/1 #12 #f97316 opacity 0.3
+    + face n1/1 #13 #f97316 opacity 0.3
+    + face n1/1 #14 #f97316 opacity 0.3
+    + face n1/1 #15 #f97316 opacity 0.3
+    + face n1/1 #16 #f97316 opacity 0.3
+    + face n1/1000 #17 #f97316 opacity 0.3
+    + face n1/1000 #18 #f97316 opacity 0.3
+    + face n1/1000 #19 #f97316 opacity 0.3
+    + face n1/1000 #20 #f97316 opacity 0.3
+    + face n1/1000 #21 #f97316 opacity 0.3
+    + face n1/1000 #22 #f97316 opacity 0.3
+    + face n1/1000 #23 #f97316 opacity 0.3
+    + face n1/1001 #24 #f97316 opacity 0.3
+    + face n1/1001 #25 #f97316 opacity 0.3
+    + face n1/1001 #26 #f97316 opacity 0.3
+    + face n1/1001 #27 #f97316 opacity 0.3
+    + face n1/1001 #28 #f97316 opacity 0.3
+    + face n1/1001 #29 #f97316 opacity 0.3
+    + face n1/1001 #30 #f97316 opacity 0.3
+    + face n1/2000 #31 #f97316 opacity 0.3
+    + face n1/2000 #32 #f97316 opacity 0.3
+    + face n1/2000 #33 #f97316 opacity 0.3
+    + face n1/2000 #34 #f97316 opacity 0.3
+    + face n1/2000 #35 #f97316 opacity 0.3
+    + face n1/2000 #36 #f97316 opacity 0.3
+    + face n1/2000 #37 #f97316 opacity 0.3
+    + face n1/2001 #38 #f97316 opacity 0.3
+    + face n1/2001 #39 #f97316 opacity 0.3
+    + face n1/2001 #40 #f97316 opacity 0.3
+    + face n1/2001 #41 #f97316 opacity 0.3
+    + face n1/2001 #42 #f97316 opacity 0.3
+    + face n1/2001 #43 #f97316 opacity 0.3
+    + face n1/2001 #44 #f97316 opacity 0.3
+
+=== 24. the checkbox cleared: a row again, the command removes the second direction by name
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":70}}}}}, "n1") -> ok
+  engine: getState("mid")
+  engine: preview({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":null}}}, "n1") -> ok
+  engine: getState("mid")  (x2)
+  engine: execute({"type":"updateFeature","id":"n1","patch":{"source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":null}}}) -> ok
+  feature n1:
+    + {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50}}}
+    - {"id":"n1","name":"Mirror 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"X"},"count":2,"span":{"type":"spacing","spacing":50},"second":{"direction":{"kind":"base","axis":"Y"},"count":3,"span":{"type":"length","length":70}}}}
+  timeline:
+    + div.row.ok
+    - div.row.ok.selected
+  panel:
+    + h2: "Model"
+    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - h2: "Pattern"
+    - label
+    -   "Název"
+    -   input value="Mirror 1"
+    - div.buttons
+    -   button.primary: "Upravit"
+    -   button: "Potlačit"
+    -   button: "Smazat"
+    - p.hint: "Count 2 × 3 with the original, along axis X, spacing 50 mm, and along axis Y, length 70 mm; body: Vysunutí 1."
+    - p.hint.body
+    -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - p.hint.body
+    -   "Mirror 1 / 1000: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - p.hint.body
+    -   "Mirror 1 / 1001: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - p.hint.body
+    -   "Mirror 1 / 2000: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - p.hint.body
+    -   "Mirror 1 / 2001: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+  view: 4 scene(s) set
+  scene:
+    + bodies: e1, n1/1
+    + line #26303c width 1.5: 1080 numbers, sum 81097.557
+    + line #8b9bb4 width 1: 24 numbers, sum 701.145
+    + line #8b9bb4 width 1: 24 numbers, sum 467.43
+    + line #8b9bb4 width 1: 24 numbers, sum 233.715
+    + line #8b9bb4 width 1: 24 numbers, sum 1683.715
+    - bodies: e1, n1/1, n1/1000, n1/1001, n1/2000, n1/2001
+    - line #26303c width 1.5: 3240 numbers, sum 394830.236
+    - line #8b9bb4 width 1: 24 numbers, sum 991.569
+    - line #8b9bb4 width 1: 24 numbers, sum 661.046
+    - line #8b9bb4 width 1: 24 numbers, sum 330.523
+    - line #8b9bb4 width 1: 24 numbers, sum 1780.523
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.218
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.218
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.218
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.218
+    - face n1/1 #10 #f97316 opacity 0.3
+    - face n1/1 #11 #f97316 opacity 0.3
+    - face n1/1 #12 #f97316 opacity 0.3
+    - face n1/1 #13 #f97316 opacity 0.3
+    - face n1/1 #14 #f97316 opacity 0.3
+    - face n1/1 #15 #f97316 opacity 0.3
+    - face n1/1 #16 #f97316 opacity 0.3
+    - face n1/1000 #17 #f97316 opacity 0.3
+    - face n1/1000 #18 #f97316 opacity 0.3
+    - face n1/1000 #19 #f97316 opacity 0.3
+    - face n1/1000 #20 #f97316 opacity 0.3
+    - face n1/1000 #21 #f97316 opacity 0.3
+    - face n1/1000 #22 #f97316 opacity 0.3
+    - face n1/1000 #23 #f97316 opacity 0.3
+    - face n1/1001 #24 #f97316 opacity 0.3
+    - face n1/1001 #25 #f97316 opacity 0.3
+    - face n1/1001 #26 #f97316 opacity 0.3
+    - face n1/1001 #27 #f97316 opacity 0.3
+    - face n1/1001 #28 #f97316 opacity 0.3
+    - face n1/1001 #29 #f97316 opacity 0.3
+    - face n1/1001 #30 #f97316 opacity 0.3
+    - face n1/2000 #31 #f97316 opacity 0.3
+    - face n1/2000 #32 #f97316 opacity 0.3
+    - face n1/2000 #33 #f97316 opacity 0.3
+    - face n1/2000 #34 #f97316 opacity 0.3
+    - face n1/2000 #35 #f97316 opacity 0.3
+    - face n1/2000 #36 #f97316 opacity 0.3
+    - face n1/2000 #37 #f97316 opacity 0.3
+    - face n1/2001 #38 #f97316 opacity 0.3
+    - face n1/2001 #39 #f97316 opacity 0.3
+    - face n1/2001 #40 #f97316 opacity 0.3
+    - face n1/2001 #41 #f97316 opacity 0.3
+    - face n1/2001 #42 #f97316 opacity 0.3
+    - face n1/2001 #43 #f97316 opacity 0.3
+    - face n1/2001 #44 #f97316 opacity 0.3
+
+=== 25. a row along the normal of a sketch whose point is gone: the form warns and offers the origin
+  engine: execute({"type":"addPoint","sketch":"s1","id":"pp","x":30,"y":25}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}}) -> ok
+  engine: execute({"type":"removeEntity","sketch":"s1","id":"pp"}) -> ok
+  engine: preview({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15},"second":null}}}, "lin") -> ok
+  engine: getState("n1")
+  features: s1, e1, hole, mid, n1, lin
+  feature lin:
+      {"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Z": "↶ Zpět"
+    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
+    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     -   button title="Check which bodies share a volume": "Collisions"
     - div.group
   timeline:
@@ -1156,23 +1811,12 @@
     -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
   panel:
     + h2: "Úprava: Row"
-    - h2: "Pattern"
+    + label
     +   "Repeat"
     +   select value="features"
     +     option selected value="features": "Features (extrusions that add or cut)"
     +     option value="body": "A body"
-    -   "Název"
-    -   input value="Mirror 1"
-    - div.buttons
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Count 2 with the original, along axis X, spacing 50 mm; body: Vysunutí 1."
-    - p.hint.body
-    -   "Mirror 1 / 1: 11718.478 mm³, 40 × 30 × 10 mm"
-    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    - h2: "Properties of Mirror 1 / 1"
-    - p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
+    + label
     +   "Kind"
     +   select value="linear"
     +     option value="circular": "Around an axis"
@@ -1184,20 +1828,14 @@
     +     input type=checkbox checked
     +     "Hole"
     + p.hint: "Every copy is built again in its place and applied to the targets of its feature, in the order of the timeline. A cut through all is measured for every copy."
-    -   "Name"
-    -   input value="" placeholder="Mirror 1 / 1"
+    + label
     +   "Direction"
     +   select value="sketchPoint"
     +     option value="X": "Axis X"
     +     option value="Y": "Axis Y"
     +     option value="Z": "Axis Z"
     +     option selected value="sketchPoint": "The normal of a sketch plane"
-    -   "Use"
-    -   select value=""
-    -     option selected value="": "As its source: Printed part"
-    -     option value="part": "Printed part"
-    -     option value="reference": "Reference part (not printed)"
-    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
     +   "Sketch"
     +   select value="s1"
     +     option selected value="s1": "Skica 1"
@@ -1205,38 +1843,29 @@
     + div.buttons
     +   button: "Use the origin of the sketch"
     + p.hint: "The direction is the normal of the sketch plane; for a sketch on a face it points out of the body."
-    -   "Material from the catalog"
-    -   select value=""
-    -     option selected value="": "—"
-    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
-    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
-    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
-    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
-    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
-    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
     +   "Count with the original (a whole number or an expression)"
-    -   "Material"
-    -   input value=""
-    - label
-    -   "Density (g/cm3)"
+    +   span.field
     +     input value="2"
     +     small.computed data-field="transform/count" data-unit="count"
-    -     input value=""
+    + label
     +   "Span"
     +   select value="spacing"
     +     option selected value="spacing": "Spacing between neighbours"
     +     option value="length": "Length between the first and the last copy"
-    -   "Mass (g)"
-    -   span.field
-    -     input value=""
+    + label
     +   "Spacing (mm or an expression; negative = against the direction)"
-    -   "Colour"
+    +   span.field
     +     input value="15"
     +     small.computed data-field="transform/span/spacing" data-unit="mm"
     + p.hint: "A larger count adds copies at the far end and moves none."
+    + label.check
+    +   input type=checkbox unchecked
+    +   "A second direction (a grid)"
     + p#draft-bodies.hint
     + p#draft-problem.issue.error: "Odkaz vede na rovinu, stěnu, skicu nebo těleso, které v tomto místě časové osy neexistuje. (pp)"
-    -     input type=color value="#aab7c6"
+    - h2: "Model"
+    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -1256,19 +1885,11 @@
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   view: 4 scene(s) set
-  scene:
-    - face n1/1 #10 #f97316 opacity 0.3
-    - face n1/1 #11 #f97316 opacity 0.3
-    - face n1/1 #12 #f97316 opacity 0.3
-    - face n1/1 #13 #f97316 opacity 0.3
-    - face n1/1 #14 #f97316 opacity 0.3
-    - face n1/1 #15 #f97316 opacity 0.3
-    - face n1/1 #16 #f97316 opacity 0.3
 
-=== 21. the direction repaired: the point is the origin, the row computes again (a copy up the normal of the base sketch lands on the hole through all: noEffect)
-  engine: preview({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":2,"span":{"type":"spacing","spacing":15}}}}, "lin") -> ok
+=== 26. the direction repaired: the point is the origin, the row computes again (a copy up the normal of the base sketch lands on the hole through all: noEffect)
+  engine: preview({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":2,"span":{"type":"spacing","spacing":15},"second":null}}}, "lin") -> ok
   engine: getState("n1")  (x2)
-  engine: execute({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":2,"span":{"type":"spacing","spacing":15}}}}) -> ok
+  engine: execute({"type":"updateFeature","id":"lin","patch":{"source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":2,"span":{"type":"spacing","spacing":15},"second":null}}}) -> ok
   feature lin:
     + {"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"origin"},"count":2,"span":{"type":"spacing","spacing":15}}}
     - {"id":"lin","name":"Row","suppressed":false,"type":"pattern","source":{"type":"features","features":["hole"]},"transform":{"type":"linear","direction":{"kind":"sketchPoint","sketch":"s1","point":"pp"},"count":2,"span":{"type":"spacing","spacing":15}}}
@@ -1280,6 +1901,7 @@
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
     + div.group
@@ -1297,12 +1919,16 @@
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
     +   select value="" title="Export the model in a format of the engine"
     +     option selected value="": "Export…"
     +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
     +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
     +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
     +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     +   button title="Check which bodies share a volume": "Collisions"
     + div.group
   timeline:
@@ -1330,12 +1956,10 @@
     +   button.icon title="Posunout dřív": "↑"
     +   button.icon title="Posunout později": "↓"
     +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    + div.row.ok
     -   button.icon disabled title="Hide or show": "👁"
     -   button.icon disabled title="Posunout dřív": "↑"
     -   button.icon disabled title="Posunout později": "↓"
     -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    - div.row.ok.selected
     +   button.icon title="Hide or show": "👁"
     +   button.icon title="Posunout dřív": "↑"
     +   button.icon title="Posunout později": "↓"
@@ -1419,6 +2043,9 @@
     -     input value="15"
     -     small.computed data-field="transform/span/spacing" data-unit="mm"
     - p.hint: "A larger count adds copies at the far end and moves none."
+    - label.check
+    -   input type=checkbox unchecked
+    -   "A second direction (a grid)"
     - p#draft-bodies.hint
     - p#draft-problem.issue.error: "Odkaz vede na rovinu, stěnu, skicu nebo těleso, které v tomto místě časové osy neexistuje. (pp)"
     - div.buttons

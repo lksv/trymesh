@@ -18,6 +18,8 @@ import {
   axisKind,
   changeExtrude,
   changePattern,
+  type PatternChange,
+  type PatternMemory,
   rememberPattern,
   circleCommands,
   deleteCommands,
@@ -619,6 +621,32 @@ describe('nálezy z revize aplikace', () => {
     expect(generatedProfile('involuteGear', 's', {}).operands).toEqual({});
   });
 
+  it('an extrusion draft with the generators of 5d: the examples of the catalog, the optional shift of a gear (D61)', () => {
+    // a new draft starts from the example of the entry and the defaults; an optional parameter is not in it
+    expect(generatedProfile('cycloidalDisc', 's', { circle: 'c1' }).params).toEqual({ pins: 12, pinRadius: 2.5, eccentricity: 1, clearance: 0, rotation: 0, pinAngle: 0 });
+    expect(generatedProfile('gt2Pulley', 's', { center: 'origin' }).params).toEqual({ teeth: 20, allowance: 0, rotation: 0 });
+    expect(generatedProfile('involuteGear', 's', {}).params).not.toHaveProperty('shift');
+    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: generatedProfile('involuteGear', 's', { circle: 'c1' }), extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
+    // the shift is in the draft only while it has a value: a number, an expression, and gone again
+    const shifted = changeExtrude(draft, { params: { shift: 0.3 } }, []);
+    expect(shifted.profile).toMatchObject({ params: { shift: 0.3, teeth: 18 } });
+    expect(changeExtrude(shifted, { params: { shift: '-x' } }, []).profile).toMatchObject({ params: { shift: '-x' } });
+    const plain = changeExtrude(shifted, { params: { shift: null } }, []);
+    expect(plain.profile).toEqual(draft.profile);
+    // editing: a shift the draft does not have is removed by name; one it has is sent
+    expect(draftCommand(plain, true, 1)).toMatchObject({ patch: { profile: { params: { shift: null, teeth: 18 } } } });
+    expect(draftCommand(shifted, true, 1)).toMatchObject({ patch: { profile: { params: { shift: 0.3 } } } });
+    // a new feature has no null in it
+    expect(draftCommand(plain, false, 1)).toEqual({ type: 'addFeature', feature: plain, index: 1 });
+    // the engine accepts both, and the patch removes the shift of a gear that has one
+    const { engine, run } = setup();
+    run([{ type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'circle', center: 'origin', construction: true }, radius: 8.1 }]);
+    run([draftCommand(shifted, false, 1)]);
+    expect((engine.getState().document.features[1] as ExtrudeFeature).profile).toMatchObject({ params: { shift: 0.3 } });
+    run([draftCommand(plain, true, 1)]);
+    expect(((engine.getState().document.features[1] as ExtrudeFeature).profile as { params: object }).params).not.toHaveProperty('shift');
+  });
+
   it('an extrusion draft with an offset and with a wall (D44)', () => {
     const draft: ExtrudeFeature = { id: 'e1', name: 'e1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
     // the offset is in the draft only while it has a value: a number, an expression, and gone again
@@ -830,6 +858,54 @@ describe('nálezy z revize aplikace', () => {
     run([draftCommand(bodyMirror, true, 3)]);
     expect(engine.getState().document.features[3]).toEqual(bodyMirror);
     expect(engine.getState().evaluation.features.n1).toMatchObject({ status: 'ok', bodies: ['n1/1'] });
+  });
+
+  it('a grid (D53): the checkbox, the second direction and what the form remembers of it', () => {
+    const choices: PatternChoices = { tools: ['h1'], bodies: ['a'], sketches: ['s', 's2'] };
+    const row: PatternDraft = { id: 'n1', name: 'n1', suppressed: false, type: 'pattern', source: { type: 'features', features: ['h1'] }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 10 } } };
+    // the form remembers before every change, as `set` does
+    let memory: PatternMemory = {};
+    const step = (draft: PatternDraft, change: PatternChange): PatternDraft => {
+      memory = rememberPattern(memory, draft);
+      return changePattern(draft, change, choices, memory);
+    };
+    // ticked: a new second direction along Y (X when the first is Y), a count of 2, a spacing of 10
+    const gridded = step(row, { grid: true });
+    expect(gridded.transform).toEqual({ ...row.transform, second: { direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 10 } } });
+    expect(changePattern(changePattern(row, { axis: 'Y' }, choices), { grid: true }, choices).transform).toMatchObject({ second: { direction: { kind: 'base', axis: 'X' } } });
+    // the changes of the second direction leave the first alone, and back
+    let g = step(gridded, { second: { axis: 'sketchPoint' } });
+    expect(g.transform).toMatchObject({ direction: { kind: 'base', axis: 'X' }, second: { direction: { kind: 'sketchPoint', sketch: 's2', point: 'origin' } } });
+    g = step(g, { second: { sketch: 's', count: 'rows', spacing: 'pitch' } });
+    expect(g.transform).toMatchObject({ count: 3, span: { spacing: 10 }, second: { direction: { kind: 'sketchPoint', sketch: 's' }, count: 'rows', span: { type: 'spacing', spacing: 'pitch' } } });
+    g = step(g, { count: 4, spacing: 7 });
+    expect(g.transform).toMatchObject({ count: 4, span: { spacing: 7 }, second: { count: 'rows', span: { spacing: 'pitch' } } });
+    // the spans of the second direction come back from slots of their own, not from those of the first
+    g = step(g, { span: 'length' });
+    g = step(g, { length: 30 });
+    g = step(g, { second: { span: 'length' } });
+    expect(g.transform).toMatchObject({ span: { type: 'length', length: 30 }, second: { span: { type: 'length', length: 20 } } });
+    g = step(g, { second: { length: 'L' } });
+    g = step(g, { second: { span: 'spacing' } });
+    expect(g.transform).toMatchObject({ second: { span: { type: 'spacing', spacing: 'pitch' } } });
+    g = step(g, { span: 'spacing' });
+    expect(g.transform).toMatchObject({ span: { type: 'spacing', spacing: 7 } });
+    g = step(g, { second: { span: 'length' } });
+    expect(g.transform).toMatchObject({ second: { span: { type: 'length', length: 'L' } } });
+    const kept = g.transform.type === 'linear' ? g.transform.second : undefined;
+    // the checkbox cleared, the first direction changed, the checkbox ticked again: the second direction comes back
+    let r = step(g, { grid: false });
+    expect(r.transform).not.toHaveProperty('second');
+    r = step(r, { axis: 'Z', count: 2 });
+    expect(memory.second).toEqual(kept);
+    expect(step(r, { grid: true }).transform).toMatchObject({ direction: { kind: 'base', axis: 'Z' }, count: 2, second: kept });
+    // a mirror and back: the grid with it
+    const mirrored = step(g, { kind: 'mirror' });
+    expect(step(mirrored, { kind: 'linear' }).transform).toEqual(g.transform);
+    // another kind has no second direction
+    expect(changePattern(mirrored, { grid: true, second: { count: 3 } }, choices).transform).toEqual(mirrored.transform);
+    // without a tick, a change of the second direction does nothing
+    expect(changePattern(row, { second: { count: 3 } }, choices).transform).toEqual(row.transform);
   });
 
   it('bod uvnitř smyčky', () => {

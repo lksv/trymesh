@@ -144,6 +144,8 @@ Both keep the rules of their packages, because the rules never asked for the kin
 
 ### A grid, later
 
+*Superseded by [grid.md](grid.md) (2026-11-17): the grid is the second route below, designed and implemented as an addition to this package. What follows stays as the record of 2e.*
+
 A grid of slots or holes is the first thing a linear pattern is asked for, and the cheap variant does not have it. Three routes were weighed; none is taken in this package, and the choice between the last two belongs to the package that brings the grid.
 
 1. **A second direction inside `linear`, the copies numbered row by row.** One feature, for features and for bodies. But a copy has one number, and a contiguous numbering moves copies when a count changes (a change of the first count renumbers every row but the first). A sketch on a face of copy 5, a target `<pattern>/5` and a link that lists it would silently mean another copy. Rejected.

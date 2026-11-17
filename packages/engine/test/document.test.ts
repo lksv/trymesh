@@ -148,7 +148,7 @@ describe('příkazy časové osy', () => {
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: [] }) }, /targets/);
     // načtený dokument s takovým odkazem závisí na vlastníkovi tělesa
     expect(featureRefs(extrude('E2', 'S1', { operation: 'cut', targets: ['P/2'] }))).toEqual(['S1', 'P']);
-    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['combine', 'extrude', 'hole', 'pattern', 'plane', 'sketch', 'split']);
+    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['combine', 'extrude', 'hole', 'mesh', 'pattern', 'plane', 'sketch', 'split']);
     expect(FEATURE_TYPE_INFO.extrude).toMatchObject({ bodies: 'self', updatable: ['profile', 'extent', 'operation', 'targets'] });
     expect(FEATURE_TYPE_INFO.sketch).toMatchObject({ bodies: 'none', updatable: [] });
   });
@@ -402,11 +402,11 @@ describe('načtení dokumentu', () => {
       change(copy);
       expect(() => validateDocument(copy)).toThrow(pattern);
     };
-    bad((d) => (d.schemaVersion = 7), /the schema version 7 is newer than this build reads \(it saves 6\)/);
+    bad((d) => (d.schemaVersion = 8), /the schema version 8 is newer than this build reads \(it saves 7\)/);
     bad((d) => (d.schemaVersion = 0), /the schema version 0 is not a version of the document/);
     bad((d) => delete d.schemaVersion, /the schema version undefined is not a version of the document/);
     bad((d) => (d.schemaVersion = '3'), /the schema version "3" is not a version of the document/);
-    bad((d) => (d.schemaSteps = ['5b-export']), /this build has no upgrade step "5b-export" after version 6/);
+    bad((d) => (d.schemaSteps = ['5b-export']), /this build has no upgrade step "5b-export" after version 7/);
     bad((d) => (d.settings.chordTolerance = 0), /musí být kladná/);
     bad((d) => (d.features[0].curves.l1.b = 'p9'), /není vlastní bod/);
     bad((d) => (d.features[0].points.p1.x = null), /konečné číslo/);

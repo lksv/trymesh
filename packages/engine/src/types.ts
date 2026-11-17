@@ -32,6 +32,37 @@ export interface Document {
   // when empty; without a link every query answers for the model as modelled. Not part of the
   // timeline: a change of a value recomputes no geometry and moves no body of the evaluation.
   mechanism: Mechanism;
+  // Stored meshes by ID (D55): triangle meshes read from files (the MCP tool import_mesh, or the
+  // import of the app), kept inside the document. Always present, `{}` when there is none. Not part
+  // of the timeline: a feature of the type `mesh` places an entry as a body, and that feature is
+  // the one thing that reads an entry (it is computed again when the entry it names appears). The
+  // IDs are a namespace of their own (the mesh `nema17` may be placed by the feature `nema17`).
+  // An entry never changes: there is no command that edits one; `addMesh` adds an entry,
+  // `removeMesh` removes one that no feature names.
+  meshes: Record<Id, StoredMesh>;
+}
+
+// A closed, indexed triangle mesh in millimetres, in its own frame (the frame of the file it came
+// from), as the document stores it.
+// - `name`: for people, usually the name of the file; the rules of a body name (not empty, no
+//   leading or trailing space, at most 200 characters).
+// - `positions`: base64 of 32-bit floats, little-endian: x, y, z of every vertex.
+// - `triangles`: base64 of 32-bit unsigned integers, little-endian: three vertex numbers per
+//   triangle, counter-clockwise seen from outside the solid.
+// - Base64 in its canonical form: the alphabet of RFC 4648 section 4, padded with `=`, no white
+//   space, the unused bits of the last character zero; one mesh has one spelling.
+// - Strict: an entry lists these fields and no other, on a command and on a load.
+// What a stored mesh has to be, checked by `addMesh` and by a load: at least 4 and at most 100 000
+// triangles; finite coordinates within ±1e9; every index names a vertex, every vertex is named,
+// no triangle names a vertex twice; closed (every edge in exactly two triangles, once each way);
+// a positive volume; every connected shell thicker than a millionth of its own size (twice its
+// volume over its surface, against the largest side of its bounds); every shell that faces
+// inwards is a hollow of a shell around it. Shells that overlap are not detected (they count
+// twice in the volume).
+export interface StoredMesh {
+  name?: string;
+  positions: string;
+  triangles: string;
 }
 
 // The mechanism: links, and joints between them (D49).
@@ -80,18 +111,38 @@ export interface Link {
 //   number and takes an expression over the parameters, kept in `expressions` of the joint under
 //   the name of the field. A coupled motion is two values that follow one parameter (`q` and
 //   `-2 * q`).
+// - The drive (5b, D59): optional numeric fields, by the same rule, read by nothing but the export
+//   of a robot description (URDF, MJCF). A fault of one blocks no pose (`JointResult.driveErrors`).
+//   - `effort`: the largest torque or force the drive gives at the joint: N·mm for a revolute and
+//     a continuous joint (a servo of 11 kg·cm is 1078), N for a prismatic one. Above 0.
+//   - `velocity`: the largest speed of the joint: rad/s, or mm/s for a prismatic one. Above 0.
+//   - `rotorInertia` (revolute, continuous): the moment of inertia of what turns inside the drive
+//     (a rotor, the first stage of a gearbox) about its own axis, at the motor, in g·mm² (the unit
+//     of the query `mass`; a data sheet in g·cm² ×100, in kg·m² ×1e9). At least 0.
+//   - `gearRatio` (revolute, continuous): turns of the motor per turn of the joint. Above 0; 1
+//     when it is not stated.
 export type Joint = JointBase &
   (
-    | { type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number }
-    | { type: 'continuous'; axis: AxisRef; value: number }
-    | { type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number }
+    | ({ type: 'revolute'; axis: AxisRef; lower: number; upper: number; value: number } & TurningDrive)
+    | ({ type: 'continuous'; axis: AxisRef; value: number } & TurningDrive)
+    | ({ type: 'prismatic'; axis: AxisRef; lower: number; upper: number; value: number } & ShiftingDrive)
     | { type: 'fixed' }
   );
 export interface JointBase {
   name?: string;
   parent: Id; // a link
   child: Id; // a link
-  expressions?: { value?: Expr; lower?: Expr; upper?: Expr };
+  expressions?: { value?: Expr; lower?: Expr; upper?: Expr; effort?: Expr; velocity?: Expr; rotorInertia?: Expr; gearRatio?: Expr };
+}
+export interface TurningDrive {
+  effort?: number;
+  velocity?: number;
+  rotorInertia?: number;
+  gearRatio?: number;
+}
+export interface ShiftingDrive {
+  effort?: number;
+  velocity?: number;
 }
 
 // What a body is used as. It decides who reads the body:
@@ -164,7 +215,7 @@ export interface Check {
   expr: Expr;
 }
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | CombineFeature | SplitFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -301,18 +352,20 @@ export interface ExtrudeFeature extends FeatureBase {
 // - Its faces are `wallSide` and `wallEnd` (see FaceName) and the two caps.
 // `generated`: an entry of the generator catalog (GENERATORS) builds the loops. It has no offset.
 // - `operands` are entities of the sketch by the names of the catalog (a gear: `circle`, the pitch
-//   circle; it may be a construction circle or a projected one). A command verifies the operands the
-//   feature did not have before; an operand removed later is a broken reference in the recompute.
+//   circle; it may be a construction circle or a projected one; a pulley: `center`, a point, also
+//   `origin` or a point of projected geometry). A command verifies the operands the feature did not
+//   have before; an operand removed later is a broken reference in the recompute.
 // - `params` follow the catalog: numbers are numeric fields at `profile/params/<name>` and accept an
 //   expression, flags are booleans. What a command leaves out gets the default of the catalog and is
-//   stored. A number without a default (the tooth count) is required.
+//   stored, except an optional parameter (the `shift` of a gear), which is stored only when given and
+//   whose absence is its default. A number without a default (the tooth count) is required.
 // - `refs` are references to earlier features by the names of the catalog (a gear: `meshWith`).
 export type ProfileSource =
   | { type: 'regions'; sketch: Id; regions: RegionRef[]; offset?: number }
   | { type: 'wall'; sketch: Id; curves: Id[]; thickness: number }
   | { type: 'generated'; generator: GeneratorName; sketch: Id; operands: Record<string, Id>; params: Record<string, number | boolean | string>; refs?: Record<string, Id> };
 
-export type GeneratorName = 'involuteGear'; // entries of the generator catalog
+export type GeneratorName = 'involuteGear' | 'cycloidalDisc' | 'gt2Pulley'; // entries of the generator catalog
 
 // A pattern repeats its source by a list of isometries (turns, shifts, a mirror). The kind of the
 // transform is a variant: `circular` around an axis, `linear` along a direction, `mirror` in
@@ -322,8 +375,9 @@ export type GeneratorName = 'involuteGear'; // entries of the generator catalog
 //   targets of that feature, in the order of the list. The features need not share targets; the
 //   list lets a hole repeat with its pocket.
 // - `body`: the body in the state before the pattern is copied as new bodies `<pattern>/<number>`,
-//   numbered from 1. A copy is a body like any other: a sketch can stand on it, it can be cut and its
-//   edges projected.
+//   numbered from 1 (a grid numbers its copies i + 1000 · j, with gaps: see PatternTransform; read
+//   the IDs from `bodies` of the result, do not compose them by counting). A copy is a body like
+//   any other: a sketch can stand on it, it can be cut and its edges projected.
 // - `count` includes the original; 1 means the original alone. A mirror has no count and makes one
 //   copy, number 1 (`<pattern>/1`; another number of a mirror is not a body a command may name).
 //   The pattern is atomic: when any copy fails, the whole pattern is in error and the model stays
@@ -463,6 +517,58 @@ export type HoleShape =
 // `headDepth`, the depth of the head (absent for a plain hole).
 export type HoleExtent = { type: 'distance'; start: number; distance: number } | { type: 'throughAll'; side: 'forward' | 'backward' };
 
+// A stored mesh placed as a body (D55): a bought or given part to design around.
+// - `mesh`: a key of the section `meshes`. A command that sets it checks that the section has it;
+//   a load checks its form only, and a mesh that is not there is the error `brokenReference` of
+//   the feature with `refs: [{ mesh: <id> }]`.
+// - The body has the ID of the feature and one face, `{ feature, role: 'mesh' }`, for the whole
+//   surface, with a surface published as `general`: no sketch or plane stands on it
+//   (`nonPlanarFace`), it has no edges, and no extrusion, hole or pattern of them may have it, or
+//   a copy of it, as a target, nor a combine as its target or a tool, nor a split as its body (the
+//   error `importedTarget` of that feature). It takes part in the
+//   collisions, the gap, the mass, a pattern of a body and the exports like any body; its surface
+//   counts as round in the collisions.
+// - It is not a reference part by itself: a bought part is made one by the same batch with
+//   setBodyProperties (`use: 'reference'` and the `mass` of its data sheet).
+// - `facts` of the result: `origin`, `axisX`, `axisY`, `axisZ`, where the origin of the mesh is in
+//   the model and where its three axes point (unit vectors).
+// - Errors: `brokenReference` (the mesh; the frame), `nonPlanarFace` (the frame is a face that is
+//   not planar), `invalidExpression` (a field of the placement).
+export interface MeshFeature extends FeatureBase {
+  type: 'mesh';
+  mesh: Id;
+  placement: BodyPlacement;
+}
+
+// A directed frame of the model: a plane as a sketch refers to one (a base plane: XY is (+X, +Y,
+// +Z), XZ is (+X, +Z, −Y), YZ is (+Y, +Z, +X); a plane feature; a planar face of a body, with the
+// frame a sketch on that face has, its normal out of the body), or a point of a sketch: the frame
+// of the sketch moved to the point (an own point, `origin`, or a point of projected geometry).
+export type FrameRef = PlaneRef | { kind: 'sketchPoint'; sketch: Id; point: Id };
+
+// Where a part with a frame of its own stands: its origin and axes laid on `frame`, then turned and
+// shifted in that frame.
+// - `x`, `y`, `z` (mm): the offset of the origin of the part along the X axis, the Y axis and the
+//   normal of the frame. The frame of a face is the one a sketch on that face has, and its X may
+//   run against an axis of the model; the facts of the feature say where the part ended up.
+// - `rx`, `ry`, `rz` (rad, each within ±2π): turns about the X axis, the Y axis and the normal of
+//   the frame, in this order, the axes staying where they are, by the right-hand rule (roll, pitch
+//   and yaw, `rpy` of URDF).
+// - A point p of the part ends at O + B · (Rz(rz) · Ry(ry) · Rx(rx) · p + (x, y, z)), with O the
+//   origin of the frame and B its axes (X, Y, normal) as columns. No scale, no mirror.
+// - The six numbers are optional numeric fields (`placement/x` … `placement/rz`): absent means 0
+//   and is not stored; setField reaches one the feature does not have, `updateFeature` with
+//   `{ placement: { x: null } }` removes one. The frame is a reference and is replaced whole.
+export interface BodyPlacement {
+  frame: FrameRef;
+  x?: number;
+  y?: number;
+  z?: number;
+  rx?: number;
+  ry?: number;
+  rz?: number;
+}
+
 // The transform of a pattern, a variant by `type`; each variant lists its fields, and a field of
 // another variant is an invalid command. A patch with another `type` replaces the transform and
 // has to be complete.
@@ -477,6 +583,21 @@ export type HoleExtent = { type: 'distance'; start: number; distance: number } |
 //     count adds copies at the far end and moves none (prefer it when something refers to a copy);
 //   - `length` (field `transform/span/length`): the distance between the original and the last
 //     copy, so the step is length / (count − 1); a change of the count moves every copy.
+//   `second` (optional) makes a grid (D53): the row of the first direction is repeated along
+//   a second direction with its own `direction`, `count` and `span`, each as in the first
+//   (numeric fields `transform/second/count`, `transform/second/span/spacing`,
+//   `transform/second/span/length`); without it the pattern is a row. The places are the pairs
+//   (i, j), i steps along the first direction and j along the second; (0, 0) is the original. The
+//   copy at (i, j) has the number i + 1000 · j: the row of the original keeps the numbers 1 …
+//   count − 1 of a row, the second row is 1000, 1001, …, the third 2000, …. A number does not
+//   depend on the counts, so with spacings a larger count adds copies and moves none; the numbers
+//   have gaps, and `bodies` of the result lists the copies that exist, in the order of their
+//   numbers (row by row, the order they are applied in). The recompute refuses, as the error
+//   `invalidPattern`, a grid of more than 200 places (count × second count, the original included)
+//   and a grid of which two places would be one place (whole numbers of steps along parallel
+//   directions that reach the same place, such as the steps 5 and 5, 5 and 10, 5 and −5; a step
+//   below 1e-6 mm; directions a hair apart). `{ second: null }` in `updateFeature` makes a row
+//   again; a new linear pattern without a grid leaves `second` out.
 // - `mirror`: one copy, the mirror image in `plane` (a base plane, a plane feature or a planar face
 //   of a body, as the plane of a sketch; for a face the whole plane it lies in), resolved in the
 //   state before the pattern. A plane of symmetry is a base plane or a plane feature offset by an
@@ -486,8 +607,10 @@ export type HoleExtent = { type: 'distance'; start: number; distance: number } |
 //   right-handed frame of its own, not the image of a sketch on the source face.
 export type PatternTransform =
   | { type: 'circular'; axis: AxisRef; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } }
-  | { type: 'linear'; direction: AxisRef; count: number; span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number } }
+  | { type: 'linear'; direction: AxisRef; count: number; span: LinearSpan; second?: { direction: AxisRef; count: number; span: LinearSpan } }
   | { type: 'mirror'; plane: PlaneRef };
+// The span of a direction of a linear pattern.
+export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'; length: number };
 
 // An axis: a base axis of the model, or the normal of a sketch plane led through a point of the
 // sketch (an own point, the origin or a point of projected geometry).
@@ -564,6 +687,8 @@ export type Extent =
 // - `holeSeat`: the planar step between the head and the bore of a counterbore or a nut pocket.
 //   The seats of all points of one feature lie in one plane and are one face, as the caps are.
 // - The mouths are `startCap` and the bottoms `endCap`, one face each for all points.
+// The face of an imported mesh (a feature of the type `mesh`): `mesh`, one face for the whole
+// surface, not planar, without edges.
 export type FaceName = (
   | { feature: Id; role: 'side'; curve: Id } // z křivky skici
   | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici)
@@ -574,6 +699,7 @@ export type FaceName = (
   | { feature: Id; role: 'holeHead'; point: Id }
   | { feature: Id; role: 'holeFlat'; point: Id; flat: number }
   | { feature: Id; role: 'holeSeat' }
+  | { feature: Id; role: 'mesh' }
   | { feature: Id; role: 'splitFace' } // the face a split cuts, on both bodies (D56)
 ) & { copy?: CopyTag[] };
 
@@ -717,6 +843,19 @@ export interface Evaluation {
   checks: Record<string, CheckResult>; // check results by name
   bodyProperties: Record<Id, BodyPropertiesResult>; // by body of the state, in the order of `bodies`
   mechanism: MechanismResult; // the mechanism resolved against this state
+  meshes: Record<Id, MeshResult>; // what the stored meshes are, without their data (D55)
+}
+
+// A stored mesh as the evaluation describes it, without its data (D55). Every number but `usedBy`
+// is computed once per entry of the section.
+export interface MeshResult {
+  name?: string;
+  vertices: number;
+  triangles: number;
+  bounds: { min: Vec3; max: Vec3 }; // mm, in the frame of the mesh
+  volume: number; // mm³; shells that overlap count twice
+  shells: number; // connected pieces of the surface
+  usedBy: Id[]; // the features of the type `mesh` that place it, in the order of the timeline, suppressed ones included
 }
 
 // An isometry p' = M · p + t; `matrix` holds the rows of an orthogonal matrix.
@@ -746,7 +885,7 @@ export interface LinkResult {
 }
 // `status: 'error'`: something about the joint is wrong.
 // - brokenReference: the sketch or the point of the axis is not in the state;
-// - invalidExpression: a numeric field has an expression in error (`fieldErrors`);
+// - invalidExpression: a numeric field of the pose has an expression in error (`fieldErrors`);
 // - jointLimits: `lower` is above `upper` (after a change of a parameter);
 // - jointOutOfLimits: `value` is outside the limits (after a change of a parameter).
 // A joint in error has no motion and blocks what hangs on it, with one exception: a joint whose
@@ -767,6 +906,12 @@ export interface JointResult {
   // blocked.
   axis?: { origin: Vec3; direction: Vec3 };
   axisInPose?: { origin: Vec3; direction: Vec3 };
+  // The drive (5b): the fields the joint states, resolved (absent when it states none), and the
+  // fields whose expression does not evaluate, left out of `drive`. A fault of the drive is not
+  // a fault of the joint: `status`, `error` and `fieldErrors` are of the pose alone, so a broken
+  // effort blocks no pose. The export of a robot refuses a joint with `driveErrors`.
+  drive?: TurningDrive;
+  driveErrors?: { effort?: ExpressionError; velocity?: ExpressionError; rotorInertia?: ExpressionError; gearRatio?: ExpressionError };
 }
 
 // The properties of a body of the state, with what it inherits and the defaults filled in. Computed
@@ -920,6 +1065,23 @@ export interface Issue {
 //   point: a head that passes through a thin plate of a body that reaches deeper elsewhere is not
 //   detected.
 // - Two points are so close that their holes would overlap; `refs` name the two points.
+// invalidPattern: the counts, the directions and the spans do not make a pattern (a grid, D53).
+// - More places than 200 (count × second count, the original included); `refs` are the fields
+//   `transform/count` and `transform/second/count`, the message says the product.
+// - Two places of a grid would be one place (at most 1e-6 mm apart; the original is a place);
+//   `refs` are the paths of what the places are computed from (`transform/direction`,
+//   `transform/count`, the numeric field of the span, and the same three under
+//   `transform/second/`), the message names the two copies ("the copies 1 and 1000 would stand in
+//   one place", "the copy 1001 would stand in the place of the original").
+// The pattern is in error as a whole and the model stays as it was before it.
+// importedTarget: a feature that applies a tool (an extrusion with the operation add or cut, a hole,
+// a pattern of them) has a target that is an imported body: the body of a feature of the type
+// `mesh`, or a copy of it made by a pattern. `refs` name those targets, and no target is changed.
+// The kernel keeps its guarantee for flush faces only for faces it knows as planar, and a flat
+// region of an imported mesh is not one (D55).
+// A combine refuses an imported body in every role, the target and each tool (a tool would make
+// the target imported), also with a clearance, and a split refuses one as its body; `refs` name
+// those bodies (D56).
 export type ErrorCode =
   | 'brokenReference'
   | 'noProfile'
@@ -930,6 +1092,8 @@ export type ErrorCode =
   | 'invalidExpression'
   | 'invalidExtent'
   | 'invalidHole'
+  | 'invalidPattern'
+  | 'importedTarget'
   | 'invalidClearance'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
@@ -1133,10 +1297,14 @@ export type Command =
   //   null` removes the name. A body that is in another link is an invalid command: take it out
   //   there first, in the same batch. Only bodies the link did not have before are checked.
   // - removeLink is refused while a joint names the link.
-  // - setJoint creates the joint `id` or replaces it, whole, in the input form: a numeric field
-  //   takes a number or an expression, which has to evaluate now. A string equal to the expression
-  //   the field already has is kept without evaluation. Only an axis the joint did not have before
-  //   is checked.
+  // - setJoint creates the joint `id` or replaces it in the input form: a numeric field takes
+  //   a number or an expression, which has to evaluate now. A string equal to the expression the
+  //   field already has is kept without evaluation. Only an axis the joint did not have before is
+  //   checked. What a joint of 5a has (the type, the links, the axis, the value and the limits) is
+  //   replaced whole and is required. The drive (`effort`, `velocity`, `rotorInertia`,
+  //   `gearRatio`) is a patch: a drive field the command does not name is kept from the joint of
+  //   the same type it replaces, `null` removes it, and a joint of another type starts without
+  //   a drive.
   // - setPose sets the values of the joints named; the others keep theirs. A number removes the
   //   expression of the value (and with it a coupling), a string sets one. A fixed joint has no
   //   value. It is the command a sweep previews at every step, and the one for `after` of the tool
@@ -1147,11 +1315,23 @@ export type Command =
   // expression names the field by `<joint>/<field>` in `error.expression.path`.
   | { type: 'setLink'; id: Id; name?: string | null; bodies?: Id[] }
   | { type: 'removeLink'; id: Id }
-  | { type: 'setJoint'; id: Id; joint: Input<Joint> }
+  | { type: 'setJoint'; id: Id; joint: JointInput }
   | { type: 'removeJoint'; id: Id }
   | { type: 'setPose'; values: Record<Id, number | Expr> }
+  // Stored meshes (D55). Usually not written by hand: the MCP tool import_mesh reads a file and sends
+  // addMesh, then answers with the batch that places the mesh.
+  // - addMesh adds a stored mesh under `id`, checked in full (see StoredMesh); an ID the section
+  //   already has is an invalid command.
+  // - removeMesh removes the entry; refused while a feature of the document names the mesh,
+  //   suppressed or not (remove or re-point those features first, in the same batch).
+  | { type: 'addMesh'; id: Id; mesh: StoredMesh }
+  | { type: 'removeMesh'; id: Id }
   // složený
   | { type: 'batch'; commands: Command[] };
+
+// The joint of setJoint: the input form of a joint, with `null` for a drive field (removes it).
+export type JointDriveField = 'effort' | 'velocity' | 'rotorInertia' | 'gearRatio';
+export type JointInput = Joint extends infer J ? (J extends Joint ? { [K in keyof J]: K extends JointDriveField ? number | Expr | null : Input<J[K]> } : never) : never;
 
 // What setBodyProperties changes: the fields it names. `null` removes a field (the body then
 // inherits it or has its default); a number in a numeric field removes its expression, a string
@@ -1181,7 +1361,9 @@ export type FeaturePatch =
   | Patch<Pick<PatternFeature, 'source' | 'transform'>>
   | Patch<Pick<HoleFeature, 'sketch' | 'points' | 'shape' | 'extent' | 'targets' | 'label'>>
   | Patch<Pick<CombineFeature, 'operation' | 'target' | 'tools' | 'keepTools' | 'clearance'>>
-  | Patch<Pick<SplitFeature, 'body' | 'plane' | 'side'>>;
+  | Patch<Pick<SplitFeature, 'body' | 'plane' | 'side'>>
+  // `placement` merges field by field; its `frame` is a reference and is replaced whole
+  | Patch<Pick<MeshFeature, 'mesh' | 'placement'>>;
 
 // ---------------------------------------------------------------- queries
 

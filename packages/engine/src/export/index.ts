@@ -7,11 +7,14 @@ import type { ArgPath, Evaluation, ExportFile, Exported, QueryOutcome } from '..
 import { has } from '../util';
 import type { AnyExportFormat, ExportCatalog } from './spec';
 import { dxf } from './dxf';
+import { mjcf } from './mjcf';
+import { partsCsv } from './parts-csv';
 import { stl } from './stl';
 import { svg } from './svg';
 import { threeMf } from './threemf';
+import { urdf } from './urdf';
 
-export const EXPORT_FORMATS: ExportCatalog = { stl, '3mf': threeMf, dxf, svg };
+export const EXPORT_FORMATS: ExportCatalog = { stl, '3mf': threeMf, dxf, svg, partsCsv, urdf, mjcf };
 
 // The form of the paths of an export, which the engine guarantees to a writer: relative, with
 // forward slashes, every segment non-empty and not `.` or `..`, no backslash, and no path that is

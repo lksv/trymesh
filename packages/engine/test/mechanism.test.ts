@@ -14,7 +14,7 @@ import { BASE } from '../src/recompute/services';
 import type { State } from '../src/recompute/state';
 import { UPGRADES } from '../src/schema';
 import { DOCUMENT_SECTIONS } from '../src/sections/index';
-import { carriedBy, poseNote, poseOfBody } from '../src/sections/mechanism';
+import { JOINT_DRIVE_FIELDS, JOINT_FIELDS, carriedBy, poseNote, poseOfBody } from '../src/sections/mechanism';
 import { type FaceInfo, IDENTITY, analyzeBody, compose, inverse, rotation, shift, transformPoint } from '../src/solid';
 import type { BodyResult, Command, Document, Engine, Id, Joint, Mechanism, MechanismResult, SketchSolver, SolidKernel, Vec3 } from '../src/types';
 import { prism } from './section-kit';
@@ -71,12 +71,12 @@ const near = (a: Vec3, b: Vec3) => a.forEach((x, i) => expect(x).toBeCloseTo(b[i
 describe('the section and its upgrade step', () => {
   it('is always in the document, after body properties; an empty one has no link and no joint', () => {
     expect(emptyDocument().mechanism).toEqual({ links: {}, joints: {} });
-    expect(Object.keys(emptyDocument()).slice(-2)).toEqual(['bodyProperties', 'mechanism']);
+    expect(Object.keys(emptyDocument()).slice(-3)).toEqual(['bodyProperties', 'mechanism', 'meshes']);
   });
 
   it('the step gives an older document the empty section and leaves a field that is there to the validation', () => {
     const step = UPGRADES.find((entry) => entry.name === '5a-mechanism');
-    expect(UPGRADES.at(-1)).toBe(step);
+    expect(UPGRADES.indexOf(step as never)).toBe(4); // the fifth of the list (3b-mesh-import follows)
     const older = { schemaVersion: 5, settings: { chordTolerance: 0.01 }, parameters: [], checks: [], features: [], bodyProperties: {} };
     expect(step?.run(older)).toEqual({ ...older, mechanism: { links: {}, joints: {} } });
     expect(step?.run({ ...older, mechanism: null })).toEqual({ ...older, mechanism: null });
@@ -103,7 +103,7 @@ describe('the section and its upgrade step', () => {
       [{ links: { a: { bodies: [], colour: 'red' } }, joints: {} }, /links\.a\.colour: a link has no such field/],
       [{ links: { a: { bodies: ['x', 'x'] } }, joints: {} }, /links\.a\.bodies\[1\]: the body "x" is in the list twice/],
       [{ links: { 'a/b': { bodies: [] } }, joints: {} }, /ID "a\/b" není přípustné/],
-      [joints({ ...ARM.joints.elbow, effort: 2.5 }), /joints\.elbow\.effort: a joint of the type revolute has no such field/],
+      [joints({ ...ARM.joints.elbow, damping: 2.5 }), /joints\.elbow\.damping: a joint of the type revolute has no such field/],
       [joints({ type: 'fixed', parent: 'upper', child: 'forearm', axis: Z }), /joints\.elbow\.axis: a joint of the type fixed has no such field/],
       [joints({ type: 'spherical', parent: 'upper', child: 'forearm' }), /joints\.elbow\.type/],
       [joints({ type: 'revolute', parent: 'upper', child: 'forearm', axis: Z, value: 0 }), /joints\.elbow\.lower: a joint of the type revolute has `lower`, `upper`, `value`/],
@@ -397,5 +397,90 @@ describe('posed bodies and a pair in the frame of its first body', () => {
     expect(() => pose.transformOf('c')).toThrow(QueryFailure);
     expect(result.links.third.blockedBy).toBeUndefined();
     expect(shift([2, 0, 0], 3).translation).toEqual([3, 0, 0]);
+  });
+});
+
+// The drive of a joint (5b, D59): four optional numeric fields read only by the export of a robot.
+describe('the drive of a joint (5b)', () => {
+  const drive = (extra: object = {}) => setJoint('elbow', { ...ARM.joints.elbow, ...extra });
+
+  it('the fields by kind and their ranges; a load keeps them in their canonical order', () => {
+    const doc = apply(arm(), drive({ effort: 1100, velocity: 6.2, rotorInertia: 0, gearRatio: 5.18 }));
+    expect(doc.mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, rotorInertia: 0, gearRatio: 5.18 });
+    const loaded = base({ ...ARM, joints: { ...ARM.joints, elbow: { gearRatio: 2, effort: 5, ...ARM.joints.elbow } } });
+    expect(Object.keys(loaded.mechanism.joints.elbow)).toEqual(['type', 'parent', 'child', 'axis', 'lower', 'upper', 'value', 'effort', 'gearRatio']);
+    // a prismatic joint has no rotor and no gear, a fixed joint no drive at all
+    const slide = { type: 'prismatic', parent: 'upper', child: 'forearm', axis: Z, lower: 0, upper: 10, value: 0 };
+    expect(apply(arm(), setJoint('elbow', { ...slide, effort: 50, velocity: 100 })).mechanism.joints.elbow).toMatchObject({ effort: 50, velocity: 100 });
+    refused(arm(), setJoint('elbow', { ...slide, rotorInertia: 3 }), /setJoint\.joint\.rotorInertia: a joint of the type prismatic has no such field/);
+    refused(arm(), setJoint('elbow', { type: 'fixed', parent: 'upper', child: 'forearm', effort: 3 }), /setJoint\.joint\.effort: a joint of the type fixed has no such field/);
+    expect(() => base({ ...ARM, joints: { ...ARM.joints, elbow: { ...slide, gearRatio: 3 } } })).toThrow(/joints\.elbow\.gearRatio: a joint of the type prismatic has no such field/);
+    // above zero; the rotor at least zero
+    refused(arm(), drive({ effort: 0 }), /setJoint\.joint\.effort: /);
+    refused(arm(), drive({ velocity: -1 }), /setJoint\.joint\.velocity: /);
+    refused(arm(), drive({ gearRatio: 0 }), /setJoint\.joint\.gearRatio: /);
+    refused(arm(), drive({ rotorInertia: -1 }), /setJoint\.joint\.rotorInertia: /);
+    // the units of the fields, for the forms and the description for the AI
+    expect(JOINT_DRIVE_FIELDS.revolute.map((field) => `${field.path} ${field.spec.unit}`)).toEqual(['effort N·mm', 'velocity rad/s', 'rotorInertia g·mm2', 'gearRatio none']);
+    expect(JOINT_DRIVE_FIELDS.prismatic.map((field) => `${field.path} ${field.spec.unit}`)).toEqual(['effort N', 'velocity mm/s']);
+    expect(JOINT_DRIVE_FIELDS.fixed).toEqual([]);
+    expect(JOINT_FIELDS.revolute.map((field) => field.path)).toEqual(['lower', 'upper', 'value']); // the fields of the pose stay as they were
+  });
+
+  it('expressions: evaluated now, renamed with a parameter, written back; one that fails is no fault of the joint', () => {
+    const params = [{ name: 'torque', expr: '1100' }];
+    const doc = apply(base(ARM, params), drive({ effort: 'torque', velocity: '2 * pi' }));
+    expect(doc.mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 2 * Math.PI, expressions: { effort: 'torque', velocity: '2 * pi' } });
+    refused(base(ARM, params), drive({ effort: 'nope' }), /setJoint\.joint\.effort: expression "nope"/);
+    expect(apply(doc, { type: 'renameParameter', name: 'torque', to: 'servo' }).mechanism.joints.elbow.expressions).toEqual({ effort: 'servo', velocity: '2 * pi' });
+    // a parameter changed: the number is written back with those of the pose
+    const { result, written } = evaluated({ ...doc, parameters: [{ name: 'torque', expr: '1500' }] });
+    expect(result.joints.elbow.drive).toEqual({ effort: 1500, velocity: 2 * Math.PI });
+    expect(written?.joints.elbow).toMatchObject({ effort: 1500 });
+    // the parameter removed: the effort in `driveErrors`, left out of `drive`, its number kept; the joint
+    // stays ok and moves what hangs on it
+    const posed = apply(doc, pose({ elbow: 0.5 }));
+    const broken = evaluated({ ...posed, parameters: [] });
+    expect(broken.result.joints.elbow).toMatchObject({ status: 'ok', value: 0.5, drive: { velocity: 2 * Math.PI }, driveErrors: { effort: { code: 'unknownName' } } });
+    expect(broken.result.joints.elbow).not.toHaveProperty('error');
+    expect(broken.result.joints.elbow).not.toHaveProperty('fieldErrors');
+    expect(broken.result.links.forearm.blockedBy).toBeUndefined();
+    expect(broken.written?.joints.elbow ?? posed.mechanism.joints.elbow).toMatchObject({ effort: 1100 });
+    // a joint without a drive has neither member
+    expect(evaluated(arm()).result.joints.elbow).not.toHaveProperty('drive');
+  });
+
+  it('setJoint keeps a drive field it is not given, removes one given null, and drops the drive with a change of kind', () => {
+    const params = [{ name: 'torque', expr: '1100' }];
+    const doc = apply(base(ARM, params), drive({ effort: 'torque', velocity: 6.2, gearRatio: 5 }));
+    // the joint sent again without its drive (wider limits): the drive and its expression are kept
+    const widened = apply(doc, drive({ lower: -2.5, upper: 2.5 }));
+    expect(widened.mechanism.joints.elbow).toMatchObject({ lower: -2.5, upper: 2.5, effort: 1100, velocity: 6.2, gearRatio: 5, expressions: { effort: 'torque' } });
+    // a number replaces a field, null removes it, also inside a batch
+    expect(apply(doc, drive({ effort: 900 })).mechanism.joints.elbow).toMatchObject({ effort: 900, velocity: 6.2 });
+    expect(apply(doc, drive({ effort: 900 })).mechanism.joints.elbow).not.toHaveProperty('expressions');
+    const removed = apply(doc, { type: 'batch', commands: [drive({ effort: null, gearRatio: null })] }).mechanism.joints.elbow;
+    expect(removed).toMatchObject({ velocity: 6.2 });
+    expect(removed).not.toHaveProperty('effort');
+    expect(removed).not.toHaveProperty('gearRatio');
+    expect(removed).not.toHaveProperty('expressions');
+    // a joint of another kind starts without a drive; null of a field the new kind does not have is no field
+    const continuous = { type: 'continuous', parent: 'upper', child: 'forearm', axis: ELBOW, value: 0 };
+    expect(apply(doc, setJoint('elbow', continuous)).mechanism.joints.elbow).not.toHaveProperty('effort');
+    expect(apply(doc, setJoint('elbow', { ...continuous, effort: 3 })).mechanism.joints.elbow).toMatchObject({ effort: 3 });
+    refused(doc, setJoint('elbow', { type: 'prismatic', parent: 'upper', child: 'forearm', axis: Z, lower: 0, upper: 1, value: 0, gearRatio: null }), /setJoint\.joint\.gearRatio: a joint of the type prismatic has no such field/);
+    // the same joint sent again changes nothing
+    expect(apply(doc, drive()).mechanism).toBe(doc.mechanism);
+    // a broken expression sent back unchanged, in the batch that removes its parameter, is kept
+    const resent = apply(doc, { type: 'batch', commands: [{ type: 'removeParameter', name: 'torque' }, drive({ effort: 'torque', lower: -1.5 })] });
+    expect(resent.mechanism.joints.elbow).toMatchObject({ lower: -1.5, effort: 1100, expressions: { effort: 'torque' } });
+    expect(evaluated(resent).result.joints.elbow.driveErrors?.effort).toMatchObject({ code: 'unknownName' });
+    // a new expression that does not evaluate is refused, as for every field
+    refused(apply(doc, { type: 'removeParameter', name: 'torque' }), drive({ effort: 'torque * 2' }), /setJoint\.joint\.effort: expression "torque \* 2"/);
+  });
+
+  it('setPose keeps the drive of the joints it poses', () => {
+    const doc = apply(base(ARM, [{ name: 'torque', expr: '1100' }]), drive({ effort: 'torque' }));
+    expect(apply(doc, pose({ elbow: 0.5 })).mechanism.joints.elbow).toMatchObject({ value: 0.5, effort: 1100, expressions: { effort: 'torque' } });
   });
 });

@@ -400,6 +400,7 @@ const PROFILE_SOURCES: { [T in Feature['type']]: (feature: Extract<Feature, { ty
   sketch: () => undefined,
   extrude: (feature) => feature.profile,
   pattern: () => undefined,
+  mesh: () => undefined,
   hole: () => undefined,
   combine: () => undefined,
   split: () => undefined,

@@ -4,7 +4,7 @@
 import type { NumberSpec } from '../catalog';
 import { DATA_CATALOGS } from '../data-catalogs';
 import { type Environment, evaluateParameters } from '../expression';
-import { bodyProblem, bodySource } from '../features/index';
+import { bodyProblem, sourceChain } from '../features/index';
 import { bodyOwner } from '../sketch-content';
 import type { BodyProperties, BodyPropertiesResult, BodyResult, BodyUse, Document, Expr, ExpressionError, Id } from '../types';
 import { has } from '../util';
@@ -25,7 +25,7 @@ const FIELDS: readonly EntryField[] = [
 ];
 const USES: readonly BodyUse[] = ['part', 'reference', 'auxiliary'];
 const ENTRY_FIELDS = ['name', 'color', 'material', 'use', 'density', 'mass'] as const;
-const TEXT_LIMIT = 200;
+export const TEXT_LIMIT = 200;
 const NO_ENVIRONMENT = (): Environment => ({});
 
 // ---------------------------------------------------------------- validation
@@ -136,6 +136,20 @@ function defaultName(doc: Document, body: Id): string {
   return local === undefined ? name : `${name} / ${local}`;
 }
 
+// The name of the kind of part a body is (D57, the parts list): the name of its own of the nearest
+// body of its chain of sources (the body first), else the default name of the body the chain starts
+// at. So the copies of a copy named "spare" are "spare", as they inherit its colour and material,
+// and the copies of an unnamed `screw` are "screw", not "Screws / 1". Read from the document alone,
+// so it holds when the bodies of the chain are not bodies of a state.
+export function partName(doc: Document, body: Id): string {
+  const chain = sourceChain(doc, body);
+  for (const id of chain) {
+    const name = ownEntry(doc.bodyProperties, id)?.name;
+    if (name !== undefined) return name;
+  }
+  return defaultName(doc, chain.at(-1) ?? body);
+}
+
 function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, BodyResult>>, environment: Environment): { result: Results; written?: Section } {
   // every entry once, whether its body is there or not: its numbers are written back either way
   const values = new Map<Id, EntryValues>();
@@ -154,8 +168,7 @@ function evaluate(section: Section, doc: Document, bodies: Readonly<Record<Id, B
   for (const [id, body] of Object.entries(bodies)) {
     // the body and the bodies it was copied from, nearest first; a cycle (a document edited by hand)
     // stops at a body seen already
-    const chain: Id[] = [id];
-    for (let source = bodySource(doc, id); source !== undefined && !chain.includes(source); source = bodySource(doc, source)) chain.push(source);
+    const chain = sourceChain(doc, id);
     const entries = chain.map((key) => ownEntry(section, key));
     const first = <K extends 'color' | 'material' | 'use'>(field: K): BodyProperties[K] => entries.find((e) => e?.[field] !== undefined)?.[field];
     const use = first('use') ?? 'part';

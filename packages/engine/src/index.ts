@@ -10,6 +10,7 @@ export {
   constraintOperands,
   constraintPath,
   CURVE_POINTS,
+  derivedPoints,
   documentIds,
   duplicateOf,
   emptyDocument,
@@ -19,16 +20,26 @@ export {
   isDimension,
   withPath,
 } from './document';
-export { bodyRefs, generatorOf, producesTool } from './features/index';
+export { bodyRefs, bodySource, generatorOf, producesTool, sourceChain, sourceRoot } from './features/index';
+export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
+export { type MeshOrigin, shapeOrigin } from './solid';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts } from './face-roles';
 export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
 export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow, SocketHeadScrewRow } from './catalogs/hardware';
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
 export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
+export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
+export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';
+export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
+export { type IndexedMesh, MESH_LIMITS, type MeshDefects, type MeshProblem, type MeshShell, defectsText, fromBase64, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, toBase64, withoutWalls } from './mesh';
+export { PLACEMENT_FIELDS } from './features/mesh';
 export { ZIP_NAME_LIMIT, type ZipEntry, crc32, zip } from './export/zip';
 export type { MeshAbout } from './export/threemf';
 export type { OutlineAbout } from './export/outline';
+export { PARTS_CSV, type PartsCsvAbout, partsCsvText } from './export/parts-csv';
+export { csvField, significant } from './export/text';
+export { NO_MECHANISM, ROBOT_FILES, ROBOT_REFUSALS, type RobotAbout, type RobotMeshAbout, meshName } from './export/robot';
 export type { AnyExportFormat, ExportFormat, ExportFormatSpec, ExportFormats, ExportOptions } from './export/spec';
 export { QUERIES } from './query/index';
 export type { ArgKind, ArgSpec, ArgSpecs, ArgsOf, Described, RunArgsOf } from './query/args';
@@ -45,9 +56,10 @@ export { argText, checkArgs, specProblems } from './query/check';
 export { SCHEMA_PENDING, SCHEMA_VERSION, UPGRADES, type UpgradeStep } from './schema';
 export { DOCUMENT_SECTIONS, SECTION_INFO, type SectionName, namedBySections, takenOver } from './sections/index';
 export type { SectionFieldSpec, SectionInfo } from './sections/spec';
-export { DENSITY, MASS, bodyPropertiesWithoutBody, printedBodies } from './sections/body-properties';
-export { type Carried, JOINT_FIELDS, LIMIT_TOLERANCE, type PoseNote, carriedBy, poseNote, poseOfBody } from './sections/mechanism';
+export { DENSITY, MASS, bodyPropertiesWithoutBody, partName, printedBodies } from './sections/body-properties';
+export { type Carried, JOINT_DRIVE_FIELDS, JOINT_FIELDS, LIMIT_TOLERANCE, type PoseNote, blockingJoints, carriedBy, poseNote, poseOfBody } from './sections/mechanism';
 export { MECHANISM_ARGS, type MechanismAnswer } from './query/mechanism';
+export { PARTS_LIST_ARGS, type HardwareRow, type HoleCount, type PartRow, type PartsList, type PartsSum, holeCounts } from './query/parts-list';
 export { pairInFrame } from './query/pose';
 export type { MaterialRow } from './catalogs/materials';
 export { CONSTRAINTS, type Bound, type ConstraintSpec, type EntityKind, type FieldSpec, type NumberSpec, type OperandSpec, type Unit, checkNumber, rangeText } from './catalog';

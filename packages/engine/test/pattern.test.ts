@@ -3,6 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Command, Document, ExtrudeFeature, FaceName, FeaturePatch, Input, PatternFeature, PlaneRef, Solid, Vec3 } from '../src/types';
 import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, applyCommand, emptyDocument, emptySketch, featureInput, featureRefs, fieldsOf, validateDocument } from '../src/document';
+import { GRID_STRIDE, MAX_PATTERN_PLACES, copiesOf } from '../src/features/pattern';
+import type { State } from '../src/recompute/state';
 import { compose, mirrors, reflection, rotation, shift, transformFace, transformFrame, transformPoint, transformSolid, transformVector, turnedOver, volumeOf } from '../src/solid';
 import { faceKey } from '../src/util';
 
@@ -67,6 +69,11 @@ describe('the pattern feature', () => {
       ['transform/count', 'count', { path: 'transform/type', equals: 'linear' }],
       ['transform/span/spacing', 'mm', { path: 'transform/span/type', equals: 'spacing' }],
       ['transform/span/length', 'mm', { path: 'transform/span/type', equals: 'length' }],
+      // the second direction of a grid: its count once per span
+      ['transform/second/count', 'count', { path: 'transform/second/span/type', equals: 'spacing' }],
+      ['transform/second/span/spacing', 'mm', { path: 'transform/second/span/type', equals: 'spacing' }],
+      ['transform/second/count', 'count', { path: 'transform/second/span/type', equals: 'length' }],
+      ['transform/second/span/length', 'mm', { path: 'transform/second/span/type', equals: 'length' }],
     ]);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
@@ -417,7 +424,7 @@ describe('rigid transforms', () => {
       near(cylinder.axis, [0, 1, 0]);
     }
     const swept = transformFace(quarter, { planar: false, surface: 'swept', axis: [1, 0, 0] });
-    if (!swept.planar) near(swept.axis, [0, 1, 0]);
+    if (!swept.planar && swept.surface === 'swept') near(swept.axis, [0, 1, 0]);
   });
 
   it('a reflection in a plane: points of the plane stay, twice is the identity, the determinant is −1', () => {
@@ -459,5 +466,238 @@ describe('rigid transforms', () => {
     expect(volumeOf(over)).toBeCloseTo(-1 / 6, 12);
     expect([...over.faceIds]).toEqual([0, 1, 2, 3]);
     expect([...solid.triangles]).toEqual([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]); // the source is not changed
+  });
+});
+
+describe('the grid: a second direction of the linear pattern (D53)', () => {
+  type Any = Input<PatternFeature>['transform'];
+  type Linear = Extract<PatternFeature['transform'], { type: 'linear' }>;
+  const of = (id: string, source: Source, transform: Any, expressions?: Record<string, string>): Input<PatternFeature> => ({ id, name: id, suppressed: false, type: 'pattern', source, transform, ...(expressions ? { expressions } : {}) });
+  const X = { kind: 'base', axis: 'X' } as const;
+  const Y = { kind: 'base', axis: 'Y' } as const;
+  const along = (extra: object = {}) => ({ direction: Y, count: 2, span: { type: 'spacing', spacing: 7 }, ...extra });
+  const row = (extra: object = {}): Any => ({ type: 'linear', direction: X, count: 3, span: { type: 'spacing', spacing: 5 }, ...extra }) as Any;
+  const grid = (extra: object = {}, second: object = {}): Any => row({ second: along(second), ...extra });
+  const linear = (doc: Document, id: string): Linear => feature(doc, id).transform as Linear;
+
+  it('the stride is above every step of a count, and the bound of the places is that of a count', () => {
+    expect(GRID_STRIDE).toBe(1000);
+    expect(GRID_STRIDE).toBeGreaterThan(MAX_PATTERN_COUNT - 1);
+    expect(MAX_PATTERN_PLACES).toBe(200);
+  });
+
+  it('`second` has a direction, a count and a span, each as in the first direction; numeric fields with expressions', () => {
+    const doc = run(base(), add(of('P', holes, grid({}, { count: 'n / 2', span: { type: 'spacing', spacing: 'n + 1' } }))));
+    expect(linear(doc, 'P').second).toEqual({ direction: Y, count: 3, span: { type: 'spacing', spacing: 7 } });
+    expect(feature(doc, 'P').expressions).toEqual({ 'transform/second/count': 'n / 2', 'transform/second/span/spacing': 'n + 1' });
+    // fieldsOf reports what the validator read, in its order; the registry lists every path
+    expect(fieldsOf(feature(doc, 'P')).map((f) => [f.path, f.value, f.expr])).toEqual([
+      ['transform/count', 3, undefined],
+      ['transform/span/spacing', 5, undefined],
+      ['transform/second/count', 3, 'n / 2'],
+      ['transform/second/span/spacing', 7, 'n + 1'],
+    ]);
+    const registry = FEATURE_TYPE_INFO.pattern.fields.map((f) => f.path);
+    for (const field of fieldsOf(feature(doc, 'P'))) expect(registry).toContain(field.path);
+    expect(featureInput(feature(doc, 'P'))).toEqual(of('P', holes, grid({}, { count: 'n / 2', span: { type: 'spacing', spacing: 'n + 1' } })));
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    const long = run(base(), add(of('P', holes, grid({}, { span: { type: 'length', length: -40 } }))));
+    expect(fieldsOf(feature(long, 'P')).map((f) => [f.path, f.spec.unit])).toEqual([
+      ['transform/count', 'count'],
+      ['transform/span/spacing', 'mm'],
+      ['transform/second/count', 'count'],
+      ['transform/second/span/length', 'mm'],
+    ]);
+    // a row has no field of a second direction
+    expect(fieldsOf(feature(run(base(), add(of('P', holes, row()))), 'P')).map((f) => f.path)).toEqual(['transform/count', 'transform/span/spacing']);
+  });
+
+  it('the second direction lists its fields; only a linear pattern has one', () => {
+    const doc = base();
+    for (const count of [0, MAX_PATTERN_COUNT + 1, 1.5]) invalid(doc, add(of('P', holes, grid({}, { count }))), /transform\.second\.count/);
+    invalid(doc, add(of('P', holes, grid({}, { span: { type: 'spacing', spacing: 0 } }))), /transform\.second\.span\.spacing/);
+    invalid(doc, add(of('P', holes, grid({}, { span: { type: 'length', length: 0 } }))), /transform\.second\.span\.length/);
+    invalid(doc, add(of('P', holes, grid({}, { span: { type: 'spacing', spacing: 5, length: 3 } }))), /transform\.second\.span\.length: a span of the type spacing has no such field/);
+    invalid(doc, add(of('P', holes, grid({}, { type: 'linear' }))), /transform\.second\.type: a second direction has no such field/);
+    invalid(doc, add(of('P', holes, grid({}, { second: along() }))), /transform\.second\.second: a second direction has no such field/);
+    invalid(doc, add(of('P', holes, grid({}, { axis: X }))), /transform\.second\.axis: a second direction has no such field/);
+    invalid(doc, add(of('P', holes, row({ second: { count: 2 } }))), /transform\.second\.direction/);
+    invalid(doc, add(of('P', holes, row({ second: { direction: Y, count: 2 } }))), /transform\.second\.span/);
+    invalid(doc, add(of('P', holes, row({ second: 3 }))), /transform\.second/);
+    invalid(doc, add(of('P', holes, row({ rows: 2 }))), /transform\.rows: a transform of the type linear has no such field/);
+    invalid(doc, add(pattern('P', holes, { second: along() } as never)), /transform\.second: a transform of the type circular has no such field/);
+    invalid(doc, add(of('P', holes, { type: 'mirror', plane: { kind: 'base', plane: 'YZ' }, second: along() } as Any)), /transform\.second: a transform of the type mirror has no such field/);
+    // an expression at a field of a second direction the pattern does not have
+    invalid(doc, add(of('P', holes, row(), { 'transform/second/count': '2' })), /"transform\/second\/count" is not a numeric field of this feature/);
+    // a count of 1 in either direction is a grid all the same
+    expect(linear(run(doc, add(of('P', holes, grid({ count: 1 }, { count: 1 })))), 'P').second?.count).toBe(1);
+  });
+
+  it('the second direction is a reference: before the pattern, and it orders the timeline', () => {
+    const sketched = run(base(), add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S1', point: 'origin' } }))));
+    expect(featureRefs(feature(sketched, 'P'))).toEqual(['H', 'S1']);
+    invalid(base(), add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S1', point: 'q' } }))), /transform\.second\.direction\.point/);
+    invalid(base(), add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S9', point: 'origin' } }))), /S9/);
+    // a sketch after the source: the pattern keeps it in front of itself
+    const late = run(base(), { type: 'addFeature', feature: emptySketch('S2', 'S2', XY) }, add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S2', point: 'origin' } }))));
+    invalid(late, { type: 'moveFeature', id: 'S2', index: late.features.length - 1 }, /"S2" by se dostala za feature "P", která na ni odkazuje/);
+    // a sketch removed: the reference stays in the document, which loads; the recompute judges it
+    const gone = run(late, { type: 'removeFeature', id: 'S2' });
+    expect(linear(gone, 'P').second?.direction).toEqual({ kind: 'sketchPoint', sketch: 'S2', point: 'origin' });
+    expect(validateDocument(JSON.parse(JSON.stringify(gone)))).toEqual(gone);
+  });
+
+  it('updateFeature: `second` added whole, merged by field, removed by null with its expressions', () => {
+    const doc = run(base(), add(of('P', holes, row({ count: 'n' }))));
+    // added to a row: complete, or refused
+    const added = run(doc, update('P', { transform: { second: along({ count: 'n / 3' }) } } as FeaturePatch));
+    expect(linear(added, 'P')).toEqual({ type: 'linear', direction: X, count: 6, span: { type: 'spacing', spacing: 5 }, second: { direction: Y, count: 2, span: { type: 'spacing', spacing: 7 } } });
+    expect(feature(added, 'P').expressions).toEqual({ 'transform/count': 'n', 'transform/second/count': 'n / 3' });
+    invalid(doc, update('P', { transform: { second: { count: 2 } } } as FeaturePatch), /transform\.second\.direction/);
+    invalid(doc, update('P', { transform: { second: { direction: Y, count: 2 } } } as FeaturePatch), /transform\.second\.span/);
+    // on a grid: merged by field; the span alone; another type of span replaces the span
+    expect(linear(run(added, update('P', { transform: { second: { span: { spacing: 9 } } } } as FeaturePatch)), 'P').second).toEqual({ direction: Y, count: 2, span: { type: 'spacing', spacing: 9 } });
+    const counted = run(added, update('P', { transform: { second: { count: 4 } } } as FeaturePatch));
+    expect(linear(counted, 'P').second?.count).toBe(4);
+    expect(feature(counted, 'P').expressions).toEqual({ 'transform/count': 'n' });
+    expect(linear(run(added, update('P', { transform: { second: { span: { type: 'length', length: 30 } } } } as FeaturePatch)), 'P').second?.span).toEqual({ type: 'length', length: 30 });
+    // the direction is a reference and replaced whole
+    expect(linear(run(added, update('P', { transform: { second: { direction: { kind: 'base', axis: 'Z' } } } } as FeaturePatch)), 'P').second?.direction).toEqual({ kind: 'base', axis: 'Z' });
+    // a field of the second direction that does not exist
+    invalid(added, update('P', { transform: { second: { type: 'linear' } } } as FeaturePatch), /transform\.second\.type: a second direction has no such field/);
+    // null: a row again with the numbers of the row, and the expressions of the second direction go
+    const back = run(added, update('P', { transform: { second: null } } as FeaturePatch));
+    expect(linear(back, 'P')).toEqual({ type: 'linear', direction: X, count: 6, span: { type: 'spacing', spacing: 5 } });
+    expect(feature(back, 'P').expressions).toEqual({ 'transform/count': 'n' });
+    // null on a row is accepted (a form sends it either way)
+    expect(linear(run(doc, update('P', { transform: { second: null } } as FeaturePatch)), 'P')).toEqual(linear(doc, 'P'));
+    // another kind replaces the transform, the second direction and its expressions included
+    const mirrored = run(added, update('P', { transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } }));
+    expect(feature(mirrored, 'P').transform).toEqual({ type: 'mirror', plane: { kind: 'base', plane: 'YZ' } });
+    expect(feature(mirrored, 'P').expressions).toBeUndefined();
+    // `second` on another kind, also as null
+    const turned = run(base(), add(pattern('Q')));
+    invalid(turned, update('Q', { transform: { second: along() } } as FeaturePatch), /transform\.second: a transform of the type circular has no such field/);
+    invalid(turned, update('Q', { transform: { second: null } } as FeaturePatch), /transform\.second/);
+    invalid(mirrored, update('P', { transform: { second: null } } as FeaturePatch), /transform\.second/);
+  });
+
+  it('setField reaches the fields of a second direction the pattern has; it cannot add one', () => {
+    const doc = run(base(), add(of('P', holes, row())));
+    invalid(doc, { type: 'setField', feature: 'P', path: 'transform/second/count', value: 2 }, /is not a numeric field/);
+    const gridded = run(base(), add(of('P', holes, grid())));
+    expect(linear(run(gridded, { type: 'setField', feature: 'P', path: 'transform/second/count', value: 'n' }), 'P').second?.count).toBe(6);
+    expect(feature(run(gridded, { type: 'setField', feature: 'P', path: 'transform/second/count', value: 'n' }), 'P').expressions).toEqual({ 'transform/second/count': 'n' });
+    expect(linear(run(gridded, { type: 'setField', feature: 'P', path: 'transform/second/span/spacing', value: -2 }), 'P').second?.span).toEqual({ type: 'spacing', spacing: -2 });
+    for (const value of [0, 201]) invalid(gridded, { type: 'setField', feature: 'P', path: 'transform/second/count', value }, /transform\.second\.count/);
+    invalid(gridded, { type: 'setField', feature: 'P', path: 'transform/second/span/spacing', value: 0 }, /spacing/);
+    invalid(gridded, { type: 'setField', feature: 'P', path: 'transform/second/span/length', value: 1 }, /is not a numeric field/);
+  });
+
+  it('two counts too many together are a valid document: the recompute judges the product', () => {
+    const doc = run(base(), add(of('P', holes, grid({ count: 30 }, { count: 20 }))));
+    expect(linear(doc, 'P')).toMatchObject({ count: 30, second: { count: 20 } });
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    expect(() => run(doc, update('P', { transform: { span: { spacing: 6 } } }))).not.toThrow();
+  });
+
+  describe('the copies and their numbers (`copiesOf`)', () => {
+    // a state with sketches whose normals are given: the directions of `sketchPoint`
+    const withNormals = (...normals: Vec3[]): State =>
+      ({ sketches: Object.fromEntries(normals.map((normal, i) => [`s${i}`, { frame: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal }, geometry: { points: { origin: { x: 0, y: 0 } } } }])) }) as unknown as State;
+    const normalOf = (i: number) => ({ kind: 'sketchPoint', sketch: `s${i}`, point: 'origin' }) as const;
+    const linearOf = (first: object, second?: object): Linear => ({ type: 'linear', direction: X, count: 3, span: { type: 'spacing', spacing: 5 }, ...first, ...(second ? { second: { direction: Y, count: 2, span: { type: 'spacing', spacing: 7 }, ...second } } : {}) }) as Linear;
+    const copies = (t: Linear, state: State = withNormals()) => {
+      const out = copiesOf(t, state);
+      if ('code' in out) throw new Error(`${out.code}: ${out.detail}`);
+      return out.map(({ transform, index }) => [index, transform.translation.map((v) => Math.round(v * 1e9) / 1e9 + 0)]);
+    };
+    const refusal = (t: Linear, state: State = withNormals()) => {
+      const out = copiesOf(t, state);
+      return 'code' in out ? out : undefined;
+    };
+
+    it('row by row, numbered i + 1000 · j; the first row is the row to the last bit', () => {
+      expect(copies(linearOf({}, {}))).toEqual([
+        [1, [5, 0, 0]],
+        [2, [10, 0, 0]],
+        [1000, [0, 7, 0]],
+        [1001, [5, 7, 0]],
+        [1002, [10, 7, 0]],
+      ]);
+      const asRow = copiesOf(linearOf({}), withNormals()) as { transform: unknown; index: number }[];
+      const asGrid = copiesOf(linearOf({}, { count: 3 }), withNormals()) as { transform: unknown; index: number }[];
+      expect(asGrid.slice(0, 2)).toEqual(asRow);
+      // a larger count moves none and keeps every number
+      const bigger = copies(linearOf({ count: 4 }, { count: 3 }));
+      for (const copy of copies(linearOf({}, {}))) expect(bigger).toContainEqual(copy);
+      // a length divides its direction; a count of 1 leaves a direction unused
+      expect(copies(linearOf({ count: 2 }, { count: 3, span: { type: 'length', length: 40 } }))).toEqual([
+        [1, [5, 0, 0]],
+        [1000, [0, 20, 0]],
+        [1001, [5, 20, 0]],
+        [2000, [0, 40, 0]],
+        [2001, [5, 40, 0]],
+      ]);
+      expect(copies(linearOf({ count: 1 }, { count: 3 })).map(([index]) => index)).toEqual([1000, 2000]);
+      expect(copies(linearOf({ count: 3 }, { count: 1 })).map(([index]) => index)).toEqual([1, 2]);
+      // negative steps run against the directions
+      expect(copies(linearOf({ count: 2, span: { type: 'spacing', spacing: -5 } }, { count: 3, span: { type: 'length', length: -20 } })).at(-1)).toEqual([2001, [-5, -20, 0]]);
+      // a circular pattern and a mirror are numbered from 1 as before
+      expect(copiesOf({ type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 3, span: { type: 'full' } }, withNormals())).toMatchObject([{ index: 1 }, { index: 2 }]);
+    });
+
+    it('at most 200 places; refs are the two counts', () => {
+      expect(copies(linearOf({ count: 20 }, { count: 10 }))).toHaveLength(199);
+      expect(copies(linearOf({ count: 200 }, { count: 1 }))).toHaveLength(199);
+      expect(copies(linearOf({ count: 1 }, { count: 200 }))).toHaveLength(199);
+      expect(refusal(linearOf({ count: 67 }, { count: 3 }))).toEqual({ code: 'invalidPattern', refs: ['transform/count', 'transform/second/count'], detail: '67 × 3 is 201 places; a pattern has at most 200, the original included' });
+      // a row is bounded by its count alone
+      expect(copies(linearOf({ count: 200 }))).toHaveLength(199);
+    });
+
+    it('no two places in one place: the first pair in the order of the numbers is named', () => {
+      const along = (second: object, first: object = {}) => refusal(linearOf(first, { direction: X, ...second }));
+      const paths = ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'];
+      expect(along({ span: { type: 'spacing', spacing: 5 } }, { count: 2 })).toEqual({ code: 'invalidPattern', refs: paths, detail: 'the copies 1 and 1000 would stand in one place' });
+      expect(along({ count: 3, span: { type: 'spacing', spacing: 10 } }, { count: 4 })?.detail).toBe('the copies 2 and 1000 would stand in one place');
+      expect(along({ span: { type: 'spacing', spacing: -5 } })?.detail).toBe('the copy 1001 would stand in the place of the original');
+      // parallel directions whose places do not meet
+      expect(along({ count: 3, span: { type: 'spacing', spacing: 6 } }, { count: 4 })).toBeUndefined();
+      expect(along({ count: 2, span: { type: 'spacing', spacing: 15 } })).toBeUndefined();
+      expect(along({ count: 2, span: { type: 'spacing', spacing: 2.5 } }, { count: 4 })).toBeUndefined();
+      // a count of 1 leaves one direction unused
+      expect(along({ count: 3, span: { type: 'spacing', spacing: 5 } }, { count: 1 })).toBeUndefined();
+      expect(along({ count: 1, span: { type: 'spacing', spacing: 5 } }, { count: 3 })).toBeUndefined();
+      // a base axis against a sketch normal along it and against it
+      const state = withNormals([0, -1, 0], [1, 0, 0], [0, 0, 1]);
+      expect(refusal(linearOf({ direction: Y, count: 2 }, { direction: normalOf(0), span: { type: 'spacing', spacing: 5 } }), state)?.detail).toBe('the copy 1001 would stand in the place of the original');
+      expect(refusal(linearOf({ count: 2 }, { direction: normalOf(1), span: { type: 'spacing', spacing: 5 } }), state)?.detail).toBe('the copies 1 and 1000 would stand in one place');
+      expect(refusal(linearOf({ count: 2 }, { direction: normalOf(2), span: { type: 'spacing', spacing: 5 } }), state)).toBeUndefined();
+      // a span of the length is named by its path
+      expect(along({ span: { type: 'length', length: 5 } }, { count: 2 })?.refs).toEqual([...paths.slice(0, 5), 'transform/second/span/length']);
+    });
+
+    it('a step below the tolerance, also across; a row is not compared', () => {
+      const tiny = { type: 'length', length: 2e-6 };
+      expect(refusal(linearOf({ count: 5, span: tiny }, { count: 2, span: { type: 'spacing', spacing: 5 } }))?.detail).toBe('the copy 1 would stand in the place of the original');
+      expect(refusal(linearOf({ count: 1 }, { count: 5, span: tiny }))?.detail).toBe('the copy 1000 would stand in the place of the original');
+      expect(copies(linearOf({ count: 5, span: tiny }))).toHaveLength(4);
+    });
+
+    it('directions a hair apart: 1e-8 rad with a step of 10 mm is one place, 1e-3 rad is not', () => {
+      const tilted = (angle: number): Vec3 => [Math.cos(angle), Math.sin(angle), 0];
+      const hair = withNormals([1, 0, 0], tilted(1e-8));
+      const ten = { type: 'spacing', spacing: 10 };
+      expect(refusal(linearOf({ direction: normalOf(0), count: 2, span: ten }, { direction: normalOf(1), span: ten }), hair)?.detail).toBe('the copies 1 and 1000 would stand in one place');
+      const apart = withNormals([1, 0, 0], tilted(1e-3));
+      expect(copies(linearOf({ direction: normalOf(0), count: 2, span: ten }, { direction: normalOf(1), span: ten }), apart)).toHaveLength(3);
+    });
+
+    it('a direction that cannot be resolved is the error of the pattern', () => {
+      expect(refusal(linearOf({}, { direction: { kind: 'sketchPoint', sketch: 'gone', point: 'origin' } }))).toEqual({ code: 'brokenReference', refs: ['gone'] });
+      // the directions first, then the bound
+      expect(refusal(linearOf({ count: 100 }, { count: 100, direction: { kind: 'sketchPoint', sketch: 'gone', point: 'origin' } }))?.code).toBe('brokenReference');
+    });
   });
 });

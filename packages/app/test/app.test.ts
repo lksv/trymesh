@@ -66,6 +66,9 @@ const COUNT = 'Count with the original (a whole number or an expression)';
 const ANGLE = 'Angle (° or an expression in radians)';
 const SPACING = 'Spacing (mm or an expression; negative = against the direction)';
 const LENGTH = 'Length (mm or an expression; negative = against the direction)';
+const SECOND_COUNT = 'Count along the second direction (a whole number or an expression)';
+const SECOND_SPACING = 'Second spacing (mm or an expression; negative = against the direction)';
+const SECOND_LENGTH = 'Second length (mm or an expression; negative = against the direction)';
 const OFFSET = 'Offset along the normal (mm or an expression)';
 const PROFILE_OFFSET = 'Offset (mm or an expression; positive grows the profile; empty = none)';
 const THICKNESS = 'Thickness (mm or an expression; half of it to each side of the curves)';
@@ -626,6 +629,52 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'offset');
   });
 
+  it('the generators of 5d: a GT2 pulley at a point, a cycloidal disc over a circle, the profile shift of a gear typed and emptied (D61)', async () => {
+    const h = await start();
+    const SHIFT = 'Profile shift coefficient (a number or an expression; empty = 0)';
+    // a sketch with a point and a construction circle of radius 25 about the origin, made by the AI
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch('s', 'Drive', { kind: 'base', plane: 'XY' }) },
+        { type: 'addPoint', sketch: 's', id: 'axis', x: 60, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'pins', curve: { type: 'circle', center: 'origin', construction: true }, radius: 25 },
+      ],
+    });
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'gt2Pulley');
+    h.record('a GT2 pulley: its operand is a point, the select lists the origin and the points of the sketch; the example of the catalog, 20 grooves');
+    h.choose('center (point of the sketch)', 'axis');
+    h.type(h.field('Number of grooves'), '40');
+    h.record('at the point, 40 grooves: the facts follow the preview');
+    h.press('panel', 'OK');
+    h.record('the pulley');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'cycloidalDisc');
+    h.record('a cycloidal disc over the circle: the example of the catalog, its facts');
+    h.type(h.field('Input angle (° or an expression in radians)'), '90');
+    h.type(h.field(DISTANCE), '3');
+    h.press('panel', 'OK');
+    h.record('the disc at the input angle 90°');
+    h.row('Drive').click();
+    h.press('toolbar', 'Vysunutí');
+    h.choose('Profile', 'involuteGear');
+    h.record('a gear: the shift is empty, the draft has none');
+    h.type(h.field(SHIFT), '0.3');
+    h.record('a shift typed: the tip and the root move, the facts say the shift');
+    h.press('panel', 'OK');
+    h.record('the gear with its shift');
+    doubleClick(h, 'Vysunutí 3');
+    h.record('editing: the field shows the shift');
+    h.type(h.field(SHIFT), '');
+    h.record('the field emptied: the draft has no shift, the patch removes it');
+    h.press('panel', 'OK');
+    h.record('OK: the shift is removed from the feature');
+    await matches(h, 'generators');
+  });
+
   it('a taper on the extent of an extrusion (D45)', async () => {
     const h = await start();
     h.press('toolbar', 'Skica');
@@ -762,6 +811,26 @@ describe('the app, driven as a user drives it', () => {
     h.record('edited into a row of the plate: another kind replaces the transform; the copy keeps its ID');
     h.row('Mirror 1').click();
     h.record('the summary of a row');
+    // the grid (D53): the row of the plate gets a second direction
+    doubleClick(h, 'Mirror 1');
+    tick(h, 'A second direction (a grid)');
+    h.record('a second direction: along Y, a count of 2 and a spacing of 10; the copies 1, 1000, 1001');
+    h.choose('Second direction', 'X');
+    h.type(h.field(SECOND_SPACING), '50');
+    h.record('along X with the step of the first: the preview says that the copies 1 and 1000 would stand in one place');
+    h.choose('Second direction', 'Y');
+    h.choose('Second span', 'length');
+    h.type(h.field(SECOND_LENGTH), '70');
+    h.type(h.field(SECOND_COUNT), '3');
+    h.press('panel', 'OK');
+    h.record('OK: a grid 2 × 3 over a length of 70 along Y');
+    expect(h.engine.getState().evaluation.features[h.engine.getState().document.features.find((f) => f.name === 'Mirror 1')?.id as string].bodies).toHaveLength(5);
+    h.row('Mirror 1').click();
+    h.record('the summary of a grid');
+    doubleClick(h, 'Mirror 1');
+    tick(h, 'A second direction (a grid)');
+    h.press('panel', 'OK');
+    h.record('the checkbox cleared: a row again, the command removes the second direction by name');
     // review of D53: a direction whose point is gone can be repaired in the form
     outside(h, { type: 'addPoint', sketch, id: 'pp', x: 30, y: 25 });
     outside(h, { type: 'addFeature', feature: { id: 'lin', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'features', features: ['hole'] }, transform: { type: 'linear', direction: { kind: 'sketchPoint', sketch, point: 'pp' }, count: 2, span: { type: 'spacing', spacing: 15 } } } });
@@ -1362,6 +1431,36 @@ describe('the app, driven as a user drives it', () => {
     h.record('removing the link Base, which the joint names, is refused with the reason');
     h.press('panel', 'Edit', 1);
     h.record('the form of the joint, filled in from the document');
+    // ----- the drive (5b): four optional fields, each in its own unit
+    h.type(h.field('Effort (N·mm or an expression; optional)'), '1100');
+    h.type(h.field('Velocity (rad/s or an expression; optional)'), '6.2');
+    h.type(h.field('Rotor inertia (g·mm² or an expression; optional)'), '5400');
+    h.type(h.field('Gear ratio (a number or an expression; optional)'), '5.18');
+    h.press('panel', 'OK');
+    h.record('the drive of the joint: one setJoint with the four fields, the velocity in rad/s as typed (no degrees)');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ effort: 1100, velocity: 6.2, rotorInertia: 5400, gearRatio: 5.18 });
+    h.press('panel', 'Edit', 1);
+    h.record('the form of the joint with its drive filled in');
+    h.type(h.field('Effort (N·mm or an expression; optional)'), '');
+    h.press('panel', 'OK');
+    h.record('an emptied drive field of an edited joint is sent as null: the effort removed, the rest of the drive kept');
+    expect(h.engine.getState().document.mechanism.joints.joint1).not.toHaveProperty('effort');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ velocity: 6.2, rotorInertia: 5400, gearRatio: 5.18 });
+    // an effort by an expression whose parameter goes: the panel says so, the pose is not blocked (review of 5b)
+    outside(h, { type: 'setParameter', name: 'torque', expr: '900' });
+    h.press('panel', 'Edit', 1);
+    h.type(h.field('Effort (N·mm or an expression; optional)'), 'torque');
+    h.press('panel', 'OK');
+    outside(h, { type: 'removeParameter', name: 'torque' });
+    h.record('the parameter of the effort removed: the joint row says the drive field fails and the export refuses it; the joint is not in error');
+    expect(h.engine.getState().evaluation.mechanism.joints.joint1).toMatchObject({ status: 'ok', driveErrors: { effort: { code: 'unknownName' } } });
+    h.press('panel', 'Edit', 1);
+    h.record('the form of the joint: the effort shows its expression and why it has no value');
+    h.press('panel', 'OK');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ expressions: { effort: 'torque' } });
+    h.press('panel', 'Edit', 1);
+    h.choose('Kind', 'continuous');
+    h.record('a continuous joint has the same drive: the typed fields stay');
     h.choose('Kind', 'prismatic');
     h.record('another kind: the numbers start from the defaults of its unit');
     h.press('panel', 'Cancel');
@@ -1477,5 +1576,132 @@ describe('the app, driven as a user drives it', () => {
       saved.mockRestore();
     }
     await matches(h, 'export');
+  });
+
+  it('the parts list: asked as its form opens, the three groups, a picked row of bodies and of hardware, the sums; the table as a file (D57)', async () => {
+    const h = await start();
+    const saved = vi.spyOn(URL, 'createObjectURL');
+    const exportMenu = (): HTMLSelectElement => h.document.querySelectorAll<HTMLSelectElement>('#toolbar select')[1];
+    const rows = (): HTMLElement[] => Array.from(h.document.querySelectorAll('#panel .row')) as HTMLElement[];
+    try {
+      const XY = { kind: 'base', plane: 'XY' } as const;
+      const corners: [number, number][] = [[0, 0], [40, 0], [40, 30], [0, 30]];
+      const extrude = (id: string, sketch: string, loop: string[], start: number, distance: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: loop }] }, extent: { type: 'distance', start, distance }, operation: 'new' } });
+      // a plate with a labelled hole, in a row of three; a motor bought with the mass of its data
+      // sheet; a body kept free, which is no part
+      outside(h, {
+        type: 'batch',
+        commands: [
+          { type: 'addFeature', feature: emptySketch('s', 's', XY) },
+          ...corners.map(([x, y], i): Command => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x, y })),
+          ...corners.map((_, i): Command => ({ type: 'addCurve', sketch: 's', id: `l${i}`, curve: { type: 'line', a: `p${i}`, b: `p${(i + 1) % 4}` } })),
+          extrude('plate', 's', ['l0', 'l1', 'l2', 'l3'], 0, 5),
+          { type: 'addFeature', feature: emptySketch('hs', 'hs', XY) },
+          { type: 'addPoint', sketch: 'hs', id: 'q', x: 10, y: 10 },
+          { type: 'addFeature', feature: { id: 'holes', name: 'Holes', suppressed: false, type: 'hole', sketch: 'hs', points: ['q'], shape: { type: 'plain', diameter: 3.4 }, extent: { type: 'distance', start: 5, distance: -6 }, targets: ['plate'], label: 'M3x8 screw' } },
+          { type: 'addFeature', feature: { id: 'row', name: 'Row', suppressed: false, type: 'pattern', source: { type: 'body', body: 'plate' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 3, span: { type: 'spacing', spacing: 50 } } } },
+          { type: 'addFeature', feature: emptySketch('ms', 'ms', XY) },
+          { type: 'addPoint', sketch: 'ms', id: 'mc', x: 20, y: 60 },
+          { type: 'addCurve', sketch: 'ms', id: 'mk', curve: { type: 'circle', center: 'mc' }, radius: 8 },
+          extrude('motor', 'ms', ['mk'], 0, 20),
+          extrude('keep', 'ms', ['mk'], 30, 10),
+          { type: 'setBodyMaterial', body: 'plate', material: 'PLA' },
+          { type: 'setBodyProperties', body: 'motor', patch: { name: 'Motor', color: '#30343a', use: 'reference', mass: 60 } },
+          { type: 'setBodyProperties', body: 'keep', patch: { use: 'auxiliary' } },
+        ],
+      });
+      h.record('a plate with a labelled hole in a row of three, a motor bought, a body kept free');
+      h.type(h.document.querySelector('#toolbar select') as HTMLSelectElement, 'partsList', true);
+      h.record('the parts list opened: asked at once; to print, to buy, the hardware, the sums, the body that is no part; the note counts the three');
+      rows()[0].click();
+      h.record('the row of the plate picked: its three bodies drawn in the colour of a selection');
+      rows()[2].click();
+      h.record('the row of the screws picked: the bores of the hole feature painted in the three plates');
+      outside(h, { type: 'setBodyProperties', body: 'row/2', patch: { color: '#000000' } });
+      h.press('panel', 'Ask');
+      h.record('a copy painted black and asked again: a row of its own, with a patch of its colour, a copy of the plate');
+      h.press('panel', 'Close');
+      h.type(exportMenu(), 'partsCsv', true);
+      h.record('the export Parts list (CSV) opened: no option, its button alone');
+      h.press('panel', 'Export');
+      h.record('exported: the table saved under its suggested name');
+      const text = await (saved.mock.calls[0][0] as Blob).text();
+      expect(text.split('\r\n')).toEqual([
+        'Kind,Name,Count,Material,Colour,Mass each (g),Mass total (g),Note,IDs',
+        expect.stringMatching(/^printed,plate,2,PLA,,[0-9.]+,[0-9.]+,,plate row\/1$/),
+        expect.stringMatching(/^printed,plate,1,PLA,#000000,[0-9.]+,[0-9.]+,copy of plate,row\/2$/),
+        'bought,Motor,1,,#30343a,60,60,,motor',
+        'hardware,M3x8 screw,3,,,,,,holes',
+        '',
+      ]);
+      h.press('panel', 'Close');
+    } finally {
+      saved.mockRestore();
+    }
+    await matches(h, 'parts-list');
+  });
+
+  it('a bought part from an STL file: the form, the import, the placement on a point of a sketch, a reference part, the stored meshes in the panel (D55)', async () => {
+    const h = await start();
+    // a tetrahedron, its four faces outwards, as binary STL
+    const corners = [
+      [0, 0, 0, 0, 10, 0, 10, 0, 0],
+      [0, 0, 0, 10, 0, 0, 0, 0, 10],
+      [0, 0, 0, 0, 0, 10, 0, 10, 0],
+      [10, 0, 0, 0, 10, 0, 0, 0, 10],
+    ];
+    const bytes = new Uint8Array(84 + 50 * corners.length);
+    const data = new DataView(bytes.buffer);
+    data.setUint32(80, corners.length, true);
+    corners.forEach((triangle, t) => triangle.forEach((value, k) => data.setFloat32(84 + 50 * t + 12 + 4 * k, value, true)));
+    const choose = async (name: string, content: Uint8Array<ArrayBuffer>): Promise<void> => {
+      const input = h.document.getElementById('mesh-file') as HTMLInputElement;
+      const FileOf = (h.document.defaultView as unknown as { File: typeof File }).File;
+      Object.defineProperty(input, 'files', { value: [new FileOf([content], name)], configurable: true });
+      const before = Object.keys(h.engine.getState().document.meshes).length;
+      const status = h.document.getElementById('status') as HTMLElement;
+      const said = status.textContent;
+      h.type(input, '', true);
+      await until(() => Object.keys(h.engine.getState().document.meshes).length > before || status.textContent !== said, 'the import');
+    };
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.record('a sketch with a rectangle: its corners are points a frame can be');
+    h.press('toolbar', 'Mesh');
+    h.record('the button Mesh without a stored mesh: the form says to import a file, OK is disabled');
+    await choose('broken.stl', bytes.slice(0, 100));
+    h.record('a file that is no STL: the status line says why, nothing is stored');
+    await choose('tetra 1.stl', bytes);
+    h.record('the tetrahedron imported: one undo step (addMesh), the report in the status line, the form uses it, the preview places it on XY');
+    h.choose('Frame', 'point');
+    h.record('a point of a sketch as the frame: the latest sketch, its origin');
+    const corner = Object.keys((h.engine.getState().document.features[0] as { points: Record<string, unknown> }).points)[2];
+    h.choose('Point', corner);
+    h.type(h.field(OFFSET), '5');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '90');
+    h.timers();
+    h.record('a corner of the rectangle, 5 mm up, turned by 90°: the facts of the preview say where the origin and the axes are');
+    h.press('panel', 'OK');
+    h.record('confirmed: one batch, the feature and the use reference (a bought part)');
+    expect(h.engine.getState().evaluation.bodyProperties.m1?.use).toBe('reference');
+    doubleClick(h, 'Mesh 1');
+    h.record('the feature edited: every number shown, a zero for one it does not have, no box of a bought part');
+    h.type(h.field('Turn about the normal (° or an expression in radians)'), '0');
+    h.timers();
+    h.press('panel', 'OK');
+    h.record('the turn set back to zero: the patch removes it');
+    expect(h.engine.getState().document.features[1]).toMatchObject({ placement: { z: 5 } });
+    expect('rz' in (h.engine.getState().document.features[1] as { placement: object }).placement).toBe(false);
+    h.row('Mesh 1').click();
+    h.press('panel', 'Smazat');
+    h.record('the feature deleted: the stored mesh is not placed, the panel offers to remove it');
+    titled(h, 'Remove the stored mesh from the document').click();
+    h.record('the stored mesh removed; the properties of the body stay, listed as without a body');
+    expect(h.engine.getState().document.meshes).toEqual({});
+    await matches(h, 'mesh');
   });
 });

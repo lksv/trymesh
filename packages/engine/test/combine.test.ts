@@ -1,7 +1,9 @@
 // D56 at the document level (no recompute): the feature types `combine` and `split`, the role
 // `splitFace`, the copy tag of a combine, and the box a split is made of.
 import { describe, expect, it } from 'vitest';
-import type { Command, CombineFeature, Document, ExtrudeFeature, FaceName, Feature, FeaturePatch, Input, PlaneRef, SplitFeature } from '../src/types';
+import type { Command, CombineFeature, Document, Engine, SketchSolver, SolidKernel, ExtrudeFeature, FaceName, Feature, FeaturePatch, Input, PlaneRef, SplitFeature } from '../src/types';
+import { createEngine } from '../src/engine';
+import { storedMesh } from '../src/mesh';
 import { applyCommand, emptyDocument, emptySketch, featureInput, featureRefs, fieldsOf, validateDocument } from '../src/document';
 import { FEATURE_TYPE_INFO, bodyProblem, bodySource } from '../src/features/index';
 import { halfSpaceBox } from '../src/recompute/body-boolean';
@@ -135,5 +137,42 @@ describe('the feature split (D56)', () => {
     for (let t = 0; t < 12; t++) if (forward.faceIds[t] === 7) for (let k = 0; k < 3; k++) expect(forward.positions[3 * forward.triangles[3 * t + k] + 2]).toBe(4);
     expect(halfSpaceBox(body, { ...plane, origin: [0, 0, 10] }, 'forward', 7)).toBeUndefined();
     expect(halfSpaceBox(body, { ...plane, origin: [0, 0, -1] }, 'backward', 7)).toBeUndefined();
+  });
+});
+
+// What 3b (D55) and 3d meet on: no feature changes an imported body, and a tool of one would make
+// the target imported. The step of a mesh calls no kernel, so the refusals are seen here with a
+// kernel that counts any call.
+describe('an imported body in a combine and a split (D55, D56)', () => {
+  const TETRA = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+  const placed = (id: string): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'mesh', mesh: 'tetra', placement: { frame: XY } } as never });
+  let calls = 0;
+  const kernel = new Proxy({}, { get: () => () => (calls++, Promise.reject(new Error('no kernel'))) }) as SolidKernel;
+  const solver = { solve: () => ({ status: 'failed', points: {}, radii: {}, degreesOfFreedom: 0, conflicting: [], redundant: [] }) } as unknown as SketchSolver;
+  const engineOf = (...commands: Command[]): Engine => {
+    const engine = createEngine({ solver, kernel });
+    const result = engine.execute({ type: 'batch', commands: [{ type: 'addMesh', id: 'tetra', mesh: TETRA }, placed('a'), placed('b'), ...commands] });
+    if (!result.ok) throw new Error(result.error.message);
+    return engine;
+  };
+  const errorOf = (engine: Engine, id: string) => engine.getState().evaluation.features[id].error;
+
+  it('a combine names every imported body, the target and each tool, also with a clearance, and changes nothing', () => {
+    calls = 0;
+    for (const extra of [{ operation: 'union' as const }, { operation: 'difference' as const, clearance: 0.3 }, { operation: 'intersection' as const, keepTools: true }]) {
+      const engine = engineOf(add(combine('K', { target: 'a', tools: ['b'], ...extra })));
+      expect(errorOf(engine, 'K')).toMatchObject({ code: 'importedTarget', refs: ['a', 'b'] });
+      const { bodies } = engine.getState().evaluation;
+      expect(Object.keys(bodies).sort()).toEqual(['a', 'b']);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('a split of an imported body: importedTarget, no new body', () => {
+    calls = 0;
+    const engine = engineOf(add(split('P', { body: 'a' })));
+    expect(errorOf(engine, 'P')).toMatchObject({ code: 'importedTarget', refs: ['a'] });
+    expect(engine.getState().evaluation.bodies.P).toBeUndefined();
+    expect(calls).toBe(0);
   });
 });

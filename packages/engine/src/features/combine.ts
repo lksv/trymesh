@@ -4,7 +4,7 @@
 import type { NumberSpec } from '../catalog';
 import { type BodyBoolean, booleanOfBodies } from '../recompute/body-boolean';
 import { isMoveProblem, movedOutwards } from '../recompute/moved-body';
-import { issue, lookup } from '../recompute/services';
+import { isImported, issue, lookup } from '../recompute/services';
 import type { Step, StepContext } from '../recompute/state';
 import type { FaceInfo } from '../solid';
 import type { CombineFeature, FaceName, Id, Solid } from '../types';
@@ -38,6 +38,10 @@ function combineFeature(o: Dict, what: string, context: ValidationContext): Comb
 function step(feature: CombineFeature, { state, settings, deps, done, failed }: StepContext): Step {
   const missing = [feature.target, ...feature.tools].filter((id) => !lookup(state.bodies, id));
   if (missing.length) return failed('brokenReference', missing);
+  // no feature changes an imported body (D55), and a tool of one would make the target imported:
+  // refused in every role, before a tool is moved by the clearance
+  const imported = [feature.target, ...feature.tools].filter((id) => isImported(state.bodies[id], state.faceInfos));
+  if (imported.length) return failed('importedTarget', imported);
   const clearance = feature.operation === 'difference' ? (feature.clearance ?? 0) : 0;
   const faceNames: FaceName[] = [...state.faceNames];
   const faceInfos: FaceInfo[] = [...state.faceInfos];

@@ -2,7 +2,7 @@
 // one side; the part on the side `side` is a new body with the ID of the feature. Both get the cut
 // face. The design is docs/d36/3d-body-boolean/design.md.
 import { ResultCheckFailed, halfSpaceBox, precisionOf, volumeSlack } from '../recompute/body-boolean';
-import { frame, lookup } from '../recompute/services';
+import { frame, isImported, lookup } from '../recompute/services';
 import type { Step, StepContext } from '../recompute/state';
 import { type FaceInfo, areaOf, volumeOf } from '../solid';
 import type { FaceName, Solid, SplitFeature } from '../types';
@@ -24,6 +24,7 @@ const NOT_CUT = 'the plane does not cut the body: one part would be nothing';
 function step(feature: SplitFeature, { state, deps, done, failed }: StepContext): Step {
   const body = lookup(state.bodies, feature.body);
   if (!body) return failed('brokenReference', [feature.body]);
+  if (isImported(body, state.faceInfos)) return failed('importedTarget', [feature.body]); // no feature changes an imported body (D55)
   const plane = frame(feature.plane, state);
   if (typeof plane === 'string') return failed(plane, [feature.plane]);
   const first = state.faceNames.length;

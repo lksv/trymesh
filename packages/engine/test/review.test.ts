@@ -10,6 +10,7 @@ import { DATA_CATALOGS, catalogTable } from '../src/data-catalogs';
 import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, wallOutline } from '../src/recompute/outline';
 import type { Outline, ProfileProblem } from '../src/recompute/state';
 import { type Region, type SketchGeometry, detectProfile } from '../src/sketch';
+import { holeCounts } from '../src/query/parts-list';
 import type { ArgSpecs } from '../src/query/args';
 import { checkArgs } from '../src/query/check';
 import type { EntityShape } from '../src/query/entity';
@@ -33,6 +34,9 @@ import { type FaceInfo, IDENTITY, analyzeBody } from '../src/solid';
 import { interferenceReport, sharedBy } from '../src/interference';
 import type { BodyResult, Id, Joint, Mechanism } from '../src/types';
 import type { Command, Curve, Document, EngineState, Evaluation, ExtrudeFeature, Feature, Input, PatternFeature, PlaneFeature, SketchFeature, SketchSolver, Solid, SolidKernel, Vec3 } from '../src/types';
+import { MAX_PROFILE_POINTS, generateProfile } from '../src/generators';
+import { smallestCurvatureRadius } from '../src/generators/cycloid';
+import type { Frame } from '../src/types';
 
 type Entry = [id: string, curve: Curve, radius?: number];
 const apply = (commands: Command[], doc: Document = emptyDocument()): Document => commands.reduce<Document>(applyCommand, doc);
@@ -326,8 +330,8 @@ describe('a module per feature type (D37): what the move could have changed unse
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'combine', 'split']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole/);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split']);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
@@ -804,3 +808,297 @@ describe('the numbers, texts and arcs of an export: the review of D54', () => {
   });
 });
 
+describe('the grid: the review of D53', () => {
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const X = { kind: 'base', axis: 'X' } as const;
+  const Y = { kind: 'base', axis: 'Y' } as const;
+  // a body A and a pattern P of it with the given transform
+  const withPattern = (transform: object): Document => {
+    const commands: Command[] = [
+      { type: 'addFeature', feature: emptySketch('S', 'S', XY) },
+      { type: 'addCurve', sketch: 'S', id: 'c', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+      { type: 'addFeature', feature: { id: 'A', name: 'A', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['c'] }] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } },
+      { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'pattern', source: { type: 'body', body: 'A' }, transform } as never },
+    ];
+    return commands.reduce(applyCommand, emptyDocument());
+  };
+  const row = { type: 'linear', direction: X, count: 3, span: { type: 'spacing', spacing: 5 } };
+
+  // the test of the fields checked only that each read field is listed, not the conditions
+  it('the conditions of the registry give exactly the fields the validator reads, for every kind and both spans of a grid', () => {
+    for (const transform of [
+      row,
+      { ...row, span: { type: 'length', length: 20 } },
+      { ...row, second: { direction: Y, count: 2, span: { type: 'spacing', spacing: 7 } } },
+      { ...row, span: { type: 'length', length: 20 }, second: { direction: Y, count: 2, span: { type: 'length', length: 30 } } },
+      { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 4, span: { type: 'angle', angle: 1 } },
+      { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } },
+    ]) {
+      const f = withPattern(transform).features[2];
+      const listed = FEATURE_TYPE_INFO.pattern.fields.filter((field) => !field.when || atPath(f, field.when.path) === field.when.equals);
+      expect(fieldsOf(f).map((field) => [field.path, field.spec])).toEqual(listed.map((field) => [field.path, field.spec]));
+    }
+  });
+
+  // `second: null` in a feature was refused with the Czech message of a generic object
+  it('a feature with `second: null` is refused in English: a row leaves the field out', () => {
+    expect(() => withPattern({ ...row, second: null })).toThrow(/transform\.second: an object \{ direction, count, span \} is expected; leave the field out for a row/);
+    const doc = withPattern(row);
+    const saved = JSON.parse(JSON.stringify(doc));
+    saved.features[2].transform.second = null;
+    expect(() => validateDocument(saved)).toThrow(/leave the field out for a row/);
+    // removing it by a patch stays accepted
+    expect(applyCommand(doc, { type: 'updateFeature', id: 'P', patch: { transform: { second: null } } } as Command).features[2]).toEqual(doc.features[2]);
+  });
+});
+
+// ---------------------------------------------------------------- the parts list (D57)
+
+describe('the review of D57: the count of holes', () => {
+  type V = [number, number, number];
+  const unit = (v: V): V => {
+    const length = Math.hypot(...v);
+    return [v[0] / length, v[1] / length, v[2] / length];
+  };
+  const crossOf = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const plus = (a: V, b: V, by = 1): V => [a[0] + by * b[0], a[1] + by * b[1], a[2] + by * b[2]];
+  const doc = { ...emptyDocument(), features: [{ id: 'h', name: 'h', suppressed: false, type: 'hole' } as never] };
+  // One cut per body: a triangle with two corners on the line and a surface of the given kind.
+  interface Given {
+    surface: { kind: 'cylinder'; origin: V; axis: V; radius: number } | { kind: 'cone'; apex: V; axis: V; halfAngle: number };
+    corners: V[];
+  }
+  const inputs = (cuts: Given[]) => ({
+    bodies: Object.fromEntries(cuts.map((cut, i) => [`b${i}`, { solid: { positions: Float32Array.from(cut.corners.flat()), triangles: Uint32Array.from([0, 1, 2]), faceIds: Uint32Array.from([i]) }, faces: [{ id: i }] }])),
+    names: cuts.map((_, i) => ({ feature: 'h', role: 'holeBore' as const, point: `p${i}` })),
+    surface: (_body: string, face: number) => cuts[face].surface,
+  });
+  const counted = (cuts: Given[]): number | undefined => {
+    const { bodies, names, surface } = inputs(cuts);
+    return holeCounts(doc, bodies, names, surface).get('h');
+  };
+
+  it('a surface point that is not finite is no cut, and the others are still joined', () => {
+    const along = (z0: number): V[] => [[1, 0, z0], [1, 0, z0 + 5], [2, 0, z0 + 5]];
+    for (const bad of [Infinity, NaN]) {
+      const cuts: Given[] = [
+        { surface: { kind: 'cylinder', origin: [0, 0, 0], axis: [0, 0, 1], radius: 1 }, corners: along(0) },
+        { surface: { kind: 'cylinder', origin: [0, 0, 5], axis: [0, 0, 1], radius: 1 }, corners: along(5) },
+        { surface: { kind: 'cylinder', origin: [bad, 0, 0], axis: [1, 0, 0], radius: 1 }, corners: along(0) },
+      ];
+      // before the fix the cut at infinity made the bound NaN and nothing was joined: 3
+      expect(counted(cuts), String(bad)).toBe(1);
+    }
+  });
+
+  it('the comparison of sorted lines counts as the comparison of all pairs: random near lines, leaning up to the tolerance, far along, far out', () => {
+    // all pairs, written out as calls.ts of the design has them
+    const reference = (cuts: Given[]): number => {
+      const lines = cuts.map((cut) => {
+        const point = cut.surface.kind === 'cylinder' ? cut.surface.origin : cut.surface.apex;
+        const direction = unit(cut.surface.axis);
+        let [from, to] = [Infinity, -Infinity];
+        const reach: V = [0, 0, 0];
+        for (const corner of cut.corners) {
+          const at: V = [Math.fround(corner[0]), Math.fround(corner[1]), Math.fround(corner[2])];
+          const t = (at[0] - point[0]) * direction[0] + (at[1] - point[1]) * direction[1] + (at[2] - point[2]) * direction[2];
+          [from, to] = [Math.min(from, t), Math.max(to, t)];
+          for (let axis = 0; axis < 3; axis++) reach[axis] = Math.max(reach[axis], Math.abs(at[axis]));
+        }
+        return { point, direction, from, to, reach };
+      });
+      type Line = (typeof lines)[number];
+      const length = (v: V): number => Math.hypot(...v);
+      const sameLine = (a: Line, b: Line): boolean => length(crossOf(a.direction, b.direction)) <= 1e-4 && length(crossOf(plus(b.point, a.point, -1), a.direction)) <= Math.max(1e-6, 1e-9 * Math.max(length(crossOf(a.point, a.direction)), length(crossOf(b.point, b.direction))));
+      const touch = (a: Line, b: Line): boolean => {
+        const offset = (b.point[0] - a.point[0]) * a.direction[0] + (b.point[1] - a.point[1]) * a.direction[1] + (b.point[2] - a.point[2]) * a.direction[2];
+        const alike = a.direction[0] * b.direction[0] + a.direction[1] * b.direction[1] + a.direction[2] * b.direction[2] > 0;
+        const [from, to] = alike ? [offset + b.from, offset + b.to] : [offset - b.to, offset - b.from];
+        const precision = Math.max(1e-6, 1e-6 * a.direction.reduce((sum, part, axis) => sum + Math.abs(part) * Math.max(a.reach[axis], b.reach[axis]), 0));
+        return from <= a.to + precision && a.from <= to + precision;
+      };
+      const group = lines.map((_, i) => i);
+      const find = (i: number): number => (group[i] === i ? i : (group[i] = find(group[i])));
+      for (let a = 0; a < lines.length; a++) for (let b = a + 1; b < lines.length; b++) if (sameLine(lines[a], lines[b]) && touch(lines[a], lines[b])) group[find(a)] = find(b);
+      return new Set(lines.map((_, i) => find(i))).size;
+    };
+    let seed = 1;
+    const random = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const direction = (): V => unit([random() * 2 - 1, random() * 2 - 1, random() * 2 - 1]);
+    let joined = 0;
+    for (let trial = 0; trial < 1500; trial++) {
+      const far = [1, 1e3, 1e5, 1e7, 1e9][trial % 5];
+      const base = direction();
+      const middle: V = [(random() * 2 - 1) * far, (random() * 2 - 1) * far, (random() * 2 - 1) * far];
+      const cuts: Given[] = Array.from({ length: 2 + Math.floor(random() * 8) }, (_, i) => {
+        const lean = i === 0 || random() < 0.3 ? 0 : (random() < 0.5 ? 0.9999 : random()) * 1e-4;
+        const about = unit(crossOf(base, direction()));
+        let axis = plus([base[0] * Math.cos(lean), base[1] * Math.cos(lean), base[2] * Math.cos(lean)], crossOf(about, base), Math.sin(lean));
+        if (random() < 0.5) axis = [-axis[0], -axis[1], -axis[2]];
+        const precision = Math.max(1e-6, 1e-9 * far);
+        const point = plus(plus(middle, base, (random() * 2 - 1) * far * 3), unit(crossOf(base, direction())), (random() < 0.5 ? 0.5 : random()) * precision);
+        const half = far * 10 + 10;
+        const corners = [plus(middle, axis, -half), plus(middle, axis, half), plus(plus(middle, axis, half), unit(crossOf(axis, [0.3, 0.5, 0.7])))];
+        return { surface: random() < 0.5 ? { kind: 'cylinder', origin: point, axis, radius: 1 } : { kind: 'cone', apex: point, axis, halfAngle: 0.5 }, corners };
+      });
+      const expected = reference(cuts);
+      if (expected < cuts.length) joined++;
+      expect(counted(cuts), `trial ${trial}`).toBe(expected);
+    }
+    // the test tests something: most features join some of their cuts
+    expect(joined).toBeGreaterThan(1000);
+  });
+});
+
+describe('the review of D59: the drive of a joint', () => {
+  // A document with the sketch `layout` and two links on a joint with a drive, loaded as a file is.
+  const layout = { id: 'layout', name: 'layout', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: { elbow: { x: 120, y: 0 } }, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } };
+  const elbow = { type: 'revolute', parent: 'upper', child: 'forearm', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0, effort: 1100, velocity: 6.2 };
+  const doc = () => validateDocument({ ...JSON.parse(JSON.stringify(emptyDocument())), features: [layout], mechanism: { links: { upper: { bodies: [] }, forearm: { bodies: [] } }, joints: { elbow } } });
+
+  it('a setPose or a setJoint that changes nothing returns the section as it was: the value keeps its place before the drive', () => {
+    const before = doc();
+    expect(applyCommand(before, { type: 'setPose', values: { elbow: 0 } }).mechanism).toBe(before.mechanism);
+    expect(applyCommand(before, { type: 'setJoint', id: 'elbow', joint: elbow as never }).mechanism).toBe(before.mechanism);
+    // a value that changes keeps the canonical order of the fields, so setting it back is no change either
+    const posed = applyCommand(before, { type: 'setPose', values: { elbow: 0.5 } });
+    expect(Object.keys(posed.mechanism.joints.elbow)).toEqual(['type', 'parent', 'child', 'axis', 'lower', 'upper', 'value', 'effort', 'velocity']);
+    expect(applyCommand(posed, { type: 'setJoint', id: 'elbow', joint: { ...elbow, value: 0.5 } as never }).mechanism).toBe(posed.mechanism);
+  });
+});
+
+describe('the review of D61: the generators of 5d', () => {
+  const XY: Frame = { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] };
+  const disc = (params: Record<string, number>, chordTolerance = 0.01) => generateProfile('cycloidalDisc', { operands: { circle: { kind: 'circle', center: [0, 0], radius: params.R ?? 25 } }, params: { pins: 12, pinRadius: 2.5, eccentricity: 1, ...params }, refs: {}, frame: XY, chordTolerance });
+  const pulley = (teeth: number, chordTolerance: number) => generateProfile('gt2Pulley', { operands: { center: { kind: 'point', at: [0, 0] } }, params: { teeth }, refs: {}, frame: XY, chordTolerance });
+
+  it('a pulley too large is refused before its polygon exists, with the count it would have', () => {
+    for (const tolerance of [1e-6, 1e-9, 1e-12]) {
+      const started = performance.now();
+      const result = pulley(500, tolerance);
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(result.ok ? '' : result.message).toMatch(new RegExp(`the generated profile has \\d+ points, more than ${MAX_PROFILE_POINTS}; lower the number of grooves`));
+    }
+    // the count told beforehand is that of the polygon: the same points in every groove, and the
+    // polygon at a tolerance where it is built has the count of its grooves times that
+    const refused = pulley(500, 1e-4);
+    expect(refused.ok ? 0 : Number(refused.message.match(/has (\d+) points/)?.[1]) % 500).toBe(0);
+  });
+
+  it('the disc at the edge of undercut builds; a hair closer it is refused near the limit, not past it', () => {
+    const limit = smallestCurvatureRadius(25, 2, 12);
+    const edge = disc({ eccentricity: 2, pinRadius: 2.5737 });
+    expect(edge.ok).toBe(true);
+    if (edge.ok) expect(25 - edge.regions[0].outer.xy[0]).toBeLessThan(limit);
+    for (const hair of [1e-6, 1e-7, 1e-9]) {
+      const result = disc({ eccentricity: 2, pinRadius: limit - hair });
+      expect(result.ok ? '' : result.message).toMatch(/the disc is within the chord tolerance of the limit of undercut .* within 50000 points; lower the pin radius or the eccentricity/);
+    }
+  });
+
+  it('a disc too fine for the limit of points says so without a count it did not reach, and without fewer than three pins', () => {
+    const three = disc({ pins: 3, R: 10, pinRadius: 1, eccentricity: 0.5 }, 1e-9);
+    expect(three.ok ? '' : three.message).toBe('the disc would need more than 50000 points to keep its chords within the chord tolerance; raise the chord tolerance');
+    const many = disc({ pins: 500, R: 600, pinRadius: 2, eccentricity: 1 }, 1e-7);
+    expect(many.ok ? '' : many.message).toMatch(/would need more than 50000 points .*raise the chord tolerance or lower the number of pins$/);
+  });
+});
+
+// ---------------------------------------------------------------- the review of 3b (D55)
+
+describe('the import of a mesh: regressions of the review of 3b (D55)', async () => {
+  const { storedMesh } = await import('../src/mesh');
+  const { importMesh } = await import('../src/import/index');
+  const { toStl } = await import('../src/solid');
+  type Box = number[];
+  // an axis-aligned box as corners, outwards or inside out
+  const box = (min: number[], max: number[], outward = true): Box => {
+    const out: Box = [];
+    for (let k = 0; k < 3; k++) {
+      const [u, v] = [(k + 1) % 3, (k + 2) % 3];
+      for (const high of [false, true]) {
+        const at = (a: boolean, b: boolean): number[] => {
+          const p = [0, 0, 0];
+          p[k] = high ? max[k] : min[k];
+          p[u] = a ? max[u] : min[u];
+          p[v] = b ? max[v] : min[v];
+          return p;
+        };
+        const [p00, p10, p11, p01] = [at(false, false), at(true, false), at(true, true), at(false, true)];
+        out.push(...(high === outward ? [p00, p10, p11, p00, p11, p01] : [p00, p11, p10, p00, p01, p11]).flat());
+      }
+    }
+    return out;
+  };
+  const stl = (corners: Box): Uint8Array => {
+    const count = corners.length / 9;
+    return toStl([{ positions: Float32Array.from(corners), triangles: Uint32Array.from({ length: 3 * count }, (_, i) => i), faceIds: new Uint32Array(count) }]);
+  };
+  const solver = { solve: () => ({ status: 'failed', points: {}, radii: {}, degreesOfFreedom: 0, conflicting: [], redundant: [] }) } as never;
+  const newEngine = () => createEngine({ solver, kernel: {} as never });
+  const XY = { kind: 'base', plane: 'XY' } as const;
+  const TETRA = storedMesh({ positions: Float32Array.from([0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10]), triangles: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]) });
+  const ok = (engine: ReturnType<typeof newEngine>, command: Command) => {
+    const result = engine.execute(command);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.state;
+  };
+
+  it('six features placing one stored mesh keep their bodies across an edit before them (the kept solids are per feature)', () => {
+    const engine = newEngine();
+    const ids = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+    const before = ok(engine, {
+      type: 'batch',
+      commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, ...ids.map((id, i): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, x: 20 * i } } }))],
+    });
+    const after = ok(engine, { type: 'addFeature', feature: { id: 'p', name: 'p', suppressed: false, type: 'plane', base: XY, offset: 3 }, index: 0 });
+    expect(ids.map((id) => after.evaluation.bodies[id].solid === before.evaluation.bodies[id].solid)).toEqual(ids.map(() => true));
+  });
+
+  it('the remembered step of a mesh feature is reused through its input: an unrelated change after a write-back recomputes nothing', () => {
+    const engine = newEngine();
+    ok(engine, { type: 'batch', commands: [{ type: 'addMesh', id: 'servo', mesh: TETRA }, { type: 'setParameter', name: 'h', expr: '5' }, { type: 'addFeature', feature: { id: 'm', name: 'm', suppressed: false, type: 'mesh', mesh: 'servo', placement: { frame: XY, z: 'h' as never } } }] });
+    const first = engine.getState();
+    expect(first.document.features[0]).toMatchObject({ placement: { z: 5 } }); // written back: a new feature object
+    const other = ok(engine, { type: 'setParameter', name: 'unused', expr: '2' });
+    expect(other.evaluation.features.m).toBe(first.evaluation.features.m);
+    expect(other.evaluation.bodies.m).toBe(first.evaluation.bodies.m);
+  });
+
+  it('a part inside out in the hollow of a solid is turned over (a second level of turning), not refused', () => {
+    // a box, its hollow (inwards, correct) and a part in the hollow written inside out
+    const corners = [...box([0, 0, 0], [30, 30, 30]), ...box([5, 5, 5], [25, 25, 25], false), ...box([10, 10, 10], [20, 20, 20], false)];
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 3, cavities: 1, turned: 1 });
+    expect(outcome.report.volume).toBeCloseTo(27000 - 8000 + 1000, 6);
+    // and the inverted box with the same inside: turned with what it contains, the part then on its own
+    const inverted = [...box([0, 0, 0], [30, 30, 30], false), ...box([5, 5, 5], [25, 25, 25]), ...box([10, 10, 10], [20, 20, 20], false)];
+    const again = importMesh('stl', stl(inverted));
+    if (!again.ok) throw new Error(again.error.message);
+    expect(again.report.volume).toBeCloseTo(20000, 6);
+  });
+
+  it('turning many shells over takes one pass over their containers: 4000 boxes, half inside out', () => {
+    const corners: number[] = [];
+    for (let i = 0; i < 4000; i++) corners.push(...box([3 * (i % 64), 3 * Math.floor(i / 64), 0], [3 * (i % 64) + 1, 3 * Math.floor(i / 64) + 1, 1], i % 2 === 0));
+    const started = performance.now();
+    const outcome = importMesh('stl', stl(corners));
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.report).toMatchObject({ shells: 4000, turned: 2000 });
+    expect(outcome.report.volume).toBeCloseTo(4000, 3);
+    expect(performance.now() - started).toBeLessThan(20_000); // a generous bound: it was quadratic
+  });
+
+  it('the ASCII reader: `solid` in any case, a coordinate only as a decimal number, the limit said as "more than"', () => {
+    const ascii = (head: string, coordinate = '0') => new TextEncoder().encode(`${head}\n${[0, 1, 2, 3].map(() => `facet normal 0 0 1 outer loop vertex ${coordinate} 0 0 vertex 1 0 0 vertex 0 1 0 endloop endfacet`).join('\n')}\nendsolid`);
+    expect(importMesh('stl', ascii('SOLID part'))).toMatchObject({ ok: false, error: { code: 'notASolid' } }); // read, then refused as no solid
+    expect(importMesh('stl', ascii('solid part', '0x1A'))).toMatchObject({ ok: false, error: { code: 'unreadable', message: expect.stringContaining('"0x1A"') } });
+    expect(importMesh('stl', ascii('solid part', '1e2'))).toMatchObject({ ok: false, error: { code: 'notASolid' } });
+  });
+
+  it('a load refuses a stored mesh with more triangles than its limit before it decodes it', () => {
+    const big = { positions: TETRA.positions, triangles: 'A'.repeat(16 * 100_000 + 4) };
+    expect(() => validateDocument({ ...emptyDocument(), meshes: { big } })).toThrow(/document\.meshes\.big: the mesh has more than 100000 triangles/);
+  });
+});

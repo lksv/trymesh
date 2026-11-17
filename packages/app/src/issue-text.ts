@@ -18,6 +18,7 @@ export const ROLES: Record<FaceName['role'], string> = {
   holeHead: 'head of a hole',
   holeFlat: 'flat of a nut pocket',
   holeSeat: 'seat of a hole',
+  mesh: 'surface of an imported mesh',
   splitFace: 'cut face of a split',
 };
 // What tells apart the faces of a wall and of a hole: the side of its curve, the point of its end

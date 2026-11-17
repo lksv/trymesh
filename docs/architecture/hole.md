@@ -12,7 +12,7 @@ interface HoleFeature extends FeatureBase {
   shape: HoleShape;      // a variant by `type`
   extent: HoleExtent;    // a distance, or through all forward or backward
   targets: Id[];         // one or more bodies, none twice
-  label?: string;        // free text, not empty, at most 200 characters
+  label?: string;        // free text, not empty, at most 200 characters; the name of the piece for the parts list (D57)
 }
 type HoleShape =
   | { type: 'plain'; diameter: number }
@@ -31,6 +31,7 @@ One feature makes the same hole at every listed point, along the normal of the s
 - The keys of the side faces inside the build separate the point from its part by a slash, which no ID of a point the hole takes holds (any other character may be in an ID, `|` included).
 - References: the sketch; every point as an entity of the sketch (`accepts: ['point']`, `notProjected`), so a command refuses a point the sketch does not have, a curve, and projected geometry; every target as a body. On load only the shape of a reference is checked, as for every feature.
 - `updateFeature` changes `sketch`, `points`, `shape`, `extent`, `targets` and `label`. A shape of the same kind merges by field; another kind replaces it whole, and the expressions of its fields go with it (`mergePatch` decides by `type`). `{ label: null }` removes the label and is accepted also where there is none.
+- **The label in the parts list** (D57): the query `partsList` counts one piece of hardware per hole the model has, by the exact text of the label (the engine reads nothing out of it, D46); a feature without a label that made holes is listed apart. The holes are counted from the bores and heads (`holeBore`, `holeHead`) in the bodies that are not auxiliary, by their axes and how far along them they reach ([api.md](api.md), the parts list), so a point that missed or a hole cut away later counts nothing. The label `hardwareHole` gives is a start: what the catalog does not know (the length of a screw) is typed into it; the label of a plain clearance hole names the hole (`M3 clearance hole`) and is listed as it is.
 - Registry: `createsBody: false`, `namesFaces: true`, `producesTool: true`, `bodies: 'none'`. No upgrade step: a build without the type refuses a document with it.
 - Relations between the numbers are not a command's question (they may be expressions); the recompute checks them.
 

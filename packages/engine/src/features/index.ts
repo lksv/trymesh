@@ -4,18 +4,19 @@
 // the description of the API for the AI all read the registry.
 import { bodyOwner, entityOf } from '../sketch-content';
 import type { Document, Feature, Id } from '../types';
-import { ORIGIN } from '../util';
+import { ORIGIN, has } from '../util';
 import { type FeatureRef, REF_LABEL, type RefContext, fail } from '../validation';
 import { combine } from './combine';
 import { extrude } from './extrude';
 import { hole } from './hole';
+import { mesh } from './mesh';
 import type { FeatureModule, FeatureTypeInfo } from './module';
 import { pattern } from './pattern';
 import { plane } from './plane';
 import { sketch } from './sketch';
 import { split } from './split';
 
-export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, combine, split };
+export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split };
 
 // The public part of the registry.
 export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(
@@ -40,7 +41,7 @@ export function bodyProblem(doc: Document, body: Id): string | undefined {
   const { feature, local } = bodyOwner(body);
   const f = doc.features.find((candidate) => candidate.id === feature);
   if (!f) return `no feature of the document creates the body "${body}": the feature "${feature}" is not in the document`;
-  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new and by a split, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1, a mirror only "<pattern>/1")`;
+  if (!specOf(f).createsBody(f, local)) return `the feature "${feature}" does not create a body "${body}" (a body is made by an extrusion with the operation new by a mesh feature and by a split, under its ID, and by a pattern of a body, as "<pattern>/<number>" from 1, a mirror only "<pattern>/1")`;
   return undefined;
 }
 
@@ -54,11 +55,27 @@ export function bodySource(doc: Document, body: Id): Id | undefined {
   return spec.createsBody(f, local) ? spec.bodySource?.(f, local) : undefined;
 }
 
+// The chain of sources of a body over `bodySource`, the body first and nearest first. It stops at
+// a body it has seen (a document edited by hand may hold a cycle). Its bodies need not be bodies
+// of a state.
+export function sourceChain(doc: Document, body: Id): Id[] {
+  const chain: Id[] = [body];
+  for (let source = bodySource(doc, body); source !== undefined && !chain.includes(source); source = bodySource(doc, source)) chain.push(source);
+  return chain;
+}
+// The body the chain of sources of a body starts at (D57); the body itself when it has no source.
+export const sourceRoot = (doc: Document, body: Id): Id => sourceChain(doc, body).at(-1) ?? body;
+
 // Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
 // správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
 // odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
 export function requireRef(doc: Document, before: number | undefined, ref: Omit<FeatureRef, 'path'>, what: string): void {
   if (before === undefined) return;
+  // a stored mesh (D55) is no feature: the section has it or not, and it has no place on the timeline
+  if (ref.kind === 'mesh') {
+    if (!has(doc.meshes, ref.id)) fail(`${what}: the document has no stored mesh "${ref.id}" (the section meshes; the tool import_mesh stores one)`);
+    return;
+  }
   if (ref.kind === 'entity') {
     // The sketch itself is verified by its own reference; here only the entity inside it.
     const sketch = doc.features.find((f) => f.id === ref.sketch);

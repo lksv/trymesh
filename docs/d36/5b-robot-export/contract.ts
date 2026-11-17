@@ -187,7 +187,7 @@ export type RobotAbout = {
   // What the document says and the format does not write, one sentence each, by joint and field:
   // URDF the rotor and the gear, a continuous joint with only one of effort and velocity, the
   // pose, and with collisions that the pairs of a joint are not excluded from contact; MJCF the
-  // velocity of a joint.
+  // velocity of a joint, and the gear of a joint with neither an effort nor a rotor.
   notWritten?: string[];
 };
 // What `about` of a mesh says (as `MeshAbout` of 3MF).
@@ -255,9 +255,9 @@ export const ROBOT_REFUSALS = {
   missingBodies: { code: 'failed', text: 'a link lists bodies the model does not have (a link would be written lighter than it is): ' },
   massless: { code: 'failed', text: 'a link that a joint moves has no mass, neither of its own nor on the links fixed to it (no body, or only auxiliary bodies); a simulation cannot move it: ' },
   bodyMass: { code: 'failed', text: 'the mass of a link cannot be computed: ' }, // with the text of the query `mass`, and how to set a material
-  badName: { code: 'failed', text: 'an ID holds a character XML cannot hold (a control character, half of a surrogate pair), so it cannot be written as it is: ' }, // of a link, a joint or a body written; any change by `xmlText` beyond its four entities
+  badName: { code: 'failed', text: 'an ID holds a character XML cannot hold (a control character, half of a surrogate pair), so it cannot be written as it is: ' }, // of a link, a joint or a body that is not auxiliary; any change by `xmlText` beyond its four entities
   caseClash: { code: 'failed', text: 'two mesh files would differ only in the case of letters, which one folder on macOS or Windows cannot hold: ' },
-  mjcfLocked: { code: 'failed', text: 'MuJoCo needs the lower limit of a joint below its upper one (equal bounds turn the limit off); make the joint fixed: ' }, // also bounds written equal by nine decimals
+  mjcfLocked: { code: 'failed', text: 'MuJoCo needs the lower limit of a joint below its upper one (equal bounds turn the limit off). A fixed joint holds its child as modelled, so it stands for a joint locked at 0 only; a joint locked elsewhere has to be modelled there, or exported as URDF: ' }, // also bounds written equal by nine decimals
   urdfLimits: { code: 'failed', text: 'URDF requires an effort and a velocity of every revolute and prismatic joint (setJoint with `effort` and `velocity`): ' },
   mjcfWorld: { code: 'failed', text: 'MJCF reserves the body name world, so the link "world" cannot be written; give the link another ID' },
 } as const;
@@ -321,7 +321,8 @@ export interface EngineAfter5b extends Omit<Engine, 'export' | 'execute' | 'prev
   preview(cmd: CommandAfter5b, at?: Id): ReturnType<Engine['preview']>;
   export<F extends keyof ExportFormatsAfter5b>(format: F, options: ArgsOf<ExportFormatsAfter5b[F]>, queryOptions?: QueryOptions): QueryOutcome<Exported>;
 }
-export type CommandAfter5b = Parameters<Engine['execute']>[0] | SetJointAfter5b;
+type CommandOfMaster = Parameters<Engine['execute']>[0];
+export type CommandAfter5b = Exclude<CommandOfMaster, { type: 'setJoint' | 'batch' }> | SetJointAfter5b | { type: 'batch'; commands: CommandAfter5b[] };
 
 // ================================================================ a picture of a state that is not written
 
@@ -373,7 +374,7 @@ export type ViewImageAboutAfter5b = { pose?: PoseNote['pose']; blocked?: { joint
 export const CONVENTION =
   'A robot description is the export format `urdf` or `mjcf` (tool `export`, a directory): the description and one STL per body, in metres and kilograms. ' +
   'It is the mechanism as modelled: one tree from one root link (`root` when there are several), the frame of a link at the axis of the joint that moves it with the axes of the model, the mass, the centre of mass and the inertia of each link from its bodies (a reference part with the mass of its properties, auxiliary bodies left out). ' +
-  'Every link a joint moves needs a mass; URDF needs `effort` (N·mm, N for a prismatic joint) and `velocity` (rad/s, mm/s) of every revolute and prismatic joint: set them with setJoint. ' +
+  'Every link a revolute, continuous or prismatic joint moves needs a mass, its own or on the links fixed to it; URDF needs `effort` (N·mm, N for a prismatic joint) and `velocity` (rad/s, mm/s) of every revolute and prismatic joint: set them with setJoint. ' +
   'MJCF also writes a motor per joint with an effort, with `gearRatio`, and `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`. ' +
   'setJoint keeps the drive of a joint it is not given (null removes a field). ' +
   'MuJoCo collides the convex hulls of the meshes; the MJCF excludes the two links of a joint from each other, which URDF cannot say, so use the MJCF for MuJoCo. Parts nested in a housing touch it, so export such a model with `collision: "none"`. ' +

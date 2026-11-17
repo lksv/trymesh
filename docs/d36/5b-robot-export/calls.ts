@@ -25,7 +25,7 @@ declare function fail(message: string): never;
 declare function check(condition: boolean, what: string): void;
 const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result : fail(`${outcome.error.code}: ${outcome.error.message}`));
 function run(...commands: CommandAfter5b[]): EngineState {
-  const result = engine.execute(commands.length === 1 ? commands[0] : { type: 'batch', commands: commands as Command[] });
+  const result = engine.execute(commands.length === 1 ? commands[0] : { type: 'batch', commands });
   return result.ok ? result.state : fail(result.error.message);
 }
 function preview(command: CommandAfter5b): EngineState {
@@ -68,7 +68,7 @@ export const robotTreeAsWritten: typeof robotTree = (context, options): RobotTre
   if (driveFaults.length) throw new QueryFailure('failed', ROBOT_REFUSALS.driveInError.text + driveFaults.map((id) => `${id} (${Object.keys((mechanism.joints[id] as JointResultAfter5b).driveErrors ?? {}).join(', ')})`).join('; '));
   // IDs written as they are: none that `xmlText` changes beyond its four entities
   const written = (id: Id): boolean => xmlText(id).replace(/&(amp|lt|gt|quot);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"' })[e] as string) === id;
-  const bad = [...order, ...jointOrder, ...order.flatMap((id) => mechanism.links[id].bodies)].filter((id) => !written(id));
+  const bad = [...order, ...jointOrder, ...order.flatMap((id) => mechanism.links[id].bodies.filter((body) => evaluation.bodyProperties[body].use !== 'auxiliary'))].filter((id) => !written(id));
   if (bad.length) throw new QueryFailure('failed', ROBOT_REFUSALS.badName.text + bad.map((id) => JSON.stringify(id)).join(', '));
   const lacking = order.filter((id) => mechanism.links[id].missing.length > 0);
   if (lacking.length) throw new QueryFailure('failed', ROBOT_REFUSALS.missingBodies.text + lacking.map((id) => `${id}: ${mechanism.links[id].missing.join(', ')}`).join('; '));
@@ -197,8 +197,11 @@ export function drives(): EngineState {
 export function driveKept(): void {
   const widened = preview(elbow({ lower: 'deg(-150)', upper: 'deg(150)' }));
   check((widened.evaluation.mechanism.joints.elbow as JointResultAfter5b).drive?.effort === 1100, 'kept');
-  const removed = preview(elbow({ effort: null, velocity: null } as Partial<InputJointAfter5b>));
-  check((removed.evaluation.mechanism.joints.elbow as JointResultAfter5b).drive === undefined, 'removed by null');
+  const removed = preview({ type: 'batch', commands: [elbow({ effort: null, velocity: null } as Partial<InputJointAfter5b>)] });
+  check((removed.evaluation.mechanism.joints.elbow as JointResultAfter5b).drive === undefined, 'removed by null, inside a batch');
+  // a parameter changed: the number of the effort is written back
+  const stronger = preview({ type: 'setParameter', name: 'servoTorque', expr: '1500' });
+  check((stronger.document.mechanism.joints.elbow as { effort?: number }).effort === 1500, 'written back');
 }
 
 // c. URDF: the frames, the masses and the meshes.
@@ -288,8 +291,10 @@ export function refusals(): void {
   const elbowResult = broken.evaluation.mechanism.joints.elbow as JointResultAfter5b;
   check(elbowResult.status === 'ok' && elbowResult.driveErrors?.effort !== undefined, 'the pose is not blocked');
   check(!engine.export('urdf', {}, { state: broken }).ok && !engine.export('mjcf', {}, { state: broken }).ok, 'a stale effort is not written, by either format');
-  // the joint sent back whole with its broken expression unchanged (as the form of the app does) is taken
-  check(engine.preview(elbow({ effort: 'servoTorque', velocity: 6.2, lower: 'deg(-120)' })).ok, 'the limits can still be changed');
+  // the joint sent back whole with its broken expression unchanged (as the form of the app does) is
+  // taken, in the same batch as the removal of the parameter, and the effort stays in error
+  const resent = engine.preview({ type: 'batch', commands: [{ type: 'removeParameter', name: 'servoTorque' }, elbow({ effort: 'servoTorque', velocity: 6.2, lower: 'deg(-120)' })] });
+  check(resent.ok && (resent.state.evaluation.mechanism.joints.elbow as JointResultAfter5b).driveErrors?.effort !== undefined && near(resent.state.evaluation.mechanism.joints.elbow.lower ?? 0, (-120 * Math.PI) / 180, 1e-12), 'the limits can still be changed');
   // a document without a link
   check(NO_MECHANISM.startsWith('the model has no mechanism'), 'the text of `empty`');
 }

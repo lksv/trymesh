@@ -48,7 +48,13 @@ function step(feature: CombineFeature, { state, settings, deps, done, failed }: 
     let tool: Solid = state.bodies[id];
     let added: { name: FaceName; info: FaceInfo }[] = [];
     if (clearance > 0) {
-      const moved = movedOutwards(tool, state.faceInfos, state.faceNames, clearance, settings.chordTolerance, deps.kernel);
+      let moved: ReturnType<typeof movedOutwards>;
+      try {
+        moved = movedOutwards(tool, state.faceInfos, state.faceNames, clearance, settings.chordTolerance, deps.kernel);
+      } catch (error) {
+        // a guard of the move or the kernel's triangulation: the feature is in error, the engine goes on
+        return failed('kernelFailure', [id], error instanceof Error ? error.message : String(error));
+      }
       if (isMoveProblem(moved)) return failed('invalidClearance', [id, ...moved.faces], moved.detail);
       const faces = [...new Set(moved.solid.faceIds)].sort((a, b) => a - b);
       const number = new Map(faces.map((face, k) => [face, faceNames.length + k]));

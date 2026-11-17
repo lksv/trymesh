@@ -5,7 +5,7 @@
 import { closestOnTriangle } from '../mesh-distance';
 import type { FaceInfo } from '../solid';
 import type { FaceName, Solid, SolidKernel, Vec3 } from '../types';
-import { add3, cross3, dot3, len3, mul3, sub3, unit3 } from '../util';
+import { add3, cross3, dot3, faceKey, len3, mul3, sub3, unit3 } from '../util';
 import { precisionOf, triangleGrid } from './body-boolean';
 
 // The share of the clearance a point of the moved surface may lack against the face it came from
@@ -41,8 +41,10 @@ export interface MoveProblem {
 export const isMoveProblem = (moved: MovedBody | MoveProblem): moved is MoveProblem => 'reason' in moved;
 
 // Kept by the identity of the solid, the clearance and the chord tolerance (the face table does not
-// change for numbers that exist, as `analyzeBody` relies on too).
+// change for numbers that exist, as `analyzeBody` relies on too); the last few of each solid only,
+// so that a sweep of the clearance in previews does not keep a moved mesh per value.
 const memo = new WeakMap<Solid, Map<string, MovedBody | MoveProblem>>();
+const KEPT_PER_SOLID = 4;
 
 export function movedOutwards(body: Solid, faceInfos: readonly FaceInfo[], faceNames: readonly FaceName[], clearance: number, chordTolerance: number, kernel: Pick<SolidKernel, 'triangulate'>): MovedBody | MoveProblem {
   const key = `${clearance}|${chordTolerance}`;
@@ -52,6 +54,7 @@ export function movedOutwards(body: Solid, faceInfos: readonly FaceInfo[], faceN
   const moved = move(body, faceInfos, faceNames, clearance, chordTolerance, kernel);
   if (!kept) memo.set(body, (kept = new Map()));
   kept.set(key, moved);
+  if (kept.size > KEPT_PER_SOLID) kept.delete(kept.keys().next().value as string);
   return moved;
 }
 
@@ -142,7 +145,7 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
   const problem = (reason: MoveProblem['reason'], faces: Iterable<number>, detail: string): MoveProblem => ({ reason, faces: [...new Set(faces)].sort((a, b) => a - b).map((face) => names[face]), detail });
   const label = (face: number): string => {
     const name = names[face];
-    return name ? `${name.feature}/${name.role}` : `face ${face}`;
+    return name ? faceKey(name) : `face ${face}`;
   };
   if (!(c >= SMALLEST_CLEARANCE * precision)) return problem('tooSmall', [], `a clearance of ${c} mm is under ten precisions of the coordinates (${(SMALLEST_CLEARANCE * precision).toPrecision(2)} mm), which cannot be told from none`);
   // On a round face the pocket may be nearer than the clearance by the chord tolerance and a share
@@ -668,7 +671,7 @@ function tooNear(
   const vertexCount = p.length / 3;
   const corner = (t: number, k: number): Vec3 => [p[3 * tri[3 * t + k]], p[3 * tri[3 * t + k] + 1], p[3 * tri[3 * t + k] + 2]];
   const neighbours = new Set<number>();
-  const faceCount = Math.max(...body.faceIds) + 1;
+  const faceCount = body.faceIds.reduce((largest, face) => Math.max(largest, face), 0) + 1;
   {
     const faceOf = new Map<number, number>();
     for (let t = 0; t < count; t++) for (let k = 0; k < 3; k++) faceOf.set(tri[3 * t + k] * vertexCount + tri[3 * t + ((k + 1) % 3)], body.faceIds[t]);

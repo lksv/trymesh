@@ -39,6 +39,8 @@ type IssueCode =
   | 'emptyResult' | 'kernelFailure'
   | 'invalidExpression'            // an error everywhere except a sketch, where it is a warning
   | 'invalidExtent'                // an extent up to a plane cannot reach it (D47)
+  | 'invalidHole'                  // the dimensions do not make a hole (D46)
+  | 'invalidClearance'             // a tool of a combine cannot be moved by its clearance (D56)
   // varování: feature výsledek má
   | 'sketchConflict' | 'brokenProjection' | 'degenerateProjection' | 'unsupportedProjection'
   | 'noEffect'
@@ -48,7 +50,7 @@ interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
   error?: Issue;                 // jen při status 'error'
   warnings: Issue[];
-  bodies: Id[];                  // bodies the feature created: an extrusion with `new` its own, a pattern of a body its copies
+  bodies: Id[];                  // bodies the feature created: an extrusion with `new` and a split their own, a pattern of a body its copies
   plane?: { origin: Vec3; x: Vec3; y: Vec3; normal: Vec3 };   // sketch, plane
   sketch?: {
     points: Record<Id, { x: number; y: number }>;   // použité polohy, včetně promítnutých

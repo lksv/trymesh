@@ -11,7 +11,7 @@ import { createEngine, emptyDocument, emptySketch } from '../packages/engine/src
 import type { Command, Engine, Id, Solid, Surface, Vec3 } from '../packages/engine/src/index';
 import { closest } from '../packages/engine/src/mesh-distance';
 import { ROUND_ALLOWANCE, isMoveProblem, movedOutwards } from '../packages/engine/src/recompute/moved-body';
-import type { FaceInfo } from '../packages/engine/src/solid';
+import { type FaceInfo, volumeOf } from '../packages/engine/src/solid';
 import { createManifoldKernel } from '../packages/kernel-manifold/src/index';
 import { createPlanegcsSolver } from '../packages/solver-planegcs/src/index';
 
@@ -149,6 +149,9 @@ test('the fuzz of movedOutwards: no accepted pocket is nearer to the body than t
     const first = state.evaluation.faceNames.length;
     const pocket = kernel.boolean('difference', blockAround(body, c + 5, first), { ...moved.solid, faceIds: moved.solid.faceIds.map((f) => f + first + 10) });
     const distance = closest({ solid: body }, { solid: pocket })?.distance ?? Infinity;
+    // the pocket lies outside the body, not only c from its surface (a move inwards would be c away too)
+    const inside = Math.abs(volumeOf(kernel.boolean('intersection', body, { ...pocket, faceIds: pocket.faceIds.map((f) => f + 1000) })));
+    if (inside > 1e-3 || !(volumeOf(moved.solid) > volumeOf(body))) tooNear.push(`#${i} c ${c.toFixed(3)} chord ${chord}: the pocket overlaps the body by ${inside.toExponential(2)} mm³`);
     tally.accepted = (tally.accepted ?? 0) + 1;
     nearest = Math.min(nearest, distance / c);
     if (distance < c * (1 - ROUND_ALLOWANCE) - chord - 1e-6) tooNear.push(`#${i} c ${c.toFixed(3)} chord ${chord}: the pocket ${distance.toFixed(4)} from the body`);
@@ -160,6 +163,26 @@ test('the fuzz of movedOutwards: no accepted pocket is nearer to the body than t
 
 // Bodies of other seeds of the same generator where a round face came nearer to itself than the
 // bound, which the samples did not see (the second review of the revision): refused now.
+// The body of a seed and an index of the generator with its clearance and chord tolerance.
+function bodyOf(seed: number, index: number): ReturnType<typeof movedOutwards> {
+  const next = random(seed);
+  let [chord, c, commands] = [0, 0, [] as Command[]];
+  for (let i = 0; i <= index; i++) [chord, c, commands] = [[0.01, 0.003, 0.03][i % 3], Math.exp(Math.log(0.02) + next() * (Math.log(2) - Math.log(0.02))), randomBody(next)];
+  const result = engineWith(chord).execute({ type: 'batch', commands });
+  if (!result.ok) throw new Error(result.error.message);
+  const state = result.state;
+  return movedOutwards(state.evaluation.bodies.b.solid, state.evaluation.faceSurfaces.map(infoOf), state.evaluation.faceNames, c, chord, kernel);
+}
+
+// The reasons the fuzz meets that a test cannot easily build: a moved outline that crosses itself,
+// a triangle turned over, an edge through a triangle (seed 4401).
+test('the reasons of a refusal the fuzz meets: outline, turned, crosses', () => {
+  for (const [index, reason] of [[21, 'outline'], [26, 'turned'], [288, 'crosses'], [129, 'tooNear']] as const) {
+    const moved = bodyOf(4401, index);
+    expect(isMoveProblem(moved) && [moved.reason, moved.faces.length > 0]).toEqual([reason, true]);
+  }
+});
+
 test('a round face nearer to itself than the bound is tooNear (seeds 1, 2, 3, 5 of the fuzz)', () => {
   for (const [seed, index] of [[1, 104], [2, 234], [3, 356], [5, 371]]) {
     const next = random(seed);

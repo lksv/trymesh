@@ -438,10 +438,12 @@ describe('the boolean of bodies and the clearance (D56): cases of the reviews', 
     }
   });
 
-  it('a crescent between a pin and its hole turned by half a polygon side is no sheet: the union of the two is right', () => {
+  it('a crescent between a pin and its hole turned by part of a polygon side is no sheet: the union of the two is right', () => {
     const state = engineOf(...box56('plate', -10, -10, 10, 10, 0, 5), ...cylinder56('hole', 0, 0, 3, -1, 6, 'cut', ['plate']), ...cylinder56('pin', 0, 0, 3, 0, 5));
     const turned = solidOf56(state, 'pin');
-    const angle = Math.PI / 30; // the circle of radius 3 is a polygon of more sides than 30: half a side or less
+    // a turn of π/30 against a polygon of n sides is a turn by a fraction of a side (a whole side
+    // turns the polygon into itself): the two polygons differ, their crescents are thin
+    const angle = Math.PI / 30;
     const positions = Float32Array.from(turned.positions, (value, i) => (i % 3 === 0 ? value * Math.cos(angle) - turned.positions[i + 1] * Math.sin(angle) : i % 3 === 1 ? turned.positions[i - 1] * Math.sin(angle) + value * Math.cos(angle) : value));
     const [plate, pin] = [solidOf56(state, 'plate'), { ...turned, positions }];
     const result = booleanOfBodies(kernel56, 'union', plate, pin, state.evaluation.faceNames.length, 0.01);

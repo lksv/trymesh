@@ -989,8 +989,8 @@ export interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
   error?: Issue; // jen při status 'error'
   warnings: Issue[];
-  // Bodies the feature created: an extrusion with the operation `new` its own, a pattern of a body
-  // its copies in the order of their numbers. A caller does not have to compose derived IDs.
+  // Bodies the feature created: an extrusion with the operation `new` and a split their own, a
+  // pattern of a body its copies in the order of their numbers. A caller does not have to compose derived IDs.
   bodies: Id[];
   plane?: Frame; // sketch, plane
   sketch?: SketchResult;
@@ -1112,7 +1112,7 @@ export type Command =
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
   // of the document can create: the feature exists and its type creates a body of that ID (an
-  // extrusion with the operation new; `<pattern>/<number>` of a pattern of a body, a mirror only
+  // extrusion with the operation new, a split; `<pattern>/<number>` of a pattern of a body, a mirror only
   // `<pattern>/1`). Whether the body exists in the model is not asked: the count of a pattern may be
   // an expression and a feature may be suppressed.
   // - setBodyProperties merges `patch` into the entry of the body, creating it; an entry left with

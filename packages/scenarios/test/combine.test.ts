@@ -206,3 +206,98 @@ describe('the checks of the result (booleanOfBodies)', () => {
     expect(new Set(difference.solid.faceIds).has(solidOf(state, 'in').faceIds[0])).toBe(true);
   });
 });
+
+describe('the reasons of a refusal of the move, with their faces (the rest are pinned in spikes/moved-fuzz.spike.ts)', () => {
+  const move = (state: EngineState, body: string, c: number, infos = infosOf(state), solid = solidOf(state, body)) => movedOutwards(solid, infos, state.evaluation.faceNames, c, 0.01, port);
+  const reasonOf = (moved: ReturnType<typeof movedOutwards>): string => (isMoveProblem(moved) ? moved.reason : 'accepted');
+
+  it('closes: a hole no wider than the clearance, named', () => {
+    const { state } = built(...box('A', 0, 0, 20, 20, 0, 10), ...cylinder('hole', 10, 10, 1, -1, 11, 'cut', ['A']));
+    const moved = move(state, 'A', 1);
+    expect(isMoveProblem(moved) && [moved.reason, moved.faces]).toEqual(['closes', [{ feature: 'hole', role: 'side', curve: 'holeCircle' }]]);
+    expect(reasonOf(move(state, 'A', 0.5))).toBe('accepted');
+  });
+
+  it('noSurface: a face without a description; bothSides: one face number on a pin and on a hole', () => {
+    const { state } = built(...box('A', 0, 0, 20, 20, 0, 10), ...cylinder('hole', 5, 5, 1, -1, 11, 'cut', ['A']), ...cylinder('pin', 15, 15, 1, 10, 14, 'add', ['A']));
+    const pin = faceNumber(state, { feature: 'pin', role: 'side', curve: 'pinCircle' });
+    const hole = faceNumber(state, { feature: 'hole', role: 'side', curve: 'holeCircle' });
+    const infos = infosOf(state);
+    const unknown = move(state, 'A', 0.2, infos.map((info, face) => (face === pin ? (undefined as never) : info)));
+    expect(isMoveProblem(unknown) && [unknown.reason, unknown.faces]).toEqual(['noSurface', [{ feature: 'pin', role: 'side', curve: 'pinCircle' }]]);
+    // the hole's side renumbered as the pin's: one number with material inside and outside its cylinder
+    const solid = solidOf(state, 'A');
+    const merged = { ...solid, faceIds: solid.faceIds.map((face) => (face === hole ? pin : face)) };
+    const both = move(state, 'A', 0.2, infos.map((info, face) => (face === pin ? { ...info } : info)), merged);
+    expect(reasonOf(both)).toBe('bothSides');
+  });
+
+  it('tooSmall without faces; tooNear with the two faces', () => {
+    const { state } = built(...prism('c', [[0, 0], [10, 0], [10, 4.8], [2, 4.8], [2, 5.2], [10, 5.2], [10, 10], [0, 10]], 0, 5), ...cylinder('pin', 20, 20, 2, 0, 5));
+    const small = move(state, 'c', 1e-5);
+    expect(isMoveProblem(small) && [small.reason, small.faces]).toEqual(['tooSmall', []]);
+    const near = move(state, 'c', 0.3);
+    expect(isMoveProblem(near) && near.reason).toBe('tooNear');
+    expect(isMoveProblem(near) && near.faces.length).toBe(2);
+  });
+
+  it('a cone moves by its apex: the pocket of a tapered pin is a cone of the same angle', () => {
+    const { engine } = built(...box('A', -10, -10, 10, 10, 0, 10), ...cylinder('pin', 0, 0, 3, 2, 12, 'new', undefined, 'deg(-5)'));
+    const state = run(engine, combine('K', { operation: 'difference', target: 'A', tools: ['pin'], keepTools: true, clearance: 0.4 }));
+    const [tool, pocket] = [surfaceOf(state, { feature: 'pin', role: 'side', curve: 'pinCircle' }), surfaceOf(state, { feature: 'pin', role: 'side', curve: 'pinCircle', copy: [{ pattern: 'K', index: 1 }] })];
+    expect(tool?.kind === 'cone' && pocket?.kind === 'cone').toBe(true);
+    if (tool?.kind !== 'cone' || pocket?.kind !== 'cone') return;
+    expect(pocket.halfAngle).toBeCloseTo(tool.halfAngle, 12);
+    // the apex moved along the axis by c over the sine of the half angle
+    expect(Math.hypot(...[0, 1, 2].map((k) => pocket.apex[k] - tool.apex[k]))).toBeCloseTo(0.4 / Math.sin(tool.halfAngle), 9);
+  });
+});
+
+describe('the checks of the result: the cases the design measured', () => {
+  const first = (state: EngineState): number => state.evaluation.faceNames.length;
+
+  it('a slab 1e-4 from flush on the target: the range of the shared volume lets the right answer pass', () => {
+    const { state } = built(...box('A', 0, 0, 40, 30, 0, 20), ...box('slab', 5, 5, 15, 15, 20.0001, 25), ...box('sunk', 5, 5, 15, 15, 19.9999, 25), ...box('cube', 25, 15, 30, 20, 5, 10));
+    const [A, slab, sunk] = [solidOf(state, 'A'), solidOf(state, 'slab'), solidOf(state, 'sunk')];
+    // a difference with a slab above the top changes nothing; a union is the two together
+    expect(booleanOfBodies(port, 'difference', A, slab, first(state), 0.01).changed).toBe(false);
+    // as a union the adapter leaves the band its shift opened as material (a silent defect of the
+    // adapter, design "Verified", 2): the volume check turns it into a refusal
+    expect(() => booleanOfBodies(port, 'union', A, slab, first(state), 0.01)).toThrow(/volume of the result of the union is off/);
+    // a slab sunk 1e-4 into the top, together with a cube inside: the cube is cut, the slab a sliver within the band
+    const both = { ...sunk, positions: Float32Array.from([...sunk.positions, ...solidOf(state, 'cube').positions]), triangles: Uint32Array.from([...sunk.triangles, ...Array.from(solidOf(state, 'cube').triangles, (v) => v + sunk.positions.length / 3)]), faceIds: Uint32Array.from([...sunk.faceIds, ...solidOf(state, 'cube').faceIds]) };
+    const cut = booleanOfBodies(port, 'difference', A, both, first(state), 0.01);
+    expect(cut.changed).toBe(true);
+  });
+
+  it('an intersection that is a slab thinner than the sheet tolerance yet holds more than 0.001 mm³ is refused, not dropped', () => {
+    // 0.0002 thick, 0.24 mm³: its two large faces lie back to back (the sheet tolerance is 0.0004 here)
+    const { state } = built(...box('A', 0, 0, 40, 30, 0, 10), ...box('B', 0, 0, 40, 30, 9.9998, 20));
+    expect(() => booleanOfBodies(port, 'intersection', solidOf(state, 'A'), solidOf(state, 'B'), first(state), 0.01)).toThrow(/back to back|thinner than the kernel can tell/);
+  });
+
+  it('an intersection with a tool around the target changes nothing; one that trims a sliver off changes it', () => {
+    const { state } = built(...box('A', 0, 0, 40, 30, 0, 10), ...box('around', -1, -1, 41, 31, -1, 11), ...box('trim', -1, -1, 39.9, 31, -1, 11));
+    const A = solidOf(state, 'A');
+    expect(booleanOfBodies(port, 'intersection', A, solidOf(state, 'around'), first(state), 0.01).changed).toBe(false);
+    const trimmed = booleanOfBodies(port, 'intersection', A, solidOf(state, 'trim'), first(state), 0.01);
+    expect(trimmed.changed).toBe(true);
+  });
+});
+
+describe('what a used-up tool and a split leave behind', () => {
+  it('the entry of body properties of a used-up tool stays in the document without its body', () => {
+    const { engine } = built(...box('A', 0, 0, 20, 10, 0, 10), ...box('B', 10, 0, 30, 10, 0, 10), { type: 'setBodyProperties', body: 'B', patch: { name: 'Lid' } });
+    const state = run(engine, combine('K', { operation: 'union', target: 'A', tools: ['B'], keepTools: false }));
+    expect(state.document.bodyProperties.B).toEqual({ name: 'Lid' });
+    expect('B' in state.evaluation.bodyProperties).toBe(false);
+  });
+
+  it('a face of the body named on the part that lost it is a broken reference; on the part that has it, a plane', () => {
+    const { engine } = built(...box('A', 0, 0, 20, 10, 0, 10), plane('mid', 'XY', 4), split('S', { body: 'A', plane: { kind: 'plane', feature: 'mid' }, side: 'forward' }));
+    const top: FaceName = { feature: 'A', role: 'endCap' };
+    const state = done(engine.preview(batch(...sketchOn('lost', onFace('A', top)), ...sketchOn('kept', onFace('S', top)))));
+    expect(codeOf(state, 'lost')).toBe('brokenReference');
+    expect(state.evaluation.features.kept.plane?.origin[2]).toBeCloseTo(10, 9);
+  });
+});

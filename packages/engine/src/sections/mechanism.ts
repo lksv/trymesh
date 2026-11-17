@@ -331,7 +331,7 @@ function resolveJoint(id: Id, j: Joint, entry: EntryValues, state: State): Resol
   let axisFault: Issue | undefined;
   if ('axis' in j) {
     const line = axisOf(j.axis, state);
-    if ('code' in line) axisFault = issue(line.code, line.refs, `the axis of the joint "${id}"`);
+    if ('code' in line) axisFault = issue(line.code, line.refs, `the axis of the joint "${id}"${line.detail ? `: ${line.detail}` : ''}`);
     else axis = { origin: line.point, direction: unit3(line.direction) };
   }
   const error = faults[0] ?? axisFault;

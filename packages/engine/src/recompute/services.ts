@@ -57,9 +57,9 @@ export function frame(ref: PlaneRef, state: State): Frame | IssueCode {
 // through one of its solved points, or a line of a sketch through its point `a` from `a` to `b`
 // (the direction is then `b − a`, not of unit length). A sketch that did not evaluate, a point or
 // a line without a place in it is `brokenReference`; a line whose ends are not more than
-// `LENGTH_TOLERANCE` apart is `invalidAxis` with the line in `refs`. A projected line whose edge is
+// `LENGTH_TOLERANCE` apart is `invalidAxis` with the line in `refs` and `detail` saying so. A projected line whose edge is
 // gone keeps its last valid place in the sketch, and so does the axis.
-export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3 } | { code: IssueCode; refs: unknown[] } {
+export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3 } | { code: IssueCode; refs: unknown[]; detail?: string } {
   if (ref.kind === 'base') return { point: [0, 0, 0], direction: [ref.axis === 'X' ? 1 : 0, ref.axis === 'Y' ? 1 : 0, ref.axis === 'Z' ? 1 : 0] };
   const sketch = lookup(state.sketches, ref.sketch);
   if (!sketch) return { code: 'brokenReference', refs: [ref.sketch] };
@@ -67,7 +67,7 @@ export function axis(ref: AxisRef, state: State): { point: Vec3; direction: Vec3
     const line = lookup(sketch.input.curves, ref.line);
     const [a, b] = line?.type === 'line' ? [lookup(sketch.geometry.points, line.a), lookup(sketch.geometry.points, line.b)] : [];
     if (!a || !b) return { code: 'brokenReference', refs: [ref.line] };
-    if (Math.hypot(b.x - a.x, b.y - a.y) <= LENGTH_TOLERANCE) return { code: 'invalidAxis', refs: [ref.line] };
+    if (Math.hypot(b.x - a.x, b.y - a.y) <= LENGTH_TOLERANCE) return { code: 'invalidAxis', refs: [ref.line], detail: 'the line of the axis has no length' };
     const from = toWorld(sketch.frame, a.x, a.y);
     return { point: from, direction: sub3(toWorld(sketch.frame, b.x, b.y), from) };
   }

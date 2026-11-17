@@ -931,6 +931,25 @@ describe('the app, driven as a user drives it', () => {
     h.record('OK: the revolve is in the document');
     h.row('Revolve 1').click();
     h.record('selected: the summary names the sketch, the axis and the angle');
+    doubleClick(h, 'Revolve 1');
+    h.record('edited: the form with the draft of the feature');
+    h.choose('Extent', 'full');
+    h.press('panel', 'OK');
+    h.record('OK: updateFeature with the whole turn, the axis and the profile');
+    // a second sketch with a construction line: moving the profile there moves the axis along
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 'S2', name: 'Second', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XZ' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } },
+        { type: 'addPoint', sketch: 'S2', id: 'q1', x: 40, y: 0 },
+        { type: 'addPoint', sketch: 'S2', id: 'q2', x: 40, y: 10 },
+        { type: 'addCurve', sketch: 'S2', id: 'qx', curve: { type: 'line', a: 'q1', b: 'q2', construction: true } },
+      ],
+    });
+    h.row('Second').click();
+    h.press('toolbar', 'Revolve');
+    h.choose('Sketch', 'S');
+    h.record('a new revolve in the second sketch, its profile moved to the first: the axis Z of the first, not the line of the second');
     await matches(h, 'revolve');
   });
 

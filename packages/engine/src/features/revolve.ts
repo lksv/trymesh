@@ -51,7 +51,7 @@ function step(feature: RevolveFeature, { state, settings, deps, done: finish, fa
   const profile = resolveProfile(feature.id, feature.profile, state, settings.chordTolerance);
   if ('code' in profile) return profile.message === undefined ? failed(profile.code, profile.refs) : { state: finish({ status: 'error', error: { code: profile.code, message: profile.message, refs: profile.refs }, warnings: [] }) };
   const line = axisOf(feature.axis, state);
-  if ('code' in line) return failed(line.code, line.refs);
+  if ('code' in line) return failed(line.code, line.refs, line.detail);
   const setup = revolveSetup(profile, line, feature.axis, feature.extent, settings.chordTolerance);
   if ('code' in setup) return setup.message === undefined ? failed(setup.code, setup.refs, setup.detail) : { state: finish({ status: 'error', error: { code: setup.code, message: setup.message, refs: setup.refs }, warnings: [] }) };
   const { frame } = profile;

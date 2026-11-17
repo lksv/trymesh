@@ -207,7 +207,7 @@ function gridOf(transform: Linear, second: NonNullable<Linear['second']>, state:
 }
 
 // The transforms of the copies of a pattern without a grid, the original excluded: copy 1 first.
-function transformsOf(transform: PatternTransform, state: State): RigidTransform[] | { code: IssueCode; refs: unknown[] } {
+function transformsOf(transform: PatternTransform, state: State): RigidTransform[] | Refused {
   if (transform.type === 'mirror') {
     // the plane is resolved as the plane of a sketch is; its error is the error of the pattern
     const plane = frame(transform.plane, state);

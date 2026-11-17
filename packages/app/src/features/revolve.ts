@@ -45,6 +45,8 @@ interface Choices {
   bodies: Id[];
   sketches: Id[];
   lines: (sketch: Id) => Id[];
+  // the default axis of a new revolve in a sketch (`defaultAxis`)
+  axisOf: (sketch: Id) => RevolveFeature['axis'] | undefined;
 }
 export function changeRevolve(draft: RevolveDraft, change: RevolveChange, choices: Choices, remembered: Extra = {}): RevolveDraft {
   const operation = change.operation ?? draft.operation;
@@ -77,11 +79,19 @@ export function changeRevolve(draft: RevolveDraft, change: RevolveChange, choice
   return {
     ...rest,
     profile,
-    axis: change.axis ? changeAxis(draft.axis, change.axis, choices.sketches, choices.lines) : draft.axis,
+    axis: change.axis ? changeAxis(draft.axis, change.axis, choices.sketches, choices.lines) : followSketch(draft, sketch, choices),
     extent,
     operation,
     ...(operation === 'new' || targets === undefined ? {} : { targets }),
   };
+}
+
+// The axis when the profile moves to another sketch: an axis along a line of the sketch it leaves
+// is the default axis of the new one (most often that was a default too); any other stays.
+function followSketch(draft: RevolveDraft, sketch: Id, choices: Choices): RevolveDraft['axis'] {
+  const axis = draft.axis;
+  if (sketch === draft.profile.sketch || axis.kind !== 'sketchLine' || axis.sketch !== draft.profile.sketch) return axis;
+  return choices.axisOf(sketch) ?? axis;
 }
 
 // The command of the draft. A change of a feature merges with it, so the offset the draft no
@@ -119,7 +129,7 @@ const stepsText = (result: { facts?: Record<string, unknown> } | undefined): str
 function revolvePanel(m: RevolveMode, host: PanelHost): HTMLElement[] {
   const sketches = sketchesBefore(host, m.index);
   const bodies = Object.keys(host.stateBefore(m.index).evaluation.bodies);
-  const choices: Choices = { bodies, sketches: sketches.map((f) => f.id), lines: linesOf(host) };
+  const choices: Choices = { bodies, sketches: sketches.map((f) => f.id), lines: linesOf(host), axisOf: (id) => { const f = host.feature(id); return f?.type === 'sketch' ? defaultAxis(f) : undefined; } };
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
   const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
   const set = (change: RevolveChange, rebuild = true) => {
@@ -132,7 +142,7 @@ function revolvePanel(m: RevolveMode, host: PanelHost): HTMLElement[] {
   const targets = m.draft.targets ?? [];
   const missing = targets.filter((id) => !bodies.includes(id));
   return [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'New revolve'),
+    h('h2', {}, m.editing ? `Editing: ${m.draft.name}` : 'New revolve'),
     select(
       'Profile',
       (value) => {
@@ -153,8 +163,8 @@ function revolvePanel(m: RevolveMode, host: PanelHost): HTMLElement[] {
           draftField(host, m, 'Angle (° or an expression in radians; negative turns the other way)', 'extent/angle', (angle) => set({ angle }, false)),
         ]
       : []),
-    select('Operace', (value) => set({ operation: value as RevolveFeature['operation'] }), ...(Object.keys(OPERATIONS) as RevolveFeature['operation'][]).map((operation) => option(operation, OPERATIONS[operation], operation === m.draft.operation))),
-    m.draft.operation === 'add' ? select('Těleso', (value) => set({ target: value }), ...bodies.map((body) => option(body, host.bodyName(body), body === targets[0])), ...missing.map((body) => option(body, '(chybí)', true))) : null,
+    select('Operation', (value) => set({ operation: value as RevolveFeature['operation'] }), ...(Object.keys(OPERATIONS) as RevolveFeature['operation'][]).map((operation) => option(operation, OPERATIONS[operation], operation === m.draft.operation))),
+    m.draft.operation === 'add' ? select('Body', (value) => set({ target: value }), ...bodies.map((body) => option(body, host.bodyName(body), body === targets[0])), ...missing.map((body) => option(body, `${body} (missing)`, true))) : null,
     m.draft.operation === 'cut'
       ? h(
           'fieldset',
@@ -176,7 +186,7 @@ function drawAxis(host: PanelHost, result: { facts?: Record<string, unknown> } |
   const info = sketchRegions(host, sketch);
   if (!point || !direction || !info) return;
   // as far along the axis as the regions of the sketch reach, and a little more
-  let [low, high] = [0, 0];
+  let [low, high] = [Infinity, -Infinity];
   for (const region of info.result.regions) {
     for (const loop of region.loops) {
       for (let i = 0; i < loop.length; i += 2) {
@@ -186,6 +196,7 @@ function drawAxis(host: PanelHost, result: { facts?: Record<string, unknown> } |
       }
     }
   }
+  if (low > high) return;
   const margin = 0.1 * (high - low) + 1;
   const end = (t: number): number[] => point.map((value, k) => value + direction[k] * t);
   scene.lines.push({ segments: [...end(low - margin), ...end(high + margin)], color: COLOR.region, width: 2, onTop: true });

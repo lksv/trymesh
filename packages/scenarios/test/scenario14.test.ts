@@ -316,7 +316,7 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
     expect(messages[0]).toMatch(/extent\.angle/);
     expect(messages[1]).toMatch(/"rcircle" is a circle, expected line/);
     expect(messages[2]).toMatch(/needs exactly one target body/);
-    expect(messages[3]).not.toBe('accepted');
+    expect(messages[3]).toMatch(/extent\/angle/);
     expect(messages[4]).toMatch(/a revolve takes regions or a wall/);
   });
 

@@ -342,7 +342,7 @@ Not measured: anything of the app; either route to a grid.
 
 Questions for the owner:
 
-1. **The grid.** The design has no grid (rows and columns) and names two routes to one, each a package of its own ("A grid, later"): a pattern of features as a source of a pattern (features only; also gives a mirror of a mirror), or a second direction of the linear pattern with copy numbers that have gaps (features and bodies). Should a grid be part of 2e, and does it have to cover bodies? (Default: no grid in 2e; a follow-up package decides the route.)
+1. **The grid.** The design has no grid (rows and columns) and names two routes to one, each a package of its own ("A grid, later"): a pattern of features as a source of a pattern (features only; also gives a mirror of a mirror), or a second direction of the linear pattern with copy numbers that have gaps (features and bodies). Should a grid be part of 2e, and does it have to cover bodies? (Default: no grid in 2e; a follow-up package decides the route.) **Decided by the owner on 2026-11-17: the grid is wanted, as an addition to 2e. It is designed in [grid.md](grid.md): the second of the two routes, a second direction of the linear pattern, for features and for bodies.**
 
 Nothing else needs the owner: no library, no change of the document that an older build would drop, no change of another package's contract.
 

@@ -348,6 +348,16 @@ describe('a picture on its way to a client', () => {
     // a refusal comes back as the text of an error; the app is told of both calls
     expect(await session.call('view_image', { bodies: ['nope'] })).toEqual({ error: 'notAvailable: view_image: bodies[0]: the body "nope" is not in the state asked about' });
     expect(served).toEqual(['view_image ok', 'view_image notAvailable: view_image: bodies[0]: the body "nope" is not in the state asked about']);
+    // `at` and `after` through the bridge (5b): a body only a previewed command removes is refused,
+    // the state after a feature is drawn, and nothing of the app's document is written
+    const before = app.save();
+    expect(await session.call('view_image', { bodies: ['late'], after: { type: 'removeFeature', id: 'late' } })).toEqual({ error: 'notAvailable: view_image: bodies[0]: the body "late" is not in the state asked about' });
+    expect((await session.client.callTool({ name: 'view_image', arguments: { at: 'pin', after: { type: 'setParameter', name: 'q', expr: '1' } } })).isError).toBeUndefined();
+    expect(Object.keys(requests[1].state.evaluation.bodies)).toEqual(['disc', 'pin']);
+    expect(requests[1].state.document.parameters.map((parameter) => parameter.name)).toEqual(['q']);
+    expect(await session.call('view_image', { at: 'nope' })).toEqual({ error: 'notAvailable: view_image: at: the feature "nope" is not in the document' });
+    expect(app.save()).toBe(before);
+    expect((tool?.inputSchema as { properties: Record<string, { type?: string }> }).properties.after.type).toBe('object');
     expect(app.getState().canUndo).toBe(true);
     connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');

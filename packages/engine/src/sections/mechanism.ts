@@ -106,7 +106,7 @@ function joint(o: Dict, given: Record<string, Expr>, mode: FieldMode, environmen
   const parent = newId(o.parent, `${what}.parent`);
   const child = newId(o.child, `${what}.child`);
   const axis = hasAxis(type) ? axisRef(SHAPE_ONLY, o.axis, `${what}.axis`) : undefined;
-  const required = JOINT_FIELDS[type];
+  const required = fields.filter((field) => !field.optional);
   for (const { path } of required) if (o[path] === undefined) fail(`${what}.${path}: a joint of the type ${type} has ${required.map((field) => `\`${field.path}\``).join(', ')}`);
   const { numbers, expressions } = readEntryFields(o, given, fields, mode, environment, key, what);
   return {
@@ -281,7 +281,9 @@ function setPose(doc: Document, cmd: Dict): Section {
       throw error;
     }
     const expr = reader.expressions(what)?.value;
-    const { value: _value, expressions, ...rest } = old as Joint & { value: number };
+    // the fields keep their canonical order (`value` before the drive): a command that changes
+    // nothing returns the section as it was, and `same` compares the texts (review of 5b)
+    const { expressions, ...rest } = old as Joint & { value: number };
     const others = Object.fromEntries(Object.entries(expressions ?? {}).filter(([path]) => path !== 'value'));
     const kept = { ...others, ...(expr === undefined ? {} : { value: expr }) };
     const sorted = Object.fromEntries(Object.entries(kept).sort(([a], [b]) => (a < b ? -1 : 1)));

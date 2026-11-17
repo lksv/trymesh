@@ -234,7 +234,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       description: `${entry.summary} Returns ${entry.returns} It runs in the app: without a connected app it answers notAvailable.`,
       inputSchema: {
         type: 'object',
-        properties: Object.fromEntries(entry.args.map((arg) => [arg.name, { description: arg.description }])),
+        // `at` and `after` of the path (5b) with their types, as the tool `query` declares them
+        properties: Object.fromEntries(entry.args.map((arg) => [arg.name, { ...(arg.name === 'at' ? { type: 'string' } : arg.name === 'after' ? { type: 'object' } : {}), description: arg.description }])),
         required: entry.args.filter((arg) => arg.required).map((arg) => arg.name),
         additionalProperties: false,
       } as JsonSchema,

@@ -134,6 +134,13 @@ const moves = (type: Joint['type']): boolean => type !== 'fixed';
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"' };
 const writtenAsItIs = (id: Id): boolean => xmlText(id).replace(/&(amp|lt|gt|quot);/g, (_, entity: string) => ENTITIES[entity]) === id;
 
+// The texts of the options a file writes (`name`, `meshPrefix`) are written as they are, as the IDs:
+// one that `xmlText` would change, or an empty name, is refused (review of 5b).
+export function writtenOptions(options: { name?: string; meshPrefix?: string }): void {
+  if (options.name !== undefined && (options.name === '' || !writtenAsItIs(options.name))) throw new QueryFailure('invalidArguments', `name: ${options.name === '' ? 'the name is empty' : `${JSON.stringify(options.name)} holds a character XML cannot hold`}`, ['name']);
+  if (options.meshPrefix !== undefined && !writtenAsItIs(options.meshPrefix)) throw new QueryFailure('invalidArguments', `meshPrefix: ${JSON.stringify(options.meshPrefix)} holds a character XML cannot hold`, ['meshPrefix']);
+}
+
 // The tree of the mechanism of the context from one root (`root`, or the one root there is). The
 // format checks first that the document has a link (`NO_MECHANISM`).
 export function robotTree(context: QueryContext, options: { root?: Id }): RobotTree {

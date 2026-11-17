@@ -1637,7 +1637,16 @@
     -   button: "Cancel"
   view: 1 scene(s) set
 
-=== 31. a continuous joint has the same drive: the typed fields stay
+=== 31. the parameter of the effort removed: the joint row says the drive field fails and the export refuses it; the joint is not in error
+  engine: execute({"type":"setParameter","name":"torque","expr":"900"}) -> ok
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":"torque","velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  engine: execute({"type":"removeParameter","name":"torque"}) -> ok
+  mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":900,"velocity":6.2,"rotorInertia":5400,"gearRatio":5.18,"expressions":{"effort":"torque"}}}}
+  panel:
+    +       p.issue.warning: "effort (drive): unknown name "torque"; the export of a robot refuses the joint until it is fixed"
+  view: 3 scene(s) set
+
+=== 32. the form of the joint: the effort shows its expression and why it has no value
   panel:
     + h2: "Joint Elbow"
     + label
@@ -1648,9 +1657,9 @@
     +   input value="Elbow" placeholder="joint1"
     + label
     +   "Kind"
-    +   select value="continuous"
-    +     option value="revolute": "Revolute"
-    +     option selected value="continuous": "Continuous (no limits)"
+    +   select value="revolute"
+    +     option selected value="revolute": "Revolute"
+    +     option value="continuous": "Continuous (no limits)"
     +     option value="prismatic": "Prismatic (a slide)"
     +     option value="fixed": "Fixed"
     + label
@@ -1672,12 +1681,20 @@
     +     option value="sketchPoint": "Through a point of a sketch"
     + p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     + label
+    +   "Lower limit (° or an expression in radians)"
+    +   input value="-90"
+    + label
+    +   "Upper limit (° or an expression in radians)"
+    +   input value="90"
+    + label
     +   "Angle (° or an expression in radians)"
     +   input value="0"
     + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
     + label
     +   "Effort (N·mm or an expression; optional)"
-    +   input value=""
+    +   span.field
+    +     input value="torque"
+    +     small.computed title="unknown name "torque"": "= ? (unknown name "torque")"
     + label
     +   "Velocity (rad/s or an expression; optional)"
     +   input value="6.2"
@@ -1694,7 +1711,24 @@
     -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
   view: 0 scene(s) set
 
-=== 32. another kind: the numbers start from the defaults of its unit
+=== 33. a continuous joint has the same drive: the typed fields stay
+  engine: execute({"type":"setJoint","id":"joint1","joint":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0,"effort":"torque","velocity":6.2,"rotorInertia":5400,"gearRatio":5.18}}) -> ok
+  panel:
+    +   select value="continuous"
+    +     option value="revolute": "Revolute"
+    +     option selected value="continuous": "Continuous (no limits)"
+    -   select value="revolute"
+    -     option selected value="revolute": "Revolute"
+    -     option value="continuous": "Continuous (no limits)"
+    -   "Lower limit (° or an expression in radians)"
+    -   input value="-90"
+    - label
+    -   "Upper limit (° or an expression in radians)"
+    -   input value="90"
+    - label
+  view: 1 scene(s) set
+
+=== 34. another kind: the numbers start from the defaults of its unit
   panel:
     +   select value="prismatic"
     -   select value="continuous"
@@ -1703,30 +1737,32 @@
     -     option selected value="continuous": "Continuous (no limits)"
     -     option value="prismatic": "Prismatic (a slide)"
     + p.hint: "The child slides along the direction of the axis."
-    + label
+    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
     +   "Lower limit (mm or an expression)"
-    +   input value="0"
-    + label
+    -   "Angle (° or an expression in radians)"
+    - p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
     +   "Upper limit (mm or an expression)"
     +   input value="100"
-    - p.hint: "A positive angle turns counter-clockwise seen against the direction of the axis (the right-hand rule)."
-    +   "Travel (mm or an expression)"
-    -   "Angle (° or an expression in radians)"
-    +   "Effort (N or an expression; optional)"
     -   "Effort (N·mm or an expression; optional)"
-    +   "Velocity (mm/s or an expression; optional)"
-    +   input value=""
+    -   span.field
+    -     input value="torque"
+    -     small.computed title="unknown name "torque"": "= ? (unknown name "torque")"
+    +   "Travel (mm or an expression)"
+    +   input value="0"
+    + p.hint: "The drive, read only by the export of a robot (URDF needs the effort and the velocity of a revolute or prismatic joint):"
     -   "Velocity (rad/s or an expression; optional)"
     -   input value="6.2"
-    - label
+    +   "Effort (N or an expression; optional)"
+    +   input value=""
     -   "Rotor inertia (g·mm² or an expression; optional)"
     -   input value="5400"
-    - label
+    +   "Velocity (mm/s or an expression; optional)"
+    +   input value=""
     -   "Gear ratio (a number or an expression; optional)"
     -   input value="5.18"
   view: 0 scene(s) set
 
-=== 33. the joint removed: one removeJoint, the arm stands as modelled
+=== 35. the joint removed: one removeJoint, the arm stands as modelled
   engine: execute({"type":"removeJoint","id":"joint1"}) -> ok
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{}}
   panel:
@@ -1749,6 +1785,7 @@
     -       label.slider
     -         span.hint: "Pose, limits -90° to 90°"
     -         input.pose type=range value="0" title="-90° to 90°"
+    -       p.issue.warning: "effort (drive): unknown name "torque"; the export of a robot refuses the joint until it is fixed"
     -       div.mech-children
     -         div.mech-link
     -           div.mech-head

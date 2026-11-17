@@ -1350,6 +1350,18 @@ describe('the app, driven as a user drives it', () => {
     h.record('an emptied drive field of an edited joint is sent as null: the effort removed, the rest of the drive kept');
     expect(h.engine.getState().document.mechanism.joints.joint1).not.toHaveProperty('effort');
     expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ velocity: 6.2, rotorInertia: 5400, gearRatio: 5.18 });
+    // an effort by an expression whose parameter goes: the panel says so, the pose is not blocked (review of 5b)
+    outside(h, { type: 'setParameter', name: 'torque', expr: '900' });
+    h.press('panel', 'Edit', 1);
+    h.type(h.field('Effort (N·mm or an expression; optional)'), 'torque');
+    h.press('panel', 'OK');
+    outside(h, { type: 'removeParameter', name: 'torque' });
+    h.record('the parameter of the effort removed: the joint row says the drive field fails and the export refuses it; the joint is not in error');
+    expect(h.engine.getState().evaluation.mechanism.joints.joint1).toMatchObject({ status: 'ok', driveErrors: { effort: { code: 'unknownName' } } });
+    h.press('panel', 'Edit', 1);
+    h.record('the form of the joint: the effort shows its expression and why it has no value');
+    h.press('panel', 'OK');
+    expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ expressions: { effort: 'torque' } });
     h.press('panel', 'Edit', 1);
     h.choose('Kind', 'continuous');
     h.record('a continuous joint has the same drive: the typed fields stay');

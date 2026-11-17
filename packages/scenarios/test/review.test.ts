@@ -393,3 +393,47 @@ describe('the export of an outline: the review of D54', () => {
     expect(counts).toEqual(Array(12).fill(4)); // were 5 or 6 in eleven of them
   });
 });
+
+describe('the review of D59: the export of a robot', () => {
+  const engine = newEngine();
+  run(engine, addSketch('S1', XY), circle('S1', 'k', 0, 0, 5), addExtrude('low', 'S1', [['k']], 10), addExtrude('high', 'S1', [['k']], -10));
+  run(engine, {
+    type: 'batch',
+    commands: [
+      { type: 'setBodyProperties', body: 'low', patch: { density: 1.2 } },
+      { type: 'setBodyProperties', body: 'high', patch: { density: 1.2 } },
+      { type: 'setLink', id: 'base', bodies: [] },
+      { type: 'setLink', id: 'frame', bodies: [] },
+      { type: 'setLink', id: 'plate', bodies: ['low', 'high'] },
+      { type: 'setJoint', id: 'turn', joint: { type: 'revolute', parent: 'base', child: 'frame', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0, effort: 500, velocity: 2 } },
+      { type: 'setJoint', id: 'mount', joint: { type: 'fixed', parent: 'frame', child: 'plate' } },
+    ],
+  });
+  const text = (format: 'urdf' | 'mjcf', options: object = {}): string => {
+    const outcome = engine.export(format, options as never);
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    return new TextDecoder().decode(outcome.result.files[0].bytes);
+  };
+
+  it('a link without mass (an empty root, a moving frame with its mass on a fixed child) states an inertial of zero in URDF', () => {
+    const urdf = text('urdf');
+    const zero = '\n    <inertial>\n      <origin xyz="0 0 0" rpy="0 0 0"/>\n      <mass value="0"/>\n      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>\n    </inertial>\n  </link>';
+    expect(urdf).toContain(`<link name="base">${zero}`);
+    expect(urdf).toContain(`<link name="frame">${zero}`);
+    expect(text('mjcf')).toContain('<body name="frame" pos="0 0 0">\n        <joint name="turn"');
+  });
+
+  it('a link that lists a body the model does not have is refused with the link', () => {
+    const state = engine.preview({ type: 'setSuppressed', id: 'high', suppressed: true });
+    if (!state.ok) throw new Error(state.error.message);
+    const outcome = engine.export('urdf', {}, { state: state.state });
+    expect(outcome).toEqual({ ok: false, error: { code: 'failed', message: 'urdf: a link lists bodies the model does not have (a link would be written lighter than it is): plate: high' } });
+  });
+
+  it('a name or a mesh prefix that XML cannot hold as it is, and an empty name, are refused', () => {
+    expect(engine.export('urdf', { name: 'a\u0001' })).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'urdf: name: "a\\u0001" holds a character XML cannot hold', arg: ['name'] } });
+    expect(engine.export('mjcf', { name: '' })).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'mjcf: name: the name is empty', arg: ['name'] } });
+    expect(engine.export('urdf', { meshPrefix: 'x\u0002/' })).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['meshPrefix'] } });
+    expect(text('urdf', { name: 'a & b' })).toContain('<robot name="a &amp; b">');
+  });
+});

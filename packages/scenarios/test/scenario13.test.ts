@@ -1007,7 +1007,7 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
     expect(about).toMatchObject({ root: 'base', links: ['base', 'upper', 'forearm'], joints: ['shoulder', 'elbow'] });
     near(about.mass, exported('mjcf').files.slice(1).length > 0 ? massOf(engine, { bodies: ['base'] }, { geometry: 'modelled' }).mass + upper.mass + massOf(engine, { bodies: ['forearm'] }, { geometry: 'modelled' }).mass : 0, 6);
     expect(about.notWritten).toEqual([
-      'joint "shoulder": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes them',
+      'joint "shoulder": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes the rotor as the armature of the joint and the gear in its motor',
       'the two links of a joint are not excluded from contact: URDF cannot say it, so a reader that collides convex hulls (MuJoCo) may find the parts of a joint in contact at rest; for MuJoCo use the MJCF',
     ]);
     // a mesh per body, in metres in the frame of its link: the forearm moved by −120 mm in X

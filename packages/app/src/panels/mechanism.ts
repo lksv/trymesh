@@ -139,6 +139,8 @@ export function mechanismPanel(host: PanelHost, panel: MechanismPanel): HTMLElem
       ...poseControls(host, panel, id, joint, state),
       ...(state?.error ? [h('p', { className: 'issue error' }, host.issueText(state.error))] : []),
       ...Object.entries(state?.fieldErrors ?? {}).map(([path, error]) => h('p', { className: 'issue error' }, `${path}: ${error.message}`)),
+      // a field of the drive in error (5b) blocks no pose, but an export of the robot refuses the joint
+      ...Object.entries(state?.driveErrors ?? {}).map(([path, error]) => h('p', { className: 'issue warning' }, `${path} (drive): ${error?.message}; the export of a robot refuses the joint until it is fixed`)),
       ...(own(section.links, joint.child) && !shownLinks.has(joint.child) ? [h('div', { className: 'mech-children' }, linkBlock(joint.child))] : []),
     );
   };
@@ -354,7 +356,11 @@ function jointForm(host: PanelHost, panel: MechanismPanel, form: JointForm): HTM
         markProblem(input, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
       },
     });
-    return h('label', {}, own === undefined ? fieldLabel(title, unit) : driveLabel(title, own), input);
+    // a drive field of a joint being changed: the value of its expression, or why it has none (5b)
+    const result = own !== undefined && form.editing ? host.view().evaluation.mechanism.joints[form.id] : undefined;
+    const error = result?.driveErrors?.[path as JointDriveField];
+    const note = own !== undefined && typeof parseField(form.numbers[path] ?? '', own) === 'string' && result ? h('small', { className: 'computed', title: error?.message ?? '' }, error ? `= ? (${error.message})` : fieldNote(form.numbers[path] ?? '', result.drive?.[path as JointDriveField], own)) : null;
+    return h('label', {}, own === undefined ? fieldLabel(title, unit) : driveLabel(title, own), note ? h('span', { className: 'field' }, input, note) : input);
   };
   const drive = JOINT_DRIVE_FIELDS[form.type];
   return [

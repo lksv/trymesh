@@ -946,3 +946,20 @@ describe('the review of D57: the count of holes', () => {
     expect(joined).toBeGreaterThan(1000);
   });
 });
+
+describe('the review of D59: the drive of a joint', () => {
+  // A document with the sketch `layout` and two links on a joint with a drive, loaded as a file is.
+  const layout = { id: 'layout', name: 'layout', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: { elbow: { x: 120, y: 0 } }, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } };
+  const elbow = { type: 'revolute', parent: 'upper', child: 'forearm', axis: { kind: 'base', axis: 'Z' }, lower: -1, upper: 1, value: 0, effort: 1100, velocity: 6.2 };
+  const doc = () => validateDocument({ ...JSON.parse(JSON.stringify(emptyDocument())), features: [layout], mechanism: { links: { upper: { bodies: [] }, forearm: { bodies: [] } }, joints: { elbow } } });
+
+  it('a setPose or a setJoint that changes nothing returns the section as it was: the value keeps its place before the drive', () => {
+    const before = doc();
+    expect(applyCommand(before, { type: 'setPose', values: { elbow: 0 } }).mechanism).toBe(before.mechanism);
+    expect(applyCommand(before, { type: 'setJoint', id: 'elbow', joint: elbow as never }).mechanism).toBe(before.mechanism);
+    // a value that changes keeps the canonical order of the fields, so setting it back is no change either
+    const posed = applyCommand(before, { type: 'setPose', values: { elbow: 0.5 } });
+    expect(Object.keys(posed.mechanism.joints.elbow)).toEqual(['type', 'parent', 'child', 'axis', 'lower', 'upper', 'value', 'effort', 'velocity']);
+    expect(applyCommand(posed, { type: 'setJoint', id: 'elbow', joint: { ...elbow, value: 0.5 } as never }).mechanism).toBe(posed.mechanism);
+  });
+});

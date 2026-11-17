@@ -16,7 +16,7 @@
 import type { ArgSpecs } from '../query/args';
 import { QueryFailure } from '../query/spec';
 import type { ExportFile } from '../types';
-import { NO_MECHANISM, ROBOT_FILES, ROBOT_OPTIONS, ROBOT_REFUSALS, type RobotAbout, type RobotJoint, type RobotTree, XML_HEAD, colorsOf, fileEffort, fileLength, fileVelocity, metres, rgba, robotTree } from './robot';
+import { NO_MECHANISM, ROBOT_FILES, ROBOT_OPTIONS, ROBOT_REFUSALS, type RobotAbout, type RobotJoint, type RobotTree, XML_HEAD, colorsOf, fileEffort, fileLength, fileVelocity, metres, rgba, robotTree, writtenOptions } from './robot';
 import type { ExportFormatSpec } from './spec';
 import { plain, significant, xmlText } from './text';
 
@@ -44,11 +44,10 @@ export function urdfText(tree: RobotTree, options: { name: string; collision: bo
   const lines: string[] = [XML_HEAD, '<!-- Written by trymesh: metres, kilograms, seconds, radians. Every frame has the axes of the model; the frame of a link is at the axis of the joint that moves it. -->', `<robot name="${xmlText(options.name)}">`];
   for (const color of colorsOf(tree)) lines.push(`  <material name="${color}"><color rgba="${rgba(color)}"/></material>`);
   for (const link of tree.links) {
-    if (!link.mass && link.bodies.length === 0) {
-      lines.push(`  <link name="${xmlText(link.id)}"/>`);
-      continue;
-    }
     lines.push(`  <link name="${xmlText(link.id)}">`);
+    // A link without mass gets an inertial of zero, stated: without one PyBullet gives a link 1 kg
+    // and 1 kg·m² (review of 5b); the URDF specification reads both as no mass.
+    if (!link.mass) lines.push('    <inertial>', '      <origin xyz="0 0 0" rpy="0 0 0"/>', '      <mass value="0"/>', '      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>', '    </inertial>');
     if (link.mass) {
       const { mass, centerOfMass, inertia: I } = link.mass;
       const scale = Math.max(I[0][0], I[1][1], I[2][2]) / 1e9;
@@ -87,11 +86,11 @@ export function urdfNotWritten(tree: RobotTree, collision: boolean): string[] {
   for (const joint of tree.joints) {
     const { effort, velocity, rotorInertia, gearRatio } = joint.drive;
     const fields = [...(rotorInertia === undefined ? [] : ['rotorInertia']), ...(gearRatio === undefined ? [] : ['gearRatio'])];
-    if (turning(joint) && fields.length) out.push(`joint "${joint.id}": ${fields.join(' and ')}: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes them`);
+    if (turning(joint) && fields.length) out.push(`joint "${joint.id}": ${fields.join(' and ')}: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes the rotor as the armature of the joint and the gear in its motor`);
     if (joint.type === 'continuous' && (effort === undefined) !== (velocity === undefined)) out.push(`joint "${joint.id}": ${effort === undefined ? 'velocity' : 'effort'}: the limit of a continuous joint needs both an effort and a velocity, so it is left out`);
   }
   const posed = tree.joints.filter((joint) => joint.value !== 0);
-  if (posed.length) out.push(`the pose of the document (${posed.map((joint) => `${joint.id} ${plain(joint.value)}`).join(', ')}): URDF has no place for it; the file is the model as modelled, the zero of every joint`);
+  if (posed.length) out.push(`the pose of the document (${posed.map((joint) => `${joint.id} ${plain(joint.value)} ${joint.type === 'prismatic' ? 'mm' : 'rad'}`).join(', ')}): URDF has no place for it; the file is the model as modelled, the zero of every joint`);
   if (collision && tree.joints.length) out.push('the two links of a joint are not excluded from contact: URDF cannot say it, so a reader that collides convex hulls (MuJoCo) may find the parts of a joint in contact at rest; for MuJoCo use the MJCF');
   return out;
 }
@@ -103,6 +102,7 @@ export const urdf: ExportFormatSpec<typeof URDF_OPTIONS> = {
   options: URDF_OPTIONS,
   run(context, options) {
     if (Object.keys(context.state.document.mechanism.links).length === 0) return { layout: 'directory', files: [], empty: NO_MECHANISM };
+    writtenOptions(options);
     const tree = robotTree(context, options);
     const lacking = tree.joints.filter((joint) => (joint.type === 'revolute' || joint.type === 'prismatic') && (joint.drive.effort === undefined || joint.drive.velocity === undefined));
     if (lacking.length) throw new QueryFailure(ROBOT_REFUSALS.urdfLimits.code, ROBOT_REFUSALS.urdfLimits.text + lacking.map((joint) => `${joint.id} (${[joint.drive.effort === undefined ? 'effort' : '', joint.drive.velocity === undefined ? 'velocity' : ''].filter(Boolean).join(', ')})`).join('; '));

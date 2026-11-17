@@ -207,14 +207,14 @@ describe('the export of a robot: the arm extended to every kind of joint', () =>
     // the pose as a keyframe, in the order of the joints with a degree of freedom: radians and metres
     const posed = text(exportOf(engine, 'mjcf', {}, previewOf(engine, { type: 'setPose', values: { slide: 12, spin: 7.5 } })).files[0]);
     expect(posed).toContain('<key name="pose" qpos="0 0 0.012 7.5"/>');
-    expect((exportOf(engine, 'urdf', {}, previewOf(engine, { type: 'setPose', values: { slide: 12 } })).files[0].about as RobotAbout).notWritten).toContain('the pose of the document (slide 12): URDF has no place for it; the file is the model as modelled, the zero of every joint');
+    expect((exportOf(engine, 'urdf', {}, previewOf(engine, { type: 'setPose', values: { slide: 12 } })).files[0].about as RobotAbout).notWritten).toContain('the pose of the document (slide 12 mm): URDF has no place for it; the file is the model as modelled, the zero of every joint');
   });
 
   it('what a format does not write is said, one sentence each', () => {
     const urdf = (exportOf(engine, 'urdf').files[0].about as RobotAbout).notWritten;
     expect(urdf).toEqual([
-      'joint "shoulder": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes them',
-      'joint "spin": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes them',
+      'joint "shoulder": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes the rotor as the armature of the joint and the gear in its motor',
+      'joint "spin": rotorInertia and gearRatio: URDF has no place for the rotor or the gear of a drive (outside a transmission of ros_control); the MJCF writes the rotor as the armature of the joint and the gear in its motor',
       'the two links of a joint are not excluded from contact: URDF cannot say it, so a reader that collides convex hulls (MuJoCo) may find the parts of a joint in contact at rest; for MuJoCo use the MJCF',
     ]);
     expect((exportOf(engine, 'urdf', { collision: 'none' }).files[0].about as RobotAbout).notWritten).toHaveLength(2);
@@ -234,8 +234,9 @@ describe('the export of a robot: the arm extended to every kind of joint', () =>
     // the root empty, the motor's link empty (the motor in no link): both written
     const empty = previewOf(engine, { type: 'batch', commands: [{ type: 'setLink', id: 'base', bodies: [] }, { type: 'setLink', id: 'motor', bodies: [] }] });
     const exported = exportOf(engine, 'urdf', {}, empty);
-    expect(text(exported.files[0])).toContain('<link name="base"/>');
-    expect(text(exported.files[0])).toContain('<link name="motor"/>');
+    // a link without mass states an inertial of zero (PyBullet would give it 1 kg otherwise: the review of 5b)
+    expect(text(exported.files[0])).toContain('<link name="base">\n    <inertial>\n      <origin xyz="0 0 0" rpy="0 0 0"/>\n      <mass value="0"/>\n      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>\n    </inertial>\n  </link>');
+    expect(text(exported.files[0])).toContain('<link name="motor">\n    <inertial>');
     expect(exported.files[0].about).toMatchObject({ leftOut: { bodies: ['base', 'motor'] } });
     expect(text(exportOf(engine, 'mjcf', {}, empty).files[0])).toContain('<body name="base" pos="0 0 0">\n      <body name="upper"');
     // the upper arm without a body of its own but with the motor fixed to it: written

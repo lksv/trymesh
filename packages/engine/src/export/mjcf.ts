@@ -19,7 +19,7 @@
 //   bounds (as written) is refused. MJCF reserves the body name `world`.
 import { QueryFailure } from '../query/spec';
 import type { ExportFile, Id } from '../types';
-import { NO_MECHANISM, ROBOT_FILES, ROBOT_OPTIONS, ROBOT_REFUSALS, type RobotAbout, type RobotTree, XML_HEAD, fileEffort, fileLength, linkById, metres, rgba, robotTree } from './robot';
+import { NO_MECHANISM, ROBOT_FILES, ROBOT_OPTIONS, ROBOT_REFUSALS, type RobotAbout, type RobotTree, XML_HEAD, fileEffort, fileLength, linkById, metres, rgba, robotTree, writtenOptions } from './robot';
 import type { ExportFormatSpec } from './spec';
 import { plain, significant, xmlText } from './text';
 
@@ -105,6 +105,7 @@ export const mjcf: ExportFormatSpec<typeof MJCF_OPTIONS> = {
   options: MJCF_OPTIONS,
   run(context, options) {
     if (Object.keys(context.state.document.mechanism.links).length === 0) return { layout: 'directory', files: [], empty: NO_MECHANISM };
+    writtenOptions(options);
     const tree = robotTree(context, options);
     if (tree.links.some((link) => link.id === 'world')) throw new QueryFailure(ROBOT_REFUSALS.mjcfWorld.code, ROBOT_REFUSALS.mjcfWorld.text);
     // equal bounds as written: MuJoCo would turn the limit off

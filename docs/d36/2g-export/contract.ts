@@ -597,7 +597,9 @@ export interface EngineDeps {
 export declare function createEngine(deps: EngineDeps): EngineAfter2g;
 // A format reads the compressor from its context, where it reads the kernel: a member of
 // `QueryContext` (`query/spec.ts`), set from `ContextDeps` (`query/context.ts`). Absent when the
-// engine has none. (A stand-in: in the code the member is added to `QueryContext` itself.)
+// engine has none. Unlike the kernel of the context it is not wrapped: a format hands it to `zip`
+// and does not call it, and `zip` turns a failure of the compressor into a refusal.
+// (A stand-in: in the code the member is added to `QueryContext` itself.)
 export interface ExportContext extends QueryContext {
   deflater?: Deflater;
 }
@@ -609,8 +611,12 @@ export interface ExportContext extends QueryContext {
 // stated above, with these changes for an entry that is written deflated:
 // - compression method 8 (4.4.5: "The file is Deflated");
 // - version needed to extract 20 (4.4.3.2: "2.0 - File is compressed using Deflate
-//   compression"), and version made by 20 with the upper byte 0, as a stored entry has 10 in
-//   both;
+//   compression");
+// - version made by 20 with the upper byte 0, where a stored entry has 10, also when both are in
+//   one archive. 4.4.2.3 calls the field the version "supported by the software used to encode
+//   the file", which reads as one value for a writer; this writer states per entry what the entry
+//   uses, so a stored entry is the same bytes whatever else is in the archive (a choice; the
+//   readers of the spike took it);
 // - general purpose bits 1 and 2 are 0 (4.4.4: "Normal (-en) compression option was used");
 // - the compressed size is the length of the stream, the uncompressed size that of the bytes;
 // - the CRC-32 is that of the bytes of the file, not of the stream (4.4.7), computed by `crc32`.
@@ -621,9 +627,11 @@ export interface ExportContext extends QueryContext {
 // The refusals are those of `storedZip` (`QueryFailure('failed')`, the same texts). The number of
 // entries, the names and an entry of 0xFFFFFFFF bytes or more are refused before anything is
 // compressed; the sizes together are those of what is written, so they are checked after. And:
-// - a deflater that throws, or answers with something that is not a `Uint8Array`, is `failed`
-//   with the text `the compressor failed: <its message>`. Nothing checks that the stream
-//   inflates back (deflate.md, "Known limits").
+// - a deflater that throws is `failed` with the text `the compressor failed: <message>`: the
+//   message of the `Error` it threw, or the thrown value as a text when it is no `Error`;
+// - one that answers with something that is not a `Uint8Array` is `failed` with
+//   `the compressor failed: it answered with <what typeof says> where bytes are expected`.
+// Nothing checks that the stream inflates back (deflate.md, "Known limits").
 export const ZIP_ENTRY = {
   stored: { method: 0, version: 10 },
   deflated: { method: 8, version: 20 },
@@ -638,9 +646,10 @@ export declare function zip(entries: readonly ZipEntry[], deflater?: Deflater): 
 // the items, their order, the model part, `about` (`MeshAbout`), the path and the media type.
 export declare function threeMfPackage(objects: readonly (ThreeMfObject & { solid: Solid })[], deflater?: Deflater): Uint8Array;
 // The summary of the entry (replaces `FORMAT_TEXTS['3mf'].summary` above: its last sentence).
+// One text for every engine, so it says both cases, and it names no caller.
 export const THREE_MF_SUMMARY =
   'Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. ' +
-  'One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine was given a compressor (the app and the server give it one): about a fifth of the size of the STL of the same bodies; without one it is about a quarter larger than the STL.';
+  'One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.';
 
 // ---- the adapter
 //
@@ -657,11 +666,16 @@ export declare function createPakoDeflater(): Deflater;
 
 // ---- the app
 //
-// The form of an export as it is in the code (`runExportForm(panel, host, save?)` of
-// `panels/export.ts`; "As implemented" of design.md), with one more member of the host: the
-// compressor the app was started with. A set is saved as `zip(files, host.deflater)`: the STL
-// files of a set are 4.3 to 4.9 times smaller. `App` takes it as its third argument and
-// `main.ts` gives the same one to `createEngine` and to `App`.
+// By default the app changes in one line: `main.ts` gives its engine the compressor, and the
+// form saves a set as `zip(files)`, stored as today.
+//
+// What follows is only for a yes of the owner to the second question of deflate.md, the ZIP of
+// a set compressed too. The form of an export as it is in the code (`runExportForm(panel, host,
+// save?)` of `panels/export.ts`; "As implemented" of design.md), with one more member of the
+// host: the compressor the app was started with. A set is then saved as
+// `zip(files, host.deflater)`: the STL files of a set are 4.3 to 4.9 times smaller. `App` takes
+// it as its third argument, and `main.ts` gives the same one to `createEngine` and to `App`
+// (`new App(engine, undefined, deflater)`); the kit of the tests of the app at its two places.
 export interface ExportHost {
   readonly engine: Pick<EngineAfter2g, 'export'>;
   readonly marker: Id | null;

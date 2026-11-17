@@ -230,14 +230,13 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     expect(takenOver(engine.getState().document, { type: 'batch', commands: [...cylinder('washer', 0, 0, 6, 8, 9), { type: 'setBodyProperties', body: 'washer', patch: { use: 'reference' } }] })).toEqual([]);
   });
 
-  it('e. save and load: version 7, the step of the section before those of 5a and 3b, and a field this build does not know is refused', () => {
-    // the branch d36/5c: its step is pending (the merge makes it 0, version 8 without names); the
-    // steps of 5a and 3b come after the one of 3a
-    expect(SCHEMA_PENDING).toBe(1);
+  it('e. save and load: version 8, the step of the section before those of 5a, 3b and 5c, and a field this build does not know is refused', () => {
+    // master after the merge of 5c: no step is pending; the steps of 5a, 3b and 5c come after the one of 3a
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.map((step) => step.name).slice(-4)).toEqual(['3a-body-properties', '5a-mechanism', '3b-mesh-import', '5c-more-planes']);
     const saved = JSON.parse(engine.save());
-    expect(saved.schemaVersion).toBe(7);
-    expect(saved.schemaSteps).toEqual(['5c-more-planes']);
+    expect(saved.schemaVersion).toBe(8);
+    expect(saved.schemaSteps).toBeUndefined();
     const document = engine.getState().document;
     const loaded = engine.load(JSON.stringify(saved));
     expect(loaded.ok && loaded.state.document.bodyProperties).toEqual(document.bodyProperties);
@@ -559,12 +558,11 @@ describe('scenario 13, the part of 5a: two revolute joints, the pose stepped thr
     engine.undo();
   });
 
-  it('f. save and load: version 7, a field this build does not know is refused, a removed axis loads', () => {
-    // the branch d36/5c: its step is pending (the merge makes it 0, version 8 without names)
-    expect(SCHEMA_PENDING).toBe(1);
+  it('f. save and load: version 8, a field this build does not know is refused, a removed axis loads', () => {
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES[4]?.name).toBe('5a-mechanism');
     const saved = JSON.parse(engine.save());
-    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([7, ['5c-more-planes']]);
+    expect([saved.schemaVersion, saved.schemaSteps]).toEqual([8, undefined]);
     const elbow = saved.mechanism.joints.elbow;
     expect(engine.load(JSON.stringify({ ...saved, mechanism: { ...saved.mechanism, joints: { ...saved.mechanism.joints, elbow: { ...elbow, damping: 2.5 } } } }))).toMatchObject({ ok: false, error: { code: 'invalidDocument', message: expect.stringContaining('damping') } });
     // a document of master with 3a (version 5, no names) gets the empty mechanism
@@ -1108,7 +1106,7 @@ describe('scenario 13, the part of 5b: the arm as URDF and as MJCF, with the dri
   });
 
   it('f. save and load: the drive is kept with its expression; no upgrade step (the joint validator refuses fields it does not know)', () => {
-    expect(SCHEMA_PENDING).toBe(1); // the branch d36/5c: its own step; the merge makes it 0
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.map((step) => step.name)).not.toContain('5b-drive');
     const saved = engine.save();
     expect(JSON.parse(saved).mechanism.joints.elbow).toMatchObject({ effort: 1100, velocity: 6.2, expressions: { effort: 'servoTorque' } });
@@ -1596,8 +1594,8 @@ describe('scenario 13, the part of 3b: the motor as the mesh of a bought part', 
   it('g. save and load: the section in the saved document, a mesh edited to be open refused, a lost mesh a broken reference', () => {
     const json = engine.save();
     const document = JSON.parse(json);
-    // the branch d36/5c: version 7 with its pending step (the merge makes it [8, undefined])
-    expect([document.schemaVersion, document.schemaSteps]).toEqual([7, ['5c-more-planes']]);
+    // master after the merge of 5c: version 8, no names
+    expect([document.schemaVersion, document.schemaSteps]).toEqual([8, undefined]);
     expect(UPGRADES[5]?.name).toBe('3b-mesh-import');
     expect(typeof document.meshes.nema.positions).toBe('string');
     expect(document.meshes.nema.name).toBe('motor.stl');
@@ -1815,7 +1813,7 @@ describe('scenario 13, the part of 3d: a pocket with a clearance, a union and a 
     const after = done(engine.load(engine.save()));
     for (const body of ['upper', 'lower', 'motor']) expect(after.evaluation.bodies[body].volume).toBeCloseTo(before.evaluation.bodies[body].volume, 9);
     expect('mount' in after.evaluation.bodies).toBe(false);
-    expect(SCHEMA_PENDING).toBe(1); // the branch d36/5c: its own step; the merge makes it 0
+    expect(SCHEMA_PENDING).toBe(0);
     expect(UPGRADES.some((step) => step.name.startsWith('3d'))).toBe(false);
     expect(FEATURE_TYPE_INFO.combine.fields.map((field) => field.path)).toEqual(['clearance']);
     expect(FACE_ROLES.splitFace.title).toBe('cut face of a split');
@@ -1968,11 +1966,12 @@ describe('scenario 13, the part of 5c: a plane tilted about a hinge, a wrist on 
     nearV(planeOf(removed, 'wristPlane')?.origin, [0, 0, 16]);
   });
 
-  it('f. save and load: the same document; the branch lists the step', () => {
+  it('f. save and load: the same document; the step is the last of the list', () => {
     const before = engine.getState();
     const loaded = engine.load(engine.save());
     expect(loaded.ok).toBe(true);
     expect(JSON.stringify(engine.getState().document)).toBe(JSON.stringify(before.document));
-    expect(UPGRADES.slice(UPGRADES.length - SCHEMA_PENDING).map((step) => step.name)).toContain('5c-more-planes');
+    expect(UPGRADES.at(-1)?.name).toBe('5c-more-planes');
+    expect(JSON.parse(engine.save()).schemaVersion).toBe(8);
   });
 });

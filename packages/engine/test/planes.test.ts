@@ -251,16 +251,19 @@ describe('the tilted frame', () => {
 });
 
 describe('the upgrade step 5c-more-planes', () => {
-  it('converts nothing; a document of the branch is refused by a build without the step', () => {
+  it('converts nothing; a build without the step refuses the document, a document of the branch loads', () => {
     const step = UPGRADES.find((entry) => entry.name === '5c-more-planes');
     expect(step).toBeDefined();
     expect(UPGRADES.at(-1)).toBe(step);
-    // the branch d36/5c: pending until the merge
-    expect(SCHEMA_PENDING).toBe(1);
+    // merged: no step is pending
+    expect(SCHEMA_PENDING).toBe(0);
     const doc = run(base(), plane('P', { tilt: { axis: X, angle: 0.5 }, midplaneWith: { kind: 'face', body: 'E', face: TOP } }));
     const saved = JSON.parse(JSON.stringify({ ...schemaHeader(), ...doc }));
     expect(step?.run(saved)).toBe(saved);
     expect(validateDocument(saved)).toEqual(doc);
-    expect(() => upgradeDocument(saved, UPGRADES.slice(0, -1), 0)).toThrow(/this build has no upgrade step "5c-more-planes"/);
+    // a build without the step (master before the merge of 5c) refuses it by its version
+    expect(() => upgradeDocument(saved, UPGRADES.slice(0, -1), 0)).toThrow(/the schema version 8 is newer than this build reads \(it saves 7\)/);
+    // a document of the branch d36/5c before the merge (version 7 naming the step) loads the same
+    expect(validateDocument({ ...saved, schemaVersion: 7, schemaSteps: ['5c-more-planes'] })).toEqual(doc);
   });
 });

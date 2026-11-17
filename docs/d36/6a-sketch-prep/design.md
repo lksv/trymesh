@@ -407,6 +407,15 @@ As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `in
 - **Checked before and after**, in a copy of `master` and in the tree: a plate with a projected line and circle, constraints on both, a projection that is lost (its edge removed, the frozen value used), the saved document loaded again, and the fixture `v1-plate.json` give the same documents (stamps, stored values), the same results and the same meshes, byte for byte.
 - The vocabulary of step 6 is written into `docs/architecture/sketch.md` and the rule of the face key into `docs/architecture/naming.md`.
 
+### Part 2: the profile from a list of curves
+
+As designed: `SketchCurve`, `sketchCurves`, `joinPairs`, `joinsOf` and `profileOf` in `sketch.ts`; `detectProfile` and `pointJoins` stay as the forms over the own content; `SketchState` has `curves` and `joins`, built by the sketch step from the resolved entries; `curveOf`, the circle operand of a generator and the axis `sketchLine` read `curves`. No test and no public type changed. Beside the design:
+
+- **The one shape function** is `placedCurve(curve, radii, end, centre)`: the ends through `end` (the joined vertex in the profile and the wall, the raw position in `curveOf`), the centre through `centre` (raw), an arc's `start` and `sweep` and its radius from its first end, which are the numbers the three places computed each. It answers undefined for a missing position or radius: the wall then reports a broken reference as before; the profile calls the sketch invalid (before, a missing point could not happen and would have thrown).
+- **The wall** is `wallOfCurves(curves, joins, geometry, ids, …)` over the list and the joins of the state; `wallOutline` keeps its signature and builds them from the own content. A curve of the list that is not own is a broken reference of the wall, as a curve the sketch does not have was. `curveEnds(shape)` (`sketch.ts`) names the points at the ends of a line or an arc.
+- `joinPairs` takes the resolved entries and reads none of them yet: the declared joins and the join keys are 6c's and 6b's.
+- **Checked before and after**, as for part 1, with a wall along two lines and a region extruded with an offset added: the same documents, results and meshes, byte for byte. The tests of the taper and the offset, which compare outlines to the last digit, pass unchanged.
+
 ## Rows for the indexes
 
 **docs/d36/README.md**, the row of 6a, column "Design now":

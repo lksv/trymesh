@@ -6,7 +6,7 @@ import { externalRef, kindOf, resolveReferences, storedValue } from '../referenc
 import { derivedPoints, entityOf } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
-import { type SketchGeometry, detectProfile, measure, ownVariables, solverSetup } from '../sketch';
+import { type SketchGeometry, joinPairs, joinsOf, measure, ownVariables, profileOf, sketchCurves, solverSetup } from '../sketch';
 import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
 import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, SketchFeature, SolveInput, SolveResult } from '../types';
 import { ORIGIN, has, unreachable } from '../util';
@@ -170,7 +170,10 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   const inOrder = <T>(order: Record<Id, T>, values: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.keys(order).map((id) => [id, values[id]]));
   const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
   const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;
-  const profile = detectProfile(feature, geometry, settings.chordTolerance);
+  // the curves of the sketch and its joins, read by the profile and by what a later feature reads
+  const curves = new Map(sketchCurves(feature, resolved).map((curve) => [curve.id, curve]));
+  const joins = joinsOf(joinPairs(feature, resolved), geometry);
+  const profile = profileOf([...curves.values()], joins, geometry, settings.chordTolerance);
   const sketchResult: FeatureResult = {
     status: warnings.length ? 'warning' : 'ok',
     warnings,
@@ -188,7 +191,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
     },
   };
   const solve = { status: result.status, conflicting: result.conflicting };
-  return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, profile, input, solve, analysis } } }), writeBack };
+  return { state: done(sketchResult, { sketches: { ...state.sketches, [feature.id]: { feature, frame, geometry, curves, joins, profile, input, solve, analysis } } }), writeBack };
 }
 
 export const sketch: FeatureModule<SketchFeature> = {

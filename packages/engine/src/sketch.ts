@@ -1,14 +1,124 @@
 // Skica: vstup solveru a razítko, referenční kóty, detekce profilů a oblastí.
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
-import type { ResolvedReference } from './references/spec';
+import type { GeometrySource, ResolvedReference } from './references/spec';
 import { constraintOperands, isDimension } from './sketch-content';
-import type { Constraint, Curve, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
+import type { Constraint, Curve, CurveShape, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2, unreachable } from './util';
 
 // Použité polohy: vlastní body, počátek a body promítnuté geometrie; poloměry kružnic včetně promítnutých.
 export interface SketchGeometry {
   points: Record<Id, Point2>;
   radii: Record<Id, number>;
+}
+
+// ---------------------------------------------------------------- the curves of a sketch (D64, part 2)
+
+// A curve of a sketch as the profile, the sides of a profile and the wall read it: its shape over
+// IDs of points (positions in `SketchGeometry.points`, the radius of a circle in `radii`), where it
+// comes from, and whether it forms regions (an own curve when it is not a construction curve; an
+// entry's curve when its kind says so, `EntryGeometry.regions`).
+export interface SketchCurve {
+  id: Id;
+  shape: CurveShape;
+  source: GeometrySource;
+  regions: boolean;
+}
+
+// The curves of a sketch: the own ones, then those of the resolved entries of `external`. The
+// order does not matter to a reader: the profile sorts the curves that form regions by ID.
+export function sketchCurves(feature: SketchFeature, references: Record<Id, ResolvedReference>): SketchCurve[] {
+  const out: SketchCurve[] = [];
+  for (const [id, c] of Object.entries(feature.curves)) {
+    const { construction, ...shape } = c;
+    out.push({ id, shape: shape as CurveShape, source: 'own', regions: construction !== true });
+  }
+  for (const reference of Object.values(references)) {
+    const { curves, regions } = reference.geometry;
+    for (const [id, shape] of Object.entries(curves)) out.push({ id, shape, source: 'reference', regions: regions.includes(id) });
+  }
+  return out;
+}
+
+// The pairs of points that may join: the operands of every `coincident` of the sketch. (The pairs
+// an entry declares and the points of entries with the same join key come after them, D64; no kind
+// of today has any.)
+export function joinPairs(feature: SketchFeature, _references: Record<Id, ResolvedReference>): [Id, Id][] {
+  return Object.values(feature.constraints).flatMap((c): [Id, Id][] => (c.type === 'coincident' ? [[c.a, c.b]] : []));
+}
+
+// Spojování bodů: tentýž bod, nebo dvojice (vazba coincident), která je v použitých polohách splněná.
+// Tranzitivní, jde i přes počátek a promítnuté body. The answer is the vertex of a point: the point
+// with the smallest ID of those it is joined with. The profile of a sketch and the chain of a wall
+// (recompute/outline.ts) join points by this rule.
+export function joinsOf(pairs: readonly [Id, Id][], geometry: SketchGeometry): (id: Id) => Id {
+  const parent = new Map<Id, Id>(Object.keys(geometry.points).map((id) => [id, id]));
+  const find = (id: Id): Id => {
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root) as Id;
+    return root;
+  };
+  for (const [a, b] of pairs) {
+    if (!parent.has(a) || !parent.has(b)) continue;
+    if (dist2(xy(geometry.points[a]), xy(geometry.points[b])) > LENGTH_TOLERANCE) continue;
+    const [ra, rb] = [find(a), find(b)];
+    if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
+  }
+  return find;
+}
+
+// The joins of the own content: the coincident pairs (the fillet's corner, and the tests).
+export const pointJoins = (sketch: SketchFeature, geometry: SketchGeometry): ((id: Id) => Id) => joinsOf(joinPairs(sketch, {}), geometry);
+
+// One end of a curve as a reader gives it: the key of its vertex and its position.
+export interface CurveEnd {
+  key: string;
+  p: Vec2;
+}
+// A curve with its positions: the one function that the profile, the side of a profile
+// (`curveOf` of recompute/profile.ts) and the wall read a curve through. `end` reads the position
+// of an end (the profile and the wall at the joined vertex, the side raw), `centre` the position of
+// a centre (raw everywhere); undefined when a point or the radius of a circle has no position.
+// An arc runs counter-clockwise from `a` at the angle `start` by `sweep` in (0, 2π].
+export type PlacedCurve =
+  | { type: 'line'; a: CurveEnd; b: CurveEnd }
+  | { type: 'circle'; center: Vec2; radius: number }
+  | { type: 'arc'; a: CurveEnd; b: CurveEnd; center: Vec2; radius: number; start: number; sweep: number };
+export function placedCurve(curve: SketchCurve, radii: Record<Id, number>, end: (id: Id) => CurveEnd | undefined, centre: (id: Id) => Vec2 | undefined): PlacedCurve | undefined {
+  const shape = curve.shape;
+  switch (shape.type) {
+    case 'line': {
+      const [a, b] = [end(shape.a), end(shape.b)];
+      return a && b ? { type: 'line', a, b } : undefined;
+    }
+    case 'circle': {
+      const center = centre(shape.center);
+      const radius = has(radii, curve.id) ? radii[curve.id] : undefined;
+      return center && radius !== undefined ? { type: 'circle', center, radius } : undefined;
+    }
+    case 'arc': {
+      const [a, b, center] = [end(shape.start), end(shape.end), centre(shape.center)];
+      if (!a || !b || !center) return undefined;
+      const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
+      const sweep = positive(Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) || TAU;
+      return { type: 'arc', a, b, center, radius: dist2(a.p, center), start, sweep };
+    }
+    default:
+      return unreachable(shape, 'curve');
+  }
+}
+
+// The two points a line or an arc names at its ends (`a`, `b`; `start`, `end`); a circle has none.
+export function curveEnds(shape: CurveShape): [Id, Id] | undefined {
+  switch (shape.type) {
+    case 'line':
+      return [shape.a, shape.b];
+    case 'arc':
+      return [shape.start, shape.end];
+    case 'circle':
+      return undefined;
+    default:
+      return unreachable(shape, 'curve');
+  }
 }
 
 // ---------------------------------------------------------------- vstup solveru
@@ -360,70 +470,51 @@ export function soundTessellation(regions: Region[]): boolean {
   return true;
 }
 
-// Spojování bodů: tentýž bod, nebo vazba coincident, která je v použitých polohách splněná.
-// Tranzitivní, jde i přes počátek a promítnuté body. Vrchol nese polohu bodu s nejmenším ID.
-// The answer is the vertex of a point: the point with the smallest ID of those it is joined with.
-// The profile of a sketch and the chain of a wall (recompute/outline.ts) join points by this rule.
-export function pointJoins(sketch: SketchFeature, geometry: SketchGeometry): (id: Id) => Id {
-  const parent = new Map<Id, Id>(Object.keys(geometry.points).map((id) => [id, id]));
-  const find = (id: Id): Id => {
-    let root = id;
-    while (parent.get(root) !== root) root = parent.get(root) as Id;
-    return root;
-  };
-  for (const c of Object.values(sketch.constraints)) {
-    if (c.type !== 'coincident' || !parent.has(c.a) || !parent.has(c.b)) continue;
-    if (dist2(xy(geometry.points[c.a]), xy(geometry.points[c.b])) > LENGTH_TOLERANCE) continue;
-    const [ra, rb] = [find(c.a), find(c.b)];
-    if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
-  }
-  return find;
+// The profile of the own curves with the coincident joins (the form the tests call).
+export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, chordTolerance: number): Profile {
+  return profileOf(sketchCurves(sketch, {}), pointJoins(sketch, geometry), geometry, chordTolerance);
 }
 
-// Projde skicu a najde oblasti. Konstrukční a promítnuté křivky se ignorují.
-export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, chordTolerance: number): Profile {
+// Najde oblasti z křivek, které je tvoří (`regions`), seřazených podle ID; konstrukční a promítnuté
+// křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
+export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Profile {
   const tol = LENGTH_TOLERANCE;
-  const find = pointJoins(sketch, geometry);
-  const vertex = (id: Id): { key: string; p: Vec2 } => ({ key: find(id), p: xy(geometry.points[find(id)]) });
+  const find = joins;
+  const vertex = (id: Id): CurveEnd => ({ key: find(id), p: xy(geometry.points[find(id)]) });
+  const centre = (id: Id): Vec2 => xy(geometry.points[id]);
 
   const shapes: Shape[] = [];
   let valid = true;
-  for (const id of Object.keys(sketch.curves).sort()) {
-    const c = sketch.curves[id];
-    if (c.construction) continue;
+  for (const curve of curves.filter((c) => c.regions).sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0))) {
+    const id = curve.id;
+    const c = placedCurve(curve, geometry.radii, vertex, centre);
+    if (!c) {
+      valid = false; // a curve without a position or a radius
+      continue;
+    }
     switch (c.type) {
-      case 'circle': {
-        const r = geometry.radii[id];
-        if (!(r > tol)) valid = false;
-        else shapes.push({ id, kind: 'circle', c: xy(geometry.points[c.center]), r });
+      case 'circle':
+        if (!(c.radius > tol)) valid = false;
+        else shapes.push({ id, kind: 'circle', c: c.center, r: c.radius });
         continue;
-      }
-      case 'line': {
-        const [a, b] = [vertex(c.a), vertex(c.b)];
-        if (a.key === b.key || dist2(a.p, b.p) <= tol) {
+      case 'line':
+        if (c.a.key === c.b.key || dist2(c.a.p, c.b.p) <= tol) {
           valid = false; // křivka nulové délky
           continue;
         }
-        shapes.push({ id, kind: 'line', a: a.key, b: b.key, pa: a.p, pb: b.p });
+        shapes.push({ id, kind: 'line', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p });
         continue;
-      }
-      case 'arc': {
-        const [a, b] = [vertex(c.start), vertex(c.end)];
-        if (a.key === b.key || dist2(a.p, b.p) <= tol) {
+      case 'arc':
+        if (c.a.key === c.b.key || dist2(c.a.p, c.b.p) <= tol) {
           valid = false; // křivka nulové délky
           continue;
         }
-        const center = xy(geometry.points[c.center]);
-        const r = dist2(a.p, center);
-        if (!(r > tol)) {
+        if (!(c.radius > tol)) {
           valid = false;
           continue;
         }
-        const start = Math.atan2(a.p[1] - center[1], a.p[0] - center[0]);
-        const sweep = positive(Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) || TAU;
-        shapes.push({ id, kind: 'arc', a: a.key, b: b.key, pa: a.p, pb: b.p, c: center, r, start, sweep });
+        shapes.push({ id, kind: 'arc', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p, c: c.center, r: c.radius, start: c.start, sweep: c.sweep });
         continue;
-      }
       default:
         unreachable(c, 'curve');
     }

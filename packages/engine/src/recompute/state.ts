@@ -1,6 +1,6 @@
 // The state of the recompute between features and the types a step of a feature works with.
 import type { SketchAnalysis } from '../analysis';
-import type { OutlineCurve, Profile, Region, SketchGeometry } from '../sketch';
+import type { OutlineCurve, Profile, Region, SketchCurve, SketchGeometry } from '../sketch';
 import type { FaceInfo, RigidTransform } from '../solid';
 import type { CheckResult, CopyTag, Document, ExpressionError, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, StoredDocument, Vec2 } from '../types';
 
@@ -156,7 +156,11 @@ export interface ResolvedProfile {
 export interface SketchState {
   feature: SketchFeature;
   frame: Frame;
-  geometry: SketchGeometry;
+  geometry: SketchGeometry; // every used position: own, the origin, the entries of `external`
+  // Every curve of the sketch (own and of the entries, D64): what the profile, the sides, the wall,
+  // an axis on a line and the circle of a generator read, not the input of the solver.
+  curves: ReadonlyMap<Id, SketchCurve>;
+  joins: (id: Id) => Id; // the vertex of a point (`joinsOf`)
   profile: Profile;
   input: SolveInput;
   solve: { status: SolveResult['status']; conflicting: Id[] };

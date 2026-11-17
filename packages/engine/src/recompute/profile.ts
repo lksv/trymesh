@@ -1,10 +1,10 @@
 // A profile source of a feature turned into regions in the plane of its sketch. A service of the
 // recompute, not a part of the extrusion: every feature that builds a tool over a profile uses it.
 import { GENERATORS, type ResolvedOperand, generateProfile } from '../generators';
-import { type Loop, type Region, sameRegion } from '../sketch';
+import { type Loop, type Region, type SketchCurve, placedCurve, sameRegion } from '../sketch';
 import type { Id, ProfileSource } from '../types';
 import { unreachable } from '../util';
-import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, shown, sideShape, wallOutline } from './outline';
+import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, shown, sideShape, wallOfCurves } from './outline';
 import { issue, lookup } from './services';
 import type { ProfileProblem, ResolvedProfile, SideCurve, SketchState, State } from './state';
 
@@ -21,18 +21,17 @@ export function profile(id: Id, source: ProfileSource, state: State, chordTolera
   const missing = source.regions.filter((_, i) => !regions[i]);
   if (missing.length) return { code: 'noProfile', refs: missing };
   const { points, radii } = sketch.geometry;
+  // the shape of a side from the raw positions of the curve (its ends are not joined here)
   const curveOf = (id: Id): SideCurve => {
-    const curve = sketch.feature.curves[id];
     const at = (point: Id): [number, number] => [points[point].x, points[point].y];
+    const curve = placedCurve(sketch.curves.get(id) as SketchCurve, radii, (point) => ({ key: point, p: at(point) }), at);
+    if (!curve) throw new Error(`the curve "${id}" of a region has no position`); // a region names solved curves
     switch (curve.type) {
       case 'line':
-        return { type: 'line', a: at(curve.a), b: at(curve.b) };
+        return { type: 'line', a: curve.a.p, b: curve.b.p };
       case 'circle':
-        return { type: 'round', center: at(curve.center), radius: radii[id] };
-      case 'arc': {
-        const center = at(curve.center);
-        return { type: 'round', center, radius: Math.hypot(points[curve.start].x - center[0], points[curve.start].y - center[1]) };
-      }
+      case 'arc':
+        return { type: 'round', center: curve.center, radius: curve.radius };
       default:
         return unreachable(curve, 'curve');
     }
@@ -60,7 +59,7 @@ export function profile(id: Id, source: ProfileSource, state: State, chordTolera
 // sketch profile being valid: the centre line of a rib ends on the wall it stiffens.
 function wall(source: Extract<ProfileSource, { type: 'wall' }>, sketch: SketchState, chordTolerance: number): ResolvedProfile | ProfileProblem {
   const move: Move = { subject: `The wall ${shown(source.thickness)} mm thick`, cure: 'Make the wall thinner or its bends wider, or draw its outline in the sketch and extrude that.' };
-  const found = wallOutline(sketch.feature, sketch.geometry, source.curves, source.thickness, move);
+  const found = wallOfCurves(sketch.curves, sketch.joins, sketch.geometry, source.curves, source.thickness, move);
   if ('code' in found) return found;
   const built = outlineRegions(found.outline, found.nesting, chordTolerance, move, found.curveOf);
   if ('code' in built) return built;
@@ -83,7 +82,7 @@ function generated(id: Id, source: Extract<ProfileSource, { type: 'generated' }>
       operands[field] = { kind: 'point', at: [point.x, point.y] };
       continue;
     }
-    const curve = kinds.includes('circle') ? lookup(sketch.input.curves, entity) : undefined;
+    const curve = kinds.includes('circle') ? sketch.curves.get(entity)?.shape : undefined;
     const center = curve?.type === 'circle' ? lookup(points, curve.center) : undefined;
     const radius = lookup(radii, entity);
     if (!center || radius === undefined) return { code: 'brokenReference', refs: [entity] };

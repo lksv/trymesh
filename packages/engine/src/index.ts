@@ -90,4 +90,5 @@ export {
   placeAnchor,
   sketchTool,
 } from './sketch-tools';
+export { CUT_IDS, type CutIds, type ExtendInput, type PieceShape, type SplitInput, type TrimInput, extendEnd, extendReach, profileContacts, trimPiece } from './sketch-cut';
 export type { Deps } from './evaluate';

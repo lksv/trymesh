@@ -414,6 +414,105 @@ function compatible(A: Shape, B: Shape, tol: number): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------- contacts as points to cut at (D65)
+
+// Where two curves meet as points a cut can be made at: what the tools trim, extend and split read
+// (sketch-cut.ts). It is built from the same carrier contacts, ends, tolerance and reach around
+// a shared vertex as `compatible`, which keeps its own code; the middles `compatible` also tries
+// are only a probe for an overlap, never a place to cut.
+// - `points`: a crossing or a touch away from the reach of a vertex the two share; an end of one
+//   on the other away from its ends (a T); of two lines on one line or two arcs on one circle that
+//   share a stretch, the ends of each that lie strictly inside the other. Each once, an end of
+//   either curve before a computed point at the same place.
+// - `ends`: ends of the two at one place (within the tolerance) that are not one vertex, as the
+//   indices of the end of each (0 the start, 1 the end): the profile rejects them and a cut cannot
+//   repair them; joining them can.
+// - `lying`: the two lie on each other along a stretch (an overlap, a duplicate) or are two curves
+//   of one circle of which one is a circle: the profile rejects them whatever is cut.
+export interface ShapeContacts {
+  points: Vec2[];
+  ends: [number, number][];
+  lying: boolean;
+}
+
+function shapeContacts(A: Shape, B: Shape, tol: number): ShapeContacts {
+  const endsOf = (s: Shape): [string, Vec2][] => (s.kind === 'circle' ? [] : [[s.a, s.pa], [s.b, s.pb]]);
+  const [endsA, endsB] = [endsOf(A), endsOf(B)];
+  const ends: [number, number][] = [];
+  endsA.forEach(([ka, pa], i) => endsB.forEach(([kb, pb], j) => ka !== kb && dist2(pa, pb) <= tol && ends.push([i, j])));
+  const atEnd = (p: Vec2, list: [string, Vec2][]): boolean => list.some(([, q]) => dist2(p, q) <= tol);
+  const points: Vec2[] = [];
+  const add = (p: Vec2): void => {
+    if (!points.some((q) => dist2(p, q) <= tol)) points.push(p);
+  };
+  const [roundA, roundB] = [roundOf(A), roundOf(B)];
+  const sameCircle = roundA !== undefined && roundB !== undefined && dist2(roundA.c, roundB.c) <= tol && Math.abs(roundA.r - roundB.r) <= tol;
+  const sameLine = A.kind === 'line' && B.kind === 'line' && lineDistance(B.pa, A) <= tol && lineDistance(B.pb, A) <= tol;
+  if (sameCircle || sameLine) {
+    if (A.kind === 'circle' || B.kind === 'circle') return { points: [], ends, lying: true };
+    // an overlap: the ends of each strictly inside the other
+    for (const [own, other] of [
+      [endsA, B],
+      [endsB, A],
+    ] as const) {
+      for (const [, p] of own) if (distanceTo(p, other) <= tol && !atEnd(p, endsOf(other))) add(p);
+    }
+    const lying = points.length > 0 || distanceTo(midpoint(A as Open), B) <= tol || distanceTo(midpoint(B as Open), A) <= tol;
+    return { points, ends, lying };
+  }
+  const shared = endsA.filter(([ka]) => endsB.some(([kb]) => kb === ka)).map(([, p]) => p);
+  const reach = 10 * tol + (roundA || roundB ? Math.sqrt(8 * Math.max(roundA?.r ?? 0, roundB?.r ?? 0) * tol) : 0);
+  // the ends first, so that a T is cut at the end itself and not at a computed point beside it
+  const candidates: Vec2[] = [...endsA.map(([, p]) => p), ...endsB.map(([, p]) => p), ...carrierContacts(A, B, tol)];
+  for (const p of candidates) {
+    if (distanceTo(p, A) > tol || distanceTo(p, B) > tol) continue;
+    if (shared.some((v) => dist2(p, v) <= reach)) continue;
+    if (atEnd(p, endsA) && atEnd(p, endsB)) continue; // two ends at one place: `ends`
+    add(p);
+  }
+  return { points, ends, lying: false };
+}
+
+// The distance of a point from the line (the whole line, not the segment) of a line shape.
+function lineDistance(p: Vec2, s: Extract<Shape, { kind: 'line' }>): number {
+  const d = sub2(s.pb, s.pa);
+  const length = len2(d);
+  return length === 0 ? dist2(p, s.pa) : Math.abs(cross2(d, sub2(p, s.pa))) / length;
+}
+
+// The shape of a curve of a sketch with its ends at their joined vertices (as the profile reads
+// it), or undefined when it has no position or no length.
+function shapeOfCurve(curve: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): Shape | undefined {
+  const vertex = (id: Id): CurveEnd | undefined => (has(geometry.points, joins(id)) ? { key: joins(id), p: xy(geometry.points[joins(id)]) } : undefined);
+  const centre = (id: Id): Vec2 | undefined => (has(geometry.points, id) ? xy(geometry.points[id]) : undefined);
+  const c = placedCurve(curve, geometry.radii, vertex, centre);
+  if (!c) return undefined;
+  switch (c.type) {
+    case 'circle':
+      return c.radius > LENGTH_TOLERANCE ? { id: curve.id, kind: 'circle', c: c.center, r: c.radius } : undefined;
+    case 'line':
+      return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE ? { id: curve.id, kind: 'line', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p } : undefined;
+    case 'arc':
+      return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE && c.radius > LENGTH_TOLERANCE ? { id: curve.id, kind: 'arc', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p, c: c.center, r: c.radius, start: c.start, sweep: c.sweep } : undefined;
+    default:
+      return unreachable(c, 'curve');
+  }
+}
+
+// The contacts of two curves of a sketch (`ShapeContacts`), with the joins of the profile (`joins`,
+// the vertex of a point). Undefined when either has no position or no length.
+export function curveContacts(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): ShapeContacts | undefined {
+  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+  return A && B ? shapeContacts(A, B, LENGTH_TOLERANCE) : undefined;
+}
+
+// Whether two curves of a sketch touch apart from a vertex they share: the test of the profile
+// (`compatible`) for one pair. A curve without a position or a length touches everything.
+export function curvesTouch(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): boolean {
+  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+  return !A || !B || !compatible(A, B, LENGTH_TOLERANCE);
+}
+
 // Na kolik úseček se dělí oblouk. Strop brání tomu, aby obří poloměr nebo nepatrná tolerance
 // vyžádaly milióny úseček (pro r/tolerance nad 1e16 vychází krok nula); nad ním už dělení
 // toleranci nedodrží.

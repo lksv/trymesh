@@ -4,6 +4,7 @@
 // reaches MCP without the app; a tool here that runs an engine tool calls `sketchTool`.
 import { arc } from './arc';
 import { circle } from './circle';
+import { extend } from './extend';
 import { fillet } from './fillet';
 import { line } from './line';
 import { point } from './point';
@@ -11,10 +12,12 @@ import { polygon } from './polygon';
 import { project } from './project';
 import { rect } from './rect';
 import { select } from './select';
+import { split } from './split';
 import type { SketchToolUi } from './spec';
+import { trim } from './trim';
 
 // Each entry is written with its own type of options; the table forgets it, as `FEATURE_UI` does.
-const TABLE = { select, point, line, rect, polygon, circle, arc, fillet, project };
+const TABLE = { select, point, line, rect, polygon, circle, arc, fillet, trim, extend, split, project };
 
 export type SketchToolName = keyof typeof TABLE;
 export const SKETCH_TOOL_UI: { readonly [T in SketchToolName]: SketchToolUi<any> } = TABLE;

@@ -1514,6 +1514,59 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'combine-split');
   });
 
+  it('trim, extend and split in the sketch bar (D65): the piece under the pointer, the marks of the crossings, Split crossings, refusals', async () => {
+    const h = await start();
+    h.press('toolbar', 'Skica');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Obdélník');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Vysunutí');
+    h.press('panel', 'OK');
+    doubleClick(h, 'Skica 1');
+    h.press('toolbar', 'Kružnice');
+    h.click(at(20, -8));
+    h.click(at(32, -8));
+    h.record('a circle across the bottom edge: the profile is invalid, its two crossings marked, the panel says how to repair it');
+
+    h.press('toolbar', 'Trim');
+    h.move(at(20, -19.9));
+    h.record('the tool Trim over the circle below the edge: the piece between the crossings drawn dashed');
+    h.click(at(20, -19.9));
+    h.record('a click removes it: the circle is an arc, the edge cut at the crossings, the extrusion followed; the status says so');
+    h.move(at(20, 0.05));
+    h.record('over the piece of the edge inside the arc');
+    h.click(at(20, 0.05));
+    h.record('removed: the outline is notched, the half disc gone from the extrusion');
+    h.click(at(70, 70));
+    h.record('a click away from every curve says what the tool wants');
+
+    h.press('toolbar', 'Úsečka');
+    h.click(at(10, 10));
+    h.click(at(10, 20));
+    h.key('Escape');
+    h.press('toolbar', 'Extend');
+    h.move(at(10, 19));
+    h.record('the tool Extend near the upper end of a line inside: its extension to the top side drawn dashed');
+    h.click(at(10, 19));
+    h.record('a click extends it: the top side cut there');
+    h.click(at(0.05, 15));
+    h.record('an end two curves share is refused with the reason');
+
+    h.press('toolbar', 'Úsečka');
+    h.click(at(35, -10));
+    h.click(at(35, 40));
+    h.key('Escape');
+    h.press('toolbar', 'Split');
+    h.record('a line across the outline; the tool Split shows Split crossings in its panel');
+    h.press('panel', 'Split crossings');
+    h.record('every crossing of the outline cut; the extrusion keeps its body in two regions');
+    h.click(at(0.05, 25));
+    h.record('a curve nothing crosses is refused with the reason');
+    await matches(h, 'trim');
+  });
+
   it('a chamfer and a fillet of edges picked in the view from the body before them: the list, a removal, the size, the summary (D63)', async () => {
     const h = await start();
     const sketch = 'plateS';

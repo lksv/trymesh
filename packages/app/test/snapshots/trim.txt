@@ -1,0 +1,508 @@
+
+=== 1. a circle across the bottom edge: the profile is invalid, its two crossings marked, the panel says how to repair it
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x2)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x6)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":20,"y":-8},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":12}]}) -> ok
+  engine: diagnoseSketch("s1")
+  features: s1, e1
+  feature s1:
+      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":30}
+      point p2: {"x":40,"y":0}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":20,"y":-8}
+      radius c5: 12
+      curve c1: {"type":"line","a":"origin","b":"p2"}
+      curve c2: {"type":"line","a":"p2","b":"p1"}
+      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
+  toolbar:
+      div.group
+        button title="Prázdný dokument": "Nový"
+        button: "Otevřít"
+        button: "Uložit"
+        button disabled: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Zpět"
+        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+      div.group
+        button title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
+        button title="Klikněte na místo bodu.": "Bod"
+        button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
+        button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+        button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+        button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+        button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+        button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
+        button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
+        button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+        button title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+        button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+      div.group
+        button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
+      div.group
+        button.primary: "Dokončit skicu"
+      div.group
+        button: "Zobrazit vše"
+        button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+  timeline:
+      h2: "Časová osa"
+      div.row.ok.selected.editing
+        span.dot: "●"
+        span.name: "Skica 1"
+        button.icon disabled title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+      div.row.error title="Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky."
+        span.dot: "✖"
+        span.name: "Vysunutí 1"
+        button.icon disabled title="Hide or show": "👁"
+        button.icon disabled title="Posunout dřív": "↑"
+        button.icon disabled title="Posunout později": "↓"
+        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+  panel:
+      h2: "Skica: Skica 1"
+      div#sketch-status
+        p.badge.open: "Stupně volnosti: 5"
+        p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
+        p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+      p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4; poloměr c5."
+      div.buttons
+        button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+      h2: "Výběr (0)"
+      div.buttons
+        button disabled title="Dva body leží na stejném místě.": "Totožné"
+        button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+        button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+        button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+        button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+        button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+        button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+        button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+        button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+        button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+        button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+        button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+      div.buttons
+        button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
+        button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
+        button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+      div.buttons
+        button disabled: "Konstrukční"
+        button disabled title="Delete": "Smazat"
+      h2: "Vazby a kóty (4)"
+      div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+        span.name
+          "Vodorovně"
+          small: "c1"
+        button.icon title="Smazat vazbu": "✕"
+      div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+        span.name
+          "Svisle"
+          small: "c2"
+        button.icon title="Smazat vazbu": "✕"
+      div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+        span.name
+          "Vodorovně"
+          small: "c3"
+        button.icon title="Smazat vazbu": "✕"
+      div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+        span.name
+          "Svisle"
+          small: "c4"
+        button.icon title="Smazat vazbu": "✕"
+  status: Klikněte na střed a pak na bod obvodu.
+  view: 21 scene(s) set
+  scene:
+      bodies: (none)
+      line #8b9bb4 width 1: 24 numbers, sum 405.518
+      line #8b9bb4 width 1: 24 numbers, sum 270.345
+      line #8b9bb4 width 1: 24 numbers, sum 135.173
+      line #1d4ed8 width 2 onTop: 600 numbers, sum 10698.442
+      points #dc2626 size 9: 6 numbers, sum 73.167
+      points #1d4ed8 size 7: 12 numbers, sum 318
+      points #a21caf size 7: 3 numbers, sum 0
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.31
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.31
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 19.31
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [40, 30, 0]
+
+=== 2. the tool Trim over the circle below the edge: the piece between the crossings drawn dashed
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  toolbar:
+    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    -   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
+    +   button.active title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
+    -   button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
+  status: Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.
+  view: 2 scene(s) set
+  scene:
+    + line #64748b width 1.5 dashed onTop: 426 numbers, sum 4538.412
+    + points #16a34a size 12: 3 numbers, sum -20
+
+=== 3. a click removes it: the circle is an arc, the edge cut at the crossings, the extrusion followed; the status says so
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p5","x":11.05572809000084,"y":0},{"type":"addPoint","sketch":"s1","id":"p6","x":28.94427190999916,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c1","point":"b","to":"p5"},{"type":"removeEntity","sketch":"s1","id":"c5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p4","start":"p6","end":"p5"}},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"pointOnCurve","point":"p6","curve":"c1"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"pointOnCurve","point":"p2","curve":"c1"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]}}}]}) -> ok
+  feature s1:
+    + point p5: {"x":11.05572809000084,"y":0}
+    + point p6: {"x":28.94427190999916,"y":0}
+    + curve c1: {"type":"line","a":"origin","b":"p5"}
+    - radius c5: 12
+    - curve c1: {"type":"line","a":"origin","b":"p2"}
+    + curve c5: {"type":"arc","center":"p4","start":"p6","end":"p5"}
+    + curve c6: {"type":"line","a":"p5","b":"p6"}
+    + curve c7: {"type":"line","a":"p6","b":"p2"}
+    - curve c5: {"type":"circle","center":"p4"}
+    + constraint k5: {"type":"pointOnCurve","point":"p6","curve":"c1"}
+    + constraint k6: {"type":"pointOnCurve","point":"p2","curve":"c1"}
+  feature e1:
+    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button: "Export STL"
+    -   button disabled: "Export STL"
+  timeline:
+    + div.row.ok
+    +   span.dot: "●"
+    - div.row.error title="Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky."
+    -   span.dot: "✖"
+  panel:
+    +   p.hint: "Uzavřených oblastí: 2"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
+    -   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
+    -   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4; poloměr c5."
+    + h2: "Vazby a kóty (6)"
+    - h2: "Vazby a kóty (4)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p6, c1"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p2, c1"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Trimmed; the profile of Vysunutí 1 followed.
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 192 numbers, sum 6355.996
+    + points #1d4ed8 size 7: 18 numbers, sum 442.223
+    - line #1d4ed8 width 2 onTop: 600 numbers, sum 10698.442
+    - line #64748b width 1.5 dashed onTop: 426 numbers, sum 4538.412
+    - points #dc2626 size 9: 6 numbers, sum 73.167
+    - points #1d4ed8 size 7: 12 numbers, sum 318
+    - points #16a34a size 12: 3 numbers, sum -20
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 44 numbers, sum 1911.86
+
+=== 4. over the piece of the edge inside the arc
+  engine: diagnoseSketch("s1")
+  view: 1 scene(s) set
+  scene:
+    + line #64748b width 1.5 dashed onTop: 6 numbers, sum 126.833
+    + points #16a34a size 12: 3 numbers, sum 20
+
+=== 5. removed: the outline is notched, the half disc gone from the extrusion
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"removeEntity","sketch":"s1","id":"c6"},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]}]}}}]}) -> ok
+  feature s1:
+    - curve c6: {"type":"line","a":"p5","b":"p6"}
+  feature e1:
+    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  panel:
+    +   p.hint: "Uzavřených oblastí: 1"
+    -   p.hint: "Uzavřených oblastí: 2"
+  status: Trimmed; the profile of Vysunutí 1 followed; a region is gone from Vysunutí 1.
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 186 numbers, sum 6300.718
+    - line #1d4ed8 width 2 onTop: 192 numbers, sum 6355.996
+    - line #64748b width 1.5 dashed onTop: 6 numbers, sum 126.833
+    - points #16a34a size 12: 3 numbers, sum 20
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 44 numbers, sum 1911.86
+
+=== 6. a click away from every curve says what the tool wants
+  engine: diagnoseSketch("s1")
+  status: Click the piece of a curve to remove.  [error]
+  view: 1 scene(s) set
+
+=== 7. the tool Extend near the upper end of a line inside: its extension to the top side drawn dashed
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p7","x":10,"y":10},{"type":"addPoint","sketch":"s1","id":"p8","x":10,"y":20},{"type":"addCurve","sketch":"s1","id":"c8","curve":{"type":"line","a":"p7","b":"p8"}},{"type":"addConstraint","sketch":"s1","id":"k7","constraint":{"type":"vertical","line":"c8"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x3)
+  feature s1:
+    + point p7: {"x":10,"y":10}
+    + point p8: {"x":10,"y":20}
+    + curve c8: {"type":"line","a":"p7","b":"p8"}
+    + constraint k7: {"type":"vertical","line":"c8"}
+  toolbar:
+    +   button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
+    +   button.active title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+    -   button.active title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
+    -   button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 8"
+    -   p.badge.open: "Stupně volnosti: 5"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
+    + h2: "Vazby a kóty (7)"
+    - h2: "Vazby a kóty (6)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c8"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Click a line or an arc near the end to extend; it grows to the next curve.
+  view: 9 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
+    + line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
+    + points #1d4ed8 size 7: 24 numbers, sum 602.223
+    - line #1d4ed8 width 2 onTop: 186 numbers, sum 6300.718
+    - points #1d4ed8 size 7: 18 numbers, sum 442.223
+    + points #16a34a size 12: 3 numbers, sum 48
+
+=== 8. a click extends it: the top side cut there
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p9","x":10,"y":30},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"b","to":"p9"},{"type":"setCurvePoint","sketch":"s1","id":"c8","point":"b","to":"p9"},{"type":"addCurve","sketch":"s1","id":"c9","curve":{"type":"line","a":"p9","b":"p3"}},{"type":"removeEntity","sketch":"s1","id":"p8"},{"type":"addConstraint","sketch":"s1","id":"k8","constraint":{"type":"pointOnCurve","point":"p3","curve":"c3"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7","c9"]}]}}}]}) -> ok
+  feature s1:
+    + point p9: {"x":10,"y":30}
+    - point p8: {"x":10,"y":20}
+    + curve c3: {"type":"line","a":"p1","b":"p9"}
+    - curve c3: {"type":"line","a":"p1","b":"p3"}
+    + curve c8: {"type":"line","a":"p7","b":"p9"}
+    + curve c9: {"type":"line","a":"p9","b":"p3"}
+    - curve c8: {"type":"line","a":"p7","b":"p8"}
+    + constraint k8: {"type":"pointOnCurve","point":"p3","curve":"c3"}
+  feature e1:
+    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7","c9"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  panel:
+    +   p.badge.open: "Stupně volnosti: 7"
+    -   p.badge.open: "Stupně volnosti: 8"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8."
+    + h2: "Vazby a kóty (8)"
+    - h2: "Vazby a kóty (7)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p3, c3"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Extended; the profile of Vysunutí 1 followed.
+  view: 2 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
+    + points #1d4ed8 size 7: 24 numbers, sum 622.223
+    - line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
+    - line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
+    - points #1d4ed8 size 7: 24 numbers, sum 602.223
+    - points #16a34a size 12: 3 numbers, sum 48
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
+
+=== 9. an end two curves share is refused with the reason
+  engine: diagnoseSketch("s1")
+  status: Extend: "c9" ends at "p3" too; extending "c4" would leave the end of "c9" in its middle  [error]
+  view: 1 scene(s) set
+  scene:
+    + points #16a34a size 12: 3 numbers, sum 30
+
+=== 10. a line across the outline; the tool Split shows Split crossings in its panel
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p10","x":35,"y":-10},{"type":"addPoint","sketch":"s1","id":"p11","x":35,"y":40},{"type":"addCurve","sketch":"s1","id":"c10","curve":{"type":"line","a":"p10","b":"p11"}},{"type":"addConstraint","sketch":"s1","id":"k9","constraint":{"type":"vertical","line":"c10"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  feature s1:
+    + point p10: {"x":35,"y":-10}
+    + point p11: {"x":35,"y":40}
+    + curve c10: {"type":"line","a":"p10","b":"p11"}
+    + constraint k9: {"type":"vertical","line":"c10"}
+  toolbar:
+    +   button disabled: "Export STL"
+    -   button: "Export STL"
+    +   button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+    +   button.active title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+    -   button.active title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+    -   button title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+  timeline:
+    + div.row.error title="Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky."
+    +   span.dot: "✖"
+    - div.row.ok
+    -   span.dot: "●"
+  panel:
+    +   p.badge.open: "Stupně volnosti: 10"
+    +   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
+    +   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 2."
+    -   p.badge.open: "Stupně volnosti: 7"
+    -   p.hint: "Uzavřených oblastí: 1"
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9."
+    + h2: "Split"
+    + div.buttons
+    +   button title="Every crossing of the outline curves becomes a common point; the features keep their regions": "Split crossings"
+    + p.hint: "Click a curve to cut it where other curves cross it. Each piece is a curve of its own with its own regions; the constraints stay with the piece they describe. Then trim the pieces that should go."
+    + h2: "Vazby a kóty (9)"
+    - h2: "Vazby a kóty (8)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Svisle"
+    +     small: "c10"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.
+  view: 8 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 470.63
+    + line #8b9bb4 width 1: 24 numbers, sum 313.753
+    + line #8b9bb4 width 1: 24 numbers, sum 156.877
+    + line #1d4ed8 width 2 onTop: 204 numbers, sum 7275.718
+    + points #dc2626 size 9: 6 numbers, sum 235
+    + points #1d4ed8 size 7: 30 numbers, sum 997.223
+    - line #8b9bb4 width 1: 24 numbers, sum 405.518
+    - line #8b9bb4 width 1: 24 numbers, sum 270.345
+    - line #8b9bb4 width 1: 24 numbers, sum 135.173
+    - line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
+    - points #1d4ed8 size 7: 24 numbers, sum 622.223
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 22.411
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 22.411
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 22.411
+    - points #16a34a size 12: 3 numbers, sum 30
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.31
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.31
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 19.31
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
+
+=== 11. every crossing of the outline cut; the extrusion keeps its body in two regions
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p12","x":35,"y":30},{"type":"addPoint","sketch":"s1","id":"p13","x":35,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c10","point":"b","to":"p13"},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"b","to":"p12"},{"type":"setCurvePoint","sketch":"s1","id":"c7","point":"b","to":"p13"},{"type":"addCurve","sketch":"s1","id":"c11","curve":{"type":"line","a":"p13","b":"p12"}},{"type":"addCurve","sketch":"s1","id":"c12","curve":{"type":"line","a":"p12","b":"p11"}},{"type":"addCurve","sketch":"s1","id":"c13","curve":{"type":"line","a":"p12","b":"p9"}},{"type":"addCurve","sketch":"s1","id":"c14","curve":{"type":"line","a":"p13","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k10","constraint":{"type":"pointOnCurve","point":"p12","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k11","constraint":{"type":"pointOnCurve","point":"p11","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k12","constraint":{"type":"pointOnCurve","point":"p9","curve":"c3"}},{"type":"addConstraint","sketch":"s1","id":"k13","constraint":{"type":"pointOnCurve","point":"p2","curve":"c7"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c11","c14","c2","c3"]},{"outerLoop":["c1","c11","c13","c4","c5","c7","c9"]}]}}}]}) -> ok
+  feature s1:
+    + point p12: {"x":35,"y":30}
+    + point p13: {"x":35,"y":0}
+    + curve c3: {"type":"line","a":"p1","b":"p12"}
+    - curve c3: {"type":"line","a":"p1","b":"p9"}
+    + curve c7: {"type":"line","a":"p6","b":"p13"}
+    - curve c7: {"type":"line","a":"p6","b":"p2"}
+    + curve c10: {"type":"line","a":"p10","b":"p13"}
+    + curve c11: {"type":"line","a":"p13","b":"p12"}
+    + curve c12: {"type":"line","a":"p12","b":"p11"}
+    + curve c13: {"type":"line","a":"p12","b":"p9"}
+    + curve c14: {"type":"line","a":"p13","b":"p2"}
+    - curve c10: {"type":"line","a":"p10","b":"p11"}
+    + constraint k10: {"type":"pointOnCurve","point":"p12","curve":"c10"}
+    + constraint k11: {"type":"pointOnCurve","point":"p11","curve":"c10"}
+    + constraint k12: {"type":"pointOnCurve","point":"p9","curve":"c3"}
+    + constraint k13: {"type":"pointOnCurve","point":"p2","curve":"c7"}
+  feature e1:
+    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c11","c14","c2","c3"]},{"outerLoop":["c1","c11","c13","c4","c5","c7","c9"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7","c9"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  toolbar:
+    +   button: "Export STL"
+    -   button disabled: "Export STL"
+  timeline:
+    + div.row.ok
+    +   span.dot: "●"
+    - div.row.error title="Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky."
+    -   span.dot: "✖"
+  panel:
+    +   p.hint: "Uzavřených oblastí: 2"
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 4."
+    -   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
+    -   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 2."
+    + h2: "Vazby a kóty (13)"
+    - h2: "Vazby a kóty (9)"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p12, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p11, c10"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p9, c3"
+    +   button.icon title="Smazat vazbu": "✕"
+    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   span.name
+    +     "Bod na křivce"
+    +     small: "p2, c7"
+    +   button.icon title="Smazat vazbu": "✕"
+  status: Crossings split; the profile of Vysunutí 1 followed.
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 228 numbers, sum 8610.718
+    + points #1d4ed8 size 7: 36 numbers, sum 1432.223
+    - line #1d4ed8 width 2 onTop: 204 numbers, sum 7275.718
+    - points #dc2626 size 9: 6 numbers, sum 235
+    - points #1d4ed8 size 7: 30 numbers, sum 997.223
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 710
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2643.807
+
+=== 12. a curve nothing crosses is refused with the reason
+  engine: diagnoseSketch("s1")
+  status: Split: nothing crosses or touches "c4" away from its ends  [error]
+  view: 1 scene(s) set
+  scene:
+    + points #16a34a size 12: 3 numbers, sum 50

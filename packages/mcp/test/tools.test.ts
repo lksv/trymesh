@@ -149,6 +149,18 @@ describe('sketch tools', () => {
       execute(engine, sketch('s'));
       // the fillet needs a corner: its example names the corner the example of the rectangle leaves
       if (entry.tool === 'fillet') ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: catalog[0].example });
+      // trim, extend and split (D65) need a rectangle and a line across its right side
+      if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') {
+        ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: catalog[0].example });
+        execute(engine, {
+          type: 'batch',
+          commands: [
+            { type: 'addPoint', sketch: 's', id: 'xa', x: 20, y: 15 },
+            { type: 'addPoint', sketch: 's', id: 'xb', x: 60, y: 15 },
+            { type: 'addCurve', sketch: 's', id: 'x', curve: { type: 'line', a: 'xa', b: 'xb' } },
+          ],
+        });
+      }
       const made = ok(engine, 'sketch_tool', { sketch: 's', tool: entry.tool, input: entry.example });
       expect(made, entry.tool).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true }] });
       // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
@@ -292,7 +304,7 @@ describe('sketch tools', () => {
       expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [x, y] }, vertex: { at: [x * (1 - 1e-9), y * (1 - 1e-9)] }, sides: 6, size: 10 } }), `${x} ${y}`).toMatch(/reaches out of the range/);
     }
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
-    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet');
+    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet, trim, extend, split');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
     expect(error({ sketch: 's', tool: 'polygon' })).toMatch(/argument "input": an object/);
     expect(error({ sketch: 's', tool: 'polygon', input: [hexagon] })).toMatch(/argument "input"/);

@@ -1,7 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, profileContacts } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
@@ -272,6 +272,8 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   const implying = new Set(focus ? explain(host, m.id, focus, diagnosis).impliedBy.flatMap((id) => operandsOf(feature.constraints[id])) : []);
 
   if (result.valid) for (const region of result.regions) model.fills.push({ frame, loops: region.loops, color: COLOR.region, opacity: 0.1 });
+  // D65: while the profile is invalid, where its curves cross or touch (what Split crossings cuts)
+  else model.points.push({ positions: profileContacts(context.tool).points.flatMap(([u, v]) => toWorld(frame, u, v)), color: COLOR.clash, size: 9 });
 
   // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
   const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };

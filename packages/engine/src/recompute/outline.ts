@@ -73,8 +73,9 @@ function areaOf(loop: OutlineCurve[]): number {
 
 // Does a point lie inside a loop of exact curves? A ray in the direction +x; a curve is taken by
 // pieces monotone in y with a half-open rule, so a pass through a vertex is not counted twice (the
-// rule `detectProfile` finds holes by). The point must not lie on the loop.
-function inside(p: Vec2, loop: OutlineCurve[]): boolean {
+// rule `detectProfile` finds holes by). The point must not lie on the loop. Exported for the face
+// rule of the sketch cuts (sketch-cut.ts, D65).
+export function inside(p: Vec2, loop: OutlineCurve[]): boolean {
   let count = 0;
   const piece = (from: Vec2, to: Vec2, xAt: () => number): void => {
     if (from[1] > p[1] !== to[1] > p[1] && xAt() > p[0]) count++;

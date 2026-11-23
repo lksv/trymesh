@@ -1,7 +1,7 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
 // selection, the list of constraints and dimensions, the projected geometry, the options of the
 // active tool (its entry of SKETCH_TOOL_UI), and the row that re-points a point of a curve (D52).
-import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint, referenceEntities } from '@trymesh/engine';
+import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint, profileContacts, referenceEntities } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
@@ -47,8 +47,18 @@ function sketchStatus(host: SketchHost, m: SketchMode): HTMLElement[] {
   return [
     h('p', { className: `badge ${state[1]}` }, state[0]),
     r.valid ? h('p', { className: 'hint' }, `Uzavřených oblastí: ${r.regions.length}`) : h('p', { className: 'issue error' }, 'Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků.'),
+    ...(r.valid ? [] : [crossingsHint(context.tool)]),
     ...host.issues(result).filter((element) => !element.classList.contains('error') || r.valid),
   ];
+}
+
+// D65: what repairs an invalid profile: its crossings, marked in the view, cut by the tool Split; or
+// why nothing can be cut.
+function crossingsHint(context: Parameters<typeof profileContacts>[0]): HTMLElement {
+  const { points, reason } = profileContacts(context);
+  return points.length > 0
+    ? h('p', { className: 'hint' }, `Crossings marked in the view: ${points.length}. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go.`)
+    : h('p', { className: 'hint' }, `Nothing to cut: ${reason ?? 'no crossing found'}.`);
 }
 
 // Při tažení se panel nepřestavuje, jen stav určenosti.

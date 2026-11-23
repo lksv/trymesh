@@ -12,11 +12,13 @@ const deps = { solver: await createPlanegcsSolver(), kernel: await createManifol
 
 describe('the tools of the sketch bar', () => {
   it('are the tools of the bar in its order, each with a label and a hint; only Project picks edges', () => {
-    expect(Object.keys(SKETCH_TOOL_UI)).toEqual(['select', 'point', 'line', 'rect', 'polygon', 'circle', 'arc', 'fillet', 'project']);
+    expect(Object.keys(SKETCH_TOOL_UI)).toEqual(['select', 'point', 'line', 'rect', 'polygon', 'circle', 'arc', 'fillet', 'trim', 'extend', 'split', 'project']);
     for (const tool of Object.values(SKETCH_TOOL_UI)) expect(tool.label.length * tool.hint.length).toBeGreaterThan(0);
     expect(Object.entries(SKETCH_TOOL_UI).filter(([, tool]) => tool.picks === 'edge').map(([name]) => name)).toEqual(['project']);
     // the shapes of several places say how many; the one-click tools take the place under the click
-    expect(Object.fromEntries(Object.entries(SKETCH_TOOL_UI).map(([name, tool]) => [name, tool.picks === 'edge' ? 'edge' : (tool.clicks ?? 'every')]))).toEqual({ select: 'every', point: 'every', line: 2, rect: 2, polygon: 2, circle: 2, arc: 3, fillet: 'every', project: 'edge' });
+    expect(Object.fromEntries(Object.entries(SKETCH_TOOL_UI).map(([name, tool]) => [name, tool.picks === 'edge' ? 'edge' : (tool.clicks ?? 'every')]))).toEqual({ select: 'every', point: 'every', line: 2, rect: 2, polygon: 2, circle: 2, arc: 3, fillet: 'every', trim: 'every', extend: 'every', split: 'every', project: 'edge' });
+    // D65: the three cuts pick curves, so a click near a crossing gives the curve and not the point there
+    expect(['trim', 'extend', 'split'].map((name) => (SKETCH_TOOL_UI[name as 'trim'] as { picks?: unknown }).picks)).toEqual(['curve', 'curve', 'curve']);
   });
 
   // A rectangle from the origin to (30, 20); one pixel is one millimetre and the pointer is on the plane.

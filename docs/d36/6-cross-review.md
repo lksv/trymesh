@@ -319,7 +319,7 @@ Not asked here, and waiting for the reviews of their designs: of 6b (branch), th
 
 ### Later answers: the reviews of 6b and 6d, and the second round of 6e and 6c
 
-The reviews of the designs of 6b and 6d (on their branches), and a second round over the revised designs of 6e and 6c (one Fable review, codex and agy), asked ten more questions. All were answered "yes" to their recommendation on 2026-11-24. Answer 19 replaces the clause "projections of 6b keep their keys" of answer 12. Answer 28 settles the narrowing of answer 16 that 6c's revision made.
+The reviews of the designs of 6b and 6d (on their branches), and a second round over the revised designs of 6e and 6c (one Fable review, codex and agy), asked ten more questions, and the revision of 6b three more (29 to 31): thirteen rows. All were answered "yes" to their recommendation on 2026-11-24. Answer 19 replaces the clause "projections of 6b keep their keys" of answer 12. Answer 28 settles the narrowing of answer 16 that 6c's revision made. Answer 29 replaces the hold of answer 21 (the two ends and `equalRadius`) by a radius line.
 
 | # | About | Question | Answer (2026-11-24) | Where it lands |
 |---|---|---|---|---|
@@ -333,6 +333,9 @@ The reviews of the designs of 6b and 6d (on their branches), and a second round 
 | 26 | 6d | Where a spline runs, for the AI | `get_sketch` gives each spline the points the curve passes at the joints of its Bezier pieces, and its box | 6d's revision |
 | 27 | 6e | The default of the repair, off in every sketch before its first extrusion | It stays as designed: on exactly when a feature reads regions of the sketch, `repair: 'on' \| 'off'` overrides. The round-2 findings it causes (a notch arc left out of a mirror, a trim beyond a touch, the app's remembered override) are fixed | 6e's and 6c's fixes after the second round |
 | 28 | 6c | The narrowed rule of answer 16, which misses the notch arc with the repair off | Kept, in the open-end form: a curve the batch makes, re-points or turns into an arc joins an entry when each of its two ends is an open end of that entry's listed curves (the end of exactly one of them) and it has their construction flag. A split still adds only pieces | 6c's third round |
+| 29 | 6b | How an own arc is held on a projected arc. The hold of answer 21 (the two ends and `equalRadius`, the centre started at the projected centre) keeps its second solution whatever the start, and has none the analysis accepts at a half turn (measured) | By its two ends and a construction radius line from the own centre to the own start with the projected centre on it: one solution at every sweep. It replaces "ends and `equalRadius`" of answer 21 | 6b's revision and the fixes of its second round |
+| 30 | 6b | The inputs of `projectSketch`: answer 21 named the role of the source and the own outline | `projectSketch { sketch, entities?, as? }` with the roles `source` (the default), `reference`, `regions` and `own` | 6b's revision |
+| 31 | 6a2 | Under which decision the axes of the origin stand, once carved out of 6b's design | Their own, D71 | [6a2-origin-axes/design.md](6a2-origin-axes/design.md) |
 
 ## What the designs leave out
 

@@ -2194,9 +2194,11 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
     if (source?.type !== 'wall') return undefined;
     const patched = out.commands.find((c): c is Extract<Command, { type: 'updateFeature' }> => c.type === 'updateFeature' && c.id === face.feature);
     const curves = (patched?.patch as { profile?: { curves?: Id[] } } | undefined)?.profile?.curves ?? source.curves;
+    const endsBefore = chainEnds(sketch, source.curves);
+    // a face that was stale before the batch is not this batch's to follow or to report
+    if (endsBefore.get(face.point) !== 1) return undefined;
     const endsAfter = chainEnds(afterSketch, curves);
     if (endsAfter.get(face.point) === 1) return undefined;
-    const endsBefore = chainEnds(sketch, source.curves);
     const fresh = [...endsAfter].filter(([p, n]) => n === 1 && endsBefore.get(p) !== 1).map(([p]) => p);
     return fresh.length === 1 ? { ...face, point: fresh[0] } : null;
   };

@@ -856,4 +856,19 @@ describe('fixes of the review of the implementation', () => {
       expect(state.evaluation.features['f'].status).toBe('ok');
     });
   }
+
+  it('R3: a face of a wall end that was stale before the batch is left alone, not followed to the other end', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('w', [0, 0], [40, 0]), ...fixedLine('v', [20, -5], [20, 5]), ...fixedPoint('q', 50, 0)));
+    run(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 's', curves: ['w'], thickness: 4 }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    // `q` is no end of the wall: the edge names what is not there, before any tool
+    const stale = { a: { feature: 'W', role: 'wallEnd' as const, point: 'q' }, b: cap('W') };
+    run(engine, { type: 'addFeature', feature: { id: 'f', name: 'f', suppressed: false, type: 'fillet', body: 'W', edges: [stale], radius: 1 } });
+    // a trim that moves the end `wb` of the same wall
+    const ids = cut(engine, 'trim', { at: [30, 0], repair: 'off' });
+    const faces = (edge: { a: object; b: object }): string[] => [edge.a, edge.b].map((face) => JSON.stringify(face)).sort();
+    expect((engine.getState().document.features.find((f) => f.id === 'f') as unknown as { edges: { a: object; b: object }[] }).edges.map(faces)).toEqual([faces(stale)]);
+    expect(ids.broken).toEqual([]);
+    expect(ids.patched).not.toContain('f');
+  });
 });

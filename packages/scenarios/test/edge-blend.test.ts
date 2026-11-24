@@ -176,7 +176,7 @@ describe('circular edges (the design, "Measured", B)', () => {
     expect(again.state.evaluation.bodies.E.solid.positions).toEqual(a.state.evaluation.bodies.E.solid.positions);
   });
 
-  it('an arc of a partial revolve ends at its caps, planes through the axis; an arc cut by a slot ends at a plane off its axis', () => {
+  it('an arc of a partial revolve ends at its caps, planes through the axis; an arc cut by a slot runs out past its sides (D67), an arc at a tilted plane is refused', () => {
     const engine = newEngine();
     const XZ = { kind: 'base', plane: 'XZ' } as const;
     run(engine, addSketch('s', XZ), polygonSketch('s', [[0, 0], [20, 0], [20, 10], [0, 10]]), {
@@ -188,13 +188,27 @@ describe('circular edges (the design, "Measured", B)', () => {
     const c = ok(apply(quarter, chamfer('c', 'E', [rimEdge], 2)));
     // a quarter of the ring of the triangle 2 × 2 / 2 at the radius 20 − 2/3
     near(c.change, -(Math.PI / 2) * (20 - 2 / 3) * 2, 0.05);
-    // the box with a hole and a slot across its rim
+    // the box with a hole and a slot across its rim: D63 refused the arc's end at the slot's sides,
+    // planes off its axis; they are parallel to it, so the chamfer runs out past them (D67) and
+    // takes what the chamfer made before the slot takes
+    const slot = (engine: ReturnType<typeof newEngine>) => run(engine, addSketch('u', onFace('E', cap('E'))), rectangle('u', 'q', 34, 19, 10, 2, null), addExtrude('U', 'u', [rectLoop('q')], -3, 'cut', 'E'));
     const engine2 = newEngine();
     boxWithHole(5, engine2);
-    const cut = run(engine2, addSketch('u', onFace('E', cap('E'))), rectangle('u', 'q', 34, 19, 10, 2, null), addExtrude('U', 'u', [rectLoop('q')], -3, 'cut', 'E'));
-    const off = apply(cut, chamfer('c', 'E', [edge(cap('E'), side('H', 'h'))], 0.5));
+    const cut = slot(engine2);
+    const runOut = ok(apply(cut, chamfer('c', 'E', [edge(cap('E'), side('H', 'h'))], 0.5)));
+    const engine3 = newEngine();
+    boxWithHole(5, engine3);
+    run(engine3, chamfer('c', 'E', [edge(cap('E'), side('H', 'h'))], 0.5));
+    near(runOut.state.evaluation.bodies.E.volume, slot(engine3).evaluation.bodies.E.volume, 0.01);
+    // an arc that ends at a plane neither through nor parallel to its axis: the rim of a hole that
+    // breaks into the chamfer of the box's top-front edge
+    const engine4 = newEngine();
+    box(engine4);
+    const tilted = run(engine4, chamfer('k', 'E', [BOX_TOP_FRONT], 3), addSketch('t', onFace('E', cap('E'))), circle('t', 'h', 30, 2, 4), addExtrude('H', 't', [['h']], -20, 'cut', 'E'));
+    const off = apply(tilted, chamfer('c', 'E', [edge(cap('E'), side('H', 'h'))], 0.5));
     expect(off.code).toBe('unsupportedEdge');
-    expect(off.message).toMatch(/does not hold its axis/);
+    expect(off.message).toMatch(/does not hold its axis and is not parallel to it/);
+    expect(off.refs.some((ref) => typeof ref === 'object' && ref !== null && 'role' in ref && faceKey(ref as FaceName) === 'k/chamfer/0')).toBe(true);
   });
 });
 
@@ -337,7 +351,7 @@ describe('the ends of an edge', () => {
     ok(apply(ring, fillet('c', 'E', [edge(side('E', 'l1'), side('E', 'l2'))], 3)));
   });
 
-  it('an edge whose end has two faces that are not a seam, and a straight edge that ends at a round face: refused', () => {
+  it('an edge whose end has two faces that are not a seam: refused; a straight edge that ends at a round face runs out into it (D67)', () => {
     const engine = newEngine();
     box(engine);
     // a block flush with the front, on the left half of the top
@@ -348,9 +362,14 @@ describe('the ends of an edge', () => {
     const engine2 = newEngine();
     box(engine2);
     const holed = run(engine2, addSketch('t', onFace('E', cap('E'))), circle('t', 'h', 30, 0, 4), addExtrude('H', 't', [['h']], -20, 'cut', 'E'));
-    const round = apply(holed, chamfer('c', 'E', [BOX_TOP_FRONT], 1));
-    expect(round.code).toBe('unsupportedEdge');
-    expect(round.message).toMatch(/ends at a round face/);
+    // D63 refused the straight edge's end at the hole; it runs out into the hole now (D67), equal to
+    // the chamfer made before the hole
+    const round = ok(apply(holed, chamfer('c', 'E', [BOX_TOP_FRONT], 1)));
+    const engine3 = newEngine();
+    box(engine3);
+    run(engine3, chamfer('c', 'E', [BOX_TOP_FRONT], 1));
+    const reference = run(engine3, addSketch('t', onFace('E', cap('E'))), circle('t', 'h', 30, 0, 4), addExtrude('H', 't', [['h']], -20, 'cut', 'E'));
+    near(round.state.evaluation.bodies.E.volume, reference.evaluation.bodies.E.volume, 2e-3);
   });
 
   it('an edge cut into two pieces gets a tool per piece; the ends of a short piece that meet within the chamfer are refused', () => {

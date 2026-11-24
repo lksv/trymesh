@@ -9,23 +9,26 @@
 //    trims turn the circle into an arc under its ID and leave one closed loop;
 // b. a rectangular notch, three lines across the bottom edge of a floor extruded with the offset of
 //    the clearance and the wall (2a): three trims.
-// Which of the two stands on the floor of the assembled model waits for the owner (design.md,
-// "Open", 1); 6e tests both, and the numbers of an offset that a round notch fits are in design.md,
-// "Measured for the revision".
+// The floor of the assembled model gets the rectangular one (owner, answer 20); the round one is
+// tested here, on a stand-in without an offset, and by 6c on the lid's source half. The numbers of
+// an offset that a round notch fits are in design.md, "Measured for the revision".
 // Then the cases the Onshape converter met: two outlines that overlap, split at their crossings
 // and trimmed into one; a line extended to a side. Then the query of the contacts, a sketch of
-// walls, the refusals, and the three entries of the app's table.
+// walls, a trim that would run through a touch, the refusals, and the three entries of the app's
+// table.
 //
 // The numbers in the comments were measured on 2026-11-17 with a prototype of the rules against
 // the real solver and kernel, and on 2026-11-24 with the tools of the started implementation and
-// a prototype of the revised rules (design.md, "Measured" and "Measured for the revision").
+// a prototype of the revised rules (design.md, "Measured", "Measured for the revision" and
+// "Measured for the fixes of the second round").
 
 import { emptySketch } from '../../../packages/engine/src/index';
 import type { Id, Vec2 } from '../../../packages/engine/src/index';
+import { entityOf } from '../../../packages/engine/src/references/index';
 import type { CommandAfter, StateAfter } from '../00-prep/contract';
 import { done, engine, fail, pointAt, rectangle, run, unwrap } from '../2a-offset/calls';
 import type { HTMLElementStandIn, PlaceStandIn, SketchContextStandIn, SketchHostStandIn, SketchModeStandIn, SketchPlaceTool } from '../6a-sketch-prep/contract';
-import type { CutIds, CutOptions, SketchContactsResult, SketchToolCallAfter, SketchToolInputsAfter, SplitOptions } from './contract';
+import type { CutIds, CutOptions, Repair, SketchContactsResult, SketchToolCallAfter, SketchToolInputsAfter, SplitOptions } from './contract';
 import { EXTEND, SPLIT, TRIM, curveUnder, extendEnd, extendReach, freshIds, repairsByDefault, sketchTool, trimPiece } from './contract';
 
 const XY = { kind: 'base', plane: 'XY' } as const;
@@ -82,7 +85,7 @@ export const crossed = (state: StateAfter): boolean => state.evaluation.features
 // edge at two places, and a split would cut both there.
 export function contactsOfTheNotch(): boolean {
   const found = contactsOf('baseSketch');
-  return !found.valid && found.total === 2 && found.contacts.every((c) => c.kind === 'crossing' && c.repair === 'cut' && c.curves.join() === ['ba', 'notch'].join()) && found.lying.length === 0;
+  return !found.valid && found.total === 2 && found.contacts.every((c) => c.kind === 'crossing' && c.fix === 'cut' && c.curves.join() === ['ba', 'notch'].join()) && found.lying.length === 0;
 }
 
 // The area of the circle above the edge, by hand: the circle less the segment below the chord.
@@ -330,6 +333,33 @@ export function walls(): boolean {
   return byDefault && kept && names && repaired.ok && (repaired.ids as CutIds).changed.length === 4 && state.evaluation.features['ribs'].sketch?.degreesOfFreedom === 0 && allOk(state);
 }
 
+// A trim cannot stop at a touch that is not a cut. A fixed line `tl` on y = 0 and a circle `tk` of
+// radius 5 about (0, 5), which touches it at (0, 0) and would get that one point: the touch is no
+// cut whatever the repair. A trim of the line by a place on one side of the touch would have to
+// take the whole line (measured with a line and an arc and the repair off, and with two arcs: the
+// whole curve went with its constraints, and the sketch lost one or two degrees of determination).
+// It is refused, and the message names the place and the circle. The query lists the touch as
+// something no split cuts.
+export function touch(): boolean {
+  const fixed = (id: Id, x: number, y: number): CommandAfter[] => [
+    { type: 'addPoint', sketch: 'tan', id, x, y },
+    { type: 'addConstraint', sketch: 'tan', id: `${id}f`, constraint: { type: 'fixed', point: id, x, y } },
+  ];
+  run({ type: 'addFeature', feature: emptySketch('tan', 'tan', XY) });
+  run(
+    ...fixed('t1', -10, 0),
+    ...fixed('t2', 10, 0),
+    { type: 'addCurve', sketch: 'tan', id: 'tl', curve: { type: 'line', a: 't1', b: 't2' } },
+    ...fixed('tc', 0, 5),
+    { type: 'addCurve', sketch: 'tan', id: 'tk', curve: { type: 'circle', center: 'tc' }, radius: 5 },
+    { type: 'addConstraint', sketch: 'tan', id: 'tr', constraint: { type: 'radius', curve: 'tk', value: 5, driving: true } },
+  );
+  const found = contactsOf('tan');
+  const listed = found.total === 1 && found.contacts[0].kind === 'touch' && found.contacts[0].fix === 'none';
+  const through = (['on', 'off'] as const).map((repair) => refusal('trim', 'tan', { at: [5, 0], repair }));
+  return listed && through.every((reason) => reason !== undefined && reason.includes('tk'));
+}
+
 // ---------------------------------------------------------------- e. refusals and inputs
 
 export function refusals(): (string | undefined)[] {
@@ -401,19 +431,30 @@ function runCut<K extends 'trim' | 'extend' | 'split'>(host: CutHost, context: C
   host.run({ type: 'batch', commands: made.commands }, `${done}; ${notes(made.ids)}.`);
 }
 const ownCurve = (curve: Id, context: SketchContextStandIn): boolean => curve in context.feature.curves;
-// `with` of the options, while the open sketch has that curve (the options outlive a sketch).
-const bound = (context: SketchContextStandIn, id: Id | undefined): Id | undefined => (id !== undefined && (id in context.feature.curves || id in context.result.curves) ? id : undefined);
+// `with` of the options, while the open sketch has that curve (the options outlive a sketch). What
+// an ID is in a sketch is asked of the engine (`entityOf`), not of the lists of the result, so an
+// axis of the origin counts whether 6a2 puts the axes into the result or not.
+const bound = (context: SketchContextStandIn, id: Id | undefined): Id | undefined => {
+  const entity = id === undefined ? undefined : entityOf(context.feature, id);
+  return entity !== undefined && entity.kind !== 'point' ? id : undefined;
+};
+// The repair as chosen, while the sketch it was chosen in is open; in another sketch the choice
+// does not count, and the first change of the checkbox there replaces it.
+const chosenRepair = (context: SketchContextStandIn, options: CutOptions): Repair | undefined => (options.repair?.sketch === context.feature.id ? options.repair.value : undefined);
 // What the three panels share: the curve the tool is bounded by, taken from the one curve selected
 // when the button is pressed, and cleared.
 const boundRows = <O extends { with?: Id }>(host: CutHost, value: O, set: (value: O) => void): HTMLElementStandIn[] => {
   const selected = host.sketch?.selection ?? [];
   return [row(`Up to: ${value.with ?? 'the nearest curves'}`, button('Use the selected curve', () => set({ ...value, with: selected[0] }), selected.length === 1), button('Clear', () => set({ ...value, with: undefined }), value.with !== undefined))];
 };
-// The repair as a checkbox whose state without a choice is the default of the document.
+// The repair as a checkbox whose state without a choice is the default of the document. A choice
+// away from the default is kept with the sketch it was made in.
 const repairRow = (host: CutHost, value: CutOptions, set: (value: CutOptions) => void): HTMLElementStandIn[] => {
   const context = host.sketchContext();
-  const byDefault = context ? repairsByDefault(context.tool.document, context.feature.id) : false;
-  return [checkbox('Cut the other crossings of the outline first', value.repair === undefined ? byDefault : value.repair === 'on', (checked) => set({ ...value, repair: checked === byDefault ? undefined : checked ? 'on' : 'off' }))];
+  if (!context) return [];
+  const byDefault = repairsByDefault(context.tool.document, context.feature.id);
+  const chosen = chosenRepair(context, value);
+  return [checkbox('Cut the other crossings of the outline first', chosen === undefined ? byDefault : chosen === 'on', (checked) => set({ ...value, repair: checked === byDefault ? undefined : { sketch: context.feature.id, value: checked ? 'on' : 'off' } }))];
 };
 
 export const trimEntry: SketchPlaceTool<CutOptions> = {
@@ -427,11 +468,11 @@ export const trimEntry: SketchPlaceTool<CutOptions> = {
     if (place.snap?.kind !== 'curve') return host.say('Click the piece of a curve to remove.', true);
     // the curve the click means: a span line lies over the pieces of its line, and the picker takes
     // the first of equally near curves
-    runCut(host, context, 'trim', { at: place.at, curve: curveUnder(context.tool, place.at, place.snap.id), with: bound(context, options.with), repair: options.repair }, 'Trimmed');
+    runCut(host, context, 'trim', { at: place.at, curve: curveUnder(context.tool, place.at, place.snap.id), with: bound(context, options.with), repair: chosenRepair(context, options) }, 'Trimmed');
   },
   draw: (_places, cursor, context: CutContext, options) => {
     if (cursor.snap?.kind !== 'curve') return [];
-    const piece = trimPiece(context.tool, { at: cursor.at, curve: curveUnder(context.tool, cursor.at, cursor.snap.id), with: bound(context, options.with), repair: options.repair });
+    const piece = trimPiece(context.tool, { at: cursor.at, curve: curveUnder(context.tool, cursor.at, cursor.snap.id), with: bound(context, options.with), repair: chosenRepair(context, options) });
     return piece ? [polyline(piece)] : [];
   },
 };
@@ -445,15 +486,18 @@ export const extendEntry: SketchPlaceTool<CutOptions> = {
   click: (host: CutHost, _m, places: PlaceStandIn[], context: CutContext, options) => {
     const place = places[places.length - 1];
     if (place.snap?.kind !== 'curve') return host.say('Click a line or an arc near the end to extend.', true);
-    const end = extendEnd(context.tool, place.snap.id, place.at);
-    if (!end) return host.say('That curve has no end to extend.', true);
-    runCut(host, context, 'extend', { curve: place.snap.id, end, with: bound(context, options.with), repair: options.repair }, 'Extended');
+    // as for trim: the picker may have taken the span line that lies over the piece meant
+    const curve = curveUnder(context.tool, place.at, place.snap.id);
+    const end = curve && extendEnd(context.tool, curve, place.at);
+    if (!curve || !end) return host.say('That curve has no end to extend.', true);
+    runCut(host, context, 'extend', { curve, end, with: bound(context, options.with), repair: chosenRepair(context, options) }, 'Extended');
   },
   draw: (_places, cursor, context: CutContext, options) => {
     if (cursor.snap?.kind !== 'curve') return [];
-    const end = extendEnd(context.tool, cursor.snap.id, cursor.at);
-    const reach = end && extendReach(context.tool, { curve: cursor.snap.id, end, with: bound(context, options.with), repair: options.repair });
-    const from = end && context.result.points[(context.feature.curves[cursor.snap.id] as unknown as Record<string, Id>)[end]];
+    const curve = curveUnder(context.tool, cursor.at, cursor.snap.id);
+    const end = curve && extendEnd(context.tool, curve, cursor.at);
+    const reach = curve && end && extendReach(context.tool, { curve, end, with: bound(context, options.with), repair: chosenRepair(context, options) });
+    const from = curve && end && context.result.points[(context.feature.curves[curve] as unknown as Record<string, Id>)[end]];
     return reach && from ? [[[from.x, from.y], reach]] : [];
   },
 };
@@ -491,5 +535,5 @@ export function scenario15e(): boolean {
   const notched = notch() && notchFollows() && slot();
   const converter = overlapping() && extended();
   const refused = refusals().every((reason) => reason !== undefined);
-  return notched && converter && walls() && refused;
+  return notched && converter && walls() && touch() && refused;
 }

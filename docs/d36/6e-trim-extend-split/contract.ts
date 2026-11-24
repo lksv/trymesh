@@ -11,6 +11,17 @@
 // the input kind `curve` is `reference`; the three entries of the app are written against 6a's
 // contract (calls.ts, f).
 //
+// Fixed 2026-11-24 after the second round of reviews, over this revision and 6c's together, and the
+// owner's answers 19, 20, 27 and 28 (design.md, "Reviews", round 5). What changed here: one core
+// for the world of a sketch, `sketchWorld`, with a builder for the step and one for a tool, in
+// place of `toolWorld` (section 6b); the plan of a batch as data for the later packages
+// (`CurveChanges` with the pieces and the removed stretches) and four more plug-in points
+// (`piecesOf`, `reshapedProbes`, `contactFix`, the readers of `repairsByDefault`); a trim that
+// would run through a touch that is not a cut is refused, as is a place on a curve that is not
+// own; the field of the query that says what a split would do is `fix`, no longer `repair`, and
+// the query names the curves of a region too thin for the chord tolerance (`tight`); the app
+// remembers the override of the repair with the sketch it was chosen in.
+//
 // What the package adds:
 // 1. The sketch tools get three entries (`trim`, `extend`, `split`) and two input kinds: a curve
 //    of the sketch by its ID, and a place in the sketch given by its coordinates.
@@ -22,12 +33,14 @@
 //    repairs it. The app's marks are its view.
 // 4. sketch-cut.ts exports what the app draws while a tool is under the pointer (the piece a trim
 //    would remove, the end an extend would move and where to, the curve a click means), and the
-//    three places the later packages plug into (section 6).
+//    places the later packages plug into (section 6); references/world.ts the world of a sketch,
+//    which the sketch step and every tool build their profiles from.
 // 5. Nothing else: no command, no field of the document, no feature type, no face role, no issue
 //    code, no upgrade step. The batches are made of commands every build knows (addPoint, addCurve,
 //    setCurvePoint, removeEntity, addConstraint, removeConstraint, updateFeature).
 
-import type { CurvePointName, Id, NewId, SketchFeature, SketchResult, SketchToolContext, SketchToolInput, SketchToolInputs, SketchToolSpec, Vec2 } from '../../../packages/engine/src/index';
+import type { CurvePointName, Id, NewId, Point2, SketchFeature, SketchResult, SketchToolContext, SketchToolInput, SketchToolInputs, SketchToolSpec, Vec2 } from '../../../packages/engine/src/index';
+import type { ResolvedReference } from '../../../packages/engine/src/references/index';
 import type { SketchCurve, SketchGeometry } from '../../../packages/engine/src/sketch';
 import type { ArgSpecs, CommandAfter, DocumentAfter } from '../00-prep/contract';
 
@@ -70,11 +83,15 @@ export type Repair = 'on' | 'off';
 // `trim`: the piece of a curve nearest to `at` goes. A piece is the part of the curve between two
 // neighbouring cuts, or between a cut and an end. `curve` may be left out: the own curve nearest to
 // `at` is trimmed (of curves equally near, one that forms regions before a construction curve, then
-// the first by ID). With `curve`, the place has to be nearer to it than to any other own curve on
-// its line or circle (a sibling piece of an earlier split): otherwise the tool refuses and names
-// that curve, since after a split the ID of the curve names only its first piece. `with`: only the
-// contacts with that curve bound the piece, "trim back to that curve"; it may name a construction
-// or a reference curve, which otherwise do not cut a curve that forms regions.
+// the first by ID); a place that is nearer to a curve that is not own (a projection, a copy) than
+// to any own curve is refused with that curve named, since the place then means it. With `curve`,
+// the place has to be nearer to it than to any other own curve on its line or circle (a sibling
+// piece of an earlier split): otherwise the tool refuses and names that curve, since after a split
+// the ID of the curve names only its first piece. `with`: only the contacts with that curve bound
+// the piece, "trim back to that curve"; it may name a construction or a reference curve, which
+// otherwise do not cut a curve that forms regions. A piece that has inside it a touch that is not
+// a cut (the cuts, below) is refused with the touch named: the trim cannot stop there, and
+// a piece that runs through it is more than the place says.
 export interface TrimInput {
   at: Vec2;
   curve?: Id;
@@ -112,7 +129,9 @@ export declare function freshIds(document: DocumentAfter, prefix?: string): NewI
 // ---------------------------------------------------------------- what the three tools return
 
 // Every tool returns the same fifteen lists; every list is always there and may be empty. The
-// order of each is stated. The summaries of the entries below say it for the AI.
+// order of each is stated. The summaries of the entries below say it for the AI. The order of the
+// lists is the order of the keys here; 6c appends `entries` after `broken`, the sixteenth, so no
+// place of these fifteen changes.
 export const CUT_IDS = {
   changed: 'curves that keep their ID and were changed: re-pointed, cut into pieces, or a circle that became an arc (the keeper of each cut curve), in the order of their IDs',
   added: 'new curves: for each changed curve in the order of `changed`, its new pieces in its own direction (a line from `a` to `b`, an arc counter-clockwise); span lines are in `span`, not here. The list is flat: to trim one of them, give `trim` the place and leave `curve` out',
@@ -123,14 +142,14 @@ export const CUT_IDS = {
   reattached: 'constraints that keep their ID and now name another curve, in the order of their IDs: a tangency moved to the pieces that have the common end, constraints moved to a sibling piece or to a span line, the constraints of a circle that became an arc',
   removed: 'curves, points and constraints the batch removes for good, in that order and each by ID: the trimmed piece when it was a whole curve, cut-off ends nothing else names, constraints that went with them, became identities, would repeat one the sketch has (a driving constraint of the same kind and operands; the one there stays, unless only the moved one has an expression, which then stays instead) or would name one curve twice',
   uncut:
-    'curves left whole at a place where something touches them, in the order of their IDs: a circle with one point only, a circle a generated profile names as an operand, two arcs or circles that only touch each other (both are listed), a curve of reference or derived geometry that forms regions. The profile stays invalid there; the query sketchContacts says where and why',
+    'curves left whole at a place where something touches them, in the order of their IDs: a circle with one point only, a circle a generated profile names as an operand, two arcs or circles that only touch each other (both are listed), a curve of reference or derived geometry that forms regions and is met by an own curve (that curve is listed, not the own one: it is the one no tool can cut). The profile stays invalid there; the query sketchContacts says where and why',
   patched: 'features the batch changed in the same batch (updateFeature), in the order of the timeline: the regions or the wall of an extrusion or a revolve over the sketch, and the edges of a chamfer or a fillet that named an edge of a side face of a cut curve',
   dropped: 'features of which a region is gone: no region after the batch holds any of it (its outline was opened), or a region left with no curve by the rewrite of `pending`; dropped from the feature when it has other regions (the feature is then also in `patched`), else left and the feature ends in noProfile. Also features with a region that could not be followed: it could not be rebuilt as it was, the faces could not be built while the sketch after the batch is valid, or a face next to a loop without exact curves was too thin to be told inside from outside; that region is left in their list as it is. In the order of the timeline',
-  pending: 'features whose regions name a changed curve while the sketch still has contacts after the batch (one the tools do not cut, one that split with `with` or `at` was not asked to cut, or one left by a trim or an extend with the repair off): their regions were rewritten by names (each changed curve replaced by its pieces; the feature is also in `patched`) and are followed by the next tool that leaves the sketch valid; in the order of the timeline',
+  pending: 'features whose regions name a changed curve while the sketch still has contacts after the batch (one the tools do not cut, one that split with `with` or `at` was not asked to cut, or one left by a trim or an extend with the repair off): their regions were rewritten by names (each changed curve replaced by its pieces that stay; the feature is also in `patched`). A region whose curves were only cut still names a closed outline, and the next tool that leaves the sketch valid follows it. A region whose outline lost a piece (a trim with the repair off, or beside a contact no tool can cut) names an open chain: no later tool can follow it, the next one lists the feature in `dropped`, and the region has to be picked again; in the order of the timeline',
   reshaped: 'features with a region that keeps its name while the batch changed the holes inside it: a trim opened the outline of a hole (the hole is filled, or smaller), or an extension closed a loop inside the region (a new hole). The reference does not change and the body does; in the order of the timeline',
   moved: 'sketches and plane features on a side face of a line whose start `a` was re-pointed: their plane moved along the line; in the order of the timeline',
   shortened: 'features that read a face of a changed curve directly and are not in `moved`: walls along a curve that lost a piece and chamfers and fillets whose edge lost a piece (both also in `patched`), sketches that project an edge of such a face, chamfers and fillets of an edge of such a face with a face of another feature (which piece meets that face is not known from the sketch, so the edge is left as it is), features that name the face of a chamfer or a fillet whose edge was rewritten; in the order of the timeline',
-  broken: 'features and sections that name what the batch removes or renames: a removed curve or a face of it, an axis on it (also of a joint), a wall left with no curve, the straight end of a wall (wallEnd) whose chain no longer ends at that point, a chamfer or a fillet with an edge that no piece has any more (the edge is left in its list when taking it out would renumber a face something names); features in the order of the timeline, then the IDs of section entries',
+  broken: 'features and sections that name what the batch removes or renames: a removed curve or a face of it, an axis on it (also of a joint), a wall left with no curve, the straight end of a wall (wallEnd) whose chain no longer ends at that point, a chamfer or a fillet with an edge that no piece has any more and that is left in its list because something names a face of the blend at its place or a later one (a face is named by the place of its edge, so taking the edge out would hand those names to other faces); features in the order of the timeline, then the IDs of section entries',
 } as const;
 export type CutIds = { [K in keyof typeof CUT_IDS]: Id[] };
 
@@ -150,7 +169,13 @@ export type CutIds = { [K in keyof typeof CUT_IDS]: Id[] };
 //   both curves are cut and one of them is a line: the tangency then holds the point (the existing
 //   `tangent` of the two moved to a line piece and an arc piece that have it, else one added). Two arcs or circles
 //   that touch, a circle that would get that one point, and a touch with a curve that is not cut
-//   there (a construction X, a `with` curve, the repair off) are not cuts.
+//   there (a construction X, a `with` curve, the repair off) are not cuts. Such a touch bounds no
+//   piece and stops no extension; a trim whose piece has one inside it is refused, and so is an
+//   extension that would leave one in a profile that was valid.
+// - The cuts of a circle are ordered by the angle about its centre from the x axis of the sketch,
+//   in [0, 2π), and an angle within the length tolerance of a full turn, measured along the circle
+//   ((2π − angle) · r ≤ LENGTH_TOLERANCE), is 0: a cut on the +x ray from the centre must not be
+//   the first or the last by the noise of the solver, since the first piece keeps the ID.
 // - The point at a cut: an own point (or `origin`) within the tolerance that one of the two curves
 //   ends at (its class by pointJoins) or holds by pointOnCurve is used; otherwise a new point at
 //   the exact place. A contact at a point of reference geometry gets a new point held on that
@@ -169,7 +194,7 @@ export type CutIds = { [K in keyof typeof CUT_IDS]: Id[] };
 export const TRIM = {
   title: 'Trim',
   summary:
-    'Removes the piece of a curve nearest to `at`. A piece is the part between two neighbouring cuts, or between a cut and an end; a cut is a point where another curve crosses the curve, ends on it, or touches it, apart from a common end. `curve` may be left out: the own curve nearest to `at` is trimmed. With `curve`, `at` has to be nearer to it than to any other piece on the same line or circle: after a split the ID of a curve names only its first piece, and a place on another piece is refused with the name of that piece. The curves that cut an outline curve are the other outline curves; a construction or reference curve cuts it only when `with` names it (`with`: only the contacts with that curve bound the piece). `repair` (`on`, `off`; left out: on when a feature of the document reads regions of the sketch, off otherwise): on, the trim first cuts every other contact of outline curves in the sketch (as split without curve; contacts inside the removed piece go with it), so each becomes a common point, the profile can close and the regions of the features follow at once; off, only the trimmed curve is cut and its new ends are held on the curves there (pointOnCurve), so no other curve changes and T shapes stay (a sketch of walls). A construction curve is always trimmed that way. What stays keeps its constraints: the piece with the start of the curve keeps its ID; a middle piece removed leaves a new line or arc beyond it, held on the line of the curve (pointOnCurve) or on its circle (the same centre); a circle trimmed becomes an arc under its ID with its constraints. A piece with no cut inside it (a curve that crosses nothing, or a piece left by an earlier split) is removed whole; what held its line or circle moves to a sibling piece on the same line or circle. Two arcs of one circle left without a common end get equalRadius. An end cut off stays, held on the line or circle of the curve, when anything else names it (another curve, any constraint, a feature, a joint), so a dimension of the whole curve still measures it; otherwise it is removed. equalLength and midpoint of a cut line move to a construction line over its old ends (`ids.span`). Where a line only touches an arc (a tangent contact away from their ends), both are cut and the tangency is kept between a line piece and an arc piece that have that point (added when the sketch had none: `ids.constraints`); two arcs that only touch are not cut (`ids.uncut`). The regions of the features over the sketch follow (`ids.patched`): a region that is gone is replaced by every region after the batch that covers part of it; a region whose outline was opened is dropped (`ids.dropped`); a region merged with its neighbour follows into the merged one, so the body grows, and a cut feature then cuts the neighbour too. A region that keeps its name while a hole inside it was opened or closed is in `ids.reshaped`: its body changes without a change of the reference. The edges of chamfers and fillets on a side of a cut curve are rewritten to the pieces (`ids.patched`). Refused: a trim that takes the common end of a tangency off its curve (remove the tangency first); a sketch in conflict. Check `reshaped`, `moved`, `shortened` and `broken`, and the problems of the answer. To repair crossing curves: ask the query sketchContacts where they are, split the whole sketch (split without curve), then trim the pieces that should go, each by a place on it.',
+    'Removes the piece of a curve nearest to `at`. A piece is the part between two neighbouring cuts, or between a cut and an end; a cut is a point where another curve crosses the curve, ends on it, or touches it, apart from a common end. `curve` may be left out: the own curve nearest to `at` is trimmed (a place that lies on a projected curve or on a copy of a mirror or a pattern is refused: those are not trimmed). With `curve`, `at` has to be nearer to it than to any other piece on the same line or circle: after a split the ID of a curve names only its first piece, and a place on another piece is refused with the name of that piece. The curves that cut an outline curve are the other outline curves; a construction or reference curve cuts it only when `with` names it (`with`: only the contacts with that curve bound the piece). `repair` (`on`, `off`; left out: on when a feature of the document reads regions of the sketch, off otherwise): on, the trim first cuts every other contact of outline curves in the sketch (as split without curve; contacts inside the removed piece go with it), so each becomes a common point, the profile can close and the regions of the features follow at once; off, only the trimmed curve is cut and its new ends are held on the curves there (pointOnCurve), so no other curve changes and T shapes stay (a sketch of walls). A construction curve is always trimmed that way. Pass `repair` `on` wherever a feature reads regions of the sketch or will; `off` is for a sketch whose T shapes are meant. With `off` in a sketch whose regions a feature reads, a region whose outline loses the piece is rewritten by names and cannot be followed afterwards (`ids.pending`, then `ids.dropped` at the next tool). What stays keeps its constraints: the piece with the start of the curve keeps its ID; a middle piece removed leaves a new line or arc beyond it, held on the line of the curve (pointOnCurve) or on its circle (the same centre); a circle trimmed becomes an arc under its ID with its constraints. A piece with no cut inside it (a curve that crosses nothing, or a piece left by an earlier split) is removed whole; what held its line or circle moves to a sibling piece on the same line or circle. Two arcs of one circle left without a common end get equalRadius. An end cut off stays, held on the line or circle of the curve, when anything else names it (another curve, any constraint, a feature, a joint), so a dimension of the whole curve still measures it; otherwise it is removed. equalLength and midpoint of a cut line move to a construction line over its old ends (`ids.span`). Where a line only touches an arc (a tangent contact away from their ends), both are cut and the tangency is kept between a line piece and an arc piece that have that point (added when the sketch had none: `ids.constraints`); two arcs that only touch are not cut (`ids.uncut`). A trim cannot stop at a touch that is not cut (two arcs; a line and an arc with the repair off; a circle that would get that one point): a piece that would run through such a touch is refused with the touch named; remove the whole curve with removeEntity, or trim a line and an arc with `repair` `on`. The regions of the features over the sketch follow (`ids.patched`): a region that is gone is replaced by every region after the batch that covers part of it; a region whose outline was opened is dropped (`ids.dropped`); while the sketch still has a contact after the batch the regions are rewritten by names instead (`ids.pending`); a region merged with its neighbour follows into the merged one, so the body grows, and a cut feature then cuts the neighbour too. A region that keeps its name while a hole inside it was opened or closed is in `ids.reshaped`: its body changes without a change of the reference. The edges of chamfers and fillets on a side of a cut curve are rewritten to the pieces (`ids.patched`); an edge whose piece is gone stays in its list while something names a face of that chamfer or fillet at its place or later, and the feature is then in `ids.broken`. Refused: a trim that takes the common end of a tangency off its curve (remove the tangency first); a piece that runs through a touch that is not cut; a place on a curve that is not own; a sketch in conflict. Check `reshaped`, `moved`, `shortened` and `broken`, and the problems of the answer. To repair crossing curves: ask the query sketchContacts where they are, split the whole sketch (split without curve), then trim the pieces that should go, each by a place on it.',
   inputs: { at: { kind: 'place' }, curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, repair: { kind: 'option', options: ['on', 'off'], optional: true } },
   ids: CUT_IDS,
 } as const satisfies SketchToolSpecAfter;
@@ -177,7 +202,7 @@ export const TRIM = {
 export const EXTEND = {
   title: 'Extend',
   summary:
-    'Moves an end of a line (`a` or `b`) or of an arc (`start` or `end`) along the line or the circle of the curve to the first place where the extension meets another curve (for an outline curve another outline curve; for a construction curve any curve; with `with`, that curve only), within that curve\'s own extent. `repair` as for trim: on (the default when a feature reads regions of the sketch), the extend first cuts every contact of outline curves in the sketch and the extended stretch at every outline curve it crosses, and the curve met is cut at the new end; when the curve itself was cut, the piece that holds the end is extended. Off, and for a construction curve, the new end is held on the curve met (pointOnCurve) and nothing else is cut. The old end stays on the line or circle of the curve when anything else names it, else it is removed. Where the extension of a line only touches an arc that is cut there, it stops there too and the tangency is kept between the line and an arc piece that has the new end. Refused: an end that another curve also ends at (also through a coincident constraint), an end lying on another outline curve, an extension that meets nothing, an arc whose extension would reach the curve as it was (its own other end) first, an extension that would leave a contact no tool can cut while the profile was valid (its end on a circle which would then have that one point, or a touch along it that is not cut: the profile would become invalid for good; draw across the circle and trim instead), a sketch in conflict. A touch that is not cut does not stop an extension. The regions of the features over the sketch follow, as for trim.',
+    'Moves an end of a line (`a` or `b`) or of an arc (`start` or `end`) along the line or the circle of the curve to the first place where the extension meets another curve (for an outline curve another outline curve; for a construction curve any curve; with `with`, that curve only), within that curve\'s own extent. `repair` as for trim: on (the default when a feature reads regions of the sketch), the extend first cuts every contact of outline curves in the sketch and the extended stretch at every outline curve it crosses, and the curve met is cut at the new end; when the curve itself was cut, the piece that holds the end is extended. Off, and for a construction curve, the new end is held on the curve met (pointOnCurve) and nothing else is cut. The old end stays on the line or circle of the curve when anything else names it, else it is removed. Where the extension of a line only touches an arc that is cut there, it stops there too and the tangency is kept between the line and an arc piece that has the new end. Refused: an end that another curve also ends at (also through a coincident constraint), an end lying on another outline curve, an extension that meets nothing, an arc whose extension would reach the curve as it was (its own other end) first, an extension that would leave a contact no tool can cut while the profile was valid (its end on a circle which would then have that one point, a touch along it that is not cut, or a projected curve or a copy that forms regions, crossed or ended on: the profile would become invalid for good; draw across the circle and trim instead, or change the source of the copy), a sketch in conflict. A touch that is not cut does not stop an extension. The regions of the features over the sketch follow, as for trim.',
   inputs: { curve: { kind: 'curve' }, end: { kind: 'option', options: ['a', 'b', 'start', 'end'] }, with: { kind: 'curve', reference: true, optional: true }, repair: { kind: 'option', options: ['on', 'off'], optional: true } },
   ids: CUT_IDS,
 } as const satisfies SketchToolSpecAfter;
@@ -224,15 +249,37 @@ export interface CurveContacts {
 // Undefined when either curve has no position or no length.
 export declare function curveContacts(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): CurveContacts | undefined;
 
+// sketch.ts: why a profile is invalid when no pair of its curves touches. The last check of the
+// profile is on the polygons a body would be built from (`soundTessellation`): a loop that
+// collapses to fewer than three points (a region thinner than the chord tolerance, whose arc is one
+// chord: what a line entering an arc by less than the chord tolerance leaves once both crossings
+// are cut), or two polygon edges that cross though their curves do not. The check answered yes or
+// no; it now says which curves and where (`Loop.curves` has the curve of every edge), and
+// `soundTessellation` is "no problem". Undefined when the profile is valid, or invalid for a pair
+// that touches (the contacts say that).
+export interface TightPlace {
+  curves: Id[]; // the curves of the collapsed loop, or the two whose polygon edges cross
+  at: Vec2; // a place on them, in the sketch
+}
+export declare function profileProblem(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): TightPlace | undefined;
+
 // ================================================================ 4. the query of the contacts
 
 // `sketchContacts` (query/sketch.ts, one line of `QUERIES`, its rows in the two typed tables of
 // packages/mcp/test/queries.test.ts): where the curves of a sketch that form regions meet apart
 // from common points, in the state asked about (also `at` and `after`, as every query). It reads
 // what the recompute kept of the sketch (`context.sketch`: its curves, joins, positions and
-// profile) and the document (a circle a generated profile names), computes nothing of bodies
-// (`geometry: 'none'`), and is kept by the solved sketch (`context.memo`), so the app's marks ask it
-// at every redraw for nothing.
+// profile) and the document (a circle a generated profile names), and computes nothing of bodies
+// (`geometry: 'none'`).
+// Its memo names every object the answer depends on (`QueryContext.memo`): the places are kept by
+// the solved sketch alone, which holds everything they are computed from, so the app's marks ask
+// at every redraw for nothing; what a split would do at each place (`fix`) also reads the document
+// (a circle that a generated profile of a later feature names is not cut), so the answer is kept by
+// the solved sketch and the document together. An answer kept by the sketch alone would go stale
+// when such a feature is added or removed without the sketch changing.
+// It lists places where curves meet. An end of a copy or of a flagged projection that joined
+// nothing (6c's open ends) is no such place, and a valid profile may have them: they stay in
+// `SketchResult.openEnds` and in `get_sketch`.
 export const SKETCH_CONTACTS_ARGS = {
   sketch: { kind: 'sketch', title: 'Sketch' },
   max: { kind: 'number', title: 'Most contacts', summary: 'The most contacts to list; `total` counts them all.', optional: true, spec: { title: 'Most contacts to list', unit: 'count', integer: true, min: { value: 1 }, default: 100 } },
@@ -242,15 +289,16 @@ export const SKETCH_CONTACTS_ARGS = {
 // - `kind`: as `ContactKind`, and `ends` for two ends of two curves at one place that are not
 //   joined.
 // - `curves`: the two curves, the smaller ID first.
-// - `repair`: what split without a curve does there: `cut` (both curves get a common point),
+// - `fix`: what split without a curve does there: `cut` (both curves get a common point),
 //   `join` (the two ends become one vertex), or `none` with the reason in `why` (a circle with one
 //   point only; two arcs that only touch; a circle a generated profile names; a curve of reference
-//   or derived geometry, which is never cut).
+//   or derived geometry, which is never cut). The first contract called the field `repair`, the
+//   name of the option of trim and extend, which is another thing.
 export interface SketchContact {
   at: Vec2;
   kind: ContactKind | 'ends';
   curves: [Id, Id];
-  repair: 'cut' | 'join' | 'none';
+  fix: 'cut' | 'join' | 'none';
   why?: string;
 }
 // - `status`: `unavailable` when the sketch did not evaluate (suppressed, its plane broken); the
@@ -261,9 +309,13 @@ export interface SketchContact {
 // - `lying`: pairs that lie on each other along a stretch or on one circle; a cut cannot repair
 //   them (trim or remove one). An overlap also has its points in `contacts`.
 // - `degenerate`: curves of no length.
+// - `tight`: when the profile is invalid and no contact, lying pair or curve of no length explains
+//   it: the curves that enclose a region thinner than the chord tolerance, or whose polygons cross,
+//   and a place on them (`profileProblem`). Trimming one of them, or moving the curves apart, is
+//   the cure; no cut is.
 // - `reason`: why the profile is invalid, in words, when it is: the first thing a cut cannot repair,
-//   or that the curves come too close for the chord tolerance when no list explains it. It is the
-//   text split without a curve refuses with.
+//   with the curves and the place it is at (of `tight` too). It is the text split without a curve
+//   refuses with.
 export interface SketchContactsResult {
   status: 'ok' | 'unavailable';
   valid: boolean;
@@ -271,6 +323,7 @@ export interface SketchContactsResult {
   total: number;
   lying: [Id, Id][];
   degenerate: Id[];
+  tight?: TightPlace;
   reason?: string;
 }
 declare module '../00-prep/contract' {
@@ -284,7 +337,7 @@ export const SKETCH_CONTACTS = {
   summary:
     'Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.',
   returns:
-    '`valid` (the profile), `contacts` (each `at` [x, y] in mm in the sketch, `kind`: crossing, touch, end, overlap or ends; `curves`; `repair`: cut, join or none with `why`), `total`, `lying` (pairs lying on each other), `degenerate` (curves of no length), `reason` (why the profile is invalid when a cut cannot repair it).',
+    '`valid` (the profile), `contacts` (each `at` [x, y] in mm in the sketch, `kind`: crossing, touch, end, overlap or ends; `curves`; `fix`: what split without a curve does there, cut, join or none with `why`), `total`, `lying` (pairs lying on each other), `degenerate` (curves of no length), `tight` (the curves around a region thinner than the chord tolerance, and a place on them), `reason` (why the profile is invalid when a cut cannot repair it, with the curves and the place).',
   geometry: 'none',
 } as const;
 
@@ -314,10 +367,14 @@ export declare function repairsByDefault(document: DocumentAfter, sketch: Id): b
 // What the tools of the app remember (6a's `options`): the curve a trim, an extend or a split is
 // bounded by (`with`; set from the one curve selected, cleared in the panel; ignored when the open
 // sketch has no such curve), the repair as chosen (undefined: by the document), and for split
-// whether a click cuts at the nearest contact only (`at`).
+// whether a click cuts at the nearest contact only (`at`). 6a's options outlive a sketch, and an
+// override of the repair must not: `on` chosen in one sketch would cut every wall line of the next
+// sketch of walls, and `off` would give up the regions of the next outline. So the choice is kept
+// with the sketch it was made in and counts only while that sketch is open; in another sketch the
+// checkbox shows the default of the document again.
 export interface CutOptions {
   with?: Id;
-  repair?: Repair;
+  repair?: { sketch: Id; value: Repair };
 }
 export interface SplitOptions {
   with?: Id;
@@ -326,8 +383,9 @@ export interface SplitOptions {
 
 // ================================================================ 6. what the later packages plug into
 
-// Three places of sketch-cut.ts that 6c, 6b, 6d and 6f change, each one function, so that a later
-// kind of geometry is added once (design.md, "Plug-in points").
+// The places of sketch-cut.ts and references/world.ts that 6c, 6b, 6d and 6f change, each one
+// function or one type, so that a later kind of geometry is added once (design.md, "Plug-in
+// points"). The implementation keeps these names.
 
 // (a) The three predicates of a curve of the sketch. 6e's rules are written with them alone.
 // - `mayCut`: a tool may cut, trim or extend it: an own line, arc or circle that no generated
@@ -345,36 +403,137 @@ export interface CurvePredicates {
 }
 export declare function curvePredicates(document: DocumentAfter, sketch: SketchFeature): CurvePredicates;
 
-// (b) The curves and the joins every profile in memory is built from (the profile after the batch,
-// the faces, the region as it was, the contacts): one function over what a tool has, the sketch and
-// its result. Today the curves are the own ones and `SketchResult.curves`, and the joins those of
-// the `coincident` constraints, as the sketch step has them (`joinPairs`). A package that adds
-// joins to the sketch step (6c: the ends of copies by position; 6b: the ends of flagged
-// projections, by position or by keys, design.md "Open") adds them here in the same commit, and
-// 6a2 the axes of the origin if the result does not carry them. `extra` are the pairs a batch
-// joins.
-export interface ToolWorld {
+// (b) The world of a sketch: the curves, the positions and the joins that every profile is built
+// from, in the recompute and in memory. One core, `sketchWorld`, for the sketch step and for every
+// tool, so that the profile a tool sees is the profile the recompute makes. (The first revision had
+// `toolWorld(sketch, result, extra?)` here and 6c's had `withDerived(feature, references,
+// geometry)`: two functions that each claimed to be the one, of which a tool could not call the
+// second, having no resolved references, and the second had no place for the joins a batch adds.)
+// In packages/engine/src/references/world.ts: after `sketch.ts` and the registry of the kinds in the
+// order of the imports, so the stage of 6c can be called from it, and before the feature modules.
+//
+// - `SketchBase` is the sketch before the stage after the solver:
+//   - `sketch`: read for its entries of `external` only (6c computes the copies from them). It
+//     may be a sketch that exists in memory alone: the sketch after a batch, or that sketch with
+//     removed pieces put back as curves and into the entries that listed them;
+//   - `curves`: the curves that are not derived: the own ones and the reference ones (with the axes
+//     of the origin of 6a2), each with its flag `regions`. No copy;
+//   - `geometry`: the positions of every point those curves name and the radii of their circles;
+//   - `pairs`: the joins before the stage, as pairs of points: the `coincident` constraints
+//     (`joinPairs`), and for a tool also what its batch joins. The core makes the vertices of them
+//     with `joinsOf`, which takes a pair only when its points are within the length tolerance.
+// - `sketchWorld(base)` is the core. In 6e it adds nothing: the curves as given and `joinsOf` of
+//   the pairs. 6c makes it the stage after the solver (owner, answers 12 and 19): the copies of
+//   every derived entry are computed from the base (curves `source: 'derived'`, their positions
+//   added), the occupation pass, and the joins by position of the ends of the curves that are not
+//   own and form regions (the copies, and with 6b and 6f the flagged reference curves, which need
+//   no code of their own here: they are curves of the base with `regions`), with each other and
+//   with the own ends at their place that are one vertex already by `pairs`. 6c also adds to the
+//   answer what the step puts into the result (the copies by entry, the warnings, the open ends).
+// - Two builders, side by side, so that the axes of the origin (6a2) reach both the same way:
+//   - `stepBase`, for the sketch step: `sketchCurves(feature, references)`, the positions after the
+//     solver, `joinPairs(feature, references)`;
+//   - `toolBase`, for a tool, which has no resolved references (`SketchToolContext` is the sketch,
+//     its result and the parameters): the own curves of `sketch`; the curves of `result.curves`
+//     with `source: 'reference'` (those with `source: 'derived'`, the copies as they were, are
+//     dropped: the core derives them again from the entries of `sketch`); the positions and radii of
+//     the result with `more.points` and `more.radii` over them (the new points of a batch at their
+//     exact places); the `coincident` pairs of `sketch` with `more.pairs`: what a batch joins that
+//     the sketch given does not say (for the sketch as it was, the `coincident` constraints the
+//     batch adds and the ends it joins by a re-point), so that the stage sees a corner the batch
+//     closes.
+// - Cuts in memory are made on the flat curves of a world, after the core, never on the sketch
+//   before it: `cutInMemory` takes a world and the curves to cut at their contacts with each other,
+//   and gives a world (its pieces have IDs that exist there alone). The faces (the removed pieces
+//   put back, cut with what they touch) and the region as it was (the curves that do not cross its
+//   outline, cut where they meet) are built that way, so a copy or a reference curve is cut as
+//   a shape like any other, and each copy is left out or kept on its own.
+export interface SketchBase {
+  sketch: SketchFeature;
+  curves: readonly SketchCurve[];
+  geometry: SketchGeometry;
+  pairs: readonly [Id, Id][];
+}
+export interface SketchWorld {
   curves: ReadonlyMap<Id, SketchCurve>;
   geometry: SketchGeometry;
   joins(id: Id): Id;
 }
-export declare function toolWorld(sketch: SketchFeature, result: SketchResult, extra?: readonly [Id, Id][]): ToolWorld;
+export declare function sketchWorld(base: SketchBase): SketchWorld;
+export declare function stepBase(feature: SketchFeature, references: Record<Id, ResolvedReference>, geometry: SketchGeometry): SketchBase;
+export declare function toolBase(sketch: SketchFeature, result: SketchResult, more?: { points?: Record<Id, Point2>; radii?: Record<Id, number>; pairs?: readonly [Id, Id][] }): SketchBase;
+export declare function cutInMemory(world: SketchWorld, curves: readonly Id[]): SketchWorld;
 
-// (c) The lists of what reads a changed curve, shared by the fillet (D52) and the three tools, so
-// that a kind of reader added later (6b: a projection of an entity of this sketch from another
-// sketch; 6c: an entry that lists a source) is added once.
+// (c) The plan of a batch as data, and the lists of what reads a changed curve. The fillet (D52)
+// and the three tools give the same record, so that a kind of reader added later (6b: a projection
+// of an entity of this sketch from another sketch; 6c: an entry that lists a source) is added once,
+// and so that 6c's rules read what the batch did and do not work it out again.
 // - `changed`: curves that keep their ID with another extent; `restarted`: lines whose start `a`
 //   was re-pointed; `rekinded`: circles that became arcs; `removed` and `removedPoints`: what the
 //   batch removes.
+// - `added`: the curves the batch makes in the place of what was there: the new pieces of the cut
+//   curves, the arc of a fillet. `span`: the construction lines made for `equalLength` and
+//   `midpoint`, which are no part of what was there.
+// - `pieces`: for every curve the batch cut or trimmed, by its ID before the batch: the curves that
+//   stay of it, in its own direction, the keeper among them; an empty list for a curve removed
+//   whole. A curve the batch only re-pointed (an extend, the two lines of a fillet) has itself.
+// - `stretches`: what the batch takes out of the sketch, each as the curves it ran over, by their
+//   IDs before the batch and along the stretch (one for a trim; two for the corner of a fillet),
+//   and its two bounds as points: the points at the two cuts of a trimmed piece, the ends of
+//   a piece removed whole, the two tangent points of a fillet. A bound the batch removes (an end
+//   nothing names) is given as it was and is in `removedPoints`. A split has none.
+export interface RemovedStretch {
+  curves: Id[];
+  bounds: [Id, Id];
+}
 export interface CurveChanges {
   changed: Id[];
   restarted: Id[];
   rekinded: Id[];
   removed: Id[];
   removedPoints: Id[];
+  added: Id[];
+  span: Id[];
+  pieces: Record<Id, Id[]>;
+  stretches: RemovedStretch[];
 }
 // Features in the order of the timeline; `broken` then the IDs of section entries.
 export declare function readersOf(document: DocumentAfter, sketch: Id, changes: CurveChanges): { moved: Id[]; shortened: Id[]; broken: Id[] };
+
+// (d) What a curve that a feature names became in the batch: the curves that take its place, in
+// its direction, or undefined when the batch did not change it. The rewrites by names read a curve
+// through it and through nothing else: a region rewritten by names (`pending`), the curves of
+// a wall, and the edges of a chamfer or a fillet on a side face of the curve. In 6e it answers
+// `changes.pieces` for an own curve. 6c makes it answer for a copy: `<entry>/<n>/<X>`, for any copy
+// number `n` whatever the count, becomes `<entry>/<n>/<piece>` for the pieces of X that the patched
+// entry lists; the sides of copies, and a stored region of a copy the count does not make now, are
+// then rewritten by the code that rewrites own curves. `sketch` is the sketch after the batch.
+// Which piece has which vertex is read from the world after the batch, never from the names of
+// the ends: a mirror turns an arc round.
+export declare function piecesOf(changes: CurveChanges, sketch: SketchFeature, curve: Id): Id[] | undefined;
+
+// (e) The places at which a batch may have changed a hole of a region that keeps its name: the
+// middle of each removed piece and of each added stretch, each with the curve it belongs to (its ID
+// before the batch). A region is compared with what it was (`reshaped`) when one of them lies
+// inside its outer loop. 6c adds the image of each place under every copy of every entry that
+// lists the curve: the copies of a trimmed source are trimmed with it, in another region.
+export declare function reshapedProbes(sketch: SketchFeature, world: SketchWorld, middles: readonly { curve: Id; at: Vec2 }[]): Vec2[];
+
+// (f) What split without a curve does at a contact, for the tools and for the query alike (the
+// field `fix` of the query is this answer, so the two cannot disagree): `cut`, `join`, or `none`
+// with the reason. A circle that would have one point only is decided by the caller, once every
+// contact is found. Undefined: the contact is not listed at all, which 6e never answers. 6c adds:
+// an own curve with a copy is `none`, with the copy and its entry named; two copies of one entry
+// with one copy number are the image of a contact of their sources, which is listed and whose cut
+// cures both, so the image is not listed and not counted; any other two copies are `none`. 6b and
+// 6f add the reason of a flagged reference curve, 6d that of a spline.
+export type ContactFix = { fix: 'cut' | 'join' } | { fix: 'none'; why: string } | undefined;
+export declare function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | 'ends', predicates: CurvePredicates, sketch: SketchFeature): ContactFix;
+
+// (g) `repairsByDefault` (section 5): what counts as a feature that reads regions of the sketch.
+// In 6e: an entry of `PROFILE_SOURCES` with regions of this sketch. 6b adds a sketch that projects
+// a curve of this sketch with the region flag: its outline is made of this sketch's curves, and
+// a T left here is a T there, where nothing can cut it.
 
 // ================================================================ 7. what is not cut
 
@@ -383,10 +542,11 @@ export declare function readersOf(document: DocumentAfter, sketch: Id, changes: 
 //   sketch with 6b, an outline with 6f): never cut. A contact with it is a cut of an own curve
 //   (held on it by pointOnCurve) when `with` names it or the own curve is a construction curve.
 //   One that forms regions (6b with its flag, an outline of 6f with its flag) cannot get a common
-//   vertex with an own curve, and a profile where the two cross stays invalid: the contact is
-//   listed with `repair: 'none'`;
+//   vertex with an own curve in its interior, and a profile where the two cross stays invalid: the
+//   contact is listed with `fix: 'none'`. Its ends join by position with the ends at their place
+//   (the stage of `sketchWorld`), so an own outline may end where a flagged projection ends;
 // - a derived copy of 6c: never cut and not a cut (a point cannot be held on it in its own
-//   sketch); a copy that forms regions and crosses an own curve is listed with `repair: 'none'`;
+//   sketch); a copy that forms regions and crosses an own curve is listed with `fix: 'none'`;
 // - a spline of 6d: never cut and not a cut until a point can be held on a spline (the full
 //   variant of 6d); every switch on the kind of a curve in the tools refuses it by name;
 // - two circles, or a circle and an arc, on one circle, and two curves lying on each other: no

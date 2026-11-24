@@ -170,11 +170,14 @@ describe('the axes of the origin: constraints against the real solver', () => {
 
   it('refuses a constraint of two fixed operands and a midpoint of an axis; the origin is the point of an axis for the own rules', () => {
     const engine = solve([], [['p', 3, 4]]);
-    expect(refused(engine, constrain('S', 'z1', { type: 'perpendicular', a: 'origin/x', b: 'origin/y' }))).toContain('vazba jen mezi pevnými entitami');
+    expect(refused(engine, constrain('S', 'z1', { type: 'perpendicular', a: 'origin/x', b: 'origin/y' }))).toContain('only between fixed entities');
     expect(refused(engine, constrain('S', 'z2', { type: 'midpoint', point: 'p', line: 'origin/y' }))).toContain('origin/y is an axis of the origin, a whole line');
     expect(refused(engine, constrain('S', 'z3', { type: 'symmetric', a: 'p', b: 'origin', line: 'origin/x' }))).toContain('souměrný bod nesmí být koncem osy');
     expect(refused(engine, constrain('S', 'z4', { type: 'pointOnCurve', point: 'origin/y/b', curve: 'origin/x' }))).toContain('"origin/y/b" ve skice není');
     expect(refused(engine, { type: 'setCurvePoint', sketch: 'S', id: 'origin/x', point: 'a', to: 'p' })).toContain('origin/x');
+    expect(refused(engine, constrain('S', 'z5', { type: 'parallel', a: 'origin/x', b: 'origin/y' }))).toContain('a constraint only between fixed entities (the origin, its axes origin/x and origin/y, projected geometry) would never take effect');
+    // an axis is no curve of a wall, and the refusal says what it is
+    expect(refused(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'S', curves: ['origin/x'], thickness: 2 }, extent: { type: 'distance', start: 0, distance: 3 }, operation: 'new' } })).toContain('"origin/x" is an axis of the origin; an own line or arc or circle of the sketch "S" is expected');
     // a reference dimension between fixed operands only is allowed: it measures
     const state = run(engine, constrain('S', 'ref', { type: 'angle', a: 'origin/x', b: 'origin/y', value: 1, driving: false } as Constraint));
     expect(state.evaluation.features.S.sketch?.measurements.ref).toBeCloseTo(Math.PI / 2, 12);

@@ -332,8 +332,8 @@ export type ProjectionKind = 'line' | 'circle';
 // commands addExternal, updateExternal and removeExternal (D64).
 // Besides its entries every sketch has the lines `origin/x` and `origin/y` through its origin along
 // its X and Y (from `origin` towards +X and +Y), fixed like projected geometry and in no entry: a
-// constraint, a mirror or a pattern of the sketch and an axis `{ kind: 'sketchLine', sketch, line }`
-// may name them; they are whole lines, so `midpoint` and `equalLength` do not take them (D71).
+// constraint of the sketch and an axis `{ kind: 'sketchLine', sketch, line }` may name them; they
+// are whole lines, so `midpoint` and `equalLength` do not take them (D71).
 // kind: jako co se hrana promítá
 export interface ExternalRef {
   type: 'edge';
@@ -343,8 +343,8 @@ export interface ExternalRef {
 }
 
 // Každá varianta má pojmenované operandy s pevným významem.
-// A line operand may be an axis of the origin, `origin/x` or `origin/y` (with at least one own
-// operand, as for any fixed entity), except in `midpoint` and `equalLength`.
+// A line operand may be an axis of the origin, `origin/x` or `origin/y` (a driving constraint needs
+// at least one own operand, as for any fixed entity), except in `midpoint` and `equalLength`.
 export type Constraint = GeometricConstraint | Dimension;
 
 export type GeometricConstraint =

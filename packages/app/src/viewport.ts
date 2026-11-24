@@ -81,6 +81,8 @@ export interface View {
   image(model: PictureModel, camera: PictureCamera, width: number, height: number): Promise<Picture>;
 }
 
+// The corners of the view in normalised device coordinates, in order around it.
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
 const DISTANCE = 5000; // kamera stojí daleko, aby žádná část modelu nebyla za ní
 const BACKGROUND = 0xf2f4f7;
 const BODY_MATERIAL = { roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
@@ -282,20 +284,22 @@ export class Viewport implements View {
   }
 
   // The lines without ends of the scene (`SceneModel.axes`), each as its stretch inside the part of
-  // its plane the view shows now: the corners of the view are cast onto the plane. A plane seen
-  // edge-on shows no stretch.
+  // its plane the view shows now: the corners of the view are cast onto the plane. The objects of
+  // three.js are made once (`axisWork`); a frame makes only a few small arrays. A known limit: an
+  // axis is hidden while a corner ray misses its plane (a plane seen edge-on or nearly so, where
+  // an axis in it would be a line seen end-on or a sliver anyway).
+  private readonly axisWork = { ray: new THREE.Raycaster(), plane: new THREE.Plane(), normal: new THREE.Vector3(), origin: new THREE.Vector3(), ndc: new THREE.Vector2(), hit: new THREE.Vector3() };
   private placeAxes(): void {
     if (this.axes.length === 0) return;
     this.camera.updateMatrixWorld();
-    const ray = new THREE.Raycaster();
+    const { ray, plane, normal, origin, ndc, hit } = this.axisWork;
     for (const axis of this.axes) {
       const { frame } = axis;
-      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...frame.normal), new THREE.Vector3(...frame.origin));
+      plane.setFromNormalAndCoplanarPoint(normal.set(...frame.normal), origin.set(...frame.origin));
       const corners: Vec2[] = [];
-      for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-        ray.setFromCamera(new THREE.Vector2(x, y), this.camera);
-        const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
-        if (!hit) break;
+      for (const [x, y] of CORNERS) {
+        ray.setFromCamera(ndc.set(x, y), this.camera);
+        if (!ray.ray.intersectPlane(plane, hit)) break;
         const p = [hit.x - frame.origin[0], hit.y - frame.origin[1], hit.z - frame.origin[2]];
         corners.push([p[0] * frame.x[0] + p[1] * frame.x[1] + p[2] * frame.x[2], p[0] * frame.y[0] + p[1] * frame.y[1] + p[2] * frame.y[2]]);
       }

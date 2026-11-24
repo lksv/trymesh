@@ -232,13 +232,18 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
 // Operandy vazby (ID entit skici), podle katalogu enginu.
 export const operandsOf = constraintOperands;
 
-// Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu.
+// Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu. An axis of the origin
+// (D71), a whole line, has no middle: its spot is the foot on it of the middle of the other
+// operands (of the origin, when every operand is an axis), so the label of a dimension to an axis
+// stands beside the point it measures.
 export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
   const spots: Vec2[] = [];
+  const axes: Shape[] = [];
   for (const id of operandsOf(c)) {
     const point = view.points.get(id);
     const shape = view.curves.get(id)?.shape;
-    if (point) spots.push(point.at);
+    if (shape && isOriginAxis(id)) axes.push(shape);
+    else if (point) spots.push(point.at);
     else if (!shape) return undefined;
     else {
       switch (shape.type) {
@@ -256,8 +261,13 @@ export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
       }
     }
   }
+  const middle = (of: Vec2[]): Vec2 => [of.reduce((sum, s) => sum + s[0], 0) / of.length, of.reduce((sum, s) => sum + s[1], 0) / of.length];
+  if (axes.length > 0) {
+    const from: Vec2 = spots.length > 0 ? middle(spots) : [0, 0];
+    spots.push(...axes.map((axis) => closestOn(axis, from)));
+  }
   if (spots.length === 0) return undefined;
-  return [spots.reduce((sum, s) => sum + s[0], 0) / spots.length, spots.reduce((sum, s) => sum + s[1], 0) / spots.length];
+  return middle(spots);
 }
 
 // Leží bod uvnitř smyčky (dvojice souřadnic za sebou)?

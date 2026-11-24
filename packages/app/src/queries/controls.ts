@@ -11,7 +11,7 @@ import { h, markProblem } from '../dom';
 import { fieldText, parseField, unitLabel } from '../fields';
 import type { PanelHost } from '../host';
 import { angleProblem, faceLabel } from '../issue-text';
-import { lineIds } from '../sketch-commands';
+import { lineIds, lineLabel } from '../sketch-commands';
 import { sketchView } from '../sketch-view';
 
 // What a control gets of the form.
@@ -191,7 +191,7 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
       const feature = sketchOf(form, current.sketch);
       out.push(
         choice(sketches(form), typeof current.sketch === 'string' ? current.sketch : undefined, (sketch) => form.set(path, { kind: 'sketchLine', sketch }, true), 'sketch'),
-        choice(feature ? lineIds(feature).map((id) => [id, id] as const) : [], typeof current.line === 'string' ? current.line : undefined, (line) => form.set(path, { kind: 'sketchLine', sketch: current.sketch, line }), 'line'),
+        choice(feature ? lineIds(feature).map((id) => [id, lineLabel(id)] as const) : [], typeof current.line === 'string' ? current.line : undefined, (line) => form.set(path, { kind: 'sketchLine', sketch: current.sketch, line }), 'line'),
       );
     }
     if (current.kind === 'sketchPoint') {

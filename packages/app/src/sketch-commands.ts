@@ -189,7 +189,12 @@ function sort(view: SketchView, ids: Id[]): Sorted {
 }
 
 // Geometrické vazby pro výběr; undefined = výběr se pro vazbu nehodí.
+// A constraint is offered only with an operand the solver can move: the engine refuses one between
+// fixed entities alone (the origin, its axes, projected geometry). `horizontal` and `vertical` go to
+// the own lines of the selection only.
 export function geometricFor(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
+  const own = (id: Id): boolean => view.points.get(id)?.own === true || view.curves.get(id)?.own === true;
+  if (!selection.some(own)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const only = (p: number, l: number, r: number) => points.length === p && lines.length === l && round.length === r;
   switch (kind) {
@@ -199,7 +204,7 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
       return points.length === 1 && lines.length + round.length === 1 ? [{ type: kind, point: points[0], curve: [...lines, ...round][0] }] : undefined;
     case 'horizontal':
     case 'vertical':
-      return lines.length > 0 && points.length === 0 && round.length === 0 ? lines.map((line) => ({ type: kind, line })) : undefined;
+      return lines.length > 0 && points.length === 0 && round.length === 0 ? lines.filter(own).map((line) => ({ type: kind, line })) : undefined;
     case 'parallel':
     case 'perpendicular':
       return only(0, 2, 0) ? [{ type: kind, a: lines[0], b: lines[1] }] : undefined;
@@ -212,8 +217,8 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
     case 'fixed': {
       // Every selected own point is fixed where it is (unrounded: a rounded coordinate could clash
       // with what already holds the point); the coordinates are then edited in the constraint list.
-      const own = points.map((id) => view.points.get(id)).filter((point) => point?.own) as PointView[];
-      return points.length > 0 && own.length === selection.length ? own.map((point) => ({ type: kind, point: point.id, x: point.at[0], y: point.at[1] })) : undefined;
+      const owned = points.map((id) => view.points.get(id)).filter((point) => point?.own) as PointView[];
+      return points.length > 0 && owned.length === selection.length ? owned.map((point) => ({ type: kind, point: point.id, x: point.at[0], y: point.at[1] })) : undefined;
     }
     default:
       return fromCatalog(kind, view, selection);
@@ -481,6 +486,8 @@ export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).filter(([, kind]) => kind === 'line').map(([id]) => id)),
   ...ORIGIN_AXES,
 ];
+// The label of a line in a select of the lines of a sketch: an axis of the origin says which.
+export const lineLabel = (id: Id): string => (isOriginAxis(id) ? `${id} (${id === 'origin/x' ? 'X' : 'Y'} axis of the sketch)` : id);
 // One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism,
 // the form of a revolve): a base axis; `sketchPoint` (the origin of the latest of `sketches` until
 // `sketch` and `point` say otherwise; another sketch starts at its origin); or `sketchLine` (the

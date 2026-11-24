@@ -2,14 +2,14 @@
 // are not own, whole lines a pointer hovers, picks and snaps to anywhere, drawn by the view as their
 // stretch inside what it shows; offered in the constraints that do not measure a line and in the
 // pickers of a line of a sketch.
-import { type Command, type Id, type SketchFeature, type Vec2, createEngine, emptySketch } from '@trymesh/engine';
+import { type Command, type Constraint, type Id, type SketchFeature, type Vec2, createEngine, emptySketch } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import { COLOR, stretchInView } from '../src/draw';
-import { changeAxis, deleteCommands, dimensionFor, geometricFor, hasLength, lineCommands, lineIds } from '../src/sketch-commands';
+import { changeAxis, deleteCommands, dimensionFor, geometricFor, hasLength, lineCommands, lineIds, lineLabel } from '../src/sketch-commands';
 import { type SketchHost, sketchContextOf, sketchMode, placeAt, sketchScene } from '../src/sketch-mode';
-import { hitCurve } from '../src/sketch-view';
+import { anchorOf, hitCurve } from '../src/sketch-view';
 import type { SceneModel } from '../src/viewport';
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
@@ -72,7 +72,13 @@ describe('the axes of the origin in the sketch view (D71)', () => {
     expect(geometricFor('parallel', v, ['l', 'origin/x'])).toEqual([{ type: 'parallel', a: 'l', b: 'origin/x' }]);
     expect(geometricFor('equalLength', v, ['l', 'origin/x'])).toBeUndefined();
     expect(geometricFor('midpoint', v, ['p', 'origin/y'])).toBeUndefined();
-    expect(geometricFor('horizontal', v, ['origin/x'])).toEqual([{ type: 'horizontal', line: 'origin/x' }]); // the engine refuses it: fixed operands only
+    // nothing the engine refuses for want of an own operand (review of the implementation)
+    expect(geometricFor('horizontal', v, ['origin/x'])).toBeUndefined();
+    expect(geometricFor('vertical', v, ['origin/x', 'origin/y'])).toBeUndefined();
+    expect(geometricFor('parallel', v, ['origin/x', 'origin/y'])).toBeUndefined();
+    expect(geometricFor('perpendicular', v, ['origin/y', 'origin/x'])).toBeUndefined();
+    expect(geometricFor('pointOnCurve', v, ['origin', 'origin/x'])).toBeUndefined();
+    expect(geometricFor('symmetric', v, ['origin', 'origin/x', 'origin/y'])).toBeUndefined();
     expect([hasLength('l'), hasLength('origin/x'), hasLength('origin/y')]).toEqual([true, false, false]);
     expect(dimensionFor('auto', v, ['origin/x'])).toBeUndefined();
     expect(dimensionFor('horizontal', v, ['origin/y'])).toBeUndefined();
@@ -80,6 +86,26 @@ describe('the axes of the origin in the sketch view (D71)', () => {
     expect(dimensionFor('auto', v, ['p', 'origin/y'])).toEqual({ type: 'distancePointLine', point: 'p', line: 'origin/y', value: 12, driving: true });
     expect(dimensionFor('auto', v, ['q', 'origin/x'])).toEqual({ type: 'distancePointLine', point: 'q', line: 'origin/x', value: 9, driving: true });
     expect(dimensionFor('auto', v, ['origin/x', 'l'])).toMatchObject({ type: 'angle', a: 'origin/x', b: 'l' });
+  });
+
+  it('a line and an axis selected, Horizontal makes the line horizontal and the engine takes it', () => {
+    const t = setup();
+    const made = geometricFor('horizontal', t.view(), ['l', 'origin/x']);
+    expect(made).toEqual([{ type: 'horizontal', line: 'l' }]);
+    t.run({ type: 'batch', commands: made!.map((constraint, i): Command => ({ type: 'addConstraint', sketch: 's', id: `h${i}`, constraint })) });
+    const points = t.context().result.points;
+    expect(points.p.y).toBeCloseTo(points.q.y, 9);
+  });
+
+  it('the label of a dimension to an axis stands beside the point it measures', () => {
+    const t = setup();
+    t.run({ type: 'batch', commands: [{ type: 'addPoint', sketch: 's', id: 'far', x: 500, y: 20 }] });
+    const dimension: Constraint = { type: 'distancePointLine', point: 'far', line: 'origin/x', value: 20, driving: true };
+    expect(anchorOf(dimension, t.view())).toEqual([expect.closeTo(500, 6), expect.closeTo(10, 9)]);
+    // two axes alone: at the origin
+    expect(anchorOf({ type: 'angle', a: 'origin/x', b: 'origin/y', value: 1, driving: false }, t.view())).toEqual([0, 0]);
+    // an own line keeps its middle
+    expect(anchorOf({ type: 'distancePointLine', point: 'far', line: 'l', value: 1, driving: true }, t.view())).toEqual([expect.closeTo((500 + 2.5) / 2, 9), expect.closeTo((20 + 7) / 2, 9)]);
   });
 
   it('deleting an axis by the selection does nothing', () => {
@@ -91,6 +117,7 @@ describe('the axes of the origin in the sketch view (D71)', () => {
   it('the pickers of a line of a sketch list the axes after its lines', () => {
     const { sketch } = setup();
     expect(lineIds(sketch())).toEqual(['l', 'origin/x', 'origin/y']);
+    expect(lineIds(sketch()).map(lineLabel)).toEqual(['l', 'origin/x (X axis of the sketch)', 'origin/y (Y axis of the sketch)']);
     const empty = emptySketch('e', 'Empty', { kind: 'base', plane: 'XY' }) as SketchFeature;
     expect(lineIds(empty)).toEqual(['origin/x', 'origin/y']);
     // a sketch without a line: the axis picker starts at its X axis

@@ -77,7 +77,7 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
   const problem = ruleProblem(sketch, type as Constraint['type'], Object.values(operands), kinds);
   if (problem) fail(`${what}: ${problem}`);
   const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
-  const onlyFixed = (): never => fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
+  const onlyFixed = (): never => fail(`${what}: a constraint only between fixed entities (the origin, its axes origin/x and origin/y, projected geometry) would never take effect`);
   // said before the values are read: a fixed point on the origin has no coordinates to complain about
   if (!spec.dimension && !movable) onlyFixed();
   let values: Record<string, number | boolean> = {};

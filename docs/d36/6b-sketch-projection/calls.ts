@@ -634,7 +634,7 @@ export function refusals(): boolean {
     // regions on a point
     refused(project('frame', 'z7', fromSketch('board', 'hc0', 'point', true)), REGIONS_ON_A_POINT) &&
     // a constraint between two fixed entities: an axis and a projected point
-    refused(constrain('frame', 'z8', { type: 'pointOnCurve', point: 'fh0/center', curve: 'origin/x' }), 'vazba jen mezi pevnými entitami')
+    refused(constrain('frame', 'z8', { type: 'pointOnCurve', point: 'fh0/center', curve: 'origin/x' }), 'only between fixed entities')
   );
 }
 

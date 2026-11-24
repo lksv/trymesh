@@ -14,30 +14,33 @@
 // the lid as DXF.
 //
 // Written after 6a2, 6e, 6c and 6b, which are implemented before 6d (docs/d36/6-plan.md): the
-// mirror is about `origin/y` and the top's end is held on it (the owner's answer 1), the trims are
-// 6e's sketch tool, a projection of the spline is 6b's entry. The revisions of those designs are on
-// branches of their own, so this file imports of them only what their contracts have before and
-// after the revision, and writes the rest as stand-ins that say whose they are.
+// mirror is about `origin/y` and the top's end is held on it (the owner's answer 1), the trims and
+// the query of the contacts are 6e's (its revised contract is merged and imported), a projection
+// of the spline is 6b's entry. The designs of 6e and 6c are merged and imported; 6b's revision is
+// on its branch (read at `0f12c89`), so what is 6b's is written as stand-ins that say so.
 //
 // The numbers in the comments were measured so (design.md, "Measured"): the polyline, the joints
 // and the box of a spline by a prototype of `spline.ts`; the solver by the real planegcs adapter
 // with the control points and the legs (the half with a construction line through the origin in
 // the place of `origin/y`, which stands at the same place); the region and the volume by the real
 // profile and kernel with a prototype of the spline as one shape of the profile, both halves own
-// geometry (6c is not in `master`). The two cases of step 6 are not measured: 6e's tools are not in
-// `master` either.
+// geometry (6c is not implemented). The cases that run 6e's tools are not measured as a whole:
+// the tools are not implemented. What they rest on is: the faces of `lineAcrossSplineSide` with the
+// spline as the chain of its polyline pieces ("Measured", L).
 
 import type { Id, Vec2, Vec3 } from '../../../packages/engine/src/index';
 import type { ExportFile, Exported } from '../../../packages/engine/src/index';
 import type { OutlineAbout } from '../../../packages/engine/src/export/outline';
-import type { CommandAfter, EdgeNameAfter, FaceNameAfter, QueryOutcome, StateAfter } from '../00-prep/contract';
+import type { CommandAfter, EdgeNameAfter, FaceNameAfter, StateAfter } from '../00-prep/contract';
 import { done, engine, fail, run, unwrap } from '../2a-offset/calls';
 import { LID_REGION, parameters, stand } from '../6c-sketch-mirror-pattern/calls';
-import type { SketchPattern } from '../6c-sketch-mirror-pattern/contract';
+import type { OpenEnds, SketchPattern } from '../6c-sketch-mirror-pattern/contract';
 import { contextOf } from '../6e-trim-extend-split/calls';
 import { freshIds, sketchTool } from '../6e-trim-extend-split/contract';
+import type { CutIds, SketchContactsResult, SketchToolInputsAfter } from '../6e-trim-extend-split/contract';
 import type { EngineAfter2g } from '../2g-export/contract';
-import type { SketchResult6d, SplineDetail } from './contract';
+import type { SketchPlaceToolAfter, SketchResult6d, SourceSpline, SplineBatch, SplineContact, SplineDetail } from './contract';
+import { PROJECT_SKETCH_IDS_6D, splineCommands } from './contract';
 
 const XY = { kind: 'base', plane: 'XY' } as const;
 const near = (value: number | undefined, expected: number, tolerance: number): boolean => value !== undefined && Math.abs(value - expected) <= tolerance;
@@ -79,31 +82,36 @@ const regionArea = (state: StateAfter, sketch: Id, outerLoop: Id[]): number => {
   return polygon(region.loops[0]) - region.loops.slice(1).reduce((sum, hole) => sum + polygon(hole), 0);
 };
 
-// Stand-ins for what other packages own (their types are on the branches of their revisions).
-// - 6e: one trim by a place, and the lists it answers with (`dropped`: features of which a region
-//   is gone and could not be followed).
-const trim = (sketch: Id, curve: Id, at: Vec2, prefix: string): Record<string, Id[]> => {
+// 6e's sketch tools, run on the state of the engine: the batch applied, and the lists answered.
+const tool = <K extends 'trim' | 'split'>(name: K, sketch: Id, input: SketchToolInputsAfter[K], prefix: string): CutIds => {
   const state = engine.getState();
-  const made = sketchTool('trim', contextOf(state, sketch), { curve, at }, freshIds(state.document, prefix));
+  const made = sketchTool(name, contextOf(state, sketch), input, freshIds(state.document, prefix));
   if (!made.ok) return fail(made.message);
   run(...made.commands);
-  return made.ids;
+  return made.ids as CutIds;
 };
-const trimRefusal = (sketch: Id, curve: Id, at: Vec2): string | undefined => {
+const trim = (sketch: Id, curve: Id, at: Vec2, prefix: string): CutIds => tool('trim', sketch, { curve, at }, prefix);
+// What a tool would do, without doing it: its batch, or the text it refuses with.
+const planned = <K extends 'trim' | 'split'>(name: K, sketch: Id, input: SketchToolInputsAfter[K]) => {
   const state = engine.getState();
-  const made = sketchTool('trim', contextOf(state, sketch), { curve, at }, freshIds(state.document, 'x_'));
+  return sketchTool(name, contextOf(state, sketch), input, freshIds(state.document, 'x_'));
+};
+const trimRefusal = (sketch: Id, input: SketchToolInputsAfter['trim']): string | undefined => {
+  const made = planned('trim', sketch, input);
   return made.ok ? undefined : made.message;
 };
-// - 6e: the query of the contacts (its revision, the owner's answer 5), as far as 6d reads it.
-interface ContactsStandIn {
-  valid: boolean;
-  contacts: { at: Vec2; kind: string; curves: [Id, Id]; repair: 'cut' | 'join' | 'none'; why?: string }[];
-  degenerate: Id[];
-  reason?: string;
-}
-const contactsOf = (sketch: Id): ContactsStandIn => unwrap((engine as unknown as { query(name: 'sketchContacts', args: { sketch: Id }): QueryOutcome<ContactsStandIn> }).query('sketchContacts', { sketch }));
+// 6e's query of the contacts (the owner's answer 5).
+const contactsOf = (sketch: Id): SketchContactsResult => unwrap(engine.query('sketchContacts', { sketch }));
+// Stand-ins for what is not in this tree.
 // - MCP: `get_sketch` (packages/mcp/src/tools.ts, `sketchDetail`), as far as 6d reads it.
 declare function getSketch(sketch: Id): { curves: ({ id: Id; type: 'line' | 'circle' | 'arc' } | SplineDetail)[] };
+// - 6b (its revision is on its branch): the entry of a projection, the tool `projectSketch` and the
+//   query `sketchSources`, as far as 6d adds to them.
+const projection = (sketch: Id, id: Id, from: Id, entity: Id, kind: string): CommandAfter => ({ type: 'addExternal', sketch, id, ref: { type: 'sketch', sketch: from, entity, kind, regions: false } } as unknown as CommandAfter);
+declare function projectSketch(into: Id, input: { sketch: Id; entities?: Id[]; as?: 'source' | 'reference' | 'regions' | 'own' }): { ok: true; commands: CommandAfter[]; ids: Record<string, Id[]> & { [K in keyof typeof PROJECT_SKETCH_IDS_6D]: Id[] } } | { ok: false; message: string };
+declare function sketchSources(sketch: Id, from: Id): { entities?: ({ id: Id; kind: 'point' | 'line' | 'circle' | 'arc' } | SourceSpline)[] };
+// 6c's field of the result: the ends of copies that stayed open.
+const openEndsOf = (state: StateAfter, sketch: Id): OpenEnds | undefined => (resultOf(state, sketch) as { openEnds?: OpenEnds }).openEnds;
 
 // ---------------------------------------------------------------- the numbers
 
@@ -213,19 +221,22 @@ export function oneRegionWithGrip(state: StateAfter): boolean {
   );
 }
 
-// Where the grip runs, as `get_sketch` says it for the AI (the owner's answer 26): the three points
-// the curve passes, of which the middle one is `grip / 2` inside the flank, not `grip`; and its
-// box, half as deep as the box of its control points. Measured: (42, 5), (40, 27), (42, 49);
-// x from 40 to 42, y from 5 to 49.
+// Where the grip runs, as `get_sketch` says it for the AI (the owner's answer 26): five points the
+// curve passes, its two ends, the joint of its two Bezier pieces and the middle of each piece. The
+// joint is `grip / 2` inside the flank, not `grip`; and the box is half as deep as the box of the
+// control points. Measured: (42, 5), (41, 17.5), (40, 27), (41, 36.5), (42, 49); x from 40 to 42,
+// y from 5 to 49.
 export function gripDetail(): boolean {
   const detail = getSketch('lidSketch').curves.find((curve): curve is SplineDetail => curve.id === 'c2' && curve.type === 'spline') ?? fail('no spline "c2"');
   const through = detail.through ?? fail('no `through`');
   return (
     same(detail.points, ['a2', 'g1', 'g2', 'g3', 'a3']) &&
-    through.length === 3 &&
+    through.length === 5 &&
     nearVec(through[0], [W / 2, R], 1e-6) &&
-    nearVec(through[1], [W / 2 - GRIP / 2, H / 2], 1e-6) &&
-    nearVec(through[2], [W / 2, H - R], 1e-6) &&
+    nearVec(through[1], [W / 2 - GRIP / 4, 17.5], 1e-6) &&
+    nearVec(through[2], [W / 2 - GRIP / 2, H / 2], 1e-6) &&
+    nearVec(through[3], [W / 2 - GRIP / 4, 36.5], 1e-6) &&
+    nearVec(through[4], [W / 2, H - R], 1e-6) &&
     nearVec(detail.box, [W / 2 - GRIP / 2, R, W / 2, H - R], 1e-6)
   );
 }
@@ -313,21 +324,51 @@ export function commandRefusals(): (string | undefined)[] {
     refused(constrain(s, 'x8', { type: 'radius', curve: 'c2', value: 5, driving: true })), // likewise
     refused({ type: 'setCurvePoint', sketch: s, id: 'c2', point: 'a', to: 'g1' }), // a spline has no named points; remove it and add it again
     refused({ type: 'addFeature', feature: { id: 'w', name: 'w', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: s, curves: ['c2'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } }), // a wall takes lines, arcs and circles
-    trimRefusal(s, 'c2', [W / 2 - GRIP / 2, H / 2]), // 6e: a spline is not trimmed, split or extended
+    trimRefusal(s, { curve: 'c2', at: [W / 2 - GRIP / 2, H / 2] }), // 6e: a spline is not trimmed, split or extended
+    // the same place without `curve`: the curve it means is the grip, so it is refused naming "c2",
+    // and the nearest curve that can be trimmed is not trimmed in its place (review 2, major 2a)
+    trimRefusal(s, { at: [W / 2 - GRIP / 2, H / 2] }),
   ];
 }
 
-// A projection of the spline into a later sketch is refused by the validator of 6b's entry, with
-// 6d's text (`SPLINE_NOT_PROJECTED` of the contract), whatever `kind` says (the owner's answer 22);
-// the control points are projected as points. The entry is 6b's (`{ type: 'sketch', sketch, entity,
-// kind }`), written loosely here.
+// A projection of the spline into a later sketch is refused, with 6d's texts (the owner's answer
+// 22): `kind: 'spline'` by the form of 6b's entry, and the spline named as a line by the check of
+// the command against the source. Its control points are projected as points. The tool
+// `projectSketch` of 6b projects the rest of the lid's sketch and lists the splines it left out;
+// asked for the spline by name it refuses; the query `sketchSources` lists the spline with its
+// kind and no place.
 export function projectionRefused(): boolean {
   run(sketchFeature('over'));
-  const entry = (id: Id, entity: Id, kind: string): CommandAfter => ({ type: 'addExternal', sketch: 'over', id, ref: { type: 'sketch', sketch: 'lidSketch', entity, kind } } as unknown as CommandAfter);
-  const asSpline = refused(entry('e1', 'c2', 'spline'));
-  const asLine = refused(entry('e2', 'c2', 'line'));
-  const point = engine.preview(entry('e3', 'g2', 'point'));
-  return asSpline?.includes('a spline is not projected yet') === true && asLine?.includes('a spline is not projected yet') === true && point.ok;
+  const asSpline = refused(projection('over', 'e1', 'lidSketch', 'c2', 'spline'));
+  const asLine = refused(projection('over', 'e2', 'lidSketch', 'c2', 'line'));
+  const point = engine.preview(projection('over', 'e3', 'lidSketch', 'g2', 'point'));
+  const whole = projectSketch('over', { sketch: 'lidSketch' });
+  const named = projectSketch('over', { sketch: 'lidSketch', entities: ['c1', 'c2'] });
+  const listed = sketchSources('over', 'lidSketch').entities?.find((entity): entity is SourceSpline => entity.id === 'c2' && entity.kind === 'spline');
+  return (
+    asSpline?.includes('a spline is not projected yet') === true &&
+    asLine?.includes('a spline is not projected yet') === true &&
+    point.ok &&
+    whole.ok &&
+    same(whole.ids.splines, ['c2', 'm/1/c2']) && // the source's own spline, then the copy that forms regions
+    !named.ok &&
+    named.message.includes('"c2"') &&
+    listed?.whole === false
+  );
+}
+
+// A source curve that becomes a spline under its ID after it was projected (a line replaced by
+// a spline in one batch, as the flank of the lid replaces 6c's line): the projection is frozen at
+// its last values with the warning `brokenProjection`, 6b's answer to an entity of another kind,
+// and nothing throws (review 2, minor 3).
+export function projectionBroken(): boolean {
+  run(sketchFeature('src'));
+  run(point('src', 'qa', 0, 60), point('src', 'qm', 5, 65), point('src', 'qb', 10, 60), line('src', 'q', 'qa', 'qb'));
+  run(sketchFeature('follower'));
+  run(projection('follower', 'f1', 'src', 'q', 'line'));
+  const state = done(engine.preview({ type: 'batch', commands: [{ type: 'removeEntity', sketch: 'src', id: 'q' }, spline('src', 'q', ['qa', 'qm', 'qb'])] }));
+  const follower = state.evaluation.features['follower'];
+  return follower.status !== 'error' && follower.warnings.some((issue) => issue.code === 'brokenProjection') && near(resultOf(state, 'follower').points['f1/b']?.x, 10, 1e-9);
 }
 
 // ---------------------------------------------------------------- a closed spline, a crossing one
@@ -369,7 +410,7 @@ export function crossing(): boolean {
   run(sketchFeature(s));
   const state = run(point(s, 'n1', 0, 0), point(s, 'n2', 30, 0), point(s, 'n3', 30, 20), point(s, 'n4', 10, 20), point(s, 'n5', 10, -10), spline(s, 'k', ['n1', 'n2', 'n3', 'n4', 'n5']));
   const contacts = contactsOf(s);
-  return resultOf(state, s).valid === false && contacts.valid === false && contacts.contacts.length === 1 && same(contacts.contacts[0].curves, ['k', 'k']) && contacts.contacts[0].repair === 'none' && contacts.reason !== undefined;
+  return resultOf(state, s).valid === false && contacts.valid === false && contacts.total === 1 && same(contacts.contacts[0].curves, ['k', 'k']) && contacts.contacts[0].kind === 'crossing' && contacts.contacts[0].fix === 'none' && contacts.contacts[0].why !== undefined && contacts.reason !== undefined;
 }
 
 // ---------------------------------------------------------------- changing the control points
@@ -408,8 +449,8 @@ export function notchWithGrip(): boolean {
   const state = engine.getState();
   const region = regionsOfFeature(state, 'lid');
   return (
-    !first['dropped']?.includes('lid') &&
-    !second['dropped']?.includes('lid') &&
+    !first.dropped.includes('lid') &&
+    !second.dropped.includes('lid') &&
     resultOf(state, s).valid &&
     region.length === 1 &&
     region[0].includes('c2') &&
@@ -455,8 +496,8 @@ export function plateWithSplineHole(): boolean {
   const offset = errorOf(extrudeRegions('plateOffset', s, regions, 2, 1), 'plateOffset');
   return (
     near(volumeOf(before, 'plate'), (1600 - hole) * 2, PRISM) &&
-    !first['dropped']?.includes('plate') &&
-    !second['dropped']?.includes('plate') &&
+    !first.dropped.includes('plate') &&
+    !second.dropped.includes('plate') &&
     regions.length === 1 &&
     !regions.some((loop) => same(loop, ['s'])) &&
     state.evaluation.features['plate'].status === 'ok' &&
@@ -466,6 +507,115 @@ export function plateWithSplineHole(): boolean {
     same(offset.refs, ['s'])
   );
 }
+
+// ---------------------------------------------------------------- 6e's tools beside a spline
+
+// The one contact no tool can cut, repaired the natural way (review 2, major 1). An outline 20 × 20
+// whose left side is a spline, extruded; a line from (−5, 10) to (25, 10) across it. The profile is
+// invalid: the line crosses the spline (`fix: 'none'`, with the reason) and the right side
+// (`fix: 'cut'`). A trim of the line by a place between the two takes the piece from (−5, 10) to
+// its cut on the right side, which is cut there; the tail outside the outline stays. The sketch is
+// valid again and the body's region names a changed curve, so it is followed: the faces are the
+// profile with the removed piece put back, and that piece crosses the spline. In that world the
+// spline is the chain of its polyline pieces, split at the contact (`splineChain`), so the faces
+// are a valid profile, two faces that make up the region, and the body is not in `dropped`.
+// Measured with the faces built by hand: with the spline whole they are no valid profile; with the
+// chain, two faces of 220.33907 mm² each, the region's 440.678141 (chord tolerance 0.01).
+export function lineAcrossSplineSide(): boolean {
+  const s = 'crossed';
+  run(sketchFeature(s));
+  run(point(s, 'ka', 0, 0), point(s, 'kb', 20, 0), point(s, 'kc', 20, 20), point(s, 'kd', 0, 20), point(s, 'w1', -4, 14), point(s, 'w2', -4, 6));
+  run(line(s, 'bt', 'ka', 'kb'), line(s, 'rt', 'kb', 'kc'), line(s, 'tp', 'kc', 'kd'), spline(s, 'sp', ['kd', 'w1', 'w2', 'ka']));
+  const before = run(extrudeRegions('crossedBody', s, [['bt', 'rt', 'sp', 'tp']], 2));
+  const volume = volumeOf(before, 'crossedBody');
+  run(point(s, 'l0', -5, 10), point(s, 'l1', 25, 10), line(s, 'ln', 'l0', 'l1'));
+  const contacts = contactsOf(s);
+  const withSpline = contacts.contacts.find((contact): contact is SplineContact => contact.curves.includes('sp'));
+  const ids = trim(s, 'ln', [10, 10], 'c_');
+  const state = engine.getState();
+  const region = regionsOfFeature(state, 'crossedBody');
+  return (
+    contacts.valid === false &&
+    contacts.total === 2 &&
+    withSpline?.kind === 'crossing' &&
+    withSpline.fix === 'none' &&
+    contacts.contacts.some((contact) => contact.curves.includes('ln') && contact.curves.includes('rt') && contact.fix === 'cut') &&
+    resultOf(state, s).valid &&
+    !ids.dropped.includes('crossedBody') &&
+    ids.patched.includes('crossedBody') &&
+    region.length === 1 &&
+    region[0].includes('sp') &&
+    state.evaluation.features['crossedBody'].status === 'ok' &&
+    near(volumeOf(state, 'crossedBody'), volume, PRISM)
+  );
+}
+
+// Two ends at one place, one of them a spline's (review 2, major 2b): the last control point of
+// a spline lies at the end of a line without being that point, which is what an AI writes and what
+// the converter met. The query lists the place with `fix: 'join'`; `split` without a curve joins
+// the two, and its batch never re-points the spline, which `setCurvePoint` refuses: here the end
+// of the line is named by nothing but the line, so the line is re-pointed onto the spline's point.
+export function endsAtOnePlace(): boolean {
+  const s = 'unjoined';
+  run(sketchFeature(s));
+  run(point(s, 'ua', 0, 0), point(s, 'ub', 20, 0), point(s, 'uc', 10, 12), point(s, 'ud', 0, 0), spline(s, 'us', ['ub', 'uc', 'ua']), line(s, 'ul', 'ud', 'ub'));
+  const contacts = contactsOf(s);
+  const made = planned('split', s, {});
+  if (!made.ok) return fail(made.message);
+  const state = run(...made.commands);
+  return (
+    contacts.valid === false &&
+    contacts.contacts.length === 1 &&
+    contacts.contacts[0].kind === 'ends' &&
+    contacts.contacts[0].fix === 'join' &&
+    !made.commands.some((command) => command.type === 'setCurvePoint' && command.id === 'us') &&
+    resultOf(state, s).valid &&
+    same(regionsOf(state, s), [['ul', 'us']])
+  );
+}
+
+// What names a point (review 2, major 2c): the construction leg `l1` of the grip, from the end
+// `a2` of the spline to its second control point `g1`, trimmed away. It crosses nothing, so it
+// goes whole with its constraints, and "its ends that nothing else names go with it": `g1` is an
+// inner control point of `c2`, named by the spline, so it stays, and the spline and the lid with it.
+export function legTrimmedAway(): boolean {
+  const made = planned('trim', 'lidSketch', { curve: 'l1', at: [W / 2, R + REACH / 2] });
+  if (!made.ok) return fail(made.message);
+  const state = done(engine.preview({ type: 'batch', commands: made.commands }));
+  const ids = made.ids as CutIds;
+  return ids.removed.includes('l1') && !ids.removed.includes('g1') && !ids.removed.includes('c2') && same(regionsOf(state, 'lidSketch'), [LID_REGION]) && state.evaluation.features['lid'].status === 'ok';
+}
+
+// The ends of a copied spline join by position, as the ends of a copied line do (review 2, minor
+// 2; 6c's position stage, which the lid does not reach: there the ends of the spline's copy are
+// the ends of the copies of the arcs, one ID). A spline from the origin to a point held on the
+// Y axis, mirrored about it: one region of the spline and its copy, and no open end.
+export function archMirrored(): boolean {
+  const s = 'arch';
+  run(sketchFeature(s));
+  run(point(s, 'top', 0.3, 30.2), point(s, 'h1', 12, 2), point(s, 'h2', 14, 26), spline(s, 'half', ['origin', 'h1', 'h2', 'top']));
+  run(constrain(s, 'on', { type: 'pointOnCurve', point: 'top', curve: 'origin/y' }));
+  const state = run(mirror(s, 'm', ['half'], 'origin/y'));
+  return resultOf(state, s).valid && same(regionsOf(state, s), [['half', 'm/1/half']]) && openEndsOf(state, s) === undefined;
+}
+
+// ---------------------------------------------------------------- the app's part, type-checked
+
+// What the contract promises of the app has to be writable (review 2, minor 7): a batch of
+// `splineCommands` holds an `addCurve` with a spline, and an entry of the table of the sketch
+// tools may say `infer: 'extension'`.
+export const exampleBatch: SplineBatch = { commands: [point('lidSketch', 'n1', 0, 0), spline('lidSketch', 'n', ['n1', 'g1', 'g2'])] };
+export const exampleTool: SketchPlaceToolAfter<undefined> = {
+  label: 'Spline',
+  hint: 'Click the control points; Enter ends the spline, a click on the first point closes it, Esc drops it.',
+  infer: 'extension',
+  click: (_host, _m, places) => places, // every place is kept; the mode redraws
+  finish: (host, m, places, context) => {
+    const batch = splineCommands(m.id, context.view, [], false, host.newId);
+    if ('problem' in batch) host.say(batch.problem);
+    return 'problem' in batch ? places : undefined;
+  },
+};
 
 // ---------------------------------------------------------------- step 7, the part of 6d
 
@@ -488,6 +638,7 @@ export function scenario(): boolean {
   const lid = lidWithGrip();
   const checks = lidWithGripChecks(lid) && deeperGrip() && lidSection(lid);
   const closed = pebbleChecks(pebble()) && pebbleWithLongLines();
-  const refusals = featureRefusals() && commandRefusals().every((text) => text !== undefined) && projectionRefused();
-  return ok && checks && closed && refusals && crossing() && sixPoints() && plateWithSplineHole() && notchWithGrip();
+  const refusals = featureRefusals() && commandRefusals().every((text) => text !== undefined) && projectionRefused() && projectionBroken();
+  const beside = lineAcrossSplineSide() && endsAtOnePlace() && legTrimmedAway() && archMirrored();
+  return ok && checks && closed && refusals && crossing() && sixPoints() && beside && plateWithSplineHole() && notchWithGrip();
 }

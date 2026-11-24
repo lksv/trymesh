@@ -4,8 +4,10 @@
 // contract), and states what 6d adds or changes; the design is design.md, the calls are calls.ts.
 //
 // 6d is implemented after 6a2, 6e, 6c and 6b (the sequence of docs/d36/6-plan.md), so section 8
-// says what it adds to their code. Their contracts are not imported: their revisions are on
-// branches of their own, and this file has to compile before and after they are merged.
+// says what it adds to their code. The revised contracts of 6e and 6c are merged; 6e's is
+// imported where 6d adds to its types. 6b's revision is on a branch of its own (read at
+// `0f12c89`, with the fixes of its second round), so its types are restated here where 6d adds
+// to them, and this file compiles before and after it merges.
 //
 // What changes:
 // 1. A curve kind `spline`: a clamped, uniform, non-rational B-spline of degree min(3, n − 1) over
@@ -26,14 +28,18 @@
 //    of 6e says why a profile with a spline is invalid (answer 5).
 // 7. The app: a sketch tool `spline`, the curve and its control polygon in the view; a drawing tool
 //    does not snap to a spline, the Select tool does.
+// 8. In the code of 6e: a spline counts where a place means a curve, is cut as a shape in the
+//    worlds a tool builds in memory, and its ends are joined without re-pointing it.
 // Nothing else: no command, no constraint, no query, no issue code, no feature type, no face role,
 // no upgrade step, no change of the solver port beyond the one more kind of `Curve` it carries.
 
-import type { Command, CurveShape, Id, Point2, ResultCurve, SketchResult, SolveInput, Vec2 } from '../../../packages/engine/src/index';
+import type { CurveShape, Id, Point2, ResultCurve, SketchResult, SolveInput, Vec2 } from '../../../packages/engine/src/index';
 import type { EntityKind } from '../../../packages/engine/src/catalog';
 import type { CurveEnd, Loop, PlacedCurve } from '../../../packages/engine/src/sketch';
 import type { SideCurve } from '../../../packages/engine/src/recompute/state';
 import type { Anchor } from '../../../packages/engine/src/sketch-tools';
+import type { CommandAfter } from '../00-prep/contract';
+import type { ContactFix, SketchContact, SketchToolCallAfter, SketchWorld } from '../6e-trim-extend-split/contract';
 import type { SketchPlaceTool } from '../../../packages/app/src/sketch-tools/spec';
 import type { SketchMode } from '../../../packages/app/src/sketch-mode';
 import type { SketchView } from '../../../packages/app/src/sketch-view';
@@ -46,9 +52,10 @@ import type { SketchView } from '../../../packages/app/src/sketch-view';
 //   curve starts at the first and ends at the last; the points between pull it and lie off it in
 //   general: a control point pulled aside moves the curve less than itself (in a spline of five
 //   points, the middle one pulled by 4 mm moves the curve by 2). `get_sketch` says where the curve
-//   runs: `through`, the points it passes at the joints of its pieces, and `box`. The same point may not be listed twice, except the first again as the last: the spline
-//   is then closed (at least 4 entries), with a corner at that point unless the first and the last
-//   leg of the control polygon are made to lie on one line.
+//   runs: `through`, points it passes from its start to its end, and `box`.
+// - The same point may not be listed twice, except the first again as the last: the spline is then
+//   closed (at least 4 entries), with a corner at that point unless the first and the last leg of
+//   the control polygon are made to lie on one line.
 // - The curve is a B-spline of degree 3 (2 for three points), clamped (it starts at the first
 //   point along the first leg, from `points[0]` towards `points[1]`, and ends at the last along the
 //   last leg), with uniform knots, not rational. Four points are one cubic Bezier curve; three one
@@ -59,7 +66,8 @@ import type { SketchView } from '../../../packages/app/src/sketch-view';
 //   control point on that line (`pointOnCurve`, which holds it on the whole line, not only between
 //   its ends), and give that point a start position beyond the end of the line. The solver keeps
 //   the side it starts on; behind the end, over the line, the spline turns back on the line in a
-//   cusp, so read the position after the solve. From an arc that ends at its first point: a
+//   cusp, so read the position after the solve, and again after a large change of a dimension,
+//   which can carry the point to the other side. From an arc that ends at its first point: a
 //   construction line from `points[0]` to `points[1]`, tangent to the arc (`tangent`). The same at
 //   the last point with the last leg. A spline may end on a point of a line or an arc only at their
 //   common end; a circle of the outline has no end, so a spline that ends on one makes the profile
@@ -68,7 +76,9 @@ import type { SketchView } from '../../../packages/app/src/sketch-view';
 //   uses its polyline within the chord tolerance of the document: a spline that crosses itself
 //   or another curve, or touches one away from a shared end, makes the profile invalid as two
 //   crossing curves do; the query `sketchContacts` says where. A spline is not trimmed, split or
-//   extended, and not projected into another sketch (project its control points).
+//   extended, and a curve is not cut where it crosses one: move the curve or the control points,
+//   or trim the curve back to another curve. It is not projected into another sketch (project its
+//   control points, as points).
 // - The side face of an extrusion is `{ role: 'side', curve: <the spline> }`, one face for the
 //   whole spline, a swept surface; its edges have the kind `other`, so they cannot be projected,
 //   chamfered or filleted, and neither can an edge that runs on smoothly into one: the rim of a
@@ -153,21 +163,24 @@ export declare function splinePieces(bezier: readonly Vec2[], chordTolerance: nu
 // The polyline of a spline: each piece divided into equal steps of its parameter, the first point
 // of every step, then the last control point. Its first point is the first control point and its
 // last the last, exactly. A point nearer than the length tolerance (`LENGTH_TOLERANCE`) to the
-// last one kept is left out, and so is the last inner point when the end is that near to it: no
-// piece of a polyline longer than the tolerance is shorter than it (control points at one place
-// make such steps; measured). It is computed from the control points in their order, once per
-// curve; both directions of a loop walk the same list, so regions that share the spline share its
-// points.
+// last one kept is left out, and so is every trailing inner point that near to the end: no piece
+// of a polyline longer than the tolerance is shorter than it (control points at one place make
+// such steps; measured). So the polyline lies within the chord tolerance plus the length tolerance
+// of the curve, which differs from the chord tolerance alone only for a chord tolerance near the
+// length tolerance. It is computed from the control points in their order, once per curve; both
+// directions of a loop walk the same list, so regions that share the spline share its points.
 export declare function splinePolyline(control: readonly Vec2[], chordTolerance: number): Vec2[];
 // Where a spline runs, without a tolerance (the owner's answer 26).
-// - `splineJoints`: the points the curve passes exactly: its first point, the joint of every two
-//   Bezier pieces in order, its last point (n − p + 1 points for n control points of degree p; a
-//   closed spline has its point first and last).
+// - `splineThrough`: points the curve passes exactly, in order: its first point, and for every
+//   Bezier piece its middle (the parameter 1/2) and its end. So the joints of the pieces are every
+//   second point, and the list ends at the last control point: 2m + 1 points for m pieces (m is
+//   n − p for n control points of degree p). A spline of three or four points, one piece, has its
+//   two ends and its middle; a closed spline has its point first and last.
 // - `splineBox`: the box of the curve itself, `[minX, minY, maxX, maxY]`: the ends of every Bezier
 //   piece and the places where a coordinate of its derivative is zero (a quadratic per coordinate
 //   and piece). It lies in the box of the control points, which is the box the broad phase of the
 //   profile uses.
-export declare function splineJoints(control: readonly Vec2[]): Vec2[];
+export declare function splineThrough(control: readonly Vec2[]): Vec2[];
 export type Box = [minX: number, minY: number, maxX: number, maxY: number];
 export declare function splineBox(control: readonly Vec2[]): Box;
 
@@ -203,7 +216,23 @@ export interface ProfileSpline {
 //   circle. Every half reaches `d` before it ends, and what lies inside the circle of each curve
 //   is one path from the vertex to the circle, so the order of the directions is the order of the
 //   curves round the vertex for curves that do not cross.
+// - Two halves with one direction are ordered by curvature, as today: for a spline that of the end
+//   of its Bezier piece, signed by the direction, and 0 when the end leg has no length.
 export declare function splineDirection(pts: readonly Vec2[], forward: boolean, d: number): number;
+// The two rules of the profile's tests for a polyline (design.md, "The profile"; measured, G).
+// - With another curve (`compatible`): each piece is tested as a line, and a contact of ANY piece
+//   within the reach of a vertex the spline shares with the other curve is allowed (the reach of
+//   today: 10 length tolerances, more beside a round curve). The pieces have no vertices of their
+//   own with other curves.
+// - With itself: a candidate point of one piece (an end, its middle, or a crossing with the other
+//   piece) within the length tolerance of another piece is a touch when the two places are
+//   farther than `SPLINE_SELF_REACH` length tolerances from each other along the polyline (the
+//   shorter way round a closed spline). The candidates are those of `compatible` for two lines,
+//   so a spline is valid where the chain of its pieces is; two consecutive pieces that fold back
+//   onto each other are found by their middles. `splineSelfContact` answers with the place of
+//   the first touch along the curve, for the profile (invalid) and for the query.
+export declare const SPLINE_SELF_REACH: 20; // length tolerances along the curve: twice the reach of a vertex
+export declare function splineSelfContact(pts: readonly Vec2[], closed: boolean): Vec2 | undefined;
 // The box of a spline for the broad phase of the profile (6c's `nearPairs`, the owner's answer
 // 15): the box of its control points, which holds the curve and every polyline of it. Inside a
 // pair that the broad phase lets through, the pieces of a spline are tested against the other
@@ -257,16 +286,49 @@ export interface SketchResult6d extends Omit<SketchResult, 'curves'> {
   curves: Record<Id, ResultCurveAfter>;
 }
 
-// The two refusals of a projected spline, written by 6d in the code of 6b (it is implemented
-// before 6d).
-// - The validator of an entry `{ type: 'sketch', sketch, entity, kind }` (6b stores the kind of the
-//   entity): `kind: 'spline'` is refused whatever the entity is, and an entity that is a spline in
-//   the source sketch is refused for every kind. `what` is the path of the entry.
-// - The tool `projectSketch` of 6b, which projects the entities of a whole sketch: it leaves the
-//   splines out, projects the rest (the control points among the points, if the tool was asked for
-//   points), and names the splines it left out in its answer with this reason.
-export declare const SPLINE_NOT_PROJECTED: (what: string, spline: Id) => string; // `${what}: "${spline}" is a spline, and a spline is not projected yet: project its control points as points`
-export declare const SPLINES_LEFT_OUT: (splines: Id[]) => string; // `Not projected: the splines "c2", "s" (a spline is not projected yet; its control points are, as points).`
+// A projected spline is refused; 6d writes it in the code of 6b, which is implemented before 6d
+// and provides the places (its design, "Where 6b meets 6d and 6f"; design.md, "Other packages").
+// `ProjectedKind` of 6b stays `point | line | circle | arc`.
+// - The form of an entry `{ type: 'sketch', sketch, entity, kind }`: `kind: 'spline'` is refused
+//   by the kind's `validate`, so by a command and by `load` alike (a rule of the form).
+// - A command that names an entity which is a spline in the source sketch is refused whatever
+//   `kind` says. This is 6b's check of a reference (`requireRef` with `accepts: [kind]`), which
+//   `load` does not make: a document made by legal commands must load. 6d adds its advice.
+// - The recompute: a source curve can become a spline under its ID after the entry exists (it is
+//   removed and added again in one batch). 6b's `compute` switches on the kind of the source
+//   curve; the case of a spline answers as its other changes of kind do, with the warning
+//   `brokenProjection` and 6b's text `KIND_CHANGED` ("c2 of lidSketch is a spline now, not
+//   a line"), the projection frozen at its last values. It does not throw.
+export declare const SPLINE_KIND_NOT_PROJECTED: (what: string) => string; // `${what}.kind: a spline is not projected yet: project its control points as points`
+export declare const SPLINE_NOT_PROJECTED: (what: string, sketch: Id, spline: Id) => string; // `${what}.entity: "${spline}" of ${sketch} is a spline, and a spline is not projected yet: project its control points as points`
+
+// The tool `projectSketch { sketch, entities?, as? }` of 6b.
+// - Without `entities` (the whole sketch): the splines of the source are left out, and the rest is
+//   projected. Their control points are not projected by this form either: it projects curves and
+//   lone points, and a control point is a point of a curve. They are listed in `ids.splines`,
+//   a list 6d adds to the lists of what the tool left out (6b's `LEFT_OUT_LISTS`, one list per
+//   reason), since a successful answer of a sketch tool carries lists of IDs and no text; its
+//   description is the reason.
+// - With `entities` that name a spline: refused, naming it (the caller asked for it; its control
+//   points can be named instead).
+// - With `as: 'own'`: the own outline has a gap where the spline was (the own curves on its two
+//   sides end at own points nothing joins), which the answer shows by `ids.splines`.
+export const PROJECT_SKETCH_IDS_6D = {
+  splines: 'splines of the source that were left out, in the order of the source: a spline is not projected yet. Project its control points as points by naming them in `entities`; with `as: "own"` the own outline is open where each of them was',
+} as const;
+export declare const SPLINE_IN_ENTITIES: (sketch: Id, spline: Id) => string; // `entities: "${spline}" of ${sketch} is a spline, and a spline is not projected yet: name its control points instead`
+
+// The query `sketchSources` of 6b (what a sketch can project) lists a spline of the source with
+// its kind and no place, which is how the query says "cannot be projected": 6b's
+// `SourceEntityHook<'spline'>`, restated. Never `whole`, never with `entry`. Its control points
+// are entities of the same list, as points.
+export interface SourceSpline {
+  id: Id;
+  kind: 'spline';
+  whole: false;
+  regions: boolean;
+  construction?: true;
+}
 
 // ================================================================ 6. the commands
 
@@ -282,8 +344,11 @@ declare module '../00-prep/contract' {
 // What `get_sketch` (`sketchDetail`, packages/mcp/src/tools.ts) lists for an own spline, beside
 // what it lists for every curve (the owner's answer 26): where the curve runs, at the solved
 // positions of its control points, rounded as the positions of points are.
-// - `through`: `splineJoints`: the points the curve passes, the first and the last control point
-//   among them. Three points for the five control points of a grip.
+// - `through`: `splineThrough`: points the curve passes, from its first control point to its last:
+//   the joints of its Bezier pieces and the middle of each piece between them. Five points for
+//   the five control points of a grip (two pieces), three for a spline of three or four points
+//   (the answer names the joints and the box; the middles were added after the second review,
+//   because one piece, which is what an SVG `C` or `Q` gives, has no joint but its ends).
 // - `box`: `splineBox`, `[minX, minY, maxX, maxY]`.
 // Both are left out while a control point has no position. A copy of a spline (6c) is not listed
 // curve by curve (6c lists a derived entry in a short form), so it gets neither: the transform of
@@ -298,42 +363,81 @@ export interface SplineDetail {
 }
 
 // What the query `sketchContacts` of 6e (the owner's answer 5) says of a spline. Its fields are
-// 6e's; 6d adds the cases.
+// 6e's (`SketchContact`: `at`, `kind`, `curves`, `fix`, `why`; `total`, `lying`, `degenerate`,
+// `tight`, `reason`); 6d adds the cases, through 6e's one function `contactFix`, so the query and
+// `split` without a curve cannot disagree.
 // - A contact of a spline and another curve that forms regions, apart from a common end: found on
-//   the polyline of the spline at the chord tolerance of the document, listed with `kind`
-//   `crossing` (or `end`, when it lies at an end of one of the two), `repair: 'none'` and `why`
-//   `SPLINE_CONTACT_WHY`. Contacts nearer to each other than the length tolerance are one.
-// - A spline that crosses or touches itself: one contact at the first such place along it, its two
-//   `curves` the spline twice, `kind` `crossing`, `repair: 'none'`, `why` `SPLINE_SELF_WHY`.
-// - A spline of no length is in `degenerate`.
+//   the polyline of the spline at the chord tolerance of the document. `kind` is `crossing`, or
+//   `end` when it lies at an end of one of the two CURVES (a joint of two pieces of the polyline is
+//   no end); never `touch`, which is a tangency of carriers and is not decided for a polyline.
+//   `fix: 'none'`, `why` `SPLINE_CONTACT_WHY`. Contacts nearer to each other than the length
+//   tolerance are one. They count in `total`.
+// - A stretch of a spline that lies along a line (a straight spline over a line): the pair is in
+//   `lying`, its points have the kind `overlap`, `fix: 'none'`.
+// - `ends`, two unjoined ends at one place of which one or both are a spline's: `fix: 'join'`.
+//   `split` without a curve, and the cuts a trim or an extend make first, join them by re-pointing
+//   the OTHER curve onto the spline's point when the other curve's point is named by nothing but
+//   that curve, and by a `coincident` otherwise (always for two splines). The spline is never
+//   re-pointed: `setCurvePoint` does not take one.
+// - A spline that crosses or touches itself: one contact at `splineSelfContact`, its two `curves`
+//   the spline twice, `kind` `crossing`, `fix: 'none'`, `why` `SPLINE_SELF_WHY`.
+// - A spline of no length is in `degenerate`. `tight` names a spline as it names any curve of
+//   a loop (6e reads `Loop.curves`).
 // - `reason`: the first of these, in words, when nothing a cut repairs explains the invalid profile.
-export declare const SPLINE_CONTACT_WHY: (spline: Id) => string; // `"${spline}" is a spline, which is not cut and holds no point: move the other curve or the control points, so that the two meet only at a common end`
+export declare const SPLINE_CONTACT_WHY: (spline: Id) => string; // `"${spline}" is a spline, which is not cut and holds no point: move the other curve or the control points so that the two meet only at a common end, or trim the other curve back to another curve`
 export declare const SPLINE_SELF_WHY: (spline: Id) => string; // `the spline "${spline}" crosses or touches itself: move its control points`
-// The contact search of 6e (`curveContacts`, sketch.ts) takes the chord tolerance for it, since a
-// spline has a shape only with one; the pieces of the polyline are tested as lines. Undefined
-// as today when either curve has no position or no length.
-export interface SplineSelfContact {
-  at: Vec2;
-}
-export declare function splineSelfContact(pts: readonly Vec2[], closed: boolean): SplineSelfContact | undefined;
+// A contact of a spline as the query lists it; 6e's type, with what 6d fills in.
+export type SplineContact = SketchContact & ({ kind: 'crossing' | 'end' | 'overlap'; fix: 'none'; why: string } | { kind: 'ends'; fix: 'join' });
+export type SplineContactFix = Extract<NonNullable<ContactFix>, { fix: 'none' } | { fix: 'join' }>;
+// The contact search of 6e (`curveContacts`, `curvesTouch`; sketch.ts) takes the chord tolerance
+// for it, since a spline has a shape only with one; the pieces of the polyline are tested as
+// lines. Undefined as today when either curve has no position or no length.
+
+// The curve a place means (`curveUnder` of 6e, and `trim` without `curve`): a spline counts among
+// the own curves, at the distance of the place from its polyline at the chord tolerance of the
+// document. So `curveUnder` takes the context with the document, which its callers hold (the
+// app's entries pass `context.tool`). It may answer with a spline; the tool then refuses the
+// place, naming the spline, as it refuses a named spline. Without this the search does not see
+// a spline, and a place on one trims the nearest curve that has a shape.
+export declare function curveUnder(context: SketchToolCallAfter, at: Vec2, picked?: Id): Id | undefined;
+export declare const SPLINE_NOT_CUT: (spline: Id) => string; // 6e's text: `"${spline}" is a spline; a spline is not trimmed, split or extended …`
+
+// The worlds a tool builds in memory (`cutInMemory` of 6e, references/world.ts): the faces (the
+// removed pieces put back, cut with what they touch) and the region as it was. There a spline that
+// one of the curves to cut touches IS cut, as a shape: it is replaced by the chain of the pieces
+// of its polyline, each a line of the world under an ID that exists there only, over points that
+// exist there only, with the contact as a point of the chain (a contact within the length
+// tolerance of a point of the polyline is that point). The lines carry the flag `regions` of the
+// spline. Nothing of this reaches the document: there a spline is never cut. A spline that
+// nothing touches there stays a spline.
+export declare function splineChain(world: SketchWorld, spline: Id, chordTolerance: number, cuts: readonly Vec2[]): SketchWorld;
 
 // ================================================================ 8. what 6d adds to 6e, 6c, 6b
 
-// One line per place of their designs; design.md, "Other packages", has the reasons.
+// One line per place of their designs; design.md, "Other packages", has the reasons and the two
+// tables of "Every switch" the way each place is found.
 export const PLUG_INS = {
-  // 6e (`sketch-cut.ts`, `sketch.ts`)
+  // 6e (`sketch-cut.ts`, `references/world.ts`, `sketch.ts`, `query/sketch.ts`)
   curvePredicates: 'a spline: `mayCut` false, `holdsPoint` false, `formsRegions` by its flag as every curve',
-  cutSwitches: 'every switch on the kind of a curve refuses a spline by name, with 6e\'s text ("a spline is not trimmed, split or extended; …")',
+  cutSwitches: 'every switch on the kind of a curve refuses a spline by name where the spline is the curve the tool was asked to cut, or its `with` curve, with 6e\'s text',
+  curveUnder: 'a spline counts where a place means a curve; the place is refused naming it',
+  endsAtOnePlace: 'an end of a spline is joined by re-pointing the other curve or by a `coincident`, never by re-pointing the spline',
+  oldEnds: 'what names a point is read from every point a curve is given by (`curvePoints`), so an inner control point is named by its spline',
   curveContacts: 'takes the chord tolerance; a spline is its polyline, piece by piece',
-  sketchContacts: 'the cases of section 7',
-  faceRule: 'nothing: 6e tests a loop without exact curves on its polygon; 6d brings the first such loop and its two tests',
-  // 6c (`references/derive.ts`, `sketch.ts`)
+  contactFix: 'the cases of section 7',
+  cutInMemory: '`splineChain`: a spline touched there is cut as the chain of its polyline pieces',
+  faceRule: 'nothing to write in the test of a point in a loop; 6d brings the first loops without exact curves and their tests',
+  // 6c (`references/derive.ts`, `sketch.ts`, the app)
   derive: 'a copy of a spline runs over the copies of its control points in the same order',
   occupies: 'two splines occupy the same when their control points agree in order or in reverse, within the length tolerance',
   occupationPlace: 'the place a spline is filed under: the middle of its two middle control points (for an odd count, the middle one), the same for both orders',
+  positionStage: 'the ends of a copied spline join by position as the ends of a copied line do: the stage, `openEnds` and the open-end rule of what joins an entry read the ends of a curve through `curveEnds`',
   broadPhase: '`splineBroadBox`',
-  // 6b (`references/sketch.ts`, the tool `projectSketch`)
-  projection: 'the two refusals of section 5',
+  selection: 'a selection with a spline gets no offer of a constraint, by the rule that skips a selection with a copy',
+  // 6b (`references/projection.ts`, the tool `projectSketch`, the query `sketchSources`)
+  projection: 'the refusals and the frozen projection of section 5',
+  projectSketch: '`ids.splines`; `entities` naming a spline refused',
+  sketchSources: '`SourceSpline`',
 } as const;
 
 // ================================================================ 9. the app
@@ -352,10 +456,12 @@ export declare const VIEW_TOLERANCE: 0.0005;
 // Which curve a drawing tool may snap a new point to (sketch-view.ts): one that can hold a point
 // by `pointOnCurve`. False for a spline (and, from 6c, for a copy). The place of a tool that picks
 // in the sketch and does not hover (`picks: 'sketch'` without `hovers`: Point, Line, Rectangle,
-// Polygon, Circle, Arc, Spline) drops a curve snap to such a curve and is the bare place under the
-// pointer. The Select tool, which hovers, still gets the curve: a spline is selected, highlighted,
-// deleted and switched to construction as every curve, and the tools of 6c read it from the
-// selection. A tool with `picks: 'curve'` (6e's three) decides by its own `eligible`.
+// Polygon, Circle, Arc, Spline) leaves such curves out of the pick (the filter `skip` of
+// `hitCurve`), so a line a little farther than a spline is still snapped to, and with nothing
+// else in reach the place is the bare one under the pointer. The Select tool, which hovers, still
+// gets the curve: a spline is selected, highlighted, deleted and switched to construction as
+// every curve, and the tools of 6c read it from the selection. A selection that holds a spline is
+// offered no constraint. A tool with `picks: 'curve'` (6e's three) decides by its own `eligible`.
 export declare function holdsPoint(view: SketchView, curve: Id): boolean;
 
 // The inferred direction of the mode (`SketchPlaceTool.infer`, `SketchMode.infer`) gets a second
@@ -364,8 +470,12 @@ export declare function holdsPoint(view: SketchView, curve: Id): boolean;
 // point ends, a bare place under the pointer that lies beyond that end and within the reach of a
 // pick of the line's extension is moved onto the extension (the foot of the perpendicular), and
 // the mode shows the inference as it shows "horizontal". `extensionOf` is that rule, a function of
-// sketch-commands.ts; of several lines it takes the one whose extension is nearest.
+// sketch-commands.ts; of several lines it takes the one whose extension is nearest. A line ends at
+// the point when the point is its `a` or its `b`; a line joined to it by a `coincident` does not
+// count (the rule reads no joins).
 export type InferAfter = boolean | 'extension';
+// The table of the tools with the second kind: an entry's `infer`, and the mode's field.
+export type SketchPlaceToolAfter<O> = Omit<SketchPlaceTool<O>, 'infer'> & { infer?: InferAfter };
 export type ModeInferAfter = NonNullable<SketchMode['infer']> | 'extension';
 export declare function extensionOf(view: SketchView, first: Anchor, at: Vec2, reach: number): { at: Vec2; line: Id } | undefined;
 
@@ -378,7 +488,7 @@ export declare function extensionOf(view: SketchView, first: Anchor, at: Vec2, r
 // by `pointOnCurve`: the spline runs on smoothly from the line. A message, with nothing sent, when
 // fewer than three places are given or two of the places are one point (an existing point picked
 // twice, or two places within the length tolerance of each other).
-export type SplineBatch = { commands: Command[] } | { problem: string };
+export type SplineBatch = { commands: CommandAfter[] } | { problem: string }; // the commands with the spline of section 6
 export declare function splineCommands(sketch: Id, view: SketchView, places: Anchor[], closed: boolean, newId: (prefix: string) => Id): SplineBatch;
 export declare const SPLINE_TOOL_PROBLEMS: {
   tooFew: string; // 'A spline needs at least three control points.'
@@ -404,7 +514,7 @@ export declare const SPLINE_TOOL_PROBLEMS: {
 //   places are returned, so they stay. The mode takes Enter only while places are kept.
 // - `draw`: the control polygon through the places and the cursor, and the spline through them
 //   once there are three.
-export declare const spline: SketchPlaceTool<undefined>;
+export declare const spline: SketchPlaceToolAfter<undefined>;
 export type SketchToolNameAfter = 'select' | 'point' | 'line' | 'rect' | 'polygon' | 'circle' | 'arc' | 'spline' | 'fillet' | 'project';
 
 // What the scene of the sketch mode draws for every spline of the open sketch beyond its curve: the

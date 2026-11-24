@@ -333,6 +333,7 @@ The reviews of the designs of 6b and 6d (on their branches), and a second round 
 | 26 | 6d | Where a spline runs, for the AI | `get_sketch` gives each spline the points the curve passes at the joints of its Bezier pieces, and its box | 6d's revision |
 | 27 | 6e | The default of the repair, off in every sketch before its first extrusion | It stays as designed: on exactly when a feature reads regions of the sketch, `repair: 'on' \| 'off'` overrides. The round-2 findings it causes (a notch arc left out of a mirror, a trim beyond a touch, the app's remembered override) are fixed | 6e's and 6c's fixes after the second round |
 | 28 | 6c | The narrowed rule of answer 16, which misses the notch arc with the repair off | Kept, in the open-end form: a curve the batch makes, re-points or turns into an arc joins an entry when each of its two ends is an open end of that entry's listed curves (the end of exactly one of them) and it has their construction flag. A split still adds only pieces | 6c's third round |
+| 32 | 6d | Whether something reports the cusp of a spline whose second control point is held on a line behind its end (a join of zero angle: a valid profile, a closed body) | Not in 6d (no objection to the recommendation). A backlog row for a general advice of `get_sketch` for two outline curves that leave a vertex in one direction | 6d's fixes of its second round; `backlog.md` |
 
 ## What the designs leave out
 

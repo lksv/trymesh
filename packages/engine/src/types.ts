@@ -330,6 +330,10 @@ export type ProjectionKind = 'line' | 'circle';
 // projection of an edge of a body, `type: 'edge'`). Later kinds of entry, reference or derived
 // geometry (a mirror or a pattern of own curves), are further members of this union and share the
 // commands addExternal, updateExternal and removeExternal (D64).
+// Besides its entries every sketch has the lines `origin/x` and `origin/y` through its origin along
+// its X and Y (from `origin` towards +X and +Y), fixed like projected geometry and in no entry: a
+// constraint of the sketch and an axis `{ kind: 'sketchLine', sketch, line }` may name them; they
+// are whole lines, so `midpoint` and `equalLength` do not take them (D71).
 // kind: jako co se hrana promítá
 export interface ExternalRef {
   type: 'edge';
@@ -339,6 +343,8 @@ export interface ExternalRef {
 }
 
 // Každá varianta má pojmenované operandy s pevným významem.
+// A line operand may be an axis of the origin, `origin/x` or `origin/y` (a driving constraint needs
+// at least one own operand, as for any fixed entity), except in `midpoint` and `equalLength`.
 export type Constraint = GeometricConstraint | Dimension;
 
 export type GeometricConstraint =
@@ -848,8 +854,9 @@ export type LinearSpan = { type: 'spacing'; spacing: number } | { type: 'length'
 
 // An axis: a base axis of the model, the normal of a sketch plane led through a point of the
 // sketch (an own point, the origin or a point of projected geometry), or a line of a sketch
-// (`sketchLine`: an own line, construction or not, or a projected line). The axis of a line runs
-// through its point `a` in the direction from `a` to `b` (`<line>/a` to `<line>/b` for a projected
+// (`sketchLine`: an own line, construction or not, a projected line, or an axis of the origin of
+// the sketch, `origin/x` or `origin/y`, along +X or +Y of the sketch through its origin). The axis
+// of a line runs through its point `a` in the direction from `a` to `b` (`<line>/a` to `<line>/b` for a projected
 // one), so a positive angle turns by the right-hand rule about that direction. A line whose ends
 // are not more than 1e-6 mm apart is the error `invalidAxis` of whoever uses it; a projected line
 // whose edge is gone keeps its last valid place. A projected line takes its sense from the outward
@@ -1508,11 +1515,14 @@ export interface ResultCurve {
 }
 
 export interface SketchResult {
-  points: Record<Id, Point2>; // použité polohy, včetně promítnutých
+  // The used positions: own points, `origin` and the points of projected geometry; not the far
+  // points of the axes `origin/x` and `origin/y`, which are no points of the sketch.
+  points: Record<Id, Point2>;
   radii: Record<Id, number>;
   // The curves that are not own, by their IDs: the entries of `external` in the order of the
   // document, the curves of one entry in the order of its kind. An entry that never had values has
-  // none, as it has no points.
+  // none, as it has no points. The axes `origin/x` and `origin/y` are not here: they are the same in
+  // every sketch.
   curves: Record<Id, ResultCurve>;
   degreesOfFreedom: number;
   conflicting: Id[];

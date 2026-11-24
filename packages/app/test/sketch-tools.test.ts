@@ -1,6 +1,6 @@
 // Kreslicí nástroje a vazby z výběru proti skutečnému enginu: příkazy, které UI sestaví, musí
 // engine přijmout a výsledek musí odpovídat tomu, co uživatel nakreslil.
-import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, type SketchToolCall, createEngine, duplicateOf, emptySketch, nearestCurvePoint } from '@trymesh/engine';
+import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, type SketchToolCall, createEngine, duplicateOf, emptySketch, isOriginAxis, nearestCurvePoint } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
@@ -93,7 +93,7 @@ describe('kreslicí nástroje', () => {
     expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
     expect(t.result().regions).toHaveLength(0);
     expect(t.result().degreesOfFreedom).toBe(2);
-    expect([...t.view().curves.values()].every((curve) => curve.construction)).toBe(true);
+    expect([...t.view().curves.values()].filter((curve) => curve.own).every((curve) => curve.construction)).toBe(true);
     // kružnice a oblouk; běžná křivka nakreslená potom konstrukční není
     t.run(asConstruction(circleCommands('s', t.view(), free(50, 0), free(55, 0), t.newId)!));
     t.run(asConstruction(arcCommands('s', t.view(), free(80, 0), free(90, 0), free(80, 10), t.newId)!));
@@ -427,7 +427,9 @@ describe('test zásahu', () => {
     expect(hitPoint(view, [5, 3], 0.5)).toBeUndefined();
     expect(hitCurve(view, [5, 0.3], 0.5)?.id).toBe([...view.curves.keys()][0]);
     expect(hitCurve(view, [5, 0.6], 0.5)).toBeUndefined();
-    expect(hitCurve(view, [11, 0], 0.5)).toBeUndefined(); // za koncem úsečky
+    // past the end of the line runs the X axis of the origin (D71), a whole line
+    expect(hitCurve(view, [11, 0], 0.5)?.id).toBe('origin/x');
+    expect(hitCurve(view, [11, 0], 0.5, isOriginAxis)).toBeUndefined();
   });
 
   it('nejbližší bod oblouku mimo jeho rozsah je bližší konec', () => {

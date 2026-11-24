@@ -211,7 +211,7 @@ export function refusals(): boolean {
     refused(constrain('board', 'z1', { type: 'midpoint', point: 'hc0', line: 'origin/x' }), AXIS_HAS_NO_LENGTH('origin/x')) &&
     refused(constrain('board', 'z2', { type: 'equalLength', a: 'bl0', b: 'origin/y' }), AXIS_HAS_NO_LENGTH('origin/y')) &&
     // a constraint between two fixed entities: an axis and the origin
-    refused(constrain('board', 'z3', { type: 'pointOnCurve', point: 'origin', curve: 'origin/x' }), 'vazba jen mezi pevnými entitami') &&
+    refused(constrain('board', 'z3', { type: 'pointOnCurve', point: 'origin', curve: 'origin/x' }), 'only between fixed entities') &&
     // the origin is an end of both axes: it is no point symmetric about one
     refused(constrain('board', 'z4', { type: 'symmetric', a: 'origin', b: 'hc0', line: 'origin/y' }), 'souměrný bod nesmí být koncem osy') &&
     // an axis is no curve of the sketch to change or to remove, and its far point no entity

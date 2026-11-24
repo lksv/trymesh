@@ -14,6 +14,26 @@ export function pushPolyline(out: number[], frame: Frame, points: Vec2[]): void 
   for (let i = 0; i + 1 < points.length; i++) out.push(...toWorld(frame, points[i][0], points[i][1]), ...toWorld(frame, points[i + 1][0], points[i + 1][1]));
 }
 
+// The stretch of a line without ends through the origin of a plane, along `direction`, that lies
+// in the part of the plane a view shows: `corners`, the corners of the view on the plane in order
+// around it (a convex quadrilateral). Undefined when the line misses it.
+export function stretchInView(corners: readonly Vec2[], direction: Vec2): [Vec2, Vec2] | undefined {
+  const length = Math.hypot(direction[0], direction[1]);
+  if (!(length > 0)) return undefined;
+  const d: Vec2 = [direction[0] / length, direction[1] / length];
+  const side = (p: Vec2): number => d[0] * p[1] - d[1] * p[0]; // the signed distance from the line
+  let [from, to] = [Infinity, -Infinity];
+  corners.forEach((p, i) => {
+    const q = corners[(i + 1) % corners.length];
+    const [sp, sq] = [side(p), side(q)];
+    if ((sp > 0 && sq > 0) || (sp < 0 && sq < 0) || (sp === 0 && sq === 0)) return;
+    const s = sp / (sp - sq);
+    const along = d[0] * (p[0] + s * (q[0] - p[0])) + d[1] * (p[1] + s * (q[1] - p[1]));
+    [from, to] = [Math.min(from, along), Math.max(to, along)];
+  });
+  return from < to ? [[from * d[0] + 0, from * d[1] + 0], [to * d[0] + 0, to * d[1] + 0]] : undefined; // + 0: no negative zero
+}
+
 // Uzavřená smyčka (dvojice souřadnic v rovině) jako úsečky ve světě.
 export function loopSegments(frame: Frame, loop: number[]): number[] {
   const points: Vec2[] = [];

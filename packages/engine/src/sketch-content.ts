@@ -3,8 +3,9 @@
 // catalog and the utilities, so the sketch solver setup, the diagnosis and the feature modules can
 // all read it below the registry of feature types.
 import { CONSTRAINTS, type EntityKind } from './catalog';
+import type { EntryGeometry } from './references/spec';
 import type { Constraint, Curve, CurvePointName, CurveShape, Dimension, Document, FieldPath, Id, PlaneRef, SketchFeature } from './types';
-import { has, unreachable } from './util';
+import { ORIGIN, has, unreachable } from './util';
 
 export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeature => ({
   id,
@@ -45,6 +46,19 @@ export interface Entity {
 
 // What an ID is in a sketch (`entityOf`) and the derived points of an entry of `external` are in
 // references/index.ts, by the registry of the kinds of entries.
+
+// The axes of the origin (D71) as geometry: `origin/x` and `origin/y` from `origin` to the hidden
+// far points at (1, 0) and (0, 1), so their sense is +X and +Y of the sketch. What `sketchCurves`
+// adds to the list of every sketch (`AXIS_CURVES` of sketch.ts), what the state's geometry holds,
+// and what the first stage of the sketch step puts into the solver under the key `origin` when a
+// constraint of the sketch names an axis.
+export const AXES_GEOMETRY: EntryGeometry = {
+  points: { 'origin/x/b': { x: 1, y: 0 }, 'origin/y/b': { x: 0, y: 1 } },
+  curves: { 'origin/x': { type: 'line', a: ORIGIN, b: 'origin/x/b' }, 'origin/y': { type: 'line', a: ORIGIN, b: 'origin/y/b' } },
+  radii: {},
+  regions: [],
+  hidden: ['origin/x/b', 'origin/y/b'],
+};
 
 // The points a curve is given by, by the kind of the curve (D52): the fields of the shape other
 // than `type`, so the table cannot name a point a curve does not have.

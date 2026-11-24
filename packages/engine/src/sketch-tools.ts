@@ -9,7 +9,7 @@ import { entityOf, kindOf } from './references/index';
 import { CURVE_POINTS, constraintOperands, duplicateOf } from './sketch-content';
 import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
-import { pointJoins } from './sketch';
+import { type SolvedCurves, lineExtent, pointJoins, solvedCurves } from './sketch';
 import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
 
@@ -134,27 +134,41 @@ const TAU = 2 * Math.PI;
 
 type Shape = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'circle'; center: Vec2; radius: number } | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number };
 
+// The curves and positions of the sketch as the recompute holds them (`solvedCurves`: the own
+// curves, those of the result, the axes of the origin; the positions of the result, else of the
+// sketch), made once for a sketch and its result.
+const solvedOf = new WeakMap<SketchFeature, { result: SketchResult | undefined; solved: SolvedCurves }>();
+function solved(context: SketchToolContext): SolvedCurves {
+  const known = solvedOf.get(context.sketch);
+  if (known && known.result === context.result) return known.solved;
+  const made = solvedCurves(context.sketch, context.result);
+  solvedOf.set(context.sketch, { result: context.result, solved: made });
+  return made;
+}
+
 function pointAt(context: SketchToolContext, id: Id): Vec2 | undefined {
-  const solved = context.result?.points;
-  const p = solved && has(solved, id) ? solved[id] : id === ORIGIN ? { x: 0, y: 0 } : has(context.sketch.points, id) ? context.sketch.points[id] : undefined;
+  const points = solved(context).geometry.points;
+  const p = has(points, id) ? points[id] : undefined;
   return p ? [p.x, p.y] : undefined;
 }
 
-// The shape of an own curve or of a curve of the result that is not own (a projected one);
-// undefined when the sketch has no position for it.
+// The shape of a curve of the sketch, own or not (a projected one, an axis of the origin);
+// undefined when the sketch has no position for it. A line is the stretch `lineExtent` gives, so
+// an axis is a whole line.
 function shapeOf(context: SketchToolContext, id: Id): Shape | undefined {
-  const { sketch, result } = context;
-  const curve = has(sketch.curves, id) ? sketch.curves[id] : result && has(result.curves, id) ? result.curves[id].shape : undefined;
-  if (curve) {
+  const { curves, geometry } = solved(context);
+  const known = curves.get(id);
+  const curve = known?.shape;
+  if (known && curve) {
     switch (curve.type) {
       case 'line': {
-        const [a, b] = [pointAt(context, curve.a), pointAt(context, curve.b)];
-        return a && b ? { type: 'line', a, b } : undefined;
+        const extent = lineExtent(known, geometry);
+        return extent && { type: 'line', a: [extent.a.x, extent.a.y], b: [extent.b.x, extent.b.y] };
       }
       case 'circle': {
         const center = pointAt(context, curve.center);
         if (!center) return undefined;
-        const radius = result && has(result.radii, id) ? result.radii[id] : sketch.radii[id];
+        const radius = has(geometry.radii, id) ? geometry.radii[id] : undefined;
         return radius === undefined ? undefined : { type: 'circle', center, radius };
       }
       case 'arc': {
@@ -424,9 +438,9 @@ const profileSourceOf = (feature: Feature): ProfileSource | undefined => (PROFIL
 
 type LineCurve = Extract<Curve, { type: 'line' }>;
 
-// The positions the tool reads: the solved ones (the origin and projected points included), or
-// those of the document when the sketch has no solved state.
-const positionsOf = (context: SketchToolContext): Record<Id, Point2> => context.result?.points ?? { [ORIGIN]: { x: 0, y: 0 }, ...context.sketch.points };
+// The positions the tool reads: the solved ones (the origin, projected points and the far points
+// of the axes included), else those of the document (`solvedCurves`).
+const positionsOf = (context: SketchToolContext): Record<Id, Point2> => solved(context).geometry.points;
 
 // The two lines of a corner, or why the corner is not one. The curves that count are the own
 // curves whose end (a line by `a` or `b`, an arc by `start` or `end`) is in the vertex of the

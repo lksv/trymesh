@@ -208,11 +208,11 @@ describe('findings of the review of point 6', () => {
     expect(feature(engine, 'S2').constraints.fn).toEqual({ type: 'fixed', point: 'n', x: 33.25, y: 21.5 });
     expect(at(engine, 'S2', 'n')).toEqual(near([33.25, 21.5]));
     // the origin and projected geometry cannot be fixed, with or without coordinates
-    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin' }))).toMatch(/by se nikdy neprojevila/);
-    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin' }))).toMatch(/would never take effect/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toMatch(/would never take effect/);
     run(engine, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: side('plate', 'ra') }, kind: 'line' } });
-    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a' }))).toMatch(/by se nikdy neprojevila/);
-    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a', x: 1, y: 1 }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a' }))).toMatch(/would never take effect/);
+    expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a', x: 1, y: 1 }))).toMatch(/would never take effect/);
     expect(refused(engine, add('S2', 'o', { type: 'equalRadius', a: 'q1', b: 'q1' }))).toMatch(/různé entity/);
   });
 
@@ -237,7 +237,7 @@ describe('findings of the review of point 6', () => {
     expect(sketchOf(engine, 'S3').radii.k).toBeCloseTo(3.5, 6);
     // two projected circles have nothing to move
     run(engine, { type: 'addExternal', sketch: 'S3', id: 'rim2', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: { feature: 'holes', role: 'side', curve: 'q2' } }, kind: 'circle' } });
-    expect(refused(engine, add('S3', 'both', { type: 'equalRadius', a: 'rim', b: 'rim2' }))).toMatch(/by se nikdy neprojevila/);
+    expect(refused(engine, add('S3', 'both', { type: 'equalRadius', a: 'rim', b: 'rim2' }))).toMatch(/would never take effect/);
   });
 
   it('a parameter of a fixed coordinate that disappears: the sketch warns with the paths and keeps the values', () => {

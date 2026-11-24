@@ -1,7 +1,7 @@
 // The table of the tools of the sketch bar (D64, part 4): what the mode reads of an entry, the
 // places the mode picks for a tool that picks in the sketch or on curves only, and what the mode
 // does with the places a tool keeps.
-import { type Command, type Id, createEngine, emptySketch } from '@trymesh/engine';
+import { type Command, type Id, createEngine, emptySketch, isOriginAxis } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
@@ -50,7 +50,9 @@ describe('the tools of the sketch bar', () => {
 
   it('`curve` gives the nearest curve the tool takes even at a point, and the bare pointer away from them', () => {
     expect(placeAt(host, tool('curve'), pointer(0.5, 0.3), context())).toEqual({ at: [0.5, 0], snap: { kind: 'curve', id: bottom } });
-    expect(placeAt(host, tool('curve', (curve) => curve !== bottom), pointer(0.5, 0.3), context())).toEqual({ at: [expect.closeTo(0, 9), expect.closeTo(0.3, 9)], snap: { kind: 'curve', id: left } });
+    // the X axis of the origin (D71) runs under the bottom line and is nearer than the left one
+    expect(placeAt(host, tool('curve', (curve) => curve !== bottom), pointer(0.5, 0.3), context())).toEqual({ at: [expect.closeTo(0.5, 9), expect.closeTo(0, 9)], snap: { kind: 'curve', id: 'origin/x' } });
+    expect(placeAt(host, tool('curve', (curve) => curve !== bottom && !isOriginAxis(curve)), pointer(0.5, 0.3), context())).toEqual({ at: [expect.closeTo(0, 9), expect.closeTo(0.3, 9)], snap: { kind: 'curve', id: left } });
     expect(placeAt(host, tool('curve', () => false), pointer(0.5, 0.3), context())).toEqual({ at: [0.5, 0.3] });
     expect(placeAt(host, tool('curve'), pointer(15, 10), context())).toEqual({ at: [15, 10] });
   });
@@ -117,17 +119,17 @@ describe('the mode with a tool that keeps places, and Enter', () => {
     use('collect', collect, () => {
       click(10.5, 10.3);
       expect(show(m.clicks)).toBe('10,10@point:p');
-      click(20, 5);
-      expect(show(m.clicks)).toBe('10,10@point:p 20,5');
-      expect(log).toEqual(['click 10,10@point:p', 'scene', 'click 10,10@point:p 20,5', 'scene']);
+      click(20, 15);
+      expect(show(m.clicks)).toBe('10,10@point:p 20,15');
+      expect(log).toEqual(['click 10,10@point:p', 'scene', 'click 10,10@point:p 20,15', 'scene']);
       log.length = 0;
       // too few places: the tool refuses and the places stay
       expect(sketchFinish(host, m)).toBe(true);
-      expect(show(m.clicks)).toBe('10,10@point:p 20,5');
-      click(30, 0);
+      expect(show(m.clicks)).toBe('10,10@point:p 20,15');
+      click(30, 20);
       expect(sketchFinish(host, m)).toBe(true);
       expect(m.clicks).toEqual([]);
-      expect(log).toEqual(['finish 10,10@point:p 20,5', 'scene', 'click 10,10@point:p 20,5 30,0', 'scene', 'finish 10,10@point:p 20,5 30,0', 'scene']);
+      expect(log).toEqual(['finish 10,10@point:p 20,15', 'scene', 'click 10,10@point:p 20,15 30,20', 'scene', 'finish 10,10@point:p 20,15 30,20', 'scene']);
       // nothing kept: Enter is not the tool's
       log.length = 0;
       expect(sketchFinish(host, m)).toBe(false);

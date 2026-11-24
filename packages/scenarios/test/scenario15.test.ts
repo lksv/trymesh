@@ -2,7 +2,7 @@
 // points of step 6 of D36 each have a `describe` of their own; the board of step 1 is a stand-in
 // until 6f imports one, and 6c and 6b build on it.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, freshIds, lineExtent, repairsByDefault, sketchTool, solvedCurves } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
@@ -177,7 +177,12 @@ function cut<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: Sket
   const state = engine.getState();
   const made = sketchTool(name, toolContext(state, sketch), input, freshIds(state.document, prefix));
   if (!made.ok) throw new Error(made.message);
-  run(engine, batch(...made.commands));
+  const after = run(engine, batch(...made.commands));
+  // the world a tool builds gives the profile of the step, after every batch of a tool here
+  const world = sketchWorld(toolBase(sketchOf(after, sketch), resultOf(after, sketch)));
+  const profile = profileOf([...world.curves.values()], world.joins, world.geometry, after.document.settings.chordTolerance);
+  expect(profile.valid).toBe(resultOf(after, sketch).valid);
+  expect(profile.regions.map((r) => r.ref)).toEqual(resultOf(after, sketch).regions.map((region) => region.ref));
   return made.ids as CutIds;
 }
 function cutRefusal<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K]): string | undefined {

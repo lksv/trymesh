@@ -4,7 +4,7 @@
 // they were, `reshaped`, the edge lists of chamfers and fillets, the world of a sketch, the query
 // of the contacts and the extensions near the axes of the origin.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, freshIds, profileOf, repairsByDefault, sketchTool, sketchWorld, toolBase } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, curveUnder, freshIds, profileOf, repairsByDefault, sketchTool, sketchWorld, toolBase } from '@trymesh/engine';
 import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, newEngine, onFace, rectLoop, rectangle, run, side } from './kit';
 
 type CutTool = 'trim' | 'extend' | 'split';
@@ -16,7 +16,17 @@ function cut<K extends CutTool>(engine: Engine, name: K, input: SketchToolInputs
   const made = sketchTool(name, contextOf(state, sketch), input, freshIds(state.document, prefix));
   if (!made.ok) throw new Error(made.message);
   run(engine, batch(...made.commands));
+  expectWorldAsStep(engine.getState(), sketch);
   return made.ids as CutIds;
+}
+// The world a tool builds from the sketch and its result gives the profile of the step: checked
+// after every batch of a tool in this file.
+function expectWorldAsStep(state: EngineState, sketch: Id): void {
+  const result = state.evaluation.features[sketch].sketch as SketchResult;
+  const world = sketchWorld(toolBase(sketchOf(state, sketch), result));
+  const profile = profileOf([...world.curves.values()], world.joins, world.geometry, state.document.settings.chordTolerance);
+  expect(profile.valid, `the world of "${sketch}"`).toBe(result.valid);
+  expect(profile.regions.map((r) => r.ref)).toEqual(result.regions.map((region) => region.ref));
 }
 function refusal<K extends CutTool>(engine: Engine, name: K, input: SketchToolInputs[K], sketch = 's'): string {
   const state = engine.getState();
@@ -621,5 +631,204 @@ describe('the belt: two circles and two lines tangent to both', () => {
     run(engine, addExtrude('belt', 's', [solved(state).regions[0].ref.outerLoop], 1));
     expect(volumeOf(engine.getState(), 'belt')).toBeCloseTo(40 * 20 + Math.PI * 100, 0);
     expect(preview(engine, { type: 'setConstraintValue', sketch: 's', id: 'r1', value: 12 }).evaluation.features['s'].status).toBe('ok');
+  });
+});
+
+describe('fixes of the review of the implementation', () => {
+  it('M1: a removed piece put back through a place where three curves meet: the region follows', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'r', 0, 0, 60, 40), addExtrude('plate', 's', [rectLoop('r')], 1));
+    run(engine, batch(...fixedLine('X', [-10, 20], [70, 20]), ...fixedPoint('P', 30, 20), ...fixedPoint('Q1', 10, 30), ...fixedPoint('Q2', 50, 30), { type: 'addCurve', sketch: 's', id: 'c1', curve: { type: 'line', a: 'Q1', b: 'P' } }, { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'line', a: 'P', b: 'Q2' } }));
+    const ids = cut(engine, 'trim', { at: [5, 20], with: 'rb' });
+    expect(ids.patched).toEqual(['plate']);
+    expect(ids.dropped).toEqual([]);
+    expect(engine.getState().evaluation.features['plate'].status).toBe('ok');
+    expect(volumeOf(engine.getState(), 'plate')).toBeCloseTo(2400, 6);
+  });
+
+  it('M1: a hole of a circle and three diameters with a notch, one split: the plate follows', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'r', 0, 0, 60, 40), addExtrude('plate', 's', [rectLoop('r')], 1), circle('s', 'w', 30, 22, 8), circle('s', 'n', 30, 1.5, 4));
+    const diameter = (k: number): [[number, number], [number, number]] => {
+      const a = (k * Math.PI) / 3;
+      return [
+        [30 - 8 * Math.cos(a), 22 - 8 * Math.sin(a)],
+        [30 + 8 * Math.cos(a), 22 + 8 * Math.sin(a)],
+      ];
+    };
+    run(engine, batch(...fixedLine('d0', ...diameter(0)), ...fixedLine('d1', ...diameter(1)), ...fixedLine('d2', ...diameter(2))));
+    const ids = cut(engine, 'split', {});
+    expect(ids.patched).toEqual(['plate']);
+    expect(ids.dropped).toEqual([]);
+    expect(engine.getState().evaluation.features['plate'].status).toBe('ok');
+    expect(volumeOf(engine.getState(), 'plate')).toBeCloseTo(2400 - Math.PI * 64, 0);
+  });
+
+  it('M2: an extend with `with` that would cross a circle once in a valid profile is refused', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'r', 0, 0, 60, 40), circle('s', 'k', 30, 20, 8), addExtrude('plate', 's', [rectLoop('r')], 1));
+    run(engine, batch(...fixedPoint('La', 28, 20), { type: 'addPoint', sketch: 's', id: 'Lb', x: 32, y: 20 }, { type: 'addCurve', sketch: 's', id: 'L', curve: { type: 'line', a: 'La', b: 'Lb' } }, constrain('s', 'Lh', { type: 'horizontal', line: 'L' }), dimension('s', 'Ll', { type: 'distance', a: 'La', b: 'Lb' }, 4)));
+    expect(solved(engine.getState()).valid).toBe(true);
+    expect(refusal(engine, 'extend', { curve: 'L', end: 'b', with: 'rb' })).toMatch(/would leave the profile of the sketch invalid: it would meet "k"/);
+  });
+
+  it('M3: a line touching a circle that only another circle touches besides: a trim at the touch is refused, nothing held', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), circle('s', 'C', 0, 0, 5), circle('s', 'K', 8, 0, 3), batch(...fixedLine('L', [-10, 5], [10, 5])));
+    expect(refusal(engine, 'trim', { at: [6, 5], repair: 'on' })).toMatch(/only touches "C".*the circle "C" would get that one point only/);
+    // two lines crossing the circle besides: the touch is a cut and the line is trimmed there
+    run(engine, batch(...fixedLine('M', [-10, -1], [10, -1])));
+    const ids = cut(engine, 'trim', { at: [6, 5], repair: 'on' });
+    expect(ids.changed).toContain('C');
+    // the line and the circle touched by dimensions, and a tangency is added: one equation twice (a known limit)
+    expect(solved(engine.getState()).redundant).toHaveLength(1);
+    expect(solved(engine.getState()).degreesOfFreedom).toBe(0);
+  });
+
+  it('M4: the edge between the side of a wall and its straight end follows the piece that ends there', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('w', [0, 0], [40, 0]), ...fixedLine('v', [20, -5], [20, 5], 's', true)));
+    run(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 's', curves: ['w'], thickness: 4 }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    const wallSide = (curve: Id) => ({ feature: 'W', role: 'wallSide' as const, curve, side: 'left' as const });
+    run(engine, { type: 'addFeature', feature: { id: 'f', name: 'f', suppressed: false, type: 'fillet', body: 'W', edges: [{ a: { feature: 'W', role: 'wallEnd', point: 'wb' }, b: wallSide('w') }, { a: cap('W'), b: wallSide('w') }], radius: 1 } });
+    const volume = volumeOf(engine.getState(), 'W');
+    const ids = cut(engine, 'split', { curve: 'w', with: 'v' });
+    const state = engine.getState();
+    expect(ids.patched).toEqual(['W', 'f']);
+    expect((state.document.features.find((f) => f.id === 'f') as unknown as { edges: unknown }).edges).toEqual([
+      { a: { feature: 'W', role: 'wallEnd', point: 'wb' }, b: wallSide(ids.added[0]) },
+      { a: cap('W'), b: wallSide('w') },
+      { a: cap('W'), b: wallSide(ids.added[0]) },
+    ]);
+    expect(state.evaluation.features['f'].status).toBe('ok');
+    expect(volumeOf(state, 'W')).toBeCloseTo(volume, 3);
+  });
+
+  it('m1: with `with`, a crossing of two other curves on the removed piece is cut all the same', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'r', 0, 0, 60, 40), addExtrude('plate', 's', [rectLoop('r')], 1));
+    run(engine, batch(...fixedLine('X', [-10, 20], [70, 20]), ...fixedLine('V', [30, 10], [30, 30]), ...fixedLine('E', [20, 10], [40, 30])));
+    const ids = cut(engine, 'trim', { at: [5, 20], with: 'rb' });
+    expect(ids.changed).toEqual(['E', 'V', 'X', 'rb']);
+    expect(solved(engine.getState()).valid).toBe(true);
+    expect(contacts(engine).total).toBe(0);
+    expect(engine.getState().evaluation.features['plate'].status).toBe('ok');
+  });
+
+  it('m2: a chamfer whose edge on a piece removed whole is taken out is not listed broken', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'A', 0, 0, 40, 30, null), rectangle('s', 'B', 20, 10, 40, 30, null), addExtrude('a', 's', [rectLoop('A')], 5), addExtrude('b', 's', [rectLoop('B')], 3));
+    cut(engine, 'split', {});
+    const points = solved(engine.getState()).points;
+    const near = (p: Id, x: number, y: number): boolean => Math.hypot(points[p].x - x, points[p].y - y) < 1e-6;
+    const [piece] = Object.entries(sketchOf(engine.getState()).curves).find(([, c]) => c.type === 'line' && ((near(c.a, 40, 10) && near(c.b, 40, 30)) || (near(c.a, 40, 30) && near(c.b, 40, 10)))) as [Id, unknown];
+    run(engine, { type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'a', edges: [{ a: side('a', 'Aa'), b: cap('a') }, { a: side('a', piece), b: cap('a') }], distance: 1 } });
+    const ids = cut(engine, 'trim', { at: [40, 20] });
+    expect(ids.broken).toEqual([]);
+    expect(ids.patched).toContain('ch');
+    expect(engine.getState().evaluation.features['ch'].status).toBe('ok');
+  });
+
+  it('the place on a line under its span line takes the line, though the span line sorts first', () => {
+    const engine = newEngine();
+    // `zz` sorts after the span line the split makes (`x_c2`), so only the rule "a curve that forms
+    // regions before a construction curve" picks it
+    run(engine, addSketch('s', XY), batch(...fixedLine('m', [0, -20], [40, -20]), ...fixedPoint('za', 0, 0), { type: 'addPoint', sketch: 's', id: 'zb', x: 40, y: 0 }, { type: 'addCurve', sketch: 's', id: 'zz', curve: { type: 'line', a: 'za', b: 'zb' } }, constrain('s', 'zh', { type: 'horizontal', line: 'zz' }), constrain('s', 'eq', { type: 'equalLength', a: 'zz', b: 'm' }), ...fixedLine('v', [20, -5], [20, 5], 's', true)));
+    const split = cut(engine, 'split', { curve: 'zz', with: 'v' });
+    expect(split.span).toEqual(['x_c2']);
+    const ids = cut(engine, 'trim', { at: [10, 0] });
+    expect(ids.removed).toContain('zz');
+    expect(sketchOf(engine.getState()).curves['x_c2']).toBeDefined();
+  });
+
+  it('an extend of the far end of a piece under a span line: the span keeps the old ends, freedom 0, the length followed', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('m', [0, -20], [40, -20]), ...fixedPoint('la', 0, 0), { type: 'addPoint', sketch: 's', id: 'lb', x: 40, y: 0 }, { type: 'addCurve', sketch: 's', id: 'L', curve: { type: 'line', a: 'la', b: 'lb' } }, constrain('s', 'Lh', { type: 'horizontal', line: 'L' }), constrain('s', 'eq', { type: 'equalLength', a: 'L', b: 'm' }), ...fixedLine('v', [20, -5], [20, 5], 's', true), ...fixedLine('T', [60, -10], [60, 10])));
+    const split = cut(engine, 'split', { curve: 'L', with: 'v' });
+    const ids = cut(engine, 'extend', { curve: split.added[0], end: 'b' });
+    const state = engine.getState();
+    const piece = sketchOf(state).curves[split.added[0]] as { b: Id };
+    expect(ids.changed).toEqual([split.added[0]]);
+    expect(solved(state).points[piece.b].x).toBeCloseTo(60, 6);
+    expect(solved(state).points['lb'].x).toBeCloseTo(40, 6);
+    expect(solved(state).degreesOfFreedom).toBe(0);
+    expect(solved(state).redundant).toEqual([]);
+    // the span still measures the old line from its old ends
+    const span = sketchOf(state).curves[split.span[0]] as { a: Id; b: Id };
+    expect([span.a, span.b]).toEqual(['la', 'lb']);
+    expect(sketchOf(state).constraints['eq']).toMatchObject({ type: 'equalLength', a: split.span[0], b: 'm' });
+  });
+
+  it('reshaped: a hole made smaller by a trim', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), rectangle('s', 'r', 0, 0, 60, 40), addExtrude('plate', 's', [rectLoop('r')], 1), circle('s', 'k1', 24, 20, 6), circle('s', 'k2', 32, 20, 6));
+    expect(cut(engine, 'split', {}).reshaped).toEqual([]);
+    expect(volumeOf(engine.getState(), 'plate')).toBeCloseTo(2400 - union(6, 8), 0);
+    const ids = cut(engine, 'trim', { at: [18, 20] });
+    expect(ids.reshaped).toEqual(['plate']);
+    expect(ids.patched).toEqual([]);
+    expect(volumeOf(engine.getState(), 'plate')).toBeGreaterThan(2400 - union(6, 8) + 50);
+  });
+
+  it('an extend onto an arc it touches: the tangency holds the new end, which follows the centre', () => {
+    const engine = newEngine();
+    run(
+      engine,
+      addSketch('s', XY),
+      batch(
+        { type: 'addPoint', sketch: 's', id: 'La', x: 0, y: 0 },
+        { type: 'addPoint', sketch: 's', id: 'Lb', x: 10, y: 0 },
+        { type: 'addCurve', sketch: 's', id: 'L', curve: { type: 'line', a: 'La', b: 'Lb' } },
+        constrain('s', 'Lo', { type: 'coincident', a: 'La', b: 'origin' }),
+        constrain('s', 'Lh', { type: 'horizontal', line: 'L' }),
+        dimension('s', 'Ll', { type: 'distance', a: 'La', b: 'Lb' }, 10),
+        { type: 'addPoint', sketch: 's', id: 'c', x: 20, y: 5 },
+        { type: 'addPoint', sketch: 's', id: 'p', x: 15, y: 5 },
+        { type: 'addPoint', sketch: 's', id: 'q', x: 25, y: 5 },
+        { type: 'addCurve', sketch: 's', id: 'A', curve: { type: 'arc', center: 'c', start: 'p', end: 'q' } },
+        { type: 'addCurve', sketch: 's', id: 'ch', curve: { type: 'line', a: 'q', b: 'p' } },
+        constrain('s', 'chh', { type: 'horizontal', line: 'ch' }),
+        constrain('s', 'mid', { type: 'midpoint', point: 'c', line: 'ch' }),
+        dimension('s', 'r', { type: 'radius', curve: 'A' }, 5),
+        dimension('s', 'cx', { type: 'horizontalDistance', a: 'origin', b: 'c' }, 20),
+        dimension('s', 'cy', { type: 'verticalDistance', a: 'origin', b: 'c' }, 5),
+      ),
+    );
+    const ids = cut(engine, 'extend', { curve: 'L', end: 'b', repair: 'on' });
+    const state = engine.getState();
+    expect(solved(state).degreesOfFreedom).toBe(0);
+    // touching by dimensions, then by the tangency added: one of the dimensions is redundant (a known limit)
+    expect(solved(state).redundant).toEqual(['r']);
+    const moved = preview(engine, { type: 'setConstraintValue', sketch: 's', id: 'cx', value: 22 });
+    expect(moved.evaluation.features['s'].status).not.toBe('error');
+    expect(solved(moved).points[ids.points[ids.points.length - 1]].x).toBeCloseTo(22, 6);
+    expect(solved(moved).points['Lb'].x).toBeCloseTo(10, 6);
+  });
+
+  it('a touch whose `with` is a construction curve, or reference geometry, is no cut: a trim through it is refused', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('L', [-10, 0], [10, 0]), ...fixedPoint('kc', 0, 5), { type: 'addCurve', sketch: 's', id: 'K', curve: { type: 'circle', center: 'kc', construction: true }, radius: 5 }, dimension('s', 'kr', { type: 'radius', curve: 'K' }, 5)));
+    expect(refusal(engine, 'trim', { at: [5, 0], with: 'K' })).toMatch(/only touches "K".*"K" is a construction or a reference curve/);
+    run(engine, addSketch('p', XY), rectangle('p', 'r', 0, 0, 60, 40), addExtrude('plate', 'p', [rectLoop('r')], 2));
+    run(engine, addSketch('t', XY), { type: 'addExternal', sketch: 't', id: 'x', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate', 'startCap'), b: side('plate', 'ra') }, kind: 'line' } });
+    run(engine, batch(...fixedPoint('oc', 30, 5, 't'), { type: 'addCurve', sketch: 't', id: 'o', curve: { type: 'circle', center: 'oc' }, radius: 5 }, dimension('t', 'or', { type: 'radius', curve: 'o' }, 5)));
+    expect(refusal(engine, 'trim', { at: [30, 10], curve: 'o', with: 'x' }, 't')).toMatch(/only touches "x".*"x" is a construction or a reference curve/);
+  });
+
+  it('the query: a curve of no length, and two ends at one place that split joins', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('A', [0, 0], [20, 0]), ...fixedLine('B', [20, 0], [20, 20]), ...fixedPoint('k1', 40, 0), ...fixedPoint('k2', 40, 0), { type: 'addCurve', sketch: 's', id: 'K', curve: { type: 'line', a: 'k1', b: 'k2' } }));
+    const found = contacts(engine);
+    expect(found.degenerate).toEqual(['K']);
+    expect(found.contacts).toEqual([{ at: [expect.closeTo(20, 9), expect.closeTo(0, 9)], kind: 'ends', curves: ['A', 'B'], fix: 'join' }]);
+    expect(found.reason).toMatch(/"K" has no length/);
+  });
+
+  it('m2: the curve under a place is the one the tool picked unless a curve on the same line ties with it', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), batch(...fixedLine('L', [0, 0], [10, 0]), ...fixedPoint('kc', 20, 0), { type: 'addCurve', sketch: 's', id: 'K', curve: { type: 'circle', center: 'kc' }, radius: 9.5 }, dimension('s', 'kr', { type: 'radius', curve: 'K' }, 9.5)));
+    // the circle is nearer to the place, but Extend picks lines and arcs only
+    expect(curveUnder(contextOf(engine.getState(), 's'), [10.3, 0], 'L')).toBe('L');
+    expect(curveUnder(contextOf(engine.getState(), 's'), [10.3, 0])).toBe('K');
   });
 });

@@ -9,16 +9,17 @@ import type { SketchContext, SketchHost } from '../sketch-mode';
 
 type CutTool = Extract<EngineToolName, 'trim' | 'extend' | 'split'>;
 
-// What Trim and Extend remember: the curve they are bounded by, and the repair as chosen, kept with
-// the sketch it was chosen in (an override must not outlive its sketch: `on` would cut every wall
-// line of the next sketch of walls, `off` give up the regions of the next outline).
+// What Trim and Extend remember: the curve they are bounded by and the repair as chosen, each kept
+// with the sketch it was chosen in (an override must not outlive its sketch: `on` would cut every
+// wall line of the next sketch of walls, `off` give up the regions of the next outline; and the
+// axes of the origin are in every sketch, so a bound by one would carry over unseen).
 export interface CutOptions {
-  with?: Id;
+  with?: { sketch: Id; id: Id };
   repair?: { sketch: Id; value: Repair };
 }
 // What Split remembers: the curve it is bounded by, and whether a click cuts at the nearest contact only.
 export interface SplitOptions {
-  with?: Id;
+  with?: { sketch: Id; id: Id };
   nearest: boolean;
 }
 
@@ -49,19 +50,20 @@ export function runCut<K extends CutTool>(host: SketchHost, context: SketchConte
 // The own curves of the open sketch: what the three tools take.
 export const ownCurve = (curve: Id, context: SketchContext): boolean => curve in context.feature.curves;
 
-// `with` of the options, while the open sketch has that curve (the options outlive a sketch). What
-// an ID is in the sketch is asked of the engine, so an axis of the origin can bound a cut.
-export const bound = (context: SketchContext, id: Id | undefined): Id | undefined => {
-  const entity = id === undefined ? undefined : entityOf(context.feature, id);
-  return entity !== undefined && entity.kind !== 'point' ? id : undefined;
+// `with` of the options, while the sketch it was chosen in is open and has that curve. What an ID
+// is in the sketch is asked of the engine, so an axis of the origin can bound a cut.
+export const bound = (context: SketchContext, chosen: { sketch: Id; id: Id } | undefined): Id | undefined => {
+  if (chosen === undefined || chosen.sketch !== context.feature.id) return undefined;
+  const entity = entityOf(context.feature, chosen.id);
+  return entity !== undefined && entity.kind !== 'point' ? chosen.id : undefined;
 };
 // The repair as chosen, while the sketch it was chosen in is open.
 export const chosenRepair = (context: SketchContext, options: CutOptions): Repair | undefined => (options.repair?.sketch === context.feature.id ? options.repair.value : undefined);
 
 // The row of the curve a tool is bounded by: taken from the one curve selected, and cleared.
-export function boundRows<O extends { with?: Id }>(host: SketchHost, value: O, set: (value: O) => void): HTMLElement[] {
+export function boundRows<O extends { with?: { sketch: Id; id: Id } }>(host: SketchHost, value: O, set: (value: O) => void): HTMLElement[] {
   const context = host.sketchContext();
-  const selected = (host.sketch?.selection ?? []).filter((id) => context && bound(context, id) !== undefined);
+  const selected = context ? (host.sketch?.selection ?? []).filter((id) => bound(context, { sketch: context.feature.id, id }) !== undefined) : [];
   const current = context ? bound(context, value.with) : undefined;
   const store = (next: O): void => {
     set(next);
@@ -72,8 +74,8 @@ export function boundRows<O extends { with?: Id }>(host: SketchHost, value: O, s
     h(
       'div',
       { className: 'buttons' },
-      h('button', { textContent: 'Use the selected curve', title: 'Only the contacts with the one curve selected bound the cut', disabled: selected.length !== 1, onclick: () => store({ ...value, with: selected[0] }) }),
-      h('button', { textContent: 'Clear', title: 'The nearest curves bound the cut', disabled: value.with === undefined, onclick: () => store({ ...value, with: undefined }) }),
+      h('button', { textContent: 'Use the selected curve', title: 'Only the contacts with the one curve selected bound the cut', disabled: selected.length !== 1 || !context, onclick: () => context && store({ ...value, with: { sketch: context.feature.id, id: selected[0] } }) }),
+      h('button', { textContent: 'Clear', title: 'The nearest curves bound the cut', disabled: current === undefined, onclick: () => store({ ...value, with: undefined }) }),
     ),
   ];
 }

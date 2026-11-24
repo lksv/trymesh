@@ -269,9 +269,10 @@ const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
   fillet: { corner: 'p1', radius: 5 },
   // the three below after the rectangle of its example and a line `x` from (20, 15) to (60, 15)
   // across its right side: the part of `x` outside goes (found by the place alone); `x` grows to
-  // the left side; both are cut
-  trim: { at: [50, 15] },
-  extend: { curve: 'x', end: 'a' },
+  // the left side; both are cut. `repair: 'on'` cuts the other crossings of the outline too, as an
+  // AI that means to extrude the sketch passes it
+  trim: { at: [50, 15], repair: 'on' },
+  extend: { curve: 'x', end: 'a', repair: 'on' },
   split: {},
 };
 export function sketchToolCatalog(): SketchToolDescription[] {

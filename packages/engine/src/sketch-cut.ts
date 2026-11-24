@@ -28,7 +28,7 @@ import { DOCUMENT_SECTIONS, namedBySections } from './sections/index';
 import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, lineExtent, profileOf, profileProblem, sameRegion } from './sketch';
 import { constraintKey, constraintOperands, constraintPath, curvePoints, isDimension, isDriving } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolContext, SketchToolResult } from './sketch-tools';
-import type { Command, Constraint, Curve, CurvePointName, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
+import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, dist2, has, isOriginAxis, unreachable } from './util';
 
 // ---------------------------------------------------------------- what reads a profile (D52)
@@ -202,7 +202,7 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
     case 'ends':
       return { fix: 'join' };
     case 'touch':
-      return a.shape.type !== 'line' && b.shape.type !== 'line' ? { fix: 'none', why: `"${a.id}" and "${b.id}" are two round curves that only touch; no cut can be held there` } : { fix: 'cut' };
+      return roundShape(a.shape) && roundShape(b.shape) ? { fix: 'none', why: `"${a.id}" and "${b.id}" are two round curves that only touch; no cut can be held there` } : { fix: 'cut' };
     case 'crossing':
     case 'end':
     case 'overlap':
@@ -292,10 +292,9 @@ interface World extends SketchWorld {
 }
 
 const NO_CONTACT: CurveContacts = { points: [], ends: [], lying: false };
-function worldOf(doc: Document, sketch: SketchFeature, result: SketchResult, base: SketchWorld, parameters?: Record<Id, ParameterResult>): World {
-  const { curves, geometry, joins } = base;
-  const cache = new Map<string, CurveContacts>();
-  // a box around each curve, so that pairs far apart are not tested (a sketch of many curves)
+// A test of two curves whose boxes lie apart, by their carriers, so that pairs far apart are not
+// tested (a sketch of many curves). Kept by the curves it is given.
+function boxesApart(curves: ReadonlyMap<Id, SketchCurve>, geometry: SketchGeometry): (a: Id, b: Id) => boolean {
   const boxes = new Map<Id, [number, number, number, number] | undefined>();
   const boxOf = (id: Id): [number, number, number, number] | undefined => {
     if (boxes.has(id)) return boxes.get(id);
@@ -317,11 +316,17 @@ function worldOf(doc: Document, sketch: SketchFeature, result: SketchResult, bas
     boxes.set(id, box);
     return box;
   };
-  const apart = (a: Id, b: Id): boolean => {
+  return (a, b) => {
     const [p, q] = [boxOf(a), boxOf(b)];
     const margin = 10 * tol;
     return p !== undefined && q !== undefined && (p[2] + margin < q[0] || q[2] + margin < p[0] || p[3] + margin < q[1] || q[3] + margin < p[1]);
   };
+}
+
+function worldOf(doc: Document, sketch: SketchFeature, result: SketchResult, base: SketchWorld, parameters?: Record<Id, ParameterResult>): World {
+  const { curves, geometry, joins } = base;
+  const cache = new Map<string, CurveContacts>();
+  const apart = boxesApart(curves, geometry);
   const swapEnds = (found: CurveContacts): CurveContacts => ({ ...found, ends: found.ends.map(([i, j]): [number, number] => [j, i]) });
   return {
     ...base,
@@ -369,7 +374,35 @@ const holdsPoint = (world: World, id: Id): boolean => {
 // only when both are such curves.
 const cuttable = (world: World, id: Id): boolean => formsRegions(world, id) && mayCut(world, id);
 const position = (world: World, id: Id): Vec2 | undefined => (has(world.geometry.points, id) ? xy(world.geometry.points[id]) : undefined);
-const isRound = (world: World, id: Id): boolean => curveOf(world, id)?.shape.type !== 'line';
+// A line is straight; an arc and a circle are round (a switch, so that a new kind does not compile
+// until it says which it is).
+function roundShape(shape: CurveShape): boolean {
+  switch (shape.type) {
+    case 'line':
+      return false;
+    case 'arc':
+    case 'circle':
+      return true;
+    default:
+      return unreachable(shape, 'curve');
+  }
+}
+// The centre point of a round curve, none of a line.
+function centreOf(curve: Curve): Id[] {
+  switch (curve.type) {
+    case 'line':
+      return [];
+    case 'arc':
+    case 'circle':
+      return [curve.center];
+    default:
+      return unreachable(curve, 'curve');
+  }
+}
+const isRound = (world: World, id: Id): boolean => {
+  const curve = curveOf(world, id);
+  return curve !== undefined && roundShape(curve.shape);
+};
 
 // The carrier of a curve from positions; a line is the stretch `lineExtent` gives (an axis of the
 // origin is a whole line).
@@ -499,9 +532,14 @@ function cuttersOf(world: World, X: Id, withId?: Id): Id[] {
 // with a circle is a cut only where the circle gets two points or more.
 function circlePlaces(world: World, circle: Id): number {
   const places: Vec2[] = [];
+  const own = curveOf(world, circle) as SketchCurve;
   for (const id of world.curves.keys()) {
     if (id === circle || !cuttable(world, id)) continue;
-    for (const contact of world.contacts(circle, id).points) if (!places.some((p) => dist2(p, contact.at) <= tol)) places.push(contact.at);
+    for (const contact of world.contacts(circle, id).points) {
+      // only where split without a curve would cut: a touch of two round curves is never cut
+      if (contactFix(own, curveOf(world, id) as SketchCurve, contact.kind, world.predicates, world.sketch)?.fix !== 'cut') continue;
+      if (!places.some((p) => dist2(p, contact.at) <= tol)) places.push(contact.at);
+    }
   }
   return places.length;
 }
@@ -633,11 +671,13 @@ interface Resolved {
   uncut: Set<Id>;
   touches: { point: Id; curves: [Id, Id] }[]; // touches cut on both curves
   pointOf(at: Vec2): Id | undefined; // the point made or found at a place of an event
+  failed?: string; // a refusal: a bound at a touch whose circle gets that one point only
 }
 
 // Pools the points of the circles, drops what cannot be cut and gives each place one point.
 function resolve(world: World, events: Event[], newId: NewId, extra: { at: Vec2; involved: Id[] }[] = []): Resolved {
   const uncut = new Set<Id>();
+  let failed: string | undefined;
   // a curve that ends at the place is not cut there
   for (const e of events) e.cut = e.cut.filter((id) => !atEnd(world, id, e.at));
   // the circles: cut when they get two points or more over the batch, never one that may not be cut
@@ -657,6 +697,14 @@ function resolve(world: World, events: Event[], newId: NewId, extra: { at: Vec2;
       const lost = e.cut.filter((id) => bad.includes(id));
       if (lost.length === 0) continue;
       for (const id of lost) uncut.add(id);
+      // a bound at a touch whose round curve is not cut would be a point held on a curve the other
+      // only touches: the double root a tangency exists to avoid (design.md, "A touch is cut only
+      // where a tangency can hold it")
+      const touched = e.bound && e.touch ? lost.find((id) => e.touch?.includes(id)) : undefined;
+      if (touched !== undefined && failed === undefined) {
+        const other = (e.touch as [Id, Id]).find((id) => id !== touched) as Id;
+        failed = `"${other}" only touches the circle "${touched}" at ${fmt(e.at)}, and the circle would get that one point only, so neither curve can be cut there; draw across the circle to give it a second point, or remove the whole curve with removeEntity`;
+      }
       e.cut = e.cut.filter((id) => !lost.includes(id));
       if (e.bound) e.hold.push(...lost);
       else [e.cut, e.hold] = [[], []];
@@ -701,7 +749,7 @@ function resolve(world: World, events: Event[], newId: NewId, extra: { at: Vec2;
     for (const id of e.hold) if (!holds.some(([p, c]) => p === point && c === id)) holds.push([point, id]);
     if (e.touch && e.touch.every((id) => e.cut.includes(id) || e.endsHere?.includes(id)) && !touches.some((t) => t.point === point)) touches.push({ point, curves: e.touch });
   }
-  return { nodes, holds, added, uncut, touches, pointOf: (at) => places.find((place) => dist2(place.at, at) <= tol)?.point };
+  return { nodes, holds, added, uncut, touches, pointOf: (at) => places.find((place) => dist2(place.at, at) <= tol)?.point, ...(failed === undefined ? {} : { failed }) };
 }
 
 // The contacts of every two curves of the sketch that form regions (the repair, and split without
@@ -896,6 +944,7 @@ function makePlan(world: World, spec: CutSpec, newId: NewId): Plan | string {
   const outside = namedOutside(doc, sketch.id);
   const extendExtra = spec.extend ? [{ at: spec.extend.at, involved: [spec.extend.X, spec.extend.target] }] : [];
   const resolved = resolve(world, [...spec.events, ...(spec.extend?.stretch ?? [])], newId, extendExtra);
+  if (resolved.failed !== undefined) return resolved.failed;
   for (const id of spec.uncut) resolved.uncut.add(id);
   const model = new Model(sketch, newId);
   for (const [id, at] of resolved.added) model.addPoint(id, at);
@@ -1108,7 +1157,7 @@ function makePlan(world: World, spec: CutSpec, newId: NewId): Plan | string {
     const sibling = cut.whole?.sibling;
     const carrierOwn = new Set<Id>([cut.id, ...cut.pieces.map((piece) => piece.id), ...(sibling ? [sibling] : [])]);
     const holder = cut.whole ? sibling : cut.id;
-    const centre = cut.whole && !sibling && cut.original.type !== 'line' ? [(cut.original as { center: Id }).center] : [];
+    const centre = cut.whole && !sibling ? centreOf(cut.original) : [];
     for (const p of [...cut.cutOff, ...centre]) {
       if (!model.points.has(p) && p !== ORIGIN) continue;
       const named = p === ORIGIN || model.usesPoint(p) || [...model.constraints.values()].some((c) => constraintOperands(c).includes(p) && !(c.type === 'pointOnCurve' && c.point === p && carrierOwn.has(c.curve))) || outside.has(p);
@@ -1525,7 +1574,9 @@ function trimSpec(world: World, input: TrimInput, X: Id): CutSpec | string {
   let ends: [Id, Id][] = [];
   let uncut = new Set<Id>();
   if (bothCut) {
-    const repair = repairEvents(world, (at) => inPiece(world, X, carrier, piece, at));
+    // the contacts of X inside the removed piece are not cut: the piece goes (a contact of two other
+    // curves there is cut as any other)
+    const repair = repairEvents(world, (at, a, b) => (a === X || b === X) && inPiece(world, X, carrier, piece, at));
     events.push(...repair.events);
     ends = repair.ends;
     uncut = repair.uncut;
@@ -1644,7 +1695,9 @@ function endProblem(world: World, X: Id, end: string): string | undefined {
   const E = (curve as unknown as Record<string, Id>)[end];
   const vertex = world.joins(E);
   for (const [id, other] of Object.entries(world.sketch.curves)) {
-    if (id === X) continue;
+    // a curve that forms no regions (a span line, a construction line) makes no T in the profile:
+    // the old end stays, held on the line of X, as an end cut off by a trim
+    if (id === X || !formsRegions(world, id)) continue;
     if (endsOf(other).some((p) => world.joins(p) === vertex)) return `"${id}" ends at "${E}" too; extending "${X}" would leave the end of "${id}" in its middle`;
   }
   const e = position(world, E) as Vec2;
@@ -1930,6 +1983,7 @@ interface Patches {
   shortened: Id[];
   broken: Id[];
   regionsAfter: Map<Id, RegionRef[]>; // the regions of the features over the sketch after the patches
+  validAfter: boolean; // the profile of the sketch after the batch
 }
 
 // The regions, walls and edge lists of the features over the sketch, patched in the same batch.
@@ -1937,7 +1991,7 @@ function patchFeatures(world: World, plan: Plan, spec: CutSpec, changes: CurveCh
   const { sketch, doc } = world;
   const chord = doc.settings.chordTolerance;
   const margin = 2 * chord;
-  const out: Patches = { commands: [], patched: [], dropped: [], pending: [], reshaped: [], shortened: [], broken: [], regionsAfter: new Map() };
+  const out: Patches = { commands: [], patched: [], dropped: [], pending: [], reshaped: [], shortened: [], broken: [], regionsAfter: new Map(), validAfter: true };
   const afterSketch = afterDoc.features.find((f) => f.id === sketch.id) as SketchFeature;
   const newPoints: Record<Id, Point2> = {};
   for (const [id, at] of plan.model.newPoints) newPoints[id] = { x: at[0], y: at[1] };
@@ -1945,6 +1999,7 @@ function patchFeatures(world: World, plan: Plan, spec: CutSpec, changes: CurveCh
   const before = sketchWorld(toolBase(sketch, world.result, { pairs: plan.joined }));
   const regionCurves = (w: SketchWorld): SketchCurve[] => [...w.curves.values()];
   const profileAfter = profileOf(regionCurves(after), after.joins, after.geometry, chord);
+  out.validAfter = profileAfter.valid;
   const changedOrGone = new Set<Id>([...changes.changed, ...changes.removed, ...Object.keys(changes.pieces)]);
   const regionsBefore = world.result.regions.map((r) => r.ref);
   const madeValid = !world.result.valid && profileAfter.valid;
@@ -2133,6 +2188,7 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
     const rewritten: number[] = [];
     let lost = false;
     let touched = false;
+    let namesGone = false;
     for (const [i, edge] of blend.edges.entries()) {
       const flip = !sideOfCut(edge.a);
       const [s, o] = flip ? [edge.b, edge.a] : [edge.a, edge.b];
@@ -2155,9 +2211,16 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
         }
       } else if (o.feature === s.feature && (o.role === 'startCap' || o.role === 'endCap')) {
         list = (piecesOf(changes, afterSketch, X) ?? [X]).filter((piece) => bounds(s.feature, piece)).map((piece) => make(piece, o));
+      } else if (o.feature === s.feature && o.role === 'wallEnd') {
+        // the edge at the straight end of a wall: the piece of X that ends at that point
+        const end = has(after.geometry.points, o.point) ? after.joins(o.point) : undefined;
+        const piece = end === undefined ? undefined : (piecesOf(changes, afterSketch, X) ?? [X]).find((p) => vertices(after, p).includes(end));
+        list = piece ? [make(piece, o)] : [];
       } else {
-        // a face of another feature: which piece meets it is not known from the sketch
-        out.shortened.push(blend.id);
+        // a face of another feature: which piece meets it is not known from the sketch; with no piece
+        // left the edge names what is gone
+        if ((piecesOf(changes, afterSketch, X) ?? [X]).length === 0) namesGone = true;
+        else out.shortened.push(blend.id);
         continue;
       }
       if (list.length === 0) {
@@ -2171,7 +2234,7 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
     if (!touched) continue;
     // an edge no piece has: taken out only when nothing names a face of the blend at its place or later
     const named = [...doc.features.filter((f) => f.id !== blend.id).flatMap((f) => facesIn(f)), ...sectionFaces()].flatMap((face) => (face.feature === blend.id && (face.role === 'chamfer' || face.role === 'fillet') ? [face.edge] : []));
-    let broken = false;
+    let broken = namesGone;
     for (const i of [...gone].sort((p, q) => q - p)) {
       if (named.some((edge) => edge >= i)) broken = true;
       else edges.splice(i, 1);
@@ -2220,7 +2283,9 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges)
     if ((feature.type === 'sketch' && planeOn(feature.plane, changes.restarted)) || (feature.type === 'plane' && planeOn(feature.base, changes.restarted))) moved.push(feature.id);
     // what a feature reads directly: a sketch its plane and the edges it projects, another feature
     // every face it names
-    const read = feature.type === 'sketch' ? Object.values(feature.external).flatMap((ref) => kindOf(ref).faces(ref)) : facesIn(feature);
+    // (the edges of a chamfer or a fillet are left to the patch of the cut, which rewrites them and
+    // says which blend stays broken: patchBlends)
+    const read = feature.type === 'sketch' ? Object.values(feature.external).flatMap((ref) => kindOf(ref).faces(ref)) : feature.type === 'chamfer' || feature.type === 'fillet' ? [] : facesIn(feature);
     const faces = feature.type === 'sketch' ? [...facesIn(feature.plane), ...read] : read;
     if (faces.some((face) => sideOf(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(line)) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
       broken.push(feature.id);
@@ -2344,6 +2409,13 @@ export function cutTool(context: SketchToolCall, request: CutRequest, newId: New
   }
   const changes = changesOf(world, plan, spec);
   const patches = patchFeatures(world, plan, spec, changes, afterDoc, request.tool);
+  // an extend that would spoil a valid profile is refused (answer 10), whatever it is that the
+  // batch cannot cut: the checks of extendSpec name the known cases, this one the rest (a circle
+  // the stretch crosses once with `with`)
+  if (request.tool === 'extend' && world.result.valid && !patches.validAfter && formsRegions(world, request.curve) && repairOf(world, request.repair)) {
+    const left = [...plan.uncut].sort();
+    return failed(`extending "${request.curve}" would leave the profile of the sketch invalid${left.length > 0 ? `: it would meet ${left.map((id) => `"${id}"`).join(', ')} where no cut can be made (a circle that would get one point only, or a curve that is not cut)` : ''}; extend it without \`with\`, or draw across the circle and trim`);
+  }
   return { ok: true, commands: [...plan.commands, ...patches.commands], ids: lists(world, plan, changes, patches, afterDoc) };
 }
 
@@ -2378,10 +2450,12 @@ export function contactPlaces(world: Pick<SketchWorld, 'curves' | 'geometry' | '
   const lying: [Id, Id][] = [];
   const degenerate = curves.filter((c) => !carrierIn(c, world.geometry)).map((c) => c.id);
   const alive = curves.filter((c) => !degenerate.includes(c.id));
+  const apart = boxesApart(new Map(alive.map((c) => [c.id, c])), world.geometry);
   for (let i = 0; i < alive.length; i++) {
     const carrier = carrierIn(alive[i], world.geometry) as Carrier;
     for (let j = i + 1; j < alive.length; j++) {
       const [a, b] = [alive[i], alive[j]];
+      if (apart(a.id, b.id)) continue;
       const found = curveContacts(a, b, world.joins, world.geometry);
       if (!found) continue;
       if (found.lying) lying.push([a.id, b.id]);
@@ -2452,8 +2526,21 @@ function invalidReason(world: World): string | undefined {
 // curve with a position. Undefined when the sketch has no own curve.
 export function curveUnder(context: SketchToolCall, at: Vec2, picked?: Id): Id | undefined {
   const world = worldOfContext(context);
-  if (typeof world === 'string') return picked !== undefined && has(context.sketch.curves, picked) ? picked : undefined;
-  return nearestOwn(world, at)?.id ?? (picked !== undefined && has(context.sketch.curves, picked) ? picked : undefined);
+  const own = picked !== undefined && has(context.sketch.curves, picked) ? picked : undefined;
+  if (typeof world === 'string') return own;
+  if (own === undefined) return nearestOwn(world, at)?.id;
+  // the picker's curve, which the tool found eligible, unless it forms no regions and an own curve
+  // on the same line or circle that does is as near (a span line over a piece): a tie only
+  if (formsRegions(world, own)) return own;
+  const carrier = carrierOf(world, own);
+  if (!carrier) return own;
+  const distance = distanceTo(carrier, at);
+  for (const id of Object.keys(world.sketch.curves).sort()) {
+    if (id === own || !formsRegions(world, id)) continue;
+    const other = carrierOf(world, id);
+    if (other && sameCarrier(carrier, other) && Math.abs(distanceTo(other, at) - distance) <= tol) return id;
+  }
+  return own;
 }
 
 // The piece `trim` would remove, from the cuts that select it only (not the repair of the sketch);

@@ -83,7 +83,10 @@ export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld
   const geometry: SketchGeometry = { points, radii: world.geometry.radii };
   const list = [...new Set(ids)].filter((id) => world.curves.has(id)).sort();
   const left = new Set<Id>();
+  // the joins of the world seeded point by point, so that a join the core makes without a pair
+  // (6c's joins by position) is kept in memory as well
   const pairs: [Id, Id][] = [...world.pairs];
+  for (const p of Object.keys(world.geometry.points)) if (world.joins(p) !== p) pairs.push([p, world.joins(p)]);
   const nodes = new Map<Id, { point: Id; at: Vec2 }[]>(list.map((id) => [id, []]));
   const places: { at: Vec2; point: Id }[] = [];
   let counter = 0;
@@ -119,7 +122,11 @@ export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld
       if (found.lying) continue;
       for (const contact of found.points) {
         const point = pointAt(contact.at, a, b);
-        for (const id of [a, b]) if (!endsAt(id).some((e) => dist2(e.at, contact.at) <= LENGTH_TOLERANCE)) (nodes.get(id) as { point: Id; at: Vec2 }[]).push({ point, at: contact.at });
+        for (const id of [a, b]) {
+          const mine = nodes.get(id) as { point: Id; at: Vec2 }[];
+          // a place where three or more curves meet is one point of each curve, once
+          if (!endsAt(id).some((e) => dist2(e.at, contact.at) <= LENGTH_TOLERANCE) && !mine.some((n) => n.point === point)) mine.push({ point, at: contact.at });
+        }
       }
     }
   }

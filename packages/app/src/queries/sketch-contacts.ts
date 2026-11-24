@@ -26,7 +26,8 @@ export const sketchContactsView: QueryView<'sketchContacts'> = {
       ...(result.contacts.length < result.total ? [h('p', { className: 'hint' }, `Listed: ${result.contacts.length} of ${result.total}. Raise "Most contacts" to see the rest.`)] : []),
       ...result.lying.map(([a, b]) => h('p', { className: 'issue warning' }, `${a} and ${b} lie on each other.`)),
       ...result.degenerate.map((id) => h('p', { className: 'issue warning' }, `${id} has no length.`)),
-      ...(result.reason ? [h('p', { className: 'issue warning' }, result.reason)] : []),
+      // the reason, unless it only says again that a curve has no length
+      ...(result.reason && !result.degenerate.some((id) => result.reason?.startsWith(`the curve "${id}" has no length`)) ? [h('p', { className: 'issue warning' }, result.reason)] : []),
     ];
   },
   scene(result, args, panel) {

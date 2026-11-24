@@ -35,12 +35,13 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
 - **Asking** is the button *Ask* (*Ask again* once there is an answer), not a side effect of typing: a query may take seconds. The engine checks the arguments. An error is written under the form and in the status bar, and the row of the argument it names is marked. A number out of its range, or a text that is not a number, is marked while it is typed and still sent as typed, so the form never asks with a value other than the one it shows. Nothing is armed after a question; *Pick in the view* arms an argument again.
 - **The answer** belongs to the document and the place on the timeline it was asked at: it is shown while the insertion marker is there, hidden while it is elsewhere, and dropped when the document changes. The arguments in the form stay. A note in the status bar goes with the answer.
 - **Without a view** the answer is a tree of names and values, each level set in from the one it belongs to: numbers rounded as the MCP tool `query` rounds them, with the unit the query gives for their key (an angle in degrees, rounded after it was converted; the items of a list keep the key of the list, so the rows of the tensor under `inertia` of the query `mass` have its unit), a face by its label and its key (the sides of a body share a label), a body by its name. A long list shows its first thirty items.
-- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. Four exist:
+- **A view** of a query (`QUERY_VIEWS`) replaces the tree with rows of its own, adds to the scene and words the note. These exist:
   - **Measure**: the exact distance (labelled *Thickness* for two faces that look away from each other, *Gap* for two that look at each other) and the exact angle, when the pair has them; the smallest distance on the mesh with its accuracy, to a thousandth of a millimetre; the faces asked about highlighted; the two points of the smallest distance joined by a line with its length.
   - **Interference** (the collisions, [bodies.md](bodies.md)): asked as soon as it opens; a row per colliding pair and per fit, a click on a row highlights its two bodies.
   - **Section**: the model cut by the plane, below.
   - **Smallest gap**: the pairs of bodies that are close, below.
   - **Print check** and **Parts list**: below.
+  - **Contacts** (`sketchContacts`, D65, `queries/sketch-contacts.ts`): a row per contact of the sketch asked about (its kind, the two curves, the place, and what *Split crossings* does there, its reason in the tooltip when nothing), a click on a row highlights its mark; the contacts marked in the view; then the pairs lying on each other, the curves of no length and why the profile is invalid when no cut repairs it. The sketch mode draws the same marks while the profile of the open sketch is invalid ([sketch.md](sketch.md)).
 
 ## The section view (D38)
 

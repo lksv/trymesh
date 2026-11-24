@@ -525,7 +525,7 @@ Rewritten after the second round of reviews against 6e's fixed design ("Reviews"
 
 Both 6a2 and 6e are implemented before 6c. This is what 6c reads of each and writes into each, so that the three can be checked against each other when the code meets.
 
-**From 6a2 (the axes of the origin; designed in 6b's design, D69):**
+**From 6a2 (the axes of the origin; [6a2-origin-axes/design.md](../6a2-origin-axes/design.md), D71, carved out of 6b's design):**
 
 - `entityOf(sketch, 'origin/x' | 'origin/y')` answers a line that is not own, so `commandProblem` takes one as an axis or a direction, and the tools *Mirror* and *Linear pattern* may pick one. The app asks the same function ("The app").
 - The axes are among the curves and the positions of the base of `sketchWorld` for every sketch, whatever its constraints, never forming regions. Whether the result of a sketch carries them (6a's vocabulary, amendment 7) is 6a2's to settle and does not reach 6c: 6e's two builders get them through one helper of 6a2 (`stepBase` and `toolBase`), so the derive finds the axis of a mirror in the step and in a tool alike.

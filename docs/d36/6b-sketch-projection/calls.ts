@@ -11,8 +11,10 @@
 // 6c: a sketch projects one copy of the lid's mirror and is dimensioned from it. Step 7, the part of
 // 6b: the board 2 mm wider, everything follows. Then the rest of the mechanism: a profile in memory
 // with a projected outline (a trim of 6e), a source on the other side (an arc swapped), a tilted
-// plane, a lost source, the flag switched on a frozen projection, the roles of the tool, a
-// projection repaired, the query, and the refusals.
+// plane, planes parallel only within the tolerance, a source curve with no extent, a lost source,
+// the flag switched on a frozen projection, the roles of the tool (an own outline projected again
+// as own: one curve per place), an own arc held on a projected one through a change of its sweep,
+// a projection repaired, the query, and the refusals.
 //
 // Written as 6b's own test runs it, before 6f: the board of step 1 is the stand-in of 6a2
 // (../6a2-origin-axes/calls.ts). With 6f it is the imported DXF, and the projections name the
@@ -23,10 +25,10 @@
 import type { Id } from '../../../packages/engine/src/index';
 import type { CommandAfter, StateAfter } from '../00-prep/contract';
 import { engine, fail, run } from '../2a-offset/calls';
-import { OUTLINE, XY, board, boardDetermined, circle, constrain, dimension, extrude, line, near, parameters, plane, point, refused, regionsOf, resultOf, rounded, same, sketch, sketchOf, statusOf, volumeOf, warned } from '../6a2-origin-axes/calls';
+import { OUTLINE, XY, arc, board, boardDetermined, circle, constrain, dimension, extrude, line, near, parameters, plane, point, refused, regionsOf, resultOf, rounded, same, sketch, sketchOf, statusOf, volumeOf, warned } from '../6a2-origin-axes/calls';
 import { freshIds } from '../6e-trim-extend-split/contract';
 import type { ProjectSketchInput, SketchProjection, SketchProjectionInput, SketchToolCall6b } from './contract';
-import { DUPLICATE, ENTITY_GONE, LYING, REGIONS_ON_A_POINT, TILTED, UNDER_ORIGIN, sketchTool } from './contract';
+import { DUPLICATE, ENTITY_GONE, LYING, NO_EXTENT, REGIONS_ON_A_POINT, TILTED, UNDER_ORIGIN, sketchTool } from './contract';
 
 const project = (s: Id, id: Id, ref: SketchProjectionInput): CommandAfter => ({ type: 'addExternal', sketch: s, id, ref });
 const fromSketch = (source: Id, entity: Id, kind: SketchProjection['kind'], regions?: boolean): SketchProjectionInput => ({ type: 'sketch', sketch: source, entity, kind, ...(regions === undefined ? {} : { regions }) });
@@ -94,17 +96,43 @@ export const frameEntities = (state: StateAfter): boolean => {
 // the own curves. Extruded `baseT` with the offset `clearance + wall`; 6e trims the rectangular
 // cable notch into this outline (step 6).
 export let FLOOR: Id[] = [];
+export let FLOOR_ENTRIES: Id[] = [];
 export function floor(): StateAfter {
   run(plane('basePl', '-(standoffH + baseT)'), sketch('baseSk', { kind: 'plane', feature: 'basePl' }));
   const made = projectSketch('baseSk', { sketch: 'frame', entities: FRAME_OUTLINE, as: 'own' }, 'o');
   if (!made.ok) return fail(made.message);
   run({ type: 'batch', commands: made.commands });
   FLOOR = made.ids.curves;
+  FLOOR_ENTRIES = made.ids.entries;
   return run(extrude('base', 'baseSk', [FLOOR], 'baseT', 'new', 'clearance + wall'));
 }
+// How far the own curves of a sketch are from the projections they were drawn over (`curves[i]`
+// over `entries[i]`): the largest distance of a centre, a start or an end of an own arc, an end of
+// an own line, from the same point of its projection. The mirrored solution of a hold by
+// `equalRadius` is R·√2 off at the centre of a quarter arc (measured: 4.2 mm for R = 3).
+export const offProjection = (state: StateAfter, s: Id, curves: Id[], entries: Id[]): number => {
+  const [f, r] = [sketchOf(state, s), resultOf(state, s)];
+  const far = (own: Id, projected: Id): number => Math.hypot((r.points[own]?.x ?? NaN) - (r.points[projected]?.x ?? NaN), (r.points[own]?.y ?? NaN) - (r.points[projected]?.y ?? NaN));
+  return Math.max(
+    ...curves.map((own, i) => {
+      const curve = f.curves[own];
+      if (curve.type === 'arc') return Math.max(far(curve.center, `${entries[i]}/center`), far(curve.start, `${entries[i]}/start`), far(curve.end, `${entries[i]}/end`));
+      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : far(curve.center, `${entries[i]}/center`);
+    }),
+  );
+};
+// Called while `state` is the engine's state: the diagnosis is of the sketch as it is now.
 export const floorHeld = (state: StateAfter): boolean => {
   const diagnosis = engine.diagnoseSketch('baseSk');
-  return diagnosis.status === 'solved' && diagnosis.degreesOfFreedom === 0 && diagnosis.redundant.length === 0 && resultOf(state, 'baseSk').redundant.length === 0 && same(regionsOf(state, 'baseSk'), [[...FLOOR].sort()]);
+  return (
+    state === engine.getState() &&
+    diagnosis.status === 'solved' &&
+    diagnosis.degreesOfFreedom === 0 &&
+    diagnosis.redundant.length === 0 &&
+    resultOf(state, 'baseSk').redundant.length === 0 &&
+    same(regionsOf(state, 'baseSk'), [[...FLOOR].sort()]) &&
+    offProjection(state, 'baseSk', FLOOR, FLOOR_ENTRIES) < 1e-7
+  );
 };
 
 // 3b. The rim: `rimSk` on the frame's plane projects the outline with the flag. The ends of the
@@ -166,12 +194,53 @@ export function wider(): boolean {
   return ids.every((id) => statusOf(state, id) === 'ok') && near(volumeOf(state, 'base') - before, baseByHand(62) - baseByHand(60), 0.01) && holesSymmetric(state, 27.5) && floorHeld(state);
 }
 // The own outline follows the corner radius and the size in one step each, its arcs on the
-// projected ones (measured: `boardR` 9, 0.5 and 30 with the board 120 × 80; the floor's volume by
-// hand each time; the own centres within 1e-11 mm of the projected ones).
+// projected ones (measured: `boardR` 9, 0.5 and 30 with the board 120 × 80; `boardW` 60 → 80 in one
+// step; the floor's volume by hand each time; the own centres within 1e-11 mm of the projected
+// ones). Each state is checked while it is the engine's, before the next change. The jump of
+// `boardW` to 80 and back is the case that tells the holds apart: a floor held by its ends and
+// `equalRadius` ends `ok` with 0 degrees of freedom and its corners on the mirrored centres,
+// 4.2 mm off (measured).
 export function ownOutlineFollows(): boolean {
-  const state = run({ type: 'setParameter', name: 'boardR', expr: '6' });
-  const back = run({ type: 'setParameter', name: 'boardR', expr: '3' });
-  return statusOf(state, 'base') === 'ok' && floorHeld(state) && floorHeld(back);
+  const steps: [string, string][] = [['boardR', '6'], ['boardR', '3'], ['boardW', '80'], ['boardW', '60']];
+  return steps.every(([name, expr]) => {
+    const state = run({ type: 'setParameter', name, expr });
+    return statusOf(state, 'base') === 'ok' && floorHeld(state);
+  });
+}
+
+// An own arc held on a projected one while the sweep of the source changes, the case a return to
+// `equalRadius` would fail. The source arc is given by parameters (centre, radius, the angle of its
+// start, its sweep in degrees), its three points placed by `fixed` constraints with expressions;
+// the tool draws the own arc over its projection. Measured in the engine (the second review's Q3e,
+// run again): with the radius line the own centre is on the projected one through the sweeps 170 →
+// 204 → 119 and through turns, radii and shifts; with `equalRadius` the sweep 170 → 204 leaves the
+// sketch `ok` with 0 degrees of freedom and the centre 8.3 mm off. A half turn: 0 degrees of
+// freedom and no redundant constraint (`equalRadius`: 1 and 1, then `sketchConflict`).
+export function heldArcFollows(): boolean {
+  const s = 'arcSrc';
+  const set = (name: string, expr: string): StateAfter => run({ type: 'setParameter', name, expr });
+  for (const [name, expr] of [['acx', '23'], ['acy', '7'], ['ar', '10'], ['at', '15'], ['aw', '170']]) set(name, expr);
+  run(
+    sketch(s, XY),
+    point(s, 'c', 23, 7),
+    point(s, 's', 32.66, 9.59),
+    point(s, 'e', 13.04, 7.87),
+    arc(s, 'a', 'c', 's', 'e'),
+    constrain(s, 'kc', { type: 'fixed', point: 'c', x: 'acx', y: 'acy' }),
+    constrain(s, 'ks', { type: 'fixed', point: 's', x: 'acx + ar * cos(deg(at))', y: 'acy + ar * sin(deg(at))' }),
+    constrain(s, 'ke', { type: 'fixed', point: 'e', x: 'acx + ar * cos(deg(at + aw))', y: 'acy + ar * sin(deg(at + aw))' }),
+    plane('arcPl', '5'),
+    sketch('arcOwn', { kind: 'plane', feature: 'arcPl' }),
+  );
+  const made = projectSketch('arcOwn', { sketch: s, as: 'own' }, 'h');
+  if (!made.ok) return fail(made.message);
+  run({ type: 'batch', commands: made.commands });
+  const held = (state: StateAfter): boolean => {
+    const diagnosis = engine.diagnoseSketch('arcOwn');
+    return statusOf(state, 'arcOwn') === 'ok' && diagnosis.degreesOfFreedom === 0 && diagnosis.redundant.length === 0 && offProjection(state, 'arcOwn', made.ids.curves, made.ids.entries) < 1e-7;
+  };
+  const steps: [string, string][] = [['aw', '204'], ['aw', '119'], ['at', '75'], ['ar', '20'], ['acx', '60'], ['at', '195'], ['aw', '180'], ['at', '15'], ['aw', '216'], ['ar', '10']];
+  return held(engine.getState()) && steps.every(([name, expr]) => held(set(name, expr)));
 }
 
 // ================================================================ step 5, the seam with 6c
@@ -285,36 +354,132 @@ export function tilted(): boolean {
   );
 }
 
+// Planes parallel only within the tolerance. A quarter disc of radius 300 (an arc and two lines,
+// fixed) projected with the flag onto a plane tilted by 9e-5 rad about X: accepted as parallel, and
+// the map is a rigid motion of the plane, so the chain stays closed: one region, the projected
+// radius 300 on both axes (measured: the ends 0 apart at radii 100, 300 and 1000 and tilts up to
+// 9e-5; with every point projected orthogonally and the arc's end then put on its circle, the ends
+// were 1.2e-6 mm apart, the sketch `ok` and `valid` with no region). At 1.5e-4 rad the plane is not
+// parallel: `unsupportedProjection`.
+export function nearlyParallel(): boolean {
+  const s = 'discSrc';
+  run(
+    sketch(s, XY),
+    point(s, 'c', 0, 0),
+    point(s, 'a', 300, 0),
+    point(s, 'b', 0, 300),
+    arc(s, 'q', 'c', 'a', 'b'),
+    line(s, 'l1', 'b', 'c'),
+    line(s, 'l2', 'c', 'a'),
+    constrain(s, 'dc', { type: 'fixed', point: 'c', x: 0, y: 0 }),
+    constrain(s, 'da', { type: 'fixed', point: 'a', x: 300, y: 0 }),
+    constrain(s, 'db', { type: 'fixed', point: 'b', x: 0, y: 300 }),
+  );
+  const onto = (id: Id, angle: number): StateAfter => {
+    run({ type: 'addFeature', feature: { id: `${id}Pl`, name: `${id}Pl`, suppressed: false, type: 'plane', base: XY, offset: 5, tilt: { axis: { kind: 'base', axis: 'X' }, angle } } } as CommandAfter);
+    return run(sketch(id, { kind: 'plane', feature: `${id}Pl` }), project(id, 'xq', fromSketch(s, 'q', 'arc', true)), project(id, 'x1', fromSketch(s, 'l1', 'line', true)), project(id, 'x2', fromSketch(s, 'l2', 'line', true)));
+  };
+  const within = onto('disc', 9e-5);
+  const r = resultOf(within, 'disc');
+  const radius = (p: Id): number => Math.hypot((r.points[p]?.x ?? NaN) - (r.points['xq/center']?.x ?? NaN), (r.points[p]?.y ?? NaN) - (r.points['xq/center']?.y ?? NaN));
+  const closed = same(regionsOf(within, 'disc'), [['x1', 'x2', 'xq']]) && near(radius('xq/start'), 300, 1e-9) && near(radius('xq/end'), 300, 1e-9);
+  return closed && warned(onto('disc2', 1.5e-4), 'disc2', 'unsupportedProjection');
+}
+
+// A source curve with no extent: an arc whose end was drawn on its centre, in a sketch that never
+// solved (its three points fixed where they are: `sketchConflict`, the drawn positions kept). Its
+// projection is `degenerateProjection` with the detail; the entry never had a value, so it has no
+// geometry, the constraint on it is left out of the solve, and no position of the result is NaN
+// (measured; without the check the arc "made exact" divides by zero and `xq/end` is NaN in the
+// result and in the stored value).
+export function noExtent(): boolean {
+  const s = 'flatSrc';
+  run(
+    sketch(s, XY),
+    point(s, 'c', 0, 0),
+    point(s, 'a', 10, 0),
+    point(s, 'b', 0, 0),
+    arc(s, 'q', 'c', 'a', 'b'),
+    constrain(s, 'fc', { type: 'fixed', point: 'c', x: 0, y: 0 }),
+    constrain(s, 'fa', { type: 'fixed', point: 'a', x: 10, y: 0 }),
+    constrain(s, 'fb', { type: 'fixed', point: 'b', x: 0, y: 0 }),
+  );
+  const state = run(plane('flatPl', '5'), sketch('flat', { kind: 'plane', feature: 'flatPl' }), project('flat', 'xq', fromSketch(s, 'q', 'arc', true)), point('flat', 'm', 3, 3), constrain('flat', 'on', { type: 'pointOnCurve', point: 'm', curve: 'xq' }));
+  const r = resultOf(state, 'flat');
+  return (
+    warned(state, s, 'sketchConflict') &&
+    warned(state, 'flat', 'degenerateProjection', NO_EXTENT(s, 'q', 'arc')) &&
+    !('xq' in r.curves) &&
+    sketchOf(state, 'flat').solved.external.xq === undefined &&
+    Object.values(r.points).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+  );
+}
+
 // The query: what `rimSk` can project. Without `from` the earlier sketches (`board` and `frame`
-// among them, both parallel); with `from: 'frame'` its twelve curves where a projection puts them,
-// none forming regions there, the eight of the outline already projected by `rimSk`'s entries.
+// among them, both parallel); with `from: 'frame'` every entity of it a projection may name, where
+// a projection puts it: its twelve curves (the ones the whole-sketch form of the tool takes, none
+// forming regions there, the eight of the outline already projected by `rimSk`'s entries), their
+// twenty-four points (`fl0/a`, `fa0/center`, `fh0/center`: named one by one, not taken whole) and
+// `origin`; nothing under `origin/`, though the state of `frame` holds its axes.
 export function sources(): boolean {
   const all = engine.query('sketchSources', { sketch: 'rimSk' });
   const one = engine.query('sketchSources', { sketch: 'rimSk', from: 'frame' });
   if (!all.ok || !one.ok || !one.result.entities) return false;
-  const fa0 = one.result.entities.find((entity) => entity.id === 'fa0');
+  const entities = one.result.entities;
+  const fa0 = entities.find((entity) => entity.id === 'fa0');
+  const hole = entities.find((entity) => entity.id === 'fh0/center');
   return (
     all.result.sources.some((source) => source.sketch === 'board' && source.status === 'parallel' && !source.flips) &&
+    all.result.sources.some((source) => source.sketch === 'frame' && source.curves === 12 && source.points === 25) &&
     all.result.entities === undefined &&
-    one.result.total === 12 &&
+    one.result.total === 37 &&
+    entities.filter((entity) => entity.whole).length === 12 &&
+    entities.slice(0, 12).every((entity) => entity.whole && entity.kind !== 'point') &&
     fa0?.kind === 'arc' &&
     fa0.entry === 'ra0' &&
     !fa0.regions &&
-    one.result.entities.filter((entity) => entity.entry !== undefined).length === 8
+    hole?.kind === 'point' &&
+    !hole.whole &&
+    near(hole.at[0], 26.5, 1e-9) &&
+    entities.some((entity) => entity.id === 'origin' && entity.kind === 'point') &&
+    !entities.some((entity) => entity.id.startsWith('origin/')) &&
+    entities.filter((entity) => entity.entry !== undefined).length === 8
   );
 }
-
-// A lost source: a hole removed from the board. The frame's `fh3` keeps its circle with
-// `brokenProjection` and the detail; the standoff on it keeps its bore.
-export function lostSource(): boolean {
-  const state = run({ type: 'removeEntity', sketch: 'board', id: 'bh3' });
-  return warned(state, 'frame', 'brokenProjection', ENTITY_GONE('board', 'bh3', 'circle')) && resultOf(state, 'frame').curves.fh3?.shape.type === 'circle' && statusOf(state, 'standoffs') === 'ok';
+// A point of the source named one by one, as the picker and an AI do after the query: the centre of
+// a projected hole circle of `frame`.
+export function projectsANamedPoint(): boolean {
+  const state = run(sketch('pointSk', { kind: 'plane', feature: 'framePl' }), project('pointSk', 'hp', fromSketch('frame', 'fh0/center', 'point')), project('pointSk', 'op', fromSketch('frame', 'origin', 'point')));
+  const r = resultOf(state, 'pointSk');
+  return near(r.points.hp?.x, 26.5, 1e-9) && near(r.points.op?.x, 0, 1e-9) && statusOf(state, 'pointSk') === 'ok';
 }
-// The flag switched on the frozen projection keeps its geometry (`keepsValue`). The command does
-// not check again the references the entry had already (`bh3` is gone), as `updateFeature` does not.
+
+// A lost source: a hole removed from the board. The frame's `fh3` keeps its circle, at the place and
+// with the radius it had, with `brokenProjection` and the detail; the standoff on it keeps its bore.
+const circleOf = (state: StateAfter, s: Id, id: Id): [number | undefined, number | undefined, number | undefined] => [resultOf(state, s).points[`${id}/center`]?.x, resultOf(state, s).points[`${id}/center`]?.y, resultOf(state, s).radii[id]];
+export function lostSource(): boolean {
+  const before = engine.getState();
+  const state = run({ type: 'removeEntity', sketch: 'board', id: 'bh3' });
+  return (
+    warned(state, 'frame', 'brokenProjection', ENTITY_GONE('board', 'bh3', 'circle')) &&
+    resultOf(state, 'frame').curves.fh3?.shape.type === 'circle' &&
+    same(circleOf(state, 'frame', 'fh3'), circleOf(before, 'frame', 'fh3')) &&
+    statusOf(state, 'standoffs') === 'ok' &&
+    near(volumeOf(state, 'base'), volumeOf(before, 'base'), 1e-9)
+  );
+}
+// The flag switched on the frozen projection keeps its geometry (`keepsValue`): the stored value
+// and the circle of the result are what they were. The command does not check again the references
+// the entry had already (`bh3` is gone), as `updateFeature` does not.
 export function flagOnFrozen(): boolean {
+  const before = engine.getState();
   const state = run({ type: 'updateExternal', sketch: 'frame', id: 'fh3', ref: fromSketch('board', 'bh3', 'circle', true) });
-  return sketchOf(state, 'frame').solved.external.fh3 !== undefined && resultOf(state, 'frame').curves.fh3?.regions === true;
+  return (
+    sketchOf(state, 'frame').solved.external.fh3 !== undefined &&
+    same(sketchOf(state, 'frame').solved.external.fh3, sketchOf(before, 'frame').solved.external.fh3) &&
+    same(circleOf(state, 'frame', 'fh3'), circleOf(before, 'frame', 'fh3')) &&
+    resultOf(state, 'frame').curves.fh3?.regions === true
+  );
 }
 
 // The roles of the tool, a whole sketch each time (measured, with a prototype of the tool):
@@ -323,7 +488,13 @@ export function flagOnFrozen(): boolean {
 // - `frame` as it is in its source: twelve entries, none forming regions (a skeleton stays one);
 // - `baseSk`, whose own outline lies over its projections: sixteen entries, the eight of the own
 //   outline forming regions, one region. With `as: 'regions'` all sixteen would, two on each place,
-//   and the profile would be invalid (measured): refused, naming the first pair.
+//   and the profile would be invalid (measured): refused, naming the first pair;
+// - `baseSk` with `as: 'own'`: one own curve per place. The eight own curves of `baseSk` come first
+//   in the order and are projected and drawn over; its eight projections of `frame` lie on them and
+//   are listed in `doubled`, with nothing made. 44 commands, 8 entries, 8 own curves, 0 degrees of
+//   freedom, no redundancy, one region (measured; with an own curve over all sixteen: 72 commands,
+//   the sketch `ok` with 0 degrees of freedom, `valid: false` and no region). The outline made so
+//   is projected whole again the same way, and follows the board.
 export function wholeSketch(): boolean {
   const count = (s: Id): number => Object.values(sketchOf(engine.getState(), s).external).filter((ref) => (ref as unknown as SketchProjection).regions).length;
   const into = (target: Id, input: ProjectSketchInput, prefix: string): StateAfter => {
@@ -336,8 +507,30 @@ export function wholeSketch(): boolean {
   const fromFloor = regionsOf(into('copyS', { sketch: 'baseSk' }, 'd'), 'copyS').length === 1 && count('copyS') === 8;
   run(sketch('copyR', { kind: 'plane', feature: 'framePl' }));
   const all = projectSketch('copyR', { sketch: 'baseSk', as: 'regions' }, 'e');
-  // the refusal names the first two curves that lie on each other (LYING)
-  return fromBoard && fromFrame && fromFloor && !all.ok && all.message.includes(LYING('', '', 'baseSk').slice(LYING('', '', 'baseSk').indexOf(' of baseSk')));
+  // the refusal names the first two curves that lie on each other: the own arc and its projection
+  const refusedAsRegions = !all.ok && all.message.includes(LYING(FLOOR[0], FLOOR_ENTRIES[0], 'baseSk'));
+  return fromBoard && fromFrame && fromFloor && refusedAsRegions && ownOfOwn('copyO', 'baseSk', 'g') && ownOfOwn('copyP', 'copyO', 'j');
+}
+// The whole of a sketch that holds an own outline over its projections, as own: one outline.
+function ownOfOwn(target: Id, source: Id, prefix: string): boolean {
+  run(sketch(target, { kind: 'plane', feature: 'framePl' }));
+  const made = projectSketch(target, { sketch: source, as: 'own' }, prefix);
+  if (!made.ok) return fail(made.message);
+  const state = run({ type: 'batch', commands: made.commands });
+  const diagnosis = engine.diagnoseSketch(target);
+  return (
+    made.commands.length === 44 &&
+    made.ids.entries.length === 8 &&
+    made.ids.curves.length === 8 &&
+    made.ids.doubled.length === 8 &&
+    // the curves projected are the own ones of the source, the first in the order
+    made.ids.sources.every((entity) => entity in sketchOf(state, source).curves) &&
+    diagnosis.degreesOfFreedom === 0 &&
+    diagnosis.redundant.length === 0 &&
+    resultOf(state, target).valid &&
+    same(regionsOf(state, target), [[...made.ids.curves].sort()]) &&
+    offProjection(state, target, made.ids.curves, made.ids.entries) < 1e-7
+  );
 }
 // Run again: everything is projected already, so the tool has nothing to do.
 export function wholeSketchAgain(): boolean {
@@ -386,8 +579,12 @@ export function scenario(): boolean {
     twoRoutes() &&
     ownEnds() &&
     otherSide() &&
+    heldArcFollows() &&
     tilted() &&
+    nearlyParallel() &&
+    noExtent() &&
     sources() &&
+    projectsANamedPoint() &&
     wholeSketch() &&
     wholeSketchAgain() &&
     lostSource() &&

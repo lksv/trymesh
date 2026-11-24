@@ -14,7 +14,7 @@
 import type { Id, SketchFeature } from '../../../packages/engine/src/index';
 import type { CommandAfter, StateAfter } from '../00-prep/contract';
 import { engine, fail, run } from '../2a-offset/calls';
-import { AXIS_HAS_NO_LENGTH } from './contract';
+import { AXIS_CURVES, AXIS_HAS_NO_LENGTH, AXIS_REACH, lineExtent, solvedCurves } from './contract';
 
 export const XY = { kind: 'base', plane: 'XY' } as const;
 export const near = (value: number | undefined, expected: number, tolerance: number): boolean => value !== undefined && Math.abs(value - expected) < tolerance;
@@ -220,8 +220,38 @@ export function refusals(): boolean {
   );
 }
 
+// An axis is a whole line. The reader of a solved sketch gives the two axes as curves, each the
+// segment of 1 mm from `origin` to its far point; a reader that clamps a line to its ends asks
+// `lineExtent`, which gives ∓AXIS_REACH along an axis and the two ends of any other line. (The foot
+// of (10, 7.3) on the segment of 1 mm is (1, 0); on the extent it is (10, 0) within 1.5e-10 mm,
+// computed.) A point of the sketch the result does not have yet is read from the sketch.
+export function wholeLines(): boolean {
+  const state = engine.getState();
+  const before = solvedCurves(sketchOf(state, 'board'), resultOf(state, 'board'));
+  const x = before.curves.get('origin/x');
+  const side = before.curves.get('bl0');
+  if (!x || !side) return false;
+  const [axis, own] = [lineExtent(x, before.geometry), lineExtent(side, before.geometry)];
+  // the sketch after a batch that adds a point, with the result from before it
+  const later = run(point('board', 'late', 5, 7));
+  const after = solvedCurves(sketchOf(later, 'board'), resultOf(state, 'board'));
+  engine.undo();
+  return (
+    same(AXIS_CURVES.map((curve) => curve.id), ['origin/x', 'origin/y']) &&
+    x.source === 'reference' &&
+    !x.regions &&
+    near(before.geometry.points['origin/x/b']?.x, 1, 1e-12) &&
+    axis !== undefined &&
+    near(axis.a.x, -AXIS_REACH, 1e-6) &&
+    near(axis.b.x, AXIS_REACH, 1e-6) &&
+    own !== undefined &&
+    near(own.a.x, resultOf(state, 'board').points.be0?.x ?? NaN, 1e-12) &&
+    near(after.geometry.points.late?.x, 5, 1e-12)
+  );
+}
+
 export function scenario(): boolean {
   parameters();
   const state = board();
-  return boardDetermined(state) && axesNotInResult(state) && follows() && measured() && revolved() && refusals();
+  return boardDetermined(state) && axesNotInResult(state) && wholeLines() && follows() && measured() && revolved() && refusals();
 }

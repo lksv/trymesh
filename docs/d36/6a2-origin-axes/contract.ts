@@ -11,15 +11,17 @@
 //    sketch names one, under the key `origin`, without a value and without a stamp.
 // 3. They are not in `SketchResult`. One function gives a reader that has only the sketch and its
 //    result (a sketch tool, the app's view) the curves and the positions the recompute holds, the
-//    axes among them.
-// 4. Two refusals in the catalog of constraints (`midpoint`, `equalLength`), the long line the
-//    sketch tools see, the two lines in the app's pickers.
+//    axes among them; 6e's `toolBase` is built on it, and its `stepBase` on `sketchCurves`.
+// 4. Two refusals in the catalog of constraints (`midpoint`, `equalLength`), one helper for every
+//    reader that clamps a line to its two ends (`lineExtent`: an axis is a whole line), the two
+//    lines in the app's pickers.
 // No command, no query, no feature type, no face role, no issue code, no schema step.
 
 import type { Id, Point2, SketchFeature, SketchResult } from '../../../packages/engine/src/index';
 import type { EntryGeometry, ResolvedReference } from '../../../packages/engine/src/references/spec';
 import type { SketchCurve, SketchGeometry } from '../../../packages/engine/src/sketch';
 import type { Entity } from '../../../packages/engine/src/sketch-content';
+import type { SketchBase } from '../6e-trim-extend-split/contract';
 
 // ================================================================ 1. the two lines
 
@@ -72,6 +74,13 @@ export interface ResolvedWithAxes {
   resolved: Record<Id, ResolvedReference> & { origin?: { geometry: EntryGeometry } };
 }
 
+// The axes as curves of the list (`SketchCurve`s of sketch.ts: reference geometry that forms no
+// regions), made from AXES_GEOMETRY in one place, AXIS_CURVES of sketch.ts. Two functions append it
+// and nothing else does: `sketchCurves` (the recompute, and through it 6e's `stepBase`) and
+// `solvedCurves` (below: a reader without a recompute, and through it 6e's `toolBase`). This is
+// "the one helper of 6a2 that both builders call" of 6e's design ("Plug-in points").
+export const AXIS_CURVES: readonly SketchCurve[] = ORIGIN_AXES.map((id) => ({ id, shape: AXES_GEOMETRY.curves[id], source: 'reference', regions: false }));
+
 // The step after 6a2, in order:
 // 1. the first stage (above);
 // 2. `solverSetup` and the solver, as today;
@@ -89,18 +98,36 @@ export interface SketchResultNote {
 }
 
 // The curves and the positions of a solved sketch as the recompute holds them (`SketchState.curves`
-// and `geometry`), for a reader that has only the sketch and its result: the own curves of the
-// document (`regions` unless a construction curve), the curves of the entries from `result.curves`,
-// and the two axes; the positions of the result with the two far points. Without a result (the
-// sketch did not evaluate): the own curves and the axes over the positions of the document.
-// In sketch.ts beside `sketchCurves`. Its readers: `shapeOf` and the positions of sketch-tools.ts,
-// the profile a tool builds in memory (6e's `toolWorld`, 6c's `withDerived` called from a tool, each
-// adding its joins), the app's view. None of them adds the axes by itself.
+// and `geometry`), for a reader that has only the sketch and its result. In sketch.ts beside
+// `sketchCurves`.
+// - The curves: the own curves of the sketch given (`regions` unless a construction curve), the
+//   curves of `result.curves` whatever their `source` (the reference curves; after 6c also the
+//   copies as that result has them), and AXIS_CURVES.
+// - The positions: those of the result, the two far points, and, for a point of the sketch that
+//   the result does not have, the position the sketch holds (per point, as `pointAt` of
+//   sketch-tools.ts does today). A tool gives the sketch after its batch with the result from
+//   before it, so the points the batch adds are found there.
+// - Without a result (the sketch did not evaluate): the own curves and the axes over the positions
+//   of the sketch.
+// Its readers: `shapeOf` and the positions of sketch-tools.ts (a snap, the fillet), the app's view,
+// and 6e's `toolBase(sketch, result, more?)`, which is this answer less the curves with
+// `source: 'derived'` (the core `sketchWorld` derives the copies again from the entries of the
+// sketch it is given), with `more.points` and `more.radii` over the positions and the `coincident`
+// pairs with `more.pairs` beside it. `stepBase(feature, references, geometry)` needs nothing of
+// this: it reads `sketchCurves`, which has the axes, and the geometry of the state, which has the
+// far points. None of the readers adds the axes by itself.
 export interface SolvedCurves {
   curves: Map<Id, SketchCurve>;
   geometry: SketchGeometry;
 }
 export declare function solvedCurves(sketch: SketchFeature, result: SketchResult | undefined): SolvedCurves;
+// What 6e's builder for a tool is over it (its contract declares `toolBase`; restated as a check of
+// the types: the curves and the geometry of a base are those of this answer).
+export const baseOver = (sketch: SketchFeature, solved: SolvedCurves): Pick<SketchBase, 'sketch' | 'curves' | 'geometry'> => ({
+  sketch,
+  curves: [...solved.curves.values()].filter((curve) => curve.source !== 'derived'),
+  geometry: solved.geometry,
+});
 
 // ================================================================ 4. constraints, tools, the app
 
@@ -108,15 +135,50 @@ export declare function solvedCurves(sketch: SketchFeature, result: SketchResult
 // operand IDs it is given):
 export const AXIS_HAS_NO_LENGTH = (axis: OriginAxis): string => `${axis} is an axis of the origin, a whole line: it has no length and no middle`;
 
-// How far the sketch tools (`shapeOf` of sketch-tools.ts) and the app's view reach along an axis:
-// they see it as the line from −AXIS_REACH to +AXIS_REACH (mm) through the origin, since they clamp
-// a line to its segment (`closestOn`) and the hidden segment is 1 mm long.
+// An axis is a whole line, and its curve in the list is the segment of 1 mm from `origin` to its
+// far point. A reader that takes a line as the stretch between its two ends would see that
+// millimetre: a snap to `origin/x` at x = 10 would land on (1, 0), and a line at x = 10 trimmed or
+// extended `with: 'origin/x'` would find no contact (finding 1 of the second round of reviews).
+// One helper gives such a reader the ends to use, `lineExtent` of sketch.ts: for an axis of the
+// origin the two points at ∓AXIS_REACH along it, for any other line the positions of its `a` and
+// `b`; undefined when the curve is no line or a point of it has no position. Its readers, each of
+// which builds the shape of a line through it and never from `a` and `b` itself:
+// - `shapeOf` of sketch-tools.ts (the snap of an anchor to a curve, `closestOn`; the fillet);
+// - the wrapper of `curveContacts` in sketch.ts, which makes the shapes of two `SketchCurve`s for
+//   the contact search (6e: trim, extend and split `with` an axis, `curveUnder`, `extendReach`,
+//   the query `sketchContacts`);
+// - the hit test and the snap of the app's sketch view (sketch-view.ts).
+// A reader that needs only the direction or the carrier of a line (the solver, `measure`, `axis`
+// of recompute/services.ts, the mirror of 6c) reads `a` and `b` as for any line.
+// AXIS_REACH is 10⁶ mm: the place found on such a segment is within 1.5e-10 mm of the exact one
+// (computed: a foot and a crossing at 10 mm and at 900 m from the origin), far inside the length
+// tolerance, and the constraint the tool then adds puts the point on the axis exactly. A place
+// beyond 1 km from the origin is clamped to the reach (numbers go to 1e9: a known limit).
 export const AXIS_REACH = 1e6;
 export const axisAsDrawn = (axis: OriginAxis): { a: Point2; b: Point2 } =>
   axis === 'origin/x' ? { a: { x: -AXIS_REACH, y: 0 }, b: { x: AXIS_REACH, y: 0 } } : { a: { x: 0, y: -AXIS_REACH }, b: { x: 0, y: AXIS_REACH } };
+export const lineExtent = (curve: SketchCurve, geometry: SketchGeometry): { a: Point2; b: Point2 } | undefined => {
+  if (curve.shape.type !== 'line') return undefined;
+  if (isOriginAxis(curve.id)) return axisAsDrawn(curve.id);
+  const [a, b] = [geometry.points[curve.shape.a], geometry.points[curve.shape.b]];
+  return a && b ? { a, b } : undefined;
+};
 
-// The app: the two lines are curves of the view of an open sketch (not own; `solvedCurves` gives
-// them), drawn across the view in the style of reference geometry, hovered, selected and snapped to
-// as lines; the pickers of a line of a sketch (`lineIds` of sketch-commands.ts: the axis picker, the
-// mechanism panel) list `origin/x` and `origin/y` after the lines of the sketch.
+// The app.
+// - The two lines are curves of the view of an open sketch (not own; `solvedCurves` gives them),
+//   hovered, selected and snapped to as lines through `lineExtent`.
+// - They are drawn in a bucket of their own, `axes` (sketch-mode.ts, `sketchScene`: thin, in the
+//   colour of a plane), not with the solid curves of `external`, and each as the stretch of the
+//   axis inside the visible part of the sketch plane, computed again when the camera moves: the
+//   camera sees a depth of 10000, so a line drawn to ∓AXIS_REACH would be cut by it or lost. The
+//   fit of the camera does not read them.
+// - A line without a length: `hasLength(view, line)` of sketch-commands.ts is false for an axis.
+//   The offers that measure a line read it: `equalLength` and `midpoint` in `geometricFor` (which
+//   has `equalLength` in a `case` of its own, past the catalog's `check`, so the button would stay
+//   enabled and the engine refuse on the click), and the length dimension of one selected line in
+//   `dimensionFor` (`lineEnds` would name the hidden point `origin/x/b`). A point and an axis
+//   still offer *Point on curve* and the distance to it, two points and an axis *Symmetric*.
+// - The pickers of a line of a sketch (`lineIds` of sketch-commands.ts: the axis picker, the
+//   mechanism panel) list `origin/x` and `origin/y` after the lines of the sketch.
+export declare function hasLength(line: Id): boolean;
 export declare function lineIds(sketch: SketchFeature): Id[];

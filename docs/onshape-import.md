@@ -100,9 +100,9 @@ The root document stores the documents of the studios and subassemblies (`docume
 
 | Gap | Effect on this model | Where it stands |
 |---|---|---|
-| Trim, regions of crossing curves | 6 sketches split by the converter, their constraints lost | Step 6 of D36, not designed |
-| Splines | The cycloidal disc needed an override | Step 6; here the generator of D61 did better |
-| Sketch pattern and mirror, projection from another sketch, constraints on the origin | 287 of 380 constraints lost; derived sketches copied | Step 6 |
+| Trim, regions of crossing curves | 6 sketches split by the converter, their constraints lost | Step 6 of D36: the tools `trim`, `extend` and `split` (6e, D65, designed). The converter calls `split` in the closing point of the step, 6h ([d36/6-plan.md](d36/6-plan.md)) |
+| Splines | The cycloidal disc needed an override | Step 6 (6d, D70, designed on its branch); here the generator of D61 did better |
+| Sketch pattern and mirror, projection from another sketch, constraints on the origin | 287 of 380 constraints lost; derived sketches copied | Step 6: mirror and pattern in a sketch (6c, D68, designed), the axes of the origin (6a2), projection from another sketch (6b, D69, designed on its branch). None is implemented, and the converter uses none yet. The 287 were never counted by cause; 6h counts them by cause before and after and is the point where the converter takes the new tools over |
 | Start of an extrusion at a face | 31 extrusions started at a number | `from` (D66): all 31 written as `from` (2026-11-17), the volumes of the parts unchanged |
 | Chamfer and fillet of an edge ending at a round face, of a straight edge between round faces | 6 of 11 features left out (a seventh is on the disc's splines) | Limits of D63 |
 | Placing a body of this document (move, rotate) | Solved by inserting documents | `insert` (D62) |

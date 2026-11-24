@@ -187,7 +187,8 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
 }
 
 // A click: the entry of the tool gets it. A shape of several places keeps the places before the
-// last; the last one runs the tool with all of them.
+// last; the last one runs the tool with all of them. A tool without `clicks` gets every click and
+// keeps what `click` returns; the mode redraws the scene when places were kept before or are now.
 export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent): void {
   const context = host.sketchContext();
   if (!context) return;
@@ -203,22 +204,34 @@ export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent
   }
   const places = [...m.clicks, place];
   m.clicks = [];
-  const kept = tool.click(host, m, places, context, toolOptions(host, m.tool), event);
-  if (kept && kept.length > 0 && host.sketch === m) m.clicks = kept;
-  if (tool.clicks === undefined) return;
+  keep(host, m, tool.click(host, m, places, context, toolOptions(host, m.tool), event));
+  if (tool.clicks === undefined) {
+    // the tools of today without `clicks` keep nothing and redraw what they change themselves
+    if (places.length > 1 || m.clicks.length > 0) host.renderScene();
+    return;
+  }
   m.infer = undefined;
   host.renderScene();
 }
 
-// The key Enter: a tool that collects places (6d: the control points of a spline) finishes with them.
-export function sketchFinish(host: SketchHost, m: SketchMode): void {
+// The places a tool returned are kept, while its sketch is still the one open.
+function keep(host: SketchHost, m: SketchMode, kept: Place[] | void): void {
+  if (kept && kept.length > 0 && host.sketch === m) m.clicks = kept;
+}
+
+// The key Enter: a tool that collects places (6d: the control points of a spline) finishes with
+// them, and keeps what `finish` returns (too few places for its shape: they stay). With no place
+// kept, or a tool without `finish`, it does nothing. True when the tool got the key, so the app
+// keeps it from the element in focus.
+export function sketchFinish(host: SketchHost, m: SketchMode): boolean {
   const context = host.sketchContext();
   const tool = placeTool(m);
-  if (!context || !tool?.finish) return;
+  if (!context || !tool?.finish || m.clicks.length === 0) return false;
   const places = m.clicks;
   m.clicks = [];
-  tool.finish(host, m, places, context, toolOptions(host, m.tool));
+  keep(host, m, tool.finish(host, m, places, context, toolOptions(host, m.tool)));
   host.renderScene();
+  return true;
 }
 
 export function addConstraints(host: SketchHost, m: SketchMode, constraints: Constraint[] | undefined): void {

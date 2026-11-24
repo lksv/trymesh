@@ -136,6 +136,8 @@
       line #8b9bb4 width 1: 24 numbers, sum 245
       line #8b9bb4 width 1: 24 numbers, sum 122.5
       line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
+      axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+      axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
       points #1d4ed8 size 7: 9 numbers, sum 290
       points #a21caf size 7: 3 numbers, sum 0
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
@@ -246,8 +248,8 @@
   view: 2 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 168 numbers, sum 14267.179
-    + points #1d4ed8 size 7: 18 numbers, sum 1075
     - line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
+    + points #1d4ed8 size 7: 18 numbers, sum 1075
     - points #1d4ed8 size 7: 9 numbers, sum 290
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 34 numbers, sum 4021.446
     + label "R5" driving at [38.536, 28.536, 0]
@@ -372,9 +374,9 @@
   scene:
     + line #1d4ed8 width 2 onTop: 162 numbers, sum 13861.491
     + line #f97316 width 3 onTop: 6 numbers, sum 505
-    + points #1d4ed8 size 7: 18 numbers, sum 1300
     - line #1d4ed8 width 2 onTop: 162 numbers, sum 13771.491
     - line #f97316 width 3 onTop: 6 numbers, sum 160
+    + points #1d4ed8 size 7: 18 numbers, sum 1300
     - points #1d4ed8 size 7: 18 numbers, sum 1075
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 34 numbers, sum 4021.446
 
@@ -429,12 +431,12 @@
     + line #8b9bb4 width 1: 24 numbers, sum 203.881
     + line #1d4ed8 width 2 onTop: 168 numbers, sum 14267.179
     + line #f97316 width 3 onTop: 576 numbers, sum 61398.686
-    + points #1d4ed8 size 7: 21 numbers, sum 1485
     - line #8b9bb4 width 1: 24 numbers, sum 442.529
     - line #8b9bb4 width 1: 24 numbers, sum 295.019
     - line #8b9bb4 width 1: 24 numbers, sum 147.51
     - line #1d4ed8 width 2 onTop: 162 numbers, sum 13861.491
     - line #f97316 width 3 onTop: 6 numbers, sum 505
+    + points #1d4ed8 size 7: 21 numbers, sum 1485
     - points #1d4ed8 size 7: 18 numbers, sum 1300
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.126
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.126
@@ -502,12 +504,12 @@
     + line #8b9bb4 width 1: 24 numbers, sum 291.179
     + line #1d4ed8 width 2 onTop: 744 numbers, sum 71685.865
     + line #f97316 width 3 onTop: 144 numbers, sum 23434.512
-    + points #1d4ed8 size 7: 30 numbers, sum 2815
     - line #8b9bb4 width 1: 24 numbers, sum 611.642
     - line #8b9bb4 width 1: 24 numbers, sum 407.761
     - line #8b9bb4 width 1: 24 numbers, sum 203.881
     - line #1d4ed8 width 2 onTop: 168 numbers, sum 14267.179
     - line #f97316 width 3 onTop: 576 numbers, sum 57418.686
+    + points #1d4ed8 size 7: 30 numbers, sum 2815
     - points #1d4ed8 size 7: 21 numbers, sum 1485
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 41.597
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 41.597

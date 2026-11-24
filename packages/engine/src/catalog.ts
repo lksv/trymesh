@@ -4,6 +4,7 @@
 // (MCP) follow it. A new constraint is an entry here, its type in types.ts and its translation in the
 // solver adapter; nothing else needs to know about it.
 import type { Constraint, Id } from './types';
+import { isOriginAxis } from './util';
 
 export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
 
@@ -120,6 +121,12 @@ const pair = (kinds: EntityKind[]): Pick<ConstraintSpec, 'operands' | 'unordered
   unordered: ['a', 'b'],
 });
 const dimension = (spec: NumberSpec): Pick<ConstraintSpec, 'values' | 'dimension'> => ({ values: { value: spec }, dimension: true });
+// The rule of a constraint that measures a line as the stretch between its ends (`midpoint`,
+// `equalLength`): an axis of the origin is a whole line, with no length and no middle (D71).
+const wholeLine = (lines: Id[]): string | undefined => {
+  const axis = lines.find(isOriginAxis);
+  return axis === undefined ? undefined : `${axis} is an axis of the origin, a whole line: it has no length and no middle`;
+};
 const LENGTH = dimension({ title: 'Distance', unit: 'mm', min: { value: 0 } });
 const ORIENTED = dimension({ title: 'Distance', unit: 'mm' });
 
@@ -137,7 +144,7 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
   vertical: { title: 'Svisle', summary: 'Úsečka je rovnoběžná s osou Y skici.', operands: [{ field: 'line', kinds: LINE }] },
   parallel: { title: 'Rovnoběžně', summary: 'Dvě úsečky jsou rovnoběžné.', ...pair(LINE) },
   perpendicular: { title: 'Kolmo', summary: 'Dvě úsečky jsou na sebe kolmé.', ...pair(LINE) },
-  equalLength: { title: 'Stejná délka', summary: 'Dvě úsečky mají stejnou délku.', ...pair(LINE) },
+  equalLength: { title: 'Stejná délka', summary: 'Dvě úsečky mají stejnou délku.', ...pair(LINE), check: (_kinds, ids) => wholeLine(ids) },
   tangent: {
     title: 'Tečně',
     summary: 'Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.',
@@ -162,7 +169,7 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
       { field: 'point', kinds: POINT },
       { field: 'line', kinds: LINE },
     ],
-    check: (_kinds, [point, line], pointsOf) => (pointsOf(line).includes(point) ? 'středem úsečky nemůže být její konec' : undefined),
+    check: (_kinds, [point, line], pointsOf) => wholeLine([line]) ?? (pointsOf(line).includes(point) ? 'středem úsečky nemůže být její konec' : undefined),
   },
   equalRadius: { title: 'Equal radius', summary: 'Two circles or arcs have the same radius.', ...pair(ROUND) },
   fixed: {

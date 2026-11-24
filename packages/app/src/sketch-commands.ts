@@ -31,6 +31,8 @@ import {
   type Vec2,
   anchorPosition,
   isFlag,
+  isOriginAxis,
+  ORIGIN_AXES,
   placeAnchor,
   referenceEntities,
   sketchTool,
@@ -148,6 +150,11 @@ export const positionOf = (view: SketchView, anchor: Anchor): Vec2 => anchorPosi
 
 export type GeometricKind = GeometricConstraint['type'];
 
+// Whether a line of a sketch has a length: an axis of the origin is a whole line, with no length
+// and no middle (D71). The offers that measure a line read it: equalLength, midpoint and the
+// length dimension of one selected line.
+export const hasLength = (line: Id): boolean => !isOriginAxis(line);
+
 // Geometrické vazby, které engine zná (vazby bez hodnoty), v pořadí katalogu. Nová vazba enginu
 // se tu objeví sama.
 export const GEOMETRIC_KINDS: GeometricKind[] = (Object.keys(CONSTRAINTS) as Constraint['type'][]).filter((type) => !CONSTRAINTS[type].dimension) as GeometricKind[];
@@ -195,8 +202,11 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
       return lines.length > 0 && points.length === 0 && round.length === 0 ? lines.map((line) => ({ type: kind, line })) : undefined;
     case 'parallel':
     case 'perpendicular':
-    case 'equalLength':
       return only(0, 2, 0) ? [{ type: kind, a: lines[0], b: lines[1] }] : undefined;
+    case 'equalLength':
+      return only(0, 2, 0) && lines.every(hasLength) ? [{ type: kind, a: lines[0], b: lines[1] }] : undefined;
+    case 'midpoint':
+      return lines.every(hasLength) ? fromCatalog(kind, view, selection) : undefined;
     case 'tangent':
       return points.length === 0 && lines.length + round.length === 2 && round.length >= 1 ? [{ type: kind, a: [...lines, ...round][0], b: [...lines, ...round][1] }] : undefined;
     case 'fixed': {
@@ -258,7 +268,7 @@ export function dimensionFor(variant: DimensionVariant, view: SketchView, select
   const count = points.length + lines.length + round.length;
   let shape: DimensionShape | undefined;
   // dva body, nebo koncové body jedné úsečky
-  const pair = count === 2 && points.length === 2 ? points : count === 1 && lines.length === 1 ? lineEnds(view, lines[0]) : undefined;
+  const pair = count === 2 && points.length === 2 ? points : count === 1 && lines.length === 1 && hasLength(lines[0]) ? lineEnds(view, lines[0]) : undefined;
   if (pair) shape = { type: variant === 'auto' ? 'distance' : variant === 'horizontal' ? 'horizontalDistance' : 'verticalDistance', a: pair[0], b: pair[1] };
   else if (variant !== 'auto') return undefined;
   else if (count === 2 && points.length === 1 && lines.length === 1) shape = { type: 'distancePointLine', point: points[0], line: lines[0] };
@@ -465,17 +475,19 @@ export type LinearSpan = LinearDraft['span'];
 export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint' | 'sketchLine' | 'face';
 export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : axis.kind);
 // The lines of a sketch an axis may run along (D58): its own lines, construction or not, then its
-// projected ones.
+// projected ones, then the axes of the origin `origin/x` and `origin/y` (D71).
 export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
   ...Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).filter(([, kind]) => kind === 'line').map(([id]) => id)),
+  ...ORIGIN_AXES,
 ];
 // One change of the picker of an axis (the form of a pattern, the form of a joint of the mechanism,
 // the form of a revolve): a base axis; `sketchPoint` (the origin of the latest of `sketches` until
 // `sketch` and `point` say otherwise; another sketch starts at its origin); or `sketchLine` (the
 // first line of the latest of `sketches` that has one, by `lines`, until `sketch` and `line` say
 // otherwise; another sketch starts at its first line). Without a sketch that has a line the kind
-// `sketchLine` changes nothing. The axis of a round face (D60) comes only with `face`, the face
+// `sketchLine` changes nothing; with `lineIds` every sketch has one, its axes of the origin (D71),
+// so a sketch without lines of its own starts at `origin/x`. The axis of a round face (D60) comes only with `face`, the face
 // picked in the view; the kind `face` alone changes nothing.
 export interface AxisChange {
   axis?: AxisKind;

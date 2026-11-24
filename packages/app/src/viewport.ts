@@ -1,12 +1,13 @@
 // 3D pohled: vykreslí popis scény přes three.js a nabízí pomůcky pro výběr (paprsek, průmět na
 // obrazovku, zásah tělesa). O dokumentu a enginu neví nic kromě tvaru sítě tělesa.
-import type { Frame, Id, RigidTransform, Solid, Vec3 } from '@trymesh/engine';
+import type { Frame, Id, RigidTransform, Solid, Vec2, Vec3 } from '@trymesh/engine';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { currentScale, fittedCamera, keptSide, topDown } from './camera';
+import { stretchInView, toWorld } from './draw';
 
 export interface LineSet {
   segments: ArrayLike<number>; // úsečky ve světových souřadnicích, 6 čísel na úsečku
@@ -31,6 +32,11 @@ export interface SceneModel {
   fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // první smyčka obrys, další díry
   faces: { solid: Solid; faceId: number; color: number; opacity: number; transform?: RigidTransform }[]; // zvýrazněné stěny; `transform` that of the body
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
+  // Lines without ends through the origin of a frame, each along a direction of the frame: the
+  // axes of the origin of an open sketch (D71). The view draws each as its stretch inside what it
+  // shows, made again whenever the camera moves, so it is neither cut by the depth the camera sees
+  // nor lost far away. Always over the bodies; the fit of the camera does not read them.
+  axes?: { frame: Frame; direction: Vec2; color: number; width: number }[];
   // The model is cut: the bodies and their highlighted faces are not drawn in this half-space,
   // and a body is not picked there. Lines and fills are drawn as given: who builds the scene cuts
   // the lines that belong to a body (`keptSegments` of draw.ts).
@@ -106,6 +112,7 @@ export class Viewport implements View {
   private readonly raycaster = new THREE.Raycaster();
   private bodies: { id: Id; mesh: THREE.Mesh }[] = [];
   private labels: { at: THREE.Vector3; element: HTMLElement }[] = [];
+  private axes: (NonNullable<SceneModel['axes']>[number] & { line: LineSegments2 })[] = [];
   private disposable: { dispose(): void }[] = [];
   private pending = false;
   private clip: HalfSpace | undefined;
@@ -209,6 +216,16 @@ export class Viewport implements View {
       line.renderOrder = set.onTop ? 3 : set.overFills ? 2.5 : 1; // fills are drawn at 2 and write no depth
       this.content.add(line);
     }
+    // the lines without ends: their stretch in the view is made at every frame (`placeAxes`)
+    this.axes = (model.axes ?? []).map((axis) => {
+      const geometry = this.own(new LineSegmentsGeometry());
+      geometry.setPositions(new Float32Array(6)); // one segment, written in place at every frame
+      const line = new LineSegments2(geometry, this.lineMaterial({ segments: [], color: axis.color, width: axis.width, onTop: true }));
+      line.renderOrder = 3;
+      line.frustumCulled = false;
+      this.content.add(line);
+      return { ...axis, line };
+    });
     for (const set of model.points) {
       if (set.positions.length === 0) continue;
       const geometry = this.own(new THREE.BufferGeometry());
@@ -253,6 +270,7 @@ export class Viewport implements View {
       this.pending = false;
       // délka čárek je ve světových jednotkách; přepočet drží čárkování stejné při každém přiblížení
       for (const material of this.lineMaterials.values()) if (material.dashed) material.dashScale = this.camera.zoom;
+      this.placeAxes();
       this.renderer.render(this.scene, this.camera);
       const [width, height] = [this.container.clientWidth, this.container.clientHeight];
       const projected = new THREE.Vector3();
@@ -261,6 +279,33 @@ export class Viewport implements View {
         label.element.style.transform = `translate(${((projected.x + 1) / 2) * width}px, ${((1 - projected.y) / 2) * height}px) translate(-50%, -50%)`;
       }
     });
+  }
+
+  // The lines without ends of the scene (`SceneModel.axes`), each as its stretch inside the part of
+  // its plane the view shows now: the corners of the view are cast onto the plane. A plane seen
+  // edge-on shows no stretch.
+  private placeAxes(): void {
+    if (this.axes.length === 0) return;
+    this.camera.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    for (const axis of this.axes) {
+      const { frame } = axis;
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...frame.normal), new THREE.Vector3(...frame.origin));
+      const corners: Vec2[] = [];
+      for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        ray.setFromCamera(new THREE.Vector2(x, y), this.camera);
+        const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+        if (!hit) break;
+        const p = [hit.x - frame.origin[0], hit.y - frame.origin[1], hit.z - frame.origin[2]];
+        corners.push([p[0] * frame.x[0] + p[1] * frame.x[1] + p[2] * frame.x[2], p[0] * frame.y[0] + p[1] * frame.y[1] + p[2] * frame.y[2]]);
+      }
+      const stretch = corners.length === 4 ? stretchInView(corners, axis.direction) : undefined;
+      axis.line.visible = stretch !== undefined;
+      if (!stretch) continue;
+      const buffer = (axis.line.geometry.attributes.instanceStart as THREE.InterleavedBufferAttribute).data;
+      buffer.array.set([...toWorld(frame, ...stretch[0]), ...toWorld(frame, ...stretch[1])]);
+      buffer.needsUpdate = true;
+    }
   }
 
   // ---------------------------------------------------------------- výběr

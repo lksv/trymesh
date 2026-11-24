@@ -1,7 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
@@ -288,7 +288,15 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
 
   // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
   const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };
+  // The axes of the origin (D71) in a bucket of their own: thin lines in the colour of a plane,
+  // drawn by the view as their stretch inside what it shows.
+  const axes: NonNullable<SceneModel['axes']> = [];
   for (const curve of view.curves.values()) {
+    if (isOriginAxis(curve.id)) {
+      const marked = selected.has(curve.id) ? COLOR.select : hovered.has(curve.id) || focused.has(curve.id) ? COLOR.hover : implying.has(curve.id) ? COLOR.implied : undefined;
+      axes.push({ frame, direction: curve.id === 'origin/x' ? [1, 0] : [0, 1], color: marked ?? COLOR.plane, width: marked === undefined ? 1 : 3 });
+      continue;
+    }
     const bucket = selected.has(curve.id)
       ? 'selected'
       : hovered.has(curve.id)
@@ -308,6 +316,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
                     : 'determined';
     pushPolyline(lines[bucket], frame, polyline(curve.shape));
   }
+  model.axes = [...(model.axes ?? []), ...axes];
   model.lines.push(
     { segments: lines.determined, color: COLOR.determined, width: 2, onTop: true },
     { segments: lines.own, color: COLOR.sketch, width: 2, onTop: true },

@@ -17,8 +17,10 @@ export type GeometrySource = 'own' | ResultCurve['source'];
 // The geometry of one entry in the coordinates of its sketch, under the IDs of its entities.
 // - `curves` run over IDs of `points` (or `origin`); the radius of a circle is in `radii`.
 // - `regions`: the curves of the entry that form regions (never for the projection of an edge).
-// - `joins`, `keys`, `hidden`: slots that no kind of today fills (the pairs of points that join,
-//   a join key per point, points that are no entities); design.md of 6a says who writes them.
+// - `joins`, `keys`: slots that no kind of today fills (the pairs of points that join, a join key
+//   per point); design.md of 6a says who writes them.
+// - `hidden`: points that are no entities, which the result of a sketch does not list (the far
+//   points of the axes of the origin, `AXES_GEOMETRY` of sketch-content.ts, D71).
 export interface EntryGeometry {
   points: Record<Id, Point2>;
   curves: Record<Id, CurveShape>;
@@ -71,7 +73,8 @@ export type ReferenceOf<T extends ReferenceKindName> = Extract<ExternalRef, { ty
 
 // One entry as the sketch step resolved it: its value (fresh or the last valid one) and its
 // geometry. A resolved reference without a value, under a key that is no entry, enters the input
-// of the solver and is neither stamped nor stored (a slot: the axes of the origin, 6b).
+// of the solver and is neither stamped nor stored: the axes of the origin under the key `origin`,
+// when a constraint of the sketch names one (D71).
 export interface ResolvedReference {
   value?: StoredValue;
   geometry: EntryGeometry;

@@ -955,6 +955,8 @@
     - bodies: e1, e2, e3 posed [0.707, -0.707, 0] [0.707, 0.707, 0] [0, 0, 1] + [0, 0, 0]
     - line #26303c width 1.5: 744 numbers, sum 98633.549
     + line #1d4ed8 width 2 onTop: 24 numbers, sum 2070
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
     + points #1d4ed8 size 7: 12 numbers, sum 1035
     + points #a21caf size 7: 3 numbers, sum 0
     - line #5b7aa8 width 1.5: 24 numbers, sum 2070
@@ -1171,6 +1173,8 @@
     - line #26303c width 1.5: 672 numbers, sum 92083.758
     + line #f97316 width 2.5: 24 numbers, sum 2070
     - line #1d4ed8 width 2 onTop: 24 numbers, sum 2070
+    - axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+    - axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
     - points #1d4ed8 size 7: 12 numbers, sum 1035
     - points #a21caf size 7: 3 numbers, sum 0
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955

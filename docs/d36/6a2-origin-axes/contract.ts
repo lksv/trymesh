@@ -148,6 +148,9 @@ export const AXIS_HAS_NO_LENGTH = (axis: OriginAxis): string => `${axis} is an a
 //   the contact search (6e: trim, extend and split `with` an axis, `curveUnder`, `extendReach`,
 //   the query `sketchContacts`);
 // - the hit test and the snap of the app's sketch view (sketch-view.ts).
+// The shape of an axis made so has no vertex: its two ends are no points of the sketch, so the
+// wrapper gives them no key of the joins, and no curve shares an end with an axis. A line that
+// starts at `origin` therefore meets `origin/x` there as an end on a curve, not at a common end.
 // A reader that needs only the direction or the carrier of a line (the solver, `measure`, `axis`
 // of recompute/services.ts, the mirror of 6c) reads `a` and `b` as for any line.
 // AXIS_REACH is 10⁶ mm: the place found on such a segment is within 1.5e-10 mm of the exact one
@@ -172,7 +175,7 @@ export const lineExtent = (curve: SketchCurve, geometry: SketchGeometry): { a: P
 //   axis inside the visible part of the sketch plane, computed again when the camera moves: the
 //   camera sees a depth of 10000, so a line drawn to ∓AXIS_REACH would be cut by it or lost. The
 //   fit of the camera does not read them.
-// - A line without a length: `hasLength(view, line)` of sketch-commands.ts is false for an axis.
+// - A line without a length: `hasLength(line)` of sketch-commands.ts is false for an axis.
 //   The offers that measure a line read it: `equalLength` and `midpoint` in `geometricFor` (which
 //   has `equalLength` in a `case` of its own, past the catalog's `check`, so the button would stay
 //   enabled and the engine refuse on the click), and the length dimension of one selected line in

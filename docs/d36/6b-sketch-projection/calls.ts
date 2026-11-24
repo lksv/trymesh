@@ -13,7 +13,7 @@
 // with a projected outline (a trim of 6e), a source on the other side (an arc swapped), a tilted
 // plane, planes parallel only within the tolerance, a source curve with no extent, a lost source,
 // the flag switched on a frozen projection, the roles of the tool (an own outline projected again
-// as own: one curve per place), an own arc held on a projected one through a change of its sweep,
+// as own: one curve per place; the tool run again; its output after a trimmed notch, a known limit), an own arc held on a projected one through a change of its sweep,
 // a projection repaired, the query, and the refusals.
 //
 // Written as 6b's own test runs it, before 6f: the board of step 1 is the stand-in of 6a2
@@ -224,7 +224,7 @@ export function heldArcFollows(): boolean {
     sketch(s, XY),
     point(s, 'c', 23, 7),
     point(s, 's', 32.66, 9.59),
-    point(s, 'e', 13.04, 7.87),
+    point(s, 'e', 13.04, 6.13),
     arc(s, 'a', 'c', 's', 'e'),
     constrain(s, 'kc', { type: 'fixed', point: 'c', x: 'acx', y: 'acy' }),
     constrain(s, 'ks', { type: 'fixed', point: 's', x: 'acx + ar * cos(deg(at))', y: 'acy + ar * sin(deg(at))' }),
@@ -532,9 +532,77 @@ function ownOfOwn(target: Id, source: Id, prefix: string): boolean {
     offProjection(state, target, made.ids.curves, made.ids.entries) < 1e-7
   );
 }
-// Run again: everything is projected already, so the tool has nothing to do.
+// Run again: everything is projected already, so the tool has nothing to do. With `as: 'own'` too:
+// the place of each curve is decided over the whole list before the skip, so the eight own curves
+// of `baseSk` are skipped and its eight projections are doubled again, as in the first run
+// (measured: nothing to project; with the skip first they would be first at their places and be
+// drawn over). And a place this sketch already holds is taken: the frame's outline as own into
+// `copyO`, which holds the floor's outline at those places, makes nothing (measured: 44 commands
+// and no region without that rule).
 export function wholeSketchAgain(): boolean {
-  return !projectSketch('copyB', { sketch: 'board' }, 'f').ok;
+  return (
+    !projectSketch('copyB', { sketch: 'board' }, 'f').ok &&
+    !projectSketch('copyO', { sketch: 'baseSk', as: 'own' }, 'k').ok &&
+    !projectSketch('copyO', { sketch: 'frame', entities: FRAME_OUTLINE, as: 'own' }, 'l').ok
+  );
+}
+
+// A known limit, pinned: the tool's own output after 6e trims a notch into it, projected whole as
+// own. `notchSk` holds the own outline of the tool over the frame's outline; a U of three lines
+// across its bottom side (y = −20 for the board 60 × 40) and three trims of 6e leave one closed
+// loop, in which the bottom side is two pieces while the projection of the frame under it is still
+// one line. That line occupies the place of neither piece, so the whole-sketch form with
+// `as: 'own'` draws an own line over it too, over the two pieces: 13 own curves, the sketch `ok`
+// and determined, `valid: false`, no region (measured). The cure is `entities`: the own curves of
+// the source that are not construction: 12 own curves, one region (measured). If the implementation
+// lists as `doubled` a curve that forms no regions in the source and lies along one that does
+// (design.md, "To verify"), `whole` below turns to one region and this test says so.
+export function ownAfterANotch(): boolean {
+  const s = 'notchSk';
+  run(sketch(s, { kind: 'plane', feature: 'framePl' }));
+  const outline = projectSketch(s, { sketch: 'frame', entities: FRAME_OUTLINE, as: 'own' }, 'n');
+  if (!outline.ok) return fail(outline.message);
+  run({ type: 'batch', commands: outline.commands });
+  let state = run(
+    point(s, 'q1', -4, -23),
+    point(s, 'q2', -4, -17),
+    point(s, 'q3', 4, -17),
+    point(s, 'q4', 4, -23),
+    line(s, 'ua', 'q1', 'q2'),
+    line(s, 'ub', 'q2', 'q3'),
+    line(s, 'uc', 'q3', 'q4'),
+    ...(['q1', 'q2', 'q3', 'q4'] as const).map((q, i) => constrain(s, `f${q}`, { type: 'fixed', point: q, x: [-4, -4, 4, 4][i], y: [-23, -17, -17, -23][i] })),
+  );
+  // The bottom side is the own curve over `fl2` (the sixth of the outline). It is named: the place
+  // on it is as near to the projection under it as to the own line, and 6e's trim by a place alone
+  // refuses a place nearer to a curve that is not own.
+  const bottom = outline.ids.curves[5];
+  for (const [i, at] of ([[0, -20], [-4, -21.5], [4, -21.5]] as const).entries()) {
+    const made = sketchTool('trim', contextOf(state, s), { at: [...at], repair: 'on', ...(i === 0 ? { curve: bottom } : {}) }, freshIds(state.document, 't'));
+    if (!made.ok) return fail(made.message);
+    state = run({ type: 'batch', commands: made.commands });
+  }
+  const own = Object.entries(sketchOf(state, s).curves).filter(([, curve]) => !curve.construction).map(([id]) => id);
+  const notched = resultOf(state, s).valid && regionsOf(state, s).length === 1 && own.length === 12;
+  const into = (target: Id, input: ProjectSketchInput, prefix: string): { curves: number; state: StateAfter } => {
+    run(sketch(target, { kind: 'plane', feature: 'basePl' }));
+    const made = projectSketch(target, input, prefix);
+    return made.ok ? { curves: made.ids.curves.length, state: run({ type: 'batch', commands: made.commands }) } : fail(made.message);
+  };
+  const whole = into('notchW', { sketch: s, as: 'own' }, 'w');
+  const named = into('notchN', { sketch: s, entities: own, as: 'own' }, 'm');
+  return (
+    notched &&
+    // the limit: an own line over the whole projected side as well
+    whole.curves === 13 &&
+    !resultOf(whole.state, 'notchW').valid &&
+    regionsOf(whole.state, 'notchW').length === 0 &&
+    // the cure
+    named.curves === 12 &&
+    resultOf(named.state, 'notchN').valid &&
+    regionsOf(named.state, 'notchN').length === 1 &&
+    engine.diagnoseSketch('notchN').degreesOfFreedom === 0
+  );
 }
 
 // A projection repaired: `rl0` of the rim's sketch moved to a line of another earlier sketch
@@ -587,6 +655,7 @@ export function scenario(): boolean {
     projectsANamedPoint() &&
     wholeSketch() &&
     wholeSketchAgain() &&
+    ownAfterANotch() &&
     lostSource() &&
     flagOnFrozen() &&
     repaired() &&

@@ -233,7 +233,7 @@ export const SOURCE_NOT_EVALUATED = (sketch: Id): string => `${sketch} is not ev
 export const NOT_PARALLEL = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degrees.toFixed(1)}° to this sketch; only a parallel plane is projected`;
 export const ENTITY_GONE = (sketch: Id, entity: Id, kind: ProjectedKind): string => `${sketch} has no ${kind} ${entity}`;
 export const KIND_CHANGED = (sketch: Id, entity: Id, now: string, kind: ProjectedKind): string => `${entity} of ${sketch} is a ${now} now, not a ${kind}`;
-export const NO_EXTENT = (sketch: Id, entity: Id, kind: ProjectedKind): string => `the ${kind} ${entity} of ${sketch} has no extent there (no length or no radius)`;
+export const NO_EXTENT = (sketch: Id, entity: Id, kind: ProjectedKind): string => `the ${kind} ${entity} of ${sketch} cannot be projected as it stands: it has no length or no radius, or a position that is not a number`;
 // The general texts of the warnings (recompute/services.ts, `MESSAGE`), English and for every kind;
 // the detail of a kind follows in brackets, as `issue(code, refs, detail)` composes it.
 export const MESSAGES = {
@@ -340,6 +340,17 @@ export const flaggedFix = (entry: Id): ContactFix => ({ fix: 'none', why: FLAGGE
 //     that line (`pointOnCurve`). With the two ends that leaves the centre one place (two lines
 //     that cross once), at every sweep. A projected point gets no own point.
 // - An entity this sketch projects already is skipped: no entry and no own curve for it.
+// - The order of the decisions for `own`, each over the whole list: (1) the place: a curve that
+//   occupies the place of one before it in the list is `doubled`, whether or not either is
+//   projected already, so the same curves are doubled at every run; (2) the skip; (3) a place this
+//   sketch already holds: a curve whose place, mapped into this sketch, is that of an own curve
+//   here that forms regions is `doubled` too. So the tool run again makes nothing, and an outline
+//   from another source at the places of one drawn already is not drawn twice.
+// - `own` does not cure curves that lie ALONG each other without being at one place: after 6e
+//   trims the tool's own outline, an own side is two pieces over one whole projected line, and
+//   the whole-sketch form draws over all three (no region). The cure is `entities`: the own curves.
+//   For the implementation to weigh: listing as `doubled` a curve that forms no regions in the
+//   source and lies along one that does (`curveContacts(a, b, …).lying` of 6e).
 // - `ids`: PROJECT_SKETCH_IDS. What the tool leaves out is listed, one list per reason, and the
 //   description of the list (shown by `describe_api` and by `sketch_tool`) says the reason:
 //   `skipped` (projected already), `doubled` (with `own`: another curve at its place). A later
@@ -373,7 +384,7 @@ export const PROJECT_SKETCH_IDS = {
   entries: 'the new entries of external, one per projected entity, in the order of `sources`',
   sources: 'the entity of the source sketch each entry projects',
   skipped: 'entities of the source this sketch projects already; nothing was made for them',
-  doubled: 'with `as: "own"`: curves of the source that lie on a curve projected before them (one own curve is drawn per place); nothing was made for them',
+  doubled: 'with `as: "own"`: curves of the source at the place of a curve before them in the list, or of an own curve this sketch already has (one own curve is drawn per place); nothing was made for them',
   curves: 'with `as: "own"`: the own curves, one per projected curve, in the order of the entries that are curves',
   points: 'with `as: "own"`: the own points (the ends, then the centres)',
   helpers: 'with `as: "own"`: the construction lines from the centre of each own arc to its start',

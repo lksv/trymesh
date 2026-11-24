@@ -319,7 +319,7 @@ Not asked here, and waiting for the reviews of their designs: of 6b (branch), th
 
 ### Later answers: the reviews of 6b and 6d, and the second round of 6e and 6c
 
-The reviews of the designs of 6b and 6d (on their branches), and a second round over the revised designs of 6e and 6c (one Fable review, codex and agy), asked ten more questions. All were answered "yes" to their recommendation on 2026-11-24. Answer 19 replaces the clause "projections of 6b keep their keys" of answer 12. Answer 28 settles the narrowing of answer 16 that 6c's revision made.
+The reviews of the designs of 6b and 6d (on their branches), and a second round over the revised designs of 6e and 6c (one Fable review, codex and agy), asked ten more questions, and the revision of 6b three more (29 to 31): thirteen rows. All were answered "yes" to their recommendation on 2026-11-24. Answer 19 replaces the clause "projections of 6b keep their keys" of answer 12. Answer 28 settles the narrowing of answer 16 that 6c's revision made. Answer 29 replaces the hold of answer 21 (the two ends and `equalRadius`) by a radius line.
 
 | # | About | Question | Answer (2026-11-24) | Where it lands |
 |---|---|---|---|---|

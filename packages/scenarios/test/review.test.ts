@@ -678,3 +678,39 @@ describe('the start of an extent at a plane: the design review of D66, round 2',
     expect(state.evaluation.features.H.error).toMatchObject({ code: 'invalidHole', message: expect.stringMatching(/the bore below the head has to be longer than 0\.1 mm/) });
   });
 });
+
+describe('the review of the implementation of 6a (D64): the curves of a result that are not own', () => {
+  it('in the order of `external` in the document and of the kind; none for an entry that never had values; a lost entry keeps its frozen curve', () => {
+    const engine = plate(60, 40, 5);
+    const hole = { feature: 'holes', role: 'side', curve: 'q' } as const;
+    const edgeRef = (b: FaceName, kind: 'line' | 'circle', a: FaceName = cap('E1')) => ({ type: 'edge' as const, body: 'E1', edge: { a, b }, kind });
+    run(
+      engine,
+      batch(addSketch('H', onFace('E1', cap('E1'))), { type: 'addPoint', sketch: 'H', id: 'qc', x: 20, y: 15 }, { type: 'addCurve', sketch: 'H', id: 'q', curve: { type: 'circle', center: 'qc' }, radius: 4 }),
+      addExtrude('holes', 'H', [['q']], -5, 'cut', 'E1'),
+      addSketch('S2', onFace('E1', cap('E1'))),
+      // the IDs not in sorted order: the result follows the document, the solver the sorted IDs
+      { type: 'addExternal', sketch: 'S2', id: 'zz', ref: edgeRef(side('E1', 'rb'), 'line') },
+      { type: 'addExternal', sketch: 'S2', id: 'rim', ref: edgeRef(hole, 'circle') },
+      { type: 'addExternal', sketch: 'S2', id: 'aa', ref: edgeRef(side('E1', 'rc'), 'line') },
+      // two opposite sides never share an edge: this entry never has values
+      { type: 'addExternal', sketch: 'S2', id: 'never', ref: edgeRef(side('E1', 'rc'), 'line', side('E1', 'ra')) },
+    );
+    const result = () => engine.getState().evaluation.features.S2;
+    const line = (id: string) => ({ shape: { type: 'line', a: `${id}/a`, b: `${id}/b` }, source: 'reference', regions: false });
+    const rim = { shape: { type: 'circle', center: 'rim/center' }, source: 'reference', regions: false };
+    expect(result().sketch!.curves).toEqual({ zz: line('zz'), rim, aa: line('aa') });
+    expect(Object.keys(result().sketch!.curves)).toEqual(['zz', 'rim', 'aa']);
+    expect(result().sketch!.radii.rim).toBeCloseTo(4, 6);
+    expect(Object.keys(result().sketch!.points).filter((id) => id.startsWith('never'))).toEqual([]);
+    expect(result().warnings.map((w) => [w.code, w.refs])).toEqual([['brokenProjection', ['never']]]);
+
+    // the hole suppressed: its edge is gone, the projection keeps its last valid value and its curve
+    const before = result().sketch!.points['rim/center'];
+    run(engine, { type: 'setSuppressed', id: 'holes', suppressed: true });
+    expect(Object.keys(result().sketch!.curves)).toEqual(['zz', 'rim', 'aa']);
+    expect(result().sketch!.curves.rim).toEqual(rim);
+    expect(result().sketch!.points['rim/center']).toEqual(before);
+    expect(result().warnings.map((w) => [w.code, w.refs]).sort()).toEqual([['brokenProjection', ['never']], ['brokenProjection', ['rim']]]);
+  });
+});

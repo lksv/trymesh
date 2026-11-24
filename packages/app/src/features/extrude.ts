@@ -5,7 +5,7 @@ import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type Plan
 import { fmt, h } from '../dom';
 import type { PanelHost } from '../host';
 import { OPERATIONS, SIDES, factsText, lengthText, shownValue, startText } from '../labels';
-import { entryEntities, entryTag } from '../references';
+import { entryEntities } from '../references';
 import { type ExtentKind, type ExtentSide, type ExtrudeChange, type ExtrudeDraft, type ProfileKind, type RememberedProfiles, type UpToDraft, changeExtrude, draftCommand, noPlane, profileKind, rememberedProfile } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -50,13 +50,13 @@ function operandChoices(host: PanelHost, sketch: Id, kinds: readonly string[]): 
     ? [
         { id: 'origin', label: 'origin' },
         ...Object.keys(f.points).map((id) => ({ id, label: id })),
-        ...entryEntities(f).filter((entity) => entity.kind === 'point').map((entity) => ({ id: entity.id, label: `${entity.id} (${entryTag(f, entity.id)})` })),
+        ...entryEntities(f).filter((entity) => entity.kind === 'point').map((entity) => ({ id: entity.id, label: `${entity.id} (${entity.tag})` })),
       ]
     : [];
   return [
     ...points,
     ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
-    ...entryEntities(f).filter((entity) => entity.kind !== 'point' && kinds.includes(entity.kind)).map(({ id }) => ({ id, label: `${id}${size(id)} (${entryTag(f, id)})` })),
+    ...entryEntities(f).filter((entity) => entity.kind !== 'point' && kinds.includes(entity.kind)).map(({ id, tag }) => ({ id, label: `${id}${size(id)} (${tag})` })),
   ];
 }
 // The first entity of each operand of a generator in a sketch; an operand without one is left out

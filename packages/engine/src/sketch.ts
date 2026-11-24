@@ -356,20 +356,18 @@ function lineContacts(A: LineShape, B: LineShape): Vec2[] {
   return [[A.pa[0] + da[0] * t, A.pa[1] + da[1] * t]];
 }
 function lineRoundContacts(line: LineShape, round: Round, tol: number): Vec2[] {
-  {
-    const d = sub2(line.pb, line.pa);
-    const length = len2(d);
-    const along = dot2(sub2(round.c, line.pa), d) / length;
-    const foot: Vec2 = [line.pa[0] + (d[0] * along) / length, line.pa[1] + (d[1] * along) / length];
-    const distance = dist2(foot, round.c);
-    if (distance > round.r + tol) return [];
-    if (distance >= round.r - tol) return [foot];
-    const half = Math.sqrt(round.r * round.r - distance * distance) / length;
-    return [
-      [foot[0] + d[0] * half, foot[1] + d[1] * half],
-      [foot[0] - d[0] * half, foot[1] - d[1] * half],
-    ];
-  }
+  const d = sub2(line.pb, line.pa);
+  const length = len2(d);
+  const along = dot2(sub2(round.c, line.pa), d) / length;
+  const foot: Vec2 = [line.pa[0] + (d[0] * along) / length, line.pa[1] + (d[1] * along) / length];
+  const distance = dist2(foot, round.c);
+  if (distance > round.r + tol) return [];
+  if (distance >= round.r - tol) return [foot];
+  const half = Math.sqrt(round.r * round.r - distance * distance) / length;
+  return [
+    [foot[0] + d[0] * half, foot[1] + d[1] * half],
+    [foot[0] - d[0] * half, foot[1] - d[1] * half],
+  ];
 }
 function roundContacts(P: Round, Q: Round, tol: number): Vec2[] {
   const delta = sub2(Q.c, P.c);
@@ -479,8 +477,7 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
 // křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
 export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Profile {
   const tol = LENGTH_TOLERANCE;
-  const find = joins;
-  const vertex = (id: Id): CurveEnd => ({ key: find(id), p: xy(geometry.points[find(id)]) });
+  const vertex = (id: Id): CurveEnd => ({ key: joins(id), p: xy(geometry.points[joins(id)]) });
   const centre = (id: Id): Vec2 => xy(geometry.points[id]);
 
   const shapes: Shape[] = [];
@@ -489,7 +486,7 @@ export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id,
     const id = curve.id;
     const c = placedCurve(curve, geometry.radii, vertex, centre);
     if (!c) {
-      valid = false; // a curve without a position or a radius
+      valid = false; // a circle without a radius (a point without a position throws in `vertex` or `centre`, as before)
       continue;
     }
     switch (c.type) {

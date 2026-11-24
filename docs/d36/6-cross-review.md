@@ -317,6 +317,23 @@ Answered 2026-11-24, every one "yes" to its recommendation. The numbers are thos
 
 Not asked here, and waiting for the reviews of their designs: of 6b (branch), the tool `projectSketch`; of 6d (branch), the revolve of a spline refused and the converter's splines (the latter is taken up by 6h). 6b's other question, the base in three features, is answer 6.
 
+### Later answers: the reviews of 6b and 6d, and the second round of 6e and 6c
+
+The reviews of the designs of 6b and 6d (on their branches), and a second round over the revised designs of 6e and 6c (one Fable review, codex and agy), asked ten more questions. All were answered "yes" to their recommendation on 2026-11-24. Answer 19 replaces the clause "projections of 6b keep their keys" of answer 12. Answer 28 settles the narrowing of answer 16 that 6c's revision made.
+
+| # | About | Question | Answer (2026-11-24) | Where it lands |
+|---|---|---|---|---|
+| 19 | 6b, 6c, 6e | How flagged projections (curves that are not own and form regions) join: by 6b's join keys, which fail for two routes to one corner, a source made of projected edges and copies of 6c, and which the tools of 6e and 6c do not see in memory | By position, as one stage with the joins of copies (answer 12). 6b's keys (`vertices` in the stored value, key pairs) are dropped. Own curves still join only by shared point IDs | 6b's revision; 6c's position stage widened; 6e's `toolWorld`; the vocabulary of 6a amended |
+| 20 | Scenario 15 | The cable notch on the floor, which is extruded with an offset: a round notch fits only while it is large against the offset | A rectangular notch, drawn wider by twice the offset. The round notch (a circle trimmed to an arc) is tested on a stand-in without an offset, or on the lid's source half | 6e's calls; the plan and `requirements.md`, item 15 |
+| 21 | 6b | `projectSketch` as a tool | Yes. Curves keep the role they have in the source, and a variant makes an own outline held on the projection (the own centre started at the projected centre, so the hold has no second solution) | 6b's revision |
+| 22 | 6b, 6d | A projected spline | Refused, as 6b says. 6d writes both refusals (`validate` with `kind: 'spline'`, and `projectSketch`) | 6d's revision |
+| 23 | 6d | The revolve of a profile with a spline | Refused now; a backlog row | 6d's revision |
+| 24 | 6d | The rim of a part with a spline cannot be chamfered or filleted (D63's chain always meets a spline edge) | A known limit of the cheap variant, stated plainly, with a backlog row for a chamfer along a swept edge. The lid of scenario 15 has no chamfer | 6d's revision |
+| 25 | 6d, 6h | The converter's B-splines | In 6h, not in 6d | 6h; 6d's revision |
+| 26 | 6d | Where a spline runs, for the AI | `get_sketch` gives each spline the points the curve passes at the joints of its Bezier pieces, and its box | 6d's revision |
+| 27 | 6e | The default of the repair, off in every sketch before its first extrusion | It stays as designed: on exactly when a feature reads regions of the sketch, `repair: 'on' \| 'off'` overrides. The round-2 findings it causes (a notch arc left out of a mirror, a trim beyond a touch, the app's remembered override) are fixed | 6e's and 6c's fixes after the second round |
+| 28 | 6c | The narrowed rule of answer 16, which misses the notch arc with the repair off | Kept, in the open-end form: a curve the batch makes, re-points or turns into an arc joins an entry when each of its two ends is an open end of that entry's listed curves (the end of exactly one of them) and it has their construction flag. A split still adds only pieces | 6c's third round |
+
 ## What the designs leave out
 
 Against CLAUDE.md and "A package" of the README. The three designs have what a design of this project has: the cheap variant and what is deferred, measurements with a recipe, decisions and rejected alternatives, a contract and calls that compile, the tests owed, the rows for the indexes, the reviews. What is missing:

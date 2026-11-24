@@ -10,7 +10,8 @@ import type { DraftMode } from '../src/features/draft';
 import type { PatternFeature } from '@trymesh/engine';
 import type { PanelHost } from '../src/host';
 import { emptyDocument, emptySketch } from '@trymesh/engine';
-import { type Harness, startApp } from './app-kit';
+import { SKETCH_TOOL_UI, type SketchPlaceTool } from '../src/sketch-tools';
+import { type Harness, client, startApp } from './app-kit';
 
 let harness: Harness | undefined;
 afterEach(() => {
@@ -217,3 +218,31 @@ describe('the edge picker on an inserted body (D62 with D63)', () => {
   });
 });
 
+
+describe('the sketch mode: the review of the implementation of 6a (D64)', () => {
+  // Enter that a tool takes is not also a click of the button in focus; Enter it does not take is left to the page
+  it('Enter finishing the places of a tool is kept from the element in focus', async () => {
+    const h = (harness = await startApp());
+    const finished: number[] = [];
+    const collect: SketchPlaceTool<undefined> = { label: 'Collect', hint: 'Collect', click: (_host, _m, places) => places, finish: (_host, _m, places) => void finished.push(places.length) };
+    const table = SKETCH_TOOL_UI as Record<string, unknown>;
+    table.collect = collect;
+    try {
+      h.press('toolbar', 'Skica');
+      h.press('panel', 'XY');
+      h.press('toolbar', 'Collect');
+      const enter = (): boolean => {
+        const event = new (window as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        h.button('toolbar', 'Collect').dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+      expect(enter()).toBe(false); // nothing kept
+      h.click(client([30, 25, 0]));
+      h.click(client([40, 25, 0]));
+      expect(enter()).toBe(true);
+      expect(finished).toEqual([2]);
+    } finally {
+      delete table.collect;
+    }
+  });
+});

@@ -11,8 +11,13 @@
 // follows. Step 7, the part of 6c: `vents` from 5 to 7 keeps the cut's region references; 3 makes
 // copy 3 a broken reference, and 5 brings it back. Then the rest of the mechanism: a circular
 // pattern (the bolt circle the Onshape converter lost), a grid, a copy that lies on its source, the
-// fillet of a source corner, a split by a rib the mirror does not list, an end that stays open,
-// and the refusals.
+// fillet of a source corner, a split by a rib the mirror does not list (also under a chamfer of the
+// lid's rim), an own curve across a copy, an end that stays open, and the refusals.
+//
+// Fixed 2026-11-24 after the second round of reviews: the two trims of the second notch are given
+// by their places alone (after a cut the ID of a curve names only its first piece, and 6e refuses
+// a place on another piece), and the notch is run on the four paths the third round measured (both
+// orders; under the lid, where the repair is on by default, and before it, where it is off).
 //
 // Written after 6a2 (the axes of the origin, implemented before 6c: the owner's answer 1): the
 // mirror is about `origin/y`, the rows run along `origin/x`, the grid's second direction is
@@ -27,11 +32,11 @@
 import type { Id, SketchFeature } from '../../../packages/engine/src/index';
 import { faceKey } from '../../../packages/engine/src/index';
 import type { CommandAfter, StateAfter } from '../00-prep/contract';
-import { done, engine, fail, run } from '../2a-offset/calls';
+import { done, engine, fail, run, unwrap } from '../2a-offset/calls';
 import { contextOf } from '../6e-trim-extend-split/calls';
 import { freshIds, sketchTool } from '../6e-trim-extend-split/contract';
-import type { CopyPatchIds, SketchPattern, SketchResultAfter } from './contract';
-import { COPY_AS_SNAP, COPY_IN_CONSTRAINT, KEY_OF_SIDE_OF_A_COPY, SIDE_OF_A_COPY } from './contract';
+import type { CopyPatchIds, CutIdsAfter, SketchPattern, SketchResultAfter } from './contract';
+import { COPY_AS_SNAP, COPY_IN_CONSTRAINT, COPY_IN_TOOL, KEY_OF_SIDE_OF_A_COPY, OWN_CROSSES_COPY, SIDE_OF_A_COPY } from './contract';
 
 const XY = { kind: 'base', plane: 'XY' } as const;
 const near = (value: number | undefined, expected: number, tolerance: number): boolean => value !== undefined && Math.abs(value - expected) < tolerance;
@@ -263,6 +268,9 @@ export function refusals(): (string | undefined)[] {
     return result.ok ? undefined : result.error.message;
   };
   const tool = sketchTool('trim', contextOf(engine.getState(), 'lidSketch'), { curve: 'm/1/c2', at: [-42, 27] }, freshIds(engine.getState().document, 'x_'));
+  // the same place without a curve: it lies on the copy, which is nearer than any own curve (6e
+  // refuses a place that means a curve that is not own, with the reason of the copy)
+  const placed = sketchTool('trim', contextOf(engine.getState(), 'lidSketch'), { at: [-42, 27] }, freshIds(engine.getState().document, 'x_'));
   // a rectangle whose first corner snaps to a copied point: the batch would tie a new point to the copy
   const snapped = sketchTool('rectangle', contextOf(engine.getState(), 'lidSketch'), { first: { at: [-42, 5], snap: { kind: 'point', id: 'm/1/a2' } }, opposite: { at: [-30, 12] } }, freshIds(engine.getState().document, 'x_'));
   return [
@@ -280,11 +288,13 @@ export function refusals(): (string | undefined)[] {
     refused({ type: 'addExternal', sketch: 'lidSketch', id: 'p9', ref: { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', plane: 'origin/y' } } } as unknown as CommandAfter), // D53's name: "a mirror in a sketch is about a line: `axis`, not `plane`"
     refused({ type: 'updateExternal', sketch: 'lidSketch', id: 'm', ref: { type: 'edge', body: 'stand', edge: { a: { feature: 'stand', role: 'endCap' }, b: { feature: 'stand', role: 'side', curve: 'bl1' } }, kind: 'line' } }), // derived to reference
     tool.ok ? undefined : tool.message, // COPY_IN_TOOL('m/1/c2', 'm', 'c2')
+    placed.ok ? undefined : placed.message, // names `m/1/c2`, with COPY_IN_TOOL('m/1/c2', 'm', 'c2')
     snapped.ok ? undefined : snapped.message, // first: COPY_AS_SNAP('m/1/a2', 'm', 'a2')
   ];
 }
 export const constraintText = COPY_IN_CONSTRAINT('m/1/c3', 'm', 'c3');
 export const snapText = COPY_AS_SNAP('m/1/a2', 'm', 'a2');
+export const toolText = COPY_IN_TOOL('m/1/c2', 'm', 'c2');
 
 // A source removed by hand: the entry stays valid (the document saves and loads), the copies of the
 // rest are made, and the sketch warns which source is gone.
@@ -378,12 +388,13 @@ export const dShape = (state: StateAfter): boolean =>
 
 // ================================================================ the fillet of a source corner
 
-// A corner of two source lines filleted (D52): the arc takes the place of the stretch through the
-// corner, which the fillet removes from two listed lines, so it joins the entry that lists them, by
+// A corner of two source lines filleted (D52): the fillet re-points the two lines to the ends of
+// its arc, which leaves each with an open end, and the arc it makes stands between those two open
+// ends of the entry's listed curves, so it joins the entry (measured, design.md, Q5), by
 // `updateExternal` of the entry's input form, so the count stays the expression `copies`; the copy
-// of the arc joins every stored region that holds the copies of both lines, read from the region,
-// so the region of copy 2, which the count 2 does not make now, is patched too and is right when
-// the count reaches 3. The sketch `tri`: an own triangle `ul1`, `ul2`, `ul3` with the corner `u2`
+// of the arc joins every stored region that holds the copies of both lines with one number, read
+// from the region, so the region of copy 2, which the count 2 does not make now, is patched too
+// and is right when the count reaches 3. The sketch `tri`: an own triangle `ul1`, `ul2`, `ul3` with the corner `u2`
 // between `ul1` and `ul2`, a row of it along `ul1`; `triangles` extrudes the source and copy 1,
 // `third` the region of copy 2.
 const TRIANGLE = ['ul1', 'ul2', 'ul3'];
@@ -423,57 +434,74 @@ export function filletOfSource(): boolean {
 
 // A cable notch in the top line `c3` of the lid's source half: a circle `nk` of radius 4 whose
 // centre lies on the line at x = 20 crosses it at x = 16 and x = 24. Two trims leave the notch:
-// the piece of the line inside the circle, and the arc of the circle outside the outline. In either
-// order the entry of the mirror ends with the two pieces of `c3` and the arc inside in the place of
-// `c3`, the copy has the notch at x = −20, and the lid keeps one region and loses two half discs.
-// - `lineFirst`: the first trim removes the stretch of `c3` between the two cuts; both arcs of the
-//   circle take its place (each runs from one bound to the other) and join the entry; the second
-//   trim removes the outer arc whole, and it leaves the list.
-// - the other order: the first trim removes the outer arc, which nothing lists, so the entry gets
-//   only the three pieces of `c3`; the second removes the middle piece whole, and the inner arc,
-//   which was there already, takes its place and joins the entry.
+// the piece of the line inside the circle, and the arc of the circle outside the outline, each
+// given by a place on it and no curve (6e: "An AI names a piece by a place"). On each of the four
+// paths the entry of the mirror ends with the two pieces of `c3` and the arc inside in the place of
+// `c3`, the copy has the notch at x = −20, and the lid is one region less two half discs (measured
+// on the four, design.md, Q1: 7 sources, no open end, 4464.240 mm² against 4464.274 by hand).
+// What joins the entry, and in which batch (the open-end rule, design.md, "Copies and the sketch
+// tools"):
+// - under the lid (a feature reads regions, so the repair is on), the line first: the first trim
+//   cuts the circle into two arcs and takes the stretch of `c3` between them; both arcs are made
+//   by the batch and stand between the two open ends of `c3`'s pieces, so both join; the second
+//   trim removes the outer arc whole, and it leaves the list;
+// - under the lid, the circle first: the first trim cuts `c3` in three and leaves the inner arc,
+//   whose ends are ends of two listed pieces each, so it stays out; the second removes the middle
+//   piece whole, which opens both ends the arc stands at, and the arc, there already, joins;
+// - before the lid (nothing reads regions, so the repair is off), the line first: the first trim
+//   cuts `c3` alone; the second turns the circle into the arc between the two open ends, and it
+//   joins (the path the rule of the revision missed);
+// - before the lid, the circle first: the first trim turns the circle into an arc held on `c3`,
+//   which is not cut, so no entry is patched; the second cuts `c3` at the ends of the arc and takes
+//   the stretch between them, and the arc, there already, joins.
 const NOTCH_R = 4;
-export function secondNotch(lineFirst: boolean): boolean {
+export function secondNotch(lineFirst: boolean, underTheLid: boolean): boolean {
+  // run after `lid()` (underTheLid) or after `mirrored()` alone
   run({ type: 'addPoint', sketch: 'lidSketch', id: 'nc', x: 20, y: H }, { type: 'addCurve', sketch: 'lidSketch', id: 'nk', curve: { type: 'circle', center: 'nc' }, radius: NOTCH_R });
-  const trim = (curve: Id, at: [number, number], prefix: string): CopyPatchIds => {
+  const trim = (at: [number, number], prefix: string): CopyPatchIds => {
     const state = engine.getState();
-    const made = sketchTool('trim', contextOf(state, 'lidSketch'), { curve, at }, freshIds(state.document, prefix));
+    const made = sketchTool('trim', contextOf(state, 'lidSketch'), { at }, freshIds(state.document, prefix));
     if (!made.ok) return fail(made.message);
     run(...made.commands);
     return made.ids as unknown as CopyPatchIds;
   };
   const [inLine, outside]: [number, number][] = [[20, H], [20, H + NOTCH_R]];
-  const first = lineFirst ? trim('c3', inLine, 'n1_') : trim('nk', outside, 'n1_');
-  const second = lineFirst ? trim('nk', outside, 'n2_') : trim('c3', inLine, 'n2_');
-  const state = engine.getState();
+  const first = trim(lineFirst ? inLine : outside, 'n1_');
+  const second = trim(lineFirst ? outside : inLine, 'n2_');
+  let state = engine.getState();
   const sketch = sketchOf(state, 'lidSketch');
   const entry = sketch.external['m'] as unknown as SketchPattern;
-  // the arc of the notch: under the ID of the circle when the circle was trimmed first, under a new
-  // ID when the line was (the first arc of a split circle keeps the ID, and that one is trimmed away)
+  // the arc of the notch: under the ID of the circle unless both arcs were made in the first batch
+  // (the repair on, the line first), where which of the two keeps the ID is not asked
   const arcs = entry.sources.filter((id) => sketch.curves[id]?.type === 'arc' && id !== 'r1' && id !== 'r2');
-  const lid = regionsOf(state, 'lidSketch').find((loop) => loop.includes('c1')) ?? [];
+  const lidLoop = regionsOf(state, 'lidSketch').find((loop) => loop.includes('c1')) ?? [];
+  if (!underTheLid) state = run(extrudeRegions('lid', 'lidSketch', [lidLoop], 'T'));
   return (
-    same(first.entries, ['m']) &&
+    // the circle trimmed first with the repair off changes no listed curve
+    same(first.entries, !lineFirst && !underTheLid ? [] : ['m']) &&
     same(second.entries, ['m']) &&
     entry.sources.includes('c3') &&
     arcs.length === 1 &&
-    (lineFirst || arcs[0] === 'nk') &&
+    ((lineFirst && underTheLid) || arcs[0] === 'nk') &&
     entry.sources.length === 7 && // c1, r1, c2, r2, the two pieces of c3, the arc
-    lid.includes(arcs[0]) &&
-    lid.includes(`m/1/${arcs[0]}`) &&
+    regionsOf(state, 'lidSketch').length === 1 &&
+    lidLoop.includes(arcs[0]) &&
+    lidLoop.includes(`m/1/${arcs[0]}`) &&
     resultOf(state, 'lidSketch').valid &&
     resultOf(state, 'lidSketch').openEnds === undefined &&
     state.evaluation.features['lid'].status === 'ok' &&
-    // two half discs of radius 4 gone, within the chord tolerance (run on the lid of `lid()`, before the vents)
+    // two half discs of radius 4 gone, within the chord tolerance (the lid without the vents)
     near(volumeOf(state, 'lid'), (LID - Math.PI * NOTCH_R * NOTCH_R) * T, lidAllowance(2))
   );
 }
+export const NOTCH_PATHS: [lineFirst: boolean, underTheLid: boolean][] = [[true, true], [false, true], [true, false], [false, false]];
 
 // A split by a rib the mirror does not list (run on the lid of `lid()`, before the notch and the
 // vents): a line from below the bottom `c1` to above the top `c3` of the source half, cut where it
-// meets them by `split` without a curve. The batch removes nothing, so the entry gets the pieces of
-// `c1` and `c3` in their place and nothing of the rib; the lid's extrusion is patched to the two
-// regions the rib makes of it, and its body is the same.
+// meets them by `split` without a curve. A split adds only pieces: the entry gets the pieces of
+// `c1` and `c3` in their place and nothing of the rib (each cut is the end of two listed pieces, so
+// no piece of the rib stands between open ends: measured, design.md, Q2); the lid's extrusion is
+// patched to the two regions the rib makes of it, and its body is the same.
 export function ribSplit(): boolean {
   const before = volumeOf(engine.getState(), 'lid');
   run(point('lidSketch', 'rb0', 30, -3), point('lidSketch', 'rb1', 30, H + 3), line('lidSketch', 'rib', 'rb0', 'rb1'));
@@ -485,13 +513,63 @@ export function ribSplit(): boolean {
   const entry = sketch.external['m'] as unknown as SketchPattern;
   // the pieces of the rib: `rib` and the new lines that stand at x = 30
   const ofRib = ['rib', ...made.ids.added.filter((id) => { const c = sketch.curves[id]; return c?.type === 'line' && near(resultOf(after, 'lidSketch').points[c.a]?.x, 30, 1e-9) && near(resultOf(after, 'lidSketch').points[c.b]?.x, 30, 1e-9); })];
+  const ids = made.ids as unknown as CutIdsAfter;
   return (
-    same((made.ids as unknown as CopyPatchIds).entries, ['m']) &&
+    same(ids.entries, ['m']) &&
+    Object.keys(made.ids).indexOf('entries') === 15 && // the sixteenth list, after `broken`
     ofRib.length === 3 &&
     ofRib.every((id) => !entry.sources.includes(id)) &&
     entry.sources.length === 7 && // c1 and c3 in two pieces each, r1, c2, r2
     regionsOf(after, 'lidSketch').length === 2 &&
     near(volumeOf(after, 'lid'), before, 1e-6)
+  );
+}
+
+// The same split under a chamfer of the lid's rim (run on the lid of `lid()` in place of
+// `ribSplit`). The rim is one smooth chain, so the chamfer lists the edge of the top with the side
+// of every curve of the outline, the copies among them (D63). The split cuts `c1` and `c3`, and
+// with them their copies: 6e rewrites the edge of a cut side to its pieces, and reads a copy
+// through the same function (`piecesOf`), which 6c makes answer `m/1/<piece>`; so the chamfer has
+// an edge for each of the four new pieces too, appended after the ten it had (a face of the
+// chamfer is named by the place of its edge), and stays `ok`. Without the rewrite of the copies'
+// sides it is `unsupportedEdge`: the edge along `m/1/c3` continues smoothly into one that is not
+// listed (the error 6e measured for own curves). Not run: no code has both packages yet.
+export function ribSplitUnderChamfer(): boolean {
+  const top = { feature: 'lid', role: 'endCap' } as const;
+  const edgeOf = (curve: Id) => ({ a: top, b: { feature: 'lid', role: 'side', curve } as const });
+  run({ type: 'addFeature', feature: { id: 'rim', name: 'Rim', suppressed: false, type: 'chamfer', body: 'lid', edges: LID_REGION.map(edgeOf), distance: 0.5 } });
+  const split = ribSplit();
+  const state = engine.getState();
+  const rim = state.document.features.find((f) => f.id === 'rim');
+  const sides = rim?.type === 'chamfer' ? rim.edges.map((edge) => (edge.b.role === 'side' ? edge.b.curve : '')) : [];
+  const sketch = sketchOf(state, 'lidSketch');
+  const entry = sketch.external['m'] as unknown as SketchPattern;
+  const pieces = entry.sources.filter((id) => !['c1', 'r1', 'c2', 'r2', 'c3'].includes(id)); // the new piece of c1 and of c3
+  return (
+    split &&
+    state.evaluation.features['rim'].status === 'ok' &&
+    same(sides.slice(0, 10), LID_REGION) && // every place kept
+    same([...sides.slice(10)].sort(), [...pieces, ...pieces.map((id) => `m/1/${id}`)].sort())
+  );
+}
+
+// An own curve across a copy (run on the lid of `lid()`): a line drawn across the copied flank
+// `m/1/c2`. The profile is invalid and no tool can cut there: a copy is not cut, and a point
+// cannot be held on it. The query of 6e lists the place with `fix: 'none'` and the reason of 6c
+// (`contactFix`); `split` without a curve refuses with that reason; an extension that would end on
+// the copy while the profile is valid is refused by 6e. Moving the line off the copy cures it.
+export function ownAcrossACopy(): boolean {
+  const valid = sketchTool('extend', contextOf(run(point('lidSketch', 'xa', -30, 27), point('lidSketch', 'xb', -35, 27), line('lidSketch', 'across', 'xa', 'xb')), 'lidSketch'), { curve: 'across', end: 'b' }, freshIds(engine.getState().document, 'x_'));
+  const state = run({ type: 'dragPoint', sketch: 'lidSketch', point: 'xb', x: -50, y: 27 });
+  const found = unwrap(engine.query('sketchContacts', { sketch: 'lidSketch' }));
+  const split = sketchTool('split', contextOf(state, 'lidSketch'), {}, freshIds(state.document, 'x_'));
+  return (
+    !valid.ok && // the extension would end on `m/1/c2`
+    !found.valid &&
+    found.total === 1 &&
+    same(found.contacts.map((c) => [c.kind, c.curves, c.fix, c.why]), [['crossing', ['across', 'm/1/c2'], 'none', OWN_CROSSES_COPY('m/1/c2', 'm')]]) &&
+    !split.ok &&
+    state.evaluation.features['lid'].error?.code === 'invalidProfile'
   );
 }
 

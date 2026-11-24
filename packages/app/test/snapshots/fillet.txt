@@ -53,9 +53,9 @@
         button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
         button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
         button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
-        button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-        button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
-        button title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+        button title="Click the piece of a curve to remove.": "Trim"
+        button title="Click a line or an arc near the end to extend.": "Extend"
+        button title="Click a curve to cut it where other curves cross it.": "Split"
         button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
       div.group
         button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"

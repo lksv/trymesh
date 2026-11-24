@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { applyCommand, emptyDocument, emptySketch } from '../src/document';
 import { evaluateParameters } from '../src/expression';
 import { SKETCH_TOOLS, type SketchToolInputs, freshIds, sketchTool } from '../src/sketch-tools';
-import { extendEnd, extendReach, profileContacts, trimPiece } from '../src/sketch-cut';
+import { contactPlaces, extendEnd, extendReach, sketchContactsOf, trimPiece } from '../src/sketch-cut';
+import { sketchWorld, toolBase } from '../src/references/world';
+import { detectProfile } from '../src/sketch';
 import type { Command, Constraint, Curve, Document, Id, SketchFeature, SketchResult } from '../src/types';
 
 type CutTool = 'trim' | 'extend' | 'split';
@@ -24,10 +26,20 @@ function build(points: Record<Id, [number, number]>, curves: Record<Id, Curve | 
   return commands.reduce<Document>(applyCommand, emptyDocument());
 }
 const sketchOf = (doc: Document, id = S): SketchFeature => doc.features.find((f) => f.id === id) as SketchFeature;
-// The positions of the document as the solved ones (the document holds the positions the commands gave).
+// The positions of the document as the solved ones (the document holds the positions the commands
+// gave), and the profile of the sketch over them.
 function resultOf(doc: Document, id = S): SketchResult {
   const sketch = sketchOf(doc, id);
-  return { points: { origin: { x: 0, y: 0 }, ...sketch.points }, radii: { ...sketch.radii }, curves: {}, degreesOfFreedom: 0, conflicting: [], redundant: [], measurements: {}, valid: true, regions: [] };
+  const points = { origin: { x: 0, y: 0 }, ...sketch.points };
+  const profile = detectProfile(sketch, { points, radii: sketch.radii }, doc.settings.chordTolerance);
+  return { points, radii: { ...sketch.radii }, curves: {}, degreesOfFreedom: 0, conflicting: [], redundant: [], measurements: {}, valid: profile.valid, regions: profile.regions.map((region) => ({ ref: region.ref, loops: [] })) };
+}
+// The answer of the query sketchContacts over the hand-made result.
+function contactsOf(doc: Document) {
+  const sketch = sketchOf(doc);
+  const result = resultOf(doc);
+  const world = sketchWorld(toolBase(sketch, result));
+  return sketchContactsOf(contactPlaces(world, result.valid, doc.settings.chordTolerance), world.curves, doc, sketch, result.valid);
 }
 const context = (doc: Document) => ({ sketch: sketchOf(doc), result: resultOf(doc), parameters: evaluateParameters(doc.parameters), document: doc });
 function tool<K extends CutTool>(doc: Document, name: K, input: SketchToolInputs[K]): { doc: Document; ids: Record<string, Id[]>; commands: Command[] } {
@@ -55,7 +67,7 @@ describe('the catalog entries and the input kinds', () => {
     expect(refusal(doc, 'trim', { curve: 'ra' } as never)).toBe('the input "at" is missing');
     expect(refusal(doc, 'split', { with: 'ra' })).toBe('`with` and `at` need `curve`');
     expect(refusal(doc, 'trim', { curve: 'ra', at: [1, 0], with: 'ra' })).toBe('`with` names the curve itself');
-    expect(Object.keys(SKETCH_TOOLS.split.ids)).toHaveLength(14);
+    expect(Object.keys(SKETCH_TOOLS.split.ids)).toHaveLength(15);
   });
 });
 
@@ -226,7 +238,7 @@ describe('the cut of an arc and a circle', () => {
 
   it('a line that ends inside a circle, its inner part trimmed: the circle is not cut, the point held on it', () => {
     const doc = build({ o: [0, 0], a: [-20, 0], b: [0, 0.5] }, { k: [{ type: 'circle', center: 'o' }, 10], l: line('a', 'b') });
-    const { doc: after, ids } = tool(doc, 'trim', { curve: 'l', at: [-2, 0.4] });
+    const { doc: after, ids } = tool(doc, 'trim', { curve: 'l', at: [-2, 0.4], repair: 'on' });
     expect(ids.uncut).toEqual(['k']);
     const sketch = sketchOf(after);
     const end = (sketch.curves['l'] as { b: Id }).b;
@@ -254,7 +266,7 @@ describe('overlaps and ends at one place (what the converter met)', () => {
     expect(sketchOf(after).curves['p']).toEqual(line('a', 'c'));
     expect(sketchOf(after).curves['q']).toEqual(line('c', 'b'));
     // the two duplicates of the overlap stay: the profile is invalid until one is trimmed
-    expect(profileContacts({ sketch: sketchOf(after), result: resultOf(after), document: after } as never).reason).toMatch(/lie on each other/);
+    expect(contactsOf(after).reason).toMatch(/lie on each other/);
   });
 
   it('a duplicate is not cut; split of the sketch is refused with the reason', () => {
@@ -295,7 +307,6 @@ describe('overlaps and ends at one place (what the converter met)', () => {
 });
 
 // The profile of the own curves of a document's sketch at the positions of its points.
-import { detectProfile } from '../src/sketch';
 const profileOfDoc = (doc: Document) => {
   const sketch = sketchOf(doc);
   return detectProfile(sketch, { points: { origin: { x: 0, y: 0 }, ...sketch.points }, radii: sketch.radii }, 0.01);
@@ -376,7 +387,7 @@ describe('extend', () => {
 
   it('an end mapped to its piece: a line cut in the middle extends its last piece', () => {
     const doc = build({ ...RECT, ea: [5, 10], eb: [30, 10], c: [20, 5], d: [20, 15] }, { ...RECT_LINES, e: line('ea', 'eb'), v: line('c', 'd') });
-    const { doc: after, ids } = tool(doc, 'extend', { curve: 'e', end: 'b' });
+    const { doc: after, ids } = tool(doc, 'extend', { curve: 'e', end: 'b', repair: 'on' });
     const sketch = sketchOf(after);
     const at = (p: Id) => sketch.points[p];
     // the keeper ends at the crossing with v; its new piece from there to the side is the one extended
@@ -409,7 +420,7 @@ describe('trim: pieces and what the app draws', () => {
 
   it('the marks of an invalid profile and its reason', () => {
     const doc = build({ a: [0, 10], b: [40, 10], c: [20, 0], d: [20, 20] }, { h: line('a', 'b'), v: line('c', 'd') });
-    expect(profileContacts(context(doc))).toEqual({ points: [[20, 10]] });
+    expect(contactsOf(doc)).toEqual({ contacts: [{ at: [20, 10], kind: 'crossing', curves: ['h', 'v'], fix: 'cut' }], lying: [], degenerate: [] });
   });
 });
 

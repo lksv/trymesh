@@ -96,6 +96,7 @@ describe('contacts as points to cut at', () => {
   it('agree with the profile test on random pairs; every point lies on both curves', () => {
     const next = random(65);
     let [checked, touching, withPoints, withEnds, lying] = [0, 0, 0, 0, 0];
+    const kinds = new Map<string, number>();
     for (let n = 0; n < 20000; n++) {
       const made = pair(next);
       if (!made) continue;
@@ -110,8 +111,19 @@ describe('contacts as points to cut at', () => {
       if (found.points.length) withPoints++;
       if (found.ends.length) withEnds++;
       if (found.lying) lying++;
-      for (const p of found.points) for (const c of curves) expect(distanceToShape(p, c.shape, geometry, c.id)).toBeLessThanOrEqual(LENGTH_TOLERANCE * 1.0001);
+      for (const p of found.points) for (const c of curves) expect(distanceToShape(p.at, c.shape, geometry, c.id)).toBeLessThanOrEqual(LENGTH_TOLERANCE * 1.0001);
+      // the kind of a point: an end of one curve is `end` (or the end of an overlap), a touch is tangent
+      const ends = curves.flatMap((c) => (c.shape.type === 'line' ? [c.shape.a, c.shape.b] : c.shape.type === 'arc' ? [c.shape.start, c.shape.end] : [])).map((id) => [geometry.points[id].x, geometry.points[id].y]);
+      for (const p of found.points) {
+        kinds.set(p.kind, (kinds.get(p.kind) ?? 0) + 1);
+        const atEnd = ends.some((e) => Math.hypot(e[0] - p.at[0], e[1] - p.at[1]) <= LENGTH_TOLERANCE);
+        if (p.kind === 'end' || p.kind === 'overlap') expect(atEnd, `pair ${n}`).toBe(true);
+        if (p.kind === 'crossing' || p.kind === 'touch') expect(atEnd, `pair ${n}`).toBe(false);
+        if (p.kind === 'touch') expect(p.tangent).toBe(true);
+      }
     }
+    // every kind occurs
+    for (const kind of ['crossing', 'touch', 'end', 'overlap']) expect(kinds.get(kind) ?? 0, kind).toBeGreaterThan(20);
     // the generator reaches every kind
     expect(checked).toBeGreaterThan(10000);
     expect(Math.min(touching, withPoints, withEnds, lying)).toBeGreaterThan(50);

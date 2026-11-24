@@ -150,12 +150,13 @@ Sketches of a cheap variant for each, in the manner of D35: what the cheap varia
 
 **Trim, extend and split.** Done as D65 ([d36/6e-trim-extend-split/design.md](d36/6e-trim-extend-split/design.md)). Not done, and why the design does not block them:
 
-- Cutting non-own geometry: a projected edge, a curve of another sketch (6b), a copy of 6c, an imported outline (6f). Non-own geometry is a cut of an own curve (the point held on it), never cut itself; taking a projected curve over as own curves would be a tool of its own.
+- Cutting geometry that is not own: a projected edge, a curve of another sketch (6b), a copy of 6c, an imported outline (6f). Such geometry is a cut of an own curve (the point held on it), never cut itself; an own outline taken over from a projection would be a tool of its own.
 - Splines (6d): neither cut nor a cut until a point can be held on a spline.
-- A trim that takes the common end of a tangency off its curve is refused: the adapter would have to read an end held by `pointOnCurve` (D52's alternative 17).
-- Extend to the extension of the other curve (past its ends); a break at a place with no crossing; a chamfer of a sketch corner and removing a fillet (tools over the same commands).
-- A query of the crossings of a sketch for an AI (`split` without a curve repairs them in one call).
-- The Onshape converter (`tools/onshape/sketch.ts`) can replace its own `splitAtCrossings` by one `split` without a curve, which keeps the constraints of the split curves.
+- A cut where two arcs or two circles touch, and a trim that takes the common end of a tangency off its curve: both are refused until the adapter can read a tangency of two arcs at a common end and an end held by `pointOnCurve` (D52's alternative 17). Such curves are listed by the query `sketchContacts` with `fix: 'none'`.
+- Extend to the extension of the other curve (past its ends); a break at a place with no crossing, which would also give a circle touched once its second point; a chamfer of a sketch corner and removing a fillet (tools over the same commands).
+- The fillet of D52 moving `equalLength` and `midpoint` to a span line, as trim does (it refuses them today).
+- An extend of the far end of a piece of a line that carried `equalLength` or `midpoint` is refused: after the cut the span line ends at that point too, and "another curve ends there" is the rule for a T (found by the implementation; a construction curve that only spans the old line could be exempted).
+- The Onshape converter (`tools/onshape/sketch.ts`) replaces its own `splitAtCrossings` by one `split` without a curve in 6h, which keeps the constraints of the split curves.
 - *A tangency of two arcs at a common end point cannot be changed after it is drawn exactly* (the defect D52 cures for a line and an arc). Measured: "the second centre on the line of the first centre and the common point" solves every case tried; it needs a check that the kind of contact is the one of the estimate. The same holds for an arc's end held on a line by `pointOnCurve` or through a chain of joins.
 - *A fillet that later changes turns into something else* (an arc past the end of its line; no message, and on a concave outline or with a radius several times too large a wrong body). It needs the sketch to know which arcs are fillets, or a warning for a line whose direction turned round in a solve.
 - *The features whose region has a filleted corner on the rim of a hole are not named by the tool.* It needs the curves of the holes of a region in the solved sketch.

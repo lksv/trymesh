@@ -5,7 +5,8 @@ import { CONSTRAINTS, type EntityKind } from '../catalog';
 import { type ResolvedReference, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
-import { type SketchGeometry, joinPairs, joinsOf, measure, ownVariables, profileOf, sketchCurves, solverSetup } from '../sketch';
+import { sketchWorld, stepBase } from '../references/world';
+import { type SketchGeometry, measure, ownVariables, profileOf, solverSetup } from '../sketch';
 import { AXES_GEOMETRY, CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
 import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, ResultCurve, SketchFeature, SolveInput, SolveResult } from '../types';
 import { ORIGIN, has, isOriginAxis, unreachable } from '../util';
@@ -190,9 +191,9 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   const inOrder = <T>(order: Record<Id, T>, values: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.keys(order).map((id) => [id, values[id]]));
   const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
   const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;
-  // the curves of the sketch and its joins, read by the profile and by what a later feature reads
-  const curves = new Map(sketchCurves(feature, resolved).map((curve) => [curve.id, curve]));
-  const joins = joinsOf(joinPairs(feature, resolved), geometry);
+  // the curves of the sketch and its joins, read by the profile and by what a later feature reads:
+  // the world of the sketch (D65), which the sketch tools build their profiles from as well
+  const { curves, joins } = sketchWorld(stepBase(feature, resolved, geometry));
   const profile = profileOf([...curves.values()], joins, geometry, settings.chordTolerance);
   const sketchResult: FeatureResult = {
     status: warnings.length ? 'warning' : 'ok',

@@ -18,9 +18,12 @@
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: diagnoseSketch("s1")  (x2)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":20,"y":-8},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":12}]}) -> ok
   engine: diagnoseSketch("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   features: s1, e1
   feature s1:
       {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
@@ -62,9 +65,9 @@
         button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
         button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
         button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
-        button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-        button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
-        button title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+        button title="Click the piece of a curve to remove.": "Trim"
+        button title="Click a line or an arc near the end to extend.": "Extend"
+        button title="Click a curve to cut it where other curves cross it.": "Split"
         button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
       div.group
         button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
@@ -95,7 +98,7 @@
       div#sketch-status
         p.badge.open: "Stupně volnosti: 5"
         p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
-        p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+        p.hint: "Contacts marked in the view: 2. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go."
       p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4; poloměr c5."
       div.buttons
         button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
@@ -149,7 +152,9 @@
       line #8b9bb4 width 1: 24 numbers, sum 270.345
       line #8b9bb4 width 1: 24 numbers, sum 135.173
       line #1d4ed8 width 2 onTop: 600 numbers, sum 10698.442
-      points #dc2626 size 9: 6 numbers, sum 73.167
+      axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+      axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
+      points #dc2626 size 9: 6 numbers, sum 126.833
       points #1d4ed8 size 7: 12 numbers, sum 318
       points #a21caf size 7: 3 numbers, sum 0
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.31
@@ -163,13 +168,27 @@
 
 === 2. the tool Trim over the circle below the edge: the piece between the crossings drawn dashed
   engine: getState("s1")
-  engine: diagnoseSketch("s1")  (x3)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
+  engine: diagnoseSketch("s1")  (x2)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   toolbar:
     +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
     -   button.active title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
-    +   button.active title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-    -   button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-  status: Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.
+    +   button.active title="Click the piece of a curve to remove.": "Trim"
+    -   button title="Click the piece of a curve to remove.": "Trim"
+  panel:
+    + h2: "Trim"
+    + p.hint: "Up to: the nearest curves"
+    + div.buttons
+    +   button disabled title="Only the contacts with the one curve selected bound the cut": "Use the selected curve"
+    +   button disabled title="The nearest curves bound the cut": "Clear"
+    + label.check title="Cut every other crossing of the outline curves first, so that the profile stays valid and the regions of the features follow; on by default when a feature reads regions of the sketch"
+    +   input type=checkbox checked
+    +   "Cut the other crossings of the outline first"
+    + p.hint: "Click the piece of a curve to remove: the part between the curves that cross it. The constraints stay with the pieces they describe, and the features that use the outline follow."
+  status: Click the piece of a curve to remove.
   view: 2 scene(s) set
   scene:
     + line #64748b width 1.5 dashed onTop: 426 numbers, sum 4538.412
@@ -177,6 +196,7 @@
 
 === 3. a click removes it: the circle is an arc, the edge cut at the crossings, the extrusion followed; the status says so
   engine: diagnoseSketch("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p5","x":11.05572809000084,"y":0},{"type":"addPoint","sketch":"s1","id":"p6","x":28.94427190999916,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c1","point":"b","to":"p5"},{"type":"removeEntity","sketch":"s1","id":"c5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p4","start":"p6","end":"p5"}},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"pointOnCurve","point":"p6","curve":"c1"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"pointOnCurve","point":"p2","curve":"c1"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]}}}]}) -> ok
@@ -207,7 +227,7 @@
     +   p.hint: "Uzavřených oblastí: 2"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
     -   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
-    -   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    -   p.hint: "Contacts marked in the view: 2. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go."
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4; poloměr c5."
     + h2: "Vazby a kóty (6)"
     - h2: "Vazby a kóty (4)"
@@ -221,14 +241,14 @@
     +     "Bod na křivce"
     +     small: "p2, c1"
     +   button.icon title="Smazat vazbu": "✕"
-  status: Trimmed; the profile of Vysunutí 1 followed.
+  status: Trimmed; followed: Vysunutí 1.
   view: 2 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 192 numbers, sum 6355.996
-    + points #1d4ed8 size 7: 18 numbers, sum 442.223
     - line #1d4ed8 width 2 onTop: 600 numbers, sum 10698.442
     - line #64748b width 1.5 dashed onTop: 426 numbers, sum 4538.412
-    - points #dc2626 size 9: 6 numbers, sum 73.167
+    + points #1d4ed8 size 7: 18 numbers, sum 442.223
+    - points #dc2626 size 9: 6 numbers, sum 126.833
     - points #1d4ed8 size 7: 12 numbers, sum 318
     - points #16a34a size 12: 3 numbers, sum -20
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
@@ -254,7 +274,7 @@
   panel:
     +   p.hint: "Uzavřených oblastí: 1"
     -   p.hint: "Uzavřených oblastí: 2"
-  status: Trimmed; the profile of Vysunutí 1 followed; a region is gone from Vysunutí 1.
+  status: Trimmed; followed: Vysunutí 1; a region is gone from Vysunutí 1.
   view: 2 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 186 numbers, sum 6300.718
@@ -285,15 +305,19 @@
     + curve c8: {"type":"line","a":"p7","b":"p8"}
     + constraint k7: {"type":"vertical","line":"c8"}
   toolbar:
-    +   button title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-    +   button.active title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
-    -   button.active title="Click the piece of a curve to remove; the curves that cross the outline are cut there first. Crossings of an invalid profile are marked; Split crossings (the tool Split) cuts them all.": "Trim"
-    -   button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
+    +   button title="Click the piece of a curve to remove.": "Trim"
+    +   button.active title="Click a line or an arc near the end to extend.": "Extend"
+    -   button.active title="Click the piece of a curve to remove.": "Trim"
+    -   button title="Click a line or an arc near the end to extend.": "Extend"
   panel:
     +   p.badge.open: "Stupně volnosti: 8"
     -   p.badge.open: "Stupně volnosti: 5"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p8."
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6."
+    + h2: "Extend"
+    - h2: "Trim"
+    + p.hint: "Click a line or an arc near the end to extend: the end moves along the curve to the next curve it meets."
+    - p.hint: "Click the piece of a curve to remove: the part between the curves that cross it. The constraints stay with the pieces they describe, and the features that use the outline follow."
     + h2: "Vazby a kóty (7)"
     - h2: "Vazby a kóty (6)"
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
@@ -301,13 +325,13 @@
     +     "Svisle"
     +     small: "c8"
     +   button.icon title="Smazat vazbu": "✕"
-  status: Click a line or an arc near the end to extend; it grows to the next curve.
+  status: Click a line or an arc near the end to extend.
   view: 9 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
     + line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
-    + points #1d4ed8 size 7: 24 numbers, sum 602.223
     - line #1d4ed8 width 2 onTop: 186 numbers, sum 6300.718
+    + points #1d4ed8 size 7: 24 numbers, sum 602.223
     - points #1d4ed8 size 7: 18 numbers, sum 442.223
     + points #16a34a size 12: 3 numbers, sum 48
 
@@ -340,13 +364,13 @@
     +     "Bod na křivce"
     +     small: "p3, c3"
     +   button.icon title="Smazat vazbu": "✕"
-  status: Extended; the profile of Vysunutí 1 followed.
+  status: Extended; followed: Vysunutí 1.
   view: 2 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
-    + points #1d4ed8 size 7: 24 numbers, sum 622.223
     - line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
     - line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
+    + points #1d4ed8 size 7: 24 numbers, sum 622.223
     - points #1d4ed8 size 7: 24 numbers, sum 602.223
     - points #16a34a size 12: 3 numbers, sum 48
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
@@ -363,13 +387,20 @@
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: diagnoseSketch("s1")  (x2)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p10","x":35,"y":-10},{"type":"addPoint","sketch":"s1","id":"p11","x":35,"y":40},{"type":"addCurve","sketch":"s1","id":"c10","curve":{"type":"line","a":"p10","b":"p11"}},{"type":"addConstraint","sketch":"s1","id":"k9","constraint":{"type":"vertical","line":"c10"}}]}) -> ok
   engine: diagnoseSketch("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: getState("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: diagnoseSketch("s1")  (x2)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: getState("s1")
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: diagnoseSketch("s1")  (x2)
+  engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   feature s1:
     + point p10: {"x":35,"y":-10}
     + point p11: {"x":35,"y":40}
@@ -378,10 +409,10 @@
   toolbar:
     +   button disabled: "Export STL"
     -   button: "Export STL"
-    +   button title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
-    +   button.active title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
-    -   button.active title="Click a line or an arc near the end to extend; it grows to the next curve.": "Extend"
-    -   button title="Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.": "Split"
+    +   button title="Click a line or an arc near the end to extend.": "Extend"
+    +   button.active title="Click a curve to cut it where other curves cross it.": "Split"
+    -   button.active title="Click a line or an arc near the end to extend.": "Extend"
+    -   button title="Click a curve to cut it where other curves cross it.": "Split"
   timeline:
     + div.row.error title="Křivky skici se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků na úsečky."
     +   span.dot: "✖"
@@ -390,7 +421,7 @@
   panel:
     +   p.badge.open: "Stupně volnosti: 10"
     +   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
-    +   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    +   p.hint: "Contacts marked in the view: 2. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go."
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 2."
     -   p.badge.open: "Stupně volnosti: 7"
     -   p.hint: "Uzavřených oblastí: 1"
@@ -398,7 +429,15 @@
     + h2: "Split"
     + div.buttons
     +   button title="Every crossing of the outline curves becomes a common point; the features keep their regions": "Split crossings"
+    - h2: "Extend"
+    + label.check
+    +   input type=checkbox unchecked
+    +   "Only at the crossing nearest to the click"
     + p.hint: "Click a curve to cut it where other curves cross it. Each piece is a curve of its own with its own regions; the constraints stay with the piece they describe. Then trim the pieces that should go."
+    - label.check title="Cut every other crossing of the outline curves first, so that the profile stays valid and the regions of the features follow; on by default when a feature reads regions of the sketch"
+    -   input type=checkbox checked
+    -   "Cut the other crossings of the outline first"
+    - p.hint: "Click a line or an arc near the end to extend: the end moves along the curve to the next curve it meets."
     + h2: "Vazby a kóty (9)"
     - h2: "Vazby a kóty (8)"
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
@@ -406,19 +445,19 @@
     +     "Svisle"
     +     small: "c10"
     +   button.icon title="Smazat vazbu": "✕"
-  status: Click a curve to cut it where other curves cross it; Split crossings in the panel cuts every crossing of the outline.
+  status: Click a curve to cut it where other curves cross it.
   view: 8 scene(s) set
   scene:
     + line #8b9bb4 width 1: 24 numbers, sum 470.63
     + line #8b9bb4 width 1: 24 numbers, sum 313.753
     + line #8b9bb4 width 1: 24 numbers, sum 156.877
     + line #1d4ed8 width 2 onTop: 204 numbers, sum 7275.718
-    + points #dc2626 size 9: 6 numbers, sum 235
-    + points #1d4ed8 size 7: 30 numbers, sum 997.223
     - line #8b9bb4 width 1: 24 numbers, sum 405.518
     - line #8b9bb4 width 1: 24 numbers, sum 270.345
     - line #8b9bb4 width 1: 24 numbers, sum 135.173
     - line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
+    + points #dc2626 size 9: 6 numbers, sum 235
+    + points #1d4ed8 size 7: 30 numbers, sum 997.223
     - points #1d4ed8 size 7: 24 numbers, sum 622.223
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 22.411
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 22.411
@@ -465,7 +504,7 @@
     +   p.hint: "Uzavřených oblastí: 2"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 4."
     -   p.issue.error: "Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků."
-    -   p.hint: "Crossings marked in the view: 2. Split crossings (the tool Split) cuts them all; then Trim removes the pieces that should go."
+    -   p.hint: "Contacts marked in the view: 2. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go."
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7, p9 a další 2."
     + h2: "Vazby a kóty (13)"
     - h2: "Vazby a kóty (9)"
@@ -489,12 +528,12 @@
     +     "Bod na křivce"
     +     small: "p2, c7"
     +   button.icon title="Smazat vazbu": "✕"
-  status: Crossings split; the profile of Vysunutí 1 followed.
+  status: Crossings split; followed: Vysunutí 1.
   view: 1 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 228 numbers, sum 8610.718
-    + points #1d4ed8 size 7: 36 numbers, sum 1432.223
     - line #1d4ed8 width 2 onTop: 204 numbers, sum 7275.718
+    + points #1d4ed8 size 7: 36 numbers, sum 1432.223
     - points #dc2626 size 9: 6 numbers, sum 235
     - points #1d4ed8 size 7: 30 numbers, sum 997.223
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 710

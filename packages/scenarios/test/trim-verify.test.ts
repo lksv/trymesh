@@ -219,15 +219,17 @@ describe('to verify: faces of the pieces', () => {
     run(engine, ...fixedLine('l', [20, 10], [60, 10]));
     const ids = cut(engine, 'split', 's', {});
     const state = engine.getState();
-    expect(ids.shortened).toEqual(['t', 'f']);
+    expect(ids.shortened).toEqual(['t']);
+    expect(ids.patched).toEqual(['boss', 'f']);
     expect(state.evaluation.features['boss'].status).toBe('ok');
-    // the projection of the rim still finds the circle; the fillet of the rim now has two edges
-    // (one per arc), runs smoothly into the second one and asks for it (D63)
+    // the projection of the rim still finds the circle; the fillet of the rim gets an edge per arc,
+    // the first in the place of the old one (D63 asks for both, since one runs smoothly into the
+    // other), and works
     expect(state.evaluation.features['t'].status).toBe('ok');
     expect(state.evaluation.features['t'].sketch?.radii['rim']).toBeCloseTo(6, 6);
-    expect(state.evaluation.features['f'].error?.code).toBe('unsupportedEdge');
-    const both = run(engine, { type: 'updateFeature', id: 'f', patch: { edges: ['k', ids.added[0]].map((curve) => ({ a: cap('boss'), b: side('boss', curve) })) } });
-    expect(both.evaluation.features['f'].status).toBe('ok');
+    const fillet = state.document.features.find((f) => f.id === 'f') as { edges: unknown[] };
+    expect(fillet.edges).toEqual(['k', ids.added[0]].map((curve) => ({ a: cap('boss'), b: side('boss', curve) })));
+    expect(state.evaluation.features['f'].status).toBe('ok');
   });
 
   it('the arc of a trimmed circle under a large change: the centre pulled far across the edge', () => {

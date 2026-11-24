@@ -357,7 +357,7 @@ export type PieceShape = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'arc'; cen
 // function, whose picker in the app lets only own curves through. The three entries of the app
 // (trim, extend, split) pass the curve their picker found and get the one a click means.
 // Undefined when the sketch has no own curve.
-export declare function curveUnder(context: SketchToolContext, at: Vec2, picked?: Id): Id | undefined;
+export declare function curveUnder(context: SketchToolCallAfter, at: Vec2, picked?: Id): Id | undefined;
 // The piece `trim` would remove: read from the contacts that select it only.
 export declare function trimPiece(context: SketchToolCallAfter, input: TrimInput): PieceShape | undefined;
 // The end of a line or an arc nearest to a place, ends only (a centre is not one): what the app

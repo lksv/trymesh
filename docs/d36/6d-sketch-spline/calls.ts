@@ -16,8 +16,8 @@
 // Written after 6a2, 6e, 6c and 6b, which are implemented before 6d (docs/d36/6-plan.md): the
 // mirror is about `origin/y` and the top's end is held on it (the owner's answer 1), the trims and
 // the query of the contacts are 6e's (its revised contract is merged and imported), a projection
-// of the spline is 6b's entry. The designs of 6e and 6c are merged and imported; 6b's revision is
-// on its branch (read at `0f12c89`), so what is 6b's is written as stand-ins that say so.
+// of the spline is 6b's entry. The designs of 6e, 6c and 6b are merged; 6e's and 6c's types are
+// imported, and 6b's tool and query are written as short declarations of what 6d reads of them.
 //
 // The numbers in the comments were measured so (design.md, "Measured"): the polyline, the joints
 // and the box of a spline by a prototype of `spline.ts`; the solver by the real planegcs adapter
@@ -105,8 +105,8 @@ const contactsOf = (sketch: Id): SketchContactsResult => unwrap(engine.query('sk
 // Stand-ins for what is not in this tree.
 // - MCP: `get_sketch` (packages/mcp/src/tools.ts, `sketchDetail`), as far as 6d reads it.
 declare function getSketch(sketch: Id): { curves: ({ id: Id; type: 'line' | 'circle' | 'arc' } | SplineDetail)[] };
-// - 6b (its revision is on its branch): the entry of a projection, the tool `projectSketch` and the
-//   query `sketchSources`, as far as 6d adds to them.
+// - 6b: the entry of a projection, the tool `projectSketch` and the query `sketchSources`, as far
+//   as 6d adds to them.
 const projection = (sketch: Id, id: Id, from: Id, entity: Id, kind: string): CommandAfter => ({ type: 'addExternal', sketch, id, ref: { type: 'sketch', sketch: from, entity, kind, regions: false } } as unknown as CommandAfter);
 declare function projectSketch(into: Id, input: { sketch: Id; entities?: Id[]; as?: 'source' | 'reference' | 'regions' | 'own' }): { ok: true; commands: CommandAfter[]; ids: Record<string, Id[]> & { [K in keyof typeof PROJECT_SKETCH_IDS_6D]: Id[] } } | { ok: false; message: string };
 declare function sketchSources(sketch: Id, from: Id): { entities?: ({ id: Id; kind: 'point' | 'line' | 'circle' | 'arc' } | SourceSpline)[] };
@@ -328,6 +328,9 @@ export function commandRefusals(): (string | undefined)[] {
     // the same place without `curve`: the curve it means is the grip, so it is refused naming "c2",
     // and the nearest curve that can be trimmed is not trimmed in its place (review 2, major 2a)
     trimRefusal(s, { at: [W / 2 - GRIP / 2, H / 2] }),
+    // the mirrored place lies on the copy `m/1/c2` of the grip, a spline that is not own: refused as
+    // a place on a copy is (6e), which takes the copy measured by its polyline (the light read)
+    trimRefusal(s, { at: [-(W / 2 - GRIP / 2), H / 2] }),
   ];
 }
 
@@ -553,37 +556,51 @@ export function lineAcrossSplineSide(): boolean {
 // Two ends at one place, one of them a spline's (review 2, major 2b): the last control point of
 // a spline lies at the end of a line without being that point, which is what an AI writes and what
 // the converter met. The query lists the place with `fix: 'join'`; `split` without a curve joins
-// the two, and its batch never re-points the spline, which `setCurvePoint` refuses: here the end
-// of the line is named by nothing but the line, so the line is re-pointed onto the spline's point.
-export function endsAtOnePlace(): boolean {
-  const s = 'unjoined';
+// the two, and its batch never re-points the spline, which `setCurvePoint` refuses.
+// - The end of the line named by nothing but the line: the line is re-pointed onto the spline's
+//   point, and the orphan goes.
+// - The end of the line named by a dimension too (`dimensioned`): neither curve is re-pointed, and
+//   a `coincident` joins the two points.
+export function endsAtOnePlace(dimensioned: boolean): boolean {
+  const s = dimensioned ? 'unjoinedHeld' : 'unjoined';
   run(sketchFeature(s));
   run(point(s, 'ua', 0, 0), point(s, 'ub', 20, 0), point(s, 'uc', 10, 12), point(s, 'ud', 0, 0), spline(s, 'us', ['ub', 'uc', 'ua']), line(s, 'ul', 'ud', 'ub'));
+  if (dimensioned) run(constrain(s, 'ux', { type: 'horizontalDistance', a: 'ud', b: 'ub', value: 20, driving: true }));
   const contacts = contactsOf(s);
   const made = planned('split', s, {});
   if (!made.ok) return fail(made.message);
   const state = run(...made.commands);
+  const repointed = made.commands.filter((command) => command.type === 'setCurvePoint').map((command) => command.id);
+  const joined = made.commands.some((command) => command.type === 'addConstraint' && command.constraint.type === 'coincident');
   return (
     contacts.valid === false &&
     contacts.contacts.length === 1 &&
     contacts.contacts[0].kind === 'ends' &&
     contacts.contacts[0].fix === 'join' &&
-    !made.commands.some((command) => command.type === 'setCurvePoint' && command.id === 'us') &&
+    (dimensioned ? repointed.length === 0 && joined : same(repointed, ['ul']) && !joined) &&
     resultOf(state, s).valid &&
     same(regionsOf(state, s), [['ul', 'us']])
   );
 }
 
-// What names a point (review 2, major 2c): the construction leg `l1` of the grip, from the end
-// `a2` of the spline to its second control point `g1`, trimmed away. It crosses nothing, so it
-// goes whole with its constraints, and "its ends that nothing else names go with it": `g1` is an
-// inner control point of `c2`, named by the spline, so it stays, and the spline and the lid with it.
+// What names a point (review 2, major 2c): a construction leg from the end of a spline to its
+// second control point, trimmed away. It crosses nothing, so it goes whole with its constraint,
+// and "its ends that nothing else names go with it". Nothing but the leg and the spline names the
+// far end `e1` (the one constraint is on the line), and `e1` is an inner control point: named by
+// the spline, it stays. Read from the ends of curves, the rule removes it, and `removeEntity`
+// takes the spline with it. (The lid's own leg `l1` cannot show this: a dimension names its far
+// end `g1`, which keeps the point under either reading.)
 export function legTrimmedAway(): boolean {
-  const made = planned('trim', 'lidSketch', { curve: 'l1', at: [W / 2, R + REACH / 2] });
+  const s = 'leg';
+  run(sketchFeature(s));
+  run(point(s, 'e0', 0, 70), point(s, 'e1', 0.2, 76), point(s, 'e2', 8, 80), point(s, 'e3', 14, 74), spline(s, 'es', ['e0', 'e1', 'e2', 'e3']), line(s, 'el', 'e0', 'e1', true));
+  run(constrain(s, 'ev', { type: 'vertical', line: 'el' }));
+  const made = planned('trim', s, { curve: 'el', at: [0, 73] });
   if (!made.ok) return fail(made.message);
-  const state = done(engine.preview({ type: 'batch', commands: made.commands }));
+  const state = run(...made.commands);
   const ids = made.ids as CutIds;
-  return ids.removed.includes('l1') && !ids.removed.includes('g1') && !ids.removed.includes('c2') && same(regionsOf(state, 'lidSketch'), [LID_REGION]) && state.evaluation.features['lid'].status === 'ok';
+  const after = contextOf(state, s).sketch;
+  return ids.removed.includes('el') && ids.removed.includes('ev') && !ids.removed.includes('e1') && !ids.removed.includes('es') && after.points['e1'] !== undefined && after.curves['es'] !== undefined;
 }
 
 // The ends of a copied spline join by position, as the ends of a copied line do (review 2, minor
@@ -639,6 +656,6 @@ export function scenario(): boolean {
   const checks = lidWithGripChecks(lid) && deeperGrip() && lidSection(lid);
   const closed = pebbleChecks(pebble()) && pebbleWithLongLines();
   const refusals = featureRefusals() && commandRefusals().every((text) => text !== undefined) && projectionRefused() && projectionBroken();
-  const beside = lineAcrossSplineSide() && endsAtOnePlace() && legTrimmedAway() && archMirrored();
+  const beside = lineAcrossSplineSide() && endsAtOnePlace(false) && endsAtOnePlace(true) && legTrimmedAway() && archMirrored();
   return ok && checks && closed && refusals && crossing() && sixPoints() && beside && plateWithSplineHole() && notchWithGrip();
 }

@@ -267,6 +267,13 @@ const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
   polygon: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.2, 0] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 },
   // the corner `opposite` of the example of the rectangle, drawn into an empty sketch
   fillet: { corner: 'p1', radius: 5 },
+  // the three below after the rectangle of its example and a line `x` from (20, 15) to (60, 15)
+  // across its right side: the part of `x` outside goes (found by the place alone); `x` grows to
+  // the left side; both are cut. `repair: 'on'` cuts the other crossings of the outline too, as an
+  // AI that means to extrude the sketch passes it
+  trim: { at: [50, 15], repair: 'on' },
+  extend: { curve: 'x', end: 'a', repair: 'on' },
+  split: {},
 };
 export function sketchToolCatalog(): SketchToolDescription[] {
   const describe = (input: SketchToolInput): string =>
@@ -276,7 +283,11 @@ export function sketchToolCatalog(): SketchToolDescription[] {
         ? 'the ID of a point of the sketch (an own point or `origin`)'
         : input.kind === 'option'
           ? `one of ${input.options.map((option) => `"${option}"`).join(', ')}`
-          : `a number, ${rangeText(input.spec)}${input.spec.unit === 'count' || input.spec.unit === 'none' ? '' : `, ${input.spec.unit}`}${input.expression ? ', or an expression' : ''}`;
+          : input.kind === 'curve'
+            ? `the ID of a curve of the sketch${input.reference ? ' (an own curve, or reference geometry: a projected edge, an axis `origin/x` or `origin/y`)' : ' (an own curve)'}`
+            : input.kind === 'place'
+              ? 'a place `[x, y]` in the sketch (coordinates; nothing snaps to it)'
+              : `a number, ${rangeText(input.spec)}${input.spec.unit === 'count' || input.spec.unit === 'none' ? '' : `, ${input.spec.unit}`}${input.expression ? ', or an expression' : ''}`;
   return (Object.keys(SKETCH_TOOLS) as SketchToolName[]).map((tool) => ({
     tool,
     title: SKETCH_TOOLS[tool].title,
@@ -467,6 +478,7 @@ export function apiText(): string {
     '# Sketch tools',
     'A sketch tool draws a whole shape with its constraints from a few inputs; run it with the tool sketch_tool `{ sketch, tool, input }`. An anchor is a place in the sketch, `{ at: [x, y] }`, optionally snapped: `snap: { kind: "point", id }` uses that point (an own point or `origin` is used as it is, a point of projected geometry gets a new point with a coincident constraint; `at` must still be given, a rough position is enough, and the place of the point is used) and `snap: { kind: "curve", id }` puts the point on that curve nearest to `at`. The result lists the IDs of what was made (`ids`), to be used in the next commands: the lines as regions of an extrusion, a line for a horizontal constraint, the size dimension for setField.',
     'A tool may also change what is drawn: the fillet re-points two lines (setCurvePoint) and changes the features of the document that read them in the same batch (`updateFeature`); its `ids` say which features it changed and which to look at, and the answer of sketch_tool lists the problems of the model after the batch, so run it with `preview: true` first when the sketch carries other features.',
+    'A profile with crossing curves (a circle drawn across an outline, an imported sketch) is repaired by `split` without a curve (every crossing becomes a common point, constraints kept, the regions of the features followed) and then `trim` of the pieces that should go, each by a place on it (`at`, without `curve`); `extend` moves an end of a line or an arc to the next curve. The query sketchContacts says where the curves meet and what cannot be cut. An AI that computes its own end points does not need the tools.',
     ...sketchTools.map(sketchToolText),
     '',
     '# Queries',

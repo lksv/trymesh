@@ -89,6 +89,10 @@ export {
   placeAnchor,
   sketchTool,
 } from './sketch-tools';
+export { CUT_IDS, type CutIds, type CurveChanges, type CurvePredicates, type ExtendInput, type PieceShape, type RemovedStretch, type Repair, type SketchContact, type SplitInput, type TrimInput, curvePredicates, curveUnder, extendEnd, extendReach, readersOf, repairsByDefault, trimPiece } from './sketch-cut';
+export { entityOf } from './references/index';
+export { type ContactKind, type ContactPoint, type CurveContacts, type TightPlace, curveContacts, profileOf, profileProblem } from './sketch';
+export { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, stepBase, toolBase } from './references/world';
 export type { Deps } from './evaluate';
 export { AXIS_REACH, ORIGIN_AXES, type OriginAxis, isOriginAxis, underOrigin } from './util';
 export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, lineExtent, solvedCurves } from './sketch';

@@ -377,12 +377,14 @@ export declare function repairsByDefault(document: DocumentAfter, sketch: Id): b
 // sketch of walls, and `off` would give up the regions of the next outline. So the choice is kept
 // with the sketch it was made in and counts only while that sketch is open; in another sketch the
 // checkbox shows the default of the document again.
+// (As implemented, after the review of the implementation: `with` is kept with its sketch as the
+// repair is, since the axes of the origin are in every sketch and a bound by one would carry over.)
 export interface CutOptions {
-  with?: Id;
+  with?: { sketch: Id; id: Id };
   repair?: { sketch: Id; value: Repair };
 }
 export interface SplitOptions {
-  with?: Id;
+  with?: { sketch: Id; id: Id };
   nearest: boolean;
 }
 

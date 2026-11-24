@@ -864,7 +864,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'sketch_tool',
-      description: `Draws a whole shape into a sketch with its constraints from a few inputs and returns the IDs of what it made (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, section Sketch tools. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
+      description: `Draws a whole shape into a sketch with its constraints from a few inputs, or cuts the curves of a sketch (trim, extend, split), and returns the IDs of what it made or changed (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, section Sketch tools. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
       inputSchema: {
         type: 'object',
         properties: {

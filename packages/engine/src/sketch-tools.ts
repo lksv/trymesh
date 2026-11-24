@@ -5,12 +5,13 @@
 // the features that name its curves in the same batch (the fillet), the document.
 import { MAX_NUMBER, type NumberSpec, checkNumber } from './catalog';
 import { documentIds } from './document';
-import { entityOf, kindOf } from './references/index';
+import { entityOf } from './references/index';
 import { CURVE_POINTS, constraintOperands, duplicateOf } from './sketch-content';
 import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
 import { type SolvedCurves, lineExtent, pointJoins, solvedCurves } from './sketch';
-import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
+import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, cutTool, profileSourceOf, readersOf } from './sketch-cut';
+import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
 
 // A place in a sketch and what it should snap to. The app passes a click after snapping, an AI
@@ -50,6 +51,12 @@ export interface SketchToolInputs {
   polygon: { center: Anchor; vertex: Anchor; sides: number; sizeKind?: 'circumscribed' | 'acrossFlats'; size?: number | Expr };
   // `corner`: the point where two lines meet; `radius`: a number or an expression (D52).
   fillet: { corner: Id; radius: number | Expr };
+  // D65: the piece of `curve` nearest to `at` goes; `with` selects which contacts bound it.
+  trim: TrimInput;
+  // D65: the end `end` of a line or an arc moves to the first curve its extension meets.
+  extend: ExtendInput;
+  // D65: curves cut at the points where other curves meet them; without `curve` the whole sketch.
+  split: SplitInput;
 }
 export type SketchToolName = keyof SketchToolInputs;
 
@@ -59,7 +66,12 @@ export type SketchToolInput =
   | { kind: 'point' }
   // `expression`: an expression over parameters is accepted too (it ends up in a dimension)
   | { kind: 'number'; spec: NumberSpec; optional?: boolean; expression?: boolean }
-  | { kind: 'option'; options: readonly string[]; optional?: boolean };
+  | { kind: 'option'; options: readonly string[]; optional?: boolean }
+  // the ID of a curve of the sketch (D65): an own curve; with `reference` also a curve of reference
+  // geometry (a projected edge, an axis of the origin). A copy of a mirror or a pattern is refused.
+  | { kind: 'curve'; reference?: boolean; optional?: boolean }
+  // a place `[x, y]` of the sketch: nothing is made there and nothing snaps to it (D65)
+  | { kind: 'place'; optional?: boolean };
 
 export interface SketchToolSpec {
   title: string;
@@ -122,6 +134,27 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
       moved: 'sketches and plane features on a side face that starts at the corner: their plane moved with the start of its line (empty when there are none)',
       shortened: 'features that read a line of the two by itself: extrusions and revolves whose wall runs along one of them, sketches that project an edge of a side face of either (empty when there are none)',
     },
+  },
+  trim: {
+  title: 'Trim',
+  summary:
+    'Removes the piece of a curve nearest to `at`. A piece is the part between two neighbouring cuts, or between a cut and an end; a cut is a point where another curve crosses the curve, ends on it, or touches it, apart from a common end. `curve` may be left out: the own curve nearest to `at` is trimmed (a place that lies on a projected curve or on a copy of a mirror or a pattern is refused: those are not trimmed; an axis of the origin does not count, and where an own curve crosses a projection or a copy, name the curve). With `curve`, `at` has to be nearer to it than to any other piece on the same line or circle: after a split the ID of a curve names only its first piece, and a place on another piece is refused with the name of that piece. The curves that cut an outline curve are the other outline curves; a construction or reference curve cuts it only when `with` names it (`with`: only the contacts with that curve bound the piece). `repair` (`on`, `off`; left out: on when a feature of the document reads regions of the sketch, off otherwise): on, the trim first cuts every other contact of outline curves in the sketch (as split without curve; contacts inside the removed piece go with it), so each becomes a common point, the profile can close and the regions of the features follow at once; off, only the trimmed curve is cut and its new ends are held on the curves there (pointOnCurve), so no other curve changes and T shapes stay (a sketch of walls). A construction curve is always trimmed that way. Pass `repair` `on` wherever a feature reads regions of the sketch or will; `off` is for a sketch whose T shapes are meant. With `off` in a sketch whose regions a feature reads, a region whose outline loses the piece is rewritten by names and cannot be followed afterwards (`ids.pending`, then `ids.dropped` at the tool that next leaves the sketch valid). What stays keeps its constraints: the piece with the start of the curve keeps its ID; a middle piece removed leaves a new line or arc beyond it, held on the line of the curve (pointOnCurve) or on its circle (the same centre); a circle trimmed becomes an arc under its ID with its constraints. A piece with no cut inside it (a curve that crosses nothing, or a piece left by an earlier split) is removed whole; what held its line or circle moves to a sibling piece on the same line or circle. Two arcs of one circle left without a common end get equalRadius. An end cut off stays, held on the line or circle of the curve, when anything else names it (another curve, any constraint, a feature, a joint), so a dimension of the whole curve still measures it; otherwise it is removed. equalLength and midpoint of a cut line move to a construction line over its old ends (`ids.span`). Where a line only touches an arc (a tangent contact away from their ends), both are cut and the tangency is kept between a line piece and an arc piece that have that point (added when the sketch had none: `ids.constraints`); two arcs that only touch are not cut (`ids.uncut`). A trim cannot stop at a touch that is not cut (two arcs; a line and an arc with the repair off; a circle that would get that one point): a piece that would run through such a touch is refused with the touch named; remove the whole curve with removeEntity, or trim a line and an arc with `repair` `on`. The regions of the features over the sketch follow (`ids.patched`): a region that is gone is replaced by every region after the batch that covers part of it; a region whose outline was opened is dropped (`ids.dropped`); while the sketch still has a contact after the batch the regions are rewritten by names instead (`ids.pending`); a region merged with its neighbour follows into the merged one, so the body grows, and a cut feature then cuts the neighbour too. A region that keeps its name while a hole inside it was opened or closed is in `ids.reshaped`: its body changes without a change of the reference. The edges of chamfers and fillets on a side of a cut curve are rewritten to the pieces (`ids.patched`); an edge whose piece is gone stays in its list while something names a face of that chamfer or fillet at its place or later, and the feature is then in `ids.broken`. Refused: a trim that takes the common end of a tangency off its curve (remove the tangency first); a piece that runs through a touch that is not cut; a place on a curve that is not own; a sketch in conflict. Check `reshaped`, `moved`, `shortened` and `broken`, and the problems of the answer. To repair crossing curves: ask the query sketchContacts where they are, split the whole sketch (split without curve), then trim the pieces that should go, each by a place on it.',
+  inputs: { at: { kind: 'place' }, curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, repair: { kind: 'option', options: ['on', 'off'], optional: true } },
+  ids: CUT_IDS,
+  },
+  extend: {
+  title: 'Extend',
+  summary:
+    'Moves an end of a line (`a` or `b`) or of an arc (`start` or `end`) along the line or the circle of the curve to the first place where the extension meets another curve (for an outline curve another outline curve; for a construction curve any curve; with `with`, that curve only), within that curve\'s own extent. `repair` as for trim: on (the default when a feature reads regions of the sketch), the extend first cuts every contact of outline curves in the sketch and the extended stretch at every outline curve it crosses, and the curve met is cut at the new end; when the curve itself was cut, the piece that holds the end is extended. Off, and for a construction curve, the new end is held on the curve met (pointOnCurve) and nothing else is cut. The old end stays on the line or circle of the curve when anything else names it, else it is removed. Where the extension of a line only touches an arc that is cut there, it stops there too and the tangency is kept between the line and an arc piece that has the new end. Refused: an end that another curve also ends at (also through a coincident constraint), an end lying on another outline curve, an extension that meets nothing, an arc whose extension would reach the curve as it was (its own other end) first, an extension that would leave a contact no tool can cut while the profile was valid (its end on a circle which would then have that one point, a touch along it that is not cut, or a projected curve or a copy that forms regions, crossed or ended on: the profile would become invalid for good; draw across the circle and trim instead, or change the source of the copy), a sketch in conflict. A touch that is not cut does not stop an extension. The regions of the features over the sketch follow, as for trim.',
+  inputs: { curve: { kind: 'curve' }, end: { kind: 'option', options: ['a', 'b', 'start', 'end'] }, with: { kind: 'curve', reference: true, optional: true }, repair: { kind: 'option', options: ['on', 'off'], optional: true } },
+  ids: CUT_IDS,
+  },
+  split: {
+  title: 'Split',
+  summary:
+    'Cuts curves into pieces at the points where other curves cross them, end on them or touch them, and nothing is removed. With `curve`: that curve at all its cuts (`with`: at its contacts with that curve only; `at`: at the one cut nearest to `at`, not on a circle). Without `curve` (and without `with` and `at`): every contact of two outline curves in the sketch, which is what makes a profile with crossing curves invalid, and two ends at one place that are not joined are joined (the curve whose end nothing else names re-pointed onto the other point, else a coincident constraint); a sketch with nothing to cut gives an empty batch when its profile is valid, and a refusal with the reason when it is invalid for something a cut cannot repair (curves lying on each other, a curve of no length, two arcs that only touch, a circle with one point). The query sketchContacts lists the places beforehand, each with what split would do there. Each piece is a curve of its own, so each region between crossing curves has its own name (a line through a circle gives two regions, named by the two arcs and the middle piece). Constraints stay as for trim; a circle cut at two or more points becomes arcs on its centre, the first under its ID. A circle touched at one point only cannot be split (`ids.uncut`). The regions of the features over the sketch follow: a region cut into several is replaced by all of them, so the bodies do not change. Then trim the pieces that should go, each by a place on it.',
+  inputs: { curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, at: { kind: 'place', optional: true } },
+  ids: CUT_IDS,
   },
 };
 
@@ -276,6 +309,20 @@ function pointProblem(context: SketchToolContext, v: unknown): string | undefine
   return pointAt(context, v) ? undefined : `"${v}" has no solved position`;
 }
 
+// A curve given by its ID: the sketch has it as an own curve (with `reference`, also as a curve of
+// reference geometry: a projected edge, an axis of the origin), and it has a solved position.
+// A copy of a mirror or a pattern is refused for both.
+function curveInputProblem(context: SketchToolContext, v: unknown, reference: boolean): string | undefined {
+  if (typeof v !== 'string') return 'the ID of a curve of the sketch is expected';
+  const entity = entityOf(context.sketch, v);
+  const curve = solved(context).curves.get(v);
+  if (entity?.kind === 'point') return `"${v}" is a point, not a curve`;
+  if (!entity || !curve) return `the sketch has no curve "${v}"`;
+  if (curve.source === 'derived') return `"${v}" is a copy of a mirror or a pattern; it follows its source, which is what a tool cuts`;
+  if (curve.source !== 'own' && !reference) return `"${v}" is reference geometry; give an own curve of the sketch`;
+  return shapeOf(context, v) ? undefined : `"${v}" has no solved position`;
+}
+
 // The inputs against the catalog; the first problem as text.
 function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: unknown): string | undefined {
   if (!isObject(input)) return 'the input of a tool must be an object';
@@ -283,7 +330,7 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
   for (const [name, kind] of Object.entries(spec.inputs)) {
     const value = input[name];
     if (value === undefined) {
-      if (kind.kind === 'anchor' || kind.kind === 'point' || !kind.optional) return `the input "${name}" is missing`;
+      if (kind.kind === 'anchor' || kind.kind === 'point' || kind.optional !== true) return `the input "${name}" is missing`;
       continue;
     }
     if (kind.kind === 'anchor') {
@@ -292,6 +339,12 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
     } else if (kind.kind === 'point') {
       const problem = pointProblem(context, value);
       if (problem) return `${name}: ${problem}`;
+    } else if (kind.kind === 'curve') {
+      const problem = curveInputProblem(context, value, kind.reference === true);
+      if (problem) return `${name}: ${problem}`;
+    } else if (kind.kind === 'place') {
+      if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === 'number' && Number.isFinite(n))) return `${name}: two finite numbers \`[x, y]\` are expected`;
+      if (!value.every((n) => Math.abs(n) <= MAX_NUMBER)) return `${name}: out of the range ±${MAX_NUMBER}`;
     } else if (kind.kind === 'option') {
       if (typeof value !== 'string' || !kind.options.includes(value)) return `${name}: one of ${kind.options.join(', ')} is expected`;
     } else if (typeof value === 'string') {
@@ -417,25 +470,6 @@ function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'],
 
 // ---------------------------------------------------------------- the fillet (D52)
 
-// Which features read a profile from a sketch, by feature type: a feature type added later does
-// not compile until it says whether it has a profile source (the fillet patches its regions and
-// walls).
-const PROFILE_SOURCES: { [T in Feature['type']]: (feature: Extract<Feature, { type: T }>) => ProfileSource | undefined } = {
-  plane: () => undefined,
-  sketch: () => undefined,
-  extrude: (feature) => feature.profile,
-  pattern: () => undefined,
-  mesh: () => undefined,
-  hole: () => undefined,
-  combine: () => undefined,
-  split: () => undefined,
-  revolve: (feature) => feature.profile,
-  chamfer: () => undefined,
-  fillet: () => undefined,
-  insert: () => undefined,
-};
-const profileSourceOf = (feature: Feature): ProfileSource | undefined => (PROFILE_SOURCES[feature.type] as (f: Feature) => ProfileSource | undefined)(feature);
-
 type LineCurve = Extract<Curve, { type: 'line' }>;
 
 // The positions the tool reads: the solved ones (the origin, projected points and the far points
@@ -480,10 +514,6 @@ function cornerLines(context: SketchToolContext, corner: Id): [Id, Id] | string 
   }
   return [lines[0], lines[1]].sort() as [Id, Id];
 }
-
-// The side faces of a line and of a wall along it are named by the curve.
-const sideOf = (face: FaceName, curves: readonly Id[]): boolean => (face.role === 'side' || face.role === 'wallSide') && curves.includes(face.curve);
-const planeOn = (plane: PlaneRef, curves: readonly Id[]): boolean => plane.kind === 'face' && sideOf(plane.face, curves);
 
 function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newId: NewId): SketchToolResult {
   const { sketch, document } = context;
@@ -561,8 +591,7 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   const both = (list: readonly Id[]): boolean => lines.every((line) => list.includes(line));
   const starting = lines.filter((_, i) => curves[i].a === corner);
   const patched: Id[] = [];
-  const moved: Id[] = [];
-  const shortened: Id[] = [];
+  const walls: Id[] = [];
   for (const feature of document.features) {
     const source = profileSourceOf(feature);
     if (source?.sketch === id && source.type === 'regions' && source.regions.some((region) => both(region.outerLoop))) {
@@ -572,11 +601,14 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
     } else if (source?.sketch === id && source.type === 'wall' && both(source.curves)) {
       commands.push({ type: 'updateFeature', id: feature.id, patch: { profile: { curves: [...source.curves, arc].sort() } } as FeaturePatch });
       patched.push(feature.id);
-    } else if (source?.sketch === id && source.type === 'wall' && lines.some((line) => source.curves.includes(line))) shortened.push(feature.id);
-    if ((feature.type === 'sketch' && planeOn(feature.plane, starting)) || (feature.type === 'plane' && planeOn(feature.base, starting))) moved.push(feature.id);
-    if (feature.type === 'sketch' && Object.values(feature.external).some((ref) => kindOf(ref).faces(ref).some((face) => sideOf(face, lines)))) shortened.push(feature.id);
+    } else if (source?.sketch === id && source.type === 'wall' && lines.some((line) => source.curves.includes(line))) walls.push(feature.id);
   }
-  return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved, shortened } };
+  // what reads the lines directly: one function with the cuts of D65 (`readersOf`), given the plan
+  // of the fillet as data
+  const changes: CurveChanges = { changed: [...lines], restarted: starting, rekinded: [], removed: [], removedPoints: [], added: [arc], span: [], pieces: Object.fromEntries(lines.map((line) => [line, [line]])), stretches: [{ curves: [...lines], bounds: [end0, end1] }] };
+  const readers = readersOf(document, id, changes);
+  const shortened = document.features.map((f) => f.id).filter((feature) => walls.includes(feature) || readers.shortened.includes(feature));
+  return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved: readers.moved, shortened } };
 }
 
 // A short text of a number for a message.
@@ -605,7 +637,14 @@ export function sketchTool<K extends SketchToolName>(tool: K, context: SketchToo
   if (typeof tool !== 'string' || !has(SKETCH_TOOLS, tool)) return failed(`unknown sketch tool "${String(tool)}"; the tools are ${Object.keys(SKETCH_TOOLS).join(', ')}`);
   const problem = inputProblem(SKETCH_TOOLS[tool], context, input);
   if (problem) return failed(problem);
-  const run: { [T in SketchToolName]: (context: SketchToolCall, input: SketchToolInputs[T], newId: NewId) => SketchToolResult } = { rectangle, polygon, fillet };
+  const run: { [T in SketchToolName]: (context: SketchToolCall, input: SketchToolInputs[T], newId: NewId) => SketchToolResult } = {
+    rectangle,
+    polygon,
+    fillet,
+    trim: (call, given, ids) => cutTool(call, { tool: 'trim', ...given }, ids),
+    extend: (call, given, ids) => cutTool(call, { tool: 'extend', ...given }, ids),
+    split: (call, given, ids) => cutTool(call, { tool: 'split', ...given }, ids),
+  };
   return (run[tool] as (context: SketchToolCall, input: SketchToolInputs[K], newId: NewId) => SketchToolResult)(context, input, newId);
 }
 

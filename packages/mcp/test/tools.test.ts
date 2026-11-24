@@ -155,8 +155,22 @@ describe('sketch tools', () => {
       execute(engine, sketch('s'));
       // the fillet needs a corner: its example names the corner the example of the rectangle leaves
       if (entry.tool === 'fillet') ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: catalog[0].example });
+      // trim, extend and split (D65) need a rectangle and a line across its right side
+      if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') {
+        ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: catalog[0].example });
+        execute(engine, {
+          type: 'batch',
+          commands: [
+            { type: 'addPoint', sketch: 's', id: 'xa', x: 20, y: 15 },
+            { type: 'addPoint', sketch: 's', id: 'xb', x: 60, y: 15 },
+            { type: 'addCurve', sketch: 's', id: 'x', curve: { type: 'line', a: 'xa', b: 'xb' } },
+          ],
+        });
+      }
       const made = ok(engine, 'sketch_tool', { sketch: 's', tool: entry.tool, input: entry.example });
       expect(made, entry.tool).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true }] });
+      // the cuts leave a valid profile (trim and extend with `repair: 'on'`): one region, two after the extend
+      if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') expect(made.sketches, entry.tool).toMatchObject([{ profileValid: true, regions: entry.tool === 'extend' ? 2 : 1 }]);
       // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
       expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter((name) => name !== 'size' || 'size' in entry.example).sort());
     }
@@ -172,6 +186,13 @@ describe('sketch tools', () => {
     expect(catalog.find((entry) => entry.tool === 'fillet')!.inputs).toEqual([
       { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: true },
       { name: 'radius', description: 'a number, positive, mm, or an expression', required: true },
+    ]);
+    // the two input kinds of trim, extend and split (D65)
+    expect(catalog.find((entry) => entry.tool === 'trim')!.inputs).toEqual([
+      { name: 'at', description: 'a place `[x, y]` in the sketch (coordinates; nothing snaps to it)', required: true },
+      { name: 'curve', description: 'the ID of a curve of the sketch (an own curve)', required: false },
+      { name: 'with', description: 'the ID of a curve of the sketch (an own curve, or reference geometry: a projected edge, an axis `origin/x` or `origin/y`)', required: false },
+      { name: 'repair', description: 'one of "on", "off"', required: false },
     ]);
     expect(text).toContain('A tool may also change what is drawn: the fillet re-points two lines (setCurvePoint)');
     const tool = tools().find((candidate) => candidate.name === 'sketch_tool')!;
@@ -298,7 +319,7 @@ describe('sketch tools', () => {
       expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [x, y] }, vertex: { at: [x * (1 - 1e-9), y * (1 - 1e-9)] }, sides: 6, size: 10 } }), `${x} ${y}`).toMatch(/reaches out of the range/);
     }
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
-    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet');
+    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet, trim, extend, split');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
     expect(error({ sketch: 's', tool: 'polygon' })).toMatch(/argument "input": an object/);
     expect(error({ sketch: 's', tool: 'polygon', input: [hexagon] })).toMatch(/argument "input"/);

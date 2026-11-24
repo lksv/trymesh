@@ -434,18 +434,20 @@ const ownCurve = (curve: Id, context: SketchContextStandIn): boolean => curve in
 // `with` of the options, while the open sketch has that curve (the options outlive a sketch). What
 // an ID is in a sketch is asked of the engine (`entityOf`), not of the lists of the result, so an
 // axis of the origin counts whether 6a2 puts the axes into the result or not.
-const bound = (context: SketchContextStandIn, id: Id | undefined): Id | undefined => {
-  const entity = id === undefined ? undefined : entityOf(context.feature, id);
-  return entity !== undefined && entity.kind !== 'point' ? id : undefined;
+const bound = (context: SketchContextStandIn, chosen: { sketch: Id; id: Id } | undefined): Id | undefined => {
+  const entity = chosen === undefined || chosen.sketch !== context.feature.id ? undefined : entityOf(context.feature, chosen.id);
+  return entity !== undefined && entity.kind !== 'point' ? chosen?.id : undefined;
 };
 // The repair as chosen, while the sketch it was chosen in is open; in another sketch the choice
 // does not count, and the first change of the checkbox there replaces it.
 const chosenRepair = (context: SketchContextStandIn, options: CutOptions): Repair | undefined => (options.repair?.sketch === context.feature.id ? options.repair.value : undefined);
 // What the three panels share: the curve the tool is bounded by, taken from the one curve selected
 // when the button is pressed, and cleared.
-const boundRows = <O extends { with?: Id }>(host: CutHost, value: O, set: (value: O) => void): HTMLElementStandIn[] => {
+const boundRows = <O extends { with?: { sketch: Id; id: Id } }>(host: CutHost, value: O, set: (value: O) => void): HTMLElementStandIn[] => {
   const selected = host.sketch?.selection ?? [];
-  return [row(`Up to: ${value.with ?? 'the nearest curves'}`, button('Use the selected curve', () => set({ ...value, with: selected[0] }), selected.length === 1), button('Clear', () => set({ ...value, with: undefined }), value.with !== undefined))];
+  const sketch = host.sketchContext()?.feature.id ?? '';
+  const current = value.with?.sketch === sketch ? value.with.id : undefined;
+  return [row(`Up to: ${current ?? 'the nearest curves'}`, button('Use the selected curve', () => set({ ...value, with: { sketch, id: selected[0] } }), selected.length === 1), button('Clear', () => set({ ...value, with: undefined }), current !== undefined))];
 };
 // The repair as a checkbox whose state without a choice is the default of the document. A choice
 // away from the default is kept with the sketch it was made in.

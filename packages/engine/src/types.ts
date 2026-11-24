@@ -1528,7 +1528,7 @@ export interface SketchResult {
   conflicting: Id[];
   redundant: Id[];
   measurements: Record<Id, number>; // hodnoty referenčních kót
-  valid: boolean; // false = křivky se kříží, profil je neplatný
+  valid: boolean; // false: the profile is invalid (curves cross or touch away from common points, or another reason); the query `sketchContacts` says where and why, and the sketch tool `split` without a curve repairs what can be cut
   regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
 }
 

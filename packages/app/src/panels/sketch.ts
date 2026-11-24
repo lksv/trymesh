@@ -6,7 +6,7 @@ import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
 import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-diagnosis';
-import { type SketchHost, type SketchMode, addConstraints, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
+import { type SketchHost, type SketchMode, addConstraints, contactsOf, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
 import { SKETCH_TOOL_UI } from '../sketch-tools';
 import { measure, operandsOf } from '../sketch-view';
 import { referenceUi } from '../references';
@@ -47,8 +47,19 @@ function sketchStatus(host: SketchHost, m: SketchMode): HTMLElement[] {
   return [
     h('p', { className: `badge ${state[1]}` }, state[0]),
     r.valid ? h('p', { className: 'hint' }, `Uzavřených oblastí: ${r.regions.length}`) : h('p', { className: 'issue error' }, 'Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků.'),
+    ...(r.valid ? [] : [contactsHint(host, m.id)]),
     ...host.issues(result).filter((element) => !element.classList.contains('error') || r.valid),
   ];
+}
+
+// D65: what repairs an invalid profile, from the query sketchContacts: the places where its curves
+// meet, marked in the view and cut by Split crossings (the tool Split), or why nothing can be cut.
+function contactsHint(host: SketchHost, sketch: Id): HTMLElement {
+  const found = contactsOf(host, sketch);
+  if (!found) return h('p', { className: 'hint' }, 'The contacts of the curves are not known.');
+  if (found.total === 0) return h('p', { className: 'hint' }, `Nothing to cut: ${found.reason ?? 'no contact found'}.`);
+  const stuck = found.reason ? ` Not every one can be cut: ${found.reason}.` : '';
+  return h('p', { className: 'hint' }, `Contacts marked in the view: ${found.total}. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go.${stuck}`);
 }
 
 // Při tažení se panel nepřestavuje, jen stav určenosti.

@@ -463,6 +463,129 @@ function compatible(A: Shape, B: Shape, tol: number): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------- contacts as points to cut at (D65)
+
+// Where two curves meet as points a cut can be made at: what the tools trim, extend and split read
+// (sketch-cut.ts) and the query `sketchContacts`. It is built from the same carrier contacts, ends,
+// tolerance and reach around a shared vertex as `compatible`, which keeps its own code; the middles
+// `compatible` also tries are only a probe for an overlap, never a place to cut. Each point has
+// a kind:
+// - `crossing`: the carriers cross there, away from the ends of both;
+// - `touch`: the carriers are tangent there (one carrier contact of a line and a round curve, or of
+//   two round curves), away from the ends of both;
+// - `end`: an end of one curve lies on the other away from its ends (a T). A tangent line ends on
+//   a circle only to the precision of a double root (measured: 3e-5 mm from the touch of the
+//   carriers), so a touch within the reach of such an end is that end's contact, marked tangent,
+//   and not a second point beside it;
+// - `overlap`: of two lines on one line or two arcs on one circle that share a stretch, an end of
+//   one that lies strictly inside the other.
+// No point of any kind lies within the reach of a vertex the two share. Each place once, an end of
+// either curve before a computed point at the same place.
+// - `ends`: ends of the two at one place (within the tolerance) that are not one vertex, as the
+//   indices of the end of each (0 the start, 1 the end): the profile rejects them and a cut cannot
+//   repair them; joining them can.
+// - `lying`: the two lie on each other along a stretch (an overlap, a duplicate) or are two curves
+//   of one circle of which one is a circle: the profile rejects them whatever is cut.
+export type ContactKind = 'crossing' | 'touch' | 'end' | 'overlap';
+export interface ContactPoint {
+  at: Vec2;
+  kind: ContactKind;
+  tangent: boolean; // the carriers are tangent there: always for a touch, possible for an end
+}
+export interface CurveContacts {
+  points: ContactPoint[];
+  ends: [number, number][];
+  lying: boolean;
+}
+
+function shapeContacts(A: Shape, B: Shape, tol: number): CurveContacts {
+  const endsOf = (s: Shape): [string, Vec2][] => (s.kind === 'circle' ? [] : [[s.a, s.pa], [s.b, s.pb]]);
+  const [endsA, endsB] = [endsOf(A), endsOf(B)];
+  const ends: [number, number][] = [];
+  endsA.forEach(([ka, pa], i) => endsB.forEach(([kb, pb], j) => ka !== kb && dist2(pa, pb) <= tol && ends.push([i, j])));
+  const atEnd = (p: Vec2, list: [string, Vec2][]): boolean => list.some(([, q]) => dist2(p, q) <= tol);
+  const points: ContactPoint[] = [];
+  const add = (at: Vec2, kind: ContactKind, tangent: boolean): void => {
+    if (!points.some((q) => dist2(at, q.at) <= tol)) points.push({ at, kind, tangent });
+  };
+  const [roundA, roundB] = [roundOf(A), roundOf(B)];
+  const sameCircle = roundA !== undefined && roundB !== undefined && dist2(roundA.c, roundB.c) <= tol && Math.abs(roundA.r - roundB.r) <= tol;
+  const sameLine = A.kind === 'line' && B.kind === 'line' && lineDistance(B.pa, A) <= tol && lineDistance(B.pb, A) <= tol;
+  if (sameCircle || sameLine) {
+    if (A.kind === 'circle' || B.kind === 'circle') return { points: [], ends, lying: true };
+    // an overlap: the ends of each strictly inside the other
+    for (const [own, other] of [
+      [endsA, B],
+      [endsB, A],
+    ] as const) {
+      for (const [, p] of own) if (distanceTo(p, other) <= tol && !atEnd(p, endsOf(other))) add(p, 'overlap', false);
+    }
+    const lying = points.length > 0 || distanceTo(midpoint(A as Open), B) <= tol || distanceTo(midpoint(B as Open), A) <= tol;
+    return { points, ends, lying };
+  }
+  const shared = endsA.filter(([ka]) => endsB.some(([kb]) => kb === ka)).map(([, p]) => p);
+  const reach = 10 * tol + (roundA || roundB ? Math.sqrt(8 * Math.max(roundA?.r ?? 0, roundB?.r ?? 0) * tol) : 0);
+  const near = (p: Vec2): boolean => distanceTo(p, A) <= tol && distanceTo(p, B) <= tol && !shared.some((v) => dist2(p, v) <= reach);
+  const carrier = carrierContacts(A, B, tol);
+  // the carriers touch: one contact of a line and a round curve, or of two round curves
+  const touch = (roundA !== undefined || roundB !== undefined) && carrier.length === 1 ? carrier[0] : undefined;
+  // the ends first, so that a T is cut at the end itself and not at a computed point beside it
+  const endsOn = [...endsA, ...endsB].map(([, p]) => p).filter((p) => near(p) && !(atEnd(p, endsA) && atEnd(p, endsB)));
+  const merged = touch !== undefined && endsOn.some((p) => dist2(p, touch) <= reach);
+  for (const p of endsOn) add(p, 'end', merged && dist2(p, touch as Vec2) <= reach);
+  for (const p of carrier) {
+    if (merged || !near(p)) continue;
+    if (atEnd(p, endsA) && atEnd(p, endsB)) continue; // two ends at one place: `ends`
+    add(p, atEnd(p, endsA) || atEnd(p, endsB) ? 'end' : touch ? 'touch' : 'crossing', touch !== undefined);
+  }
+  return { points, ends, lying: false };
+}
+
+// The distance of a point from the line (the whole line, not the segment) of a line shape.
+function lineDistance(p: Vec2, s: Extract<Shape, { kind: 'line' }>): number {
+  const d = sub2(s.pb, s.pa);
+  const length = len2(d);
+  return length === 0 ? dist2(p, s.pa) : Math.abs(cross2(d, sub2(p, s.pa))) / length;
+}
+
+// The shape of a curve of a sketch with its ends at their joined vertices (as the profile reads
+// it), or undefined when it has no position or no length. A line is the stretch `lineExtent`
+// gives: an axis of the origin is a whole line, whose ends are no vertex of anything.
+function shapeOfCurve(curve: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): Shape | undefined {
+  if (curve.shape.type === 'line' && isOriginAxis(curve.id)) {
+    const extent = lineExtent(curve, geometry) as { a: Point2; b: Point2 };
+    return { id: curve.id, kind: 'line', a: `\u0000${curve.id}/a`, b: `\u0000${curve.id}/b`, pa: xy(extent.a), pb: xy(extent.b) };
+  }
+  const vertex = (id: Id): CurveEnd | undefined => (has(geometry.points, joins(id)) ? { key: joins(id), p: xy(geometry.points[joins(id)]) } : undefined);
+  const centre = (id: Id): Vec2 | undefined => (has(geometry.points, id) ? xy(geometry.points[id]) : undefined);
+  const c = placedCurve(curve, geometry.radii, vertex, centre);
+  if (!c) return undefined;
+  switch (c.type) {
+    case 'circle':
+      return c.radius > LENGTH_TOLERANCE ? { id: curve.id, kind: 'circle', c: c.center, r: c.radius } : undefined;
+    case 'line':
+      return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE ? { id: curve.id, kind: 'line', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p } : undefined;
+    case 'arc':
+      return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE && c.radius > LENGTH_TOLERANCE ? { id: curve.id, kind: 'arc', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p, c: c.center, r: c.radius, start: c.start, sweep: c.sweep } : undefined;
+    default:
+      return unreachable(c, 'curve');
+  }
+}
+
+// The contacts of two curves of a sketch (`CurveContacts`), with the joins of the profile (`joins`,
+// the vertex of a point). Undefined when either has no position or no length.
+export function curveContacts(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): CurveContacts | undefined {
+  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+  return A && B ? shapeContacts(A, B, LENGTH_TOLERANCE) : undefined;
+}
+
+// Whether two curves of a sketch touch apart from a vertex they share: the test of the profile
+// (`compatible`) for one pair. A curve without a position or a length touches everything.
+export function curvesTouch(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): boolean {
+  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+  return !A || !B || !compatible(A, B, LENGTH_TOLERANCE);
+}
+
 // Na kolik úseček se dělí oblouk. Strop brání tomu, aby obří poloměr nebo nepatrná tolerance
 // vyžádaly milióny úseček (pro r/tolerance nad 1e16 vychází krok nula); nad ním už dělení
 // toleranci nedodrží.
@@ -477,9 +600,21 @@ export function segments(sweep: number, radius: number, chordTolerance: number):
 // Křivka, která oblouk těsně míjí, pak jeho lomenou čáru protne, a oblast tenčí než tolerance
 // splaskne do dvou bodů. Z takových smyček by nevzniklo uzavřené těleso.
 export function soundTessellation(regions: Region[]): boolean {
+  return tessellationProblem(regions) === undefined;
+}
+
+// Why the polygons of regions would not make a closed body, with the curves and a place (D65): a
+// loop that collapses to fewer than three points (a region thinner than the chord tolerance, whose
+// arc is a single chord), or two polygon edges that cross though their curves do not.
+export interface TightPlace {
+  curves: Id[]; // the curves of the collapsed loop, or the two whose polygon edges cross
+  at: Vec2; // a place on them, in the sketch
+}
+function tessellationProblem(regions: Region[]): TightPlace | undefined {
   interface Segment {
     a: string;
     b: string;
+    curve: Id;
     ax: number;
     ay: number;
     bx: number;
@@ -492,7 +627,7 @@ export function soundTessellation(regions: Region[]): boolean {
   for (const region of regions) {
     for (const loop of [region.outer, ...region.holes]) {
       const count = loop.keys.length;
-      if (count < 3) return false;
+      if (count < 3) return { curves: [...new Set(loop.curves)].sort(), at: [loop.xy[0], loop.xy[1]] };
       for (let i = 0; i < count; i++) {
         const j = (i + 1) % count;
         const [a, b] = [loop.keys[i], loop.keys[j]];
@@ -500,7 +635,7 @@ export function soundTessellation(regions: Region[]): boolean {
         if (seen.has(key)) continue; // hranu sdílejí sousední oblasti
         seen.add(key);
         const [ax, ay, bx, by] = [loop.xy[2 * i], loop.xy[2 * i + 1], loop.xy[2 * j], loop.xy[2 * j + 1]];
-        list.push({ a, b, ax, ay, bx, by, minX: Math.min(ax, bx), maxX: Math.max(ax, bx) });
+        list.push({ a, b, curve: loop.curves[i], ax, ay, bx, by, minX: Math.min(ax, bx), maxX: Math.max(ax, bx) });
       }
     }
   }
@@ -513,10 +648,14 @@ export function soundTessellation(regions: Region[]): boolean {
       const q = list[j];
       if (p.a === q.a || p.a === q.b || p.b === q.a || p.b === q.b) continue; // sousedé se dotýkají ve vrcholu
       if (Math.max(q.ay, q.by) < Math.min(p.ay, p.by) || Math.min(q.ay, q.by) > Math.max(p.ay, p.by)) continue;
-      if (side(p, q.ax, q.ay) * side(p, q.bx, q.by) < 0 && side(q, p.ax, p.ay) * side(q, p.bx, p.by) < 0) return false;
+      const [qa, qb] = [side(p, q.ax, q.ay), side(p, q.bx, q.by)];
+      if (qa * qb < 0 && side(q, p.ax, p.ay) * side(q, p.bx, p.by) < 0) {
+        const t = qa / (qa - qb); // where q crosses the line of p
+        return { curves: [...new Set([p.curve, q.curve])].sort(), at: [q.ax + t * (q.bx - q.ax), q.ay + t * (q.by - q.ay)] };
+      }
     }
   }
-  return true;
+  return undefined;
 }
 
 // The profile of the own curves with the coincident joins (the form the tests call).
@@ -527,6 +666,18 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
 // Najde oblasti z křivek, které je tvoří (`regions`), seřazených podle ID; konstrukční a promítnuté
 // křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
 export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Profile {
+  return buildProfile(curves, joins, geometry, chordTolerance).profile;
+}
+
+// Why a profile is invalid when no pair of its curves touches (D65): the last check of the profile
+// is on the polygons a body would be built from (`soundTessellation`), and this says which curves
+// and where. Undefined when the profile is valid, or invalid for a pair that touches, two ends that
+// are not joined or a curve of no length (the contacts say those).
+export function profileProblem(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): TightPlace | undefined {
+  return buildProfile(curves, joins, geometry, chordTolerance).tight;
+}
+
+function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): { profile: Profile; tight?: TightPlace } {
   const tol = LENGTH_TOLERANCE;
   const vertex = (id: Id): CurveEnd => ({ key: joins(id), p: xy(geometry.points[joins(id)]) });
   const centre = (id: Id): Vec2 => xy(geometry.points[id]);
@@ -568,7 +719,7 @@ export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id,
     }
   }
   for (let i = 0; i < shapes.length && valid; i++) for (let j = i + 1; j < shapes.length && valid; j++) if (!compatible(shapes[i], shapes[j], tol)) valid = false;
-  if (!valid) return { valid: false, regions: [] };
+  if (!valid) return { profile: { valid: false, regions: [] } };
 
   // ---- rovinný graf: půlhrany úseček a oblouků
   interface Half {
@@ -794,8 +945,9 @@ export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id,
     if (parentFace) parentFace.region.holes.push(component.hole());
   });
   const regions = faces.map((f) => f.region).sort((p, q) => (p.ref.outerLoop.join('|') < q.ref.outerLoop.join('|') ? -1 : 1));
-  if (!soundTessellation(regions)) return { valid: false, regions: [] };
-  return { valid: true, regions };
+  const tight = tessellationProblem(regions);
+  if (tight) return { profile: { valid: false, regions: [] }, tight };
+  return { profile: { valid: true, regions } };
 }
 
 // ---------------------------------------------------------------- checks of an outline

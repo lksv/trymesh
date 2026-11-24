@@ -1,6 +1,6 @@
 # 6a Preparatory part and shared vocabulary of step 6 (D64)
 
-**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews". Implemented 2026-11-17 in the branch `d36/6a`, the five parts in the order 4, 3, 1, 2, 5, as recorded in "As implemented".** The owner's open question was not answered before the implementation; it follows the recommendation (derived geometry as a kind of entry of `external`). The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
+**State: designed 2026-11-17 against `master` at `9162198` (schema version 9), on Opus 5.5; reviewed as recorded in "Reviews". Implemented 2026-11-17 in the branch `d36/6a`, the five parts in the order 4, 3, 1, 2, 5, as recorded in "As implemented".** The owner's open question was not answered before the implementation; it follows the recommendation (derived geometry as a kind of entry of `external`). The owner answered it on 2026-11-24, after the review of the whole step: `external`, as implemented; the same review found where later packages leave the vocabulary, recorded in "Amendments after the review of step 6". The plan of the step is [6-plan.md](../6-plan.md), "6a Preparatory part and shared vocabulary"; the owner agreed to all ten of its recommendations on 2026-11-17, among them question 4 (which geometry forms regions), which this design writes down.
 
 Files: [contract.ts](contract.ts) (the types and signatures of the five parts and of the vocabulary), [calls.ts](calls.ts) (existing documents and calls as they stay, and how 6b, 6c, 6d, 6e and 6f plug in).
 
@@ -175,6 +175,8 @@ So 6a makes 33 switches exhaustive (22 in the engine, 4 in the adapter, 7 in the
 
 What 6b to 6f share, decided here so that none of them decides it by being merged first.
 
+**Amended 2026-11-24.** Later packages changed several of the rules below, and the owner answered the question of "Open". The changes are listed, each with the package that makes it, in "Amendments after the review of step 6" near the end of this file; where that section and the text below differ, that section holds. The text below is left as it was reviewed and implemented.
+
 ### IDs
 
 - An ID a caller gives has no slash and is not `origin` (as today). An ID with a slash is derived: `<owner>/<local>`, the owner being the part before the first slash, an entry of `external` of the same sketch or `origin`. `local` is not empty and may hold slashes. No document can hold a derived ID already, and two entries never share one.
@@ -276,7 +278,7 @@ A side face is named by the ID of its curve whatever its source: `{ feature, rol
 
 ## Known limits
 
-- **`derivedPoints(id, ref)`** stays exported with its signature; it is right for the kinds whose entities follow from the entry alone. Nothing calls it after part 5 outside the engine's own constraint rule; 6c, whose entities need the sketch, removes it from the exports or gives it the sketch.
+- **`derivedPoints(id, ref)`** stays exported with its signature; it is right for the kinds whose entities follow from the entry alone. Nothing calls it after part 5 outside the engine's own constraint rule; 6c, whose entities need the sketch, removes it from the exports or gives it the sketch. (Done by the fixes of the review of the implementation: the constraint rule reads the point entities of the entry from the registry, and `derivedPoints` is gone.)
 - **Ring 2** (`OutlineCurve`) is not exhaustive; a package that adds a variant there makes it so.
 - **The text for an unknown kind of entry** names only the edge until 6b.
 - **A kind whose entities live outside the sketch** (6f's stored outline) has to copy the list of its entities into its entry, or `entityOf` cannot answer from the sketch alone: a constraint of 6f.
@@ -297,6 +299,7 @@ A side face is named by the ID of its curve whatever its source: `{ feature, rol
 ## Open
 
 1. **Derived geometry as a kind of entry of `external`** (a mirror is `addExternal { ref: { type: 'mirror', … } }`), or a second map with commands of its own and a schema step? *Recommendation: `external`, for the reasons of "One family of entries".*
+    - **Answered by the owner on 2026-11-24: `external`**, as implemented ("Amendments after the review of step 6", the decision).
 
 ## Reviews
 
@@ -384,6 +387,7 @@ As designed: `packages/app/src/sketch-tools/` with `spec.ts` (`SketchToolUi`, `S
 - **`hovers` also means "no marker of a snap and no shape in progress"**: the mode tells the select tool from the drawing tools by it, as `m.tool !== 'select'` did.
 - **A click whose pointer misses the plane of the sketch** does nothing for every tool. Before, the fillet then said "Click a point where two lines meet."; the pointer misses the plane only when the view looks along it.
 - **Enter** calls `sketchFinish`, which runs the tool's `finish` with the places kept; no tool of today has one.
+- **Fixed after the review of the implementation** (no tool of today is affected, so the snapshots stay): a tool without `clicks` that keeps places (6d's spline) had no redraw, because the mode keeps the returned places only after `click` returns, so a redraw inside `click` drew none; the mode now redraws the scene after such a click when places were kept before it or are kept after it. `finish` returns the places to keep, as `click` does (the contract's `finish` returns nothing), so a tool can refuse too few places and keep them; it is called only when places are kept; and the key Enter it takes is kept from the element in focus (`preventDefault`), so it does not also click a focused button. `packages/app/test/sketch-tool-table.test.ts` drives a collecting tool, a one-click tool and a tool with its own picker through `sketchClick`, `settleSketch` and `sketchFinish`; `packages/app/test/review.test.ts` checks the key.
 - `placeAt` (the place under the pointer as a tool picks it) is exported for `packages/app/test/sketch-tool-table.test.ts`, which checks `picks: 'sketch'`, `'curve'` with and without `eligible`, and a tool's own picker, and the order and kinds of the table.
 
 ### Part 3: every switch on the kind of a sketch curve exhaustive
@@ -395,7 +399,7 @@ As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINT
 - **P4.** The dimension of a round curve is `roundDimension`, a switch over the kinds of the app; `sort` (P3) is one too.
 - **A1, A2.** The adapter throws its text of today, with the value as `cause`.
 - `packages/engine/test/curve-kinds.test.ts` checks `CURVE_KINDS` and that `unreachable` throws.
-- **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E9, E11 to E14, E16, E18, E20, E21 and `document.ts` (E5), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind.
+- **The spike of "To verify"**, run in a copy of the tree after the part: a `spline` added to `CurveShape` (with `points` in `CurvePointName` and `spline` in `EntityKind`) stops `tsc` in the engine at E1 to E3, E6, E7, E12 to E14, E16, E18, E20, E21, `document.ts` (E5) and the two functions of part 2 that E9 and E11 now read, `placedCurve` and `curveEnds` (`sketch.ts`), in the adapter at A1 to A5, in the app at P1 and P5; added to the app's `Shape`, at P2 (four functions), P3 and P4; added to the profile's `Shape`, at the eight functions of E8; added to `Shape` of `sketch-tools.ts`, at E19. E9 (`curveOf`, `recompute/profile.ts`) and E11 (the wall, `recompute/outline.ts`) switch over `PlacedCurve`, the fourth union, and stop only when it gets a variant, together with the switch of `profileOf` over it. E15 reads `curvePoints` (E2), E10 and E17 ask for one kind. (Corrected after the review of the implementation; the review's spike counted 33 diagnostics for the edit of `CurveShape`, `CurvePointName` and `EntityKind`.)
 
 ### Where 6a meets 2h (D66), merged in from `master`
 
@@ -405,6 +409,7 @@ As designed: `unreachable` in `util.ts`, `CURVE_KINDS` (the keys of `CURVE_POINT
 
 As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `index.ts`; `externalGeometry` removed; `entityOf` and `derivedPoints` moved out of `sketch-content.ts` (`document.ts` re-exports them from `references/index.ts`, so the public surface is the same); `solverSetup(sketch, references)` takes the resolved entries; the step asks `resolveReferences`; the refs of a sketch, the fillet's `shortened` and `updateExternal` read the kind. No test and no public type changed. Beside the contract:
 
+- **The validator of an entry** is `externalRef(context, sketch, id, entry, what)`: the ID of the entry is handed to the kind's `validate` as well (the design wrote it without `id`).
 - **The values.** The value of each kind is in `ReferenceValues` (`spec.ts`), keyed by the name of the kind, in place of the contract's map `ReferenceKinds`; `StoredValue` is their union, and `storedValue` (`index.ts`) reads a stored value by its form before it is matched with its entry. The edge's `value` returns the stored object itself once it fits, so a frozen value is the object `load` made, as before.
 - **`DerivedKindSpec`, `SolvedOwn`** stay in the contract (6c writes them); `GeometrySource` and the slots of `EntryGeometry` (`joins`, `keys`, `hidden`) are declared in `spec.ts` and read by nothing yet.
 - **The commands** validate an entry with `entryContext` (`document.ts`): the references of the sketch at its place and a fresh reader of numeric fields over no expressions. The expressions it reads are not handed on yet: the edge has no field (6c writes the cleanup).
@@ -415,7 +420,7 @@ As designed: `packages/engine/src/references/` with `spec.ts`, `edge.ts` and `in
 
 As designed: `SketchCurve`, `sketchCurves`, `joinPairs`, `joinsOf` and `profileOf` in `sketch.ts`; `detectProfile` and `pointJoins` stay as the forms over the own content; `SketchState` has `curves` and `joins`, built by the sketch step from the resolved entries; `curveOf`, the circle operand of a generator and the axis `sketchLine` read `curves`. No test and no public type changed. Beside the design:
 
-- **The one shape function** is `placedCurve(curve, radii, end, centre)`: the ends through `end` (the joined vertex in the profile and the wall, the raw position in `curveOf`), the centre through `centre` (raw), an arc's `start` and `sweep` and its radius from its first end, which are the numbers the three places computed each. It answers undefined for a missing position or radius: the wall then reports a broken reference as before; the profile calls the sketch invalid (before, a missing point could not happen and would have thrown).
+- **The one shape function** is `placedCurve(curve, radii, end, centre)`: the ends through `end` (the joined vertex in the profile and the wall, the raw position in `curveOf`), the centre through `centre` (raw), an arc's `start` and `sweep` and its radius from its first end, which are the numbers the three places computed each. It answers undefined for a missing position or radius: the wall then reports a broken reference as before. In the profile its readers `vertex` and `centre` throw on a missing point, as before (a missing point cannot happen there); only a circle without a radius reaches `placedCurve`'s undefined, and the profile calls the sketch invalid for it.
 - **The wall** is `wallOfCurves(curves, joins, geometry, ids, …)` over the list and the joins of the state; `wallOutline` keeps its signature and builds them from the own content. A curve of the list that is not own is a broken reference of the wall, as a curve the sketch does not have was. `curveEnds(shape)` (`sketch.ts`) names the points at the ends of a line or an arc.
 - `joinPairs` takes the resolved entries and reads none of them yet: the declared joins and the join keys are 6c's and 6b's.
 - **Checked before and after**, as for part 1, with a wall along two lines and a region extruded with an offset added: the same documents, results and meshes, byte for byte. The tests of the taper and the offset, which compare outlines to the last digit, pass unchanged.
@@ -429,6 +434,45 @@ As designed: `SketchResult.curves` (`ResultCurve` in `types.ts`), filled by the 
 - **`describe_api`** shows `ResultCurve` and the new field of `SketchResult` with their comments, as the design says (`engineTypes` of `packages/mcp/src/api.ts` leaves out only the ports, between `// --- porty` and `// --- přepočet`); nothing in `packages/mcp` changed for it. The AI reads `source: 'reference' | 'derived'` before a derived kind exists.
 - **`ResultCurve.source`** is written `'reference' | 'derived'` in `types.ts`, which does not import `references/spec.ts`; `GeometrySource` there is `'own' | ResultCurve['source']`, so the two cannot drift apart. The step takes the source of a result curve from the kind of its entry (`kindOf(ref).source`).
 - **Checked before and after** in a copy of `master`: `get_sketch` of a sketch with a projected line and circle (and of the same sketch with the circle's projection lost, frozen) answers byte for byte as before; the documents, results and meshes are the same apart from the new field.
+- **Tests added after the review of the implementation:** `packages/scenarios/test/review.test.ts` reads `SketchResult.curves` from a recompute (the order of `external` in the document with IDs not in sorted order, no curve for an entry that never had values, a lost entry keeping its frozen curve); `packages/engine/test/review.test.ts` pins the texts a load gives for an entry of an unknown type ("promítnout jde jen hranu", which the vocabulary relies on for "no schema step") and for malformed stored values, and the rule of `midpoint` and `symmetric` about a projected line, now read through the registry.
+
+## Amendments after the review of step 6 (2026-11-24)
+
+Step 6 was read as a whole on 2026-11-23 ([../6-cross-review.md](../6-cross-review.md)), beside single reviews of this package's implementation and of the designs of 6e and 6c; the owner answered their questions on 2026-11-24. The vocabulary was written "so that none of them decides it by being merged first", and by then the designs of 6c (D68) and 6b (D69, unmerged) had left it in their own files while this file, `docs/architecture/sketch.md` and the row of D64 still stated the old rules. This section is the record of each such change. The answers are numbered as in "Decisions of the owner" of the review.
+
+**The rule from now on:** a design that changes the vocabulary adds its line here in the same commit, and the package that implements the change rewrites the bullet of `docs/architecture/sketch.md` that describes it.
+
+### The decision: derived geometry stays in `external`
+
+The owner's answer 17, to "Open", 1: derived geometry is a kind of entry of `external`, as implemented. No second map with commands of its own, and no rename of `external` either. The review named the rename as the real alternative (one schema step, cheapest before 6c is implemented); the owner keeps the name, so 6c, 6b and 6f need no schema step for their kinds, and the comment of `ExternalRef` in `types.ts` goes on saying that an entry is reference or derived geometry.
+
+### Where later packages change the vocabulary
+
+"Made by" is the package whose implementation carries the change. Nothing of this table is implemented yet; the code is as "As implemented" above says.
+
+| # | This design says | It becomes | Made by | State |
+|---|---|---|---|---|
+| 1 | "Joins": a copy and its source are a declared pair; a copy carries the join key of its source's vertex; points are not joined by position alone | **The ends of copies join by position.** In one stage over all entries, after the derived stage, the end of a copy that forms regions joins the ends at its place (within the length tolerance): those of other copies of any entry, and those of own or reference curves that form regions and are one vertex already, so two own vertices are never welded. Copies have no join keys and declare no pairs. A copy that forms no regions takes no part. Own points stay as they are: two at one place without a `coincident` are two vertices | 6c (D68) | Decided: answer 12 |
+| 2 | "Joins": the images of two source ends that a `coincident` joins are joined through the key of the source's vertex | **Nothing of the source's coincidences is carried to the copies** (6c's rule 0, with the hidden points it carried along a copied end). Position joins the copies of joined ends already; the limit is a chain of coincidents wider than the length tolerance, which a solved sketch does not have. The slot `EntryGeometry.joins` then has no user among the designs; whether it goes is 6c's to say | 6c (D68) | Decided: answer 14 |
+| 3 | "Joins": a projection from another sketch keys each projected point by its source vertex | **Unchanged.** Joining by position is for copies only; projections keep their keys. What changes is their place: the keys must be among the joins before 6c's stage, and a projection of a copy is keyed by the vertex of the copy in its source sketch by the joins after that stage. A copy that forms no regions is in no join there, so a projected copy of a construction chain does not close by keys | 6b (D69) | Decided: answer 12; the last sentence is 6b's to settle |
+| 4 | "Joins": a copy that lies on its source is left out of the curves | **Kept under its ID with `regions: false`**, and tested against every earlier curve that forms regions, not only its source. "Which geometry forms regions" then reads: a copy as its source, except one that occupies a curve before it | 6c (D68) | In 6c's merged design; found sound by the review |
+| 5 | "IDs" and part 1: `entityOf` answers for a member of an entry's `entities` | **Two questions.** `entities` lists by the count, for the panel and `get_sketch`; `entity` answers by the form of an ID, for validation. A reference to a copy above the count is valid in a document and broken at the recompute, as a body of a pattern is (D53) | 6c (D68) | In 6c's merged design |
+| 6 | "One family of entries": the validator fills the entries of a derived kind after the curves | **The validator checks the form of a derived entry only** and never reads the sketch; what a derived entry needs of the sketch (its sources exist, are own, are no copies) is checked by the commands. The second pass goes | 6c (D68) | In 6c's merged design |
+| 7 | "IDs", the axes: the result of every sketch carries them in `curves` and their far points in `points` | **Proposed: not in `SketchResult`.** The app fits its view to the result's points, and every reader can know the axes as constants. It reaches 6e (its profile in memory reads `result.curves`), 6c (a tool's solved input) and the view, which then add the axes themselves | 6a2, by 6b's design (D69) | **Open**: settled by the review of 6b's design, before 6a2 is implemented |
+| 8 | "IDs" and the tables: the axes of the origin are 6b's | **They are the point 6a2**, implemented right after 6a and before 6e and 6c. Every "(6b)" beside the axes above reads 6a2; the IDs, the slot of the solver and "never forms regions" stand | 6a2 | Decided: answer 1 |
+| 9 | "Which geometry forms regions": an imported outline, always | **By a flag `regions` on the entry, default true.** Geometry that is not own is never cut (6e), so an own profile curve that crosses an outline that always forms regions would make the profile invalid for good. It amends the owner's answer to question 4 of the plan | 6f | Decided: answer 2 |
+| 10 | "Face names": the package that quotes changes two expectations of `face-roles.test.ts` | **6c quotes, and more expectations change.** Three more tests assert that a slashed alias keys like a real name (`packages/engine/test/insert.test.ts`, two in `packages/scenarios/test/insert.test.ts`), and the same example stands in `docs/architecture/naming.md`, the header of `face-roles.ts` and `recompute/edge-blend.ts`. 6c lists them and says what those tests of D62 assert once no such alias exists | 6c (D68) | For 6c's revision |
+| 11 | "Which geometry forms regions": one flag, `regions` | **Unchanged, and 6e's "profile curve" is another thing**: an own curve that is not construction. After 6c a curve may form regions without being one a tool may cut (a copy). The review asks for three predicates in one place of 6e's module: may be cut, forms regions, can hold a point | 6e (D65), 6c | For their revisions |
+
+### What stands
+
+Checked by the review against the code and the three designs, and unchanged: the ID scheme (`<owner>/<local>`, a copy `<owner>/<copy>/<source>`, `origin/x` and `origin/y`; the owner decides the kind); the shapes; "no schema step" for a new kind of entry (a build without it refuses the entry aloud); the table "What consumers accept"; the quoted face key and its need (run: the two names of "Face names" share a key today); a wall end named by the point a curve names, so an entry renames no wall face.
+
+### Not answered by this package's code
+
+The review lists the needs of the later packages against the code ("Needs from 6a" there). Those that are slots the first user writes, as "Slots, not mechanisms" intended: a derived kind in the registry (`REFERENCE_KINDS`, `kindOf`, `ReferenceValues`, `resolveReferences`, `resultCurves` and `sketchCurves` are written for reference kinds; `DerivedKindSpec` and `SolvedOwn` are in the contract only), the expressions of an entry's fields handed on, pairs beyond the coincidents in `joinPairs`, one ID asked of a kind, the quoted key, the solver's slot of the axes filled, a stored value of another form. One place the exhaustive switches of part 3 do not reach: a reader of `Loop.exact` reads a missing field, not a kind, so the spline of 6d does not stop the compiler there; 6d lists such places by hand.
+
+The findings of the review of the implementation (a tool that keeps places without `clicks`, the tests owed, `ruleProblem` past the registry, this file against the code) are fixed in a point of their own, on the branch `d36/6a-fix`.
 
 ## Rows for the indexes
 

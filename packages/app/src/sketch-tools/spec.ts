@@ -50,11 +50,16 @@ interface ToolBase<O> {
 // - `clicks`: how many places a shape takes (a line 2, an arc 3). The places before the last are
 //   kept in the mode and drawn, and the mode redraws the scene when it keeps one; the last calls
 //   `click` with all of them, and afterwards the mode drops the inferred direction and redraws the
-//   scene. Without it `click` is called at every click with the places kept so far and this one.
+//   scene. Without it `click` is called at every click with the places kept so far and this one,
+//   and the mode redraws the scene when places were kept before the click or are kept after it
+//   (6d: the control points of a spline).
 // - `click` returns the places to keep for the next click; nothing means none (the line returns its
-//   end, so the chain goes on). It makes the calls of the app the tool needs (`renderPanel`,
-//   `renderScene`), beyond those of `clicks`.
-// - `finish`: what the key Enter does with the places kept. Escape drops them, for every tool.
+//   end, so the chain goes on). The mode keeps them after `click` returns, so a redraw inside
+//   `click` would not show them. It makes the calls of the app the tool needs (`renderPanel`,
+//   `renderScene` for what it changes), beyond those of the mode.
+// - `finish`: what the key Enter does with the places kept, called only when some are kept; it
+//   returns the places to keep as `click` does (too few for the shape: a message, and they stay),
+//   and the mode redraws the scene. Escape drops them, for every tool.
 // - `infer`: the second place snaps horizontal or vertical from the first (the line).
 // - `hovers`: the point or curve under the pointer is highlighted, and the tool draws no snap
 //   marker and no shape in progress (the select tool).
@@ -74,7 +79,7 @@ export interface SketchPlaceTool<O> extends ToolBase<O> {
   drags?: boolean;
   atClick?: boolean;
   click(host: SketchHost, m: SketchMode, places: Place[], context: SketchContext, options: O, event: { shiftKey: boolean }): Place[] | void;
-  finish?(host: SketchHost, m: SketchMode, places: Place[], context: SketchContext, options: O): void;
+  finish?(host: SketchHost, m: SketchMode, places: Place[], context: SketchContext, options: O): Place[] | void;
   draw?(places: Vec2[], cursor: Place, context: SketchContext, options: O): Vec2[][];
 }
 

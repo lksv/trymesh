@@ -13,9 +13,12 @@ export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Ex
 export const referenceUi = (ref: ExternalRef): ReferenceUi<ExternalRef> => REFERENCE_UI[ref.type] as ReferenceUi<ExternalRef>;
 
 // Every entity of every entry, in the order of `external` and within an entry in the order of its
-// kind, with the entry it belongs to.
-export function entryEntities(sketch: SketchFeature): { id: Id; kind: EntityKind; entry: Id }[] {
-  return Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).map(([id, kind]) => ({ id, kind, entry })));
+// kind, with the entry it belongs to and the word of its kind for the pickers (`tag`).
+export function entryEntities(sketch: SketchFeature): { id: Id; kind: EntityKind; entry: Id; tag: string }[] {
+  return Object.keys(sketch.external).flatMap((entry) => {
+    const tag = referenceUi(sketch.external[entry]).tag;
+    return Object.entries(referenceEntities(sketch, entry)).map(([id, kind]) => ({ id, kind, entry, tag }));
+  });
 }
 
 // The entry an entity belongs to, if it is an entity of an entry.

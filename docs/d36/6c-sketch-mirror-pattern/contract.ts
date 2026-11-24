@@ -330,16 +330,18 @@ export declare function occupies(a: CurveShape, b: CurveShape, at: (point: Id) =
 // `regions` loses them when it occupies a curve that forms regions and comes before it (an own
 // curve that is not construction, a reference curve with `regions`, a copy that kept them).
 // Construction curves, projected edges and the axes do not count: they bound nothing. A curve is
-// filed under one place (a line's middle, an arc's start, a circle's centre) in a grid of cells of
-// the tolerance, and compared with those of its cell and the eight around it.
+// filed under one place (a line's middle, an arc's start, a circle's centre; with 6d the middle of
+// a spline's two middle control points) in a grid of cells of the tolerance, and compared with
+// those of its cell and the eight around it.
 export declare function occupation(copies: Record<Id, EntryGeometry>, base: SketchBase): Set<Id>;
 
 // The position stage, after the occupation pass (owner, answers 12 and 19): the ends of the curves
 // that are not own and form regions join by position: the copies that kept `regions`, and the
 // reference curves whose entry gives them the region flag (6b, 6f), which need no code of their
 // own: they are curves of the base. Own curves join only by shared points and `coincident`s.
-// 1. only ends of curves take part (a line's `a`, `b`, an arc's `start`, `end`): a copied point alone
-//    and a centre join nothing by position, since they are no vertex of a profile;
+// 1. only ends of curves join by position: the two ends `curveEnds` gives (a line's `a` and `b`,
+//    an arc's `start` and `end`; with 6d a spline's first and last control point). A copied point
+//    alone and a centre join nothing by position, since they are no vertex of a profile;
 // 2. the ends of the curves that are not own and form regions, of every entry, are paired with
 //    each other when within the length tolerance (each pair as found), through a grid of cells;
 // 3. a group (those pairs, transitively) is paired with the ends of the own curves that form

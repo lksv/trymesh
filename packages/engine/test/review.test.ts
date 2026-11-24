@@ -1259,8 +1259,8 @@ describe('the review of the implementation of 6a (D64)', () => {
   it('the points of an entry for the rule of a constraint come from the registry of kinds: the ends of a projected line', () => {
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/středem úsečky nemůže být její konec/);
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/souměrný bod nesmí být koncem osy/);
-    // the centre of the projected circle is no point of the line
-    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x2/center', line: 'x1' } })).toThrow(/nikdy neprojevila/);
+    // the centre of the projected circle is no point of the line (an own operand, so the rule really runs)
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x2/center', line: 'x1' } })).not.toThrow();
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'q', line: 'x1' } })).not.toThrow();
   });
 

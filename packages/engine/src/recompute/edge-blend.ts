@@ -518,7 +518,7 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
       if (index !== undefined) return { kind: 'joint', vertex, point, joint: index, plane: across };
       const found = data.edges.get(edgeKey(continuation));
       if (found && sameEdgeName(found.name, continuation) && found.kind === 'other')
-        return refuse('unsupportedEdge', [edge.name, ...into.map((face) => state.faceNames[face])], `the edge runs on smoothly into the face in refs along an edge of the kind other, which this feature cannot take; ending there is not supported yet`);
+        return refuse('unsupportedEdge', [edge.name, ...into.map((face) => state.faceNames[face])], into.length === 1 ? 'the edge runs on smoothly into the face in refs along an edge of the kind other, which this feature cannot take; ending there is not supported yet' : 'the edge runs on smoothly along the edge between the two faces in refs, an edge of the kind other, which this feature cannot take; ending there is not supported yet');
       return refuse('unsupportedEdge', [edge.name, continuation], 'the edge continues smoothly into the second edge in refs; add it to this feature');
     };
     // of several faces at the end, the one next to face a, else the first
@@ -908,12 +908,16 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
       }
       const within = kernel.boolean('intersection', region, cutter);
       const { volume, area } = chip ? beyondVolume(chip, within, kernel) : beyondVolume(kernel.boolean('intersection', tool, within), solid, kernel, piece.convex ? 'intersection' : 'difference');
-      if (volume > BLEND_RUN_OUT_VOID || (area > 0 && runOutUncertain(band, area)))
+      if (volume > BLEND_RUN_OUT_VOID || (area > 0 && runOutUncertain(band, area))) {
+        // over the bound the volume; under it, refused for the kernel's uncertainty alone, what it
+        // may be, with what was measured and the uncertainty (the review of the implementation, N2)
+        const amount = volume > BLEND_RUN_OUT_VOID ? `would ${piece.convex ? 'take' : 'add'} ${shown(volume)} mm³` : `may ${piece.convex ? 'take' : 'add'} up to ${shown(volume + band * area)} mm³ (measured ${shown(volume)} mm³, the kernel's uncertainty ${shown(band * area)} mm³ against a bound of ${shown(BLEND_RUN_OUT_VOID)} mm³)`;
         refuse(
           'blendDoesNotFit',
           [edge.name, state.faceNames[runOut.endFace]],
-          piece.convex ? `the ${kind} would take ${shown(volume)} mm³ beyond the end face in refs within its run-out (a pin or a post in the void, or a void shallower than the ${kind})` : `the ${kind} would add ${shown(volume)} mm³ beyond the end face in refs, where it has no material`,
+          piece.convex ? `the ${kind} ${amount} beyond the end face in refs within its run-out (a pin or a post in the void, or a void shallower than the ${kind})` : `the ${kind} ${amount} beyond the end face in refs, where it has no material`,
         );
+      }
     }
   }
 

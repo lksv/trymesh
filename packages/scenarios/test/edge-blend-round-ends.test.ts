@@ -402,3 +402,37 @@ describe('two run-outs into one gap', () => {
     expect(bridge.message).toMatch(/the run-outs of two pieces of the edge into the end face in refs reach across the gap between them/);
   });
 });
+
+describe('the details of the refusals, through the step (the review of the implementation, M1)', () => {
+  it('the piece shorter than its blend reaches: a hole r 10 crossing the front edge at 15°, 5 from the box\'s side, under a chamfer of 2', () => {
+    const r = 10;
+    const yc = r * Math.cos((15 * Math.PI) / 180);
+    const engine = run(newEngine(0.01), sketch('s', XY), polygon('s', [[0, 0], [60, 0], [60, 40], [0, 40]]), extrude('E', 's', [loop(4)], 20), sketch('h', onTop('E', 'E')), circle('h', 'c', 5, yc, r), extrude('H', 'h', [['c']], -25, 'cut'));
+    // the piece from the box's side to the hole is 2.4 long; the profile's far point stays in the
+    // hole all along it
+    expectRefused(apply(engine, 'chamfer', TOP_FRONT, 2), 'blendDoesNotFit', side('H', 'c'), /the piece is shorter than its blend reaches into the end face in refs/);
+  });
+
+  it('an arc at a cylinder whose axis is not parallel to its own: the rim of a bore into a groove along the top of the plate', () => {
+    const engine = run(newEngine(0.01), sketch('s', XY), polygon('s', [[-40, -40], [40, -40], [40, 40], [-40, 40]]), extrude('E', 's', [loop(4)], 10), sketch('b', onTop('E', 'E')), circle('b', 'h', 0, 0, 10), extrude('H', 'b', [['h']], -12, 'cut'), sketch('g', YZ), circle('g', 'o', 0, 10, 2), extrude('G', 'g', [['o']], THROUGH, 'cut'));
+    expectRefused(apply(engine, 'chamfer', { a: cap('E'), b: side('H', 'h') }, 1), 'unsupportedEdge', side('G', 'o'), /the arc ends at a cylinder \(G\/side\/o\) whose axis is not parallel to its own, which this feature cannot run out into yet/);
+  });
+
+  it('an end face too large for the chord tolerance: a slot 40 in from the side of a shaft R 900 at 0.001 (its region would need more than 4 096 sides)', () => {
+    const R = 900;
+    const engine = run(newEngine(0.001), sketch('s', XY), circle('s', 'c', 0, 0, R), extrude('E', 's', [['c']], 20), sketch('t', onTop('E', 'E')), polygon('t', [[-R - 5, R - 45], [R + 5, R - 45], [R + 5, R - 40], [-R - 5, R - 40]], 't'), extrude('S', 't', [loop(4, 't')], -3, 'cut'));
+    expectRefused(apply(engine, 'chamfer', { a: cap('E'), b: side('S', 'tl2') }, 1), 'blendDoesNotFit', side('E', 'c'), /the end face in refs is too large for the chord tolerance of the document/);
+  });
+
+  it('holes too small for the chord tolerance are refused as grazing, before the radius is read: r 0.1 to 0.2 at 0.05', () => {
+    // a hole whose radius is under lift + chord tolerance has both of its roots with the edge
+    // within the band of the end vertex, so "too small for the chord tolerance" is a backstop
+    for (const [r, yc] of [
+      [0.1, 0],
+      [0.12, 0.05],
+      [0.2, 0.1],
+    ]) {
+      expectRefused(apply(holedBox(0.05, r, yc), 'chamfer', TOP_FRONT, 1), 'unsupportedEdge', side('H', 'c'), /the edge only grazes the end face in refs/);
+    }
+  });
+});

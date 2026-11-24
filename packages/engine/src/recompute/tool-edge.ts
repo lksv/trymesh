@@ -614,6 +614,8 @@ export function runOutRegion(face: RunOutFace, beyondInside: boolean, offset: nu
   const disc = Array.from({ length: sides }, (_, i): Vec2 => [radius * Math.cos((TWO_PI * i) / sides), radius * Math.sin((TWO_PI * i) / sides)]);
   const prism = polygonPrism(disc, face.point, face.axis, s0 - 2 * size, s0 + 2 * size, number, kernel);
   if (beyondInside) return prism;
-  const box = boxAlong(face.axis, add3(face.point, mul3(face.axis, s0)), -size, size, size, number + 1, kernel);
+  // The box about the chip (`middle`), not about the axis: outside a cylinder of a radius larger than
+  // `size` a box about the axis lies within the polygon, and the region would be empty.
+  const box = boxAlong(face.axis, middle, -size, size, size, number + 1, kernel);
   return kernel.boolean('difference', box, prism);
 }

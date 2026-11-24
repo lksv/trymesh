@@ -1434,7 +1434,7 @@ export interface Issue {
 //   across one gap: blend before the feature that makes C, or use a smaller size);
 // - the edge runs on smoothly into the second edge in `refs`, which is not in the feature: add it;
 //   where that edge is of the kind other (an earlier fillet against a leaning face) it cannot be,
-//   and the face it runs on into is in `refs` instead;
+//   and the face it runs on into (both faces, at a seam of two) is in `refs` instead;
 // - a convex and a concave edge of the feature (both in `refs`) meet at a vertex: two features;
 // - it meets the second edge in `refs` at a vertex in a way the feature cannot join (an arc at an
 //   angle, different angles at a reflex corner), or their two tools leave a step there.

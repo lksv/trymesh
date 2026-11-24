@@ -2180,6 +2180,26 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
     for (const name of Object.keys(DOCUMENT_SECTIONS) as (keyof typeof DOCUMENT_SECTIONS)[]) facesIn(doc[name], faces);
     return faces;
   };
+  // A face `wallEnd` of a wall over the sketch after the batch: undefined while its chain still ends
+  // at its point, the face at the new end of the chain when one end is new, null when that is not
+  // known (the blend then names what is gone).
+  const chainEnds = (of: SketchFeature, curves: Id[]): Map<Id, number> => {
+    const count = new Map<Id, number>();
+    for (const id of curves) if (has(of.curves, id)) for (const p of endsOf(of.curves[id])) count.set(p, (count.get(p) ?? 0) + 1);
+    return count;
+  };
+  const wallEndNow = (face: FaceName): FaceName | null | undefined => {
+    if (face.role !== 'wallEnd') return undefined;
+    const source = over.get(face.feature);
+    if (source?.type !== 'wall') return undefined;
+    const patched = out.commands.find((c): c is Extract<Command, { type: 'updateFeature' }> => c.type === 'updateFeature' && c.id === face.feature);
+    const curves = (patched?.patch as { profile?: { curves?: Id[] } } | undefined)?.profile?.curves ?? source.curves;
+    const endsAfter = chainEnds(afterSketch, curves);
+    if (endsAfter.get(face.point) === 1) return undefined;
+    const endsBefore = chainEnds(sketch, source.curves);
+    const fresh = [...endsAfter].filter(([p, n]) => n === 1 && endsBefore.get(p) !== 1).map(([p]) => p);
+    return fresh.length === 1 ? { ...face, point: fresh[0] } : null;
+  };
   for (const blend of doc.features) {
     if (blend.type !== 'chamfer' && blend.type !== 'fillet') continue;
     const edges: EdgeName[] = [...blend.edges];
@@ -2189,7 +2209,22 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
     let lost = false;
     let touched = false;
     let namesGone = false;
-    for (const [i, edge] of blend.edges.entries()) {
+    for (const [i, named] of blend.edges.entries()) {
+      // the straight end of a wall whose chain no longer ends at its point: the new end of the chain
+      // where there is one, else the blend names what is gone
+      const [na, nb] = [wallEndNow(named.a), wallEndNow(named.b)];
+      if (na === null || nb === null) {
+        touched = true;
+        namesGone = true;
+        continue;
+      }
+      const edge: EdgeName = na || nb ? { a: na ?? named.a, b: nb ?? named.b } : named;
+      if (edge !== named) {
+        touched = true;
+        lost = true; // the end of the wall moved: look at the blend
+        edges[i] = edge;
+        rewritten.push(i);
+      }
       const flip = !sideOfCut(edge.a);
       const [s, o] = flip ? [edge.b, edge.a] : [edge.a, edge.b];
       if (!sideOfCut(s)) continue;
@@ -2414,7 +2449,8 @@ export function cutTool(context: SketchToolCall, request: CutRequest, newId: New
   // the stretch crosses once with `with`)
   if (request.tool === 'extend' && world.result.valid && !patches.validAfter && formsRegions(world, request.curve) && repairOf(world, request.repair)) {
     const left = [...plan.uncut].sort();
-    return failed(`extending "${request.curve}" would leave the profile of the sketch invalid${left.length > 0 ? `: it would meet ${left.map((id) => `"${id}"`).join(', ')} where no cut can be made (a circle that would get one point only, or a curve that is not cut)` : ''}; extend it without \`with\`, or draw across the circle and trim`);
+    const circle = left.some((id) => curveOf(world, id)?.shape.type === 'circle');
+    return failed(`extending "${request.curve}" would leave the profile of the sketch invalid${left.length > 0 ? `: it would meet ${left.map((id) => `"${id}"`).join(', ')} where no cut can be made (a circle that would get one point only, or a curve that is not cut)` : ''}; ${request.with !== undefined ? 'extend it without `with`, or ' : ''}${circle ? 'draw across the circle and trim' : 'trim the curves there first, or extend it to another curve'}`);
   }
   return { ok: true, commands: [...plan.commands, ...patches.commands], ids: lists(world, plan, changes, patches, afterDoc) };
 }

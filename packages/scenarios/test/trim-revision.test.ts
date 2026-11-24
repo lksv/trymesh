@@ -831,4 +831,29 @@ describe('fixes of the review of the implementation', () => {
     expect(curveUnder(contextOf(engine.getState(), 's'), [10.3, 0], 'L')).toBe('L');
     expect(curveUnder(contextOf(engine.getState(), 's'), [10.3, 0])).toBe('K');
   });
+
+  // the second round: a wall over `w` from (0, 0) to (40, 0), a line across at x = 20, a
+  // construction line at x = 60; a fillet of the edges at the straight end `wb` of the wall
+  for (const tool of ['trim', 'extend'] as const) {
+    it(`R1: the edges at the straight end of a wall follow the end a ${tool} moves`, () => {
+      const engine = newEngine();
+      run(engine, addSketch('s', XY), batch(...fixedLine('w', [0, 0], [40, 0]).filter((c) => !(c.type === 'addConstraint' && c.id === 'wbf')), ...fixedLine('v', [20, -5], [20, 5]), ...fixedLine('T', [60, -5], [60, 5], 's', true)));
+      run(engine, constrain('s', 'wh', { type: 'horizontal', line: 'w' }), dimension('s', 'wl', { type: 'distance', a: 'wa', b: 'wb' }, 40));
+      run(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 's', curves: ['w'], thickness: 4 }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+      const end = { feature: 'W', role: 'wallEnd' as const, point: 'wb' };
+      const wallSide = { feature: 'W', role: 'wallSide' as const, curve: 'w', side: 'left' as const };
+      run(engine, { type: 'addFeature', feature: { id: 'f', name: 'f', suppressed: false, type: 'fillet', body: 'W', edges: [{ a: end, b: cap('W') }, { a: end, b: wallSide }], radius: 1 } });
+      expect(engine.getState().evaluation.features['f'].status).toBe('ok');
+      const ids = tool === 'trim' ? cut(engine, 'trim', { at: [30, 0], repair: 'off' }) : cut(engine, 'extend', { curve: 'w', end: 'b', repair: 'off', with: 'T' });
+      const state = engine.getState();
+      const now = (sketchOf(state).curves['w'] as { b: Id }).b;
+      expect(now).not.toBe('wb');
+      expect(solved(state).points[now].x).toBeCloseTo(tool === 'trim' ? 20 : 60, 6);
+      expect(ids.patched).toContain('f');
+      expect(ids.broken).toEqual([]);
+      const faces = (edge: { a: object; b: object }): string[] => [edge.a, edge.b].map((face) => JSON.stringify(face)).sort();
+      expect((state.document.features.find((f) => f.id === 'f') as unknown as { edges: { a: object; b: object }[] }).edges.map(faces)).toEqual([faces({ a: { ...end, point: now }, b: cap('W') }), faces({ a: { ...end, point: now }, b: wallSide })]);
+      expect(state.evaluation.features['f'].status).toBe('ok');
+    });
+  }
 });

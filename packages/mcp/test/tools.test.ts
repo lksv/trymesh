@@ -123,6 +123,12 @@ describe('popis API', () => {
     expect(description).toContain("| 'blendDoesNotFit'");
     expect(description).toMatch(/- fillet \(Fillet\): Rounds edges of one body/);
     expect(description).toContain('Edges are chamfered and rounded by the feature types chamfer and fillet');
+    // D67: the run-outs past round faces and what is refused, in the conventions, the summaries and
+    // the comments of types.ts
+    expect(description).toContain('or run out past a round face it crosses at 10° or more (D67)');
+    expect(description).toMatch(/Refused with the end face in the refs: a stop \(a convex edge into a wall, a concave edge past a rim/);
+    expect(description).toMatch(/- chamfer \(Chamfer\):.*run out past a round face it crosses at 10° or more/);
+    expect(description).toContain('// - Run-outs (D67): an edge may also end at a round face C');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu

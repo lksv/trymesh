@@ -616,6 +616,25 @@ export interface RevolveFeature extends FeatureBase {
 //   corner; also across a seam where both faces of the edge continue into flush faces), and that
 //   next edge has to be in the same feature: the error names it. An arc that meets another edge of
 //   the feature at an angle (the top loop of a D-shaped boss) is refused.
+// - Run-outs (D67): an edge may also end at a round face C it crosses at 10° or more and run out
+//   past it: a straight edge at a cylinder of any axis, an arc at a cylinder parallel to its axis
+//   or at a plane parallel to its axis and off it (the side of a keyway); faces on one cylinder
+//   count as one. The edge has to run, past its end, into what the tool does not change beyond C:
+//   a convex edge into C's air (the rim of a bore into a pin pocket, an edge into a hole that breaks
+//   it, a slot's edge out through a shaft's cylinder), a concave edge into C's material (the foot of
+//   a rib into a boss). The tool runs on until its corner lies beyond C, so the chamfer or fillet
+//   ends on C's surface; C keeps its name and loses what the run-out takes of it. Refused
+//   (`unsupportedEdge`, C in `refs`): a stop (a convex edge into C's material: the top edge of a rib
+//   into a taller boss; a concave edge into C's air: the foot of a rib flush with the rim of a
+//   round plate); a bridge (the corner passes behind C before crossing it: a hole that notches the
+//   edge less deep than the size; or the run-outs of two pieces reach across one gap); a crossing
+//   under 10° or one that only grazes C; C a cone, a sphere, a torus, a swept or an imported face,
+//   or (an arc) a cylinder or a plane not parallel to its axis; faces at the end on two surfaces
+//   (the rim of a lobe under another lobe); an edge that runs on smoothly into an earlier fillet
+//   along an edge of the kind `other`. Where C comes from a later feature, blending the edge
+//   before that feature gives the same result. `blendDoesNotFit`: the run-out would take material
+//   beyond C (a pin or a post in the void, a pocket shallower than the size) or, concave, add some
+//   where C has none.
 // - Faces: one new face per edge, `{ feature, role: 'chamfer' | 'fillet', edge: <the place of the
 //   edge in `edges`, from 0> }`, exact: a plane (a chamfer of a straight edge; a sketch stands on
 //   it, its origin where it meets the first face of the edge at the end the projection of the edge
@@ -1405,10 +1424,17 @@ export interface Issue {
 // - its faces meet at less than 0.01 rad from flat or from folded;
 // - the side of a face along the edge is not clear (its triangles along it disagree);
 // - the pieces of the edge need different chamfers (another side of a face);
-// - an end has no face besides its own, two or more that are not a seam, a round face that does
-//   not continue a face of the edge, (a straight edge) a plane within 0.01 rad of the edge, (an
-//   arc) a plane that does not hold its axis;
+// - an end has no face besides its own, two or more that are not a seam (the faces in `refs`),
+//   (a straight edge) a plane within 0.01 rad of the edge;
+// - an end at a round face C (in `refs`, D67) it cannot run out into: of a kind not taken (a cone,
+//   a sphere, a torus, a swept or an imported face; for an arc a cylinder or a plane not parallel to
+//   its axis), a crossing under 10° or one that only grazes C, a stop (the edge runs into C's
+//   material, convex, or past C into its air, concave; the message says to blend before the feature
+//   that makes C), a bridge (the corner passes behind C before crossing it, or two run-outs reach
+//   across one gap: blend before the feature that makes C, or use a smaller size);
 // - the edge runs on smoothly into the second edge in `refs`, which is not in the feature: add it;
+//   where that edge is of the kind other (an earlier fillet against a leaning face) it cannot be,
+//   and the face it runs on into (both faces, at a seam of two) is in `refs` instead;
 // - a convex and a concave edge of the feature (both in `refs`) meet at a vertex: two features;
 // - it meets the second edge in `refs` at a vertex in a way the feature cannot join (an arc at an
 //   angle, different angles at a reflex corner), or their two tools leave a step there.
@@ -1423,6 +1449,11 @@ export interface Issue {
 // - it reaches past the end face in `refs`: deeper than a riser the edge ends at, into the
 //   material beyond it, or (added) standing out over a lower end wall;
 // - it is too small for the chord tolerance (it lies within the polygons of the faces);
+// - (a run-out, D67, the end face in `refs`) the part of the tool past the end would take material
+//   beyond the end face (a pin or a post in the void, a void shallower than the size) or, added,
+//   add some where it has none; the end face is too small or too large for the chord tolerance;
+//   the piece is shorter than its blend reaches into the end face; a vertex of the end of the
+//   run-out lies off the blend's surface;
 // - the tools would have more than 1 000 000 triangles (raise the chord tolerance).
 export type ErrorCode =
   | 'brokenReference'

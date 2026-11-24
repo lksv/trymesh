@@ -679,6 +679,98 @@ describe('the start of an extent at a plane: the design review of D66, round 2',
   });
 });
 
+describe('the design review of D67: chamfers and fillets that run out into round faces', () => {
+  // The housing of the actuator: a plate 80 × 80 × 8, a bore R 29.5, 16 pockets r 2.5 on the circle
+  // 29, `depth` deep; `pins`: pins r 0.1 standing on the floor of the pocket at (29, 0).
+  const housing = (chordTolerance: number, depth = 4, pins: [number, number][] = []): EngineState => {
+    const engine = newEngine();
+    const loaded = engine.load(JSON.stringify({ ...engine.getState().document, settings: { ...engine.getState().document.settings, chordTolerance } }));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    run(engine, addSketch('s', XY), rectangle('s', 'r', -40, -40, 80, 80, null), addExtrude('E', 's', [rectLoop('r')], 8), addSketch('b', onFace('E', cap('E'))), circle('b', 'h', 0, 0, 29.5), addExtrude('H', 'b', [['h']], -10, 'cut', 'E'));
+    run(engine, addSketch('p', onFace('E', cap('E'))), ...Array.from({ length: 16 }, (_, k) => circle('p', `k${k}`, 29 * Math.cos((k * Math.PI) / 8), 29 * Math.sin((k * Math.PI) / 8), 2.5)), addExtrude('P', 'p', Array.from({ length: 16 }, (_, k) => [`k${k}`]), -depth, 'cut', 'E'));
+    if (pins.length) {
+      run(engine, addSketch('q', XY), ...pins.map(([x, y], i) => circle('q', `n${i}`, x, y, 0.1)), {
+        type: 'addFeature',
+        feature: { id: 'N', name: 'N', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'q', regions: pins.map((_, i) => ({ outerLoop: [`n${i}`] })) }, extent: { type: 'distance', start: 8 - depth, distance: depth }, operation: 'add', targets: ['E'] },
+      });
+    }
+    return engine.getState();
+  };
+  const RIM = edge(cap('E'), side('H', 'h'));
+  const applied = (state: EngineState, command: Command) => {
+    const engine = newEngine();
+    engine.load(JSON.stringify(state.document));
+    const result = engine.preview(command);
+    if (!result.ok) throw new Error(result.error.message);
+    const outcome = result.state.evaluation.features[(command as { feature: { id: string } }).feature.id];
+    return { code: outcome.error?.code, message: outcome.error?.message ?? '', refs: outcome.error?.refs ?? [], state: result.state };
+  };
+  const namesPocket = (refs: unknown[]): boolean => refs.some((ref) => typeof ref === 'object' && ref !== null && (ref as FaceName).feature === 'P');
+
+  it('round 2: a pin standing in a pocket within the run-out was cut silently; the void check refuses it', () => {
+    // the rim meets the wall of the pocket at (29, 0) at the angle 4.79°; a pin 0.6° back into the
+    // pocket at the radius 29.9, under the corner of a chamfer of 1
+    const at = (4.2 * Math.PI) / 180;
+    const pinned = applied(housing(0.01, 4, [[29.9 * Math.cos(at), 29.9 * Math.sin(at)]]), chamfer('c', 'E', [RIM], 1));
+    expect(pinned.code, pinned.message).toBe('blendDoesNotFit');
+    expect(pinned.message).toMatch(/would take .* mm³ beyond the end face in refs within its run-out/);
+    expect(namesPocket(pinned.refs)).toBe(true);
+  });
+
+  it('round 3: a pocket 0.3 deep under a fillet of 0.5 slipped under a bound with an area term; refused at 0.01 and 0.05', () => {
+    for (const tolerance of [0.01, 0.05]) {
+      const shallow = applied(housing(tolerance, 0.3), fillet('c', 'E', [RIM], 0.5));
+      expect(shallow.code, shallow.message).toBe('blendDoesNotFit');
+      expect(namesPocket(shallow.refs)).toBe(true);
+    }
+  });
+
+  it('round 2: the cap of a run-out is renamed into the blend, never into the end face: every pocket keeps its cylinder, every vertex of the cone lies on it', () => {
+    const result = applied(housing(0.05), chamfer('c', 'E', [RIM], 0.5));
+    expect(result.message).toBe('');
+    const ev = result.state.evaluation;
+    const body = ev.bodies.E;
+    for (const face of body.faces) {
+      const name = ev.faceNames[face.id];
+      if (name.feature !== 'P' || name.role !== 'side') continue;
+      const surface = ev.faceSurfaces[face.id];
+      expect(surface.kind === 'cylinder' && Math.abs(surface.radius - 2.5) < 1e-9, JSON.stringify(surface)).toBe(true);
+    }
+    const coneFace = body.faces.find((face) => faceKey(ev.faceNames[face.id]) === 'c/chamfer/0');
+    const cone = coneFace ? ev.faceSurfaces[coneFace.id] : undefined;
+    expect(cone?.kind).toBe('cone');
+    if (cone?.kind !== 'cone' || !coneFace) return;
+    const p = body.solid.positions;
+    let off = 0;
+    for (let t = 0; t < body.solid.faceIds.length; t++) {
+      if (body.solid.faceIds[t] !== coneFace.id) continue;
+      for (let k = 0; k < 3; k++) {
+        const i = body.solid.triangles[3 * t + k];
+        const d = [p[3 * i] - cone.apex[0], p[3 * i + 1] - cone.apex[1], p[3 * i + 2] - cone.apex[2]];
+        const a = Math.hypot(...cone.axis);
+        const z = (d[0] * cone.axis[0] + d[1] * cone.axis[1] + d[2] * cone.axis[2]) / a;
+        const rho = Math.sqrt(Math.max(0, d[0] ** 2 + d[1] ** 2 + d[2] ** 2 - z * z));
+        off = Math.max(off, Math.abs(rho * Math.cos(cone.halfAngle) - z * Math.sin(cone.halfAngle)));
+      }
+    }
+    // the allowance of D63: the lift and the chord tolerance (0.075 + 0.05)
+    expect(off).toBeLessThanOrEqual(0.125 + 1e-3);
+  });
+
+  it('round 1: an end at a cone (a tapered hole), a kind not taken, is refused naming it in refs', () => {
+    const engine = newEngine();
+    box(engine);
+    const tapered = run(engine, addSketch('t', onFace('E', cap('E'))), circle('t', 'h', 30, 0, 4), {
+      type: 'addFeature',
+      feature: { id: 'H', name: 'H', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 't', regions: [{ outerLoop: ['h'] }] }, extent: { type: 'distance', start: 0, distance: -25, taper: 0.1 }, operation: 'cut', targets: ['E'] },
+    });
+    const cone = applied(tapered, chamfer('c', 'E', [edge(cap('E'), side('E', 'ra'))], 1));
+    expect(cone.code).toBe('unsupportedEdge');
+    expect(cone.message).toMatch(/ends at a round face \(H\/side\/h, a cone\) that does not continue a face of the edge, which this feature cannot run out into yet/);
+    expect(cone.refs.some((ref) => typeof ref === 'object' && ref !== null && 'role' in ref && faceKey(ref as FaceName) === 'H/side/h')).toBe(true);
+  });
+});
+
 describe('the review of the implementation of 6a (D64): the curves of a result that are not own', () => {
   it('in the order of `external` in the document and of the kind; none for an entry that never had values; a lost entry keeps its frozen curve', () => {
     const engine = plate(60, 40, 5);
@@ -712,5 +804,76 @@ describe('the review of the implementation of 6a (D64): the curves of a result t
     expect(result().sketch!.curves.rim).toEqual(rim);
     expect(result().sketch!.points['rim/center']).toEqual(before);
     expect(result().warnings.map((w) => [w.code, w.refs]).sort()).toEqual([['brokenProjection', ['never']], ['brokenProjection', ['rim']]]);
+  });
+});
+
+describe('the review of the implementation of 4c (D67): the void check beyond the outside of a cylinder', () => {
+  // B1: the region beyond the outside of a cylinder was a box about the cylinder's axis, of half side
+  // the chip's diagonal + 2, less the cylinder's polygon; outside a cylinder of a radius larger than
+  // about that the region was empty and a post in the run-out was cut with the status ok. The box
+  // is about the chip now.
+  const engineAt = (chordTolerance: number) => {
+    const engine = newEngine();
+    const loaded = engine.load(JSON.stringify({ ...engine.getState().document, settings: { ...engine.getState().document.settings, chordTolerance } }));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    return engine;
+  };
+  const polygon = (s: string, prefix: string, points: [number, number][]): Command =>
+    batch(
+      ...points.map(([x, y], i): Command => ({ type: 'addPoint', sketch: s, id: `${prefix}p${i}`, x, y })),
+      ...points.map((_, i): Command => ({ type: 'addCurve', sketch: s, id: `${prefix}l${i}`, curve: { type: 'line', a: `${prefix}p${i}`, b: `${prefix}p${(i + 1) % points.length}` } })),
+    );
+  const loop = (prefix: string, n = 4): string[] => Array.from({ length: n }, (_, i) => `${prefix}l${i}`);
+  const square = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const tried = (state: EngineState, command: Command) => {
+    const engine = newEngine();
+    engine.load(JSON.stringify(state.document));
+    const result = engine.preview(command);
+    if (!result.ok) throw new Error(result.error.message);
+    const outcome = result.state.evaluation.features[(command as { feature: { id: string } }).feature.id];
+    return { status: outcome.status, code: outcome.error?.code, message: outcome.error?.message ?? '', refs: outcome.error?.refs ?? [], taken: state.evaluation.bodies.E.volume - result.state.evaluation.bodies.E.volume };
+  };
+  const names = (refs: unknown[], name: FaceName): boolean => refs.some((ref) => typeof ref === 'object' && ref !== null && 'role' in ref && faceKey(ref as FaceName) === faceKey(name));
+
+  it('a slot across a shaft R 40 out through its side, a post 0.3 × 0.3 outside the shaft where a chamfer of 2 runs on: refused (it was cut by 0.077 mm³)', () => {
+    const R = 40;
+    const shaft = (post: boolean): EngineState => {
+      const engine = engineAt(0.01);
+      run(engine, addSketch('s', XY), circle('s', 'c', 0, 0, R), addExtrude('E', 's', [['c']], 20), addSketch('t', onFace('E', cap('E'))), polygon('t', 't', square(-R - 5, R - 6, R + 5, R - 3)), addExtrude('S', 't', [loop('t')], -3, 'cut', 'E'));
+      if (!post) return engine.getState();
+      const x0 = Math.sqrt((R + 0.05) ** 2 - (R - 2) ** 2);
+      return run(engine, addSketch('q', XY), polygon('q', 'q', square(x0, R - 2, x0 + 0.3, R - 1.7)), addExtrude('Q', 'q', [loop('q')], 20, 'add', 'E'));
+    };
+    const wall = edge(cap('E'), side('S', 'tl2'));
+    const plain = tried(shaft(false), chamfer('k', 'E', [wall], 2));
+    expect(plain.status, plain.message).toBe('ok');
+    const posted = tried(shaft(true), chamfer('k', 'E', [wall], 2));
+    expect(posted.code, posted.message).toBe('blendDoesNotFit');
+    expect(posted.message).toMatch(/would take .* mm³ beyond the end face in refs within its run-out/);
+    expect(names(posted.refs, side('E', 'c'))).toBe(true);
+  });
+
+  it('a hole broken out through the side of a disc R 50 and R 100, a post joined to the disc by a bar where a chamfer of 1 of its rim runs on: refused (it was cut by 0.013 mm³)', () => {
+    for (const R of [50, 100]) {
+      const disc = (post: boolean): EngineState => {
+        const engine = engineAt(0.01);
+        run(engine, addSketch('s', XY), circle('s', 'd', 0, 0, R), addExtrude('E', 's', [['d']], 10), addSketch('h', onFace('E', cap('E'))), circle('h', 'c', R - 2, 0, 3), addExtrude('H', 'h', [['c']], -12, 'cut', 'E'));
+        if (!post) return engine.getState();
+        // the rim leaves the disc at the angle thetaE about the hole's centre; the post 2.5° past it,
+        // 0.5 outside the hole, 0.16 wide, and a bar 1 high from it into the disc
+        const x = (R * R - 9 + (R - 2) ** 2) / (2 * (R - 2));
+        const thetaE = Math.atan2(Math.sqrt(R * R - x * x), x - (R - 2));
+        const th = thetaE + (2.5 * Math.PI) / 180;
+        const [cx, cy, h] = [R - 2 + 3.5 * Math.cos(th), 3.5 * Math.sin(th), 0.08];
+        return run(engine, addSketch('q', XY), polygon('q', 'q', square(cx - h, cy - h, cx + h, cy + h)), addExtrude('Q', 'q', [loop('q')], 10, 'add', 'E'), addSketch('w', XY), polygon('w', 'w', square(cx - 1.2, cy - h, cx + h, cy + h)), addExtrude('W', 'w', [loop('w')], 1, 'add', 'E'));
+      };
+      const rim = edge(cap('E'), side('H', 'c'));
+      const plain = tried(disc(false), chamfer('k', 'E', [rim], 1));
+      expect(plain.status, plain.message).toBe('ok');
+      const posted = tried(disc(true), chamfer('k', 'E', [rim], 1));
+      expect(posted.code, posted.message).toBe('blendDoesNotFit');
+      expect(posted.message).toMatch(/would take .* mm³ beyond the end face in refs within its run-out/);
+      expect(names(posted.refs, side('E', 'd'))).toBe(true);
+    }
   });
 });

@@ -466,19 +466,28 @@ export const predicatesAfter: typeof curvePredicates = curvePredicates;
 // - a listed curve the batch cut or trimmed is replaced, in its place in `sources`, by its pieces
 //   that stay (`changes.pieces`); a curve removed whole leaves the list (an entry left with no
 //   source keeps its last one, and warns);
-// - a curve joins the entry (appended to `sources`) when, in the sketch after the batch, each of
-//   its two ends is an open end of the curves the entry lists that have its construction flag (the
-//   end of exactly one of them, by the joins of the own points), and the batch is why:
+// - a curve joins the entry (appended to `sources`) when, in the sketch after the batch, its two
+//   ends are two different open ends of the curves the entry lists that have its construction flag
+//   (an open end is the end of exactly one of them, by the joins of the own points), and the batch
+//   is why:
 //   (i)  the batch made the curve (`changes.added`), re-pointed it (`changes.changed`) or turned it
 //        from a circle into an arc (`changes.rekinded`): the owner's answer 28; or
-//   (ii) the curve was there, and one of its ends is a bound of a stretch the batch took out of
-//        a curve the entry lists (`changes.stretches`): the batch opened the end it stands at.
-//   A span line (`changes.span`) never joins, nor a circle (it has no ends), nor a curve of
-//   a batch of `split`, which adds only pieces;
+//   (ii) the curve was there, and one of its ends is the same vertex (by the joins of the own
+//        points) as a bound of a stretch the batch took out of a curve the entry lists that has the
+//        curve's construction flag (`changes.stretches`; of a stretch over two curves, the curve
+//        that bound lies on): the batch opened the end it stands at.
+//   A span line of the batch (`changes.span`) never joins, nor a circle (it has no ends), nor
+//   a curve of a batch of `split`, which adds only pieces;
 // - when no entry takes the curve that way, and one of its ends is an open end of one entry's list
 //   and the other of another's (the corner between the sources of two entries), it joins the first
 //   of the two in the order of the entries when they have the same transform, and neither
-//   otherwise.
+//   otherwise. The curves asked are the same: of (i), or of (ii) with the stretch taken out of
+//   a curve either entry lists, with the flag of the listed curves at both its ends, and under the
+//   same exclusions.
+// `after` is the base of the sketch after the batch (`toolBase` of that sketch with the new points
+// and the pairs the batch joins): the rule reads its own curves, its positions and the joins of
+// its pairs. It needs no world: the open ends are counted by the joins before the stage after the
+// solver, which do not depend on what the entries list.
 // `joined` names, for each curve that joined, the entry and the two listed curves it stands
 // between, which the rewrite of stored regions by names reads.
 export interface EntryPatch {
@@ -490,7 +499,7 @@ export interface JoinedCurve {
   entry: Id;
   between: [{ entry: Id; curve: Id }, { entry: Id; curve: Id }];
 }
-export declare function entryPatches(before: SketchFeature, after: SketchFeature, world: SketchWorld, changes: CurveChanges, tool: 'fillet' | 'trim' | 'extend' | 'split'): { patches: EntryPatch[]; joined: JoinedCurve[] };
+export declare function entryPatches(before: SketchFeature, after: SketchBase, changes: CurveChanges, tool: 'fillet' | 'trim' | 'extend' | 'split'): { patches: EntryPatch[]; joined: JoinedCurve[] };
 // What the rule reads of 6e's plan: the curves a batch makes, changes and turns into arcs, the
 // pieces of each cut curve, the stretches taken out, and the span lines to leave out.
 export type PlanReadBy6c = Pick<CurveChanges, 'added' | 'changed' | 'rekinded' | 'pieces' | 'removed' | 'stretches' | 'span'>;
@@ -587,10 +596,13 @@ export declare const PATTERN_UI: ReferenceUiAfter<SketchPattern>;
 // The names of the three tools join `SketchToolName` of the app.
 export type SketchToolNameAfter = SketchToolName | 'mirror' | 'linearPattern' | 'circularPattern';
 
-// The entities of every entry of a sketch, built once per sketch object (the document is
-// immutable): the pickers, the tags, the hover and the row of the panel read it, where they ask
-// the engine for the entities of an entry once per ID today.
-export declare function entityIndex(sketch: SketchFeature): ReadonlyMap<Id, { kind: EntityKind; entry: Id; derived: boolean }>;
+// The entities of a sketch that are not own, built once per sketch object (the document is
+// immutable): those of every entry, each with its entry, and `origin` with the axes of the origin
+// (6a2), which belong to no entry and have none. The pickers, the tags, the hover and the row of
+// the panel read it, where they ask the engine for the entities of an entry once per ID today; it
+// is filled from the engine's own answers (`referenceEntities`, `entityOf`), so the tools and the
+// form find an axis of the origin whether or not the result of the sketch lists it.
+export declare function entityIndex(sketch: SketchFeature): ReadonlyMap<Id, { kind: EntityKind; entry?: Id; derived: boolean }>;
 
 // Three tools of the sketch bar (`SKETCH_TOOL_UI`, after `fillet` and 6e's three): `mirror`,
 // `linearPattern`, `circularPattern`. Each takes the own curves and points (and `origin`) selected

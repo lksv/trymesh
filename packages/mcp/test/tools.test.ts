@@ -123,6 +123,12 @@ describe('popis API', () => {
     expect(description).toContain("| 'blendDoesNotFit'");
     expect(description).toMatch(/- fillet \(Fillet\): Rounds edges of one body/);
     expect(description).toContain('Edges are chamfered and rounded by the feature types chamfer and fillet');
+    // D67: the run-outs past round faces and what is refused, in the conventions, the summaries and
+    // the comments of types.ts
+    expect(description).toContain('or run out past a round face it crosses at 10° or more (D67)');
+    expect(description).toMatch(/Refused with the end face in the refs: a stop \(a convex edge into a wall, a concave edge past a rim/);
+    expect(description).toMatch(/- chamfer \(Chamfer\):.*run out past a round face it crosses at 10° or more/);
+    expect(description).toContain('// - Run-outs (D67): an edge may also end at a round face C');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
@@ -547,6 +553,29 @@ describe('dotazy na skicu', () => {
     expect(ok(engine, 'get_model').features[0]).not.toHaveProperty('degreesOfFreedom');
     expect(detail.constraints.find((c: { id: string }) => c.id === 'bad').conflicting).toBe(true);
     expect(detail.advice[0]).toMatch(/konfliktu/);
+  });
+
+  it('the axes of the origin (D71): named by describe_api, a constraint on one through execute, not listed by get_sketch', () => {
+    const engine = newEngine();
+    const description: string = ok(engine, 'describe_api');
+    expect(description).toContain('Every sketch has the lines `origin/x` and `origin/y` through its origin along its X and Y');
+    expect(description).toContain('every sketch has the lines `origin/x` and `origin/y` through its origin along');
+    rectangle(engine, false);
+    // the rectangle centred on the Y axis and standing on the X axis
+    const result = execute(engine, {
+      type: 'batch',
+      commands: [constrain('sy', { type: 'symmetric', a: 'a', b: 'b', line: 'origin/y' }), constrain('on', { type: 'pointOnCurve', point: 'a', curve: 'origin/x' })],
+    });
+    expect(result).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', degreesOfFreedom: 0 }] });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.points.find((p: { id: string }) => p.id === 'a').at).toEqual([-20, 0]);
+    expect(JSON.stringify(detail.points)).not.toContain('origin/');
+    expect(detail.curves.map((c: { id: string }) => c.id)).toEqual(['ab', 'bc', 'cd', 'da']);
+    expect(detail.external).toEqual([]);
+    // a snap of sketch_tool to an axis
+    const made = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'x', input: { first: { at: [100, 3], snap: { kind: 'curve', id: 'origin/x' } }, opposite: { at: [110, 10] } } });
+    expect(made).toMatchObject({ ok: true, problems: [] });
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).points.find((p: { id: string }) => p.id === made.ids.points[0]).at).toEqual([100, 0]);
   });
 });
 

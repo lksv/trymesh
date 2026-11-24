@@ -119,14 +119,15 @@ describe('the app, driven as a user drives it', () => {
     h.record('rectangle: second corner');
 
     h.press('toolbar', 'Úsečka');
-    h.click(at(60, 0));
-    h.move(at(80, 2));
+    // the chain lies off the axes of the origin, which a click near them would snap to (D71)
+    h.click(at(60, 10));
+    h.move(at(80, 12));
     h.record('line: a nearly horizontal end is inferred');
-    h.click(at(80, 2));
-    h.move(at(81, 25));
+    h.click(at(80, 12));
+    h.move(at(81, 35));
     h.record('line: the chain goes on from the end, a nearly vertical end is inferred');
-    h.click(at(81, 25));
-    h.click(at(60, 0));
+    h.click(at(81, 35));
+    h.click(at(60, 10));
     h.record('line: joining an existing point ends the chain');
 
     h.press('toolbar', 'Kružnice');
@@ -153,7 +154,7 @@ describe('the app, driven as a user drives it', () => {
 
     h.press('toolbar', 'Konstrukčně');
     h.press('toolbar', 'Úsečka');
-    h.click(at(0, 50));
+    h.click(at(10, 50));
     h.click(at(40, 50));
     h.key('Escape');
     h.press('toolbar', 'Konstrukčně');

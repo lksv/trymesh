@@ -220,6 +220,8 @@
   status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
   view: 2 scene(s) set
   scene:
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
     + points #a21caf size 7: 3 numbers, sum 0
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
@@ -292,11 +294,11 @@
     + line #8b9bb4 width 1: 24 numbers, sum 245
     + line #8b9bb4 width 1: 24 numbers, sum 122.5
     + line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
-    + points #1d4ed8 size 7: 9 numbers, sum 290
     - line #8b9bb4 width 1: 24 numbers, sum 509.223
     - line #8b9bb4 width 1: 24 numbers, sum 339.482
     - line #8b9bb4 width 1: 24 numbers, sum 169.741
     - line #64748b width 1.5 dashed onTop: 24 numbers, sum 900
+    + points #1d4ed8 size 7: 9 numbers, sum 290
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
@@ -316,18 +318,18 @@
   status: Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.
   view: 4 scene(s) set
   scene:
-    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 380
-    + label "vodorovně" reference at [80, 0, 0]
+    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 450
+    + label "vodorovně" reference at [80, 10, 0]
 
 === 7. line: the chain goes on from the end, a nearly vertical end is inferred
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":60,"y":0},{"type":"addPoint","sketch":"s1","id":"p5","x":80,"y":0},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"line","a":"p4","b":"p5"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"horizontal","line":"c5"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":60,"y":10},{"type":"addPoint","sketch":"s1","id":"p5","x":80,"y":10},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"line","a":"p4","b":"p5"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"horizontal","line":"c5"}}]}) -> ok
   engine: diagnoseSketch("s1")  (x2)
   feature s1:
-    + point p4: {"x":60,"y":0}
-    + point p5: {"x":80,"y":0}
+    + point p4: {"x":60,"y":10}
+    + point p5: {"x":80,"y":10}
     + curve c5: {"type":"line","a":"p4","b":"p5"}
     + constraint k5: {"type":"horizontal","line":"c5"}
   panel:
@@ -347,14 +349,14 @@
     + line #8b9bb4 width 1: 24 numbers, sum 627.984
     + line #8b9bb4 width 1: 24 numbers, sum 418.656
     + line #8b9bb4 width 1: 24 numbers, sum 209.328
-    + line #1d4ed8 width 2 onTop: 30 numbers, sum 2200
-    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 525
-    + points #1d4ed8 size 7: 15 numbers, sum 950
+    + line #1d4ed8 width 2 onTop: 30 numbers, sum 2260
+    + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 595
     - line #8b9bb4 width 1: 24 numbers, sum 367.5
     - line #8b9bb4 width 1: 24 numbers, sum 245
     - line #8b9bb4 width 1: 24 numbers, sum 122.5
     - line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
-    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 380
+    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 450
+    + points #1d4ed8 size 7: 15 numbers, sum 1060
     - points #1d4ed8 size 7: 9 numbers, sum 290
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
@@ -362,21 +364,21 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
-    + label "svisle" reference at [80, 25, 0]
-    - label "vodorovně" reference at [80, 0, 0]
+    + label "svisle" reference at [80, 35, 0]
+    - label "vodorovně" reference at [80, 10, 0]
 
 === 8. line: joining an existing point ends the chain
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p6","x":80,"y":25},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"vertical","line":"c6"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p6","x":80,"y":35},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"vertical","line":"c6"}}]}) -> ok
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"batch","commands":[{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   feature s1:
-    + point p6: {"x":80,"y":25}
+    + point p6: {"x":80,"y":35}
     + curve c6: {"type":"line","a":"p5","b":"p6"}
     + curve c7: {"type":"line","a":"p6","b":"p4"}
     + constraint k6: {"type":"vertical","line":"c6"}
@@ -396,13 +398,25 @@
     +   button.icon title="Smazat vazbu": "✕"
   view: 6 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 42 numbers, sum 3630
-    + points #1d4ed8 size 7: 18 numbers, sum 1185
-    - line #1d4ed8 width 2 onTop: 30 numbers, sum 2200
-    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 525
-    - points #1d4ed8 size 7: 15 numbers, sum 950
-    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 850
-    - label "svisle" reference at [80, 25, 0]
+    + line #8b9bb4 width 1: 24 numbers, sum 641.811
+    + line #8b9bb4 width 1: 24 numbers, sum 427.874
+    + line #8b9bb4 width 1: 24 numbers, sum 213.937
+    + line #1d4ed8 width 2 onTop: 42 numbers, sum 3890
+    - line #8b9bb4 width 1: 24 numbers, sum 627.984
+    - line #8b9bb4 width 1: 24 numbers, sum 418.656
+    - line #8b9bb4 width 1: 24 numbers, sum 209.328
+    - line #1d4ed8 width 2 onTop: 30 numbers, sum 2260
+    - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 595
+    + points #1d4ed8 size 7: 18 numbers, sum 1325
+    - points #1d4ed8 size 7: 15 numbers, sum 1060
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.562
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.562
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 30.562
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 970
+    - label "svisle" reference at [80, 35, 0]
 
 === 9. circle
   engine: getState("s1")
@@ -430,10 +444,10 @@
   status: Klikněte na střed a pak na bod obvodu.
   view: 6 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 618 numbers, sum 30449.212
-    + points #1d4ed8 size 7: 21 numbers, sum 1375
-    - line #1d4ed8 width 2 onTop: 42 numbers, sum 3630
-    - points #1d4ed8 size 7: 18 numbers, sum 1185
+    + line #1d4ed8 width 2 onTop: 618 numbers, sum 30709.212
+    - line #1d4ed8 width 2 onTop: 42 numbers, sum 3890
+    + points #1d4ed8 size 7: 21 numbers, sum 1515
+    - points #1d4ed8 size 7: 18 numbers, sum 1325
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
@@ -472,20 +486,20 @@
     + line #8b9bb4 width 1: 24 numbers, sum 743.913
     + line #8b9bb4 width 1: 24 numbers, sum 495.942
     + line #8b9bb4 width 1: 24 numbers, sum 247.971
-    + line #1d4ed8 width 2 onTop: 762 numbers, sum 54471.708
-    + points #1d4ed8 size 7: 30 numbers, sum 2555
-    - line #8b9bb4 width 1: 24 numbers, sum 627.984
-    - line #8b9bb4 width 1: 24 numbers, sum 418.656
-    - line #8b9bb4 width 1: 24 numbers, sum 209.328
-    - line #1d4ed8 width 2 onTop: 618 numbers, sum 30449.212
+    + line #1d4ed8 width 2 onTop: 762 numbers, sum 54731.708
+    - line #8b9bb4 width 1: 24 numbers, sum 641.811
+    - line #8b9bb4 width 1: 24 numbers, sum 427.874
+    - line #8b9bb4 width 1: 24 numbers, sum 213.937
+    - line #1d4ed8 width 2 onTop: 618 numbers, sum 30709.212
     - line #64748b width 1.5 dashed onTop: 150 numbers, sum 24726.147
-    - points #1d4ed8 size 7: 21 numbers, sum 1375
+    + points #1d4ed8 size 7: 30 numbers, sum 2695
+    - points #1d4ed8 size 7: 21 numbers, sum 1515
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.424
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.424
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.424
-    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
-    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
-    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.562
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.562
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 30.562
 
 === 12. polygon: its options are in the panel
   engine: getState("s1")
@@ -663,14 +677,14 @@
     + line #8b9bb4 width 1: 24 numbers, sum 1005.839
     + line #8b9bb4 width 1: 24 numbers, sum 670.559
     + line #8b9bb4 width 1: 24 numbers, sum 335.28
-    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63040.064
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63300.064
     + line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
-    + points #1d4ed8 size 7: 57 numbers, sum 7427.541
     - line #8b9bb4 width 1: 24 numbers, sum 743.913
     - line #8b9bb4 width 1: 24 numbers, sum 495.942
     - line #8b9bb4 width 1: 24 numbers, sum 247.971
-    - line #1d4ed8 width 2 onTop: 762 numbers, sum 54471.708
-    - points #1d4ed8 size 7: 30 numbers, sum 2555
+    - line #1d4ed8 width 2 onTop: 762 numbers, sum 54731.708
+    + points #1d4ed8 size 7: 57 numbers, sum 7567.541
+    - points #1d4ed8 size 7: 30 numbers, sum 2695
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.897
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.897
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.897
@@ -687,14 +701,14 @@
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p20","x":0,"y":50},{"type":"addPoint","sketch":"s1","id":"p21","x":40,"y":50},{"type":"addCurve","sketch":"s1","id":"c19","curve":{"type":"line","a":"p20","b":"p21","construction":true}},{"type":"addConstraint","sketch":"s1","id":"k23","constraint":{"type":"horizontal","line":"c19"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p20","x":10,"y":50},{"type":"addPoint","sketch":"s1","id":"p21","x":40,"y":50},{"type":"addCurve","sketch":"s1","id":"c19","curve":{"type":"line","a":"p20","b":"p21","construction":true}},{"type":"addConstraint","sketch":"s1","id":"k23","constraint":{"type":"horizontal","line":"c19"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   feature s1:
-    + point p20: {"x":0,"y":50}
+    + point p20: {"x":10,"y":50}
     + point p21: {"x":40,"y":50}
     + curve c19: {"construction":true,"type":"line","a":"p20","b":"p21"}
     + constraint k23: {"type":"horizontal","line":"c19"}
@@ -729,10 +743,10 @@
   status: Nové křivky budou běžné.
   view: 9 scene(s) set
   scene:
-    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100548.424
-    + points #1d4ed8 size 7: 63 numbers, sum 8077.541
+    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100578.424
     - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
-    - points #1d4ed8 size 7: 57 numbers, sum 7427.541
+    + points #1d4ed8 size 7: 63 numbers, sum 8237.541
+    - points #1d4ed8 size 7: 57 numbers, sum 7567.541
 
 === 16. a point
   engine: getState("s1")
@@ -755,8 +769,8 @@
   status: Klikněte na místo bodu.
   view: 3 scene(s) set
   scene:
-    + points #1d4ed8 size 7: 66 numbers, sum 8287.541
-    - points #1d4ed8 size 7: 63 numbers, sum 8077.541
+    + points #1d4ed8 size 7: 66 numbers, sum 8447.541
+    - points #1d4ed8 size 7: 63 numbers, sum 8237.541
 
 === 17. select: a curve under the pointer is highlighted
   engine: getState("s1")
@@ -769,8 +783,8 @@
   status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.
   view: 2 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
-    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63040.064
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62365.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63300.064
     + line #0ea5e9 width 3 onTop: 6 numbers, sum 160
 
 === 18. select: the bottom side
@@ -823,8 +837,8 @@
   view: 1 scene(s) set
   scene:
     + points #1c2430 size 7: 3 numbers, sum 40
-    + points #1d4ed8 size 7: 63 numbers, sum 9303.93
-    - points #1d4ed8 size 7: 66 numbers, sum 8287.541
+    + points #1d4ed8 size 7: 63 numbers, sum 9483.93
+    - points #1d4ed8 size 7: 66 numbers, sum 8447.541
     + label "40" driving at [20, 0, 0]
 
 === 20. select with Shift: two sides
@@ -844,8 +858,8 @@
     -   button title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
   view: 2 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61572.793
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61812.793
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62365.83
     + line #f97316 width 3 onTop: 12 numbers, sum 680
     - line #f97316 width 3 onTop: 6 numbers, sum 160
 
@@ -910,11 +924,11 @@
   view: 5 scene(s) set
   scene:
     + line #1c2430 width 2 onTop: 6 numbers, sum 160
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
-    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61572.793
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62365.83
+    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61812.793
     - line #f97316 width 3 onTop: 12 numbers, sum 680
-    + points #1d4ed8 size 7: 57 numbers, sum 8333.318
-    - points #1d4ed8 size 7: 63 numbers, sum 9303.93
+    + points #1d4ed8 size 7: 57 numbers, sum 8483.318
+    - points #1d4ed8 size 7: 63 numbers, sum 9483.93
     + points #f97316 size 10: 6 numbers, sum 825
     + label "10" driving at [105, 37.5, 0]
 
@@ -954,13 +968,13 @@
   view: 1 scene(s) set
   scene:
     + line #1c2430 width 2 onTop: 6 numbers, sum 180
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
     - line #1c2430 width 2 onTop: 6 numbers, sum 160
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62115.83
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62365.83
     + points #1c2430 size 7: 3 numbers, sum 45
-    + points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    + points #1d4ed8 size 7: 57 numbers, sum 8488.318
     - points #1c2430 size 7: 3 numbers, sum 40
-    - points #1d4ed8 size 7: 57 numbers, sum 8333.318
+    - points #1d4ed8 size 7: 57 numbers, sum 8483.318
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 570 | 110 numbers, sum 7601.703
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
     + label "45" driving at [22.5, 0, 0]
@@ -984,12 +998,12 @@
     -     input type=checkbox checked
   view: 1 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63140.064
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63400.064
     - line #1c2430 width 2 onTop: 6 numbers, sum 180
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
-    + points #1d4ed8 size 7: 60 numbers, sum 7291.93
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
+    + points #1d4ed8 size 7: 60 numbers, sum 7491.93
     - points #1c2430 size 7: 3 numbers, sum 45
-    - points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    - points #1d4ed8 size 7: 57 numbers, sum 8488.318
     + label "(45)" reference at [22.5, 0, 0]
     - label "45" driving at [22.5, 0, 0]
 
@@ -1012,11 +1026,11 @@
   view: 1 scene(s) set
   scene:
     + line #1c2430 width 2 onTop: 6 numbers, sum 180
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
-    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63140.064
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63400.064
     + points #1c2430 size 7: 3 numbers, sum 45
-    + points #1d4ed8 size 7: 57 numbers, sum 8338.318
-    - points #1d4ed8 size 7: 60 numbers, sum 7291.93
+    + points #1d4ed8 size 7: 57 numbers, sum 8488.318
+    - points #1d4ed8 size 7: 60 numbers, sum 7491.93
     + label "45" driving at [22.5, 0, 0]
     - label "(45)" reference at [22.5, 0, 0]
 
@@ -1034,9 +1048,9 @@
     + p.explain: "Vazba plyne z vazeb: Vodorovně (c1); Svisle (c2). Odebrat jde ona nebo kterákoli z nich, geometrie se tím nezmění."
   view: 1 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61577.793
+    + line #1d4ed8 width 2 onTop: 798 numbers, sum 61817.793
     - line #1c2430 width 2 onTop: 6 numbers, sum 180
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
     + line #0ea5e9 width 4 onTop: 12 numbers, sum 750
 
 === 30. the pointer over a constraint highlights its operands
@@ -1069,8 +1083,8 @@
   scene:
     + line #0ea5e9 width 4 onTop: 12 numbers, sum 750
     - line #0ea5e9 width 3 onTop: 12 numbers, sum 750
-    + points #1d4ed8 size 7: 63 numbers, sum 9308.93
-    - points #1d4ed8 size 7: 57 numbers, sum 8338.318
+    + points #1d4ed8 size 7: 63 numbers, sum 9488.93
+    - points #1d4ed8 size 7: 57 numbers, sum 8488.318
     - points #f97316 size 10: 6 numbers, sum 825
 
 === 32. Escape: then the focus
@@ -1087,8 +1101,8 @@
   view: 1 scene(s) set
   scene:
     + line #1c2430 width 2 onTop: 6 numbers, sum 180
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
-    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61577.793
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
+    - line #1d4ed8 width 2 onTop: 798 numbers, sum 61817.793
     - line #0ea5e9 width 4 onTop: 12 numbers, sum 750
 
 === 33. the free entities are selected
@@ -1103,11 +1117,11 @@
     -   button disabled title="Delete": "Smazat"
   view: 1 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 228 numbers, sum 35098.341
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
+    + line #1d4ed8 width 2 onTop: 228 numbers, sum 35348.341
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
     + line #f97316 width 3 onTop: 576 numbers, sum 26819.212
-    - points #1d4ed8 size 7: 63 numbers, sum 9308.93
-    + points #f97316 size 10: 63 numbers, sum 9308.93
+    - points #1d4ed8 size 7: 63 numbers, sum 9488.93
+    + points #f97316 size 10: 63 numbers, sum 9488.93
 
 === 34. a press on a point and a move within four pixels: no drag yet
   engine: getState("s1")
@@ -1121,12 +1135,12 @@
     -   button title="Delete": "Smazat"
   view: 2 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
-    - line #1d4ed8 width 2 onTop: 228 numbers, sum 35098.341
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
+    - line #1d4ed8 width 2 onTop: 228 numbers, sum 35348.341
     - line #f97316 width 3 onTop: 576 numbers, sum 26819.212
-    + points #1d4ed8 size 7: 60 numbers, sum 8478.93
+    + points #1d4ed8 size 7: 60 numbers, sum 8658.93
     + points #0ea5e9 size 10: 3 numbers, sum 210
-    - points #f97316 size 10: 63 numbers, sum 9308.93
+    - points #f97316 size 10: 63 numbers, sum 9488.93
 
 === 35. a drag: the engine previews, the status follows without a rebuild of the panel
   engine: preview({"type":"dragPoint","sketch":"s1","point":"p22","x":103,"y":67}, "s1") -> ok
@@ -1139,12 +1153,12 @@
     - line #8b9bb4 width 1: 24 numbers, sum 1005.839
     - line #8b9bb4 width 1: 24 numbers, sum 670.559
     - line #8b9bb4 width 1: 24 numbers, sum 335.28
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
-    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102852.424
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62175.83
-    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100548.424
-    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
-    - points #1d4ed8 size 7: 60 numbers, sum 8478.93
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62608.83
+    + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102882.424
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
+    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100578.424
+    + points #1d4ed8 size 7: 60 numbers, sum 8772.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8658.93
     + points #0ea5e9 size 10: 3 numbers, sum 237
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 49.638
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 49.638
@@ -1195,8 +1209,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 1042.394
     - line #8b9bb4 width 1: 24 numbers, sum 694.93
     - line #8b9bb4 width 1: 24 numbers, sum 347.465
-    + points #1d4ed8 size 7: 63 numbers, sum 9527.93
-    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    + points #1d4ed8 size 7: 63 numbers, sum 9707.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8772.93
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 50.142
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 50.142
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 50.142
@@ -1255,8 +1269,8 @@
     -   button disabled title="Delete": "Smazat"
   view: 2 scene(s) set
   scene:
-    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
-    - points #1d4ed8 size 7: 63 numbers, sum 9527.93
+    + points #1d4ed8 size 7: 60 numbers, sum 8772.93
+    - points #1d4ed8 size 7: 63 numbers, sum 9707.93
     + points #f97316 size 10: 3 numbers, sum 243
 
 === 43. Delete removes the selected point
@@ -1334,15 +1348,15 @@
   view: 3 scene(s) set
   scene:
     + line #b45309 width 1.5 dashed onTop: 576 numbers, sum 102062.424
-    + line #f97316 width 3 onTop: 6 numbers, sum 510
-    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102852.424
+    + line #f97316 width 3 onTop: 6 numbers, sum 520
+    - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102882.424
 
 === 45. and deleted by the button, with the points nothing else uses
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"batch","commands":[{"type":"removeEntity","sketch":"s1","id":"c19"},{"type":"removeEntity","sketch":"s1","id":"p20"},{"type":"removeEntity","sketch":"s1","id":"p21"}]}) -> ok
   feature s1:
-    - point p20: {"x":0,"y":50}
+    - point p20: {"x":10,"y":50}
     - point p21: {"x":40,"y":50}
     - curve c19: {"type":"line","a":"p20","b":"p21"}
     - constraint k23: {"type":"horizontal","line":"c19"}
@@ -1376,9 +1390,9 @@
     -   span.name
   view: 1 scene(s) set
   scene:
-    - line #f97316 width 3 onTop: 6 numbers, sum 510
-    + points #1d4ed8 size 7: 54 numbers, sum 8012.93
-    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    - line #f97316 width 3 onTop: 6 numbers, sum 520
+    + points #1d4ed8 size 7: 54 numbers, sum 8132.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8772.93
 
 === 46. the origin cannot be deleted
   engine: diagnoseSketch("s1")  (x3)
@@ -1421,7 +1435,7 @@
   engine: diagnoseSketch("s1")  (x2)
   engine: undo()
   feature s1:
-    + point p20: {"x":0,"y":50}
+    + point p20: {"x":10,"y":50}
     + point p21: {"x":40,"y":50}
     + curve c19: {"type":"line","a":"p20","b":"p21"}
     + constraint k23: {"type":"horizontal","line":"c19"}
@@ -1442,17 +1456,17 @@
     +   span.name
   view: 1 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 810 numbers, sum 62728.83
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
-    + points #1d4ed8 size 7: 60 numbers, sum 8592.93
-    - points #1d4ed8 size 7: 54 numbers, sum 8012.93
+    + line #1d4ed8 width 2 onTop: 810 numbers, sum 63048.83
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62608.83
+    + points #1d4ed8 size 7: 60 numbers, sum 8772.93
+    - points #1d4ed8 size 7: 54 numbers, sum 8132.93
 
 === 50. redo
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: redo()
   feature s1:
-    - point p20: {"x":0,"y":50}
+    - point p20: {"x":10,"y":50}
     - point p21: {"x":40,"y":50}
     - curve c19: {"type":"line","a":"p20","b":"p21"}
     - constraint k23: {"type":"horizontal","line":"c19"}
@@ -1473,10 +1487,10 @@
     -   span.name
   view: 1 scene(s) set
   scene:
-    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
-    - line #1d4ed8 width 2 onTop: 810 numbers, sum 62728.83
-    + points #1d4ed8 size 7: 54 numbers, sum 8012.93
-    - points #1d4ed8 size 7: 60 numbers, sum 8592.93
+    + line #1d4ed8 width 2 onTop: 804 numbers, sum 62608.83
+    - line #1d4ed8 width 2 onTop: 810 numbers, sum 63048.83
+    + points #1d4ed8 size 7: 54 numbers, sum 8132.93
+    - points #1d4ed8 size 7: 60 numbers, sum 8772.93
 
 === 51. the sketch is finished
   toolbar:
@@ -1719,17 +1733,19 @@
   status: Skica dokončena.
   view: 1 scene(s) set
   scene:
-    + line #f97316 width 2.5: 810 numbers, sum 63338.064
+    + line #f97316 width 2.5: 810 numbers, sum 63598.064
     + line #f97316 width 1 dashed: 576 numbers, sum 102062.424
     - line #1c2430 width 2 onTop: 6 numbers, sum 180
-    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62358.83
+    - line #1d4ed8 width 2 onTop: 804 numbers, sum 62608.83
     - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 102062.424
+    - axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+    - axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
     - points #1c2430 size 7: 3 numbers, sum 45
-    - points #1d4ed8 size 7: 54 numbers, sum 8012.93
+    - points #1d4ed8 size 7: 54 numbers, sum 8132.93
     - points #f97316 size 10: 3 numbers, sum 0
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 16 numbers, sum 3776.647
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 570 | 110 numbers, sum 7601.703
-    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 850
+    - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 970
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
     - label "22.17" driving at [113.879, 17.879, 0]
     - label "45" driving at [22.5, 0, 0]

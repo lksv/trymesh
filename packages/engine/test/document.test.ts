@@ -334,10 +334,10 @@ describe('promítnutá geometrie', () => {
 
   it('řídicí vazba jen mezi pevnými entitami je neplatná, referenční kóta platná', () => {
     const doc = run(withSketch(), { type: 'addExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge, kind: 'line' } });
-    invalid(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'horizontal', line: 'x1' } }, /nikdy neprojevila/);
-    invalid(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'distance', a: 'origin', b: 'x1/a', value: 3, driving: true } }, /nikdy neprojevila/);
+    invalid(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'horizontal', line: 'x1' } }, /would never take effect/);
+    invalid(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'distance', a: 'origin', b: 'x1/a', value: 3, driving: true } }, /would never take effect/);
     const ref = run(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'distance', a: 'origin', b: 'x1/a', value: 3, driving: false } });
-    invalid(ref, { type: 'setConstraintValue', sketch: 'S2', id: 'k', driving: true }, /nikdy neprojevila/);
+    invalid(ref, { type: 'setConstraintValue', sketch: 'S2', id: 'k', driving: true }, /would never take effect/);
   });
 
   it('updateExternal zachová ID a nesmí změnit druh; removeExternal vezme vazby', () => {

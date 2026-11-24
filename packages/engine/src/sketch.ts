@@ -1,9 +1,9 @@
 // Skica: vstup solveru a razítko, referenční kóty, detekce profilů a oblastí.
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
 import type { GeometrySource, ResolvedReference } from './references/spec';
-import { constraintOperands, isDimension } from './sketch-content';
-import type { Constraint, Curve, CurveShape, Id, Point2, Projected, RegionRef, SketchFeature, SolveInput, Vec2 } from './types';
-import { LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, fingerprint, has, len2, stableStringify, sub2, unreachable } from './util';
+import { AXES_GEOMETRY, constraintOperands, isDimension } from './sketch-content';
+import type { Constraint, Curve, CurveShape, Id, Point2, Projected, RegionRef, SketchFeature, SketchResult, SolveInput, Vec2 } from './types';
+import { AXIS_REACH, LENGTH_TOLERANCE, ORIGIN, ORIGIN_AXES, cross2, dist2, dot2, fingerprint, has, isOriginAxis, len2, stableStringify, sub2, unreachable } from './util';
 
 // Použité polohy: vlastní body, počátek a body promítnuté geometrie; poloměry kružnic včetně promítnutých.
 export interface SketchGeometry {
@@ -24,19 +24,68 @@ export interface SketchCurve {
   regions: boolean;
 }
 
-// The curves of a sketch: the own ones, then those of the resolved entries of `external`. The
-// order does not matter to a reader: the profile sorts the curves that form regions by ID.
-export function sketchCurves(feature: SketchFeature, references: Record<Id, ResolvedReference>): SketchCurve[] {
-  const out: SketchCurve[] = [];
-  for (const [id, c] of Object.entries(feature.curves)) {
+// The axes of the origin as curves of the list (D71): reference geometry that forms no regions.
+// Made here once; `sketchCurves` and `solvedCurves` append them, and nothing else does.
+export const AXIS_CURVES: readonly SketchCurve[] = ORIGIN_AXES.map((id) => ({ id, shape: AXES_GEOMETRY.curves[id], source: 'reference', regions: false }));
+
+const ownCurves = (feature: SketchFeature): SketchCurve[] =>
+  Object.entries(feature.curves).map(([id, c]) => {
     const { construction, ...shape } = c;
-    out.push({ id, shape: shape as CurveShape, source: 'own', regions: construction !== true });
-  }
-  for (const reference of Object.values(references)) {
+    return { id, shape: shape as CurveShape, source: 'own', regions: construction !== true };
+  });
+
+// The curves of a sketch: the own ones, then those of the resolved entries of `external`, then the
+// two axes of the origin, in every sketch whatever its constraints (once, also when the solver had
+// them under the key `origin`). The order does not matter to a reader: the profile sorts the curves
+// that form regions by ID.
+export function sketchCurves(feature: SketchFeature, references: Record<Id, ResolvedReference>): SketchCurve[] {
+  const out = ownCurves(feature);
+  for (const [key, reference] of Object.entries(references)) {
+    if (key === ORIGIN) continue;
     const { curves, regions } = reference.geometry;
     for (const [id, shape] of Object.entries(curves)) out.push({ id, shape, source: 'reference', regions: regions.includes(id) });
   }
+  out.push(...AXIS_CURVES);
   return out;
+}
+
+// The curves and the positions of a solved sketch as the state of the recompute holds them
+// (`SketchState.curves` and `geometry`), for a reader that has only the sketch and its result (the
+// sketch tools, the app's view; 6e's `toolBase` is built on it).
+// - The curves: the own curves of the sketch given, the curves of `result.curves` whatever their
+//   source, and the two axes of the origin.
+// - The positions: those of the result, the far points of the axes, and for a point (or the radius
+//   of a circle) of the sketch that the result does not have, the one the sketch holds. A tool
+//   gives the sketch after its batch with the result from before it, so what the batch added is
+//   found there.
+// - Without a result (the sketch did not evaluate): the own curves and the axes over the positions
+//   of the sketch.
+export interface SolvedCurves {
+  curves: Map<Id, SketchCurve>;
+  geometry: SketchGeometry;
+}
+export function solvedCurves(sketch: SketchFeature, result: SketchResult | undefined): SolvedCurves {
+  const curves = new Map(ownCurves(sketch).map((curve) => [curve.id, curve]));
+  for (const [id, curve] of Object.entries(result?.curves ?? {})) curves.set(id, { id, shape: curve.shape, source: curve.source, regions: curve.regions });
+  for (const curve of AXIS_CURVES) curves.set(curve.id, curve);
+  const points: Record<Id, Point2> = { [ORIGIN]: { x: 0, y: 0 }, ...sketch.points, ...result?.points, ...AXES_GEOMETRY.points };
+  const radii: Record<Id, number> = { ...sketch.radii, ...result?.radii };
+  return { curves, geometry: { points, radii } };
+}
+
+// The two ends a reader that takes a line as the stretch between them uses: for an axis of the
+// origin the points at ∓AXIS_REACH along it (an axis is a whole line, though its curve in the list
+// is the millimetre from `origin` to its far point), for any other line the positions of its `a`
+// and `b`; undefined when the curve is no line or a point of it has no position. The snap of a
+// sketch tool, the contact search of the tools that cut (6e) and the app's hit test read a line
+// through it; a reader of the direction or the carrier of a line (the solver, `measure`, the axis
+// of a feature) reads `a` and `b` as for any line. The shape made so has no vertex at its ends:
+// they are no points of the sketch.
+export function lineExtent(curve: SketchCurve, geometry: SketchGeometry): { a: Point2; b: Point2 } | undefined {
+  if (curve.shape.type !== 'line') return undefined;
+  if (isOriginAxis(curve.id)) return curve.id === 'origin/x' ? { a: { x: -AXIS_REACH, y: 0 }, b: { x: AXIS_REACH, y: 0 } } : { a: { x: 0, y: -AXIS_REACH }, b: { x: 0, y: AXIS_REACH } };
+  const [a, b] = [geometry.points[curve.shape.a], geometry.points[curve.shape.b]];
+  return a && b ? { a, b } : undefined;
 }
 
 // The pairs of points that may join: the operands of every `coincident` of the sketch. (The pairs
@@ -130,8 +179,10 @@ export interface SolverSetup {
 }
 
 // `references`: the resolved entries of `external` (fresh or frozen values and their geometry,
-// references/index.ts). Their points and curves enter the input in the order of the entry IDs, and
-// every point and circle of them is fixed in that order; the stamp holds the values by entry ID.
+// references/index.ts), and the axes of the origin under the key `origin` when a constraint names
+// one (no value). Their points and curves enter the input in the order of the keys, and every point
+// and circle of them is fixed in that order; the stamp holds the values of the entries by entry ID
+// (the axes reach it only through the curves of the input).
 export function solverSetup(sketch: SketchFeature, references: Record<Id, ResolvedReference>): SolverSetup {
   const points: Record<Id, Point2> = { [ORIGIN]: { x: 0, y: 0 }, ...sketch.points };
   const radii: Record<Id, number> = { ...sketch.radii };
@@ -356,20 +407,18 @@ function lineContacts(A: LineShape, B: LineShape): Vec2[] {
   return [[A.pa[0] + da[0] * t, A.pa[1] + da[1] * t]];
 }
 function lineRoundContacts(line: LineShape, round: Round, tol: number): Vec2[] {
-  {
-    const d = sub2(line.pb, line.pa);
-    const length = len2(d);
-    const along = dot2(sub2(round.c, line.pa), d) / length;
-    const foot: Vec2 = [line.pa[0] + (d[0] * along) / length, line.pa[1] + (d[1] * along) / length];
-    const distance = dist2(foot, round.c);
-    if (distance > round.r + tol) return [];
-    if (distance >= round.r - tol) return [foot];
-    const half = Math.sqrt(round.r * round.r - distance * distance) / length;
-    return [
-      [foot[0] + d[0] * half, foot[1] + d[1] * half],
-      [foot[0] - d[0] * half, foot[1] - d[1] * half],
-    ];
-  }
+  const d = sub2(line.pb, line.pa);
+  const length = len2(d);
+  const along = dot2(sub2(round.c, line.pa), d) / length;
+  const foot: Vec2 = [line.pa[0] + (d[0] * along) / length, line.pa[1] + (d[1] * along) / length];
+  const distance = dist2(foot, round.c);
+  if (distance > round.r + tol) return [];
+  if (distance >= round.r - tol) return [foot];
+  const half = Math.sqrt(round.r * round.r - distance * distance) / length;
+  return [
+    [foot[0] + d[0] * half, foot[1] + d[1] * half],
+    [foot[0] - d[0] * half, foot[1] - d[1] * half],
+  ];
 }
 function roundContacts(P: Round, Q: Round, tol: number): Vec2[] {
   const delta = sub2(Q.c, P.c);
@@ -578,8 +627,7 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
 // křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
 export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Profile {
   const tol = LENGTH_TOLERANCE;
-  const find = joins;
-  const vertex = (id: Id): CurveEnd => ({ key: find(id), p: xy(geometry.points[find(id)]) });
+  const vertex = (id: Id): CurveEnd => ({ key: joins(id), p: xy(geometry.points[joins(id)]) });
   const centre = (id: Id): Vec2 => xy(geometry.points[id]);
 
   const shapes: Shape[] = [];
@@ -588,7 +636,7 @@ export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id,
     const id = curve.id;
     const c = placedCurve(curve, geometry.radii, vertex, centre);
     if (!c) {
-      valid = false; // a curve without a position or a radius
+      valid = false; // a circle without a radius (a point without a position throws in `vertex` or `centre`, as before)
       continue;
     }
     switch (c.type) {

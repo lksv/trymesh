@@ -11,7 +11,6 @@ export {
   constraintPath,
   CURVE_POINTS,
   curvePoints,
-  derivedPoints,
   documentIds,
   duplicateOf,
   emptyDocument,
@@ -92,3 +91,5 @@ export {
 } from './sketch-tools';
 export { CUT_IDS, type CutIds, type ExtendInput, type PieceShape, type SplitInput, type TrimInput, extendEnd, extendReach, profileContacts, trimPiece } from './sketch-cut';
 export type { Deps } from './evaluate';
+export { AXIS_REACH, ORIGIN_AXES, type OriginAxis, isOriginAxis, underOrigin } from './util';
+export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, lineExtent, solvedCurves } from './sketch';

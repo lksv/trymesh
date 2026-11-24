@@ -1,7 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, profileContacts } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, isOriginAxis, profileContacts } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
@@ -187,7 +187,8 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
 }
 
 // A click: the entry of the tool gets it. A shape of several places keeps the places before the
-// last; the last one runs the tool with all of them.
+// last; the last one runs the tool with all of them. A tool without `clicks` gets every click and
+// keeps what `click` returns; the mode redraws the scene when places were kept before or are now.
 export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent): void {
   const context = host.sketchContext();
   if (!context) return;
@@ -203,22 +204,34 @@ export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent
   }
   const places = [...m.clicks, place];
   m.clicks = [];
-  const kept = tool.click(host, m, places, context, toolOptions(host, m.tool), event);
-  if (kept && kept.length > 0 && host.sketch === m) m.clicks = kept;
-  if (tool.clicks === undefined) return;
+  keep(host, m, tool.click(host, m, places, context, toolOptions(host, m.tool), event));
+  if (tool.clicks === undefined) {
+    // the tools of today without `clicks` keep nothing and redraw what they change themselves
+    if (places.length > 1 || m.clicks.length > 0) host.renderScene();
+    return;
+  }
   m.infer = undefined;
   host.renderScene();
 }
 
-// The key Enter: a tool that collects places (6d: the control points of a spline) finishes with them.
-export function sketchFinish(host: SketchHost, m: SketchMode): void {
+// The places a tool returned are kept, while its sketch is still the one open.
+function keep(host: SketchHost, m: SketchMode, kept: Place[] | void): void {
+  if (kept && kept.length > 0 && host.sketch === m) m.clicks = kept;
+}
+
+// The key Enter: a tool that collects places (6d: the control points of a spline) finishes with
+// them, and keeps what `finish` returns (too few places for its shape: they stay). With no place
+// kept, or a tool without `finish`, it does nothing. True when the tool got the key, so the app
+// keeps it from the element in focus.
+export function sketchFinish(host: SketchHost, m: SketchMode): boolean {
   const context = host.sketchContext();
   const tool = placeTool(m);
-  if (!context || !tool?.finish) return;
+  if (!context || !tool?.finish || m.clicks.length === 0) return false;
   const places = m.clicks;
   m.clicks = [];
-  tool.finish(host, m, places, context, toolOptions(host, m.tool));
+  keep(host, m, tool.finish(host, m, places, context, toolOptions(host, m.tool)));
   host.renderScene();
+  return true;
 }
 
 export function addConstraints(host: SketchHost, m: SketchMode, constraints: Constraint[] | undefined): void {
@@ -277,7 +290,15 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
 
   // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
   const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };
+  // The axes of the origin (D71) in a bucket of their own: thin lines in the colour of a plane,
+  // drawn by the view as their stretch inside what it shows.
+  const axes: NonNullable<SceneModel['axes']> = [];
   for (const curve of view.curves.values()) {
+    if (isOriginAxis(curve.id)) {
+      const marked = selected.has(curve.id) ? COLOR.select : hovered.has(curve.id) || focused.has(curve.id) ? COLOR.hover : implying.has(curve.id) ? COLOR.implied : undefined;
+      axes.push({ frame, direction: curve.id === 'origin/x' ? [1, 0] : [0, 1], color: marked ?? COLOR.plane, width: marked === undefined ? 1 : 3 });
+      continue;
+    }
     const bucket = selected.has(curve.id)
       ? 'selected'
       : hovered.has(curve.id)
@@ -297,6 +318,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
                     : 'determined';
     pushPolyline(lines[bucket], frame, polyline(curve.shape));
   }
+  model.axes = [...(model.axes ?? []), ...axes];
   model.lines.push(
     { segments: lines.determined, color: COLOR.determined, width: 2, onTop: true },
     { segments: lines.own, color: COLOR.sketch, width: 2, onTop: true },

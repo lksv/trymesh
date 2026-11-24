@@ -13,7 +13,7 @@ import { h } from './dom';
 import { entryEntities, entryTag } from './references';
 import type { PanelHost, ViewPick } from './host';
 import { faceLabel } from './issue-text';
-import { type AxisChange, type AxisKind, axisKind, axisText, lineIds } from './sketch-commands';
+import { type AxisChange, type AxisKind, axisKind, axisText, lineIds, lineLabel } from './sketch-commands';
 
 const AXES: Record<AxisKind, string> = { X: 'Axis X', Y: 'Axis Y', Z: 'Axis Z', sketchPoint: 'Through a point of a sketch', sketchLine: 'Along a line of a sketch', face: 'The axis of a round face' };
 const DIRECTIONS: Record<AxisKind, string> = { ...AXES, sketchPoint: 'The normal of a sketch plane', face: 'Along the axis of a round face' };
@@ -83,7 +83,7 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   if (axis.kind === 'sketchLine') {
     const own = host.feature(axis.sketch);
     const lines = sketches.includes(axis.sketch) ? linesOf(axis.sketch) : [];
-    const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && entryTag(own, id) ? `${id} (${entryTag(own, id)})` : id);
+    const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && entryTag(own, id) ? `${id} (${entryTag(own, id)})` : lineLabel(id));
     out.push(
       select(direction ? direction.sketch : 'Sketch', (value) => set({ sketch: value }), ...withLines.map((id) => option(id, host.nameOf(id), id === axis.sketch)), withLines.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)}${sketches.includes(axis.sketch) ? '' : ' (missing)'}`, true)),
       select(direction ? `Line of the ${direction.direction.toLowerCase()}` : 'Line', (value) => set({ line: value }), ...lines.map((id) => option(id, label(id), id === axis.line)), lines.includes(axis.line) ? null : option(axis.line, `${axis.line} (missing)`, true)),

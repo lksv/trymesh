@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type CurveShape, type DimensionShape, type Id, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, referenceEntities } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, isOriginAxis, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -39,21 +39,29 @@ export function unreachable(value: never, what: string): never {
 export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
 
+// The view of a solved sketch, from what the engine's reader of a solved sketch gives
+// (`solvedCurves`): the own curves, the curves of its entries, and the axes of the origin
+// `origin/x` and `origin/y` (D71), which are curves that are not own, held by the point `origin`
+// and shaped as whole lines (`lineExtent`), so they are hovered, picked and snapped to anywhere.
 export function sketchView(feature: SketchFeature, result: SketchResult): SketchView {
   const points = new Map<Id, PointView>();
   const curves = new Map<Id, CurveView>();
+  const solved = solvedCurves(feature, result);
   const at = (id: Id): Vec2 | undefined => {
-    const p = result.points[id] ?? (id === ORIGIN ? { x: 0, y: 0 } : feature.points[id]);
+    const p = solved.geometry.points[id];
     return p ? [p.x, p.y] : undefined;
   };
   points.set(ORIGIN, { id: ORIGIN, at: [0, 0], own: false });
   for (const id of Object.keys(feature.points)) points.set(id, { id, at: at(id) as Vec2, own: true });
 
   // the shape of a curve over the positions of its points (the radius of a circle given)
-  const shapeOf = (curve: CurveShape, radius: number): Shape => {
+  const shapeOf = (sketchCurve: SketchCurve, radius: number): Shape => {
+    const curve = sketchCurve.shape;
     switch (curve.type) {
-      case 'line':
-        return { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 };
+      case 'line': {
+        const extent = lineExtent(sketchCurve, solved.geometry);
+        return extent ? { type: 'line', a: [extent.a.x, extent.a.y], b: [extent.b.x, extent.b.y] } : { type: 'line', a: at(curve.a) as Vec2, b: at(curve.b) as Vec2 };
+      }
       case 'circle':
         return { type: 'circle', center: at(curve.center) as Vec2, radius };
       case 'arc': {
@@ -66,21 +74,26 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
         return unreachable(curve, 'curve');
     }
   };
-  for (const [id, curve] of Object.entries(feature.curves)) {
-    curves.set(id, { id, own: true, construction: curve.construction === true, points: curvePoints(curve), shape: shapeOf(curve, result.radii[id] ?? feature.radii[id]) });
-  }
-  // The entries of `external` (projected geometry): their points with a position and their curves
-  // the result has, in the order of the document and of the kind of each entry.
+  // The entries of `external` (projected geometry): their points with a position, in the order of
+  // the document and of the kind of each entry.
   for (const entry of Object.keys(feature.external)) {
-    const entities = Object.entries(referenceEntities(feature, entry));
-    for (const [id, kind] of entities) {
+    for (const [id, kind] of Object.entries(referenceEntities(feature, entry))) {
       const p = kind === 'point' ? at(id) : undefined;
       if (p) points.set(id, { id, at: p, own: false });
     }
-    for (const [id, kind] of entities) {
-      const curve = kind === 'point' ? undefined : result.curves[id];
-      if (curve) curves.set(id, { id, own: false, construction: false, points: curvePoints(curve.shape), shape: shapeOf(curve.shape, result.radii[id]) });
-    }
+  }
+  // The curves: the own ones, then those of the entries the result has (in the order of the
+  // document and of the kind of each entry), then the two axes. An axis is held by `origin`, its
+  // far point being no point of the sketch.
+  for (const curve of solved.curves.values()) {
+    const own = curve.source === 'own';
+    curves.set(curve.id, {
+      id: curve.id,
+      own,
+      construction: own && feature.curves[curve.id].construction === true,
+      points: isOriginAxis(curve.id) ? [ORIGIN] : curvePoints(curve.shape),
+      shape: shapeOf(curve, solved.geometry.radii[curve.id]),
+    });
   }
   return { points, curves, source: { sketch: feature, result } };
 }
@@ -219,13 +232,18 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
 // Operandy vazby (ID entit skici), podle katalogu enginu.
 export const operandsOf = constraintOperands;
 
-// Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu.
+// Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu. An axis of the origin
+// (D71), a whole line, has no middle: its spot is the foot on it of the middle of the other
+// operands (of the origin, when every operand is an axis), so the label of a dimension to an axis
+// stands beside the point it measures.
 export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
   const spots: Vec2[] = [];
+  const axes: Shape[] = [];
   for (const id of operandsOf(c)) {
     const point = view.points.get(id);
     const shape = view.curves.get(id)?.shape;
-    if (point) spots.push(point.at);
+    if (shape && isOriginAxis(id)) axes.push(shape);
+    else if (point) spots.push(point.at);
     else if (!shape) return undefined;
     else {
       switch (shape.type) {
@@ -243,8 +261,13 @@ export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
       }
     }
   }
+  const middle = (of: Vec2[]): Vec2 => [of.reduce((sum, s) => sum + s[0], 0) / of.length, of.reduce((sum, s) => sum + s[1], 0) / of.length];
+  if (axes.length > 0) {
+    const from: Vec2 = spots.length > 0 ? middle(spots) : [0, 0];
+    spots.push(...axes.map((axis) => closestOn(axis, from)));
+  }
   if (spots.length === 0) return undefined;
-  return [spots.reduce((sum, s) => sum + s[0], 0) / spots.length, spots.reduce((sum, s) => sum + s[1], 0) / spots.length];
+  return middle(spots);
 }
 
 // Leží bod uvnitř smyčky (dvojice souřadnic za sebou)?

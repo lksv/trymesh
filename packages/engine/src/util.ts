@@ -8,6 +8,18 @@ export const ANGLE_TOLERANCE = 1e-4; // rad
 
 export const ORIGIN = 'origin';
 
+// The axes of the origin (D71): lines of every sketch from `origin` towards +X and +Y of the
+// sketch, the only entities under `origin/`. Their far points `origin/x/b` and `origin/y/b` are no
+// entities (docs/architecture/sketch.md).
+export const ORIGIN_AXES = ['origin/x', 'origin/y'] as const;
+export type OriginAxis = (typeof ORIGIN_AXES)[number];
+export const isOriginAxis = (id: string): id is OriginAxis => id === 'origin/x' || id === 'origin/y';
+// Whether an ID is under `origin/`: an axis or one of the two far points.
+export const underOrigin = (id: string): boolean => id.startsWith('origin/');
+// How far along an axis a reader that clamps a line to its ends sees it (`lineExtent` of
+// sketch.ts): 1 km to each side of the origin.
+export const AXIS_REACH = 1e6;
+
 // The end of a switch over the kinds of a union (the kinds of a sketch curve, D64): a kind added to
 // the union does not compile until the switch has a case for it. At run time it throws, which
 // a validated document never reaches.

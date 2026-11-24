@@ -2,14 +2,13 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { type ResolvedReference, externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
-import { derivedPoints, entityOf } from '../references/index';
+import { type ResolvedReference, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { type SketchGeometry, joinPairs, joinsOf, measure, ownVariables, profileOf, sketchCurves, solverSetup } from '../sketch';
-import { CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
+import { AXES_GEOMETRY, CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
 import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, ResultCurve, SketchFeature, SolveInput, SolveResult } from '../types';
-import { ORIGIN, has, unreachable } from '../util';
+import { ORIGIN, has, isOriginAxis, unreachable } from '../util';
 import { type Dict, type Fields, type ValidationContext, boolean, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
 
@@ -44,8 +43,11 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
 // The own rule of a constraint in the catalog (`check` of CONSTRAINTS), which reads the points of
 // the curves it names: `constraint` asks it when a constraint is validated, and the command
 // setCurvePoint asks it again for every constraint on the curve it changes (D52).
+// The points of an entry are its point entities, by its kind (an edge: `a` and `b`, or `center`);
+// the point of an axis of the origin is `origin` (its far point is no entity, D71).
 function ruleProblem(sketch: SketchFeature, type: Constraint['type'], operands: Id[], kinds: EntityKind[]): string | undefined {
-  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
+  const entryPoints = (id: Id): Id[] => Object.entries(referenceEntities(sketch, id)).flatMap(([entity, kind]) => (kind === 'point' ? [entity] : []));
+  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? entryPoints(id) : isOriginAxis(id) ? [ORIGIN] : []);
   return CONSTRAINTS[type].check?.(kinds, operands, pointsOf);
 }
 export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): string | undefined {
@@ -75,7 +77,7 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
   const problem = ruleProblem(sketch, type as Constraint['type'], Object.values(operands), kinds);
   if (problem) fail(`${what}: ${problem}`);
   const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
-  const onlyFixed = (): never => fail(`${what}: vazba jen mezi pevnými entitami (počátek, promítnutá geometrie) by se nikdy neprojevila`);
+  const onlyFixed = (): never => fail(`${what}: a constraint only between fixed entities (the origin, its axes origin/x and origin/y, projected geometry) would never take effect`);
   // said before the values are read: a fixed point on the origin has no coordinates to complain about
   if (!spec.dimension && !movable) onlyFixed();
   let values: Record<string, number | boolean> = {};
@@ -176,6 +178,12 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
       writeBack = { ...ownVariables(feature, geometry), solved: { inputs: setup.stamp, external } };
     }
   } else if (warnings.every((w) => w.code !== 'sketchConflict')) warnings.push(issue('sketchConflict', result.conflicting));
+  // the far points of the axes of the origin are in the geometry of every sketch, so what reads the
+  // state finds the axes whatever the constraints (D71)
+  geometry = { points: { ...geometry.points, ...AXES_GEOMETRY.points }, radii: geometry.radii };
+  // the result lists no hidden point (the far points of the axes)
+  const hidden = new Set([...(AXES_GEOMETRY.hidden ?? []), ...Object.values(resolved).flatMap((reference) => reference.geometry.hidden ?? [])]);
+  const resultPoints = Object.fromEntries(Object.entries(geometry.points).filter(([id]) => !hidden.has(id)));
 
   // Stupně volnosti počítá engine z vlastního rozboru; počet ze solveru není spolehlivý.
   // Polohy v pořadí dokumentu (solver je vrací seřazené podle ID), aby i rozbor šel v tomto pořadí.
@@ -192,7 +200,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
     bodies: [],
     plane: frame,
     sketch: {
-      points: geometry.points,
+      points: resultPoints,
       radii: geometry.radii,
       curves: resultCurves(feature, resolved),
       degreesOfFreedom: analysis?.degreesOfFreedom ?? 0,

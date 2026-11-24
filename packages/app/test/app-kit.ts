@@ -127,6 +127,7 @@ function sceneText(scene: SceneModel): string[] {
     `bodies: ${scene.bodies.map((body) => `${body.id}${body.color === undefined ? '' : ` ${hex(body.color)}`}${body.opacity === undefined ? '' : ` opacity ${body.opacity}`}${body.transform ? ` ${transformText(body.transform)}` : ''}`).join(', ') || '(none)'}`,
     ...(scene.clip ? [`clip: cut away above ${numbers(scene.clip.origin)} along ${numbers(scene.clip.normal)}`] : []),
     ...scene.lines.filter((set) => set.segments.length > 0).map((set) => `line ${hex(set.color)} width ${set.width}${set.dashed ? ' dashed' : ''}${set.onTop ? ' onTop' : ''}${set.overFills ? ' overFills' : ''}: ${digest(set.segments)}`),
+    ...(scene.axes ?? []).map((axis) => `axis ${hex(axis.color)} width ${axis.width} through ${numbers(axis.frame.origin)} along ${numbers([0, 1, 2].map((k) => axis.direction[0] * axis.frame.x[k] + axis.direction[1] * axis.frame.y[k]))}`),
     ...scene.points.filter((set) => set.positions.length > 0).map((set) => `points ${hex(set.color)} size ${set.size}: ${digest(set.positions)}`),
     ...scene.fills.map((fill) => `fill ${hex(fill.color)} opacity ${fill.opacity}${fill.onTop ? ' onTop' : ''} at ${numbers(fill.frame.origin)} normal ${numbers(fill.frame.normal)}: ${fill.loops.map((loop) => digest(loop)).join(' | ')}`),
     ...scene.faces.map((face) => `face ${owner(face.solid)} #${face.faceId} ${hex(face.color)} opacity ${face.opacity}${face.transform ? ' posed with its body' : ''}`),

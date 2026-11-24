@@ -521,8 +521,10 @@ export function wallOutline(sketch: SketchFeature, geometry: SketchGeometry, ids
 export function wallOfCurves(sketchCurve: ReadonlyMap<Id, SketchCurve>, joins: (id: Id) => Id, geometry: SketchGeometry, ids: Id[], thickness: number, move: Move): WallOutline | ProfileProblem {
   const missing = ids.filter((id) => sketchCurve.get(id)?.source !== 'own');
   if (missing.length) return { code: 'brokenReference', refs: missing };
-  const find = joins;
-  const vertex = (id: Id): CurveEnd | undefined => (has(geometry.points, find(id)) ? { key: find(id), p: [geometry.points[find(id)].x, geometry.points[find(id)].y] } : undefined);
+  const vertex = (id: Id): CurveEnd | undefined => {
+    const key = joins(id);
+    return has(geometry.points, key) ? { key, p: [geometry.points[key].x, geometry.points[key].y] } : undefined;
+  };
   const centre = (id: Id): Vec2 | undefined => (has(geometry.points, id) ? [geometry.points[id].x, geometry.points[id].y] : undefined);
   const chainHelp = 'A wall follows one chain of curves: each joined to the next at an end point, without a branch.';
   // the curves in their own direction, and the points they name at their two ends

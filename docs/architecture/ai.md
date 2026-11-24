@@ -35,7 +35,9 @@ Chyba volání (neznámá skica, špatný argument, neplatný příkaz) se vrac�
 
 `describe_api` lists the profile generators from `GENERATORS` (operands, parameters with ranges and defaults, references, side names, facts and an example profile). It also lists the expression syntax (operators, functions, constants) and the numeric fields that accept an expression; both come from the engine (`EXPRESSION_FUNCTIONS`, `FEATURE_TYPE_INFO[type].fields`, `CONSTRAINTS[type].values`), so a new field or function shows up without touching the server.
 
-`describe_api` has a section *Sketch tools* generated from `SKETCH_TOOLS`: every tool with its inputs (kind, range, optional), the lists of IDs it returns and an example of input, which a test runs through `sketch_tool` (the examples of `trim`, `extend` and `split`, D65, after a rectangle and a line across it). The section says in one sentence that a profile with crossing curves is repaired by `split` without a curve and then `trim` of the pieces that should go.
+**The axes of the origin (D71).** A paragraph of the conventions says that every sketch has the lines `origin/x` and `origin/y`, which constraints (but `midpoint` and `equalLength`) and an axis `sketchLine` may name and a sketch tool snaps to, and that `get_sketch` does not list them; the comments of `ExternalRef`, of the constraints, of `AxisRef` and of `SketchResult` in `types.ts` say the same where the types are.
+
+`describe_api` has a section *Sketch tools* generated from `SKETCH_TOOLS`: every tool with its inputs (kind, range, optional), the lists of IDs it returns and an example of input, which a test runs through `sketch_tool`.
 
 **Proč se nové vazby a příkazy objeví samy.** `execute` bere jakoukoli hodnotu typu `Command` a validuje ji engine. `describe_api` skládá text ze tří zdrojů: z ručně psaných konvencí, z katalogu vazeb (`CONSTRAINTS`: jméno, shrnutí, operandy a jejich druhy, pravidlo hodnoty) a ze zdrojového textu `engine/src/types.ts` bez sekce portů. Vazba přidaná do enginu je tedy v popisu i v nástrojích bez změny v `packages/mcp`.
 

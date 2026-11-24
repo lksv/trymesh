@@ -5,9 +5,9 @@
 // are all the callers of `entityOf`.
 import type { EntityKind } from '../catalog';
 import { lookup } from '../recompute/services';
-import type { Entity } from '../sketch-content';
+import { AXES_GEOMETRY, type Entity, constraintOperands } from '../sketch-content';
 import type { ExternalRef, Id, IssueCode, SketchFeature } from '../types';
-import { ORIGIN, has } from '../util';
+import { ORIGIN, has, isOriginAxis } from '../util';
 import { type ValidationContext, fail, object } from '../validation';
 import { edge, projected } from './edge';
 import type { ReferenceContext, ReferenceKindName, ReferenceKindSpec, ReferenceOf, ReferenceValues, ResolvedReference, StoredValue } from './spec';
@@ -51,16 +51,12 @@ export function referenceEntities(sketch: SketchFeature, id: Id): Record<Id, Ent
   return kindOf(ref).entities(id, ref, sketch);
 }
 
-// The derived points of a projected edge: `<id>/a`, `<id>/b` of a line, `<id>/center` of a circle.
-// Right for the kinds whose entities follow from the entry alone.
-export function derivedPoints(id: Id, ref: ExternalRef): Id[] {
-  return ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`];
-}
-
-// What an ID is in a sketch: `origin`, an own point or curve, or an entity of an entry of
+// What an ID is in a sketch: `origin`, an axis of the origin (`origin/x`, `origin/y`: a line that is
+// not own; their far points are no entities), an own point or curve, or an entity of an entry of
 // `external` (the entry itself or `<entry>/<local>`), by the kind of the entry.
 export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
   if (id === ORIGIN) return { kind: 'point', own: false };
+  if (isOriginAxis(id)) return { kind: 'line', own: false };
   if (has(sketch.points, id)) return { kind: 'point', own: true };
   if (has(sketch.curves, id)) return { kind: sketch.curves[id].type, own: true };
   const slash = id.indexOf('/');
@@ -72,11 +68,17 @@ export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
 
 // ---------------------------------------------------------------- the sketch step
 
+// Whether a constraint of the sketch names an axis of the origin (a reference dimension too: it is
+// measured from the curves of the solver's input).
+export const axesNamed = (feature: SketchFeature): boolean => Object.values(feature.constraints).some((c) => constraintOperands(c).some(isOriginAxis));
+
 // The first stage of the step: every entry in the order of its ID, its value from `compute`, else
 // the last valid one stored (through `value`), else none. `lost` names the entries whose value is
-// not fresh, with the code of the warning.
+// not fresh, with the code of the warning. When a constraint names an axis of the origin, the axes
+// come under the key `origin`, without a value: the solver gets them fixed, and the stamp of a
+// sketch whose constraints name no axis stays what it was before the axes (D71).
 export function resolveReferences(feature: SketchFeature, context: ReferenceContext): { resolved: Record<Id, ResolvedReference>; lost: [Id, IssueCode][] } {
-  const resolved: Record<Id, ResolvedReference> = {};
+  const resolved: Record<Id, ResolvedReference> = axesNamed(feature) ? { [ORIGIN]: { geometry: AXES_GEOMETRY } } : {};
   const lost: [Id, IssueCode][] = [];
   for (const id of Object.keys(feature.external).sort()) {
     const ref = feature.external[id];

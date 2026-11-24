@@ -1195,6 +1195,8 @@
   view: 2 scene(s) set
   scene:
     + line #a21caf width 2 onTop: 24 numbers, sum 1772
+    + axis #8b9bb4 width 1 through [0, 0, 12] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 12] along [0, 1, 0]
     + points #a21caf size 7: 27 numbers, sum 1704
     - face e1 #1 #0ea5e9 opacity 0.3
     - face e1 #1 #f97316 opacity 0.5
@@ -1467,6 +1469,8 @@
     + fill #2563eb opacity 0.45 onTop at [0, 0, 12] normal [0, 0, 1]: 90 numbers, sum 3556.853
     - line #1d4ed8 width 2 onTop: 576 numbers, sum 24523.475
     - line #a21caf width 2 onTop: 24 numbers, sum 1772
+    - axis #8b9bb4 width 1 through [0, 0, 12] along [1, 0, 0]
+    - axis #8b9bb4 width 1 through [0, 0, 12] along [0, 1, 0]
     - points #1d4ed8 size 7: 3 numbers, sum 66
     - points #a21caf size 7: 27 numbers, sum 1704
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.55
@@ -2962,6 +2966,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 413.695
     - line #8b9bb4 width 1: 24 numbers, sum 206.847
     - line #8b9bb4 width 1: 24 numbers, sum 1240.542
+    + axis #8b9bb4 width 1 through [0, 0, 20] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 20] along [0, 1, 0]
     + points #a21caf size 7: 3 numbers, sum 60
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.076
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.076
@@ -3111,6 +3117,8 @@
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 38.154
     + fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.154
     + fill #2563eb opacity 0.45 onTop at [0, 0, 20] normal [0, 0, 1]: 142 numbers, sum 33749.875
+    - axis #8b9bb4 width 1 through [0, 0, 20] along [1, 0, 0]
+    - axis #8b9bb4 width 1 through [0, 0, 20] along [0, 1, 0]
     - points #a21caf size 7: 3 numbers, sum 60
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.076
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.076
@@ -5763,6 +5771,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 1586.178
     + line #1d4ed8 width 2 onTop: 576 numbers, sum 26824.475
     + line #a21caf width 2 onTop: 24 numbers, sum 1865
+    + axis #8b9bb4 width 1 through [0, 0, 15] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 15] along [0, 1, 0]
     + points #1d4ed8 size 7: 3 numbers, sum 75
     + points #a21caf size 7: 27 numbers, sum 1815
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.717
@@ -6003,6 +6013,8 @@
     + fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 38.173
     - line #1d4ed8 width 2 onTop: 576 numbers, sum 26824.475
     - line #a21caf width 2 onTop: 24 numbers, sum 1865
+    - axis #8b9bb4 width 1 through [0, 0, 15] along [1, 0, 0]
+    - axis #8b9bb4 width 1 through [0, 0, 15] along [0, 1, 0]
     - points #1d4ed8 size 7: 3 numbers, sum 75
     - points #a21caf size 7: 27 numbers, sum 1815
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.717
@@ -6267,6 +6279,8 @@
   view: 3 scene(s) set
   scene:
     + line #a21caf width 2 onTop: 576 numbers, sum 72888.949
+    + axis #8b9bb4 width 1 through [0, 0, 10] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 10] along [0, 1, 0]
     + points #a21caf size 7: 6 numbers, sum 445
     - face e2 #8 #0ea5e9 opacity 0.3
   view: lookAt origin [0, 0, 10] normal [0, 0, 1]

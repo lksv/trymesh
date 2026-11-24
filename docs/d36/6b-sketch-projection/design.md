@@ -1,0 +1,610 @@
+# 6b Projection from another sketch (D69)
+
+**State: designed 2026-11-17 on Opus 5.5 with no review; reviewed independently on Fable on 2026-11-24; answered by the owner the same day; revised 2026-11-24; the revision reviewed in a second round the same day (Fable, `codex`, `agy`), its findings fixed here, and its three questions answered by the owner ("Reviews"). Not implemented.** The text is written against `master` at `9c43be9` (schema version 10; 6a, D64, implemented with its fix) and against the designs of 6e (D65) and 6c (D68) as merged (`e8ec3a1`). The sequence of the step is 6a, 6a2, 6e, 6c, 6b, 6d, 6f, 6h ([6-plan.md](../6-plan.md)): 6b is implemented after the axes of the origin (6a2, D71), after 6e and after 6c, and "What 6b needs from 6a2, 6e and 6c" lists what it reads of each. The axes of the origin, which the first design held, are a point and a text of their own since the owner's answer 1: [6a2-origin-axes/design.md](../6a2-origin-axes/design.md).
+
+Files: [contract.ts](contract.ts) (the entry, the stored value, the kind, what 6b adds at the plug-in points of 6e, the sketch tool, the query, the app), [calls.ts](calls.ts) (validation scenario 15: steps 2 and 3, the seam with 6c of step 5, the part of step 7 that is 6b's, and the rest of the mechanism).
+
+The package in short:
+
+1. **A reference kind of entry of `external`, `sketch`**: `{ type: 'sketch', sketch, entity, kind, regions }` projects one point, line, circle or arc of an earlier sketch (its own entities, `origin`, and the entities of its entries: projected edges, projections, copies of 6c) into a sketch on a parallel plane, either normal, any offset. The entry is the projected entity itself (`<id>`), its points are `<id>/a`, `<id>/b`, `<id>/center`, `<id>/start`, `<id>/end` as for an own curve of that kind.
+2. **Its values follow the source on every recompute**; a source that is gone, or whose entity is no longer of that kind, freezes the projection at its last values with the warning `brokenProjection`, as a lost edge does; a plane that is not parallel is `unsupportedProjection` with the angle in the message. A projected arc is made exact.
+3. **With `regions: true` a projected curve forms regions**, and the side face it makes is named by the entry's ID. **The ends of such curves join by position** (owner, answer 19), in the one stage 6c writes for its copies inside 6e's `sketchWorld`: with each other, whatever their sources, and with an own end at their place. 6b writes no code there, and nothing but positions is stored.
+4. **A sketch tool `projectSketch`** projects a whole sketch or a list of its entities in one batch. Each curve keeps the role it has in the source, or all are reference only, or all form regions; **or an own outline is drawn over the projections and held on them** (owner, answers 21, 29 and 30), one own curve per place, which is what the sketch tools of 6e can cut. The tool reads the planes, so it refuses a tilted source.
+5. **A query `sketchSources`** says what a sketch can project: the earlier sketches with whether their planes are parallel, and every entity of one of them that a projection may name, where a projection would put it. The app's picker is its view.
+6. **No command, no feature type, no face role, no issue code, no schema step.** The texts of the three projection warnings become English and general, with a detail.
+
+## What the plan says, checked against the code
+
+| Statement of the plan | What the code (and 6a, 6a2, 6e, 6c) says |
+|---|---|
+| "A new kind of reference, `{ type: 'sketch', sketch, entity }`" | 6a's registry (`REFERENCE_KINDS`, `packages/engine/src/references/`) takes it as one module and one line; after 6c the registry is typed in two halves and the kind is one of the reference half. **It needs a `kind` too**: `entities` of a kind is computed from the sketch alone (6a: so that commands and `load` validate without a recompute), and the kind of an entity of another sketch is not in this sketch. The edge stores `kind` for the same reason (`architecture/sketch.md`, "Promítnutá geometrie") |
+| "Its own, projected or derived entities" | `entityOf(source, entity)` answers an own point or curve, `origin`, and every entity of the source's entries (`references/index.ts`); 6c adds the copies (`entity` of its kind) and 6a2 the two axes. The recompute reads the source's `SketchState`: `curves` (own, reference, the axes, and from 6c derived) and `geometry` (every used position), which 6a made the list every reader shares. Anything under `origin/` is refused (below) |
+| "Parallel planes (either normal, any offset)" | Measured: a source on XY and a sketch on the bottom face of a body (normal −Z, its x along −X) map exactly; an arc has to swap its ends there to stay counter-clockwise. "Parallel" is within a tolerance, so the map between two such planes has to be said: a rigid motion, not a projection point by point (below) |
+| "A tilted plane is `unsupportedProjection`, as for a circular edge" | The code for an edge (`projectEdge`, `solid.ts`) uses `ANGLE_TOLERANCE` (1e-4 rad) for "parallel"; the same here. The text of the code speaks of an edge ("Hranu nejde promítnout jako zvolený druh křivky.", `recompute/services.ts`) and the step adds no detail, so the warning needs a detail to say why |
+| "A failure freezes them as for an edge (`brokenProjection`)" | `resolveReferences` already falls back to the stored value through the kind's `value` (6a); measured: a removed hole circle of the board leaves the frame's projection in place with `brokenProjection` |
+| "Projected curves do not form regions unless question 4 decides otherwise" | The owner decided: a flag on the reference (6a, "Which geometry forms regions"). `EntryGeometry.regions` carries it; the profile reads `SketchCurve.regions` and nothing else (6a part 2) |
+| The plan as amended on 2026-11-24 after answer 12: "Projections keep their join keys; joining by position is for copies only" | **Replaced by the owner's answer 19** (the plan is amended again with this revision): projections that form regions join by position, in one stage with the copies; the keys are dropped. Measured by the review: keys left three ordinary cases with an invalid profile (two routes to one corner, a source made of projected edges, a projected construction copy), and a profile computed in memory did not see them at all |
+| "Projecting a whole sketch is a batch (a button in the app, a batch of `addExternal` through MCP)" | A batch works, but which entities "the whole sketch" is, and which of them form regions, is a rule, and a rule the app follows belongs to the engine and to MCP alike: a sketch tool (owner, answer 21) |
+| "The solver adapter is touched by 6d alone" | True. **A projected arc is new to the adapter** (no reference was an arc before), and the adapter does not change: measured, a fixed arc works when its ends lie on one radius within about 1e-10 mm, so the projection makes the arc exact |
+| "The converter skips every constraint with an external operand" | True (`tools/onshape/sketch.ts`). What the converter does with projections is 6h's (owner, answer 4): "The Onshape converter" below |
+
+Not in the plan, found in the code:
+
+- **`updateExternal` drops the stored value of the entry** ("Zmrazené hodnoty patřily původní hraně", `document.ts`). Switching the region flag of a projection whose source is gone would lose its frozen geometry; the kind says when an update keeps the source (`keepsValue`).
+- **`updateExternal` checks every reference of the new entry again**, so the flag of a projection whose source entity is gone could not be switched at all.
+- **The scene draws only the own curves of other sketches** (`scene.ts`, `if (curve.own)`), so a sketch made only of projections (the skeleton `frame`, the rim's sketch) is invisible outside its own sketch mode, though it may have a region to extrude.
+- **A sketch tool does not know the plane of any sketch**: its context is the sketch, its result and the document. A tool that reads another sketch needs the result and the plane of that sketch, and the plane of its own: the context of `sketchTool` gets the results of the features.
+- **An own arc held on a fixed arc by its two ends and `equalRadius` has two solutions and, at a half turn, none the analysis accepts** (measured below). The first design gave that hold to the AI as the recipe.
+- **The points of an entry for the own rule of a constraint** (`ruleProblem`) were the edge's when the first design was written; since the fix of 6a they are read from the registry, so a projection needs nothing there.
+
+## The cheap variant
+
+What the plan asks, with these choices:
+
+- One entity per entry; the whole sketch is a batch the tool `projectSketch` makes.
+- Parallel planes only. Between exactly parallel planes the projection is along the normal of the target; between planes that are parallel only within the tolerance it is the rigid motion of the plane nearest to that ("Which sketches, which planes").
+- The value is the projected positions; stored and stamped as an edge's value is.
+- Joins by position, for the ends of projected curves that form regions, in 6c's stage.
+- A source curve whose kind changed (a circle trimmed into an arc by 6e) breaks the projection (frozen); the repair is a new entry.
+
+**Deferred**: the projection into a tilted plane (an ellipse, as for an edge); a projected spline (owner, answer 22: refused; 6d writes the refusals); a reference to a whole sketch as one entry (the plan's deferral); patching the projections of a curve the fillet or 6e's tools change (they are listed, not patched); an existing projection taken over as own curves (the tool makes projections and own curves together; a backlog row with 6e's); projecting from a sketch of an inserted document (D62 brings bodies, not sketches).
+
+## Measured
+
+**Recipe.** Four generations of probes, all run from the worktree with `npx vitest run --config <dir>/vitest.config.ts` against the real engine, the real planegcs adapter and the real manifold kernel, with the kind registered in `REFERENCE_KINDS` at run time and the axes of 6a2 put in by `vi.mock`:
+
+- **The designers' spikes** (2026-11-17): `a-solver.spike.ts` feeds the adapter and the engine's `SketchAnalysis` the inputs `solverSetup` would make; `c-scenario.spike.ts` runs steps 2 and 3. Kept by the review in `step6-review/6b-design/designers/` of the session's scratchpad; both reproduce. The file of their rows "b" is lost; the review measured those cases again.
+- **The review's probes** (2026-11-24): `step6-review/6b-design/` (`e*.probe.ts`, `s*.probe.ts` and their logs).
+- **The probes of this revision** (2026-11-24): `step6-review/6b-revision/`. `proto.ts` is the kind without keys and a prototype of 6c's position stage over "not own and forms regions", put into the step by mocks of `joinPairs` and `joinsOf`; `r.probe.ts` (log `r.log`, rows R2 to R6) has a prototype of the tool `projectSketch`; `h.probe.ts` (log `h.log`, rows H1 to H3) feeds the adapter directly.
+- **The second round** (2026-11-24): the review's probes in `step6-review/6b-round2/` (`q1` to `q4.probe.ts`, rows Q1 to Q4), and the probes of the fixes in `step6-review/6b-revision2/`: `proto.ts` there has the map as a rigid motion and the check of a curve with no extent (switched off by `globalThis.ORTHO` and `NO_GUARD` to get the rows before the fix), `s3.probe.ts` the tool with one own curve per place (rows S3), `s4.probe.ts` the review's Q4 run again, `rr.probe.ts` the rows R1 to R8 run again over the new map (every row as in `r.log`).
+
+Not run: the commands' validation of the kind (the prototype validates nothing), 6c's stage as 6c will write it, 6e's tools over a sketch with projections, the query, the app, MCP.
+
+| What | Result |
+|---|---|
+| A fixed arc (three fixed points, after a turn of the frame and back: radii 8 and 7.999999999999998); an own line tangent to it; an own point on it (designers, a1) | solved, no redundancy |
+| A fixed arc whose end lies off the radius of its start by δ, with an own point on it (a2; the review's S2 with a tangent line and a hold as well) | solved for δ ≤ 1e-10 mm; **`failed` for δ ≥ 1e-9** |
+| The error `\|rs − re\|` of solved source arcs, sizes 60 to 20000 mm and after a drag (review, E1) | 0 to 1.0e-11 mm |
+| An own arc held on a fixed one by all three points (a1, a4) | **`conflict`** (the rule of the arc is one equation too many) |
+| The outline projected onto the bottom face of the board (normal −Z) with the flag, extruded, also with the offset 1 (review, E3) | one region, the arcs counter-clockwise; 2392.16 and 2590.12 against 2392.27 and 2590.27 by hand |
+| A mixed loop (an own chain closed on a flagged line); an own circle inside a flagged outline; an own circle across it (review, E5) | one region; a hole of the outline's region; invalid |
+| A source in `sketchConflict` (review, E6) | the projection reads the positions the source keeps; no warning in the projecting sketch |
+| **R2.** Scenario 15, steps 2 and 3, on the board of 6a2, the kind without keys and the position stage: `frame` (twelve projections, two reference dimensions) | valid, no region; both holes measure 26.5 from `origin/y` |
+| R2. The rim's sketch: eight entries with the flag | one region of the eight entries; the stored value of `ra0` is `{ kind: 'arc', center, start, end }` |
+| R2. The same profile built from the sketch and its result alone, as a tool in memory has them: with the position stage / with the joins of the `coincident` constraints alone | the same one region / **`valid: false`, no region** (the review's finding 1) |
+| R2. The step without the stage | `rimSk` invalid, `rim` in error `invalidProfile` |
+| R2. The standoff sketch | four discs and four rings (own circle with the projected hole as its hole), the same in memory |
+| R2. The base (floor with the offset 2.5, rim added and pocketed, four rings) | 7835.04 mm³ against 7836.90 by hand; `boardW` 60 → 62: all ten features `ok`, +212.00 (by hand +212.00), the frame measures 27.5 |
+| **R3.** An own rectangle inside the flagged outline: the step and the profile in memory | both valid, two regions (the review's E2 gave "invalid" in memory) |
+| R3. The outline from `frame` with one line straight from `board` (two routes to two corners; the review's E4 with keys: invalid) | valid, one region, no redundant constraint |
+| R3. A source whose curves are four projected edges of a box, projected again with the flag (the review's E8 with keys: invalid) | valid, one region; extruded 2: 400.000 mm³ |
+| R3. An own chain closed on a flagged line, its ends at the line's ends by `coincident` / by their own `fixed` constraints, with no `coincident` | one region `[n1, n2, x]` both ways |
+| R3. Two own ends at one end of the flagged line that are two vertices | `valid: false` (the projection's end joins neither) |
+| **H1.** An own arc held on a fixed arc by its ends and `equalRadius`, the fixed arc turned step by step, the solve started from the last solution | a half turn: 1 degree of freedom and 1 redundant constraint at once, then `conflict` at every turn. 178.4° and 170°: 0 degrees of freedom, but **the centre on the mirrored solution** after a turn of 44° (0.28 and 1.7 mm off); a 270° arc after a step of 90° (14 mm off). 128°, 90°, 60°: right at every step |
+| H2. The same in jumps | a quarter arc: the mirrored solution after a jump of 180° (14 mm off) |
+| H1, H2. The centre pinned to the projected one along one axis of the sketch (a distance of 0), in place of `equalRadius` | right at every sweep, the half turn too, until the chord has turned a quarter turn: then 1 degree of freedom, 2 redundant, and `conflict` after |
+| H1, H2. **A construction line from the own centre to the own start, and the projected centre on it** (`pointOnCurve`), in place of `equalRadius` | 0 degrees of freedom, no redundancy, the centre on the projected one (under 1e-9 mm) at every sweep from 60° to 270°, at every turn and jump, and for sizes from ×0.01 to ×40. `failed`, never a wrong shape: a 270° arc after a jump of 90°, and a jump of the size by ×20000 |
+| H3. The own centre started 1.5 radii away, past the chord | `equalRadius`: the mirrored solution with 0 degrees of freedom (90° and 60°: 14 and 17 mm off, at every later step). The line: right for 178.4°, `failed` for 90° and 60° |
+| **R4.** The tool, a whole sketch with each curve in its role: `board` / `frame` / `baseSk` (an own outline over eight projections) | 12 entries, 12 with the flag, the outline with four holes and four discs / 12 entries, none / 16 entries, 8 with the flag, one region |
+| R4. `baseSk` with every curve flagged | `valid: false` (the review's finding 7) |
+| R4. The tool with `as: 'own'`, the outline of `frame` into a new sketch | 44 commands (8 entries, 12 points, 8 own curves, 4 construction lines, 12 constraints); 0 degrees of freedom, no redundancy in the solver's list or the diagnosis; one region of the own curves; extruded 2 with the offset 2.5: 5797.67 mm³ against 5798.07 by hand |
+| R4. That outline with the board changed in one step: 62 × 40 R 3; 60 × 40 R 9; 120 × 80 R 3; 120 × 80 R 30; 60 × 40 R 0.5; 2000.77 × 1400.5 R 311.3; back | `ok` every time, 0 degrees of freedom, the volume by hand within the chord tolerance, the own centres within 1e-11 mm of the projected ones |
+| R4. The whole board with `as: 'own'` (the holes as own circles: centre `coincident`, `equalRadius`) | 64 commands; 0 degrees of freedom, no redundancy; five regions |
+| R4. The own outline on the bottom face of the board (normal −Z), extruded 2 with the offset 1 | 0 degrees of freedom, no redundancy; 5180.24 mm³ against 5180.53 by hand |
+| R4. The tool on a plane tilted by 0.3 rad | refused, "the plane of frame is at 17.2° to this sketch" |
+| R5. A slot of two half-turn arcs as the source, the tool's own outline over it, the source turned by a parameter (in the engine: the validator, the diagnosis) | the line: 0 degrees of freedom, no redundancy, at every turn. `equalRadius`: 2 degrees of freedom and 2 redundant at once, `sketchConflict` at the first turn |
+| R6. The tool's batch with every own centre moved 4 mm outside its corner before it is sent | `equalRadius`: `ok`, 0 degrees of freedom, **the mirrored corners** (4.2 mm off) through every later change. The line: `sketchConflict` at first and after the first change, then right |
+| **Q2, Q3e (the second review).** The hold on the adapter: the radius line through 22 sweeps from 0.1° to 359° × 10 turns, with changes of radius, sweep and shift; shallow arcs down to 0.076° (a radius of 45 m) | always 0 degrees of freedom, no redundancy, the centre exact (within 1.4e-5 mm for the shallow ones). `equalRadius`: 1 freedom and 1 redundant at 180°; the centre 2e-5 to 3e-4 mm off for sweeps of 135° to 190° under turns of 10°; 4.2 mm off after the sweep × 1.2 at 170° |
+| Q3e, run again as S3f: in the engine, a source arc placed by `fixed` with expressions, the own arc of the tool over its projection, the sweep 170° → 204° → 119°, turns, radii, a shift, a half turn (180°) and 216° | the radius line: `ok`, 0 degrees of freedom, no redundancy, the centre within 2e-12 mm at every step. `equalRadius`: 170° → 204° is `ok` with 0 degrees of freedom and the centre **8.3 mm off**; 180° has 1 freedom, then `sketchConflict`; a 90° arc turned by 180° in one step is 34 mm off and stays |
+| **S3e.** The floor drawn by hand with the first design's hold (ends and `equalRadius`), `boardW` 60 → 80 in one step; and 61, 70, 80, then back to 60 | **`ok`, 0 degrees of freedom, the base `ok`, the four corners on the mirrored centres (4.2 mm off)**; in steps it follows to 80 and flips on the way back. An ordinary change of a parameter reaches the second solution |
+| S3f. The floor drawn by the tool (the radius line), `boardW` 62, `boardR` 6, 3, `boardW` 80, 60 | `ok` each time, 0 degrees of freedom, no redundancy, the centres within 5e-12 mm |
+| **Q3b (the second review).** `projectSketch { sketch: 'baseSk', as: 'own' }` as the revision had it: an own curve over every projected curve of a sketch that holds an own outline over its projections | 72 commands, 16 own curves on 8 places; the sketch `ok` with 0 degrees of freedom, **`valid: false`, no region** |
+| **S3b.** The same with one own curve per place | 44 commands, 8 entries (the own curves of `baseSk`), 8 own curves, the 8 projections of `baseSk` in `doubled`; 0 degrees of freedom, no redundancy, one region. The result projected whole again as own: the same 44 and 8; extruded 2 with the offset 2.5, `ok`; it follows `boardW` 80, `boardR` 9 and back |
+| **S3g (the light read of the fixes).** The floor's sketch as the tool drew it, with a rectangular notch in its bottom side as 6e's trims leave it (the own side in two pieces and three notch lines; the projection of the frame under it still whole), projected whole with `as: 'own'` | 62 commands, 13 own curves: the two pieces and, over the whole projected line under them, a third; the sketch `ok` with 0 degrees of freedom, **`valid: false`, no region**. With `entities` the twelve own curves of the source: 60 commands, one region, 0 degrees of freedom. With a curve that forms no regions in the source and lies along one that does left out as `doubled` (a prototype, lines only): the same 60 and one region from the whole sketch |
+| S3g. The tool run again with `as: 'own'`; then the frame's outline as own into the sketch that already holds the floor's | again: 8 skipped, 8 doubled, nothing to project. The frame's outline: 44 commands and no region when the places this sketch holds are not counted; nothing made (8 doubled) when they are |
+| S3c. A rectangle with one side drawn twice (a construction line the other way round) and a circle with a construction circle on it, the seven named with `as: 'own'` | 5 entries, 5 own curves, the two doubles left out; 0 degrees of freedom, the rectangle with its hole |
+| Q3a. A source with a T (three ends at one point, two regions), whole, as `source` / `regions` / `own` | two regions each; `own`: 26 commands, 0 degrees of freedom, no redundancy |
+| **Q4a (the second review).** A quarter disc (an arc and two lines) projected with the flag onto a plane tilted about X by an angle under the tolerance, every point projected orthogonally and the arc's end then put on its circle | radius 300 at 9e-5 rad, radius 1000 at 5e-5: the arc's end 1.2e-6 mm and more from the line's; the sketch `ok` and `valid`, **no region** |
+| Q4a run again with the map as a rigid motion (S4): radii 100, 300, 1000, tilts 0, 1e-5, 5e-5, 9e-5 | the ends 0 mm apart, one region, every time; at 1.5e-4 rad `unsupportedProjection` |
+| **Q4b (the second review).** A source arc that never solved, its end on its centre (`sketchConflict`, the drawn positions kept), projected | `xq/end` = NaN in the result of the target. With the check of an extent (S4): `degenerateProjection`, the entry without geometry, the constraint on it left out, nothing stored, no NaN |
+| Q3f. A line of the board's outline removed (the frame's projection of it frozen), then `boardW` 70 | `frame` warns `brokenProjection`; `rimSk`, which projects the frame's frozen line and its live neighbours, is `ok` and `valid` with no region, and `rim` is `noProfile` |
+| An own outline with a half-round notch on its edge, extruded with the offset 2.5 (review, E11); a rectangular notch 8 and 6 wide (E12) | `invalidProfile` at radii 4, 3, 2.6, 2.5 and 1.5; `ok` with the exact volume (5 wide: refused). 6e's revision measured the bound: a round notch of radius `r` centred `y` inside the edge fits an offset `o` while `y + o ≤ r − o` |
+
+What the numbers decide:
+
+- **The projected arc is made exact** (a2, S2): its end is put on the circle of its start, `end = center + |start − center| · (end − center) / |end − center|`, in the coordinates of the target. Real source arcs are within 1e-11 mm (E1) and the solver's limit is between 1e-10 and 1e-9, so this is one order of margin that the turn and the shift of a projection would otherwise use up.
+- **The map between two planes accepted as parallel is a rigid motion** (Q4a): projected point by point, a tilt inside the tolerance shortens one direction by `d · θ² / 2`, the line's end stays there, the arc's end is moved onto its circle, and above a radius of about 200 mm the two are further apart than the join tolerance. A rigid motion keeps every joint of a chain, and the step that makes the arc exact then moves its end only by what the source's solve left.
+- **A source curve with no extent is a failure with a detail** (Q4b), checked before the division.
+- **Joins by position close what keys did not**, need nothing stored, and are the same for the step and for a profile in memory (R2, R3).
+- **An own arc is held on a projected one by its two ends and a radius line**, not by `equalRadius` (H1 to H3, R5, R6; confirmed by the second round on the adapter and in the engine, Q2 and Q3e; and S3e: the floor of scenario 15 itself flips under `equalRadius` when the board grows by 20 mm). The ends leave the centre one freedom, along the bisector of the chord. `equalRadius` takes it with a quadratic equation: two solutions, which ordinary changes cross (a turn of 44° of a 170° arc), and a double root at a half turn, which a slot has. The line from the own centre to the own start with the projected centre on it is a second straight line through the centre's place: one solution at every sweep. The owner's answer 21 asked for a hold without a second solution and named the start at the projected centre as the way; measured, the start is not enough, so the hold itself changed, and the owner took the radius line (answer 29).
+- **The tool knows the planes**: it starts every own point at its place and refuses a tilted plane itself (R4).
+- **The tool's own outline has one curve per place** (Q3b, S3b): an own curve over every projected curve of a sketch that already holds an outline over its projections gives two outlines on each other, which is what the tool's own output is.
+
+## Decisions
+
+### The entry `sketch`
+
+```ts
+interface SketchProjection {
+  type: 'sketch';
+  sketch: Id;       // an earlier sketch of the document
+  entity: Id;       // a point or a curve of it
+  kind: 'point' | 'line' | 'circle' | 'arc'; // the kind of `entity`
+  regions: boolean; // the projected curve forms regions of this sketch
+}
+```
+
+- **`kind` is stored and required**, as for an edge: the entities of the entry, and so `entityOf`, the constraints on it and `load`, follow from the document of this sketch alone. A command checks it against the source (`requireRef` of the kind `entity` with `accepts: [kind]`, which says "c1 is a circle, expected arc"). A caller who does not know the kind asks `get_sketch` of the source, the query `sketchSources`, or uses the tool.
+- **`regions` is always in the document, as a boolean.** The input form of a command may leave it out; the validator of the kind then writes the kind's default, `false`. On a point `true` is refused ("a projected point forms no regions"). This is the convention for the flag of any entry, fixed now because 6f's outline has the same flag with the default `true` (owner, answer 2): with "stored only when it differs from the default", one field name would mean two things in `describe_api`, and a document would depend on a default that a later build may change.
+- **The ID of the entry is the projected entity**; its points are `<id>/<name>` with `CURVE_POINTS[kind]` (`a`, `b`; `center`; `center`, `start`, `end`); a projected point is `<id>` itself (6a's vocabulary). An arc keeps its sense: its `start` is the projection of the source's `start`, except across a flip of the normal, where it is the projection of the source's `end` (below).
+- **One entry per entity of the source**: a second entry with the same `sketch` and `entity` is refused, naming the first ("c1 of board is projected already as fl1"). A duplicate would only overlap itself, and with the flag make the profile invalid.
+
+### Which sketches, which planes
+
+- **Earlier on the timeline only**: `refs` gives `{ path: 'external/<id>', id: sketch, kind: 'sketch' }` and the entity reference `{ id: entity, kind: 'entity', sketch, accepts: [kind] }`, so a command checks the order and the entity (`requireRef`), `moveFeature` refuses to put the sketch before its source, and a reference to a removed sketch or entity is valid in a document, as every reference is (the step reports it). Itself is not earlier than itself: refused.
+- **Parallel planes**: the normals parallel or opposite within `ANGLE_TOLERANCE` (1e-4 rad, as for an edge), any offset along the normal and any shift or turn in the plane. The plane of a sketch is known only at recompute (it may be a face), so this is not a command's check: a tilted plane gives the warning `unsupportedProjection` with the detail "the plane of board is at 17.2° to this sketch; only a parallel plane is projected", and the entry keeps its last values. The tool and the query, which read the evaluation, say it before anything is made.
+- **The map** (`sketchMap`, one function for the kind, the tool and the query) **is a rigid motion of the plane**: `p ↦ o + p.x · u + p.y · v`, where `o` is the source's origin dropped into the target (`toPlane(T, toWorld(S, 0, 0))`, the functions of `solid.ts`), `u` the direction of the source's x axis in the target, made a unit vector, and `v` a quarter turn from `u`, to the left, or to the right when the normals are opposite. Lengths, radii and the joints of a chain are kept exactly, whatever the tilt inside the tolerance (measured: a quarter disc of radius 1000 on a plane tilted by 9e-5 rad stays one region). When the normals are opposite the map reflects the plane: an arc runs clockwise, so its start and end swap (as 6c's mirrored arc does). On exactly parallel planes this is the projection along the normal; on planes that are parallel only within the tolerance a point lies within `d · θ² / 2` of where that projection would put it (5e-6 mm at 1 m from the source's origin), which is the price of calling such planes parallel. The first revision projected each point by itself, which shortens one direction by that much and, with the arc then made exact, opened a flagged outline above a radius of about 200 mm without a word (the second round, finding 3).
+
+### What is projected, and its entities
+
+| Source entity | `kind` | Entities of the entry `x` | Value |
+|---|---|---|---|
+| an own point, `origin`, a point of an entry of the source (`fl1/a`, `h/center`, a copy's point `m/1/p3`) | `point` | `x` (point) | `{ kind: 'point', at }` |
+| a line: own (a construction line too), a projected edge, a projection, a copy | `line` | `x` (line), `x/a`, `x/b` | `{ kind: 'line', a, b }` |
+| a circle, likewise | `circle` | `x` (circle), `x/center` | `{ kind: 'circle', center, radius }` |
+| an arc, likewise | `arc` | `x` (arc), `x/center`, `x/start`, `x/end` | `{ kind: 'arc', center, start, end }` |
+
+- **Refused by the validator: anything under `origin/`** of the source: its axes `origin/x` and `origin/y`, and their far points `origin/x/b` and `origin/y/b` ("origin/x of board is not projected: this sketch has its own axes origin/x and origin/y; project the origin of board for a point at its origin"). It is a rule of the form, read from 6a2's `underOrigin`, so `load` checks it too. The first design refused the two axes and left the far points to `requireRef`, which `load` skips, while the far point is in the source's geometry (the review).
+- **A spline** (after 6d) is not projected (owner, answer 22); 6d writes the refusals and their texts, and 6b gives it the places ("Where 6b meets 6d and 6f"): the form check of `kind`, the command's check of the entity, a list of the tool's answer, a row of the query, and the failure of `compute` for a curve that became one.
+- A construction curve of the source is projected as any curve; the flag decides whether it forms regions here.
+
+### The value, the stamp, the arc made exact
+
+- **`compute`** (`projectFromSketch`): the source's `SketchState` from `state.sketches` (absent: `brokenProjection`, "board is not evaluated before this sketch: removed, suppressed, in error, or later on the timeline"); the planes (above); the entity: a point from `geometry.points`, a curve from `curves` (absent: `brokenProjection`, "board has no circle bh3"; of another kind, one this package cannot project among them: `brokenProjection`, "c1 of board is an arc now, not a circle", and no case of the switch on the source's kind throws); the positions mapped; a circle's radius from `geometry.radii`; an arc's ends swapped across a flip and its end made exact (above, "Measured").
+- **A curve with no extent is `degenerateProjection`** with the detail "the arc q of board cannot be projected as it stands: it has no length or no radius, or a position that is not a number": a position that is not finite, a line shorter than the length tolerance, a circle whose radius is under it, an arc whose start or end is within it of its centre. It is checked before the arc is made exact, whose division would otherwise give NaN, in the result and in the stored value (measured). A sketch that never solved keeps the positions it was drawn with, and those may be anything; a source "in conflict" is safe only after a first solve. After any failure the entry has its stored value, or, when it never had one, no geometry, and the constraints on it are left out of the solve, as for a lost edge.
+- **The value is stored** in `solved.external` and stamped, as 6a requires of a reference: a frozen projection keeps its positions. It holds positions and nothing else, so a change of the joins of the source does not reach this sketch.
+- **`Projected` gets two more forms**, a point and an arc; it stays the one type of `solved.external` (`SolveStamp.external` in `types.ts`), and `describe_api` shows it. One reader reads a stored value by its form (`projected`, which moves from `edge.ts` to the registry); the kind's `value` then checks that the form is the entry's `kind`. An edge's entry is a line or a circle, so a stored point or arc never fits an edge, and `ReferenceValues.edge` narrows to those two forms.
+- **`compute` may say why** (`{ code, detail }` beside a bare code): `resolveReferences` keeps the detail in `lost`, and the step's warning carries it with the constraints left out, "(board has no circle bh3; the constraints on it were left out of the solve)".
+
+### Joins: by position
+
+The owner's answer 19: curves that are not own and form regions join by position, in one stage; 6b's join keys are dropped. So:
+
+- **`joinPairs` stays what it is**, the operands of the `coincident` constraints. The value of a projection has no `vertices`, the geometry of an entry no `keys`; the slot `keys` of `EntryGeometry`, which 6a drew for this and nothing uses, is removed by 6c together with `joins`.
+- **The stage is 6c's** (its design, "Joins"; `positionJoins`), inside 6e's `sketchWorld`, and it takes every curve that is not own and forms regions: it has no predicate to widen, a flagged projection is a reference curve of the base with `regions`, and **6b writes no code there**. Its three rules read, for a projection: only the two ends of a line or an arc take part, and only when the entry has the flag; ends of such curves within the length tolerance (1e-6 mm) are paired with each other, a projection's with a projection's or a copy's; a group is paired with the own ends at its place when those are one vertex already, and with none of them when they are two.
+- **What closes**: eight entries projecting a rounded rectangle; an outline whose curves come from two sketches; projections of the projected edges of a body (all three measured); and, by the same rule, a projected construction copy of 6c, which in its own sketch joins nothing (not run: 6c is not implemented). The three cases the keys left invalid are the same case under position.
+- **What does not change**: two own points at one place without a `coincident` are two vertices, with or without a projection there (rule 3 never welds them). A projection without the flag joins nothing by position, as a construction curve joins nothing. A projected point, and the centre of a projected circle or arc, join nothing by position: they are no vertex of a profile.
+- **An own end at the end of a flagged projection is its vertex**, by a `coincident` or by position alone when the own ends there are one vertex (measured: an own chain whose ends are put on the ends of a projected line by their own constraints closes with it). That is 6c's rule for copies, and now the rule for every curve that is not own.
+- **Why position does not weld what was never meant to meet**, which was the first design's objection: the stage reads only ends of curves that form regions. Two such ends at one place that are not joined are an invalid profile anyway, so "joined" is the only reading under which the sketch means anything.
+- **One function for the step and for a reader in memory**: 6e's `sketchWorld(base)` (`references/world.ts`). The sketch step calls it over `stepBase(feature, references, geometry)`, a tool over `toolBase(sketch, result, more?)`, and the stage runs inside it over positions. A tool has the positions (`SketchResult.points`) and the flags (`SketchResult.curves`, whose reference curves `toolBase` takes), so it sees a projected outline closed as the recompute does (measured, R2 and R3). With keys it would have needed the stored values of the document as well.
+- **Ends that stay open** are in `SketchResult.openEnds` (6c): an end of a flagged projection that met two own vertices, or nothing, is listed there with the same two reasons as an end of a copy.
+
+### Regions and face names
+
+- A projected curve with `regions: true` is in the profile like an own curve that is not construction (`EntryGeometry.regions: [id]`); without the flag it is in the list of curves with `regions: false` and bounds nothing, as a projected edge or a construction curve.
+- **A region is named by the IDs of its outer loop**, entries included (`["ra0", …, "rl3"]`, measured), and the side face of a projected curve by the entry's ID: `{ feature, role: 'side', curve: 'ra0' }`, `wallSide` never (a wall takes own curves, `notProjected`). The ID has no slash, so the face key is today's (6c's quoting is for slashed IDs).
+- A profile is invalid where an own curve lies over a projected one that forms regions, or two flagged projections lie on each other, as for two own curves.
+- **A flagged projection is never cut** (6e: geometry that is not own is not cut), so an own curve that crosses it leaves the profile invalid for good. Where the outline has to be cut, it is drawn as own curves over the projection.
+
+### Holding own geometry on a projection
+
+How an outline that 6e's tools can cut is made from a projected one; the tool `projectSketch` with `as: 'own'` does it, and the description for the AI gives the recipe for a hand:
+
+- the projections without the flag;
+- **one own point per place where ends of the projected curves lie**, `coincident` with one projected end there (one constraint a point: a second one to another projected point at that place would be redundant);
+- **an own line** between two of those points;
+- **an own circle** with a centre of its own, `coincident` with the projected centre, and `equalRadius` with the projected circle;
+- **an own arc** between two of those points, with a centre of its own started at the projected centre, **a construction line from that centre to the arc's start, and the projected centre on that line** (`pointOnCurve`). The two ends put the centre on the bisector of the chord; the line through the start and the projected centre crosses the bisector once, at the projected centre.
+
+**One own point for several projected ends holds only while those ends stay together.** The pooled point is tied to the first of them; when the source later parts them (a `coincident` removed, one of two curves moved), the own curves that met there still meet, at the first one's end, and the curve that belonged to the other no longer lies on its projection. The solve succeeds and nothing is redundant (run by `codex` with the real adapter). A second `coincident` would be the redundancy the recipe avoids, so this is a limit: the outline keeps its own topology, and a source that changes its own is followed by drawing again ("Known limits").
+
+Measured: 0 degrees of freedom and no redundant constraint for the rounded rectangle, for a slot with two half turns, for circles, and on a flipped plane; right through every change of the source tried. Not `equalRadius` for an arc (two solutions, none at a half turn), and not the centre `coincident` as well (a conflict: one equation too many).
+
+### When the source changes
+
+| Change in the source | The projection |
+|---|---|
+| a point moved, a dimension changed, a parameter | follows at the next recompute (the source is solved first); the stamp of this sketch changes, it is solved again and written back |
+| the entity removed (`removeEntity`, `removeExternal` of a projection there, a copy beyond a lowered count of 6c) | `brokenProjection` with the detail, frozen at its last values; constraints on it keep acting on the frozen geometry |
+| the source sketch removed, suppressed, in error, moved after this sketch (refused by `moveFeature`), its plane tilted | `brokenProjection` or `unsupportedProjection`, frozen |
+| the source sketch in `sketchConflict` | **it follows the positions the source keeps** (its last solved ones), with no warning here: the source says it, and its state holds those positions for every reader (measured) |
+| 6e splits the curve | the piece that keeps the ID is projected (shorter); the new pieces are not. With the flag the region here may open. 6e's tools list this sketch in `shortened` |
+| 6e trims a circle into an arc (the same ID, another kind) | `brokenProjection` ("c1 of board is an arc now, not a circle"), frozen as the circle. `updateExternal` cannot change the kind of an entity that stays (6a's rule); the repair is a new entry (`removeExternal`, then `addExternal` with `kind: 'arc'`), the constraints on it made again. The tool lists this sketch in `broken` |
+| 6e removes the curve or a point (a whole piece trimmed away) | `brokenProjection`, frozen; the tool lists this sketch in `broken` |
+| 6e trims, extends or the fillet shortens a line | the shorter line is projected; the sketch is in `shortened` |
+| 6e cuts an end off a curve, and a later sketch projects that end as a point | the point stays: an entry that projects it names it (below), so it is held on the curve as 6e's virtual end, and its projection follows it there |
+| a curve becomes a spline under its ID (6d: a spline put under the ID of a removed line) | `brokenProjection` ("c2 of lidSketch is a spline now, not a line"), frozen as the line; the document loads, since the kind of the source's entity is the check of a command only |
+| an entity that is itself a frozen projection in the source (the source lost its own source) | **followed at its frozen place, with no warning here**; the source warns. A flagged outline of which one curve is frozen and the others follow opens: the sketch stays `ok` and `valid` with no region, its open ends are in `openEnds` (6c), and the feature on it is `noProfile` (measured, Q3f; "Known limits") |
+| a source curve with no extent (a sketch that never solved) | `degenerateProjection` with the detail, frozen or without geometry |
+
+### At the plug-in points of 6e
+
+6e's design ("Plug-in points") names four places where 6b adds something, and one where it adds nothing. The names are 6e's.
+
+- **`sketchWorld`, with `stepBase` and `toolBase`: nothing.** The position stage takes a flagged projection as it takes a copy ("Joins").
+- **`readersOf(document, sketch, changes)`** computes `moved`, `shortened` and `broken` for the fillet of D52 and the three tools in one place, from the plan of the batch (`CurveChanges`). 6b adds one kind of reader, and it needs no member on the kind: the references of an entry (`refs`) already name `{ kind: 'entity', sketch, id }`, so a sketch one of whose entries names an entity of the changed sketch is found by walking the references the registry of feature types gives. It is in `shortened` when the entity is a curve that keeps its ID and its kind with another extent (`changed`, `restarted`), and in `broken` when the entity is removed (`removed`, `removedPoints`) or is of another kind now (`rekinded`). The first design put every case into `shortened` through a new member `reads`; the review found that a removed source and a circle turned into an arc belong in `broken`, and that the list was computed in two places (6e's revision made it one). Patching such a projection (the fillet's arc as one more entry) is deferred.
+- **The rule of old ends** ("an end stays when anything names it"): **a point that an entry of a later sketch projects is named**, by the entity reference of that entry, as a feature that names the point is. So a trim that takes an end off a curve leaves a projected end point in place, held on the curve, and the projection of it is never in `broken` for that. The ends of a projected curve are not named by its entry (the entry names the curve, which is in `shortened`).
+- **`repairsByDefault(document, sketch)`**: a later sketch that projects a curve of this sketch with the region flag counts as a feature that reads its regions. Its outline is made of this sketch's curves, and a T left here is a T there, where nothing can cut it.
+- **`contactFix`** (what `split` without a curve does at a contact, and the field `fix` of the query `sketchContacts`): an own curve that meets a flagged projection away from its ends, and two flagged projections that cross or lie on each other, are `fix: 'none'` with the reason 6b writes: "x3 is a projection that forms regions and is not cut: draw an own outline over it (the sketch tool projectSketch with as: "own") and take the flag off, or remove the curve that meets it".
+
+### What consumers accept
+
+6a's table, the row of a projection from a sketch:
+
+| Consumer | A projection from a sketch |
+|---|---|
+| A point of a curve of the sketch | no (a coincident joins to it) |
+| An operand of a constraint of its sketch | yes, with at least one own operand, as any fixed entity |
+| An operand of a generator (`sketchPoint`, a circle) | yes |
+| An `AxisRef` (`sketchPoint`, `sketchLine`), a frame of a placement | yes |
+| A mirror axis, a direction or a centre of 6c | yes (a line, a point); not a source of a pattern |
+| A point of a hole, a curve of a wall (`notProjected`) | no |
+| `setCurvePoint`, the fillet's corner, a cut of 6e | no; a cut of an own curve when `with` names it, or the own curve is construction (6e) |
+| A source of a projection of a later sketch | yes |
+| A region | with `regions: true` |
+
+### Validation and the commands
+
+- **The validator of the kind** (`validate`, on `load`, `addFeature` of a sketch, `addExternal`, `updateExternal`): the fields (`onlyFields`: `type`, `sketch`, `entity`, `kind`, `regions`); `kind` one of the four; `entity` nothing under `origin/`; `regions` a boolean or absent, not `true` on a point; the references (`requireRef`, which a command checks and `load` does not); no other entry of this sketch with the same `sketch` and `entity` (the entry itself excepted, so `updateExternal` of the flag passes).
+- **What the entity is in the source is a command's check, never `load`'s.** `validate` reads this sketch alone; that the entity exists and is of the stored `kind` is `requireRef` with `accepts: [kind]`. A legal sequence of commands can leave an entry whose entity is another kind now (a circle trimmed into an arc, a spline put under the ID of a line), and such a document must load: the recompute answers it with `brokenProjection`.
+- **`updateExternal` checks only the references the update brings in**, the way `updateFeature` does it (`kept` in `document.ts`): the new entry is validated for its form with a context that checks no reference, and then the references of the old and of the new entry are walked (the kind's `refs`, both at the path `external/<id>`), and `requireRef` runs for those of the new one whose `refKey` the old one does not have. Without it the flag of a projection whose source entity is gone could not be switched, nor its frozen geometry kept. (The revision had the validator's own `requireRef` pass a reference "the entry has already, by `refKey`"; the validator's call has no path, and `refKey` reads one, so it could not be written that way: the second round, finding 6.) (For the edge this changes nothing a user meets, since an update of an edge projection always names a new edge. 6c's `commandProblem` follows the same rule for its entries.)
+- **`addExternal`, `updateExternal`, `removeExternal`** as they are otherwise. `updateExternal` may change the source (`sketch`, `entity`) and the flag; it may not change `kind` (6a's rule of an entity that stays), and an edge projection may become a sketch projection of the same kind or back. It keeps the stored value when the kind says the update keeps the source (`keepsValue(before, after)`: the same `sketch`, `entity` and `kind`), so switching the flag of a frozen projection keeps its geometry; otherwise it drops it, as today.
+- **The text for an unknown type** lists the kinds (6c made it; 6b adds `sketch`).
+
+### The sketch tool `projectSketch`
+
+An entry of `SKETCH_TOOLS` with two new input kinds, `sketch` (the ID of a sketch of the document) and `entities` (IDs of entities of that sketch):
+
+```ts
+projectSketch: { sketch: Id; entities?: Id[]; as?: 'source' | 'reference' | 'regions' | 'own' }
+```
+
+- **What is projected.** `entities`, in the order given; or, without it, the whole sketch: its own curves that are not construction curves; then the curves of its entries in the order of the entries (6c's `entryOrder`) and of their kinds: every curve of a reference entry (that is what a skeleton is made of), and of a mirror or a pattern the copies that form regions; then its lone points (an own point no own curve names, and a point entry). Never anything under `origin/`. Each is one `addExternal` with a fresh ID (`newId('x')`) and its `kind` from the source. A lone point may be a leftover (the virtual corner a fillet keeps, the old end of a trimmed line): it is projected as the point it is; a caller who wants the outline alone names the entities.
+- **`as`, the role of the projected curves here:**
+    - **`source`** (the default; owner, answer 21): a curve forms regions here exactly when it forms regions in the source: an own curve that is not construction, a curve of an entry with its flag, a copy as the source's result has it (a copy that lies on its source has none). So a sketch projected whole has the regions of its source, and a source that holds an own outline over its projections gives one outline, not two on each other (measured).
+    - **`reference`**: none forms regions: a skeleton.
+    - **`regions`**: every curve forms regions (the outline of a skeleton, as the rim of scenario 15 takes it). Refused when two of them occupy one place in the source (6c's `occupies`), naming the pair, the earlier first: both would bound the same regions here, and the profile would be invalid (measured). "Every curve" cannot be met then, and `source` is the role that takes one of each.
+    - **`own`**: none forms regions, and an own curve is drawn over a projected curve and held on it ("Holding own geometry on a projection"). **One own curve per place**: of the curves that occupy one place in the source (`occupies`: a line its segment either way, a circle its centre and radius, an arc its centre and its two ends in order), the first in the order above is projected and drawn over; the others get no entry and no own curve, and are listed in `doubled`. The own curves of the source come first in that order, so the whole of a sketch that holds an own outline over its projections, which is what this tool makes, gives one own outline held on the source's own curves (measured: 44 commands and one region, where an own curve over all sixteen gave a sketch that is `ok` and determined with no region; the second round, finding 1). A projected point gets no own point. Curves that only overlap or cross (not the same place) are drawn as they are, and make the profile invalid as they would drawn by hand; 6e's `sketchContacts` lists them ("Known limits" has the case that matters: the tool's own output after a trim).
+    - **The order of the three decisions for `own`**, each over the whole list of what is to be projected: first the place (a curve that occupies the place of one before it in the list is `doubled`, whether or not either is projected already, so the same curves are doubled at every run); then the skip (an entity this sketch projects already is `skipped`); then **a place this sketch already holds** counts as taken: a curve whose place, mapped into this sketch, is that of an own curve here that forms regions is `doubled` too, since a second own curve there would make the profile invalid. So the tool run again makes nothing (measured: 8 skipped, 8 doubled, refused as nothing to project; decided the other way round, the skip first, the eight doubles of the first run would be first at their places in the second and be drawn), and an outline from another source at the places of one drawn already is not drawn twice (measured: the frame's outline as own into a sketch that holds the floor's: 44 commands and no region without the rule, nothing made with it).
+- **It reads the evaluation.** The context of `sketchTool` gets the results of the features (`features`, `evaluation.features`): the solved result and the plane of the source, and the plane of the target. The tool maps the positions of the source (`sketchMap`), so every own point of `as: 'own'` starts at its place and a flipped arc has its ends swapped; it reads the role of a copy from the source's result; and it refuses what the recompute would only warn of: a source that is not evaluated, a target that is not, planes that are not parallel ("the plane of frame is at 17.2° to this sketch; only a sketch on a parallel plane is projected"). The first design had a tool that knew no plane and left a tilted source to a warning on every entry.
+- **`ids`**: `entries` (the new entries), `sources` (the entity each projects, in the same order); with `own` also `curves` (the own curves, `curves[i]` over the i-th entry that is a curve), `points`, `helpers` (the construction lines of the arcs), `constraints`.
+- **What the tool leaves out is listed, one list of `ids` per reason**, and the description of each list in the catalog of the tool, which `describe_api` and `sketch_tool` show, says the reason: `skipped` ("entities of the source this sketch projects already"), `doubled` (with `own`: "curves of the source at the place of a curve before them in the list, or of an own curve this sketch already has"). A successful answer of a tool is commands and lists of IDs, so a reason has no other carrier; a package that brings an entity the tool cannot project adds its list the same way (6d: `splines`, described by its text).
+- **An entity this sketch projects already is skipped**: no entry and no own curve for it, so the tool can be run again after the source grew, and running it twice draws nothing twice.
+- **Refused**: a sketch the document does not have, this sketch, a sketch after this one on the timeline ("board is after this sketch; only an earlier sketch is projected"), an entity the source does not have (named), anything under `origin/`, a source with nothing to project or with all of it projected already. With 6d: a spline named in `entities`.
+
+### The query `sketchSources`
+
+An entry of `QUERIES` (the review's finding 8: which sketches can be projected, and where their entities would land, was a rule of the app's picker, and an AI learned of a tilted plane from the warnings after its batch).
+
+- **Arguments**: `sketch` (the one that would project), `from` (optional: one earlier sketch), `max` (the most entities to list, default 200).
+- **Without `from`**: every sketch before `sketch` on the timeline, each with `status` (`parallel`, `tilted`, `notEvaluated`), `angle`, `flips` and how many curves and points it has.
+- **With `from`**: that one sketch, and, when it is parallel, **every entity of it that a projection may name**: its curves (own, construction too, and those of its entries), its points (own points, the ends and centres of own curves among them; `origin`; the points of its entries, `fh0/center`). Each with its kind, whether the whole-sketch form of `projectSketch` takes it (`whole`), whether it forms regions there (`regions`), whether an own curve is construction, the entry of `sketch` that projects it already (`entry`), and its place in the coordinates of `sketch` (`at`; `a`, `b`; `center`, `radius`; `center`, `start`, `end`, the ends of an arc swapped when the map flips); at most `max` with `total`, those the tool takes whole first, in its order. For `frame` of scenario 15 that is 37 entities: twelve curves, their twenty-four points and `origin`. The revision's calls counted twelve, though the picker ("points before curves") and the table "What is projected" need the points (the second round, finding 5).
+- **Nothing under `origin/`**: the query reads the state of the source, which holds the axes and their far points since 6a2, and leaves them out by `underOrigin` (the result of a sketch has none, but the state does).
+- It reads what the recompute kept of the two sketches (`context.sketch`), no body (`geometry: 'none'`), and is kept by the two solved sketches (`context.memo`). It costs its line in `QUERIES` and its rows in the two typed tables of `packages/mcp/test/queries.test.ts`; the app reaches it through the generic form too.
+
+### The step, in order
+
+1. `resolveReferences`: every entry of a reference kind in the order of its ID, its value fresh, else the stored one, else none, with the detail of a failure (and 6a2's slot of the axes).
+2. `solverSetup` and the solver, as today.
+3. `sketchWorld(stepBase(feature, references, geometry))` (6e's, with 6c's stage inside): the curves of the sketch, the copies of the derived entries, the occupation pass, the position stage over every curve that is not own and forms regions; the joins of the sketch. No line of 6b's.
+4. The profile, the result (the curves of the entries with their flags, `openEnds`), the warnings with their details.
+
+## The document and the schema
+
+- **What the document gains**: an entry `{ type: 'sketch', … }` in `external` and its value in `solved.external`, of which two forms are new (`point`, `arc`). Nothing else changes shape; region references and face names hold entry IDs, which every build accepts as strings.
+- **No upgrade step, no new version** (confirming 6a, "No upgrade step for 6b, 6c and 6f"). A build without the kind refuses the entry (`externalRef`, with the text that lists the kinds it knows), so a document with a projection is an invalid document there, not a model with the projection dropped; a stored point or arc belongs to such an entry and goes with it. `SCHEMA_PENDING` does not change.
+
+## Where the code lives
+
+| File | What changes |
+|---|---|
+| `packages/engine/src/types.ts` | `SketchProjection` (with the comment the AI reads), a member of `ExternalRef`; `Projected` with the forms `point` and `arc`; the comment of `SketchResult.curves` |
+| `packages/engine/src/references/projection.ts` (new) | the kind: `validate`, `refs`, `faces` (none), `entities`, `compute` (`projectFromSketch`: the map, the flip, the exact arc, the details), `value`, `geometry`, `keepsValue`, `summary`, `example`; `sketchMap` |
+| `packages/engine/src/references/spec.ts` | `ReferenceValues.sketch`, `ReferenceValues.edge` narrowed; `compute` may return `{ code, detail }`; the optional member `keepsValue` |
+| `packages/engine/src/references/index.ts` | the line of the registry; `projected` (the reader of a stored value, four forms) moved here from `edge.ts`; `resolveReferences` keeps details; the text of an unknown type lists `sketch` |
+| `packages/engine/src/references/world.ts` (6e's), `references/derive.ts` (6c's) | nothing: the position stage takes a flagged projection as a reference curve of the base |
+| `packages/engine/src/features/sketch.ts` | the step: the details in the warnings |
+| `packages/engine/src/recompute/services.ts` | the texts of `brokenProjection`, `unsupportedProjection`, `degenerateProjection` in English and general |
+| `packages/engine/src/document.ts` | `updateExternal` validates the form without the references, then checks those of the new entry the old one does not have, and keeps the stored value when `keepsValue` says so |
+| `packages/engine/src/sketch-tools.ts` | the tool `projectSketch`, the input kinds `sketch` and `entities`; `SketchToolCall` gets `features` |
+| `packages/engine/src/sketch-cut.ts` (6e's) | `readersOf`: a sketch whose entry names an entity of the changed sketch, in `shortened` or `broken`; the rule of old ends: a point a projection names; `repairsByDefault`: a sketch that projects a curve of this one with the flag; `contactFix`: the reason of a flagged projection |
+| `packages/engine/src/query/sketch.ts`, `query/index.ts` | the query `sketchSources` and its line |
+| `packages/engine/src/index.ts` | exports `sketchMap` |
+| `packages/mcp/src/tools.ts` | `sketchToolBatch` hands the tool `evaluation.features` |
+| Every caller of `sketchTool` and of the app's `sketchContextOf`, for the required `features` | `packages/app/src/sketch-mode.ts` (`sketchContextOf`), `app.ts`, `sketch-commands.ts`; the tests `packages/app/test/sketch-tools.test.ts` and `sketch-tool-table.test.ts`, `packages/scenarios/test/sketch-tools.test.ts`, `fillet.test.ts`, `edge-blend.test.ts`, `scenario12.test.ts`, `scenario14.test.ts` and `joint.ts`, and those 6e and 6c add. The `calls.ts` of earlier packages are drafts against their own contracts and stay |
+| `packages/mcp/src/api.ts` | the kind's `summary` and `example` in the generated section on the kinds of entries (6c's); the paragraph on projected geometry rewritten; `describe` of the input kinds `sketch` and `entities`; the example of `projectSketch` |
+| `packages/mcp/test/queries.test.ts` | the rows of `sketchSources` in the two typed tables |
+| `packages/app/src/sketch-tools/project-sketch.ts` (new), `index.ts` | the tool *From sketch* and its line; the app's calls of `sketchTool` hand it `evaluation.features` |
+| `packages/app/src/references/projection.ts` (new), `index.ts`, `spec.ts` | the row of the kind; `ReferenceUi` gains `flag` (a checkbox in the row), `inModel`, and the host of `detail` a `featureName` |
+| `packages/app/src/queries/index.ts` | the view of `sketchSources` (the candidates of the picker) |
+| `packages/app/src/scene.ts` | the curves of entries with `inModel` drawn in the model view |
+| `packages/app/src/panels/sketch.ts` | the flag's checkbox in the row of an entry that has one |
+| docs | `architecture/sketch.md` ("Promítnutá geometrie": the kind, the joins by position, the hold); `architecture/api.md` (`ExternalRef`, the rule of `updateExternal`, `Projected`, the query); `architecture/ai.md` (`get_sketch` of the entry, the input kinds `sketch` and `entities`, the query); `architecture/naming.md` (a side face named by an entry); `architecture/verification.md`; `ui/` the sketch panel, the tool and the query's view; `decisions.md` D69; `requirements.md` scenario 15; `backlog.md` the row "Promítnutí geometrie z jiné skici" closed with what is deferred; `docs/onshape-import.md` (what 6h can now use); `docs/d36/README.md`, the rows of "Shared places" on reference geometry and on `sketch-cut.ts`; the vocabulary of 6a (below) |
+
+`references/projection.ts` imports `solid.ts` (`toWorld`, `toPlane`), `recompute/services.ts` (`lookup`), `sketch-content.ts` and `validation.ts`, as `edge.ts` does; it reads `State.sketches`, which `recompute/state.ts` declares. No new layer (`docs/architecture/repository.md` gets the file in its table; `modules.test.ts` finds it). The first design named the file `references/sketch.ts`, which would have been the third `sketch.ts` of the engine.
+
+## The app
+
+- **The tool *From sketch*** (`projectSketch` in `SKETCH_TOOL_UI`, after *Project*): a tool with its own picker (6a's `picks: { pick }`, a place with a foreign snap). Its candidates are the answers of the query `sketchSources`, one per earlier sketch on a parallel plane, asked when the tool starts and when the document changes: while it is active its `draw` gives their curves and points where a projection would put them, dashed, hidden sketches included. The picker takes the place under the pointer in the open sketch's plane (`host.planePoint`) and the nearest entity within the reach of a pick, points before curves, the latest sketch first where several lie on each other (the skeleton before the board it projects). Its options (6a's `options`, the panel while active): *Forms regions* (a checkbox), *Whole sketch* (a checkbox) with *As* (in its source, reference, regions, own curves), *From* (any, or one sketch). A click sends `addExternal` with `kind` from the candidate and `regions` from the option; with *Whole sketch*, the engine's tool `projectSketch` with that sketch; with an entry being repaired (`m.repair`) or one sketch projection selected, `updateExternal` keeping the ID (refused by the engine when the kind differs, with its text). A sketch on a tilted plane is listed in *From* with its angle and cannot be picked.
+- **The row of an entry** (`REFERENCE_UI.sketch`): title by kind ("Point", "Line", "Circle", "Arc"), detail "board: c1", tag "projected", repair by *From sketch*, and a checkbox *regions* for a curve (`flag`), which sends `updateExternal` with the flag switched. The warning of an entry shows as the rows of projections show theirs.
+- **In the model view** the curves of an entry whose row says `inModel` are drawn with the own curves of their sketch: solid when they form regions, dashed otherwise. A projection from a sketch says so; a projected edge does not (the edge of the body lies there). So the skeleton and the rim's sketch are seen outside the sketch mode (the review's finding 9).
+- **What the snapshots of the app see**: the new entry *From sketch* in the toolbar of the sketch mode, in every record that shows that toolbar (`app.ts` renders every entry of `SKETCH_TOOL_UI`); nothing else in a model without a projection from a sketch. The commit that changes them says so.
+
+## MCP
+
+- `describe_api` shows `SketchProjection` and the two new forms of `Projected` from `types.ts` with no change in `packages/mcp`, and the kind in the generated section on the kinds of entries (6c's `summary` and `example` on every kind, with the test that the examples are accepted; the review of the step, finding 15). 6b writes no paragraph for the kind by hand.
+- **The paragraph on projected geometry** of `api.ts` (today "Promítnutá hrana (addExternal) je ve skice pevná křivka …") is rewritten in English for what the kinds share: an entry of a reference kind is fixed for the solver and follows its source; its derived IDs; it freezes when the source is gone; constrain to it with at least one own operand; a curve with `regions: true` bounds regions, and the ends of such curves join at their place, with each other and with an own end there; such a curve is never cut by the sketch tools, so an outline to be cut is drawn as own curves over the projection, which `projectSketch` with `as: 'own'` does (by hand: own points `coincident` with the projected ends, an own arc with a construction line from its centre to its start and the projected centre on that line; not `equalRadius`, which has a second solution).
+- **The AI's ways**: what can be projected, `query { query: 'sketchSources', args: { sketch: 'base', from: 'board' } }`; one entity, `addExternal { sketch: 'base', id: 'x1', ref: { type: 'sketch', sketch: 'board', entity: 'c1', kind: 'line' } }`; a whole sketch or a list, `sketch_tool { sketch: 'base', tool: 'projectSketch', input: { sketch: 'frame', entities: [...], as: 'own' } }`. `get_sketch` lists a projection's entry with its fields, `entities`, the positions of its points and, for a circle, its radius (6a's generic answer, no change), and `openEnds` when ends of flagged projections stayed open (6c).
+- **`sketch_tool`** hands the tool the results of the features; its catalog describes the input kind `sketch` as "the ID of an earlier sketch of the document" and `entities` as "IDs of points and curves of that sketch, as its get_sketch or the query sketchSources lists them". The lists of `ids` are described there too, among them what the tool left out and why (`skipped`, `doubled`; with 6d `splines`), so an AI that projects a whole sketch reads from the answer what is missing.
+
+## Issue codes
+
+None new. `brokenProjection`, `unsupportedProjection` and `degenerateProjection` get general English texts ("The projected geometry is no longer in its source; it keeps its last valid place.", "The geometry cannot be projected into this sketch.", "The geometry has no extent in this sketch: it projects to a point.") and the detail of the kind in brackets, as `issue(code, refs, detail)` composes it. The edge passes no detail, so its message is the general text. `degenerateProjection`, which an edge seen end-on gives today, is also what a source curve with no extent gives.
+
+## The Onshape converter
+
+The converter's part is the closing point of the step, 6h (owner, answer 4; [6-plan.md](../6-plan.md), "6h"). What 6b gives it:
+
+- **Constraints on an entity of another sketch of the studio** (`externalFirst`, `externalSecond`, `externalMirror`, all skipped today): an entry `{ type: 'sketch' }` from that sketch (earlier on the timeline, as Onshape requires), the constraint on the entry. The converter's merging of points at one position must leave projected points alone (a curve cannot run over a fixed point): it ties an own point to them by `coincident`. The origin and the default planes are 6a2's part of 6h; an edge of a body is an entry `{ type: 'edge' }` (D23).
+- **Derived sketches** (`importDerived`) stay copies: they come from another part studio, which is another document, and a sketch of another document cannot be projected (D62 brings bodies). What 6b changes is that the constraints of the studio on the copied sketch's entities are kept, as projections from the copy.
+
+## What 6b needs from 6a2, 6e and 6c
+
+Each is implemented before 6b; "As implemented" of each says where the point is in the code, and 6b verifies against it.
+
+**From 6a2 (D71):**
+
+1. The entities `origin/x` and `origin/y`: the skeleton of scenario 15 measures from `origin/y`.
+2. `underOrigin`, for the refusal of a source entity and for the query, which reads the state of the source (it holds the axes and the far points).
+3. The stand-in board of its calls, which 6b's calls build on.
+4. No hidden point in `SketchResult.points`, so the tool, which reads results, never offers a far point.
+
+**From 6e (D65), its design as merged:**
+
+1. **`sketchWorld(base)` is what the step and every tool call**, with `stepBase` and `toolBase`, so a tool builds its joins with the position stage and not from the `coincident` constraints alone. 6b adds nothing there.
+2. **`readersOf(document, sketch, changes)`**, one function, where 6b adds the walk of the entity references: `shortened` for an entity that keeps its ID and kind (`changed`, `restarted`), `broken` for one that is removed (`removed`, `removedPoints`) or changed its kind (`rekinded`). (6e's row of that point named the member `reads` of the first design of 6b; corrected with this fix.)
+3. **The rule of old ends**, **`repairsByDefault`** and **`contactFix`**, each with what 6b adds ("At the plug-in points of 6e"). The query `sketchContacts` then lists two flagged projections that lie on each other in `lying`, and a contact of an own curve with a flagged projection with `fix: 'none'` and `why`.
+4. `curvePredicates`: a flagged projection forms regions, is never cut and can hold a point. It reads `SketchCurve.regions`, so nothing is added.
+5. The input kind `curve` with `reference: true` takes a projection as a `with` curve.
+6. `sketchTool`'s context with the document (`SketchToolCallAfter`), to which 6b adds `features`.
+7. The rectangular notch of scenario 15 (owner, answer 20) is trimmed into the own outline that 6b's tool draws; 6e tests it on a plain own outline. A trim of a held arc keeps the old start on the arc as a virtual end, so the radius line keeps the centre (read by the second review). **A place on an own curve that lies over its projection is as near to the projection as to the own curve**, and 6e's `trim` by a place alone refuses a place "nearer to a curve that is not own than to any own curve": that comparison has to give the own curve when the two distances agree within the length tolerance, or the trims of the floor's notch would depend on rounding. 6b's calls name the curve where the place lies on both.
+
+**From 6c (D68), its design as merged:**
+
+1. **The position stage takes every curve that is not own and forms regions** (its "Joins", rule 2, with no predicate), runs in every sketch, also one with no derived entry (a sketch of projections alone), and lives inside `sketchWorld`.
+2. **`openEnds` names an open end of any such curve**, a projection's too, with `twoVertices` or `apart`, the nearest end and its distance.
+3. The occupation pass counts a flagged projection as a curve that forms regions, and `occupies` is exported: the tool's refusal of `as: 'regions'` and its one own curve per place read it.
+4. The source's result has each copy with `regions` as the occupation pass left it, which is the role `projectSketch` keeps; `entryOrder`.
+5. A copy as a source: `<entry>/<copy>/<source>` is an entity by the form of its ID, a curve of the source's `curves` and a point of its `geometry`. A projection of a copy above the count is valid and `brokenProjection`.
+6. The registry in two halves, with `summary` and `example` on every kind and the generated section of `describe_api`; the text for an unknown type.
+7. It removes the slots `joins` and `keys` of `EntryGeometry`.
+
+## Where 6b meets 6d and 6f
+
+- **6d** (splines): a spline is not projected until a package projects control points (owner, answer 22). 6d writes the refusals and the texts; 6b provides the places, and says what each does (the second round of 6d's review, minor 3):
+    - **`kind: 'spline'` in an entry** is refused by the form check of the validator, on `load` too; no legal command writes it.
+    - **An entity that is a spline in the source, whatever `kind` says**, is refused by a command (`requireRef` with `accepts: [kind]`: "c2 is a spline, expected line", with 6d's advice), and **never by `validate` on `load`**: a source curve can become a spline under its ID after the entry exists (6d's own calls put a spline under 6c's line `c2`), and a document made by legal commands must load.
+    - **Such an entry at the recompute** is a change of kind: `brokenProjection` with "c2 of lidSketch is a spline now, not a line", frozen as the line it was. The case of a spline in `compute`'s switch on the source's kind answers that, and does not throw.
+    - **`projectSketch` with `entities` that name a spline** is refused, naming it (the caller asked for it).
+    - **`projectSketch` of a whole sketch** leaves its splines out and lists them in `ids.splines`, the list 6d adds, described by its text; so an answer that left something out says what and why. The control points of a spline are not projected by the whole-sketch form either: it takes only lone points, and a control point is named by its spline. A caller projects them by name, as points.
+    - **With `as: 'own'`** the own outline then has a gap where the spline was: its neighbours end at own points there, the chain is open, and the sketch has no region until the caller closes it (an own spline over the projected control points, drawn by hand). The answer's `splines` is how the caller knows.
+    - **The query `sketchSources`** lists a spline with its kind, `whole: false` and no place (`SourceEntityHook` of the contract).
+    - The ends of a spline are ends: nothing changes in the position stage.
+- **6f** (an imported outline): reference geometry that forms regions by the same flag, default `true` (the convention of "The entry" above), many entities per entry. It reuses what 6b adds: the forms `point` and `arc` of `Projected` and the fixed arc made exact (an outline's arcs come from a file), the detail of a failure, `keepsValue`, the position stage (an outline's ends join as a projection's), `inModel`. An outline's entities are projected by 6b like any entry's entities (`o1/l3`), and `projectSketch` with `as: 'own'` draws an own outline over an import. 6f assembles scenario 15.
+
+## What 6b changes in 6a's vocabulary
+
+The record is the table "Where later packages change the vocabulary" of [6a-sketch-prep/design.md](../6a-sketch-prep/design.md), amended with this revision (rows 3 and 15 to 18; row 7 is 6a2's; rows 12 to 14 are 6c's). In short:
+
+| 6a says | 6b does |
+|---|---|
+| A projection from another sketch keys each projected point by its source vertex; `EntryGeometry.keys` | No keys: the ends of curves that are not own and form regions join by position, in 6c's stage inside `sketchWorld`. The slot `keys` goes, removed by 6c |
+| `Projected` is a line or a circle | Also a point and an arc; the edge's value narrows to the two |
+| `compute` answers a value or the code of a warning | Or `{ code, detail }`, which the warning carries |
+| An update of an entry validates the whole entry and drops its stored value | It checks only the references it brings in, and keeps the value when the kind's `keepsValue` says so |
+| A flag of an entry (`regions`) | Always stored as a boolean; a command may leave it out, and the kind has the default |
+
+Outside 6a's vocabulary 6b changes one more shared type: the context of `sketchTool` (`SketchToolCall`, D52) gets the results of the features.
+
+## Scenario 15
+
+The one text is [6-plan.md](../6-plan.md), "Validation scenario 15"; 6f, the last package, assembles the cover as one model and owns its cross checks (owner, answer 3). 6b tests its part on the stand-in board of 6a2, as a `describe` of its own in `packages/scenarios/test/scenario15.test.ts`, from calls.ts.
+
+**Step 2, the skeleton.** `frame` on a parallel offset plane projects the outline and the hole circles of `board` (whose centres are the hole centres, `fh0/center`) and measures the hole pair from `origin/y` by two reference dimensions. It constrains nothing of the board: its projections are fixed, and the symmetry is the board's.
+
+**Step 3, the base, in three features** (owner, answer 6), as a tray is modelled:
+
+1. **The floor** (`baseSk` on a plane `standoffH + baseT` below the board): one call of the tool, `projectSketch { sketch: 'frame', entities: <the outline>, as: 'own' }`: the outline projected without the flag and an own outline held on it (measured: 0 degrees of freedom, no redundancy), extruded `baseT` with the offset `clearance + wall`. The cable notch of step 6 is trimmed into this own outline, and it is **rectangular**, drawn wider by twice the offset (owner, answer 20): a round notch fits an offset floor only while it is large against the offset. 6b's text promises no round notch there.
+2. **The rim** (`rimSk` on the frame's plane): the outline projected from `frame` **with** the flag, one region of eight entries joined by position; added `rimH` with the offset `clearance + wall` and pocketed with the offset `clearance` (2a's offset on reference curves).
+3. **The standoffs** (`standSk` on the frame's plane): the four hole circles projected from `frame` with the flag and four own circles of `standoffD` centred on the projected centres (coincident); the rings are added `standoffH`, their bores named by the projections (`standoffs/side/sh0`).
+
+**The rim and the notch.** The rim is a flagged projection, which is never cut, so the notch of the floor does not go through the rim: the rim bridges it. Whether the cable slot also opens the rim (a cut feature of its own, or the rim's sketch drawn as an own outline too) is for 6f, which assembles the model and settles its numbers.
+
+**Step 5, the seam with 6c.** The sketch of the second row of vents projects one copy of the lid's mirror (`m/1/c2`, the mirrored flank) and places its first slot from it: a projection of a copy. Written in calls.ts against 6c's calls; 6b, the later of the two, writes the case when it is implemented.
+
+**Step 7, the part of 6b.** `boardW` from 60 to 62: the board, the frame, the own outline of the floor, the rim and the standoffs follow, and no feature is in error (+212.00 mm³, measured). The revised DXF is 6f's.
+
+## Rejected alternatives
+
+1. **The kind of the entity read from the source, not stored**, or optional in a command and filled in (the review's nit). `entities` would need the document of the source, so `entityOf` (the validation of every constraint) would read another feature, and `load` would depend on the order of validation. Filled in by a command alone, it would need a reader of another feature in the validator's context, which only checks references today (`requireRef` answers nothing). A caller that names an entity has read it from `get_sketch` or `sketchSources`, which give its kind, and the tool fills it in.
+2. **One entry for a whole sketch** (the plan's deferral). The entities would be `<id>/<source entity>`, the regions and faces named by slashed IDs, a source that grows would add entities nobody asked for, and the flag would be one for all. Per entity, with a tool that makes the batch, each has its flag and its repair.
+3. **Projection into a tilted plane** as a line, a polyline or a sampled curve: an ellipse is a curve kind (backlog), and a line or polyline would be wrong geometry with a name.
+4. **The projected arc copied as it is.** Measured: a point on it fails the sketch when its ends are 1e-9 mm off one radius.
+5. **Join keys** (the first design: each projected point carries the vertex of its source point; points with one key join). Measured by the review: two routes to one corner, a source made of projected edges and a projected construction copy of 6c end with an invalid profile, since their keys differ or do not exist; the cure by an own point with two coincidents adds two redundant constraints a corner; and a profile computed in memory does not have the keys at all. The owner chose position (answer 19).
+6. **Keys carried through a chain of projections, or read back from the stored values by the tools.** Both mend one of the three cases and keep the others.
+7. **Every projected point joins by position**, with or without the flag, a centre too. It would weld points never meant to meet; the ends of curves that form regions are the points a profile reads.
+8. **A whole sketch only as a batch the caller writes** (the plan). The rule which entities belong to "the whole sketch", and which form regions, would live in the app.
+9. **The tool with `as: 'regions'` as the way to project a whole sketch** (the first design). From a source that holds own curves over its projections it flags both and the profile is invalid (measured). The default keeps the role of the source.
+10. **A tool that knows no plane** (the first design). A tilted source would give a warning on every entry after the batch, and `as: 'own'` could not start its points at their places.
+11. **An own arc held by its ends and `equalRadius`** (the first design; the owner's answer 21 with the centre started at the projected centre). Two solutions that ordinary changes cross, and a double root at a half turn (measured).
+12. **An own arc with its centre pinned along one axis of the sketch** (a distance of 0 to the projected centre). One solution and no trouble at a half turn, but it is tied to the direction the chord has when the tool runs: a source that turns a quarter turn leaves the arc with a freedom (measured).
+13. **A member `reads` on the kind** (the first design) for the lists of the tools. The references of an entry say the same, and one walk finds axes and frames on an entity as well.
+14. **`regions` stored only as `true`** (the first design). With 6f's default `true` the same field would be stored only as `false` there.
+15. **The candidates of the picker computed in the app** (the first design, with `sketchMap` exported for it). The AI had no way to ask what can be projected.
+16. **A new warning code per failure** (`sourceGone`, `notParallel`). The existing codes say it; the detail names the case. New codes would also reach the app's texts and the AI's description.
+17. **A flag per projection to keep it frozen** (not follow the source). Not asked for; the copy is an own outline drawn over it, held or not.
+18. **A projection of another sketch's axes**: a fixed line of 1 mm with a hidden end. Its `origin` is a point and projects.
+19. **Every point projected along the normal by itself** (the first revision's map). Between planes that are parallel only within the tolerance it shortens one direction, and with the arc then made exact a flagged outline opened, silently (measured).
+20. **Refusing a tilt whose distortion exceeds the join tolerance** (`codex`'s second way). The limit would depend on the size of the source, and a sketch would start to fail when its source grew.
+21. **`as: 'own'` refused when two curves lie on each other**, as `regions` is (the review's first way). The tool could then not take its own output: every sketch it draws holds an own outline over projections. One curve per place does what the caller means.
+22. **`as: 'regions'` taking one curve per place as well.** The role says every curve; `source` already is the role that keeps one of each, and a refusal that names the pair says so.
+23. **One list `skipped` for everything left out.** It means "projected already", which a caller reads as "nothing to do"; a spline left out, or a curve under another, is another fact and needs its own words.
+24. **`features` optional in the context of a tool**, so that the callers of today need no change. A caller that forgot it would be refused at run time by the one tool that reads it; required, the compiler finds every caller once (they are listed in "Where the code lives").
+25. **A second `coincident` on a pooled own point**, to every projected end at its place. Two redundant constraints a corner; the recipe has none.
+
+## Known limits
+
+- **A projection follows the ID, not the shape**: after 6e splits a source curve, only the piece that kept the ID is projected; a fillet in the source shortens the projected lines and the arc is not projected. Both list the sketch in `shortened`.
+- **A source circle trimmed into an arc** breaks its projection; the repair is a new entry and the constraints on it again.
+- **A source in conflict** is followed at the positions it keeps, with no warning in the projecting sketch.
+- **A frozen projection in a middle sketch is followed silently.** `rimSk` projects from `frame`, `frame` from `board`: when `frame` loses a curve of the board and freezes it, `frame` warns, and `rimSk` follows the frozen curve beside its live neighbours with no warning of its own. After the next change of the board its outline is open: `ok`, `valid`, no region, the feature on it `noProfile` (measured). What says where: `openEnds` of `rimSk` (6c) names the two ends and how far apart they are, and the warning is on `frame`. A warning passed down a chain of projections would need a value that carries one, which `compute` does not have.
+- **Projected ends pooled into one own point follow only the first** when the source later parts them ("Holding own geometry on a projection"): the own outline keeps its topology. Drawn again, it follows.
+- **The lone points of a whole sketch include leftovers**: the virtual corner a fillet keeps, the old end of a trimmed line. They are projected as points; `entities` leaves them out.
+- **The tool's own output after a trim, projected whole as own, has no region.** One own curve per place covers curves at the same place only. After 6e trims a notch into the floor's outline, its own bottom side is two pieces and the projection of the frame under it is still one whole line: the whole line occupies the place of neither piece, so the whole-sketch form draws an own curve over it as well, over the two pieces (measured: 13 own curves, the sketch `ok` and determined, `valid: false`). **The cure is `entities`: the own curves of the source that are not construction** (measured: one region), which is also what the caller means. Not cured in the design: see "To verify", the rule that would.
+- **Curves that only overlap or cross in the source** are, for the same reason, drawn by `as: 'own'` as they are.
+- **A projected edge and a projection from a sketch on a plane tilted inside the tolerance do not agree to the last digits.** The edge is projected along the normal (`projectEdge`), the sketch by a rigid motion, so the same place seen by both routes differs by up to `d · θ² / 2` (5e-6 mm at 1 m), more than the join tolerance for large parts. An own end tied to a projected edge next to the end of a flagged projection of the same corner then does not join it: the outline is open, and `openEnds` says `apart` with that distance. On exactly parallel planes the two agree.
+- **Parallel planes only**, and planes within 1e-4 rad are taken as parallel: the projection between them is a rigid motion of the plane, so a point lies up to `d · θ² / 2` (5e-6 mm at 1 m from the source's origin) from where a projection along the normal would put it, and a circle stays a circle (the ellipse would differ by under 5e-9 of its radius).
+- **Two flagged projections of one place** (the same line by two routes, both with the flag) lie on each other and make the profile invalid; a command does not see it (it knows no positions), 6e's query `sketchContacts` lists the pair.
+- **A flagged projection is never cut**, so an own curve across it cannot be repaired by a tool, and in scenario 15 the rim bridges the notch of the floor.
+- **The own outline of the tool carries a construction line per arc**, and is drawn only together with its projections: an entity projected already is skipped, so an existing projection is not taken over as own curves (a backlog row, with 6e's).
+- **A hold started far from its solution may not solve**: the tool starts every point at its place; a hand that puts the own centre of a quarter arc 1.5 radii away gets `sketchConflict`, not a wrong shape (measured). The solver's failures on a very big jump (measured: a size changed by ×20000) are the adapter's ([6a2-origin-axes/design.md](../6a2-origin-axes/design.md), "Known limits").
+- **The query lists at most `max` entities** of a source (200 unless asked); the app asks for all of a candidate, once per sketch and state.
+- **Sketches of an inserted document** (D62) cannot be projected.
+
+## To verify before the implementation
+
+- **6c as implemented**: that the position stage inside `sketchWorld` runs in a sketch with no derived entry and takes the reference curves with `regions` (its design says both, and names 6b's curves). Until then the measurements of this text stand on a prototype of the stage written from 6c's rules (`proto.ts`), which closed every case here; 6c's own prototype measured four flagged projections of a rectangle the same way (its R5), and the second review found the joins sound (the rim, two routes, projected edges, own ends, a T).
+- **6e as implemented**: its "As implemented" for `readersOf`, the rule of old ends, `repairsByDefault` and `contactFix`, which is where 6b's four additions go. The first review ran the started implementation (`d36/6e`, before its revision): two places for the lists and joins from the coincidents alone.
+- **The adapter's `fixed` check takes a projected arc** (its points are fixed, the arc itself is not in `fixed`). Holds: read by the review (the adapter checks points and circles only) and run (fixed arcs solved in `frame`, `rimSk`, `baseSk`).
+- **The projected arc made exact gives the side face the radius the profile reads.** Holds by the review's reading: the formula moves only `end`, and `curveOf` and `placedCurve` both take the radius from `start`; the volumes agree.
+- **`pointOnCurve` of a projected point on an own construction line** passes the validator and the analysis. Holds: run in the engine (R4, R5).
+- **Whether `doubled` should also take a curve that forms no regions in the source and lies along one that forms regions there** (6e's `curveContacts(…).lying`: one carrier, a shared stretch), for `as: 'own'`. It cures the tool's own output after a trim (measured with a prototype for lines: 60 commands and one region from the whole sketch) and reads a function 6e exports; it is left to the implementation because it widens "the same place" to "along", and a skeleton line that runs along an outline for part of its length would then be left out without being asked. The test of the limit is written so that it turns when the rule is taken.
+- **The app's snapshots**: the toolbar entry and nothing else. Not checkable before the implementation.
+- **The rigid map against the projection along the normal on exactly parallel planes**: the same positions to the last bit is not promised (two routes of arithmetic); every row R1 to R8 run again over the rigid map gave the numbers of the first run.
+
+## Tests the implementation owes
+
+- **Engine, the kind**: the form (each field, `regions` left out and written as `false`, `true` on a point, an unknown field, a spline after 6d); the references (a later sketch, itself, a missing entity, a kind that differs, an axis and a far point of the source, also on `load`, a duplicate, the entry itself on update); `entities` of each kind; the stored value read by its form (a point or an arc under an edge's entry refused); `keepsValue` (the flag switched on a frozen projection keeps its geometry, its gone entity not checked again; another entity drops it); an edge projection repaired into a sketch projection of the same kind and back; the text of an unknown type.
+- **Engine, the compute**: each kind, a flipped normal (the arc's ends swapped, counter-clockwise), an offset and a turn in the plane, the arc made exact (an end off by 1e-7 in the source), a tilted plane with its detail, a missing sketch, entity and kind change with their details, a source in conflict, a copy of 6c and a projection of a projection as sources. **Planes parallel within the tolerance**: a projected edge and a projection from a sketch of one corner at 9e-5 rad, 1 m from the origin (apart by `d · θ² / 2`, `openEnds` says `apart`); a closed chain of lines and arcs (a quarter disc of radius 300 and 1000) at tilts of 5e-5 and 9e-5 rad about each axis keeps its joints and its region, the lengths and radii to the last digits; pinned in `review.test.ts`. **No extent**: an arc with its end on its centre in a source that never solved, a line of no length, a circle of no radius: `degenerateProjection`, no NaN in the result or the stored value, the document saved and loaded.
+- **Engine, joins and profile**: a projected rounded rectangle closes by position into one region named by the entries; without the flag no region; **two routes to one corner; a source of projected edges; a projected construction copy** (the review's three cases, pinned in `review.test.ts`); an own end at a projected end by `coincident` and by position; two own vertices there (invalid, and in `openEnds`); an own curve over a flagged projection and two flagged projections on each other (invalid); the side faces of projected curves.
+- **Engine, in memory**: **a trim in a sketch that also holds a flagged projected outline** (the review's finding 1): the profile the tool builds is the step's, the feature over the outline is not `pending`; the same for the fillet.
+- **Engine, the tool**: `projectSketch` whole and by `entities`; each role (`source` from a sketch with own curves, with projections and with an own outline over projections; `reference`; `regions` and its refusal; `own`: the batch, 0 degrees of freedom, no redundant constraint, on a flipped plane, a slot of two half turns, circles); **`own` of a sketch that holds an own outline over its projections, and of the result again** (one curve per place, `doubled`, one region; pinned in `review.test.ts` with the 72 commands and no region it guards); a line drawn twice the other way round and a circle twice; a source with a T; **the tool run again with `own`** (nothing made: the doubles decided before the skip); an outline from another source at places this sketch holds (nothing made); **the tool's output after a notch is trimmed into it** (whole as own: no region, the known limit, pinned so that it turns if `doubled` takes curves along; `entities` the own curves: one region); the skipped ones; the order; the refusals (a tilted plane, a source not evaluated, an entity under `origin/`).
+- **Engine, the hold**: the own arc on a projected one against the projected centre, by the cases a return to `equalRadius` fails (the revision's test changed quarter arcs, which follow under either hold): a source arc placed by `fixed` with expressions, the sweep 170° → 204° → 119° (`equalRadius`: 8.3 mm off with the sketch `ok`), a half turn with 0 degrees of freedom and no redundant constraint (`equalRadius`: 1 and 1), turns, radii and a shift; the floor of scenario 15 with `boardW` 60 → 80 → 60 in one step each (`equalRadius`: the corners 4.2 mm off, `ok`). Each state is diagnosed while it is the engine's. Pinned in `review.test.ts`.
+- **Engine, the query**: `sketchSources` without and with `from`, a tilted and a suppressed source, every entity listed (the points of curves, `origin`, nothing under `origin/`), `whole` against what the tool projects without `entities`, `entry` of what is projected, the places against the result of a sketch that projects them, a point named from its answer projected (`fh0/center`, an arc's end, `origin`), `max` and `total`.
+- **Engine, the recompute**: the chain board → frame → base follows a parameter (the stamps change, the bodies follow); a lost source freezes with the constraints acting, its frozen place and radius compared with those before, and the flag switched on it keeps the stored value; a frozen curve in a middle sketch (the outline of the last opens, `openEnds` names the ends).
+- **Engine, at 6e's plug-in points**: `readersOf` lists a sketch that projects a shortened line in `shortened` and one that projects a removed curve, a removed point or a circle turned into an arc in `broken`; an end cut off a curve stays when a later sketch projects it as a point; a trim's repair is on by default in a sketch whose curve a later sketch projects with the flag; `sketchContacts` gives `fix: 'none'` with 6b's reason for an own curve across a flagged projection.
+- **Engine, `updateExternal`**: the flag switched on a projection whose entity is gone (accepted, the entity not checked again); the entity changed to one that is gone (refused); the form of the new entry checked whole.
+- **Scenario 15**: steps 2 and 3, the seam with 6c of step 5 and 6b's part of step 7, from calls.ts (`packages/scenarios`).
+- **MCP**: `describe_api` contains `SketchProjection`, the generated section of the kind, the query and the tool; `sketch_tool` describes the input kinds `sketch` and `entities`; an `addExternal` of the kind through `execute`, `get_sketch` of the entry, `projectSketch` with `as: 'own'` through `sketch_tool`.
+- **App**: the tool *From sketch* (a pick of a point and a curve of another sketch, a centre and an end of a curve among the points, the latest first, the option of regions, the whole sketch with each role, a repair, a tilted sketch not offered), the row (title, detail, the flag), a sketch of projections in the model view, the snapshots changed by the toolbar entry alone.
+
+## Open
+
+Nothing waits for the owner. Answered on 2026-11-24 ("Reviews"): the hold of an own arc by a radius line (29), the tool with `entities` and four roles (30), and D71 for the axes (31).
+
+Recorded for the packages they belong to: the rim that bridges the notch (6f); the solver's failures on a big jump (a backlog row, proposed by 6a2); a warning passed down a chain of projections ("Known limits": a backlog row with this package).
+
+## Reviews
+
+**The first design (2026-11-17)**, the contract and the calls were written on Opus 5.5 (Fable limited until 2026-11-23). It had no review; its state line said "reviewed as recorded in Reviews" with nothing recorded.
+
+**The review of 2026-11-24**, independent, on Fable, read-only (the report is in the scratchpad of the session, `step6-review/reports/6b-design.md`; its probes in `step6-review/6b-design/`). No blocker for 6b's own steps; three major findings, eight minor, five nits, a list of what the owner's answers change, and three questions. It ran the designers' spikes (both reproduce) and probes of its own (E1 to E12, S1 to S3). The owner answered its questions the same day ([6-cross-review.md](../6-cross-review.md), "Later answers", 19 to 22). This revision was written on Fable on 2026-11-24.
+
+What the owner's answers change (the review's section A):
+
+| # | Answer | Settled |
+|---|---|---|
+| A1 | 1: the axes leave 6b | [6a2-origin-axes/](../6a2-origin-axes/design.md): a design, a contract and calls carved out of this one (D71). Here: the refusal of anything under `origin/`, extended to the far points as the review asked; the calls build on 6a2's board |
+| A2 | 6: the base in three features | "Scenario 15"; the first "Open" question is gone |
+| A3 | 2: 6f's flag, default true | "The entry": the flag is always stored (finding 10); "Where 6b meets 6d and 6f" |
+| A4 | 12, 14: 6c's joins by position, rule 0 dropped | No hidden point of 6c is named any more; a projected construction copy closes under answer 19 |
+| A5 | 3, 4: 6f assembles; 6h takes the converter | "Scenario 15" names 6f and the seam with 6c; "The Onshape converter" points to 6h |
+| A6 | 17 | Nothing to change |
+| A7 | The state line claimed a review | The state line and this section say what was reviewed, by whom, and what is owed |
+
+The findings (the review's section B):
+
+| # | Finding | Sev. | Settled |
+|---|---|---|---|
+| 1 | Readers in memory do not have the key joins, so they see a flagged projected outline as an invalid profile | major | Answer 19: joins by position, from positions a tool has; one function for the step and the tools ("Joins"). Measured in memory (R2, R3); the test "a trim in a sketch that also holds a flagged projected outline" is owed and written in calls.ts; `sketch-cut.ts` and 6c's stage are in the file table |
+| 2 | Join keys do not close three ordinary cases, and the limit is understated | major | Moot under answer 19: all three close (measured: R3 for two routes and for projected edges; the copies by the rule). The three are tests owed. The known limit on keys is gone |
+| 3 | The floor cannot take 6e's round notch: the offset refuses it | major | Answer 20: a rectangular notch on the floor, wider by twice the offset. This text promises no round notch there; the bound is 6e's (measured by its revision: `y + o ≤ r − o`). The rim that bridges the notch is said and left to 6f |
+| 4 | `reads` does not reach 6e's lists as assumed; a removed source belongs in `broken` | minor | The member `reads` is dropped: `readersOf` (one function in 6e's revision) walks the entity references; `shortened` and `broken` by what happened to the entity ("When the source changes") |
+| 5 | The stand-in board is over-dimensioned | minor | Moved to 6a2 with the board. Its fix was measured there: the filleted rectangle the review proposed has no redundancy but took a wrong solution at a jump; the board is drawn with linear constraints only, and `redundant.length === 0` is asserted |
+| 6 | The hold recipe has a silent second solution | minor | Measured further: the second solution is reached also from the right start, and a half turn has none. The hold is by a radius line ("Holding own geometry on a projection"), which the owner took as answer 29 |
+| 7 | `projectSketch` with `as: 'regions'` makes an invalid profile from a source with own curves over projections | minor | Answer 21: the default keeps the role of the source (measured: one region); `regions` stays as a named role and refuses two curves that lie on each other |
+| 8 | The candidates of the picker are computed in the app only | minor | The query `sketchSources`; the picker is its view; the tool refuses a tilted plane itself |
+| 9 | A sketch made only of projections stays invisible in the model view | minor | Drawn: `inModel` of the kind's row ("The app") |
+| 10 | Flag convention for 6f | minor | The flag is always stored; the default is the kind's ("The entry") |
+| 11 | What the design leaves out: a spike file no longer exists; no section on what 6b changes in 6a's vocabulary; documents missing from the file table; the `api.ts` paragraph by hand | minor | "Measured" says which rows cannot be run again and what measured them since; "What 6b changes in 6a's vocabulary" and the rows of 6a's amendments in the same commit; the documents added; the kind described from the registry, as 6c's |
+| 12 | Key pairs are each later point with the first of its key | nit | Moot: no keys |
+| 13 | `kind` could be optional in the command | nit | Not taken: alternative 1 |
+| 14 | "board has no curve c1" against the contract's "board has no circle bh3" | nit | One text, the contract's |
+| 15 | `references/sketch.ts` would be the third `sketch.ts` | nit | `references/projection.ts` |
+| 16 | "Source in conflict" is not in the table "When the source changes" | nit | A row there, and a known limit |
+
+The questions (the review's section E):
+
+| # | Question | Answer (owner, 2026-11-24) | Here |
+|---|---|---|---|
+| E1 | Join flagged projections by keys or by position? | 19: by position, one stage with 6c's | "Joins: by position" |
+| E2 | Where does the cable notch go? | 20: a rectangular notch on the floor | "Scenario 15" |
+| E3 | `projectSketch` as a tool | 21: yes, the role of the source kept, and a variant that draws the own outline. 22: a projected spline refused, by 6d | "The sketch tool"; the hold differs from the answer's, and the owner took the radius line (answer 29) |
+
+The review's "To verify" (its section C): item 1b was false (finding 4); items 4 and 6 hold and are kept above with how they were established; items 1a, 2 and 3 moved to 6a2 with the axes.
+
+**The owner's answers to the revision** (2026-11-24, all as recommended):
+
+| # | Answer | Here |
+|---|---|---|
+| 29 | An own arc is held on a projected arc by its ends plus a construction radius line from the own centre to the own start with the projected centre on it (it replaces "ends and `equalRadius`" of answer 21) | "Holding own geometry on a projection"; alternative 11 |
+| 30 | `projectSketch { sketch, entities?, as? }` with the roles `source` (default), `reference`, `regions`, `own` | "The sketch tool `projectSketch`" |
+| 31 | 6a2 has its own decision, D71 | [6a2-origin-axes/design.md](../6a2-origin-axes/design.md) |
+
+**The second round (2026-11-24)**: the revision read by an independent review on Fable (read-only; the report is `step6-review/reports/6b-r2-fable.md` in the scratchpad of the session, its probes in `step6-review/6b-round2/`) and by `codex` and `agy` (`6b-r2-codex.md`, `6b-r2-agy.md`), on whose findings the Fable review ruled. Verdict: ready after the listed fixes; no blocker, two majors; the three main decisions of the revision (joins by position, the radius-line hold, the tool) held up under re-measurement (it ran the revision's probes again, all rows identical, and 99 jumps of the board, the hold on the adapter and in the engine, a T, and the cases below). The fixes were written on Fable the same day, against the designs of 6e and 6c as merged.
+
+| # | Finding | Sev. | Settled |
+|---|---|---|---|
+| 1 | `as: 'own'` draws two own outlines on each other from a sketch that holds an own outline over its projections: 72 commands, the sketch `ok` and determined, `valid: false`, no region (run; `codex` 3 and `agy` 1 agree) | major | One own curve per place, the rest in `doubled` (measured: 44 commands, one region, and again from the result). Not the refusal of `regions`: the tool must take its own output (alternative 21). calls.ts: `wholeSketch()` |
+| 2 | "Needs" and the step are written against names 6e no longer has, and miss two plug-in points 6e lists for 6b (the mismatch table) | major | Rewritten against 6e and 6c as merged: `sketchWorld` with `stepBase` and `toolBase`, "no code" in the joins, `fix: 'none'` with `why`; "At the plug-in points of 6e" with `readersOf`, the rule of old ends (a projected point is named), `repairsByDefault` and `contactFix`; the contract's section 4 restates nothing and section 5 has the four |
+| 3 | Planes parallel within the tolerance but not exactly open a flagged outline: the map foreshortens and "made exact" moves only the arc's end; a quarter disc of radius 300 at 9e-5 rad has a gap of 1.2e-6 mm, the sketch `ok` and `valid` with no region (run; `codex` 1, which it rates minor) | minor | The map is a rigid motion of the plane (measured: the gap 0 and one region at every radius and tilt tried; all earlier rows unchanged). "Lengths and radii are kept" is now true |
+| 4 | "Made exact" has no guard: a never-solved source arc with its end on its centre gives NaN in the target's result (run; `codex` 2) | minor | A curve with no extent is `degenerateProjection` with a detail, checked before the division (measured) |
+| 5 | `sketchSources`: which entities it lists is undecided; `sources()` pins twelve for `frame`, the picker needs the points; the state holds the axes since 6a2 (`codex` 6) | minor | Every entity a projection may name, with `whole` for those the tool takes without `entities`; 37 for `frame`; filtered by `underOrigin`; calls.ts: `sources()`, `projectsANamedPoint()` |
+| 6 | `updateExternal` "kept by `refKey`" cannot work as written: `refKey` includes the path, the validator's `requireRef` gets none (`agy` 2) | minor | As `updateFeature` does it: the form validated without the references, then the `refs` of old and new walked |
+| 7 | The tests would not catch a return to `equalRadius`: quarter arcs follow under either hold; `floorHeld(state)` diagnoses the engine's current state, not the one passed (`codex` 7) | minor | calls.ts: `heldArcFollows()` (the sweep 170° → 204°, a half turn), `ownOutlineFollows()` with the jump of `boardW` to 80 and back, each state checked while it is the engine's and the own curves compared with their projections (`offProjection`); `lostSource()` and `flagOnFrozen()` compare the frozen values. Measured: S3e, S3f |
+| 8 | `ids.skipped` means "projected already"; 6d needs a place for splines left out, with a reason | minor | One list per reason, described in the tool's catalog: `skipped`, `doubled`, and 6d's `splines` |
+| 9 | Known limits to add: pooled ends follow only the first when the source parts them (`codex` 4, held as a limit); a frozen projection in a middle sketch is followed silently; the lone points of a whole sketch include the fillet's virtual corners (`agy` 5); `features` required touches callers and tests the file table did not name (`agy` 3) | minor | The three limits; the callers and tests named in "Where the code lives"; alternative 24 |
+| nit | `6-plan.md`, step 6, still has the round notch on the floor (`codex` 9) | nit | Gone with the merge of `master`: the plan's step 6, amended with 6e's design, has the rectangular notch on the floor and the round one on a stand-in. Its row of 6b in the order table said `toolWorld`: rewritten |
+| nit | "Snapshots unchanged" ignores the new toolbar entry (`codex` 8) | nit | Said |
+| nit | 6d's design names 6b's file `references/sketch.ts` | nit | 6d's design is not on `master` yet (branch `d36/6d-design`); noted for its session: the file is `references/projection.ts` |
+
+What `codex` and `agy` reported as major and the Fable review rated lower is in the rows above with its rating. Found sound by the second round: the joins by position (the rim, two routes, projected edges, own ends, a T), fixed arcs, 6e's trim of a held arc (the old start stays on the arc, so the radius line keeps the centre), and that the owner's answers 1, 2, 3, 4, 6, 12, 14, 17 and 19 to 22 are all taken in.
+
+**From the second round of 6d's review** (2026-11-24, `step6-review/reports/6d-r2-fable.md`, minor 3), what 6d needs of 6b: a carrier for the splines the tool leaves out (the list `splines`, by the rule of finding 8); what `entities` naming a spline does, that `as: 'own'` leaves a gap, that the whole-sketch form does not project control points; a row of `sketchSources` for a spline; a curve that becomes a spline under its ID answered by `brokenProjection` and not by a throw; the refusal of a spline entity as a check of a command, not of `load`. All in "Where 6b meets 6d and 6f", with the hooks in the contract.
+
+**The light read of the fixes** (2026-11-24, the diff of `0f12c89`, read-only): both designs ready to merge. Two minors and four nits for 6b, fixed with it:
+
+| # | Finding | Settled |
+|---|---|---|
+| 1 | One own curve per place does not cover the tool's own output after 6e's trim: the own side is in two pieces, the projection under it still whole, and `as: 'own'` draws over the pieces and the whole line: no region | Measured (S3g: 13 own curves, `valid: false`). A known limit with its cure, `entities`: the own curves (measured: one region); pinned in a test (calls.ts, `ownAfterANotch()`); the rule that would cure it, a curve without regions lying along one with them listed as `doubled` by 6e's `lying`, is noted for the implementation in "To verify" (measured with a prototype: one region) |
+| 2 | The order of the place and the skip is not said; run again, the doubles of the first run would be first at their place | The place is decided over the whole list before the skip, and a place this sketch already holds with an own curve is taken; `wholeSketchAgain()` has the `own` case (measured: nothing made) |
+| nit | "Along the normal of the target" in "The cheap variant" holds only for exactly parallel planes now | Said |
+| nit | A projected edge and a sketch projection on a plane tilted inside the tolerance | A known limit: `d · θ² / 2`, `openEnds` says `apart` |
+| nit | `heldArcFollows()` draws the point `e` at 175° where the arc ends at 185° | (13.04, 6.13) |
+| nit | The text of `NO_EXTENT` for a position that is not finite | Reworded |
+
+**Owed.** The full review of the implementation, which is new geometry.
+
+## Rows for the indexes
+
+**docs/d36/README.md**, the row of 6b, column "Design now":
+
+> full ([6b-sketch-projection/design.md](6b-sketch-projection/design.md), D69), revised 2026-11-24 after its independent review and the owner's answers, and fixed after a second round of reviews the same day (Fable, `codex`, `agy`): a reference kind of entry of `external`, `sketch` (`{ sketch, entity, kind, regions }`), projecting one point, line, circle or arc of an earlier sketch (own, projected or derived entities; nothing under `origin/`) into a sketch on a parallel plane by a rigid motion of the plane, following its source on recompute and frozen with `brokenProjection` when the source is gone or changes kind, `unsupportedProjection` with the angle for a tilted plane, `degenerateProjection` for a curve with no extent; projected arcs made exact; `Projected` with a point and an arc; with `regions` (always stored, default false) a projected curve forms regions and names its side face, and the ends of such curves join by position in 6c's stage inside 6e's `sketchWorld` (no code of 6b's), so an outline closes whatever its sources and a profile in memory sees it as the recompute does; what 6b adds at 6e's plug-in points (`readersOf`, a projected point as a name of an old end, `repairsByDefault`, the reason of `contactFix`); the sketch tool `projectSketch` (a whole sketch or a list; each curve in the role it has in its source, reference only, forming regions, or an own outline drawn over the projections, one curve per place, and held on them by a radius line, with no second solution; owner, answers 29 and 30), which reads the planes; the query `sketchSources`, every entity a projection may name; general texts of the projection warnings with a detail; no command, no issue code, no schema step. The fixes of the second round read lightly: ready; a known limit, the tool's own output after a trim projected whole as own (the cure: `entities`)
+
+**docs/decisions.md**, the row of D69:
+
+> | D69 | [6b Projection from another sketch](d36/6b-sketch-projection/design.md) | designed 2026-11-17; reviewed independently and revised 2026-11-24 with the owner's answers 19 to 22, reviewed in a second round and fixed the same day (answers 29 and 30); the axes of the origin, once part of it, are D71; not implemented | A projection from another sketch is a reference kind of entry of `external`, `sketch`, one entity per entry with its `kind` stored, from an earlier sketch on a parallel plane; the map between the two planes is a rigid motion (projected point by point, a tilt inside the tolerance opened an outline); it follows the source and freezes when the source is gone; projected arcs are made exact; a flag `regions`, always stored, lets a projected curve form regions, and the ends of such curves join by position in one stage with the copies of 6c (join keys rejected: three ordinary cases stayed invalid and profiles in memory did not see them); a sketch tool projects a whole sketch with each curve in the role it has in its source, or draws an own outline, one curve per place, held on the projections by a radius line (`equalRadius` rejected: a second solution that an ordinary change of a parameter reaches, and none at a half turn); a query says what a sketch can project; no schema step |
+
+**docs/requirements.md**, validation scenario 15, the sub-item after the one of 6a2:
+
+> - *Skeleton and base (6b, D69).* On the stand-in board of 6a2. The skeleton `frame` on a parallel plane projects the board's outline and hole circles and measures both holes of a pair 26.5 mm from `origin/y`. The floor of the base is drawn by one call of the sketch tool `projectSketch` with `as: 'own'`: the outline projected without the region flag and an own outline held on it (own points coincident with the projected ends, each own arc by a construction line from its centre to its start with the projected centre on it; fully determined, no redundant constraint), extruded with the offset `clearance + wall`; the rim projects the outline with the region flag (one region of eight entries, their ends joined by position) and is added and pocketed with offsets; four standoffs are rings of own circles around the projected hole circles, their bores named by the projections. The base by `mass` within the chord tolerance of the volume by hand (7836.9 mm³; measured 7835.0). `boardW` from 60 to 62: every feature follows (+212.0 mm³); to 80 and back in one step each: the own outline stays on its projections. The sketch of the second row of vents projects a copy of the lid's mirror. Also: a trim in a sketch that holds a projected outline follows its features; an outline whose curves come from two sketches, and one made of projected edges, close; a source on the other side (an arc swapped), a tilted plane (`unsupportedProjection`; refused by the tool and named by the query `sketchSources`), a plane tilted inside the tolerance (a quarter disc of radius 300 stays one region), a source arc with no extent (`degenerateProjection`, nothing NaN), a removed hole (`brokenProjection`, frozen at its place), a whole sketch projected with each curve in its role, the floor's sketch projected whole as an own outline again (one own curve per place), an own arc that stays on its projection while the sweep of the source goes from 170° to 204° and through a half turn, the query listing every entity a projection may name and a point named from it projected, a projection repaired. Refused: a later sketch, itself, another kind, anything under `origin/` of another sketch, a duplicate, `regions` on a point, every curve of a sketch with regions when two lie on each other.

@@ -286,7 +286,7 @@ export function axisRef(context: RefContext, v: unknown, what: string): AxisRef 
   const sketch = string(o.sketch, `${what}.sketch`);
   context.requireRef({ id: sketch, kind: 'sketch' }, `${what}.sketch`);
   if (kind === 'sketchLine') {
-    // an own line, construction or not, or a projected one
+    // an own line, construction or not, a projected one, or an axis of the origin (origin/x, origin/y)
     const line = string(o.line, `${what}.line`);
     context.requireRef({ id: line, kind: 'entity', sketch, accepts: ['line'] }, `${what}.line`);
     return { kind, sketch, line };

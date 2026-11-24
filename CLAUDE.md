@@ -77,7 +77,7 @@ The docs are living documents kept good enough to repeat the implementation from
 | `docs/requirements.md` | What the PoC must do, validation scenarios |
 | `docs/decisions.md` | Overview table of decisions D1 to D68 and the short ones in full (D38 to D68 link to the designs of the packages of D36), with reasons and alternatives |
 | `docs/decisions/` | Decisions too long for the overview: `D35-robot-joint.md`, and `D36-order-after-d35.md`, the order of work ahead |
-| `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, the design of each package, and the review over the whole set (`cross-review.md`) |
+| `docs/d36/` | Plan of the work of D36: work packages, map of dependencies and shared places, the design of each package, and the reviews over the whole set (`cross-review.md`, for step 6 `6-cross-review.md`) |
 | `docs/architecture.md`, `docs/architecture/` | The design as implemented: the overview and the list of sections, and a file per area (document, sketch, naming, extrusion, pattern, ports, recompute, API, interface for AI, repository, verification) |
 | `docs/ui.md`, `docs/ui/` | UI functions as tables of commands and state read, a file per panel or form, each with the implementation status of its area |
 | `docs/backlog.md` | Features not done yet and why the design does not block them |
@@ -101,7 +101,8 @@ Work on an approved list of points (such as the points of D35 or the steps of D3
 
 | Change | Review |
 |---|---|
-| Code moved without a change of behaviour (such as the preparatory step of D36) | None when the existing tests pass unchanged and no public type changes; otherwise light |
+| Code moved without a change of behaviour (such as the preparatory step of D36) | None when the existing tests pass unchanged, no public type changes and no code is added that nothing uses yet; otherwise light |
+| A preparatory part that adds generic code nothing uses yet (a slot, a hook or an option for a later package) | At least light, even when the existing tests pass unchanged: no test of today reaches that code (owner, 2026-11-24, after the review of 6a) |
 | New geometry and heuristics (interference, the kernel, the solver) | Full |
 | Catalog entries, forms, UI | Light |
 | Anything else | Full |

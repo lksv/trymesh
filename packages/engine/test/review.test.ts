@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CommandError, applyCommand, emptyDocument, emptySketch, validateDocument } from '../src/document';
 import { createEngine } from '../src/engine';
 import { type Deps, type DragTarget, type EvaluateOptions, Evaluator, type Placement, type SketchState, type ToolRecipe, type Trace, type WriteBack } from '../src/evaluate';
-import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
+import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
 import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
 import { generatorOf, producesTool } from '../src/index';
 import { DATA_CATALOGS, catalogTable } from '../src/data-catalogs';
@@ -355,7 +355,8 @@ describe('a module per feature type (D37): what the move could have changed unse
     type Kept = [Deps, DragTarget, EvaluateOptions, Placement, SketchState, ToolRecipe, Trace, WriteBack, Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind];
     const kept: Kept | undefined = undefined;
     expect(kept).toBeUndefined();
-    const values = { Evaluator, FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, SCHEMA_VERSION, CommandError, applyCommand, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, derivedPoints, documentIds, duplicateOf, emptyDocument, emptySketch, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, validateDocument, withPath };
+    // `derivedPoints` was dropped on purpose (review of D64): the points of an entry are its point entities by the registry of kinds
+    const values = { Evaluator, FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, SCHEMA_VERSION, CommandError, applyCommand, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, emptyDocument, emptySketch, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, validateDocument, withPath };
     for (const [name, value] of Object.entries(values)) expect(value, name).toBeDefined();
   });
 });
@@ -1230,5 +1231,51 @@ describe('the start of an extent at a plane: the design reviews of D66', () => {
     // the circle alone is within the tolerance; with the joined end it is not
     expect('level' in levelOf(tilted(0, tilt), [curves[0]])).toBe(true);
     expect(levelOf(tilted(0, tilt), curves)).toEqual({ detail: expect.stringMatching(/tilted against the sketch plane/) });
+  });
+});
+
+describe('the review of the implementation of 6a (D64)', () => {
+  // a box E1 from a rectangle l1..l4, and a sketch S2 on its top face with a point q and a projected line x1 and circle x2
+  const run = (doc: Document, ...commands: Command[]): Document => commands.reduce(applyCommand, doc);
+  const corners: [string, number, number][] = [
+    ['p1', 0, 0],
+    ['p2', 40, 0],
+    ['p3', 40, 30],
+    ['p4', 0, 30],
+  ];
+  const top = { feature: 'E1', role: 'endCap' } as const;
+  const doc = run(
+    emptyDocument(),
+    { type: 'addFeature', feature: emptySketch('S1', 'S1', { kind: 'base', plane: 'XY' }) },
+    ...corners.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 'S1', id, x, y })),
+    ...corners.map(([id], i): Command => ({ type: 'addCurve', sketch: 'S1', id: `l${i + 1}`, curve: { type: 'line', a: id, b: corners[(i + 1) % 4][0] } })),
+    { type: 'addFeature', feature: { id: 'E1', name: 'E1', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } },
+    { type: 'addFeature', feature: emptySketch('S2', 'S2', { kind: 'face', body: 'E1', face: top }) },
+    { type: 'addPoint', sketch: 'S2', id: 'q', x: 5, y: 5 },
+    { type: 'addExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge: { a: top, b: { feature: 'E1', role: 'side', curve: 'l2' } }, kind: 'line' } },
+    { type: 'addExternal', sketch: 'S2', id: 'x2', ref: { type: 'edge', body: 'E1', edge: { a: top, b: { feature: 'E1', role: 'startCap' } }, kind: 'circle' } },
+  );
+
+  it('the points of an entry for the rule of a constraint come from the registry of kinds: the ends of a projected line', () => {
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/středem úsečky nemůže být její konec/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/souměrný bod nesmí být koncem osy/);
+    // the centre of the projected circle is no point of the line
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x2/center', line: 'x1' } })).toThrow(/nikdy neprojevila/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'q', line: 'x1' } })).not.toThrow();
+  });
+
+  it('a load refuses an entry of an unknown type and a malformed stored value with the texts of before', () => {
+    const tampered = (change: (sketch: any) => void): unknown => {
+      const copy = JSON.parse(JSON.stringify(doc));
+      change(copy.features.find((f: Feature) => f.id === 'S2'));
+      return copy;
+    };
+    expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'sketch', sketch: 'S1', entity: 'l1' })))).toThrow(/external\.x1: promítnout jde jen hranu/);
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(/external\.x1: promítnout jde jen hranu/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: čeká se line nebo circle/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: poloměr musí být kladný/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
+    expect(validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 2 } })))).toBeDefined();
   });
 });
